@@ -1,9 +1,8 @@
-# dependencies.allowlist — packages permitted in apps/gateway/pyproject.toml
-# Pipeline (scripts/check_allowlist.py) rejects any dependency not listed here.
+# dependencies.allowlist — one package per line; CI rejects anything not listed.
+# Defeats the AI "invented a plausible package name" supply-chain risk.
 # Adding a package = PR that edits this file with justification in the commit body.
-# Format: one normalized PyPI package name per line. '#' starts a comment.
 
-# --- runtime ---
+# --- runtime (apps/gateway) ---
 fastapi
 uvicorn
 httpx

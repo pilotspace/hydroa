@@ -10,11 +10,14 @@ cost tracking and an admin dashboard. Built with the
 
 | Read | For |
 |------|-----|
-| `PROJECT.md` | Domain, architecture, key decisions — read first |
-| `SETUP-REVIEW.md` | Confidence-tagged setup decisions awaiting human lock |
-| `CONVENTIONS.md` | Layout, style, TDD and failure-design rules |
-| `GLOSSARY.md` | Canonical names used in contracts and code |
-| `playbook/` | The six ADD phase prompts (specify → observe) |
+| `.add/PROJECT.md` | Domain, architecture, key decisions — read first |
+| `SETUP-REVIEW.md` | Confidence-tagged setup decisions (human-locked 2026-06-10) |
+| `.add/CONVENTIONS.md` | Layout, style, TDD and failure-design rules |
+| `.add/GLOSSARY.md` | Canonical names used in contracts and code |
+| `.claude/skills/add/phases/` | The ADD phase prompts (setup → observe) |
+
+State-tracked workflow: `python3 .add/tooling/add.py status` shows the resume
+point; in Claude Code, run `/add`.
 
 ## Develop
 

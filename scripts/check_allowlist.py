@@ -14,7 +14,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ALLOWLIST = ROOT / "dependencies.allowlist"
+ALLOWLIST = ROOT / ".add" / "dependencies.allowlist"
 
 
 def normalize(name: str) -> str:
