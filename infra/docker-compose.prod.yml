@@ -56,6 +56,9 @@ services:
 
   gateway:
     image: ${GATEWAY_IMAGE}
+    # Must exceed GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS (default 10s) so the
+    # usage-flusher drain finishes before SIGKILL (runbook: backup-rollback.md).
+    stop_grace_period: 15s
     environment:
       GATEWAY_DATABASE_URL: ${GATEWAY_DATABASE_URL}
       GATEWAY_REDIS_URL: ${GATEWAY_REDIS_URL}

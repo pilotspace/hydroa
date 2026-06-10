@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "ai-proxy"
     openrouter_api_key: str = ""  # Required in production; empty default for dev/test
     redis_url: str = "redis://localhost:6380/0"
+    shutdown_drain_timeout_seconds: int = 10  # env: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
 
     @model_validator(mode="after")
     def _forbid_dev_secret_outside_dev(self) -> "Settings":

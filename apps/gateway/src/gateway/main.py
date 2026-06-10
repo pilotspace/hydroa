@@ -1,10 +1,14 @@
 import asyncio
 import contextlib
+import re
+from collections.abc import AsyncIterator
 
 import httpx
 import redis.asyncio as aioredis
 from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from prometheus_client import CollectorRegistry
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from gateway.budgets.api.router import budget_router
@@ -37,12 +41,66 @@ from gateway.usage.infrastructure.orm import (
 internal_router = APIRouter(prefix="/internal")
 health_router = APIRouter()
 
+_CREDENTIALS_RE = re.compile(r"(?:://[^@]*@|password[=:]\s*\S+|passwd[=:]\s*\S+)", re.IGNORECASE)
+
+
+def _strip_credentials(text: str) -> str:
+    """Remove connection URLs with credentials and password= fragments from error strings."""
+    return _CREDENTIALS_RE.sub("<redacted>", text)
+
 
 @internal_router.get("/health")
 async def internal_health() -> dict[str, str]:
     # Liveness only: must never touch Postgres/Redis/OpenRouter, so a
     # dependency outage can't cascade into the fleet being marked dead.
     return {"status": "ok", "service": "gateway"}
+
+
+@internal_router.get("/health/live")
+async def live_probe() -> dict[str, str]:
+    """GET /internal/health/live — liveness probe.
+
+    Returns 200 without touching any external dependency.
+    Use for k8s livenessProbe / Envoy active health check (process-up only).
+    """
+    return {"status": "ok", "service": "gateway"}
+
+
+@internal_router.get("/health/ready")
+async def ready_probe(request: Request) -> Response:
+    """GET /internal/health/ready — readiness probe.
+
+    Checks SELECT 1 on Postgres AND PING on Redis concurrently (3s timeouts).
+    Returns 200 when both pass; 503 when either fails.
+    Credentials are stripped from all error detail strings.
+    """
+    app = request.app
+    engine = app.state.engine
+    redis_client = app.state.redis_client
+
+    async def _check_db() -> str:
+        try:
+            async with asyncio.timeout(3.0):
+                async with engine.connect() as conn:
+                    await conn.execute(sa_text("SELECT 1"))
+            return "ok"
+        except Exception as exc:
+            return f"error: {_strip_credentials(str(exc))}"
+
+    async def _check_redis() -> str:
+        try:
+            async with asyncio.timeout(3.0):
+                await redis_client.ping()
+            return "ok"
+        except Exception as exc:
+            return f"error: {_strip_credentials(str(exc))}"
+
+    db_result, redis_result = await asyncio.gather(_check_db(), _check_redis())
+
+    checks = {"db": db_result, "redis": redis_result}
+    if db_result == "ok" and redis_result == "ok":
+        return JSONResponse({"status": "ready", "checks": checks}, status_code=200)
+    return JSONResponse({"status": "not_ready", "checks": checks}, status_code=503)
 
 
 @internal_router.get("/metrics")
@@ -71,7 +129,71 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # logger call — including those triggered during module imports below.
     configure_structlog()
 
-    app = FastAPI(title="AI Proxy Gateway", version="0.1.0")
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        """Single lifespan context manager — replaces the deprecated on_event handlers.
+
+        Startup ordering:
+          1. Schema bootstrap if environment in ("dev", "test")
+          2. Create UsageLedgerFlusher bound to redis_client + sessionmaker
+          3. Start flusher background task → app.state.flusher_task
+
+        Shutdown ordering:
+          1. Cancel flusher background task
+          2. drain_until_empty(timeout=shutdown_drain_timeout_seconds)
+          3. await redis_client.aclose()
+          4. await engine.dispose()
+          5. await httpx_client.aclose() if held
+        """
+        _engine = app.state.engine
+        _redis = app.state.redis_client
+        _sessionmaker = app.state.sessionmaker
+        _settings: Settings = app.state.settings
+
+        # ── Startup ──────────────────────────────────────────────────────
+        # Idempotent schema bootstrap for dev/test environments.
+        # In production the schema is managed by Alembic migrations.
+        if _settings.environment in ("dev", "test"):
+            from gateway.core.db import Base  # local import to avoid circular at module level
+
+            async with _engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
+        flusher = UsageLedgerFlusher(
+            redis=_redis,
+            session_factory=_sessionmaker,
+        )
+        app.state.flusher = flusher
+        app.state.flusher_task = asyncio.create_task(flusher.run_forever())
+
+        yield  # ── application is running ──
+
+        # ── Shutdown ─────────────────────────────────────────────────────
+        # 1. Cancel the run_forever background task
+        task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        # 2. Drain remaining PEL entries up to the timeout
+        await flusher.drain_until_empty(timeout=float(_settings.shutdown_drain_timeout_seconds))
+
+        # 3. Close Redis client
+        with contextlib.suppress(Exception):
+            await _redis.aclose()
+
+        # 4. Dispose SQLAlchemy engine
+        with contextlib.suppress(Exception):
+            await _engine.dispose()
+
+        # 5. Close httpx client if stored on app.state
+        httpx_client: httpx.AsyncClient | None = getattr(app.state, "httpx_client", None)
+        if httpx_client is not None:
+            with contextlib.suppress(Exception):
+                await httpx_client.aclose()
+
+    app = FastAPI(title="AI Proxy Gateway", version="0.1.0", lifespan=lifespan)
 
     # Per-app Prometheus registry — prevents Duplicated timeseries errors when
     # multiple create_app() calls exist in a single pytest run.
@@ -107,35 +229,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redis=redis_client,
         session_factory=app.state.sessionmaker,
     )
-
-    @app.on_event("startup")
-    async def _start_flusher() -> None:
-        # Guard: only start the background flusher when running under a real
-        # ASGI server (not ASGITransport in tests, which never calls lifespan).
-        # The test suite drives flush_once() directly — no timing dependency.
-
-        # Idempotent schema bootstrap for dev/test environments (e.g. e2e compose stack).
-        # In production the schema is managed by Alembic migrations; never run create_all there.
-        if settings.environment in ("dev", "test"):
-            from gateway.core.db import Base  # local import to avoid circular at module level
-
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
-        flusher = UsageLedgerFlusher(
-            redis=redis_client,
-            session_factory=app.state.sessionmaker,
-        )
-        app.state.flusher_task = asyncio.create_task(flusher.run_forever())
-
-    @app.on_event("shutdown")
-    async def _stop_flusher() -> None:
-        task = getattr(app.state, "flusher_task", None)
-        if task is not None:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        await redis_client.aclose()
 
     register_error_handlers(app)
     app.include_router(health_router)

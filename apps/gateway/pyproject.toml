@@ -42,6 +42,7 @@ target-version = "py312"
 # checks avoids violating the "never edit test files" contract.
 # - tests/edge: frozen by edge-envoy TASK.md §4
 # - tests/migrations: frozen by db-migrations TASK.md §4
+# - tests/ops: frozen by ops-hardening TASK.md §4
 exclude = [
     "tests/edge/test_authz_bearer.py",
     "tests/edge/test_e2e_edge.py",
@@ -49,6 +50,10 @@ exclude = [
     "tests/migrations/conftest.py",
     "tests/migrations/test_migrations.py",
     "tests/observability/test_observability.py",
+    "tests/ops/test_lifespan.py",
+    "tests/ops/test_probes.py",
+    "tests/ops/test_runbook.py",
+    "tests/ops/test_node_deps.py",
 ]
 
 [tool.ruff.lint]

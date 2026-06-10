@@ -177,6 +177,81 @@ class UsageLedgerFlusher:
         except Exception as exc:
             _log.warning("flusher: xack failed for %s: %s", entry_id, exc)
 
+    async def drain_until_empty(self, *, timeout: float) -> None:  # noqa: ASYNC109
+        """Drain all pending Redis Stream entries until PEL is empty or timeout.
+
+        Contract (ops-hardening TASK.md §3):
+          - timeout=0 → skip drain immediately, log warning, return.
+          - Loop: flush_once() → check XPENDING count → exit if 0 or elapsed >= timeout.
+          - Never raises; logs WARNING on timeout or Redis errors.
+          - Idempotent: ON CONFLICT DO NOTHING in INSERT; XACK only after successful insert.
+        """
+        if timeout <= 0:
+            _log.warning(
+                "flusher: drain skipped (timeout=%s <= 0); events remain durable in Redis PEL",
+                timeout,
+            )
+            return
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while True:
+            if loop.time() >= deadline:
+                remaining = await self._backlog_size()
+                _log.warning(
+                    "flusher: drain timed out after %.1fs; %s events remain durable in the stream",
+                    timeout,
+                    remaining if remaining >= 0 else "unknown",
+                )
+                return
+
+            try:
+                await self.flush_once()
+            except Exception as exc:
+                _log.warning("flusher: drain flush_once error", exc_info=exc)
+
+            # Drain is complete only when the PEL is empty AND no unread
+            # entries remain for the group (flush_once reads at most 100 per
+            # call — a deeper backlog must keep the loop going while the
+            # timeout allows; M2's invariant is "committed or durable").
+            backlog = await self._backlog_size()
+            if backlog == 0:
+                _log.info("flusher: drain complete — PEL empty, no unread backlog")
+                return
+            if backlog < 0:
+                # Redis unreachable — keep trying until the bounded timeout.
+                await asyncio.sleep(0.05)
+                continue
+
+            # Yield to event loop briefly before next flush iteration
+            await asyncio.sleep(0.01)
+
+    async def _backlog_size(self) -> int:
+        """Pending (delivered, unacked) + undelivered entries for the group; -1 if Redis fails."""
+        try:
+            summary = await self._redis.xpending(STREAM_KEY, CONSUMER_GROUP)
+            pending = int(summary.get("pending", 0)) if isinstance(summary, dict) else 0
+        except Exception as exc:
+            _log.warning("flusher: drain backlog check failed", exc_info=exc)
+            return -1
+        # Undelivered-entry lag is a best-effort refinement: real Redis ≥7
+        # reports it via XINFO GROUPS; clients/fakes without it fall back to
+        # the PEL-only view (entries stay durable in the stream regardless).
+        lag = 0
+        try:
+            for group in await self._redis.xinfo_groups(STREAM_KEY):
+                name = group.get("name")
+                if isinstance(name, bytes):
+                    name = name.decode()
+                if name == CONSUMER_GROUP:
+                    # 'lag' is None when Redis cannot compute it (entries
+                    # trimmed); treat unknown as 0 so the drain terminates.
+                    lag = int(group.get("lag") or 0)
+                    break
+        except Exception:
+            lag = 0
+        return pending + lag
+
     async def run_forever(self, interval_seconds: float = 1.0) -> None:
         """Background loop — call flush_once() every interval_seconds."""
         while True:
