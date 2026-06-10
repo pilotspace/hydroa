@@ -3,17 +3,17 @@
 /**
  * LoginForm — tenant login form
  *
- * Behavior (per frozen contract §3):
+ * Behavior (per frozen contract §3 v2):
  *   1. Client-side Zod validation before fetch
- *   2. POST /admin/auth/login → 200 → store JWT → router.push("/keys")
- *   3. 401 → inline error with problem+json title, no navigation
+ *   2. POST /api/auth/login BFF endpoint with credentials:"include"
+ *   3. 200 → router.push("/keys"); no localStorage write
+ *   4. 401/error → inline error with problem+json title, no navigation
  */
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
-import { apiPost, ApiError } from "@/lib/api-client";
-import { setToken } from "@/lib/auth";
+import { ApiError } from "@/lib/api-client";
 
 const LoginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -21,12 +21,6 @@ const LoginSchema = z.object({
 });
 
 type FieldErrors = Partial<Record<"email" | "password", string>>;
-
-interface LoginResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-}
 
 export function LoginForm() {
   const router = useRouter();
@@ -55,8 +49,27 @@ export function LoginForm() {
 
     setIsSubmitting(true);
     try {
-      const res = await apiPost<LoginResponse>("/admin/auth/login", { email, password });
-      setToken(res.access_token);
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) {
+        let problem: { title?: string };
+        try {
+          problem = await res.json() as { title?: string };
+        } catch {
+          problem = { title: "An error occurred" };
+        }
+        throw new ApiError(res.status, {
+          title: problem.title ?? "An error occurred",
+          status: res.status,
+        });
+      }
+
+      // No localStorage write — cookie is set server-side by the BFF
       router.push("/keys");
     } catch (err) {
       if (err instanceof ApiError) {

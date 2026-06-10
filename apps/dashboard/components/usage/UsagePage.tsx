@@ -3,75 +3,30 @@
 /**
  * UsagePage — orchestrates usage stats, records table, model catalog, and budget widget.
  *
- * Auth guard: checks localStorage token on mount; if absent or expired,
- * calls router.push("/login") before rendering content (same pattern as KeysPage).
+ * Auth guard: middleware.ts handles cookie-presence check server-side.
+ * If this page renders, the session cookie is present.
  *
- * Role guard: decodes JWT payload role claim; owner|admin sees "Edit Budget".
+ * Role guard: useCurrentUser() fetches role from /api/auth/me — no JWT decode
+ * client-side, no localStorage access.
  */
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { getToken, clearToken, isTokenValid } from "@/lib/auth";
 import { apiGet } from "@/lib/api-client";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { UsageStatsCards, UsageData } from "./UsageStatsCards";
 import { UsageTable } from "./UsageTable";
 import { BudgetWidget, BudgetData } from "./BudgetWidget";
 import { ModelCatalogTable, ModelsData } from "@/components/models/ModelCatalogTable";
 
-/**
- * Decode the JWT payload without signature verification.
- * Returns the payload object or null on malformed input.
- */
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const raw = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(raw)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Returns true if the role claim in the JWT grants budget edit access.
- * Fallback: if role claim is absent → false (hide edit, rely on 403 path).
- */
-function canEditBudget(token: string | null): boolean {
-  if (!token) return false;
-  const payload = decodeJwtPayload(token);
-  if (!payload) return false;
-  const role = payload.role;
-  return role === "owner" || role === "admin";
-}
-
 export function UsagePage() {
-  const router = useRouter();
-  const [isAuthChecked, setIsAuthChecked] = useState(false);
-  const [isAuthed, setIsAuthed] = useState(false);
-  const [canEdit, setCanEdit] = useState(false);
+  // Role from /api/auth/me — no JWT decode client-side
+  const { data: currentUser } = useCurrentUser();
+  const canEdit = currentUser?.role === "owner" || currentUser?.role === "admin";
 
-  // Auth guard — runs synchronously on mount before any render of protected content
-  useEffect(() => {
-    const token = getToken();
-    if (!isTokenValid(token)) {
-      clearToken();
-      router.push("/login");
-      setIsAuthChecked(true);
-      setIsAuthed(false);
-    } else {
-      setIsAuthChecked(true);
-      setIsAuthed(true);
-      setCanEdit(canEditBudget(token));
-    }
-  }, [router]);
-
-  // Usage query
+  // Usage query — middleware guarantees session cookie is present when this renders
   const usageQuery = useQuery<UsageData>({
     queryKey: ["admin-usage"],
     queryFn: () => apiGet<UsageData>("/admin/usage"),
-    enabled: isAuthed,
   });
 
   // Models query — enabled only after usage data arrives so the catalog renders in
@@ -81,25 +36,14 @@ export function UsagePage() {
   const modelsQuery = useQuery<ModelsData>({
     queryKey: ["v1-models"],
     queryFn: () => apiGet<ModelsData>("/v1/models"),
-    enabled: isAuthed && !!usageQuery.data,
+    enabled: !!usageQuery.data,
   });
 
   // Budget query
   const budgetQuery = useQuery<BudgetData>({
     queryKey: ["admin-budget"],
     queryFn: () => apiGet<BudgetData>("/admin/budget"),
-    enabled: isAuthed,
   });
-
-  // Before auth check resolves, render nothing (no flash of protected content)
-  if (!isAuthChecked) {
-    return null;
-  }
-
-  // Not authed — redirect already fired, render nothing
-  if (!isAuthed) {
-    return null;
-  }
 
   return (
     <div>

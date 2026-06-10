@@ -3,10 +3,10 @@
 /**
  * SignupForm — tenant signup form
  *
- * Behavior (per frozen contract §3):
+ * Behavior (per frozen contract §3 v2):
  *   1. Client-side Zod validation before any fetch
- *   2. POST /admin/auth/signup → 201
- *   3. Auto-login: POST /admin/auth/login → store JWT → router.push("/keys")
+ *   2. POST /api/auth/signup BFF endpoint with credentials:"include"
+ *   3. 201 → router.push("/keys"); no localStorage write
  *   4. 409 → inline email field error "An account with this email already exists"
  *   5. Other errors → surface problem+json title
  */
@@ -14,8 +14,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
-import { apiPost, ApiError } from "@/lib/api-client";
-import { setToken } from "@/lib/auth";
+import { ApiError } from "@/lib/api-client";
 
 const SignupSchema = z.object({
   tenant_name: z.string().min(1, "Tenant name is required").max(120, "Tenant name must be at most 120 characters"),
@@ -24,12 +23,6 @@ const SignupSchema = z.object({
 });
 
 type FieldErrors = Partial<Record<"tenant_name" | "email" | "password", string>>;
-
-interface LoginResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-}
 
 export function SignupForm() {
   const router = useRouter();
@@ -59,11 +52,27 @@ export function SignupForm() {
 
     setIsSubmitting(true);
     try {
-      await apiPost("/admin/auth/signup", { tenant_name: tenantName, email, password });
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_name: tenantName, email, password }),
+      });
 
-      // Auto-login after successful signup
-      const loginRes = await apiPost<LoginResponse>("/admin/auth/login", { email, password });
-      setToken(loginRes.access_token);
+      if (!res.ok) {
+        let problem: { title?: string; status?: number };
+        try {
+          problem = await res.json() as { title?: string; status?: number };
+        } catch {
+          problem = { title: "An error occurred", status: res.status };
+        }
+        throw new ApiError(res.status, {
+          title: problem.title ?? "An error occurred",
+          status: res.status,
+        });
+      }
+
+      // No localStorage write — cookie is set server-side by the BFF
       router.push("/keys");
     } catch (err) {
       if (err instanceof ApiError) {

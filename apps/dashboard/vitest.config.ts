@@ -14,9 +14,34 @@ export default defineConfig({
       },
     },
     globals: true,
-    setupFiles: [
-      "./tests/setup.ts",
-      "./test-support/mock-cjs-navigation.ts",
+    projects: [
+      {
+        // tests/ suite: legacy gateway-direct auth; uses tests/mocks/server only
+        extends: true,
+        test: {
+          name: "legacy",
+          include: ["tests/**/*.test.{ts,tsx}", "test-support/**/*.test.{ts,tsx}"],
+          setupFiles: [
+            "./tests/setup.ts",
+            "./test-support/mock-cjs-navigation.ts",
+            "./test-support/legacy-bff-compat.ts",
+          ],
+        },
+      },
+      {
+        // tests-bff/ suite: BFF cookie auth; uses tests-bff/mocks/server only
+        // setupFiles does NOT include tests/setup.ts so the legacy MSW server
+        // does not conflict with the BFF gateway handlers.
+        extends: true,
+        test: {
+          name: "bff",
+          include: ["tests-bff/**/*.test.{ts,tsx}"],
+          setupFiles: [
+            "./tests-bff/setup.ts",
+            "./test-support/mock-cjs-navigation.ts",
+          ],
+        },
+      },
     ],
     coverage: {
       provider: "v8",

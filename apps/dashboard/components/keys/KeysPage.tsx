@@ -3,17 +3,17 @@
 /**
  * KeysPage — authenticated key management page
  *
- * Auth guard: checks localStorage token on mount; if absent or expired,
- * calls router.push("/login") immediately before rendering content.
+ * Auth guard: middleware.ts handles cookie-presence check server-side.
+ * If this page renders, the session cookie is present.
  *
  * States: loading (spinner), empty, error (problem+json title), success (table)
  * Actions: create key (dialog → plaintext banner), revoke key (confirm dialog)
+ * Logout: POST /api/auth/logout then router.push("/login")
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getToken, clearToken, isTokenValid } from "@/lib/auth";
 import { apiGet, apiPost, apiDelete, ApiError } from "@/lib/api-client";
 import { KeyRow } from "./KeyRow";
 import { CreateKeyDialog } from "./CreateKeyDialog";
@@ -36,27 +36,11 @@ interface CreateKeyResponse {
 export function KeysPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [isAuthChecked, setIsAuthChecked] = useState(false);
-  const [isAuthed, setIsAuthed] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [plaintextKey, setPlaintextKey] = useState<string | null>(null);
   const [revokeTargetId, setRevokeTargetId] = useState<string | null>(null);
 
-  // Auth guard — runs synchronously on mount before any render of protected content
-  useEffect(() => {
-    const token = getToken();
-    if (!isTokenValid(token)) {
-      clearToken();
-      router.push("/login");
-      setIsAuthChecked(true);
-      setIsAuthed(false);
-    } else {
-      setIsAuthChecked(true);
-      setIsAuthed(true);
-    }
-  }, [router]);
-
-  // Keys query — only enabled when auth is confirmed
+  // Keys query — middleware guarantees session cookie is present when this renders
   const {
     data: keys,
     isLoading,
@@ -65,7 +49,6 @@ export function KeysPage() {
   } = useQuery<ApiKey[]>({
     queryKey: ["admin-keys"],
     queryFn: () => apiGet<ApiKey[]>("/admin/keys"),
-    enabled: isAuthed,
   });
 
   // Create key mutation
@@ -102,27 +85,23 @@ export function KeysPage() {
   }
 
   function handleDismissBanner() {
-    // Safety: clear plaintext key from state immediately
     setPlaintextKey(null);
   }
 
-  function handleLogout() {
-    clearToken();
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // Ignore network errors on logout — redirect regardless
+    }
     router.push("/login");
   }
 
   async function handleCreateKey(name: string) {
     await createKeyMutation.mutateAsync(name);
-  }
-
-  // Before auth check resolves, render nothing (no flash of protected content)
-  if (!isAuthChecked) {
-    return null;
-  }
-
-  // Not authed — redirect already fired, render nothing
-  if (!isAuthed) {
-    return null;
   }
 
   // Get error title from API error

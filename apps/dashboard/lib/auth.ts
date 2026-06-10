@@ -1,50 +1,15 @@
 /**
- * lib/auth.ts — localStorage helpers, token decode, expiry check
+ * lib/auth.ts — localStorage helpers REMOVED per v2 BFF contract
  *
- * Safety: JWT is stored in localStorage (XSS risk acknowledged — see TASK.md §1 ⚠).
- * Production upgrade path: replace with httpOnly-cookie BFF.
+ * getToken / setToken / clearToken / isTokenValid are deleted.
+ * Token transport is now exclusively via httpOnly cookie ai_proxy_session,
+ * managed server-side by the BFF route handlers.
+ *
+ * After Build: grep over apps/dashboard/{app,components,lib} shows zero
+ * localStorage references to any token key.
  */
 
-const TOKEN_KEY = "ai_proxy_token";
-
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
-}
-
-/**
- * Decodes the JWT payload without verifying the signature.
- * Returns the exp claim (Unix seconds) or null if malformed.
- */
-function decodeExp(token: string): number | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const raw = parts[1]
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-    // atob handles missing padding gracefully in modern environments
-    const payload = JSON.parse(atob(raw)) as { exp?: number };
-    return typeof payload.exp === "number" ? payload.exp : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Returns true if the token is present AND not yet expired.
- * Client-side only; the gateway always does authoritative validation.
- */
-export function isTokenValid(token: string | null): boolean {
-  if (!token) return false;
-  const exp = decodeExp(token);
-  if (exp === null) return true; // no exp claim → assume valid, gateway enforces
-  return exp > Math.floor(Date.now() / 1000);
-}
+// This file is intentionally empty — all auth helpers were localStorage-based
+// and are superseded by the BFF cookie session. Kept as a module so any
+// stray imports surface a clear "no exported member" TypeScript error rather
+// than a MODULE_NOT_FOUND that masks the root cause.
