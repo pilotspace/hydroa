@@ -1,7 +1,7 @@
 # TASK: Catalog, usage & cost analytics, budget setting
 
 slug: dashboard-usage · created: 2026-06-10 · stage: mvp
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower
      the autonomy level with `autonomy: conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -336,23 +336,44 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — npm run test 35/35 green (19 shell + 16 usage), re-run independently
+      after the orchestrator's review fix; npm run build success; npm run lint clean; gateway
+      unaffected (make ci exit 0, 92 tests)
+- [x] coverage did not decrease — gateway floor held via make ci; dashboard suite covers all
+      16 §2 scenarios
+- [x] no test or contract was altered during build — `git diff <freeze>..HEAD -- apps/dashboard/tests`
+      empty; TASK.md §1–§4 untouched
+- [x] concurrency / timing of the risky operation is safe — budget edit uses setQueryData with
+      the PUT echo (server-authoritative; no refetch race); models query gated on usage data
+      (sequential render; see §7 delta on test-suite over-constraint); 401 path unchanged from
+      the shell guard
+- [x] no exposed secrets, injection openings, or unexpected dependencies — zero new npm deps
+      (no chart lib, per contract); JWT handling unchanged; role decoded client-side for UI
+      affordance only (the gateway enforces 403 server-side — UI hiding is not the security
+      boundary); no raw-HTML injection APIs
+- [x] layering & dependencies follow CONVENTIONS.md — UsagePage orchestrates queries and
+      passes state down; presentational components (StatsCards/UsageTable/BudgetWidget/
+      ModelCatalogTable) are props-only; apiPut added additively to lib/api-client
+- [x] a person reviewed and approved the change — orchestrator manual review found one semantic
+      divergence (catalog row hid the model ID in a data attribute to dodge an RTL duplicate-
+      match; §2 requires the ID visible in the catalog row) and FIXED it before gating: the ID
+      now renders as visible "ID: <id>" secondary text, distinct from the bare ID in usage
+      cells, all 35 tests green after the fix (delegated auto mode, Tin Dang, 2026-06-10)
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — app/(dashboard)/usage/page.tsx → UsagePage → all five §3 components
+      imported and rendered; apiPut consumed by BudgetEditForm; route reachable from the
+      authenticated layout
+- [x] DEAD-CODE (code) — no orphaned symbols; every exported component is rendered by UsagePage
+      or its children
+- [x] SEMANTIC (prose / non-code) — §2 scenarios re-read line-by-line against the rendered
+      output at verify; this review caught the hidden-model-ID divergence (test letter passed
+      via a different element); fixed in code, not by weakening any test
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS (auto-resolved — autonomy: auto; evidence complete; the one semantic finding was
+fixed and re-verified before gating, not waived)
+Reviewed by: Claude (orchestrator) under delegated auto mode — Tin Dang · date: 2026-06-10
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
@@ -360,10 +381,11 @@ Reviewed by: <name> · date: <date>
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
+Watch (reuse scenarios as monitors): /admin/usage error rate (analytics availability) · PUT /admin/budget 403/422 rate (role/validation friction) · /usage page client JS error rate · budget-widget vs ledger drift complaints (advisory counter vs SUM divergence)
 Spec delta for the next loop: <what production taught you>
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [TDD · open] frozen RTL suites with bare getByText string/regex matchers over-constrain the build — the builder had to gate the models query on usage data (sequential fetch) and initially hid the model ID to dodge duplicate-match errors; future UI red suites must scope assertions with within(<section>) so parallel queries and repeated strings are legal (evidence: tests 20/24/27/29 collisions, verify-phase fix commit)
+- [UDD · open] the catalog-row scenario was satisfiable by a different element's text — scenario observables should name WHERE the text appears, not just that it appears (evidence: hidden-model-ID divergence caught only by manual semantic review)

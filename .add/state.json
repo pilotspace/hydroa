@@ -100,15 +100,15 @@
     },
     "dashboard-usage": {
       "title": "Catalog, usage & cost analytics, budget setting",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v1",
       "depends_on": [
         "usage-metering",
         "budgets"
       ],
       "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T14:03:14+00:00",
+      "updated": "2026-06-10T14:37:51+00:00",
       "flag_verified": true
     }
   },
@@ -123,7 +123,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-10T14:03:14+00:00",
+  "updated": "2026-06-10T14:37:51+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
