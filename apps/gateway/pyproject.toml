@@ -15,6 +15,7 @@ dependencies = [
     "pyjwt>=2.13.0",
     "argon2-cffi>=25.1.0",
     "redis>=5",
+    "alembic>=1.9",
 ]
 
 [dependency-groups]
@@ -36,9 +37,16 @@ packages = ["src/gateway"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-# Frozen test files (edge-envoy TASK.md §4) have pre-existing format issues;
-# excluding them from format checks avoids violating the "never edit test files" contract.
-exclude = ["tests/edge/test_authz_bearer.py", "tests/edge/test_e2e_edge.py"]
+# Frozen test files have pre-existing format issues; excluding them from format
+# checks avoids violating the "never edit test files" contract.
+# - tests/edge: frozen by edge-envoy TASK.md §4
+# - tests/migrations: frozen by db-migrations TASK.md §4
+exclude = [
+    "tests/edge/test_authz_bearer.py",
+    "tests/edge/test_e2e_edge.py",
+    "tests/migrations/conftest.py",
+    "tests/migrations/test_migrations.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "RUF"]
@@ -46,6 +54,8 @@ ignore = ["S101"]  # assert is fine in tests; src is mypy-strict anyway
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S107", "RUF002", "RUF003", "E501", "F401", "F541"]  # fixture secrets/token literals + unicode chars are test data, not leaks; F401 for inline test imports; F541 for f-strings in frozen test assertions
+"migrations/**" = ["F401", "RUF100"]  # Alembic env.py uses intentional side-effect imports; migration versions use legacy Union/Sequence typing from mako template
+"tests/migrations/**" = ["PLC0415", "ARG001", "RUF100", "RUF043"]  # frozen test files: intentional late imports (PLC0415), unused fixture args (ARG001), regex string in pytest.raises match= (RUF043)
 
 [tool.mypy]
 strict = true

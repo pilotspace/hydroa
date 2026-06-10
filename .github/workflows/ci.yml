@@ -39,6 +39,10 @@ jobs:
         run: make allowlist
       - name: Tests
         run: make test
+      - name: Migration parity gate
+        run: make migrate-check
+        env:
+          GATEWAY_DATABASE_URL: postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test
 
   dashboard:
     runs-on: ubuntu-latest

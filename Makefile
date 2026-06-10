@@ -1,6 +1,6 @@
 GATEWAY := apps/gateway
 
-.PHONY: install lint typecheck allowlist test ci
+.PHONY: install lint typecheck allowlist test migrate migrate-check ci
 
 install:
 	cd $(GATEWAY) && uv sync
@@ -16,6 +16,12 @@ allowlist:
 
 test:
 	cd $(GATEWAY) && uv run pytest
+
+migrate:
+	cd $(GATEWAY) && uv run alembic upgrade head
+
+migrate-check:
+	cd $(GATEWAY) && uv run alembic check
 
 ci: lint typecheck allowlist test
 	@echo "✅ pipeline green"
