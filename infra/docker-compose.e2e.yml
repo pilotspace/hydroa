@@ -67,8 +67,10 @@ services:
       GATEWAY_JWT_SECRET: "${GATEWAY_JWT_SECRET:-e2e-test-secret-change-me}"
     volumes:
       - ./envoy/envoy.yaml:/etc/envoy/envoy-template.yaml:ro
+      - ./envoy/certs:/etc/envoy/certs:ro
     ports:
       - "8080:8080"
+      - "8443:8443"
       - "9901:9901"
     depends_on:
       gateway:

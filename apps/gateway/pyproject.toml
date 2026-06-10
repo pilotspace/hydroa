@@ -44,6 +44,7 @@ target-version = "py312"
 exclude = [
     "tests/edge/test_authz_bearer.py",
     "tests/edge/test_e2e_edge.py",
+    "tests/edge/test_e2e_tls.py",
     "tests/migrations/conftest.py",
     "tests/migrations/test_migrations.py",
 ]

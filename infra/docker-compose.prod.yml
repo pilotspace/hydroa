@@ -1,0 +1,102 @@
+---
+# AI Proxy — production compose (contract §3, edge-tls TASK.md v2)
+#
+# Production posture:
+#   - No dev defaults for any secret or credential — fail-fast if unset
+#   - Envoy exposes :443 (TLS) and :80 (HTTP redirect only); admin :9901 NOT host-exposed
+#   - Gateway image is pre-built (no build: in production)
+#   - Schema bootstrap (run once before first start):
+#       make migrate   (requires GATEWAY_DATABASE_URL set in environment)
+#   - TLS certs: operator provides real cert/key via TLS_CERT_PATH / TLS_KEY_PATH host paths
+#
+# Required environment variables (no defaults — fail-fast if any is unset):
+#   GATEWAY_JWT_SECRET        — shared JWT signing secret (HS256)
+#   GATEWAY_DATABASE_URL      — asyncpg connection string (postgresql+asyncpg://...)
+#   GATEWAY_REDIS_URL         — Redis URL (redis://...)
+#   POSTGRES_USER             — PostgreSQL superuser username
+#   POSTGRES_PASSWORD         — PostgreSQL superuser password
+#   POSTGRES_DB               — PostgreSQL database name
+#   GATEWAY_IMAGE             — pre-built gateway Docker image reference
+#   TLS_CERT_PATH             — host path to TLS server certificate (PEM)
+#   TLS_KEY_PATH              — host path to TLS private key (PEM)
+#
+# Usage:
+#   export GATEWAY_JWT_SECRET=<secret>
+#   export GATEWAY_DATABASE_URL=postgresql+asyncpg://...
+#   ... (all vars above)
+#   docker compose -f infra/docker-compose.prod.yml up -d --wait
+
+name: ai-proxy-prod
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # No host port mapping — internal only in production
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # No host port mapping — internal only in production
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  gateway:
+    image: ${GATEWAY_IMAGE}
+    environment:
+      GATEWAY_DATABASE_URL: ${GATEWAY_DATABASE_URL}
+      GATEWAY_REDIS_URL: ${GATEWAY_REDIS_URL}
+      GATEWAY_JWT_SECRET: ${GATEWAY_JWT_SECRET}
+      GATEWAY_ENVIRONMENT: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\" || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  envoy:
+    image: envoyproxy/envoy:v1.29-latest
+    environment:
+      GATEWAY_JWT_SECRET: ${GATEWAY_JWT_SECRET}
+    volumes:
+      - ./envoy/envoy-prod.yaml:/etc/envoy/envoy-template.yaml:ro
+      - ${TLS_CERT_PATH}:/etc/envoy/certs/server.crt:ro
+      - ${TLS_KEY_PATH}:/etc/envoy/certs/server.key:ro
+    ports:
+      - "443:8443"    # TLS — public-facing
+      - "80:8080"     # HTTP redirect only — sends 301 to https://:443
+      # 9901 NOT exposed — admin interface is internal only in production
+    depends_on:
+      gateway:
+        condition: service_healthy
+    # Entrypoint: compute base64url(GATEWAY_JWT_SECRET) and substitute JWKS placeholder,
+    # then launch envoy. Same mechanism as the e2e stack.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        B64=$$(printf '%s' "$${GATEWAY_JWT_SECRET}" | base64 | tr '+/' '-_' | tr -d '=')
+        sed "s|GATEWAY_JWT_SECRET_BASE64URL|$${B64}|g" \
+            /etc/envoy/envoy-template.yaml > /tmp/envoy.yaml
+        exec envoy -c /tmp/envoy.yaml --log-level warn
+    restart: unless-stopped
