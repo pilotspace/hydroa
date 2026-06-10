@@ -1,7 +1,7 @@
 # TASK: Next.js app: signup/login, key management
 
 slug: dashboard-shell · created: 2026-06-10 · stage: mvp
-phase: tests   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -232,7 +232,7 @@ CI job (Build deliverable — spec only here):
     coverage threshold: 80% lines on implemented components
 ```
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang (delegated auto mode, 2026-06-10).
 Least-sure flag surfaced at freeze:
 ⚠ [spec] localStorage JWT storage — lowest confidence because it is the explicit MVP decision yet carries a known XSS risk; if the security posture is raised before Build: replace with an httpOnly-cookie BFF route handler; all form/navigation contracts remain unchanged; only lib/auth.ts and lib/api-client.ts change.
 ⚠ [contract] client-side exp-only token decode (no signature check) — lowest confidence because a tampered JWT with a future exp bypasses the client guard; if wrong: enforce the guard purely via 401-response redirect and remove client-side decode — marginally worse UX on expiry but no security regression (gateway always validates).

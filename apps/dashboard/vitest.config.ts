@@ -6,6 +6,13 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    environmentOptions: {
+      jsdom: {
+        // A real URL is required for jsdom to activate the localStorage Storage
+        // interface (spec: origin-keyed storage only works for http/https origins)
+        url: "http://localhost:3000",
+      },
+    },
     globals: true,
     setupFiles: ["./tests/setup.ts"],
     coverage: {
