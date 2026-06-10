@@ -4,17 +4,15 @@ All setup decisions, tagged **evidence-based** or **guessed**, ordered
 **lowest confidence first**. Human approval of this file locks the foundation
 (ADD setup exit gate).
 
-> Status: ⏳ AWAITING HUMAN LOCK
+> Status: ✅ LOCKED by Tin Dang on 2026-06-10. Feature build is open.
 
 ## Decisions (lowest confidence first)
 
-### 1. ⚠ Envoy auth split — jwt_authn for dashboard, ext_authz for API keys — **guessed** (0.70)
-You answered "envoy proxy" to the auth question; I interpreted that as Envoy
-at the edge enforcing auth, with the gateway still issuing JWTs and owning
-key hashes. Plausible alternatives you may have meant: Envoy purely as L7 load
-balancer with auth in FastAPI, or Envoy Gateway (Kubernetes). **Cost if wrong:**
-Envoy config and `/internal/authz` endpoint reworked — contained, but touches
-the security boundary. Confirm before the auth contract freezes.
+### 1. Envoy auth split — jwt_authn for dashboard, ext_authz for API keys — **evidence-based** (0.95)
+~~Guessed (0.70) from the answer "envoy proxy".~~ **Resolved 2026-06-10:**
+human confirmed the interpretation — Envoy enforces auth at the edge
+(jwt_authn for dashboard JWTs, ext_authz → gateway `/internal/authz` for API
+keys); the gateway issues JWTs and owns key hashes.
 
 ### 2. ⚠ Cost source of truth: local pricing snapshot, reconciled with OpenRouter generation cost — **guessed** (0.75)
 OpenRouter returns usage tokens in responses and exposes a generation-cost
@@ -61,4 +59,7 @@ Explicit user choice; matches the stated single-goal vertical slice.
 - [x] SETUP-REVIEW.md orders decisions by confidence (lowest first)
 - [x] Model pinned (`MODEL_REGISTRY.md`); allowlist exists; pipeline rejects unknown packages
 - [x] Pipeline passes on empty skeleton (`make ci` green)
-- [ ] **Human locked down** — approve this file (and resolve ⚠ #1, #2) before feature build opens
+- [x] **Human locked down** — approved 2026-06-10; ⚠ #1 resolved. ⚠ #2 (cost
+  reconciliation semantics) stays open as a verification task inside the cost-
+  metering slice: ledger stores raw upstream payloads so costs are always
+  recomputable.
