@@ -1,0 +1,120 @@
+{
+  "milestone": {
+    "title": "MVP: metered multi-tenant AI proxy",
+    "goal": "a tenant owner can sign up, issue an API key, call any OpenRouter model through the OpenAI-compatible proxy, and see every request's billable cost \u2014 with budget enforcement",
+    "stage": "mvp",
+    "status": "done",
+    "created": "2026-06-10T08:13:22+00:00",
+    "updated": "2026-06-10T14:39:20+00:00"
+  },
+  "tasks": {
+    "tenant-identity": {
+      "title": "Signup (tenant+owner atomic), login \u2192 JWT, roles",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v1",
+      "depends_on": [],
+      "created": "2026-06-10T08:14:11+00:00",
+      "updated": "2026-06-10T08:31:33+00:00",
+      "flag_verified": true
+    },
+    "model-catalog": {
+      "title": "OpenRouter catalog sync, pricing snapshots, marked-up /v1/models",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v1",
+      "depends_on": [],
+      "created": "2026-06-10T08:14:12+00:00",
+      "updated": "2026-06-10T08:57:31+00:00",
+      "flag_verified": true
+    },
+    "api-keys": {
+      "title": "Key issue/revoke (shown once, argon2), /internal/authz for Envoy",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v1",
+      "depends_on": [
+        "tenant-identity"
+      ],
+      "created": "2026-06-10T08:14:12+00:00",
+      "updated": "2026-06-10T08:57:31+00:00",
+      "flag_verified": true
+    },
+    "proxy-completions": {
+      "title": "/v1/chat/completions SSE pass-through with failure design",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v1",
+      "depends_on": [
+        "api-keys",
+        "model-catalog"
+      ],
+      "created": "2026-06-10T08:14:12+00:00",
+      "updated": "2026-06-10T10:42:24+00:00",
+      "flag_verified": true
+    },
+    "usage-metering": {
+      "title": "Usage capture incl. streaming, write-behind ledger, marked-up cost",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v1",
+      "depends_on": [
+        "proxy-completions"
+      ],
+      "created": "2026-06-10T08:14:12+00:00",
+      "updated": "2026-06-10T11:04:36+00:00",
+      "flag_verified": true
+    },
+    "budgets": {
+      "title": "Tenant monthly ceiling, Redis spend counter, ERR_BUDGET_EXCEEDED",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v1",
+      "depends_on": [
+        "usage-metering"
+      ],
+      "created": "2026-06-10T08:14:12+00:00",
+      "updated": "2026-06-10T11:29:28+00:00",
+      "flag_verified": true
+    },
+    "edge-envoy": {
+      "title": "Envoy edge (TLS, jwt_authn, ext_authz, rate limit) + compose stack",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v1",
+      "depends_on": [
+        "api-keys"
+      ],
+      "created": "2026-06-10T08:14:12+00:00",
+      "updated": "2026-06-10T13:19:30+00:00",
+      "flag_verified": true
+    },
+    "dashboard-shell": {
+      "title": "Next.js app: signup/login, key management",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v1",
+      "depends_on": [
+        "tenant-identity",
+        "api-keys"
+      ],
+      "created": "2026-06-10T08:14:12+00:00",
+      "updated": "2026-06-10T13:53:02+00:00",
+      "flag_verified": true
+    },
+    "dashboard-usage": {
+      "title": "Catalog, usage & cost analytics, budget setting",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v1",
+      "depends_on": [
+        "usage-metering",
+        "budgets"
+      ],
+      "created": "2026-06-10T08:14:12+00:00",
+      "updated": "2026-06-10T14:37:51+00:00",
+      "flag_verified": true
+    }
+  },
+  "archived_at": "2026-06-10T14:56:07+00:00"
+}

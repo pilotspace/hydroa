@@ -1,129 +1,78 @@
 {
   "project": "ai-proxy",
   "stage": "mvp",
-  "active_task": "dashboard-usage",
-  "active_milestone": "v1",
+  "active_task": "db-migrations",
+  "active_milestone": "v2",
   "tasks": {
-    "tenant-identity": {
-      "title": "Signup (tenant+owner atomic), login \u2192 JWT, roles",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v1",
+    "db-migrations": {
+      "title": "Alembic baseline + CI parity gate",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v2",
       "depends_on": [],
-      "created": "2026-06-10T08:14:11+00:00",
-      "updated": "2026-06-10T08:31:33+00:00",
-      "flag_verified": true
+      "created": "2026-06-10T14:56:08+00:00",
+      "updated": "2026-06-10T14:56:08+00:00"
     },
-    "model-catalog": {
-      "title": "OpenRouter catalog sync, pricing snapshots, marked-up /v1/models",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v1",
+    "live-upstream-smoke": {
+      "title": "Live OpenRouter smoke + streaming cost reconciliation",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v2",
       "depends_on": [],
-      "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T08:57:31+00:00",
-      "flag_verified": true
+      "created": "2026-06-10T14:56:08+00:00",
+      "updated": "2026-06-10T14:56:08+00:00"
     },
-    "api-keys": {
-      "title": "Key issue/revoke (shown once, argon2), /internal/authz for Envoy",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v1",
-      "depends_on": [
-        "tenant-identity"
-      ],
-      "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T08:57:31+00:00",
-      "flag_verified": true
+    "edge-tls": {
+      "title": "TLS termination at Envoy + prod topology",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v2",
+      "depends_on": [],
+      "created": "2026-06-10T14:56:08+00:00",
+      "updated": "2026-06-10T14:56:08+00:00"
     },
-    "proxy-completions": {
-      "title": "/v1/chat/completions SSE pass-through with failure design",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v1",
-      "depends_on": [
-        "api-keys",
-        "model-catalog"
-      ],
-      "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T10:42:24+00:00",
-      "flag_verified": true
+    "auth-bff": {
+      "title": "httpOnly-cookie BFF dashboard auth",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v2",
+      "depends_on": [],
+      "created": "2026-06-10T14:56:08+00:00",
+      "updated": "2026-06-10T14:56:08+00:00"
     },
-    "usage-metering": {
-      "title": "Usage capture incl. streaming, write-behind ledger, marked-up cost",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v1",
-      "depends_on": [
-        "proxy-completions"
-      ],
-      "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T11:04:36+00:00",
-      "flag_verified": true
+    "observability": {
+      "title": "Structured logs + metrics + monitors",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v2",
+      "depends_on": [],
+      "created": "2026-06-10T14:56:08+00:00",
+      "updated": "2026-06-10T14:56:08+00:00"
     },
-    "budgets": {
-      "title": "Tenant monthly ceiling, Redis spend counter, ERR_BUDGET_EXCEEDED",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v1",
+    "ops-hardening": {
+      "title": "Lifespan, graceful drain, runbooks, node-dep governance",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v2",
       "depends_on": [
-        "usage-metering"
+        "db-migrations"
       ],
-      "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T11:29:28+00:00",
-      "flag_verified": true
-    },
-    "edge-envoy": {
-      "title": "Envoy edge (TLS, jwt_authn, ext_authz, rate limit) + compose stack",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v1",
-      "depends_on": [
-        "api-keys"
-      ],
-      "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T13:19:30+00:00",
-      "flag_verified": true
-    },
-    "dashboard-shell": {
-      "title": "Next.js app: signup/login, key management",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v1",
-      "depends_on": [
-        "tenant-identity",
-        "api-keys"
-      ],
-      "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T13:53:02+00:00",
-      "flag_verified": true
-    },
-    "dashboard-usage": {
-      "title": "Catalog, usage & cost analytics, budget setting",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v1",
-      "depends_on": [
-        "usage-metering",
-        "budgets"
-      ],
-      "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T14:37:51+00:00",
-      "flag_verified": true
+      "created": "2026-06-10T14:56:08+00:00",
+      "updated": "2026-06-10T14:56:08+00:00"
     }
   },
   "milestones": {
-    "v1": {
-      "title": "MVP: metered multi-tenant AI proxy",
-      "goal": "a tenant owner can sign up, issue an API key, call any OpenRouter model through the OpenAI-compatible proxy, and see every request's billable cost \u2014 with budget enforcement",
-      "stage": "mvp",
-      "status": "done",
-      "created": "2026-06-10T08:13:22+00:00",
-      "updated": "2026-06-10T14:39:20+00:00"
+    "v2": {
+      "title": "Production-ready metered proxy",
+      "goal": "the v1 MVP runs in production posture \u2014 TLS at the edge, migration-managed schema, cookie-based dashboard auth, full observability, and a live-verified OpenRouter billing path",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-10T14:56:07+00:00",
+      "updated": "2026-06-10T14:56:07+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-10T14:39:20+00:00",
+  "updated": "2026-06-10T14:57:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -133,5 +82,24 @@
       "scope",
       "contract"
     ]
-  }
+  },
+  "archived": [
+    {
+      "slug": "v1",
+      "title": "MVP: metered multi-tenant AI proxy",
+      "tasks": 9,
+      "task_slugs": [
+        "tenant-identity",
+        "model-catalog",
+        "api-keys",
+        "proxy-completions",
+        "usage-metering",
+        "budgets",
+        "edge-envoy",
+        "dashboard-shell",
+        "dashboard-usage"
+      ],
+      "archived": "2026-06-10"
+    }
+  ]
 }
