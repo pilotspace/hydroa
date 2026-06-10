@@ -117,13 +117,13 @@
       "title": "MVP: metered multi-tenant AI proxy",
       "goal": "a tenant owner can sign up, issue an API key, call any OpenRouter model through the OpenAI-compatible proxy, and see every request's billable cost \u2014 with budget enforcement",
       "stage": "mvp",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-10T08:13:22+00:00",
-      "updated": "2026-06-10T08:13:22+00:00"
+      "updated": "2026-06-10T14:39:20+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-10T14:37:51+00:00",
+  "updated": "2026-06-10T14:39:20+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
