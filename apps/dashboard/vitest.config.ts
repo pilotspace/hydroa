@@ -14,7 +14,10 @@ export default defineConfig({
       },
     },
     globals: true,
-    setupFiles: ["./tests/setup.ts"],
+    setupFiles: [
+      "./tests/setup.ts",
+      "./test-support/mock-cjs-navigation.ts",
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

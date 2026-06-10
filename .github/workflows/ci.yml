@@ -39,3 +39,23 @@ jobs:
         run: make allowlist
       - name: Tests
         run: make test
+
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/dashboard/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: npx vitest run
+      - name: Build
+        run: npx next build
