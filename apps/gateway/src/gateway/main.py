@@ -8,6 +8,10 @@ from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
+from gateway.proxy.api.router import proxy_router
+from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
+from gateway.proxy.infrastructure.usage_recorder import NoopUsageRecorder
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
@@ -35,6 +39,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.token_service = JwtTokenService(settings)
     # Default catalog source — tests override via app.state.catalog_source
     app.state.catalog_source = OpenRouterCatalogSource(httpx.AsyncClient())
+    # Proxy defaults — tests inject fakes via app.state
+    app.state.circuit_breaker = CircuitBreaker()
+    app.state.completion_upstream = OpenRouterCompletionUpstream(
+        api_key=settings.openrouter_api_key
+    )
+    app.state.usage_recorder = NoopUsageRecorder()
 
     register_error_handlers(app)
     app.include_router(internal_router)
@@ -43,4 +53,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)
+    app.include_router(proxy_router)
     return app

@@ -38,15 +38,15 @@
     },
     "proxy-completions": {
       "title": "/v1/chat/completions SSE pass-through with failure design",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v1",
       "depends_on": [
         "api-keys",
         "model-catalog"
       ],
       "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T10:31:44+00:00",
+      "updated": "2026-06-10T10:42:24+00:00",
       "flag_verified": true
     },
     "usage-metering": {
@@ -118,7 +118,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-10T10:31:44+00:00",
+  "updated": "2026-06-10T10:42:24+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

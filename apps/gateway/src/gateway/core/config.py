@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     jwt_secret: str = _DEV_JWT_SECRET
     jwt_ttl_seconds: int = 86400
     jwt_issuer: str = "ai-proxy"
+    openrouter_api_key: str = ""  # Required in production; empty default for dev/test
 
     @model_validator(mode="after")
     def _forbid_dev_secret_outside_dev(self) -> "Settings":
