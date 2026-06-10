@@ -240,7 +240,7 @@ Spec delta for the next loop: the DISTINCT ON subquery pattern for latest-per-mo
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 
-- [DDD · open] CatalogSource as a typing.Protocol port with FakeCatalogSource injected via app.state decouples all tests from real HTTP — evidence: 15 tests ran without any network call, CatalogSourceUnavailableError path exercised via raise_unavailable flag
-- [SDD · open] Single-transaction sync (upsert + snapshot + deactivate) is the correct safety boundary for an append-only ledger — evidence: test_sync_upstream_unavailable confirms zero rows written on source failure; test_sync_idempotent_when_prices_unchanged confirms no duplicate snapshot on re-sync
-- [TDD · open] Red suite (15 failures on 404) confirmed before any implementation line was written — evidence: gate check output captured; green achieved in first implementation pass without test edits
-- [ADD · open] Pre-existing ruff S107/RUF002 errors in frozen test files require pyproject.toml per-file-ignore extension rather than test edits — architectural decision: suppress at config level to maintain test immutability contract
+- [DDD · folded] CatalogSource as a typing.Protocol port with FakeCatalogSource injected via app.state decouples all tests from real HTTP — evidence: 15 tests ran without any network call, CatalogSourceUnavailableError path exercised via raise_unavailable flag
+- [SDD · folded] Single-transaction sync (upsert + snapshot + deactivate) is the correct safety boundary for an append-only ledger — evidence: test_sync_upstream_unavailable confirms zero rows written on source failure; test_sync_idempotent_when_prices_unchanged confirms no duplicate snapshot on re-sync
+- [TDD · folded] Red suite (15 failures on 404) confirmed before any implementation line was written — evidence: gate check output captured; green achieved in first implementation pass without test edits
+- [ADD · folded] Pre-existing ruff S107/RUF002 errors in frozen test files require pyproject.toml per-file-ignore extension rather than test edits — architectural decision: suppress at config level to maintain test immutability contract

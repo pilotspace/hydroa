@@ -23,8 +23,29 @@ Architecture: CLEAN ARCHITECTURE per domain module — `domain/` (entities, port
         documented); usage ledger append-only; all tenant data `tenant_id`-scoped
 Testing: red/green TDD mandatory — tests red before build; pytest + pytest-asyncio +
         httpx.ASGITransport; assert observable behavior, never internals; coverage floor 80%
+        Folded from v1 (2026-06-10):
+        - red must be red for the RIGHT reason — verify the failure mode (missing
+          implementation, not a test bug) before freezing; a wrong-reason red invalidates
+          the gate (evidence: budgets suite called a non-existent token method)
+        - security-sensitive failure paths get byte-identical responses across ALL failure
+          modes, enforced by dedicated tests (anti-enumeration/oracle; evidence: api-keys
+          authz suite drove always-run hash comparison even for unknown rows)
+        - UI red suites (vitest/RTL) scope every text/role assertion with
+          `within(<section>)` and name the owning component — bare `getByText` string or
+          regex matchers over a whole page over-constrain the build when data repeats
+          across sections (evidence: dashboard-usage duplicate-match collisions)
 Dependencies: every package in `.add/dependencies.allowlist`; CI gate
         (`scripts/check_allowlist.py`) rejects unknown packages
+        Folded from v1 (2026-06-10): the allowlist governs PYTHON packages only — node
+        dependencies are governed by the committed lockfile + orchestrator review at the
+        freeze/gate seams until the allowlist format is extended (open follow-up for v2)
+Build/harness conventions folded from v1 (2026-06-10):
+        - the contract-freeze flag ritual includes a cross-artifact consistency pass
+          (spec vs GLOSSARY vs prior frozen contracts) — it caught the argon2-vs-SHA-256
+          conflict before any code existed
+        - when frozen test files conflict with lint/format rules, suppress at config level
+          (pyproject per-file-ignores or format excludes) — frozen tests are never edited
+          to satisfy tooling
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

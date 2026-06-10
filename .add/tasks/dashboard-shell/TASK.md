@@ -329,5 +329,5 @@ Spec delta for the next loop: <what production taught you>
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [ADD · open] node dependencies are not governed by dependencies.allowlist (Python gate only) — delta: document node dep governance separately or extend the allowlist format; evidence: §3 contract note "Python dependencies.allowlist does NOT govern node deps".
-- [UDD · open] localStorage JWT XSS risk must be surfaced in the spec (not hidden in code) — evidence: §1 ⚠ assumption drives the freeze flag; production path (httpOnly-cookie BFF) documented in §3 contract.
+- [ADD · folded] node dependencies are not governed by dependencies.allowlist (Python gate only) — delta: document node dep governance separately or extend the allowlist format; evidence: §3 contract note "Python dependencies.allowlist does NOT govern node deps".
+- [UDD · folded] localStorage JWT XSS risk must be surfaced in the spec (not hidden in code) — evidence: §1 ⚠ assumption drives the freeze flag; production path (httpOnly-cookie BFF) documented in §3 contract.

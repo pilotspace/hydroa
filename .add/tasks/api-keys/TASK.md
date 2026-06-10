@@ -307,16 +307,16 @@ Spec delta for the next loop: <what production taught you>
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [DDD · open] GLOSSARY "argon2 for all keys" conflicts with hot-path latency requirements for
+- [DDD · folded] GLOSSARY "argon2 for all keys" conflicts with hot-path latency requirements for
   high-entropy API key secrets — evidence: §1 assumption ⚠ flag surfaced before freeze; GLOSSARY
   amended in §3 contract: "stored as SHA-256 hash" for API keys, argon2 retained for passwords.
-- [ADD · open] lowest-confidence flag surfaced a spec/GLOSSARY inconsistency before any code was
+- [ADD · folded] lowest-confidence flag surfaced a spec/GLOSSARY inconsistency before any code was
   written — confirms freeze as the right gate for cross-artifact consistency.
-- [TDD · open] byte-identical response contract for all authz failure paths (malformed/unknown/
+- [TDD · folded] byte-identical response contract for all authz failure paths (malformed/unknown/
   revoked/wrong-secret) was enforced purely by tests — test_authz_malformed_keys_byte_identical
   and test_authz_wrong_secret_rejected_constant_time drove the AuthzUseCase design to always
   run hash comparison even for unknown rows, preventing content-length oracle.
-- [SDD · open] explicit key_id generation at the router call site (uuid7() called in router, passed
+- [SDD · folded] explicit key_id generation at the router call site (uuid7() called in router, passed
   to use case, then to repository) prevents the "child row with unset parent id" bug class noted
   in the task prompt — pattern confirmed by test_owner_creates_key_plaintext_shown_once which
   validates the hex in the returned key matches the stored row id.
