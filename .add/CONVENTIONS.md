@@ -10,7 +10,13 @@ Naming: Python `snake_case` files/functions, `PascalCase` classes; TS components
 Lint/format: `ruff check` + `ruff format` (line 100) + `mypy --strict`, enforced in CI (`make ci`)
 Errors: machine-readable codes `ERR_<DOMAIN>_<REASON>` (string enums), returned as
         RFC 9457 problem+json — never free text
-Architecture: stateless gateway behind Envoy; async-only request path; every
+Architecture: CLEAN ARCHITECTURE per domain module — `domain/` (entities, ports
+        as Protocols, domain errors; zero framework imports) ← `application/`
+        (use cases orchestrating ports) ← `infrastructure/` (SQLAlchemy/argon2/
+        jwt/httpx adapters implementing ports) ← `api/` (FastAPI routers, DTOs,
+        dependency wiring). Dependencies point INWARD only; `core/` is the shared
+        kernel (config, problem+json errors, ids, db base). Composition root =
+        `main.create_app`. Stateless gateway behind Envoy; async-only request path; every
         outbound IO has timeout + bounded jittered retry (idempotent ops only —
         never retry a non-idempotent completion) + circuit breaker on OpenRouter;
         Postgres via SQLAlchemy 2 async + Alembic (additive migrations, rollback

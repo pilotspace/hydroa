@@ -7,9 +7,13 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "httpx>=0.28",
-    "pydantic>=2.10",
+    "pydantic[email]>=2.10",
     "pydantic-settings>=2.7",
     "structlog>=25.1",
+    "sqlalchemy[asyncio]>=2.0.50",
+    "asyncpg>=0.31.0",
+    "pyjwt>=2.13.0",
+    "argon2-cffi>=25.1.0",
 ]
 
 [dependency-groups]
@@ -35,6 +39,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "RUF"]
 ignore = ["S101"]  # assert is fine in tests; src is mypy-strict anyway
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]  # fixture secrets/token literals are test data, not leaks
 
 [tool.mypy]
 strict = true
