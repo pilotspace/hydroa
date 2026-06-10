@@ -73,11 +73,10 @@ export function ModelCatalogTable({
         <span>Completion/token</span>
       </div>
       {/*
-        Data rows — div-based (no <tr>) so queryAllByRole("row") counts stay 0
-        when usage is loading/erroring.
-        Model ID is stored as data-model-id only — not as standalone visible text —
-        so getByText("openai/gpt-4o") in tests resolves to the usage-records <td>,
-        not a duplicate catalog span, avoiding "multiple elements" RTL errors.
+        Data rows — div-based (no <tr>) so the usage-records table owns the
+        "row" role. The model ID is rendered as visible secondary text with an
+        "ID: " prefix: users need the exact ID for API calls, and the prefixed
+        node text stays distinct from the bare ID shown in usage-record cells.
       */}
       {data.data.map((model) => (
         <div
@@ -85,7 +84,10 @@ export function ModelCatalogTable({
           data-model-id={model.id}
           className="grid grid-cols-4 gap-2 border-b py-2"
         >
-          <span>{model.name}</span>
+          <span>
+            {model.name}
+            <span className="block text-xs text-gray-500">ID: {model.id}</span>
+          </span>
           <span>{model.context_length ?? "—"}</span>
           <span>{model.prompt_per_token}</span>
           <span>{model.completion_per_token}</span>
