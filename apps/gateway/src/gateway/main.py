@@ -1,4 +1,8 @@
+import asyncio
+import contextlib
+
 import httpx
+import redis.asyncio as aioredis
 from fastapi import APIRouter, FastAPI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -11,10 +15,15 @@ from gateway.keys.api.router import authz_router as keys_authz_router
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
-from gateway.proxy.infrastructure.usage_recorder import NoopUsageRecorder
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
+from gateway.usage.api.router import usage_router
+from gateway.usage.application.flusher import UsageLedgerFlusher
+from gateway.usage.application.recorder import RecordingUsageRecorder
+from gateway.usage.infrastructure.orm import (
+    UsageRecordRow as _UsageRecordRow,  # noqa: F401 — registers ORM metadata
+)
 
 internal_router = APIRouter(prefix="/internal")
 
@@ -44,7 +53,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.completion_upstream = OpenRouterCompletionUpstream(
         api_key=settings.openrouter_api_key
     )
-    app.state.usage_recorder = NoopUsageRecorder()
+
+    # Usage metering: wire RecordingUsageRecorder + background flusher
+    # Tests inject fakes via app.state.usage_recorder AFTER app creation;
+    # the default here is used in production only.
+    redis_client = aioredis.from_url(settings.redis_url, decode_responses=False)
+    app.state.redis_client = redis_client
+    app.state.usage_recorder = RecordingUsageRecorder(
+        redis=redis_client,
+        session_factory=app.state.sessionmaker,
+    )
+
+    @app.on_event("startup")
+    async def _start_flusher() -> None:
+        # Guard: only start the background flusher when running under a real
+        # ASGI server (not ASGITransport in tests, which never calls lifespan).
+        # The test suite drives flush_once() directly — no timing dependency.
+        flusher = UsageLedgerFlusher(
+            redis=redis_client,
+            session_factory=app.state.sessionmaker,
+        )
+        app.state.flusher_task = asyncio.create_task(flusher.run_forever())
+
+    @app.on_event("shutdown")
+    async def _stop_flusher() -> None:
+        task = getattr(app.state, "flusher_task", None)
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        await redis_client.aclose()
 
     register_error_handlers(app)
     app.include_router(internal_router)
@@ -54,4 +92,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)
     app.include_router(proxy_router)
+    app.include_router(usage_router)
     return app

@@ -27,6 +27,7 @@ from gateway.proxy.domain.ports import (
     ModelChecker,
     UsageRecorder,
 )
+from gateway.usage.domain.extractor import extract_usage_from_sse
 
 
 def _fire_record(
@@ -184,8 +185,10 @@ class CompletionUseCase:
             ) from None
 
         async def _wrapped() -> AsyncIterator[bytes]:
+            collected: list[bytes] = []
             try:
                 async for chunk in gen:
+                    collected.append(chunk)
                     yield chunk
             except (UpstreamUnavailableError, CircuitOpenError):
                 # Can't change status code mid-stream; record and stop
@@ -198,13 +201,15 @@ class CompletionUseCase:
                     status=502,
                 )
                 return
+            # Tee: extract usage from collected SSE chunks after stream completes
+            extracted_usage = extract_usage_from_sse(collected)
+            _fire_record(
+                usage_recorder,
+                tenant_id=tenant_id,
+                key_id=key_id,
+                model=model_id,
+                usage=extracted_usage,
+                status=200,
+            )
 
-        _fire_record(
-            usage_recorder,
-            tenant_id=tenant_id,
-            key_id=key_id,
-            model=model_id,
-            usage=None,
-            status=200,
-        )
         return _wrapped()

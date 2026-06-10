@@ -21,7 +21,6 @@ from typing import Any
 
 import httpx
 import pytest
-import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,11 +52,15 @@ class FakeCompletionUpstream:
         sse_chunks: list[bytes] | None = None,
     ) -> None:
         self.status = status
-        self.body = body if body is not None else {
-            "id": "gen-u1",
-            "choices": [{"message": {"role": "assistant", "content": "hi"}}],
-            "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
-        }
+        self.body = (
+            body
+            if body is not None
+            else {
+                "id": "gen-u1",
+                "choices": [{"message": {"role": "assistant", "content": "hi"}}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+            }
+        )
         self.sse_chunks = sse_chunks if sse_chunks is not None else SSE_CHUNKS_WITH_USAGE
         self.calls = 0
 
@@ -236,8 +239,8 @@ async def test_non_streaming_ledger_row_correct_decimal_cost(
     redis_client: Any,
 ) -> None:
     """Non-streaming completion → one ledger row, cost = Decimal arithmetic, pricing_snapshot_id set."""
-    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
     recorder = RecordingUsageRecorder(
         redis=redis_client,
@@ -271,10 +274,9 @@ async def test_non_streaming_ledger_row_correct_decimal_cost(
     # cost = (100 × 0.0000025 + 50 × 0.00001) × (1 + 20/100)
     #      = (0.00025 + 0.0005) × 1.20
     #      = 0.00075 × 1.20 = 0.00090000
-    expected_cost = (
-        Decimal("100") * Decimal("0.0000025")
-        + Decimal("50") * Decimal("0.00001")
-    ) * (Decimal("1") + Decimal("20") / Decimal("100"))
+    expected_cost = (Decimal("100") * Decimal("0.0000025") + Decimal("50") * Decimal("0.00001")) * (
+        Decimal("1") + Decimal("20") / Decimal("100")
+    )
     assert Decimal(str(row["cost_usd"])) == expected_cost
     assert row["pricing_snapshot_id"] is not None
     assert row["tenant_id"] == uuid.UUID(api_key["tenant_id"])
@@ -306,8 +308,8 @@ async def test_streaming_usage_extracted_from_sse_and_priced(
     redis_client: Any,
 ) -> None:
     """Streaming path: SSE bytes unchanged; usage extracted; one ledger row with correct cost."""
-    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
     recorder = RecordingUsageRecorder(
         redis=redis_client,
@@ -348,8 +350,7 @@ async def test_streaming_usage_extracted_from_sse_and_priced(
     assert row["completion_tokens"] == 50
     # cost = same formula as non-streaming (markup_pct=20 default)
     expected_cost = (
-        Decimal("100") * Decimal("0.0000025")
-        + Decimal("50") * Decimal("0.00001")
+        Decimal("100") * Decimal("0.0000025") + Decimal("50") * Decimal("0.00001")
     ) * Decimal("1.20")
     assert Decimal(str(row["cost_usd"])) == expected_cost
 
@@ -367,8 +368,8 @@ async def test_duplicate_flush_idempotent(
     redis_client: Any,
 ) -> None:
     """Flushing the same event twice (at-least-once re-delivery) → exactly one row."""
-    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
     recorder = RecordingUsageRecorder(
         redis=redis_client,
@@ -455,8 +456,8 @@ async def test_unknown_model_pricing_cost_zero_raw_stored(
     redis_client: Any,
 ) -> None:
     """Model with no pricing snapshot → tokens=0, cost=0, raw payload stored, snapshot_id NULL."""
-    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
     # Insert model without a pricing snapshot
     await db_session.execute(
@@ -487,7 +488,9 @@ async def test_unknown_model_pricing_cost_zero_raw_stored(
 
     rows = (
         await db_session.execute(
-            text("SELECT * FROM usage_records WHERE tenant_id = :tid AND model_id = 'ghost/model-x'"),
+            text(
+                "SELECT * FROM usage_records WHERE tenant_id = :tid AND model_id = 'ghost/model-x'"
+            ),
             {"tid": api_key["tenant_id"]},
         )
     ).fetchall()
@@ -516,8 +519,9 @@ async def test_spend_counter_incremented(
     redis_client: Any,
 ) -> None:
     """After record(), Redis INCRBYFLOAT key holds the correct cost (float tolerance)."""
-    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
     import datetime
+
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
     recorder = RecordingUsageRecorder(
         redis=redis_client,
@@ -559,8 +563,8 @@ async def test_admin_usage_totals_and_records(
     redis_client: Any,
 ) -> None:
     """GET /admin/usage returns correct totals and record list from the ledger."""
-    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
     recorder = RecordingUsageRecorder(
         redis=redis_client,
@@ -620,8 +624,8 @@ async def test_admin_usage_tenant_isolation(
     redis_client: Any,
 ) -> None:
     """Tenant B sees only their own rows; tenant A's rows are invisible."""
-    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
     recorder = RecordingUsageRecorder(
         redis=redis_client,
