@@ -3,7 +3,8 @@ import contextlib
 
 import httpx
 import redis.asyncio as aioredis
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request, Response
+from prometheus_client import CollectorRegistry
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from gateway.budgets.api.router import budget_router
@@ -14,6 +15,9 @@ from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
+from gateway.observability.logging_config import configure_structlog
+from gateway.observability.metrics import MetricsRegistry, expose_metrics
+from gateway.observability.middleware import RequestIdMiddleware
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
@@ -41,6 +45,17 @@ async def internal_health() -> dict[str, str]:
     return {"status": "ok", "service": "gateway"}
 
 
+@internal_router.get("/metrics")
+async def metrics_endpoint(request: Request) -> Response:
+    """GET /internal/metrics — Prometheus text format 0.0.4.
+
+    Never returns a non-200.  Redis/DB errors yield sentinel values in the body.
+    No authentication required (cluster-internal; blocked at Envoy edge).
+    """
+    body, content_type = await expose_metrics(request.app)
+    return Response(content=body, status_code=200, media_type=content_type)
+
+
 @health_router.get("/health")
 async def health() -> dict[str, str]:
     # Top-level liveness probe for docker-compose healthcheck and Envoy routing.
@@ -51,7 +66,16 @@ async def health() -> dict[str, str]:
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Composition root: wires infrastructure adapters into domain ports."""
     settings = settings if settings is not None else Settings()
+
+    # Configure structlog once per process (idempotent).  Must run before any
+    # logger call — including those triggered during module imports below.
+    configure_structlog()
+
     app = FastAPI(title="AI Proxy Gateway", version="0.1.0")
+
+    # Per-app Prometheus registry — prevents Duplicated timeseries errors when
+    # multiple create_app() calls exist in a single pytest run.
+    app.state.metrics_registry = MetricsRegistry(registry=CollectorRegistry())
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings
@@ -124,4 +148,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(proxy_router)
     app.include_router(usage_router)
     app.include_router(budget_router)
+
+    # RequestIdMiddleware must be added AFTER routers are included so it wraps
+    # the full ASGI app and captures final status codes including those set by
+    # FastAPI exception handlers (401/402/4xx from ProblemError).
+    app.add_middleware(RequestIdMiddleware)
+
     return app

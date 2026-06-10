@@ -209,16 +209,22 @@ async def test_tenant_id_present_on_authenticated_path(
     captured: list[dict[str, Any]] = []
     configure_structlog(test_capture=captured)
 
-    # Signup → login → create key (mirrors proxy test pattern)
+    # Signup → login → create key via the CANONICAL /admin/auth routes.
+    # (Disposition 2026-06-11: the original arrange posted to /tenants/signup,
+    # a route that has never existed — assertions below are unchanged.)
     signup = await client.post(
-        "/tenants/signup",
-        json={"email": "obs-m2@example.com", "password": "Password1!"},
+        "/admin/auth/signup",
+        json={
+            "tenant_name": "ObsM2Co",
+            "email": "obs-m2@example.com",
+            "password": "Password1!",
+        },
     )
     assert signup.status_code == 201
     tenant_id = signup.json()["tenant_id"]
 
     login = await client.post(
-        "/tenants/login",
+        "/admin/auth/login",
         json={"email": "obs-m2@example.com", "password": "Password1!"},
     )
     token = login.json()["access_token"]

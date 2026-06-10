@@ -18,6 +18,8 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+import structlog.contextvars
+
 from gateway.budgets.domain.ports import BudgetGuard, PassthroughBudgetGuard
 from gateway.core.errors import ProblemError
 from gateway.keys.domain.errors import InvalidApiKeyError
@@ -83,6 +85,10 @@ class CompletionUseCase:
             result = await self._authenticator.authenticate(raw_key)
         except InvalidApiKeyError:
             raise ProblemError(401, "ERR_AUTH_INVALID_KEY", "Missing or invalid API key") from None
+        # Bind tenant_id to the structlog context so the access log line (emitted
+        # by RequestIdMiddleware after the response) carries it for authenticated paths.
+        # On pre-auth 401 exits above, this line is never reached — field stays absent.
+        structlog.contextvars.bind_contextvars(tenant_id=str(result.tenant_id))
         return result.tenant_id, result.key_id
 
     async def _validate_payload(self, body: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:

@@ -16,6 +16,7 @@ dependencies = [
     "argon2-cffi>=25.1.0",
     "redis>=5",
     "alembic>=1.9",
+    "prometheus-client>=0.21",
 ]
 
 [dependency-groups]
@@ -47,6 +48,7 @@ exclude = [
     "tests/edge/test_e2e_tls.py",
     "tests/migrations/conftest.py",
     "tests/migrations/test_migrations.py",
+    "tests/observability/test_observability.py",
 ]
 
 [tool.ruff.lint]

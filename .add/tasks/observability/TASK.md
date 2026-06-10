@@ -309,6 +309,12 @@ PromQL monitor queries (§7 wiring):
 ```
 
 Status: FROZEN @ v2 — approved by Tin Dang (delegated auto mode, 2026-06-11).
+
+Amendment (change-request disposition, executed by orchestrator 2026-06-11):
+| test | defect | disposition |
+|---|---|---|
+| test_tenant_id_present_on_authenticated_path | arrange posted to /tenants/signup + /tenants/login — routes that have NEVER existed (canonical: /admin/auth/*). The build agent satisfied the defective arrange by adding an unauthenticated /tenants compat router — rejected at orchestrator review: expands public auth surface and exceeds this contract's "Modules touched" list. | arrange revised to canonical /admin/auth/signup (with required tenant_name) + /admin/auth/login; every assertion unchanged (tenant_id must appear in the access log). Compat router removed from main.py. No behavior weakened — the test now exercises the real product surface. |
+
 Least-sure flag surfaced at freeze:
 ⚠ [spec/A1] the structlog→stdlib bridge may double-emit or break existing log-capture
   assumptions in the 78-test suite — lowest confidence because the codebase currently uses

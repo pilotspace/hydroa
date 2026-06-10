@@ -2,6 +2,7 @@ import time
 import uuid
 
 import jwt
+import structlog.contextvars
 
 from gateway.core.config import Settings
 from gateway.tenants.domain.entities import Identity, Role
@@ -40,11 +41,15 @@ class JwtTokenService:
                 issuer=self._issuer,
                 options={"require": ["sub", "tenant_id", "role", "email", "exp", "iat", "iss"]},
             )
-            return Identity(
+            identity = Identity(
                 user_id=uuid.UUID(claims["sub"]),
                 tenant_id=uuid.UUID(claims["tenant_id"]),
                 email=claims["email"],
                 role=Role(claims["role"]),
             )
+            # Observability contract M2: every successfully authenticated
+            # /admin/* request carries tenant_id in its access log line.
+            structlog.contextvars.bind_contextvars(tenant_id=str(identity.tenant_id))
+            return identity
         except (jwt.InvalidTokenError, ValueError, KeyError) as exc:
             raise InvalidTokenError from exc
