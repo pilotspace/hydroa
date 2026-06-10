@@ -52,7 +52,10 @@ mypy_path = "src"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=gateway --cov-report=term-missing --cov-fail-under=80"
+markers = [
+    "e2e: end-to-end tests requiring the infra/docker-compose.e2e.yml stack (excluded by default)",
+]
+addopts = "--cov=gateway --cov-report=term-missing --cov-fail-under=80 -m 'not e2e'"
 
 [tool.coverage.run]
 source = ["src/gateway"]
