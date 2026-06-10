@@ -70,6 +70,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "e2e: end-to-end tests requiring the infra/docker-compose.e2e.yml stack (excluded by default)",
+    "integration: tests requiring real Postgres (localhost:5433) and/or Redis (localhost:6380)",
 ]
 addopts = "--cov=gateway --cov-report=term-missing --cov-fail-under=80 -m 'not e2e'"
 
