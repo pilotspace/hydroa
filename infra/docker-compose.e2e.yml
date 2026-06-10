@@ -1,0 +1,90 @@
+---
+# AI Proxy — e2e edge stack (contract §3, edge-envoy TASK.md v1)
+#
+# Services:
+#   postgres  — database (internal port 5432; no host port clash with dev stack on 5433)
+#   redis     — cache (internal port 6379; no host port clash with dev stack on 6380)
+#   gateway   — FastAPI app (internal only; healthcheck on /health)
+#   envoy     — edge proxy on host ports 8080 + 9901 admin
+#
+# JWT secret shared via GATEWAY_JWT_SECRET env var.
+# Envoy JWKS is computed from the secret by an entrypoint wrapper that runs envsubst
+# on the envoy.yaml template before launching envoy.
+#
+# Usage:
+#   GATEWAY_JWT_SECRET=e2e-test-secret-change-me docker compose -f infra/docker-compose.e2e.yml up --build -d --wait
+
+name: ai-proxy-e2e
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: gateway
+      POSTGRES_DB: gateway_e2e
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway -d gateway_e2e"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    # No host port mapping: internal only to avoid clashing with dev stack (5433)
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    # No host port mapping: internal only to avoid clashing with dev stack (6380)
+
+  gateway:
+    build:
+      context: ../apps/gateway
+      dockerfile: Dockerfile
+    environment:
+      GATEWAY_DATABASE_URL: "postgresql+asyncpg://gateway:gateway@postgres:5432/gateway_e2e"
+      GATEWAY_REDIS_URL: "redis://redis:6379/0"
+      GATEWAY_JWT_SECRET: "${GATEWAY_JWT_SECRET:-e2e-test-secret-change-me}"
+      GATEWAY_ENVIRONMENT: "test"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\" || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  envoy:
+    image: envoyproxy/envoy:v1.29-latest
+    environment:
+      GATEWAY_JWT_SECRET: "${GATEWAY_JWT_SECRET:-e2e-test-secret-change-me}"
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy-template.yaml:ro
+    ports:
+      - "8080:8080"
+      - "9901:9901"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    # Entrypoint: compute base64url(GATEWAY_JWT_SECRET) using standard POSIX tools,
+    # substitute into the JWKS template, then launch envoy with the rendered config.
+    # Uses only sed/base64/tr — no python3/envsubst required in the envoy image.
+    # Note: $$ escapes $ from docker-compose interpolation so the shell sees a single $.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        # Compute unpadded base64url: standard base64 → swap +/ to -_ → strip padding =
+        B64=$$(printf '%s' "$${GATEWAY_JWT_SECRET}" | base64 | tr '+/' '-_' | tr -d '=')
+        # Substitute placeholder in envoy template
+        sed "s|GATEWAY_JWT_SECRET_BASE64URL|$${B64}|g" \
+            /etc/envoy/envoy-template.yaml > /tmp/envoy.yaml
+        # Launch envoy with the rendered config
+        exec envoy -c /tmp/envoy.yaml --log-level warn

@@ -1,0 +1,196 @@
+---
+# Envoy edge config — AI Proxy Gateway (contract §3, edge-envoy TASK.md v1)
+#
+# Filter chain order (evaluated top-to-bottom per request):
+#   1. local_ratelimit  — global 50 req/s token bucket; 429 on exhaustion
+#   2. jwt_authn        — HS256 JWT validation for /admin/* prefix only
+#   3. ext_authz        — HTTP authz call to /internal/authz for /v1/* only
+#   4. router           — terminal; routes per virtual_host rules below
+#
+# Route priority (first match wins):
+#   /internal/* → 403 direct_response   (gateway never contacted from outside)
+#   /v1/*       → gateway_cluster       (ext_authz enabled via typed_per_filter_config)
+#   /admin/*    → gateway_cluster       (jwt_authn already validated; ext_authz disabled)
+#   /           → gateway_cluster       (catch-all; ext_authz disabled)
+#
+# ⚠ JWKS note: kty=oct HS256 requires unpadded base64url of raw UTF-8 secret bytes.
+#   The placeholder below is overridden at startup via --component-id / env substitution
+#   in the compose entrypoint. For e2e the secret is "e2e-test-secret-change-me".
+#   Precomputed: base64url("e2e-test-secret-change-me") = ZTJlLXRlc3Qtc2VjcmV0LWNoYW5nZS1tZQ
+#
+# ⚠ allowed_upstream_headers: ext_authz HTTP service forwards x-tenant-id / x-key-id
+#   from the authz response as REQUEST headers to the upstream. Verified by e2e test S8.
+
+static_resources:
+
+  listeners:
+    - name: listener_0
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                use_remote_address: true
+
+                http_filters:
+
+                  # ── 1. Local rate limit ────────────────────────────────────────────────
+                  - name: envoy.filters.http.local_ratelimit
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+                      stat_prefix: local_rate_limiter
+                      token_bucket:
+                        max_tokens: 50
+                        tokens_per_fill: 50
+                        fill_interval: 1s
+                      filter_enabled:
+                        runtime_key: local_rate_limit_enabled
+                        default_value:
+                          numerator: 100
+                          denominator: HUNDRED
+                      filter_enforced:
+                        runtime_key: local_rate_limit_enforced
+                        default_value:
+                          numerator: 100
+                          denominator: HUNDRED
+                      response_headers_to_add:
+                        - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                          header:
+                            key: x-ratelimit-limit
+                            value: "50"
+
+                  # ── 2. JWT authentication ──────────────────────────────────────────────
+                  # Validates HS256 JWTs for /admin/* routes.
+                  # forward: true ensures the gateway can re-verify the JWT independently.
+                  - name: envoy.filters.http.jwt_authn
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                      providers:
+                        gateway_jwt:
+                          issuer: "ai-proxy"
+                          local_jwks:
+                            inline_string: >-
+                              {"keys":[{"kty":"oct","alg":"HS256","use":"sig","k":"GATEWAY_JWT_SECRET_BASE64URL"}]}
+                          forward: true
+                          payload_in_metadata: "jwt_payload"
+                      rules:
+                        # Exemptions first (first match wins): signup/login cannot
+                        # carry a JWT yet — the gateway issues it on login.
+                        - match:
+                            path: "/admin/auth/signup"
+                        - match:
+                            path: "/admin/auth/login"
+                        - match:
+                            prefix: "/admin/"
+                          requires:
+                            provider_name: "gateway_jwt"
+                        - match:
+                            prefix: "/"
+
+                  # ── 3. External authorization ──────────────────────────────────────────
+                  # Calls gateway POST /internal/authz for /v1/* routes only.
+                  # All other routes have ext_authz disabled via typed_per_filter_config.
+                  # failure_mode_allow: false → deny on authz service unavailability (safe default).
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      http_service:
+                        server_uri:
+                          uri: "http://gateway:8000"
+                          cluster: "gateway_cluster"
+                          timeout: 2s
+                        # ext_authz ignores the uri path: the authz request path is
+                        # path_prefix + original path, e.g. /internal/authz/v1/chat/completions.
+                        # The gateway exposes a catch-all /internal/authz/{path} route for this.
+                        path_prefix: "/internal/authz"
+                        authorization_request:
+                          allowed_headers:
+                            patterns:
+                              - exact: "authorization"
+                              - exact: "x-api-key"
+                        authorization_response:
+                          allowed_upstream_headers:
+                            patterns:
+                              - exact: "x-tenant-id"
+                              - exact: "x-key-id"
+                      # with_request_body omitted — body buffering not needed for header-based authz
+                      failure_mode_allow: false
+                      # include_peer_certificate omitted — no mTLS in this deployment
+
+                  # ── 4. Router (terminal) ───────────────────────────────────────────────
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: local
+                      domains:
+                        - "*"
+                      routes:
+                        # R1 / M6: /internal/* → 403 direct response (gateway never contacted)
+                        # ext_authz must be disabled here, or it would call the authz
+                        # service before the direct_response and leak gateway status codes.
+                        - match:
+                            prefix: "/internal/"
+                          direct_response:
+                            status: 403
+                            body:
+                              inline_string: "Forbidden"
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+
+                        # M3: /v1/* → ext_authz enabled + gateway upstream
+                        - match:
+                            prefix: "/v1/"
+                          route:
+                            cluster: gateway_cluster
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              check_settings:
+                                context_extensions:
+                                  route: "v1"
+
+                        # M2 / A3: /admin/* → jwt_authn already validated; ext_authz disabled
+                        - match:
+                            prefix: "/admin/"
+                          route:
+                            cluster: gateway_cluster
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+
+                        # M7: catch-all → gateway (ext_authz disabled — not a /v1/* path)
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: gateway_cluster
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+
+  clusters:
+    - name: gateway_cluster
+      connect_timeout: 0.5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: gateway_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: gateway
+                      port_value: 8000

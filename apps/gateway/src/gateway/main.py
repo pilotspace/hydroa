@@ -31,12 +31,20 @@ from gateway.usage.infrastructure.orm import (
 )
 
 internal_router = APIRouter(prefix="/internal")
+health_router = APIRouter()
 
 
 @internal_router.get("/health")
-async def health() -> dict[str, str]:
+async def internal_health() -> dict[str, str]:
     # Liveness only: must never touch Postgres/Redis/OpenRouter, so a
     # dependency outage can't cascade into the fleet being marked dead.
+    return {"status": "ok", "service": "gateway"}
+
+
+@health_router.get("/health")
+async def health() -> dict[str, str]:
+    # Top-level liveness probe for docker-compose healthcheck and Envoy routing.
+    # Identical contract to /internal/health — never touches Postgres/Redis/OpenRouter.
     return {"status": "ok", "service": "gateway"}
 
 
@@ -81,6 +89,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Guard: only start the background flusher when running under a real
         # ASGI server (not ASGITransport in tests, which never calls lifespan).
         # The test suite drives flush_once() directly — no timing dependency.
+
+        # Idempotent schema bootstrap for dev/test environments (e.g. e2e compose stack).
+        # In production the schema is managed by Alembic migrations; never run create_all there.
+        if settings.environment in ("dev", "test"):
+            from gateway.core.db import Base  # local import to avoid circular at module level
+
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
         flusher = UsageLedgerFlusher(
             redis=redis_client,
             session_factory=app.state.sessionmaker,
@@ -97,6 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await redis_client.aclose()
 
     register_error_handlers(app)
+    app.include_router(health_router)
     app.include_router(internal_router)
     app.include_router(internal_catalog_router)
     app.include_router(tenants_router)
