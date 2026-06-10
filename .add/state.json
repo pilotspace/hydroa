@@ -63,14 +63,14 @@
     },
     "budgets": {
       "title": "Tenant monthly ceiling, Redis spend counter, ERR_BUDGET_EXCEEDED",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v1",
       "depends_on": [
         "usage-metering"
       ],
       "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T11:16:36+00:00",
+      "updated": "2026-06-10T11:29:28+00:00",
       "flag_verified": true
     },
     "edge-envoy": {
@@ -120,7 +120,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-10T11:16:36+00:00",
+  "updated": "2026-06-10T11:29:28+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

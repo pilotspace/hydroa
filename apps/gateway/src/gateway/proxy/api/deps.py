@@ -60,11 +60,6 @@ def get_raw_api_key(request: Request) -> str | None:
     return None
 
 
-def get_budget_guard(request: Request) -> object:
-    """Resolve BudgetGuard from app.state — allows test injection."""
-    return request.app.state.budget_guard
-
-
 def get_completion_use_case(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
