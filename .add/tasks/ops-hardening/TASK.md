@@ -416,10 +416,12 @@ Reviewed by: Claude (orchestrator, delegated auto mode for Tin Dang) · date: 20
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
-Spec delta for the next loop: <what production taught you>
+Watch (reuse scenarios as monitors): drain-timeout warnings in shutdown logs (should be ~never) · readiness 503 rate per dependency · gateway_usage_flusher_pending_events at shutdown
+Spec delta for the next loop: k8s probe semantics are ready; when a real orchestrator (k8s) replaces compose, wire livenessProbe→/internal/health/live and readinessProbe→/internal/health/ready verbatim.
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
+  - [TDD · open] batch-bounded loops (read N per iteration) hide early-exit defects when the emptiness check looks at the wrong set — assert drains against backlogs LARGER than the batch size in future drain tests (evidence: flush_once count=100 + PEL-only check exited early; caught at orchestrator review, not by the suite)
+  - [ADD · open] runbook advice that prescribes config (stop_grace_period) should be enforced in the artifact it describes, not just documented (evidence: prod compose now carries stop_grace_period 15s)
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->

@@ -204,10 +204,12 @@ Reviewed by: Claude (orchestrator) under delegated auto mode — Tin Dang · dat
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
-Spec delta for the next loop: <what production taught you>
+Watch (reuse scenarios as monitors): ledger-vs-upstream token divergence on live runs · usage=None rate on streamed completions · smoke exit codes in release checklists
+Spec delta for the next loop: OpenRouter delivers usage in the final streamed frame without stream_options opt-in; frames MUST be parsed from the joined byte stream — chunk boundaries carry no meaning.
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
+  - [SDD · open] mock fixtures that mirror an assumed wire format can pass while live billing silently fails — pin at least one VERBATIM live-captured frame per external protocol (evidence: v1 streaming tests green while live ledger recorded 0/0 vs upstream 24/73)
+  - [TDD · open] for stream parsers, fragmentation is part of the input domain — include split-at-midpoint and byte-by-byte cases by default (evidence: tests/smoke parametrized fragmentation caught the rewrite regression-free)
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->

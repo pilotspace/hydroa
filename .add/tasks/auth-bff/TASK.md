@@ -588,7 +588,7 @@ Reviewed by: Claude (orchestrator) under delegated auto mode — Tin Dang · dat
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
+Watch (reuse scenarios as monitors): /api/auth/login failure rate (BFF) · session-cookie 401 redirect loops in dashboard logs · rate(gateway_http_requests_total{status_code="401"}[5m]) on /admin paths
 Spec delta for the next loop: <what production taught you>
 
 ### Competency deltas

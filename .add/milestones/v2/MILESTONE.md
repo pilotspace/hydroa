@@ -39,17 +39,17 @@ Out: email verification · SSO/OIDC · per-key budgets · per-tenant model allow
 - /internal/metrics exposition format + metric names -> owning task observability
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] db-migrations        depends-on: none           — Alembic baseline + CI parity gate; prod stops using create_all
-- [ ] live-upstream-smoke  depends-on: none           — real-key curl through Envoy streams a completion; ledger cost reconciled
-- [ ] edge-tls             depends-on: none           — TLS listener + cert wiring at Envoy, HSTS, production compose topology
-- [ ] auth-bff             depends-on: none           — httpOnly-cookie BFF via Next.js route handlers; no JWT in localStorage
-- [ ] observability        depends-on: none           — structlog JSON + request/tenant IDs, /internal/metrics, §7 monitors wired
-- [ ] ops-hardening        depends-on: db-migrations  — lifespan handlers, flusher-draining shutdown, probes, backup/rollback runbook, node-dep governance
+- [x] db-migrations        depends-on: none           — Alembic baseline + CI parity gate; prod stops using create_all
+- [x] live-upstream-smoke  depends-on: none           — real-key curl through Envoy streams a completion; ledger cost reconciled
+- [x] edge-tls             depends-on: none           — TLS listener + cert wiring at Envoy, HSTS, production compose topology
+- [x] auth-bff             depends-on: none           — httpOnly-cookie BFF via Next.js route handlers; no JWT in localStorage
+- [x] observability        depends-on: none           — structlog JSON + request/tenant IDs, /internal/metrics, §7 monitors wired
+- [x] ops-hardening        depends-on: db-migrations  — lifespan handlers, flusher-draining shutdown, probes, backup/rollback runbook, node-dep governance
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] `alembic upgrade head` from an empty DB produces a schema identical to ORM metadata, asserted in CI       (← db-migrations)
-- [ ] A real-key curl through TLS-Envoy streams a live completion; the ledger row reconciles with OpenRouter generation cost × (1+markup)  (← live-upstream-smoke, edge-tls)
-- [ ] No auth token is readable from page JavaScript; dashboard flows pass with httpOnly cookies               (← auth-bff)
-- [ ] /internal/metrics exposes breaker state, 402 rate, and flusher lag; every log line carries request_id (tenant_id where scoped)  (← observability)
-- [ ] Gateway shutdown under load loses zero buffered usage events (drain test)                                 (← ops-hardening)
-- [ ] Stage flips to production via graduate.md only after all criteria above are checked                       (← milestone close)
+- [x] `alembic upgrade head` from an empty DB produces a schema identical to ORM metadata, asserted in CI       (← db-migrations)
+- [x] A real-key curl through TLS-Envoy streams a live completion; the ledger row reconciles with OpenRouter generation cost × (1+markup)  (← live-upstream-smoke, edge-tls)
+- [x] No auth token is readable from page JavaScript; dashboard flows pass with httpOnly cookies               (← auth-bff)
+- [x] /internal/metrics exposes breaker state, 402 rate, and flusher lag; every log line carries request_id (tenant_id where scoped)  (← observability)
+- [x] Gateway shutdown under load loses zero buffered usage events (drain test)                                 (← ops-hardening)
+- [x] Stage flips to production via graduate.md only after all criteria above are checked                       (← milestone close)

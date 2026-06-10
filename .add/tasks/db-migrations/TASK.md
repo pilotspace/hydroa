@@ -365,7 +365,7 @@ Reviewed by: Claude (orchestrator) under delegated auto mode — Tin Dang · dat
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
+Watch (reuse scenarios as monitors): CI migration-parity gate result per PR (gateway_parity scratch DB) · alembic current vs head drift at deploy time (runbook check)
 Spec delta for the next loop: <what production taught you>
 
 ### Competency deltas

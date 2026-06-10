@@ -442,7 +442,7 @@ Reviewed by: Claude (orchestrator) under delegated auto mode — Tin Dang · dat
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
+Watch (reuse scenarios as monitors): Envoy listener cert expiry (prod certs) · jwt_authn 401 rate at edge · local rate-limit 429 rate via rate(gateway_http_requests_total{status_code="429"}[5m]) once Envoy access logs ship
 Spec delta for the next loop: <what production taught you>
 
 ### Competency deltas

@@ -475,9 +475,12 @@ Watch (reuse scenarios as monitors):
   - Breaker open: gateway_circuit_breaker_state == 2
   - Flusher lag:  gateway_usage_flusher_pending_events > 1000
 
-Spec delta for the next loop: <what production taught you>
+Spec delta for the next loop: per-status-code latency may eventually be needed (histogram kept status_class to cap series); revisit if 402/429 latency profiles diverge.
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
+  - [ADD · open] freeze-time orchestrator review of label/dimension design pays for itself — an exit criterion phrased as a specific rate (402) must be expressible from the contracted labels, not an aggregate (evidence: status_class→status_code amendment pre-freeze)
+  - [TDD · open] a frozen test arrange that invents endpoints can push builders into expanding product surface — arranges must use canonical routes, and builders must treat 'Modules touched' as a hard boundary (evidence: /tenants compat router rejected at review, disposition in §3)
+  - [SDD · open] BaseHTTPMiddleware isolates contextvars in a child task; binding-through-middleware designs need pure-ASGI middleware (evidence: tenant_id binding lost under BaseHTTPMiddleware, visible with raw ASGI)
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
