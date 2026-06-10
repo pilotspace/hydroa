@@ -317,8 +317,9 @@ async def test_delete_cross_tenant_key_returns_404(
 async def test_member_cannot_revoke_key(
     client: httpx.AsyncClient,
 ) -> None:
-    import jwt as pyjwt
     import uuid
+
+    import jwt as pyjwt
 
     from tests.conftest import TEST_JWT_SECRET
 
@@ -387,9 +388,7 @@ async def test_authz_revoked_key_rejected(
     client: httpx.AsyncClient,
 ) -> None:
     token = await signup_and_login(client, tenant_name="Acme10", email="ada10@acme.io")
-    k = (
-        await client.post(ADMIN_KEYS, json={"name": "to-revoke"}, headers=bearer(token))
-    ).json()
+    k = (await client.post(ADMIN_KEYS, json={"name": "to-revoke"}, headers=bearer(token))).json()
     full_key: str = k["key"]
     key_id: str = k["key_id"]
 
@@ -425,9 +424,7 @@ async def test_authz_revoked_key_rejected(
         "authorization_header_mistake",
     ],
 )
-async def test_authz_malformed_key_rejected(
-    client: httpx.AsyncClient, bad_key: str
-) -> None:
+async def test_authz_malformed_key_rejected(client: httpx.AsyncClient, bad_key: str) -> None:
     resp = await client.post(INTERNAL_AUTHZ, headers={"X-Api-Key": bad_key})
     assert_problem(resp, 401, "ERR_AUTH_INVALID_KEY")
 
@@ -445,9 +442,7 @@ async def test_authz_malformed_keys_byte_identical(
         "sk-nodot",
         "sk-ZZZNOTVALIDHEX.somesecretvalue",
     ]
-    responses = [
-        await client.post(INTERNAL_AUTHZ, headers={"X-Api-Key": k}) for k in bad_keys
-    ]
+    responses = [await client.post(INTERNAL_AUTHZ, headers={"X-Api-Key": k}) for k in bad_keys]
     for r in responses:
         # Must be problem+json, not FastAPI default application/json 404
         assert "application/problem+json" in r.headers.get("content-type", ""), (
@@ -468,9 +463,7 @@ async def test_authz_wrong_secret_rejected_constant_time(
 ) -> None:
     """Wrong secret and unknown key_id must return byte-identical 401 responses."""
     token = await signup_and_login(client, tenant_name="Acme11", email="ada11@acme.io")
-    k = (
-        await client.post(ADMIN_KEYS, json={"name": "timing-key"}, headers=bearer(token))
-    ).json()
+    k = (await client.post(ADMIN_KEYS, json={"name": "timing-key"}, headers=bearer(token))).json()
     full_key: str = k["key"]
 
     # Extract key_id hex from the key

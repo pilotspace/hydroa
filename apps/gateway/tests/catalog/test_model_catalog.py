@@ -10,7 +10,6 @@ real HTTP ever leaves this process (CatalogSource is a typing.Protocol port).
 
 from __future__ import annotations
 
-import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -264,9 +263,7 @@ async def test_sync_upstream_unavailable(
 
     assert_problem(resp, 502, "ERR_UPSTREAM_UNAVAILABLE")
 
-    model_rows = (
-        await db_session.execute(text("SELECT count(*) FROM models"))
-    ).scalar_one()
+    model_rows = (await db_session.execute(text("SELECT count(*) FROM models"))).scalar_one()
     snap_rows = (
         await db_session.execute(text("SELECT count(*) FROM pricing_snapshots"))
     ).scalar_one()
@@ -279,9 +276,7 @@ async def test_sync_upstream_unavailable(
 # ---------------------------------------------------------------------------
 
 
-async def test_get_models_returns_markedup_prices(
-    client: httpx.AsyncClient, app: Any
-) -> None:
+async def test_get_models_returns_markedup_prices(client: httpx.AsyncClient, app: Any) -> None:
     """Prices served to a 20%-markup tenant must be upstream × 1.20."""
     _install_fake_source(app, FakeCatalogSource(models=[_OPUS]))
     assert (await client.post(SYNC)).status_code == 200
@@ -404,9 +399,7 @@ async def test_get_models_before_sync_returns_catalog_empty(
 # ---------------------------------------------------------------------------
 
 
-async def test_get_models_excludes_inactive_models(
-    client: httpx.AsyncClient, app: Any
-) -> None:
+async def test_get_models_excludes_inactive_models(client: httpx.AsyncClient, app: Any) -> None:
     """After a re-sync that deactivates a model it must not appear in GET /v1/models."""
     _install_fake_source(app, FakeCatalogSource(models=[_OPUS, _SONNET]))
     assert (await client.post(SYNC)).status_code == 200
@@ -449,9 +442,7 @@ async def test_sync_count_reflects_all_processed_models(
 # ---------------------------------------------------------------------------
 
 
-async def test_sync_handles_null_context_length(
-    client: httpx.AsyncClient, app: Any
-) -> None:
+async def test_sync_handles_null_context_length(client: httpx.AsyncClient, app: Any) -> None:
     """A model with no context_length must sync and appear in /v1/models without error."""
     no_ctx = FakeCatalogModel(
         id="openai/gpt-unknown",

@@ -1,8 +1,13 @@
+import httpx
 from fastapi import APIRouter, FastAPI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from gateway.catalog.api.router import catalog_router, internal_catalog_router
+from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
+from gateway.keys.api.router import admin_router as keys_admin_router
+from gateway.keys.api.router import authz_router as keys_authz_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
@@ -28,8 +33,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     app.state.password_hasher = Argon2PasswordHasher()
     app.state.token_service = JwtTokenService(settings)
+    # Default catalog source — tests override via app.state.catalog_source
+    app.state.catalog_source = OpenRouterCatalogSource(httpx.AsyncClient())
 
     register_error_handlers(app)
     app.include_router(internal_router)
+    app.include_router(internal_catalog_router)
     app.include_router(tenants_router)
+    app.include_router(catalog_router)
+    app.include_router(keys_admin_router)
+    app.include_router(keys_authz_router)
     return app

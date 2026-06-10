@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,6 +15,11 @@ class TenantRow(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
     name: Mapped[str]
+    # Additive column — catalog module reads this for price markup calculation.
+    # Default 20.0 covers all pre-existing rows; never 0 or negative by convention.
+    markup_pct: Mapped[Decimal] = mapped_column(
+        Numeric(7, 4), nullable=False, server_default="20.0"
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

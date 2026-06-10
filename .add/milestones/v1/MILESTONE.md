@@ -35,9 +35,9 @@ Out: email verification · SSO/OIDC · per-key budgets · per-tenant model allow
 - OpenAI-compatible proxy surface /v1/chat/completions + /v1/models -> owning task proxy-completions
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] tenant-identity     depends-on: none                          — signup (tenant+owner atomic), login → JWT, roles
-- [ ] model-catalog       depends-on: none                          — OpenRouter catalog sync, pricing snapshots, marked-up /v1/models
-- [ ] api-keys            depends-on: tenant-identity               — key issue/revoke (shown once, argon2), /internal/authz for Envoy
+- [x] tenant-identity     depends-on: none                          — signup (tenant+owner atomic), login → JWT, roles
+- [x] model-catalog       depends-on: none                          — OpenRouter catalog sync, pricing snapshots, marked-up /v1/models
+- [x] api-keys            depends-on: tenant-identity               — key issue/revoke (shown once, argon2), /internal/authz for Envoy
 - [ ] proxy-completions   depends-on: api-keys,model-catalog        — /v1/chat/completions SSE pass-through; timeout/retry/circuit-breaker
 - [ ] usage-metering      depends-on: proxy-completions             — usage capture incl. streaming, Redis write-behind → ledger, marked-up cost
 - [ ] budgets             depends-on: usage-metering                — tenant monthly ceiling, Redis spend counter, ERR_BUDGET_EXCEEDED
@@ -46,11 +46,21 @@ Out: email verification · SSO/OIDC · per-key budgets · per-tenant model allow
 - [ ] dashboard-usage     depends-on: usage-metering,budgets        — catalog, usage & cost analytics, budget setting
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] User can sign up (tenant + owner created atomically) and log in, receiving a JWT        (← tenant-identity)
-- [ ] Owner can create and revoke an API key; the secret is displayed exactly once           (← api-keys)
+- [x] User can sign up (tenant + owner created atomically) and log in, receiving a JWT        (← tenant-identity)
+- [x] Owner can create and revoke an API key; the secret is displayed exactly once           (← api-keys)
 - [ ] `curl` with a valid key through Envoy streams a chat completion from any catalog model (← proxy-completions, edge-envoy)
-- [ ] /v1/models lists the synced catalog with the tenant's marked-up prices                 (← model-catalog)
+- [x] /v1/models lists the synced catalog with the tenant's marked-up prices                 (← model-catalog)
 - [ ] Every proxied request produces exactly one ledger row with cost = upstream × (1+markup)(← usage-metering)
 - [ ] A request beyond the tenant's monthly budget is rejected with ERR_BUDGET_EXCEEDED      (← budgets)
 - [ ] Owner signs up, manages keys in the dashboard UI                                       (← dashboard-shell)
 - [ ] Owner sees usage/cost totals + per-request list and sets the budget in the UI          (← dashboard-usage)
+
+## Wave log (append-only; integration-Verify records)
+
+### Wave 1 — closed 2026-06-10
+- base: 87353f13cd9fc382c4019d7ad8feec862d05dc7d
+- roster: api-keys → wt-keys (fork 87353f1 == base ✓, opus) · model-catalog → wt-catalog (fork 87353f1 == base ✓, sonnet); autonomy auto, private test DBs (gateway_test_keys / gateway_test_catalog)
+- merge order executed: api-keys → model-catalog; main.py router registration merged by orchestrator (only overlapping file)
+- integration Verify: PASS — 49 tests green on merged tree, coverage 87.40%, ruff+mypy+allowlist clean, `make ci` exit 0
+- residue: none; worker deviations: keys worker reformatted (whitespace-only) two test files — dropped at merge, canonical tests kept; catalog worker omitted SUMMARY.md — reconstructed by orchestrator from verdict
+- gates: api-keys PASS · model-catalog PASS (auto-resolved, delegated auto mode)

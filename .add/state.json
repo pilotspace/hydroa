@@ -16,24 +16,24 @@
     },
     "model-catalog": {
       "title": "OpenRouter catalog sync, pricing snapshots, marked-up /v1/models",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v1",
       "depends_on": [],
       "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T08:40:47+00:00",
+      "updated": "2026-06-10T08:57:31+00:00",
       "flag_verified": true
     },
     "api-keys": {
       "title": "Key issue/revoke (shown once, argon2), /internal/authz for Envoy",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v1",
       "depends_on": [
         "tenant-identity"
       ],
       "created": "2026-06-10T08:14:12+00:00",
-      "updated": "2026-06-10T08:40:47+00:00",
+      "updated": "2026-06-10T08:57:31+00:00",
       "flag_verified": true
     },
     "proxy-completions": {
@@ -117,7 +117,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-10T08:40:47+00:00",
+  "updated": "2026-06-10T08:57:31+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

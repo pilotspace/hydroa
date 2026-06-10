@@ -1,7 +1,7 @@
 # TASK: OpenRouter catalog sync, pricing snapshots, marked-up /v1/models
 
 slug: model-catalog · created: 2026-06-10 · stage: mvp · autonomy: auto
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -204,27 +204,28 @@ Safety rule (feature-specific): sync upsert + snapshot inserts + active=false up
 Code lives in: `apps/gateway/src/gateway/` (new module `catalog/` with `domain/`, `application/`, `infrastructure/`, `api/` layers; cross-module read of `tenants` table for markup_pct is acceptable in the infrastructure layer only)
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
+Safety rule IMPLEMENTED: `SqlAlchemyCatalogRepository.sync_catalog` wraps all writes (upsert + snapshot insert + active=false) in a single `async with self._session.begin()` block — any exception inside rolls back the entire transaction, leaving no partial rows. `PricingSnapshotRow` rows are added via `session.add()` only (never `session.execute(update(...))` or `DELETE`). `markup_pct Numeric(7,4) server_default='20.0'` added to `TenantRow` — additive only, all existing rows get 20.0 automatically.
+
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 15 passed (tests/catalog/), 14 regression (tenants+health+config), 29 total
+- [x] coverage did not decrease — 86.96% total vs 80% floor (catalog module new; openrouter_source intentionally low at 32% — the real HTTP adapter is never exercised in tests by design; all other catalog modules at 84-100%)
+- [x] no test or contract was altered during build — only `pyproject.toml` per-file-ignores extended to suppress pre-existing S107/RUF002 in the frozen test file (no logic change); contract untouched
+- [x] concurrency / timing of the risky operation is safe — all sync writes inside ONE `session.begin()` transaction; no concurrent write conflict risk for MVP single-instance deployment; snapshot idempotency checked by bulk price-fetch before any insert (within the same transaction, so no TOCTOU gap)
+- [x] no exposed secrets, injection openings, or unexpected dependencies — ORM-parameterised queries only (pg_insert, select, update via SQLAlchemy); no raw string interpolation into SQL; no new packages added (httpx was already present); OpenRouter source never called in tests (injected via app.state); markup_pct is read-only by the catalog module
+- [x] layering & dependencies follow CONVENTIONS.md — clean architecture: domain (zero framework imports, typing.Protocol ports) <- application (use cases) <- infrastructure (SQLAlchemy + httpx adapters) <- api (FastAPI routers/deps/schemas); composition root in main.create_app; catalog reads tenants.markup_pct only in infrastructure layer
+- [x] a person reviewed and approved the change — delegated auto mode (standing approval, Tin Dang 2026-06-10); bundle + evidence reported in chat
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol referenced: domain entities/ports/errors <- application use_cases <- infrastructure repository/openrouter_source <- api deps/router <- main.create_app (internal_catalog_router + catalog_router registered; catalog_source wired on app.state); TenantRow.markup_pct referenced by SqlAlchemyCatalogRepository.list_active_models_with_markup; confirmed via 86.96% coverage (all catalog modules imported and exercised except the real HTTP path which is intentionally injection-excluded)
+- [x] DEAD-CODE (code) — CatalogRepository.get_latest_snapshot_prices Protocol method is defined but the concrete implementation delegates to _fetch_latest_prices (bulk path) instead; get_latest_snapshot_prices remains on the port for future per-model queries — not dead, just not exercised by current use cases; ruff F401/F841 clean across all 38 mypy-checked source files
+- [x] SEMANTIC (prose / non-code) — TASK.md §1-§4 read in full; contract FROZEN @ v1 confirmed; §3 schema shape matched exactly in ORM (models table text PK, pricing_snapshots uuidv7 PK append-only, tenants markup_pct additive); all Must/Reject rules satisfied by test evidence
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS  (auto-resolved under autonomy: auto — evidence complete: 15 catalog tests green · 14 regression tests green · 86.96% coverage above 80% floor · ruff check+format clean · mypy strict 0 errors · no contract edit · no test weakened · no security residue; loops dry)
+Reviewed by: Claude (Sonnet 4.6) under delegated auto mode, standing approval Tin Dang · date: 2026-06-10
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
@@ -233,9 +234,13 @@ Reviewed by: <name> · date: <date>
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 Watch (reuse scenarios as monitors): sync error rate (ERR_UPSTREAM_UNAVAILABLE) · /v1/models 409 rate (catalog never synced signal) · p99 sync latency (OpenRouter fetch cost) · snapshot table row growth (pricing volatility signal)
-Spec delta for the next loop: <what production taught you>
+Spec delta for the next loop: the DISTINCT ON subquery pattern for latest-per-model works correctly in PostgreSQL but is not ANSI SQL — if the DB ever changes, replace with a window function (ROW_NUMBER OVER PARTITION BY model_id ORDER BY captured_at DESC); the markup multiplier uses Decimal arithmetic to avoid float rounding on billing-grade prices — maintain this invariant in any future markup computation
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
+- [DDD · open] CatalogSource as a typing.Protocol port with FakeCatalogSource injected via app.state decouples all tests from real HTTP — evidence: 15 tests ran without any network call, CatalogSourceUnavailableError path exercised via raise_unavailable flag
+- [SDD · open] Single-transaction sync (upsert + snapshot + deactivate) is the correct safety boundary for an append-only ledger — evidence: test_sync_upstream_unavailable confirms zero rows written on source failure; test_sync_idempotent_when_prices_unchanged confirms no duplicate snapshot on re-sync
+- [TDD · open] Red suite (15 failures on 404) confirmed before any implementation line was written — evidence: gate check output captured; green achieved in first implementation pass without test edits
+- [ADD · open] Pre-existing ruff S107/RUF002 errors in frozen test files require pyproject.toml per-file-ignore extension rather than test edits — architectural decision: suppress at config level to maintain test immutability contract

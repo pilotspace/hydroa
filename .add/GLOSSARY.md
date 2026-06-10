@@ -2,7 +2,7 @@
 
 Tenant: a customer organization; owns users, API keys, budgets, and a usage ledger — every tenant-owned row carries `tenant_id`.
 User: a human belonging to one tenant; logs into the dashboard via JWT. Roles: owner, admin, member.
-API key: secret credential (`sk-...`) issued per tenant for proxy access; stored as argon2 hash; plaintext shown exactly once at creation.
+API key: secret credential (`sk-<key_id>.<secret>`) issued per tenant for proxy access; stored as SHA-256 hash (amended 2026-06-10 from argon2: 32-byte CSPRNG secrets make offline brute force infeasible and /internal/authz sits on the proxy hot path — passwords stay argon2); plaintext shown exactly once at creation.
 Proxy request: an OpenAI-compatible call to `/v1/*` forwarded to OpenRouter, streaming or non-streaming.
 Upstream: OpenRouter (`https://openrouter.ai/api/v1`) — the platform's single LLM provider.
 Model: an LLM identifier from the OpenRouter catalog (e.g. `anthropic/claude-fable-5`).
