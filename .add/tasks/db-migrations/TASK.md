@@ -1,7 +1,7 @@
 # TASK: Alembic baseline + CI parity gate
 
 slug: db-migrations · created: 2026-06-10 · stage: mvp
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower
      the autonomy level with `autonomy: conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -323,23 +323,41 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 6/6 migration tests + full suite 98 passed (make ci exit 0,
+      re-run by orchestrator); the contracted CI parity sequence reproduced locally on a
+      fresh scratch DB: upgrade head → alembic check → "No new upgrade operations detected"
+- [x] coverage did not decrease — make ci coverage floor held
+- [x] no test or contract was altered during build — `git diff <freeze>..HEAD -- tests .add`
+      empty for the build commit; Makefile targets exactly as contracted
+- [x] concurrency / timing of the risky operation is safe — env.py runs async migrations in
+      a dedicated single-worker thread (fresh event loop; safe under pytest-asyncio and CLI);
+      baseline DDL is transactional (PostgresqlImpl transactional DDL)
+- [x] no exposed secrets, injection openings, or unexpected dependencies — DB URL from
+      GATEWAY_DATABASE_URL env (alembic.ini holds a placeholder, no credentials committed);
+      alembic was already allowlisted; mako/markupsafe arrive as its dependencies via lock
+- [x] layering & dependencies follow CONVENTIONS.md — migrations are infra tooling under
+      apps/gateway; no domain/application code changed; create_all stays dev/test-guarded
+- [x] a person reviewed and approved the change — orchestrator review found the builder's CI
+      parity step DEFECTIVE (alembic check ran against the unstamped gateway_test schema →
+      would fail every CI run) and fixed it before gating: fresh gateway_parity scratch DB +
+      make migrate + make migrate-check, validated locally exit 0; also added the missing
+      Redis service to the CI gateway job (latent test failure for remote runs)
+      (delegated auto mode, Tin Dang, 2026-06-10)
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — env.py imports all four ORM modules (tenants/keys/catalog/usage) so
+      autogenerate sees full metadata (verified by the empty-diff test catching a simulated
+      model change in test 6); Makefile migrate/migrate-check consumed by the CI step
+- [x] DEAD-CODE (code) — no orphaned symbols; script.py.mako is alembic's revision template
+      (consumed by future autogenerate runs); README.md records the additive-only policy
+- [x] SEMANTIC (prose / non-code) — baseline revision read line-by-line against the six ORM
+      tables (columns, FKs, server defaults); downgrade carries the contracted DATA-LOSS
+      warning; alembic.ini script_location and URL-override semantics match §3
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS (auto-resolved — autonomy: auto; evidence complete; the CI-step defect was
+fixed and re-verified before gating, not waived)
+Reviewed by: Claude (orchestrator) under delegated auto mode — Tin Dang · date: 2026-06-10
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
