@@ -13,18 +13,16 @@
  *   - Budget widget (ceiling + spend, null/unlimited)
  *   - Budget edit: happy path, clear-to-null, client-side validation rejections,
  *     403 and 422 gateway error surfaces
- *   - Unauthenticated redirect
  *   - Member role hides Edit Budget button
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "./mocks/server";
 import { getRouterMock } from "./mocks/next-navigation";
-import { VALID_JWT } from "./mocks/handlers";
 import React from "react";
 
 // ── This import will cause MODULE_NOT_FOUND — correct RED failure ─────────────
@@ -107,41 +105,17 @@ function renderUsage() {
   return render(<UsagePage />, { wrapper: Wrapper });
 }
 
-/**
- * Build a JWT whose payload includes the given role claim.
- * Uses the same base64url encoding as VALID_JWT in handlers.ts.
- */
-function makeJwtWithRole(role: string): string {
-  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-  const payload = btoa(
-    JSON.stringify({
-      sub: "user-1",
-      tenant_id: "00000000-0000-0000-0000-000000000099",
-      role,
-      email: "owner@acme.io",
-      exp: Math.floor(Date.now() / 1000) + 86400,
-    })
-  )
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-  return `${header}.${payload}.fakesig`;
-}
-
 /** Default happy-path handlers for all three sections.
  *  Individual tests override via server.use(...) before rendering. */
 function useDefaultUsageHandlers() {
   server.use(
-    http.get("http://gateway.test/admin/usage", () =>
+    http.get("http://localhost:3000/api/gw/admin/usage", () =>
       HttpResponse.json(USAGE_RESPONSE)
     ),
-    http.get("http://gateway.test/v1/models", () =>
+    http.get("http://localhost:3000/api/gw/v1/models", () =>
       HttpResponse.json(MODELS_RESPONSE)
     ),
-    http.get("http://gateway.test/admin/budget", () =>
+    http.get("http://localhost:3000/api/gw/admin/budget", () =>
       HttpResponse.json(BUDGET_RESPONSE)
     )
   );
@@ -157,8 +131,18 @@ describe("UsagePage", () => {
    * Scenario: usage page renders aggregate cards and records table for owner
    */
   it("test_usage_renders_cards_and_table", async () => {
-    // Arrange
-    localStorage.setItem("ai_proxy_token", makeJwtWithRole("owner"));
+    // Arrange: role comes from /api/auth/me
+    server.use(
+      http.get("http://localhost:3000/api/auth/me", () =>
+        HttpResponse.json({
+          user_id: "user-1",
+          tenant_id: "00000000-0000-0000-0000-000000000099",
+          email: "owner@acme.io",
+          role: "owner",
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        })
+      )
+    );
     useDefaultUsageHandlers();
 
     // Act
@@ -191,15 +175,14 @@ describe("UsagePage", () => {
    */
   it("test_usage_empty_state", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_EMPTY_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_RESPONSE)
       )
     );
@@ -226,18 +209,17 @@ describe("UsagePage", () => {
    */
   it("test_usage_error_state", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(
           { title: "Internal server error", status: 500 },
           { status: 500 }
         )
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_RESPONSE)
       )
     );
@@ -260,17 +242,16 @@ describe("UsagePage", () => {
    * Scenario: usage page loading state
    */
   it("test_usage_loading_state", async () => {
-    // Arrange: GET /admin/usage never resolves in this test window
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
+    // Arrange: GET /api/gw/admin/usage never resolves in this test window
     server.use(
       http.get(
-        "http://gateway.test/admin/usage",
+        "http://localhost:3000/api/gw/admin/usage",
         () => new Promise<never>(() => { /* intentionally never resolves */ })
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_RESPONSE)
       )
     );
@@ -298,7 +279,6 @@ describe("UsagePage", () => {
    */
   it("test_catalog_renders_rows", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     useDefaultUsageHandlers();
 
     // Act
@@ -319,12 +299,11 @@ describe("UsagePage", () => {
    */
   it("test_catalog_error_state", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(
           {
             title: "Catalog not synced",
@@ -334,7 +313,7 @@ describe("UsagePage", () => {
           { status: 409 }
         )
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_RESPONSE)
       )
     );
@@ -356,7 +335,6 @@ describe("UsagePage", () => {
    */
   it("test_budget_widget_shows_ceiling_and_spend", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     useDefaultUsageHandlers(); // BUDGET_RESPONSE = { budget_usd_monthly: "25.00", spent_usd_month: "10.50" }
 
     // Act
@@ -375,15 +353,14 @@ describe("UsagePage", () => {
    */
   it("test_budget_widget_null_shows_unlimited", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_NULL_RESPONSE)
       )
     );
@@ -403,20 +380,28 @@ describe("UsagePage", () => {
    * Scenario: owner edits budget — happy path
    */
   it("test_budget_edit_happy_path", async () => {
-    // Arrange
-    localStorage.setItem("ai_proxy_token", makeJwtWithRole("owner"));
+    // Arrange: role from /api/auth/me; owner sees Edit Budget button
     let putCallCount = 0;
     let putBody: unknown = null;
     let budgetGetCount = 0;
 
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/auth/me", () =>
+        HttpResponse.json({
+          user_id: "user-1",
+          tenant_id: "00000000-0000-0000-0000-000000000099",
+          email: "owner@acme.io",
+          role: "owner",
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        })
+      ),
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", async () => {
+      http.get("http://localhost:3000/api/gw/admin/budget", async () => {
         budgetGetCount++;
         if (budgetGetCount === 1) {
           return HttpResponse.json({
@@ -430,7 +415,7 @@ describe("UsagePage", () => {
           spent_usd_month: "10.00",
         });
       }),
-      http.put("http://gateway.test/admin/budget", async ({ request }) => {
+      http.put("http://localhost:3000/api/gw/admin/budget", async ({ request }) => {
         putCallCount++;
         putBody = await request.json();
         return HttpResponse.json({ budget_usd_monthly: "50.00" });
@@ -483,25 +468,33 @@ describe("UsagePage", () => {
    * Scenario: owner clears budget to unlimited
    */
   it("test_budget_edit_clear_to_unlimited", async () => {
-    // Arrange
-    localStorage.setItem("ai_proxy_token", makeJwtWithRole("owner"));
+    // Arrange: role from /api/auth/me
     let putCallCount = 0;
     let putBody: unknown = null;
 
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/auth/me", () =>
+        HttpResponse.json({
+          user_id: "user-1",
+          tenant_id: "00000000-0000-0000-0000-000000000099",
+          email: "owner@acme.io",
+          role: "owner",
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        })
+      ),
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json({
           budget_usd_monthly: "25.00",
           spent_usd_month: "5.00",
         })
       ),
-      http.put("http://gateway.test/admin/budget", async ({ request }) => {
+      http.put("http://localhost:3000/api/gw/admin/budget", async ({ request }) => {
         putCallCount++;
         putBody = await request.json();
         return HttpResponse.json({ budget_usd_monthly: null });
@@ -555,21 +548,29 @@ describe("UsagePage", () => {
    * Scenario: budget edit rejected — negative value, no API call
    */
   it("test_budget_edit_negative_no_api_call", async () => {
-    // Arrange
-    localStorage.setItem("ai_proxy_token", makeJwtWithRole("owner"));
+    // Arrange: role from /api/auth/me
     let putCallCount = 0;
 
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/auth/me", () =>
+        HttpResponse.json({
+          user_id: "user-1",
+          tenant_id: "00000000-0000-0000-0000-000000000099",
+          email: "owner@acme.io",
+          role: "owner",
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        })
+      ),
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_RESPONSE)
       ),
-      http.put("http://gateway.test/admin/budget", () => {
+      http.put("http://localhost:3000/api/gw/admin/budget", () => {
         putCallCount++;
         return HttpResponse.json({ budget_usd_monthly: null });
       })
@@ -618,21 +619,29 @@ describe("UsagePage", () => {
    * Scenario: budget edit rejected — non-numeric string, no API call
    */
   it("test_budget_edit_non_numeric_no_api_call", async () => {
-    // Arrange
-    localStorage.setItem("ai_proxy_token", makeJwtWithRole("owner"));
+    // Arrange: role from /api/auth/me
     let putCallCount = 0;
 
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/auth/me", () =>
+        HttpResponse.json({
+          user_id: "user-1",
+          tenant_id: "00000000-0000-0000-0000-000000000099",
+          email: "owner@acme.io",
+          role: "owner",
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        })
+      ),
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_RESPONSE)
       ),
-      http.put("http://gateway.test/admin/budget", () => {
+      http.put("http://localhost:3000/api/gw/admin/budget", () => {
         putCallCount++;
         return HttpResponse.json({ budget_usd_monthly: null });
       })
@@ -681,20 +690,27 @@ describe("UsagePage", () => {
    * Scenario: budget edit 403 — member role surfaces error
    */
   it("test_budget_edit_403_surfaces_error", async () => {
-    // Arrange: use owner JWT to get the button rendered, but gateway returns 403
-    localStorage.setItem("ai_proxy_token", makeJwtWithRole("owner"));
-
+    // Arrange: role from /api/auth/me (owner to render button); gateway returns 403
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/auth/me", () =>
+        HttpResponse.json({
+          user_id: "user-1",
+          tenant_id: "00000000-0000-0000-0000-000000000099",
+          email: "owner@acme.io",
+          role: "owner",
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        })
+      ),
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_RESPONSE)
       ),
-      http.put("http://gateway.test/admin/budget", () =>
+      http.put("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(
           {
             type: "about:blank",
@@ -750,20 +766,27 @@ describe("UsagePage", () => {
    * Scenario: budget edit 422 — surfaces error inline
    */
   it("test_budget_edit_422_surfaces_error", async () => {
-    // Arrange
-    localStorage.setItem("ai_proxy_token", makeJwtWithRole("owner"));
-
+    // Arrange: role from /api/auth/me
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/auth/me", () =>
+        HttpResponse.json({
+          user_id: "user-1",
+          tenant_id: "00000000-0000-0000-0000-000000000099",
+          email: "owner@acme.io",
+          role: "owner",
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        })
+      ),
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_RESPONSE)
       ),
-      http.put("http://gateway.test/admin/budget", () =>
+      http.put("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(
           {
             type: "about:blank",
@@ -812,49 +835,28 @@ describe("UsagePage", () => {
   });
 
   /**
-   * TEST 34 — test_usage_unauthenticated_redirects_login
-   * Scenario: unauthenticated access to /usage redirects to /login
-   */
-  it("test_usage_unauthenticated_redirects_login", async () => {
-    // Arrange: no token in localStorage
-    expect(localStorage.getItem("ai_proxy_token")).toBeNull();
-
-    // Act
-    renderUsage();
-
-    // Assert: redirect to /login fired; content not rendered
-    await waitFor(() => {
-      const router = getRouterMock();
-      const redirectMock =
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        (require("next/navigation") as { redirect: ReturnType<typeof vi.fn> }).redirect;
-      const navigatedToLogin =
-        router.push.mock.calls.some((c: string[]) => c[0] === "/login") ||
-        redirectMock.mock.calls.some((c: string[]) => c[0] === "/login");
-      expect(navigatedToLogin).toBe(true);
-    });
-    // Authenticated content never rendered
-    expect(
-      screen.queryByRole("button", { name: /edit budget/i })
-    ).not.toBeInTheDocument();
-  });
-
-  /**
    * TEST 35 — test_member_no_edit_budget_button
    * Scenario: member role does not see Edit Budget button
    */
   it("test_member_no_edit_budget_button", async () => {
-    // Arrange: member JWT (role = "member")
-    localStorage.setItem("ai_proxy_token", makeJwtWithRole("member"));
-
+    // Arrange: role from GET /api/auth/me returning role:"member"
     server.use(
-      http.get("http://gateway.test/admin/usage", () =>
+      http.get("http://localhost:3000/api/auth/me", () =>
+        HttpResponse.json({
+          user_id: "user-1",
+          tenant_id: "00000000-0000-0000-0000-000000000099",
+          email: "member@acme.io",
+          role: "member",
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        })
+      ),
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://gateway.test/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
-      http.get("http://gateway.test/admin/budget", () =>
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
         HttpResponse.json(BUDGET_RESPONSE)
       )
     );

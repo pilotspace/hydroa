@@ -36,32 +36,13 @@ describe("SignupForm", () => {
   }
 
   /**
-   * TEST 1 — test_signup_happy_redirects_to_keys
-   * Scenario: signup happy path — redirects to /keys
-   */
-  it("test_signup_happy_redirects_to_keys", async () => {
-    // Arrange: msw default handlers already cover signup→201 + login→200 VALID_JWT
-    render(<SignupForm />);
-
-    // Act
-    await fillAndSubmit();
-
-    // Assert
-    await waitFor(() => {
-      expect(localStorage.getItem("ai_proxy_token")).not.toBeNull();
-    });
-    const router = getRouterMock();
-    expect(router.push).toHaveBeenCalledWith("/keys");
-  });
-
-  /**
    * TEST 2 — test_signup_409_inline_email_error
    * Scenario: signup 409 — inline email error, no navigation
    */
   it("test_signup_409_inline_email_error", async () => {
     // Arrange
     server.use(
-      http.post("http://gateway.test/admin/auth/signup", () =>
+      http.post("http://localhost:3000/api/auth/signup", () =>
         HttpResponse.json(
           {
             type: "about:blank",

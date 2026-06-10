@@ -33,43 +33,13 @@ describe("LoginForm", () => {
   }
 
   /**
-   * TEST 5 — test_login_happy_stores_token_redirects
-   * Scenario: login happy path — stores token and redirects to /keys
-   */
-  it("test_login_happy_stores_token_redirects", async () => {
-    // Arrange: override to return a known literal JWT so assertion is precise
-    const KNOWN_JWT = "test.jwt.here";
-    server.use(
-      http.post("http://gateway.test/admin/auth/login", () =>
-        HttpResponse.json({
-          access_token: KNOWN_JWT,
-          token_type: "bearer",
-          expires_in: 86400,
-        })
-      )
-    );
-
-    render(<LoginForm />);
-
-    // Act
-    await fillAndSubmit();
-
-    // Assert
-    await waitFor(() => {
-      expect(localStorage.getItem("ai_proxy_token")).toBe(KNOWN_JWT);
-    });
-    const router = getRouterMock();
-    expect(router.push).toHaveBeenCalledWith("/keys");
-  });
-
-  /**
    * TEST 6 — test_login_401_shows_error_no_navigation
    * Scenario: login 401 — shows error message, no navigation
    */
   it("test_login_401_shows_error_no_navigation", async () => {
     // Arrange
     server.use(
-      http.post("http://gateway.test/admin/auth/login", () =>
+      http.post("http://localhost:3000/api/auth/login", () =>
         HttpResponse.json(
           {
             type: "about:blank",

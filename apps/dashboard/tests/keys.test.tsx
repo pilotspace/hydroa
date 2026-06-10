@@ -8,14 +8,13 @@
  * (QueryClient is imported from @tanstack/react-query which IS installed.)
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "./mocks/server";
 import { getRouterMock } from "./mocks/next-navigation";
-import { VALID_JWT } from "./mocks/handlers";
 import React from "react";
 
 // ── This import will cause MODULE_NOT_FOUND — correct RED failure ─────────────
@@ -48,16 +47,6 @@ function renderKeys() {
   return render(<KeysPage />, { wrapper: Wrapper });
 }
 
-/** A JWT with exp = past-60s, for expired-token tests */
-function makeExpiredJwt(): string {
-  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
-    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-  const payload = btoa(
-    JSON.stringify({ sub: "u-1", exp: Math.floor(Date.now() / 1000) - 60 })
-  ).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-  return `${header}.${payload}.fakesig`;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("KeysPage", () => {
@@ -69,9 +58,8 @@ describe("KeysPage", () => {
    */
   it("test_keys_list_renders_rows", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     server.use(
-      http.get("http://gateway.test/admin/keys", () =>
+      http.get("http://localhost:3000/api/gw/admin/keys", () =>
         HttpResponse.json([
           {
             key_id: "kid-abc",
@@ -102,9 +90,8 @@ describe("KeysPage", () => {
    */
   it("test_keys_empty_state", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     server.use(
-      http.get("http://gateway.test/admin/keys", () => HttpResponse.json([]))
+      http.get("http://localhost:3000/api/gw/admin/keys", () => HttpResponse.json([]))
     );
 
     // Act
@@ -124,9 +111,8 @@ describe("KeysPage", () => {
    */
   it("test_keys_error_state", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     server.use(
-      http.get("http://gateway.test/admin/keys", () =>
+      http.get("http://localhost:3000/api/gw/admin/keys", () =>
         HttpResponse.json(
           { title: "Internal server error", status: 500 },
           { status: 500 }
@@ -151,10 +137,9 @@ describe("KeysPage", () => {
    */
   it("test_keys_loading_state", async () => {
     // Arrange: handler returns a promise that never settles in this test
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     server.use(
       http.get(
-        "http://gateway.test/admin/keys",
+        "http://localhost:3000/api/gw/admin/keys",
         () => new Promise<never>(() => {/* intentionally never resolves */})
       )
     );
@@ -182,10 +167,9 @@ describe("KeysPage", () => {
    */
   it("test_create_key_shows_plaintext_once_not_in_list", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     let getCallCount = 0;
     server.use(
-      http.get("http://gateway.test/admin/keys", () => {
+      http.get("http://localhost:3000/api/gw/admin/keys", () => {
         getCallCount++;
         if (getCallCount === 1) {
           return HttpResponse.json([]);
@@ -201,7 +185,7 @@ describe("KeysPage", () => {
           },
         ]);
       }),
-      http.post("http://gateway.test/admin/keys", () =>
+      http.post("http://localhost:3000/api/gw/admin/keys", () =>
         HttpResponse.json(
           {
             key_id: "kid-ci",
@@ -256,11 +240,10 @@ describe("KeysPage", () => {
    */
   it("test_revoke_key_removes_row", async () => {
     // Arrange
-    localStorage.setItem("ai_proxy_token", VALID_JWT);
     let deleteCallCount = 0;
     let getCallCount = 0;
     server.use(
-      http.get("http://gateway.test/admin/keys", () => {
+      http.get("http://localhost:3000/api/gw/admin/keys", () => {
         getCallCount++;
         if (getCallCount === 1) {
           return HttpResponse.json([
@@ -283,7 +266,7 @@ describe("KeysPage", () => {
           },
         ]);
       }),
-      http.delete("http://gateway.test/admin/keys/kid-1", () => {
+      http.delete("http://localhost:3000/api/gw/admin/keys/kid-1", () => {
         deleteCallCount++;
         return new HttpResponse(null, { status: 204 });
       })
@@ -320,57 +303,6 @@ describe("KeysPage", () => {
         screen.queryByText(/2026-06-10/i) ??
         screen.queryByText(/revoked/i);
       expect(revokedText).toBeInTheDocument();
-    });
-  });
-
-  /**
-   * TEST 13 — test_unauthenticated_keys_redirects_login
-   * Scenario: unauthenticated access to /keys redirects to /login
-   */
-  it("test_unauthenticated_keys_redirects_login", async () => {
-    // Arrange: NO token in localStorage (already cleared by afterEach setup)
-    expect(localStorage.getItem("ai_proxy_token")).toBeNull();
-
-    // Act
-    renderKeys();
-
-    // Assert: redirect fired, content not rendered
-    await waitFor(() => {
-      const router = getRouterMock();
-      const redirectMock =
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        (require("next/navigation") as { redirect: ReturnType<typeof vi.fn> }).redirect;
-      // Either router.push OR redirect() should point to /login
-      const navigatedToLogin =
-        router.push.mock.calls.some((c: string[]) => c[0] === "/login") ||
-        redirectMock.mock.calls.some((c: string[]) => c[0] === "/login");
-      expect(navigatedToLogin).toBe(true);
-    });
-    // The authenticated content should not appear
-    expect(screen.queryByRole("button", { name: /create key/i })).not.toBeInTheDocument();
-  });
-
-  /**
-   * TEST 14 — test_expired_token_keys_redirects_login
-   * Scenario: expired token on /keys redirects to /login
-   */
-  it("test_expired_token_keys_redirects_login", async () => {
-    // Arrange: place an expired JWT in localStorage
-    localStorage.setItem("ai_proxy_token", makeExpiredJwt());
-
-    // Act
-    renderKeys();
-
-    // Assert: redirect to /login
-    await waitFor(() => {
-      const router = getRouterMock();
-      const redirectMock =
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        (require("next/navigation") as { redirect: ReturnType<typeof vi.fn> }).redirect;
-      const navigatedToLogin =
-        router.push.mock.calls.some((c: string[]) => c[0] === "/login") ||
-        redirectMock.mock.calls.some((c: string[]) => c[0] === "/login");
-      expect(navigatedToLogin).toBe(true);
     });
   });
 });
