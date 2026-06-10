@@ -49,6 +49,9 @@ services:
       GATEWAY_REDIS_URL: "redis://redis:6379/0"
       GATEWAY_JWT_SECRET: "${GATEWAY_JWT_SECRET:-e2e-test-secret-change-me}"
       GATEWAY_ENVIRONMENT: "test"
+      # Live-upstream smoke (live-upstream-smoke task): empty default keeps the
+      # stack offline-safe; export a real key to enable the live OpenRouter path.
+      GATEWAY_OPENROUTER_API_KEY: "${GATEWAY_OPENROUTER_API_KEY:-}"
     depends_on:
       postgres:
         condition: service_healthy
