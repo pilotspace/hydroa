@@ -60,7 +60,13 @@ def get_raw_api_key(request: Request) -> str | None:
     return None
 
 
+def get_budget_guard(request: Request) -> object:
+    """Resolve BudgetGuard from app.state — allows test injection."""
+    return request.app.state.budget_guard
+
+
 def get_completion_use_case(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> CompletionUseCase:
     """Build CompletionUseCase with session-scoped adapters."""
@@ -68,4 +74,5 @@ def get_completion_use_case(
     authz_use_case = AuthzUseCase(repo, _hasher)
     authenticator = SqlAlchemyKeyAuthenticator(authz_use_case)
     model_checker = SqlAlchemyModelChecker(session)
-    return CompletionUseCase(authenticator, model_checker)
+    budget_guard = request.app.state.budget_guard
+    return CompletionUseCase(authenticator, model_checker, budget_guard)

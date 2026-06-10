@@ -237,9 +237,7 @@ async def test_spend_at_budget_blocks_completion_zero_upstream_zero_ledger(
     app.state.completion_upstream = upstream
 
     # Capture ledger count before
-    count_before = (
-        await db_session.execute(text("SELECT COUNT(*) FROM usage_records"))
-    ).scalar()
+    count_before = (await db_session.execute(text("SELECT COUNT(*) FROM usage_records"))).scalar()
 
     resp = await client.post(
         COMPLETIONS,
@@ -250,9 +248,7 @@ async def test_spend_at_budget_blocks_completion_zero_upstream_zero_ledger(
     assert_problem(resp, 402, "ERR_BUDGET_EXCEEDED")
     assert upstream.calls == 0
 
-    count_after = (
-        await db_session.execute(text("SELECT COUNT(*) FROM usage_records"))
-    ).scalar()
+    count_after = (await db_session.execute(text("SELECT COUNT(*) FROM usage_records"))).scalar()
     assert count_after == count_before, "No ledger row must be written for a blocked request"
 
 

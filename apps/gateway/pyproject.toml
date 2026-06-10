@@ -42,7 +42,7 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "RUF"]
 ignore = ["S101"]  # assert is fine in tests; src is mypy-strict anyway
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S105", "S106", "S107", "RUF002", "RUF003", "E501"]  # fixture secrets/token literals + unicode chars are test data, not leaks
+"tests/**" = ["S105", "S106", "S107", "RUF002", "RUF003", "E501", "F401"]  # fixture secrets/token literals + unicode chars are test data, not leaks; F401 for inline test imports
 
 [tool.mypy]
 strict = true

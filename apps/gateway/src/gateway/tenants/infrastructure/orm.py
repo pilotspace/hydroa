@@ -20,6 +20,11 @@ class TenantRow(Base):
     markup_pct: Mapped[Decimal] = mapped_column(
         Numeric(7, 4), nullable=False, server_default="20.0"
     )
+    # Additive nullable column — budgets TASK.md §3.
+    # NULL means unlimited; no server_default; existing rows are unaffected.
+    budget_usd_monthly: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

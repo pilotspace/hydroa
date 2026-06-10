@@ -6,6 +6,8 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, FastAPI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from gateway.budgets.api.router import budget_router
+from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import catalog_router, internal_catalog_router
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 from gateway.core.config import Settings
@@ -18,6 +20,9 @@ from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletio
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
+from gateway.tenants.infrastructure.orm import (
+    TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata
+)
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.flusher import UsageLedgerFlusher
 from gateway.usage.application.recorder import RecordingUsageRecorder
@@ -64,6 +69,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_factory=app.state.sessionmaker,
     )
 
+    # Budget guard: wire RedisBudgetGuard for production;
+    # tests override via app.state.budget_guard after app creation.
+    app.state.budget_guard = RedisBudgetGuard(
+        redis=redis_client,
+        session_factory=app.state.sessionmaker,
+    )
+
     @app.on_event("startup")
     async def _start_flusher() -> None:
         # Guard: only start the background flusher when running under a real
@@ -93,4 +105,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(keys_authz_router)
     app.include_router(proxy_router)
     app.include_router(usage_router)
+    app.include_router(budget_router)
     return app

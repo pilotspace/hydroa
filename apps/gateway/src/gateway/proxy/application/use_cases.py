@@ -18,6 +18,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+from gateway.budgets.domain.ports import BudgetGuard, PassthroughBudgetGuard
 from gateway.core.errors import ProblemError
 from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
@@ -65,9 +66,11 @@ class CompletionUseCase:
         self,
         authenticator: KeyAuthenticator,
         model_checker: ModelChecker,
+        budget_guard: BudgetGuard = PassthroughBudgetGuard(),  # noqa: B008
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
+        self._budget_guard = budget_guard
 
     async def _authenticate(self, raw_key: str | None) -> tuple[uuid.UUID, uuid.UUID]:
         """Extract bearer key and return (tenant_id, key_id).
@@ -123,6 +126,7 @@ class CompletionUseCase:
         On upstream 5xx / circuit open: raise ProblemError 502.
         """
         tenant_id, key_id = await self._authenticate(raw_key)
+        await self._budget_guard.check(tenant_id)
         model_id, _ = await self._validate_payload(body)
 
         try:
@@ -167,6 +171,7 @@ class CompletionUseCase:
         On upstream error: raises ProblemError 502.
         """
         tenant_id, key_id = await self._authenticate(raw_key)
+        await self._budget_guard.check(tenant_id)
         model_id, _ = await self._validate_payload(body)
 
         try:
