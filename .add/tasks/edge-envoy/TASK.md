@@ -411,7 +411,7 @@ Reviewed by: Claude (orchestrator) under delegated auto mode — Tin Dang · dat
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
+Watch (reuse scenarios as monitors): Envoy 401 rate on /admin/* (jwt_authn rejections — JWKS/secret drift signal) · ext_authz denial rate + authz upstream latency p99 (gateway authz health) · 429 rate from local rate limiter (capacity signal) · /internal/* direct-response hit count (probing/misconfigured clients) · envoy admin /stats cluster gateway_cluster upstream_rq_5xx
 Spec delta for the next loop: <what production taught you>
 
 ### Competency deltas
