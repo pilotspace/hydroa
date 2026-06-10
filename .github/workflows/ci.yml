@@ -24,6 +24,13 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U gateway -d gateway_test"
           --health-interval 2s --health-timeout 2s --health-retries 15
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 2s --health-retries 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -40,9 +47,16 @@ jobs:
       - name: Tests
         run: make test
       - name: Migration parity gate
-        run: make migrate-check
+        # alembic check is only valid on a DB at head (contract §1) — use a fresh
+        # scratch DB, never gateway_test (the test run leaves an unstamped
+        # create_all schema there).
+        run: |
+          PGPASSWORD=gateway psql -h localhost -p 5433 -U gateway -d gateway_test \
+            -c "DROP DATABASE IF EXISTS gateway_parity;" -c "CREATE DATABASE gateway_parity;"
+          make migrate
+          make migrate-check
         env:
-          GATEWAY_DATABASE_URL: postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test
+          GATEWAY_DATABASE_URL: postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_parity
 
   dashboard:
     runs-on: ubuntu-latest
