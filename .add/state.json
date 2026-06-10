@@ -35,12 +35,12 @@
     },
     "auth-bff": {
       "title": "httpOnly-cookie BFF dashboard auth",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v2",
       "depends_on": [],
       "created": "2026-06-10T14:56:08+00:00",
-      "updated": "2026-06-10T16:30:26+00:00",
+      "updated": "2026-06-10T16:56:33+00:00",
       "flag_verified": true
     },
     "observability": {
@@ -75,7 +75,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-10T16:30:26+00:00",
+  "updated": "2026-06-10T16:56:33+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
