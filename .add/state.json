@@ -6,12 +6,13 @@
   "tasks": {
     "db-migrations": {
       "title": "Alembic baseline + CI parity gate",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v2",
       "depends_on": [],
       "created": "2026-06-10T14:56:08+00:00",
-      "updated": "2026-06-10T14:56:08+00:00"
+      "updated": "2026-06-10T15:07:13+00:00",
+      "flag_verified": true
     },
     "live-upstream-smoke": {
       "title": "Live OpenRouter smoke + streaming cost reconciliation",
@@ -72,7 +73,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-10T14:57:08+00:00",
+  "updated": "2026-06-10T15:07:13+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
