@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -42,6 +42,14 @@ class ApiKeyRow(Base):
             " OR soft_budget_usd <= monthly_budget_usd",
             name="api_keys_soft_lte_hard_check",
         ),
+        CheckConstraint(
+            "rpm_limit IS NULL OR rpm_limit > 0",
+            name="api_keys_rpm_limit_positive_check",
+        ),
+        CheckConstraint(
+            "tpm_limit IS NULL OR tpm_limit > 0",
+            name="api_keys_tpm_limit_positive_check",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
@@ -71,3 +79,6 @@ class ApiKeyRow(Base):
         nullable=True,
         default=None,
     )
+    # Rate-limit fields — rate-limits migration, all nullable
+    rpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    tpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)

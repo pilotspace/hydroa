@@ -16,6 +16,18 @@ class CreateKeyRequest(BaseModel):
     soft_budget_usd: str | None = None
     expires_at: str | None = None
     model_allowlist: list[str] | None = None
+    rpm_limit: int | None = None
+    tpm_limit: int | None = None
+
+    @field_validator("rpm_limit", mode="before")
+    @classmethod
+    def validate_rpm_limit(cls, v: Any) -> int | None:
+        return _parse_positive_int(v, "rpm_limit")
+
+    @field_validator("tpm_limit", mode="before")
+    @classmethod
+    def validate_tpm_limit(cls, v: Any) -> int | None:
+        return _parse_positive_int(v, "tpm_limit")
 
     @field_validator("monthly_budget_usd", mode="before")
     @classmethod
@@ -90,6 +102,18 @@ class PatchKeyRequest(BaseModel):
     soft_budget_usd: str | None = None
     expires_at: str | None = None
     model_allowlist: list[str] | None = None
+    rpm_limit: int | None = None
+    tpm_limit: int | None = None
+
+    @field_validator("rpm_limit", mode="before")
+    @classmethod
+    def validate_rpm_limit(cls, v: Any) -> int | None:
+        return _parse_positive_int(v, "rpm_limit")
+
+    @field_validator("tpm_limit", mode="before")
+    @classmethod
+    def validate_tpm_limit(cls, v: Any) -> int | None:
+        return _parse_positive_int(v, "tpm_limit")
 
     @field_validator("monthly_budget_usd", mode="before")
     @classmethod
@@ -212,6 +236,8 @@ class CreateKeyResponse(BaseModel):
     soft_budget_usd: str | None = None
     expires_at: str | None = None
     model_allowlist: list[str] | None = None
+    rpm_limit: int | None = None
+    tpm_limit: int | None = None
 
 
 class RotateKeyResponse(BaseModel):
@@ -239,6 +265,8 @@ class KeyInfoResponse(BaseModel):
     soft_budget_usd: str | None = None
     expires_at: datetime | None = None
     model_allowlist: list[str] | None = None
+    rpm_limit: int | None = None
+    tpm_limit: int | None = None
 
 
 class AuthzResponse(BaseModel):
@@ -258,3 +286,26 @@ def _parse_decimal_str(v: Any, field_name: str) -> Decimal:
         raise ProblemError(
             422, "ERR_PAYLOAD_INVALID", f"{field_name} must be a valid decimal string"
         ) from None
+
+
+def _parse_positive_int(v: Any, field_name: str) -> int | None:
+    """Parse a value to a positive integer; raise ProblemError 422 if zero/negative."""
+    if v is None:
+        return None
+    try:
+        val = int(v)
+    except (TypeError, ValueError):
+        from gateway.core.errors import ProblemError
+
+        raise ProblemError(
+            422, "ERR_PAYLOAD_INVALID", f"{field_name} must be a positive integer"
+        ) from None
+    if val <= 0:
+        from gateway.core.errors import ProblemError
+
+        raise ProblemError(
+            422,
+            "ERR_PAYLOAD_INVALID",
+            f"{field_name} must be a positive integer (> 0)",
+        )
+    return val

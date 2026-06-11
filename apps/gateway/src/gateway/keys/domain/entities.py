@@ -22,6 +22,9 @@ class ApiKey:
     expires_at: datetime | None = None
     model_allowlist: list[str] | None = None
     rotated_from_key_id: uuid.UUID | None = None
+    # Rate-limit fields (additive — rate-limits migration, nullable)
+    rpm_limit: int | None = None
+    tpm_limit: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +41,9 @@ class ApiKeyInfo:
     soft_budget_usd: Decimal | None = None
     expires_at: datetime | None = None
     model_allowlist: list[str] | None = None
+    # Rate-limit fields (additive)
+    rpm_limit: int | None = None
+    tpm_limit: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,3 +61,6 @@ class AuthzResult:
     model_allowlist: list[str] | None = None
     monthly_budget_usd: Decimal | None = None
     soft_budget_usd: Decimal | None = None
+    # Rate-limit fields (additive — rate-limits migration)
+    rpm_limit: int | None = None
+    tpm_limit: int | None = None

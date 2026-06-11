@@ -39,10 +39,27 @@ from gateway.proxy.domain.ports import (
     ModelChecker,
     UsageRecorder,
 )
+from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
+from gateway.rate_limits.domain.errors import RateLimitExceededError
+from gateway.rate_limits.domain.ports import RateLimiter
 from gateway.usage.domain.extractor import extract_usage_from_sse
 
 _log = logging.getLogger(__name__)
 _ZERO = Decimal("0")
+
+
+def _fire_record_tpm(
+    rate_limiter: RateLimiter,
+    *,
+    key_id: uuid.UUID,
+    tokens: int,
+) -> None:
+    """Schedule a fire-and-forget TPM token record.
+
+    Swallows all errors — post-stream accounting must never fail a request.
+    """
+    task = asyncio.ensure_future(rate_limiter.record_tpm(key_id, tokens))
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
 def _fire_record(
@@ -121,10 +138,14 @@ class CompletionUseCase:
         authenticator: KeyAuthenticator,
         model_checker: ModelChecker,
         budget_guard: BudgetGuard = PassthroughBudgetGuard(),  # noqa: B008
+        rate_limiter: RateLimiter | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
         self._budget_guard = budget_guard
+        self._rate_limiter: RateLimiter = (
+            rate_limiter if rate_limiter is not None else PassthroughRateLimiter()
+        )
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -170,6 +191,43 @@ class CompletionUseCase:
 
         return model_id, messages
 
+    async def _enforce_rate_limits(self, authz: AuthzResult) -> None:
+        """Enforce RPM and TPM rate limits (M5-M7, M10).
+
+        Order: RPM first, then TPM. If either fires, 429 ERR_RATE_LIMITED.
+        Fail-open on Redis error (RateLimitExceededError is not swallowed —
+        it converts to a 429 ProblemError; Redis errors are swallowed in the limiter).
+
+        Called AFTER governance checks (expiry/allowlist/budget) per §3 M10.
+        """
+        limiter = self._rate_limiter
+
+        # M5: RPM check (atomic ZSET sliding window)
+        if authz.rpm_limit is not None:
+            try:
+                await limiter.check_rpm(authz.key_id, authz.rpm_limit)
+            except RateLimitExceededError as exc:
+                raise ProblemError(
+                    429,
+                    "ERR_RATE_LIMITED",
+                    "Rate limit exceeded",
+                    detail=f"RPM limit {exc.limit} exceeded for key {exc.key_id}",
+                    headers={"Retry-After": str(exc.retry_after_s)},
+                ) from None
+
+        # M6: TPM pre-flight check
+        if authz.tpm_limit is not None:
+            try:
+                await limiter.check_tpm(authz.key_id, authz.tpm_limit)
+            except RateLimitExceededError as exc:
+                raise ProblemError(
+                    429,
+                    "ERR_RATE_LIMITED",
+                    "Rate limit exceeded",
+                    detail=f"TPM limit {exc.limit} exceeded for key {exc.key_id}",
+                    headers={"Retry-After": str(exc.retry_after_s)},
+                ) from None
+
     async def _enforce_governance(
         self,
         authz: AuthzResult,
@@ -178,11 +236,13 @@ class CompletionUseCase:
     ) -> None:
         """Enforce all governance rules in priority order (M8-M10, M12).
 
-        Order: expiry → model allowlist → per-key budget → tenant budget (fallback).
+        Order: expiry → model allowlist → per-key budget → tenant budget (fallback)
+               → RPM check → TPM check.
         All governance data comes from AuthzResult — zero extra DB queries.
 
         Per-key budget: fail-open on Redis failure (advisory counter, A2/M13).
         Soft budget: no blocking — the seam is exposed via _compute_soft_exceeded().
+        Rate limits: fail-open on Redis failure (M14); RPM before TPM (M7).
         """
         # M8: Expiry check (fail-closed, DB-sourced — no infra failure risk)
         _check_expiry(authz)
@@ -197,6 +257,9 @@ class CompletionUseCase:
         else:
             # No per-key budget — fall back to tenant budget (existing RedisBudgetGuard)
             await budget_guard.check(authz.tenant_id)
+
+        # M10 (rate limits): RPM check → TPM check — after governance, before upstream
+        await self._enforce_rate_limits(authz)
 
     async def _check_per_key_budget(self, authz: AuthzResult) -> None:
         """Check per-key Redis spend counter against key's monthly_budget_usd.
@@ -286,14 +349,21 @@ class CompletionUseCase:
             ) from None
 
         # Record successful or upstream 4xx completion
+        usage_raw = response_body.get("usage")
+        usage: dict[str, Any] | None = usage_raw if isinstance(usage_raw, dict) else None
         _fire_record(
             usage_recorder,
             tenant_id=authz.tenant_id,
             key_id=authz.key_id,
             model=model_id,
-            usage=response_body.get("usage"),  # type: ignore[arg-type]
+            usage=usage,
             status=status,
         )
+        # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
+        if authz.tpm_limit is not None and usage is not None:
+            total_tokens = usage.get("total_tokens")
+            if isinstance(total_tokens, int) and total_tokens > 0:
+                _fire_record_tpm(self._rate_limiter, key_id=authz.key_id, tokens=total_tokens)
         return status, response_body
 
     async def stream(
@@ -331,6 +401,8 @@ class CompletionUseCase:
 
         tenant_id = authz.tenant_id
         key_id = authz.key_id
+        tpm_limit = authz.tpm_limit
+        rate_limiter = self._rate_limiter
 
         async def _wrapped() -> AsyncIterator[bytes]:
             collected: list[bytes] = []
@@ -359,5 +431,10 @@ class CompletionUseCase:
                 usage=extracted_usage,
                 status=200,
             )
+            # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
+            if tpm_limit is not None and isinstance(extracted_usage, dict):
+                total_tokens = extracted_usage.get("total_tokens")
+                if total_tokens and isinstance(total_tokens, int) and total_tokens > 0:
+                    _fire_record_tpm(rate_limiter, key_id=key_id, tokens=total_tokens)
 
         return _wrapped()

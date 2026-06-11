@@ -20,6 +20,8 @@ class ApiKeyRepository(Protocol):
         soft_budget_usd: Decimal | None = None,
         expires_at: datetime | None = None,
         model_allowlist: list[str] | None = None,
+        rpm_limit: int | None = None,
+        tpm_limit: int | None = None,
     ) -> ApiKey:
         """Insert a new api_keys row; key_id must be pre-generated (no column default)."""
         ...
@@ -49,6 +51,8 @@ class ApiKeyRepository(Protocol):
         soft_budget_usd: Decimal | None = None,
         expires_at: datetime | None = None,
         model_allowlist: list[str] | None = None,
+        rpm_limit: int | None = None,
+        tpm_limit: int | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey | None:
         """Update governance fields on an active key owned by tenant_id.

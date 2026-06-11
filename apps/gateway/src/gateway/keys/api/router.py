@@ -90,6 +90,8 @@ async def create_key(
         soft_budget_usd=_decimal_or_none(body.soft_budget_usd),
         expires_at=_datetime_or_none(body.expires_at),
         model_allowlist=body.model_allowlist,
+        rpm_limit=body.rpm_limit,
+        tpm_limit=body.tpm_limit,
     )
     return CreateKeyResponse(
         key_id=result.key_id,
@@ -103,6 +105,8 @@ async def create_key(
         ),
         expires_at=_fmt_expires(result.expires_at),
         model_allowlist=result.model_allowlist,
+        rpm_limit=result.rpm_limit,
+        tpm_limit=result.tpm_limit,
     )
 
 
@@ -128,6 +132,8 @@ async def list_keys(
             ),
             expires_at=item.expires_at,
             model_allowlist=item.model_allowlist,
+            rpm_limit=item.rpm_limit,
+            tpm_limit=item.tpm_limit,
         )
         for item in items
     ]
@@ -152,6 +158,8 @@ async def patch_key(
     new_soft: Decimal | None = None
     new_expires: dt.datetime | None = None
     new_allowlist: list[str] | None = None
+    new_rpm: int | None = None
+    new_tpm: int | None = None
 
     if "monthly_budget_usd" in body.model_fields_set:
         if body.monthly_budget_usd is None:
@@ -177,6 +185,18 @@ async def patch_key(
         else:
             new_allowlist = body.model_allowlist
 
+    if "rpm_limit" in body.model_fields_set:
+        if body.rpm_limit is None:
+            fields_to_clear.add("rpm_limit")
+        else:
+            new_rpm = body.rpm_limit
+
+    if "tpm_limit" in body.model_fields_set:
+        if body.tpm_limit is None:
+            fields_to_clear.add("tpm_limit")
+        else:
+            new_tpm = body.tpm_limit
+
     try:
         updated = await use_case.execute(
             key_id=key_id,
@@ -186,6 +206,8 @@ async def patch_key(
             soft_budget_usd=new_soft,
             expires_at=new_expires,
             model_allowlist=new_allowlist,
+            rpm_limit=new_rpm,
+            tpm_limit=new_tpm,
             _fields_to_clear=fields_to_clear,
         )
     except ForbiddenError:
@@ -209,6 +231,8 @@ async def patch_key(
         ),
         expires_at=updated.expires_at,
         model_allowlist=updated.model_allowlist,
+        rpm_limit=updated.rpm_limit,
+        tpm_limit=updated.tpm_limit,
     )
 
 

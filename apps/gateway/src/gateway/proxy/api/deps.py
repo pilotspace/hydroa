@@ -70,4 +70,5 @@ def get_completion_use_case(
     authenticator = SqlAlchemyKeyAuthenticator(authz_use_case)
     model_checker = SqlAlchemyModelChecker(session)
     budget_guard = request.app.state.budget_guard
-    return CompletionUseCase(authenticator, model_checker, budget_guard)
+    rate_limiter = getattr(request.app.state, "rate_limiter", None)
+    return CompletionUseCase(authenticator, model_checker, budget_guard, rate_limiter)

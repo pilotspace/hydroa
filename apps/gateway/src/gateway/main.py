@@ -25,6 +25,7 @@ from gateway.observability.middleware import RequestIdMiddleware
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
+from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
@@ -229,6 +230,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redis=redis_client,
         session_factory=app.state.sessionmaker,
     )
+
+    # Rate limiter: wire RedisLuaRateLimiter for production;
+    # tests override via app.state.rate_limiter after app creation.
+    app.state.rate_limiter = RedisLuaRateLimiter(redis=redis_client)
 
     register_error_handlers(app)
     app.include_router(health_router)

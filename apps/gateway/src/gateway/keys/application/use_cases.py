@@ -28,6 +28,8 @@ class CreateKeyResult:
     soft_budget_usd: Decimal | None = None
     expires_at: datetime | None = None
     model_allowlist: list[str] | None = None
+    rpm_limit: int | None = None
+    tpm_limit: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +61,8 @@ class CreateKeyUseCase:
         soft_budget_usd: Decimal | None = None,
         expires_at: datetime | None = None,
         model_allowlist: list[str] | None = None,
+        rpm_limit: int | None = None,
+        tpm_limit: int | None = None,
     ) -> CreateKeyResult:
         """Issue a new API key.
 
@@ -79,6 +83,8 @@ class CreateKeyUseCase:
             soft_budget_usd=soft_budget_usd,
             expires_at=expires_at,
             model_allowlist=model_allowlist,
+            rpm_limit=rpm_limit,
+            tpm_limit=tpm_limit,
         )
         return CreateKeyResult(
             key_id=key_id,
@@ -88,6 +94,8 @@ class CreateKeyUseCase:
             soft_budget_usd=soft_budget_usd,
             expires_at=expires_at,
             model_allowlist=model_allowlist,
+            rpm_limit=rpm_limit,
+            tpm_limit=tpm_limit,
         )
 
 
@@ -139,6 +147,8 @@ class UpdateKeyUseCase:
         soft_budget_usd: Decimal | None = None,
         expires_at: datetime | None = None,
         model_allowlist: list[str] | None = None,
+        rpm_limit: int | None = None,
+        tpm_limit: int | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey:
         """Update governance fields.
@@ -155,6 +165,8 @@ class UpdateKeyUseCase:
             soft_budget_usd=soft_budget_usd,
             expires_at=expires_at,
             model_allowlist=model_allowlist,
+            rpm_limit=rpm_limit,
+            tpm_limit=tpm_limit,
             _fields_to_clear=_fields_to_clear,
         )
         if result is None:
@@ -281,6 +293,8 @@ class AuthzUseCase:
             model_allowlist=row.model_allowlist,
             monthly_budget_usd=row.monthly_budget_usd,
             soft_budget_usd=row.soft_budget_usd,
+            rpm_limit=row.rpm_limit,
+            tpm_limit=row.tpm_limit,
         )
 
 

@@ -25,6 +25,8 @@ def _row_to_api_key(row: ApiKeyRow) -> ApiKey:
         expires_at=row.expires_at,
         model_allowlist=row.model_allowlist,
         rotated_from_key_id=row.rotated_from_key_id,
+        rpm_limit=row.rpm_limit,
+        tpm_limit=row.tpm_limit,
     )
 
 
@@ -43,6 +45,8 @@ class SqlAlchemyApiKeyRepository:
         soft_budget_usd: Decimal | None = None,
         expires_at: datetime | None = None,
         model_allowlist: list[str] | None = None,
+        rpm_limit: int | None = None,
+        tpm_limit: int | None = None,
     ) -> ApiKey:
         """Insert a new api_keys row.
 
@@ -59,6 +63,8 @@ class SqlAlchemyApiKeyRepository:
             soft_budget_usd=soft_budget_usd,
             expires_at=expires_at,
             model_allowlist=model_allowlist,
+            rpm_limit=rpm_limit,
+            tpm_limit=tpm_limit,
         )
         async with self._session.begin():
             self._session.add(row)
@@ -84,6 +90,8 @@ class SqlAlchemyApiKeyRepository:
                 soft_budget_usd=row.soft_budget_usd,
                 expires_at=row.expires_at,
                 model_allowlist=row.model_allowlist,
+                rpm_limit=row.rpm_limit,
+                tpm_limit=row.tpm_limit,
             )
             for row in rows
         ]
@@ -120,6 +128,8 @@ class SqlAlchemyApiKeyRepository:
         soft_budget_usd: Decimal | None = None,
         expires_at: datetime | None = None,
         model_allowlist: list[str] | None = None,
+        rpm_limit: int | None = None,
+        tpm_limit: int | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey | None:
         """Update governance fields on an active (non-revoked) key owned by tenant_id.
@@ -150,6 +160,10 @@ class SqlAlchemyApiKeyRepository:
             row.expires_at = None if "expires_at" in clear else expires_at
         if model_allowlist is not None or "model_allowlist" in clear:
             row.model_allowlist = None if "model_allowlist" in clear else model_allowlist
+        if rpm_limit is not None or "rpm_limit" in clear:
+            row.rpm_limit = None if "rpm_limit" in clear else rpm_limit
+        if tpm_limit is not None or "tpm_limit" in clear:
+            row.tpm_limit = None if "tpm_limit" in clear else tpm_limit
 
         await self._session.commit()
         await self._session.refresh(row)
