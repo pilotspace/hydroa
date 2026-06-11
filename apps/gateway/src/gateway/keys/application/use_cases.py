@@ -302,6 +302,8 @@ class AuthzUseCase:
             soft_budget_usd=row.soft_budget_usd,
             rpm_limit=row.rpm_limit,
             tpm_limit=row.tpm_limit,
+            team_id=row.team_id,
+            team_budget_usd=row.team_budget_usd,
         )
 
 

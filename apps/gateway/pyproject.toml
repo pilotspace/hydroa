@@ -66,6 +66,8 @@ exclude = [
     "tests/model_mgmt/test_model_mgmt.py",
     # teams-core: frozen test file; format excluded per no-test-edit contract
     "tests/teams/test_teams_core.py",
+    # team-governance: frozen test file; format excluded per no-test-edit contract
+    "tests/team_governance/test_team_governance.py",
 ]
 
 [tool.ruff.lint]

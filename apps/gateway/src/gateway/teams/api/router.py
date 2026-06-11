@@ -15,6 +15,7 @@ from gateway.teams.api.deps import (
     get_get_team_use_case,
     get_list_teams_use_case,
     get_remove_member_use_case,
+    get_update_team_budget_use_case,
     require_owner_or_admin,
 )
 from gateway.teams.api.schemas import (
@@ -22,6 +23,7 @@ from gateway.teams.api.schemas import (
     AddMemberResponse,
     CreateTeamRequest,
     MemberResponse,
+    PatchTeamBudgetRequest,
     TeamDetailResponse,
     TeamResponse,
 )
@@ -32,6 +34,7 @@ from gateway.teams.application.use_cases import (
     GetTeamUseCase,
     ListTeamsUseCase,
     RemoveMemberUseCase,
+    UpdateTeamBudgetUseCase,
 )
 from gateway.teams.domain.errors import (
     MemberExistsError,
@@ -67,6 +70,7 @@ async def create_team(
         created_at=team.created_at,
         member_count=team.member_count,
         key_count=team.key_count,
+        team_budget_usd=str(team.team_budget_usd) if team.team_budget_usd is not None else None,
     )
 
 
@@ -85,9 +89,41 @@ async def list_teams(
             created_at=t.created_at,
             member_count=t.member_count,
             key_count=t.key_count,
+            team_budget_usd=str(t.team_budget_usd) if t.team_budget_usd is not None else None,
         )
         for t in teams
     ]
+
+
+@teams_router.patch("/{team_id}", response_model=TeamResponse)
+async def patch_team_budget(
+    team_id: uuid.UUID,
+    body: PatchTeamBudgetRequest,
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    use_case: Annotated[UpdateTeamBudgetUseCase, Depends(get_update_team_budget_use_case)],
+) -> TeamResponse:
+    """PATCH /admin/teams/{team_id} — set or clear team_budget_usd."""
+    from decimal import Decimal
+
+    budget = Decimal(body.team_budget_usd) if body.team_budget_usd is not None else None
+    try:
+        team = await use_case.execute(
+            team_id=team_id,
+            tenant_id=identity.tenant_id,
+            team_budget_usd=budget,
+        )
+    except TeamNotFoundError:
+        raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found") from None
+
+    return TeamResponse(
+        id=team.id,
+        name=team.name,
+        tenant_id=team.tenant_id,
+        created_at=team.created_at,
+        member_count=team.member_count,
+        key_count=team.key_count,
+        team_budget_usd=str(team.team_budget_usd) if team.team_budget_usd is not None else None,
+    )
 
 
 @teams_router.get("/{team_id}", response_model=TeamDetailResponse)
@@ -120,6 +156,7 @@ async def get_team(
             )
             for m in detail.members
         ],
+        team_budget_usd=str(detail.team_budget_usd) if detail.team_budget_usd is not None else None,
     )
 
 

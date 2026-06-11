@@ -17,6 +17,7 @@ from gateway.teams.application.use_cases import (
     GetTeamUseCase,
     ListTeamsUseCase,
     RemoveMemberUseCase,
+    UpdateTeamBudgetUseCase,
 )
 from gateway.teams.infrastructure.repository import SqlAlchemyTeamRepository
 from gateway.tenants.domain.entities import Identity, Role
@@ -65,6 +66,12 @@ def get_remove_member_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> RemoveMemberUseCase:
     return RemoveMemberUseCase(SqlAlchemyTeamRepository(session))
+
+
+def get_update_team_budget_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UpdateTeamBudgetUseCase:
+    return UpdateTeamBudgetUseCase(SqlAlchemyTeamRepository(session))
 
 
 def get_team_repository(

@@ -36,6 +36,7 @@ from gateway.usage.api.schemas import (
     SpendBucket,
     SpendTotals,
     SpendWindowResponse,
+    TeamSpendBreakdownItem,
     UsageRecordItem,
     UsageTotalsResponse,
 )
@@ -366,8 +367,17 @@ async def get_spend(
         cost_usd=str(total_cost),
     )
 
-    # ── Breakdown (only when group_by=key_id) ────────────────────────────────
-    breakdown: list[SpendBreakdownItem] | None = None
+    # ── group_by whitelist validation (422 for unknown values) ───────────────
+    _VALID_GROUP_BY = {"key_id", "team_id"}
+    if group_by is not None and group_by not in _VALID_GROUP_BY:
+        raise ProblemError(
+            422,
+            "ERR_PAYLOAD_INVALID",
+            f"group_by must be one of: {', '.join(sorted(_VALID_GROUP_BY))}; got {group_by!r}",
+        )
+
+    # ── Breakdown (group_by=key_id or group_by=team_id) ──────────────────────
+    breakdown: list[SpendBreakdownItem] | list[TeamSpendBreakdownItem] | None = None
     if group_by == "key_id":
         _breakdown_sql_str = (
             "SELECT"
@@ -395,6 +405,43 @@ async def get_spend(
                 cost_usd=str(Decimal(str(row[4]))),
             )
             for row in breakdown_rows
+        ]
+    elif group_by == "team_id":
+        # Group by current team attribution (JOIN api_keys to get team_id at query time).
+        # Un-teamed keys (api_keys.team_id IS NULL) roll into a single NULL-team bucket.
+        # Results ordered cost_usd DESC, NULL-team bucket last (NULLS LAST on team_id).
+        # granularity and key_filter are safe literals (validated above); S608 false positive.
+        _team_breakdown_sql_str = (
+            "SELECT"
+            "  ak.team_id,"
+            "  t.name AS team_name,"
+            "  COUNT(*) AS requests,"
+            "  COALESCE(SUM(ur.prompt_tokens), 0) AS prompt_tokens,"
+            "  COALESCE(SUM(ur.completion_tokens), 0) AS completion_tokens,"
+            "  COALESCE(SUM(ur.cost_usd), 0) AS cost_usd"
+            " FROM usage_records ur"
+            " JOIN api_keys ak ON ur.key_id = ak.id"
+            " LEFT JOIN teams t ON ak.team_id = t.id"
+            " WHERE ur.tenant_id = :tenant_id"
+            "   AND ur.created_at >= :window_start"
+            "   AND ur.created_at <  :window_end"
+            f"{key_filter.replace('key_id', 'ur.key_id') if key_filter else ''}"
+            " GROUP BY ak.team_id, t.name"
+            " ORDER BY COALESCE(SUM(ur.cost_usd), 0) DESC NULLS LAST,"
+            "          ak.team_id NULLS LAST"
+        )
+        team_breakdown_sql = text(_team_breakdown_sql_str)
+        team_breakdown_rows = (await session.execute(team_breakdown_sql, params)).fetchall()
+        breakdown = [
+            TeamSpendBreakdownItem(
+                team_id=uuid.UUID(str(row[0])) if row[0] is not None else None,
+                team_name=str(row[1]) if row[1] is not None else None,
+                requests=int(row[2]),
+                prompt_tokens=int(row[3]),
+                completion_tokens=int(row[4]),
+                cost_usd=str(Decimal(str(row[5]))),
+            )
+            for row in team_breakdown_rows
         ]
 
     return SpendWindowResponse(

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +55,7 @@ class SqlAlchemyTeamRepository:
             created_at=row.created_at,
             member_count=0,
             key_count=0,
+            team_budget_usd=row.team_budget_usd,
         )
 
     async def list_by_tenant(self, tenant_id: uuid.UUID) -> list[Team]:
@@ -95,6 +97,7 @@ class SqlAlchemyTeamRepository:
                 created_at=row.TeamRow.created_at,
                 member_count=row.member_count,
                 key_count=row.key_count,
+                team_budget_usd=row.TeamRow.team_budget_usd,
             )
             for row in rows
         ]
@@ -158,6 +161,7 @@ class SqlAlchemyTeamRepository:
             member_count=member_count_result.scalar_one(),
             key_count=key_count_result.scalar_one(),
             members=members,
+            team_budget_usd=team_row.team_budget_usd,
         )
 
     async def delete(
@@ -276,3 +280,66 @@ class SqlAlchemyTeamRepository:
             )
         ).scalar_one_or_none()
         return row is not None
+
+    async def update_budget(
+        self,
+        team_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        team_budget_usd: Decimal | None,
+    ) -> Team | None:
+        """Set or clear team_budget_usd for a team scoped to tenant_id.
+
+        Returns the updated Team on success, None if not found or cross-tenant.
+        """
+        result = await self._session.execute(
+            update(TeamRow)
+            .where(
+                TeamRow.id == team_id,
+                TeamRow.tenant_id == tenant_id,
+            )
+            .values(team_budget_usd=team_budget_usd)
+            .returning(TeamRow)
+        )
+        await self._session.commit()
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+
+        # Fetch member_count and key_count aggregates for the response
+        from gateway.keys.infrastructure.orm import ApiKeyRow
+
+        member_sq = (
+            select(TeamMemberRow.team_id, func.count().label("mc"))
+            .where(TeamMemberRow.team_id == team_id)
+            .group_by(TeamMemberRow.team_id)
+            .subquery()
+        )
+        key_sq = (
+            select(ApiKeyRow.team_id, func.count().label("kc"))
+            .where(ApiKeyRow.team_id == team_id)
+            .group_by(ApiKeyRow.team_id)
+            .subquery()
+        )
+        agg_row = (
+            await self._session.execute(
+                select(
+                    func.coalesce(member_sq.c.mc, 0).label("member_count"),
+                    func.coalesce(key_sq.c.kc, 0).label("key_count"),
+                ).select_from(
+                    member_sq.join(key_sq, member_sq.c.team_id == key_sq.c.team_id, isouter=True)
+                )
+            )
+        ).fetchone()
+
+        member_count = int(agg_row[0]) if agg_row else 0
+        key_count = int(agg_row[1]) if agg_row else 0
+
+        return Team(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            name=row.name,
+            created_at=row.created_at,
+            member_count=member_count,
+            key_count=key_count,
+            team_budget_usd=row.team_budget_usd,
+        )

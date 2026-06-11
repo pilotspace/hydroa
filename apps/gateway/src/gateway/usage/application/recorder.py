@@ -56,6 +56,7 @@ class RecordingUsageRecorder:
         model: str,
         usage: dict[str, object] | None,
         status: int,
+        team_id: uuid.UUID | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -68,6 +69,7 @@ class RecordingUsageRecorder:
                 model=model,
                 usage=usage,
                 status=status,
+                team_id=team_id,
             )
         except Exception as exc:
             _log.warning(
@@ -88,6 +90,7 @@ class RecordingUsageRecorder:
         model: str,
         usage: dict[str, object] | None,
         status: int,
+        team_id: uuid.UUID | None = None,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -148,6 +151,13 @@ class RecordingUsageRecorder:
             # when the spend-windows/health-alerting tasks land.
             per_key_spend_key = f"usage:spend:key:{key_id}:{yyyymm}"
             await self._redis.incrbyfloat(per_key_spend_key, float(cost_usd))
+            # Per-team counter (team-governance seam — fail-open same as per-key)
+            # Keyed: usage:spend:team:{team_id}:{YYYYMM}
+            # Only written when the key has a team attribution (team_id is set).
+            # Read by CompletionUseCase._check_team_budget() for team budget enforcement.
+            if team_id is not None:
+                per_team_spend_key = f"usage:spend:team:{team_id}:{yyyymm}"
+                await self._redis.incrbyfloat(per_team_spend_key, float(cost_usd))
 
 
 async def _fetch_latest_pricing(

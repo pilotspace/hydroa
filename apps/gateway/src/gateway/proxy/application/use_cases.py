@@ -71,13 +71,37 @@ def _fire_record(
     model: str,
     usage: dict[str, Any] | None,
     status: int,
+    team_id: uuid.UUID | None = None,
 ) -> None:
     """Schedule a fire-and-forget usage record.
 
     Stores the Task reference to satisfy RUF006 (avoids garbage-collected task).
     Failures in the recorder are intentionally ignored — recording must never
     affect the caller's response.
+
+    team_id is forwarded to the recorder when set so it can INCRBYFLOAT the
+    per-team spend counter alongside the per-key counter (team-governance seam).
+    Uses hasattr seam: only passes team_id when the recorder supports it.
     """
+    # Additive seam: pass team_id only when the concrete recorder supports it
+    # (avoids breaking frozen test fakes that implement the v1 Protocol signature).
+    if team_id is not None and hasattr(usage_recorder, "record"):
+        import inspect
+
+        sig = inspect.signature(usage_recorder.record)
+        if "team_id" in sig.parameters:
+            task = asyncio.ensure_future(
+                usage_recorder.record(  # type: ignore[call-arg]
+                    tenant_id=tenant_id,
+                    key_id=key_id,
+                    model=model,
+                    usage=usage,
+                    status=status,
+                    team_id=team_id,
+                )
+            )
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+            return
     task = asyncio.ensure_future(
         usage_recorder.record(
             tenant_id=tenant_id,
@@ -268,6 +292,44 @@ class CompletionUseCase:
                     headers={"Retry-After": str(exc.retry_after_s)},
                 ) from None
 
+    async def _check_team_budget(self, authz: AuthzResult) -> None:
+        """Check per-team Redis spend counter against team's team_budget_usd.
+
+        Only called when authz.team_id and authz.team_budget_usd are both set.
+        Fail-open: Redis unavailable → allow (advisory counter pattern, same as per-key).
+        Counter key: usage:spend:team:{team_id}:{YYYYMM}
+        """
+        budget = authz.team_budget_usd
+        team_id = authz.team_id
+        if budget is None or team_id is None:
+            return
+
+        yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
+        spend_key = f"usage:spend:team:{team_id}:{yyyymm}"
+
+        try:
+            redis = self._get_redis()
+            if redis is None:
+                return  # No Redis wired — fail open
+            raw = await redis.get(spend_key)
+        except Exception as exc:
+            _log.warning(
+                "team_budget_check: Redis GET failed (fail open)",
+                exc_info=exc,
+                extra={"team_id": str(team_id), "spend_key": spend_key},
+            )
+            return
+
+        spent = _parse_spend(raw)
+
+        if spent >= budget:
+            raise ProblemError(
+                402,
+                "ERR_BUDGET_EXCEEDED",
+                "Monthly budget exceeded",
+                detail=f"Team spend {spent} >= budget {budget} for team {team_id}",
+            )
+
     async def _enforce_governance(
         self,
         authz: AuthzResult,
@@ -277,10 +339,11 @@ class CompletionUseCase:
         """Enforce all governance rules in priority order (M8-M10, M12).
 
         Order: expiry → model allowlist → catalog+tenant check → per-key budget
-               → tenant budget (fallback) → RPM check → TPM check.
+               → team budget → tenant budget (fallback) → RPM check → TPM check.
         All governance data comes from AuthzResult — zero extra DB queries.
 
         Per-key budget: fail-open on Redis failure (advisory counter, A2/M13).
+        Team budget: fail-open on Redis failure; runs regardless of key budget presence.
         Soft budget: no blocking — the seam is exposed via _compute_soft_exceeded().
         Rate limits: fail-open on Redis failure (M14); RPM before TPM (M7).
 
@@ -306,10 +369,16 @@ class CompletionUseCase:
         # the tenant budget still enforces.
         if authz.monthly_budget_usd is not None:
             await self._check_per_key_budget(authz)
+            # Team budget check (§3 step 5) — most-specific-wins continues upward:
+            # a key under its own cap can still be stopped by its team's cap.
+            await self._check_team_budget(authz)
         else:
             if authz.soft_budget_usd is not None:
                 # Soft-alert seam only (budget None → no per-key 402 possible)
                 await self._check_per_key_budget(authz)
+            # Team budget check (§3 step 5) — before the tenant guard (step 6);
+            # fail-open on Redis errors (same guarantee as per-key budget check).
+            await self._check_team_budget(authz)
             # No hard per-key budget — tenant budget enforces (RedisBudgetGuard)
             await budget_guard.check(authz.tenant_id)
 
@@ -426,6 +495,7 @@ class CompletionUseCase:
                 model=model_id,
                 usage=None,
                 status=502,
+                team_id=authz.team_id,
             )
             raise ProblemError(
                 502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
@@ -441,6 +511,7 @@ class CompletionUseCase:
             model=model_id,
             usage=usage,
             status=status,
+            team_id=authz.team_id,
         )
         # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
         if authz.tpm_limit is not None and usage is not None:
@@ -479,6 +550,7 @@ class CompletionUseCase:
                 model=model_id,
                 usage=None,
                 status=502,
+                team_id=authz.team_id,
             )
             raise ProblemError(
                 502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
@@ -486,6 +558,7 @@ class CompletionUseCase:
 
         tenant_id = authz.tenant_id
         key_id = authz.key_id
+        team_id = authz.team_id
         tpm_limit = authz.tpm_limit
         rate_limiter = self._rate_limiter
 
@@ -504,6 +577,7 @@ class CompletionUseCase:
                     model=model_id,
                     usage=None,
                     status=502,
+                    team_id=team_id,
                 )
                 return
             # Tee: extract usage from collected SSE chunks after stream completes
@@ -515,6 +589,7 @@ class CompletionUseCase:
                 model=model_id,
                 usage=extracted_usage,
                 status=200,
+                team_id=team_id,
             )
             # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
             if tpm_limit is not None and isinstance(extracted_usage, dict):

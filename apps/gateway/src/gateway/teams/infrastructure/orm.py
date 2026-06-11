@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Text, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,15 +17,12 @@ class TeamRow(Base):
     """ORM row for the teams table.
 
     DDL per TASK.md §3 contract:
-      id         UUID        PRIMARY KEY
-      tenant_id  UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE
-      name       TEXT        NOT NULL CHECK(length(name) BETWEEN 1 AND 200)
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      id              UUID          PRIMARY KEY
+      tenant_id       UUID          NOT NULL REFERENCES tenants(id) ON DELETE CASCADE
+      name            TEXT          NOT NULL CHECK(length(name) BETWEEN 1 AND 200)
+      created_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
+      team_budget_usd NUMERIC(12,2) NULL  -- team-governance additive column
       UNIQUE (tenant_id, name)
-
-    Forward-compat note (team-governance task):
-      No __table_args__ that would block an additive team_budget_usd column.
-      The CheckConstraint and UniqueConstraint are defined per §3 DDL.
     """
 
     __tablename__ = "teams"
@@ -44,6 +42,10 @@ class TeamRow(Base):
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # team-governance additive column (migration: ALTER TABLE teams ADD COLUMN)
+    team_budget_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True, default=None
+    )
 
 
 class TeamMemberRow(Base):

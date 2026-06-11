@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from gateway.teams.domain.entities import Team, TeamDetail, TeamMember
 from gateway.teams.domain.errors import (
@@ -126,3 +127,30 @@ class RemoveMemberUseCase:
         )
         if not removed:
             raise MemberNotFoundError
+
+
+class UpdateTeamBudgetUseCase:
+    """Set or clear team_budget_usd on an existing team (PATCH semantics)."""
+
+    def __init__(self, repository: TeamRepository) -> None:
+        self._repo = repository
+
+    async def execute(
+        self,
+        *,
+        team_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        team_budget_usd: Decimal | None,
+    ) -> Team:
+        """Update team_budget_usd.
+
+        Raises TeamNotFoundError if team not found or cross-tenant.
+        """
+        result = await self._repo.update_budget(
+            team_id=team_id,
+            tenant_id=tenant_id,
+            team_budget_usd=team_budget_usd,
+        )
+        if result is None:
+            raise TeamNotFoundError
+        return result

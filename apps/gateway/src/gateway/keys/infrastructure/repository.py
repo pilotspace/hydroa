@@ -119,12 +119,36 @@ class SqlAlchemyApiKeyRepository:
         return result.scalar_one_or_none() is not None
 
     async def get_by_id(self, key_id: uuid.UUID) -> ApiKey | None:
-        row = (
-            await self._session.execute(select(ApiKeyRow).where(ApiKeyRow.id == key_id))
-        ).scalar_one_or_none()
-        if row is None:
+        from gateway.teams.infrastructure.orm import TeamRow
+
+        # LEFT JOIN teams to populate team_budget_usd in one query (zero extra DB reads)
+        # MUST be LEFT JOIN so un-teamed keys and deleted-team keys still authenticate
+        stmt = (
+            select(ApiKeyRow, TeamRow.team_budget_usd)
+            .outerjoin(TeamRow, ApiKeyRow.team_id == TeamRow.id)
+            .where(ApiKeyRow.id == key_id)
+        )
+        result = (await self._session.execute(stmt)).first()
+        if result is None:
             return None
-        return _row_to_api_key(row)
+        row, team_budget_usd = result
+        return ApiKey(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            name=row.name,
+            key_hash=row.key_hash,
+            created_at=row.created_at,
+            revoked_at=row.revoked_at,
+            monthly_budget_usd=row.monthly_budget_usd,
+            soft_budget_usd=row.soft_budget_usd,
+            expires_at=row.expires_at,
+            model_allowlist=row.model_allowlist,
+            rotated_from_key_id=row.rotated_from_key_id,
+            rpm_limit=row.rpm_limit,
+            tpm_limit=row.tpm_limit,
+            team_id=row.team_id,
+            team_budget_usd=team_budget_usd,
+        )
 
     async def update(
         self,

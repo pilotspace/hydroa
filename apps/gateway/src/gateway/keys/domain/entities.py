@@ -27,6 +27,8 @@ class ApiKey:
     tpm_limit: int | None = None
     # Teams attribution (additive — teams-core migration, nullable)
     team_id: uuid.UUID | None = None
+    # Team-governance additive field — populated via LEFT JOIN teams in get_by_id()
+    team_budget_usd: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,3 +70,7 @@ class AuthzResult:
     # Rate-limit fields (additive — rate-limits migration)
     rpm_limit: int | None = None
     tpm_limit: int | None = None
+    # Team-governance additive fields (team-governance migration, nullable)
+    # Populated via LEFT JOIN teams in get_by_id() — zero extra DB reads
+    team_id: uuid.UUID | None = None
+    team_budget_usd: Decimal | None = None

@@ -20,7 +20,15 @@ TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(database_url=TEST_DATABASE_URL, jwt_secret=TEST_JWT_SECRET)
+    # Redis db 9 matches every suite's redis_client fixture (flushed per test).
+    # Before team-governance the app default (db 0) silently diverged from the
+    # db the suites seed/inspect — v3 suites masked it by rewiring
+    # app.state.budget_guard per test; aligning here removes the footgun.
+    return Settings(
+        database_url=TEST_DATABASE_URL,
+        jwt_secret=TEST_JWT_SECRET,
+        redis_url="redis://localhost:6380/9",
+    )
 
 
 @pytest.fixture

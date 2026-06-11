@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Protocol
 
 from gateway.teams.domain.entities import Team, TeamDetail, TeamMember
@@ -80,5 +81,17 @@ class TeamRepository(Protocol):
         """Return True if team_id belongs to tenant_id; False otherwise.
 
         Used by keys module to validate team attribution without coupling modules.
+        """
+        ...
+
+    async def update_budget(
+        self,
+        team_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        team_budget_usd: Decimal | None,
+    ) -> Team | None:
+        """Set or clear team_budget_usd for a team scoped to tenant_id.
+
+        Returns the updated Team on success, None if not found or cross-tenant.
         """
         ...

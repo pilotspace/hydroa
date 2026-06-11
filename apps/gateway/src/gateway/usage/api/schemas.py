@@ -102,6 +102,19 @@ class SpendBreakdownItem(BaseModel):
     cost_usd: str  # str(Decimal) — exact; sorted DESC
 
 
+class TeamSpendBreakdownItem(BaseModel):
+    """Per-team breakdown item (returned when group_by=team_id)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    team_id: uuid.UUID | None  # null for un-teamed keys bucket
+    team_name: str | None  # null for un-teamed keys bucket
+    requests: int
+    prompt_tokens: int
+    completion_tokens: int
+    cost_usd: str  # str(Decimal) — exact; sorted cost_usd DESC (NULL bucket last)
+
+
 class SpendWindowResponse(BaseModel):
     """Response body for GET /admin/spend."""
 
@@ -111,4 +124,5 @@ class SpendWindowResponse(BaseModel):
     bucket_size: str  # granularity of buckets list
     totals: SpendTotals
     buckets: list[SpendBucket]
-    breakdown: list[SpendBreakdownItem] | None = None  # omitted when group_by not supplied
+    # Omitted (None) when group_by is not supplied.
+    breakdown: list[SpendBreakdownItem] | list[TeamSpendBreakdownItem] | None = None

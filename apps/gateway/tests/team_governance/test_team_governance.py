@@ -102,29 +102,10 @@ async def signup_and_login(
     return lr.json()["access_token"], tenant_id
 
 
-async def signup_and_login_member(
-    client: httpx.AsyncClient,
-    *,
-    tenant_name: str,
-    owner_email: str,
-    member_email: str,
-    password: str = "correct horse battery",
-) -> tuple[str, str, str]:
-    """Sign up owner, invite member, return (owner_jwt, member_jwt, tenant_id)."""
-    owner_jwt, tenant_id = await signup_and_login(
-        client, tenant_name=tenant_name, email=owner_email
-    )
-    # Register the member user via signup (same tenant — same tenant_name)
-    sr = await client.post(
-        SIGNUP,
-        json={"tenant_name": tenant_name, "email": member_email, "password": password},
-    )
-    # May fail if tenant already exists — that's OK; login directly
-    if sr.status_code not in (201, 409):
-        assert False, f"member signup unexpected status: {sr.status_code} {sr.text}"
-    lr = await client.post(LOGIN, json={"email": member_email, "password": password})
-    assert lr.status_code == 200, f"member login failed: {lr.text}"
-    return owner_jwt, lr.json()["access_token"], tenant_id
+# DISPOSITION (team-governance TASK.md §6, 2026-06-11): signup_and_login_member
+# was removed with the S11 arrange correction — its duplicate-tenant-name signup
+# produced a NEW tenant's OWNER, not a same-tenant member, and S11 was its only
+# consumer. See test_patch_team_member_role_forbidden for the corrected arrange.
 
 
 def auth_jwt(token: str) -> dict[str, str]:
@@ -881,25 +862,42 @@ async def test_spend_group_by_team_id_rollup(
 async def test_patch_team_member_role_forbidden(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
+    app: Any,
 ) -> None:
     """PATCH /admin/teams/{id} with member JWT → 403 ERR_AUTH_FORBIDDEN."""
-    # Sign up owner + member (two separate signups to same tenant)
-    owner_jwt, _, tenant_id = await signup_and_login_member(
-        client,
-        tenant_name="BudgCo11",
-        owner_email="owner11@budg.io",
-        member_email="member11@budg.io",
+    # DISPOSITION (team-governance TASK.md §6, 2026-06-11): the original arrange
+    # used signup_and_login_member, whose second signup creates a NEW tenant whose
+    # user is OWNER — making the asserted same-tenant 403 unreachable and
+    # contradicting the frozen teams-core cross-tenant-404 contract. Corrected to
+    # a true same-tenant member via direct insert + token_service.issue (the
+    # model-mgmt suite pattern). Assertion target (403 ERR_AUTH_FORBIDDEN for a
+    # same-tenant member) is unchanged.
+    owner_jwt, tenant_id = await signup_and_login(
+        client, tenant_name="BudgCo11", email="owner11@budg.io"
     )
 
     team = await create_team(client, owner_jwt, name="restricted-team")
     team_id = team["id"]
 
-    # Login as member
-    lr = await client.post(
-        LOGIN, json={"email": "member11@budg.io", "password": "correct horse battery"}
+    # Create a same-tenant member user directly; mint a member JWT
+    member_user_id = str(uuid.uuid4())
+    await db_session.execute(
+        text(
+            "INSERT INTO users (id, tenant_id, email, password_hash, role)"
+            " VALUES (:id, :tid, :email, 'placeholder-not-a-real-hash', 'member')"
+        ),
+        {"id": member_user_id, "tid": tenant_id, "email": "member11@budg.io"},
     )
-    assert lr.status_code == 200, f"member login failed: {lr.text}"
-    member_jwt = lr.json()["access_token"]
+    await db_session.commit()
+
+    from gateway.tenants.domain.entities import Role
+
+    member_jwt, _ = app.state.token_service.issue(
+        user_id=uuid.UUID(member_user_id),
+        tenant_id=uuid.UUID(tenant_id),
+        role=Role.MEMBER,
+        email="member11@budg.io",
+    )
 
     resp = await client.patch(
         f"{ADMIN_TEAMS}/{team_id}",
