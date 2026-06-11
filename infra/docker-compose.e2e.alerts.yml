@@ -1,0 +1,14 @@
+# Overlay for infra/docker-compose.e2e.yml — enables webhook alert delivery
+# to a sink running on the HOST (scripts/live_v3_verify.py binds :9909).
+#
+# Usage:
+#   docker compose -f infra/docker-compose.e2e.yml -f infra/docker-compose.e2e.alerts.yml up -d --wait
+services:
+  gateway:
+    environment:
+      GATEWAY_ALERT_WEBHOOK_URL: "http://host.docker.internal:9909/hook"
+      # Faster health-check cadence for live verification runs
+      GATEWAY_HEALTH_CHECK_INTERVAL_SECONDS: "15"
+    extra_hosts:
+      # Linux engines need the host-gateway alias; Docker Desktop has it natively
+      - "host.docker.internal:host-gateway"
