@@ -51,11 +51,23 @@ async def completions(
         )
         return StreamingResponse(gen, media_type="text/event-stream")
 
-    status, response_body = await use_case.complete(
+    # Extract request headers for Cache-Control: no-cache detection
+    req_headers = {k.lower(): v for k, v in request.headers.items()}
+    # Resolve cache TTL and metrics registry from app state (fail-open defaults)
+    cache_ttl = getattr(getattr(request.app, "state", None), "cache_ttl_seconds", 300)
+    metrics_registry = getattr(getattr(request.app, "state", None), "metrics_registry", None)
+
+    status, response_body, x_cache = await use_case.complete(
         raw_key=raw_key,
         body=body,
         upstream=upstream,
         usage_recorder=usage_recorder,
+        cache_ttl_seconds=cache_ttl,
+        metrics_registry=metrics_registry,
+        request_headers=req_headers,
     )
     # Upstream 4xx: pass through verbatim — JSONResponse with upstream status
-    return JSONResponse(content=response_body, status_code=status)
+    resp = JSONResponse(content=response_body, status_code=status)
+    if x_cache is not None:
+        resp.headers["x-cache"] = x_cache
+    return resp

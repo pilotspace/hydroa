@@ -34,6 +34,7 @@ from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
     TeamMemberRow as _TeamMemberRow,
 )
+from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
@@ -304,11 +305,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # tests override via app.state.rate_limiter after app creation.
     app.state.rate_limiter = RedisLuaRateLimiter(redis=redis_client)
 
+    # Cache TTL — exposed on app.state so proxy router can read it per-request
+    app.state.cache_ttl_seconds = settings.cache_ttl_seconds
+
     register_error_handlers(app)
     app.include_router(health_router)
     app.include_router(internal_router)
     app.include_router(internal_catalog_router)
     app.include_router(tenants_router)
+    app.include_router(cache_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)

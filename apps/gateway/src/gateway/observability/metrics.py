@@ -78,6 +78,13 @@ class MetricsRegistry:
             registry=registry,
         )
 
+        self.cache_events_total = Counter(
+            "gateway_cache_events_total",
+            "Response cache events by result label (hit, miss, bypass)",
+            ["result"],
+            registry=registry,
+        )
+
     @property
     def registry(self) -> CollectorRegistry:
         return self._registry

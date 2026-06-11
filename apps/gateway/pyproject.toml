@@ -68,6 +68,8 @@ exclude = [
     "tests/teams/test_teams_core.py",
     # team-governance: frozen test file; format excluded per no-test-edit contract
     "tests/team_governance/test_team_governance.py",
+    # response-caching: frozen test file; format excluded per no-test-edit contract
+    "tests/response_caching/test_response_caching.py",
 ]
 
 [tool.ruff.lint]

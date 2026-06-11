@@ -960,46 +960,46 @@ async def test_patch_key_cache_enabled_toggle(
 
 async def test_member_role_forbidden_on_put_cache(
     client: httpx.AsyncClient,
+    app: Any,
+    db_session: AsyncSession,
 ) -> None:
     """PUT /admin/cache with member-role JWT → 403 ERR_AUTH_FORBIDDEN."""
-    # Sign up owner and get tenant context
-    jwt_owner, tenant_id = await signup_and_login(
+    # DISPOSITION (response-caching TASK.md §6, 2026-06-11): the original arrange
+    # called PUT /admin/cache with an OWNER JWT while asserting the member 403 —
+    # unreachable by any honest implementation (an owner must get 200). Same
+    # defect class as team-governance S11; corrected with the established
+    # same-tenant-member pattern (direct insert + token_service.issue). The
+    # assertion target (403 ERR_AUTH_FORBIDDEN for a member) is unchanged. A
+    # build-side dependency-override shim that forced 403 was REJECTED at
+    # orchestrator review as a fake-green (it never exercised the real guard).
+    _owner_jwt, tenant_id = await signup_and_login(
         client, tenant_name="MemberForbidCo", email="owner@memberforbid.io"
     )
 
-    # Create a member-role user by signing up a second user in the SAME tenant.
-    # The second signup creates a NEW tenant (current behavior) — we need to
-    # use the owner to create a member. Use the tenants/users API if available.
-    # For this test we use the simpler approach: sign up a fresh owner for a
-    # different tenant, then test that the owner of the OTHER tenant's PUT /admin/cache
-    # is rejected if the route doesn't exist.
-    # ACTUALLY: the simplest member-role test is to use the *correct* approach from
-    # team-governance: create a member via the admin users endpoint or verify the
-    # 403 path is enforced via a known member token.
-    # Since no member-creation endpoint exists yet in this codebase (users are always
-    # created as owners via signup), we test the 403 with a member token by directly
-    # verifying that the PUT /admin/cache endpoint (when it exists) enforces the role.
-    # For the RED suite, the test can use a fresh owner JWT to verify the route's
-    # existence (returns 404 today → fails the assert 403 check).
-    #
-    # Strategy: use the owner JWT to confirm PUT /admin/cache returns 404 today.
-    # The test is written to assert 403 (the TARGET behavior for a member) but the
-    # RIGHT RED REASON is 404 (route not found) for any JWT today.
-    # We will test the member-403 path by verifying role enforcement once the route
-    # exists. For red, assert 403 against any call → fails with 404 today.
-    #
-    # Note: the member-role creation path is via the users/signup endpoint assigning
-    # the member role. Since the current codebase auto-assigns owner to all signups,
-    # we test with the owner JWT and rely on the 404 → 403 transition as the build gate.
+    member_user_id = str(uuid.uuid4())
+    await db_session.execute(
+        text(
+            "INSERT INTO users (id, tenant_id, email, password_hash, role)"
+            " VALUES (:id, :tid, :email, 'placeholder-not-a-real-hash', 'member')"
+        ),
+        {"id": member_user_id, "tid": tenant_id, "email": "member@memberforbid.io"},
+    )
+    await db_session.commit()
 
-    # TRUE-RED: PUT /admin/cache does not exist → 404 or 405
-    # Asserting 403 FAILS with AssertionError
+    from gateway.tenants.domain.entities import Role
+
+    member_jwt, _ = app.state.token_service.issue(
+        user_id=uuid.UUID(member_user_id),
+        tenant_id=uuid.UUID(tenant_id),
+        role=Role.MEMBER,
+        email="member@memberforbid.io",
+    )
+
     resp = await client.put(
         ADMIN_CACHE,
         json={"enabled": True},
-        headers=auth_jwt(jwt_owner),
+        headers=auth_jwt(member_jwt),
     )
-    # This asserts the route exists AND returns 403 for member — fails today with 404
     assert_problem(resp, 403, "ERR_AUTH_FORBIDDEN")
 
 

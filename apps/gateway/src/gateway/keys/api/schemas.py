@@ -20,6 +20,8 @@ class CreateKeyRequest(BaseModel):
     tpm_limit: int | None = None
     # teams-core additive field — optional; null = un-teamed
     team_id: uuid.UUID | None = None
+    # response-caching additive field — default false
+    cache_enabled: bool = False
 
     @field_validator("rpm_limit", mode="before")
     @classmethod
@@ -108,6 +110,8 @@ class PatchKeyRequest(BaseModel):
     tpm_limit: int | None = None
     # teams-core additive field — absent = no change; null = clear; UUID = set
     team_id: uuid.UUID | None = None
+    # response-caching additive field — absent = no change; True/False = set
+    cache_enabled: bool | None = None
 
     @field_validator("rpm_limit", mode="before")
     @classmethod
@@ -244,6 +248,8 @@ class CreateKeyResponse(BaseModel):
     tpm_limit: int | None = None
     # teams-core additive field — null = un-teamed
     team_id: uuid.UUID | None = None
+    # response-caching additive field
+    cache_enabled: bool = False
 
 
 class RotateKeyResponse(BaseModel):
@@ -275,6 +281,8 @@ class KeyInfoResponse(BaseModel):
     tpm_limit: int | None = None
     # teams-core additive field — null = un-teamed
     team_id: uuid.UUID | None = None
+    # response-caching additive field
+    cache_enabled: bool = False
 
 
 class AuthzResponse(BaseModel):

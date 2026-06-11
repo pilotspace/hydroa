@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from gateway.keys.domain.entities import AuthzResult
 
@@ -107,11 +107,25 @@ class UsageRecorder(Protocol):
         ...
 
 
+@runtime_checkable
+class ResponseCache(Protocol):
+    """Domain port for exact-match Redis response cache (response-caching task §3)."""
+
+    async def get(self, cache_key: str) -> dict[str, Any] | None:
+        """Return cached body dict for cache_key, or None on miss/error."""
+        ...
+
+    async def set(self, cache_key: str, body: dict[str, Any], ttl_seconds: int) -> None:
+        """Store body under cache_key with TTL. Fire-and-forget: errors logged, swallowed."""
+        ...
+
+
 __all__ = [
     "AuthzResult",
     "CompletionUpstream",
     "KeyAuthenticator",
     "ModelAccess",
     "ModelChecker",
+    "ResponseCache",
     "UsageRecorder",
 ]

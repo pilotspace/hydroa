@@ -29,6 +29,8 @@ class ApiKey:
     team_id: uuid.UUID | None = None
     # Team-governance additive field — populated via LEFT JOIN teams in get_by_id()
     team_budget_usd: Decimal | None = None
+    # Response-caching additive field (response-caching migration)
+    cache_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +52,8 @@ class ApiKeyInfo:
     tpm_limit: int | None = None
     # Teams attribution (additive — teams-core migration, nullable)
     team_id: uuid.UUID | None = None
+    # Response-caching additive field (response-caching migration)
+    cache_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,3 +78,6 @@ class AuthzResult:
     # Populated via LEFT JOIN teams in get_by_id() — zero extra DB reads
     team_id: uuid.UUID | None = None
     team_budget_usd: Decimal | None = None
+    # Response-caching additive field (response-caching migration)
+    # Effective = api_keys.cache_enabled OR tenants.cache_enabled (resolved at auth time)
+    cache_enabled: bool = False

@@ -23,6 +23,7 @@ class ApiKeyRepository(Protocol):
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
+        cache_enabled: bool = False,
     ) -> ApiKey:
         """Insert a new api_keys row; key_id must be pre-generated (no column default)."""
         ...
@@ -55,6 +56,7 @@ class ApiKeyRepository(Protocol):
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
+        cache_enabled: bool | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey | None:
         """Update governance fields on an active key owned by tenant_id.

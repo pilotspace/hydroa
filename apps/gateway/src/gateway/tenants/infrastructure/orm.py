@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, func, text
+import sqlalchemy as sa
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Numeric, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +25,10 @@ class TenantRow(Base):
     # NULL means unlimited; no server_default; existing rows are unaffected.
     budget_usd_monthly: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True, default=None
+    )
+    # Response-caching additive field (response-caching migration)
+    cache_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

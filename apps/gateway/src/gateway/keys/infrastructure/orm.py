@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, func
+import sqlalchemy as sa
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, Numeric, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -89,4 +90,8 @@ class ApiKeyRow(Base):
         ForeignKey("teams.id", ondelete="SET NULL"),
         nullable=True,
         default=None,
+    )
+    # Response-caching additive field (response-caching migration)
+    cache_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
     )

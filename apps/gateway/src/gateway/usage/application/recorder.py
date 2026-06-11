@@ -57,10 +57,13 @@ class RecordingUsageRecorder:
         usage: dict[str, object] | None,
         status: int,
         team_id: uuid.UUID | None = None,
+        cached: bool = False,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
         Must not raise.  Redis unavailability is logged and swallowed.
+        cached=True: injects cached=true into raw field and forces cost_usd=0
+        (the INCRBYFLOAT guard only runs when cost_usd > 0, so no spend counter increment).
         """
         try:
             await self._record_internal(
@@ -70,6 +73,7 @@ class RecordingUsageRecorder:
                 usage=usage,
                 status=status,
                 team_id=team_id,
+                cached=cached,
             )
         except Exception as exc:
             _log.warning(
@@ -91,6 +95,7 @@ class RecordingUsageRecorder:
         usage: dict[str, object] | None,
         status: int,
         team_id: uuid.UUID | None = None,
+        cached: bool = False,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -99,19 +104,26 @@ class RecordingUsageRecorder:
         cost_usd = _ZERO
         pricing_snapshot_id: str = ""
 
-        async with self._session_factory() as session:
-            pricing = await _fetch_latest_pricing(session, model)
-            markup_pct = await _fetch_markup_pct(session, tenant_id)
+        if not cached:
+            # Only fetch pricing for non-cached records; cached hits always cost 0
+            async with self._session_factory() as session:
+                pricing = await _fetch_latest_pricing(session, model)
+                markup_pct = await _fetch_markup_pct(session, tenant_id)
 
-        if pricing is not None and usage is not None:
-            snap_id, prompt_price, completion_price = pricing
-            pricing_snapshot_id = str(snap_id)
-            prompt_tokens = int(str(usage.get("prompt_tokens", 0)))
-            completion_tokens = int(str(usage.get("completion_tokens", 0)))
-            cost_usd = (
-                Decimal(str(prompt_tokens)) * Decimal(str(prompt_price))
-                + Decimal(str(completion_tokens)) * Decimal(str(completion_price))
-            ) * (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100"))
+            if pricing is not None and usage is not None:
+                snap_id, prompt_price, completion_price = pricing
+                pricing_snapshot_id = str(snap_id)
+                prompt_tokens = int(str(usage.get("prompt_tokens", 0)))
+                completion_tokens = int(str(usage.get("completion_tokens", 0)))
+                cost_usd = (
+                    Decimal(str(prompt_tokens)) * Decimal(str(prompt_price))
+                    + Decimal(str(completion_tokens)) * Decimal(str(completion_price))
+                ) * (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100"))
+        else:
+            # Cached hit: cost=0; still read token counts from usage for the record
+            if usage is not None:
+                prompt_tokens = int(str(usage.get("prompt_tokens", 0)))
+                completion_tokens = int(str(usage.get("completion_tokens", 0)))
 
         created_at = datetime.datetime.now(datetime.UTC).isoformat()
         raw_payload: dict[str, object] = {
@@ -121,6 +133,8 @@ class RecordingUsageRecorder:
             "usage": usage,
             "status": status,
         }
+        if cached:
+            raw_payload["cached"] = True
 
         event_fields: dict[str, str] = {
             "tenant_id": str(tenant_id),

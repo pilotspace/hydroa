@@ -32,6 +32,8 @@ class CreateKeyResult:
     tpm_limit: int | None = None
     # teams-core additive field
     team_id: uuid.UUID | None = None
+    # response-caching additive field
+    cache_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +68,7 @@ class CreateKeyUseCase:
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
+        cache_enabled: bool = False,
     ) -> CreateKeyResult:
         """Issue a new API key.
 
@@ -89,6 +92,7 @@ class CreateKeyUseCase:
             rpm_limit=rpm_limit,
             tpm_limit=tpm_limit,
             team_id=team_id,
+            cache_enabled=cache_enabled,
         )
         return CreateKeyResult(
             key_id=key_id,
@@ -101,6 +105,7 @@ class CreateKeyUseCase:
             rpm_limit=rpm_limit,
             tpm_limit=tpm_limit,
             team_id=team_id,
+            cache_enabled=cache_enabled,
         )
 
 
@@ -155,6 +160,7 @@ class UpdateKeyUseCase:
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
+        cache_enabled: bool | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey:
         """Update governance fields.
@@ -174,6 +180,7 @@ class UpdateKeyUseCase:
             rpm_limit=rpm_limit,
             tpm_limit=tpm_limit,
             team_id=team_id,
+            cache_enabled=cache_enabled,
             _fields_to_clear=_fields_to_clear,
         )
         if result is None:
@@ -304,6 +311,7 @@ class AuthzUseCase:
             tpm_limit=row.tpm_limit,
             team_id=row.team_id,
             team_budget_usd=row.team_budget_usd,
+            cache_enabled=row.cache_enabled,
         )
 
 

@@ -101,6 +101,7 @@ async def create_key(
         rpm_limit=body.rpm_limit,
         tpm_limit=body.tpm_limit,
         team_id=body.team_id,
+        cache_enabled=body.cache_enabled,
     )
     return CreateKeyResponse(
         key_id=result.key_id,
@@ -117,6 +118,7 @@ async def create_key(
         rpm_limit=result.rpm_limit,
         tpm_limit=result.tpm_limit,
         team_id=result.team_id,
+        cache_enabled=result.cache_enabled,
     )
 
 
@@ -173,6 +175,7 @@ async def patch_key(
     new_rpm: int | None = None
     new_tpm: int | None = None
     new_team_id: uuid.UUID | None = None
+    new_cache_enabled: bool | None = None
 
     if "monthly_budget_usd" in body.model_fields_set:
         if body.monthly_budget_usd is None:
@@ -220,6 +223,10 @@ async def patch_key(
                 raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found")
             new_team_id = body.team_id
 
+    # cache_enabled PATCH: absent = no change; True/False = set
+    if "cache_enabled" in body.model_fields_set:
+        new_cache_enabled = body.cache_enabled
+
     try:
         updated = await use_case.execute(
             key_id=key_id,
@@ -232,6 +239,7 @@ async def patch_key(
             rpm_limit=new_rpm,
             tpm_limit=new_tpm,
             team_id=new_team_id,
+            cache_enabled=new_cache_enabled,
             _fields_to_clear=fields_to_clear,
         )
     except ForbiddenError:
@@ -258,6 +266,7 @@ async def patch_key(
         rpm_limit=updated.rpm_limit,
         tpm_limit=updated.tpm_limit,
         team_id=updated.team_id,
+        cache_enabled=updated.cache_enabled,
     )
 
 

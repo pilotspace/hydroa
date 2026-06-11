@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6380/0"
     shutdown_drain_timeout_seconds: int = 10  # env: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
 
+    # ── Response cache (response-caching task) ────────────────────────────────
+    cache_ttl_seconds: int = 300  # GATEWAY_CACHE_TTL_SECONDS
+
     # ── Alerting / health (health-alerting task) ──────────────────────────────
     alert_webhook_url: str = ""  # GATEWAY_ALERT_WEBHOOK_URL (empty = disabled)
     alert_retry_max: int = 3  # GATEWAY_ALERT_RETRY_MAX

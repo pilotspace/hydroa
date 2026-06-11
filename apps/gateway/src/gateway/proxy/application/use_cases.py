@@ -38,6 +38,7 @@ from gateway.proxy.domain.ports import (
     KeyAuthenticator,
     ModelAccess,
     ModelChecker,
+    ResponseCache,
     UsageRecorder,
 )
 from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
@@ -115,6 +116,53 @@ def _fire_record(
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
+def _fire_record_cached(
+    usage_recorder: UsageRecorder,
+    *,
+    tenant_id: uuid.UUID,
+    key_id: uuid.UUID,
+    model: str,
+    usage: dict[str, Any] | None,
+    team_id: uuid.UUID | None = None,
+) -> None:
+    """Schedule a fire-and-forget usage record for a cache hit (cost_usd=0).
+
+    Injects cached=True into the raw field. Cost is 0 because the recorder's
+    INCRBYFLOAT guard only runs when cost_usd > 0 — no spend counter increment.
+    Capability seam: optional kwargs (cached, team_id) are passed only when the
+    recorder's signature accepts them — backward-compatible with frozen test
+    fakes that implement the v1 Protocol.
+    """
+    import inspect
+
+    params = inspect.signature(usage_recorder.record).parameters
+    kwargs: dict[str, Any] = {
+        "tenant_id": tenant_id,
+        "key_id": key_id,
+        "model": model,
+        "usage": usage,
+        "status": 200,
+    }
+    if "cached" in params:
+        kwargs["cached"] = True
+    if "team_id" in params and team_id is not None:
+        kwargs["team_id"] = team_id
+
+    task = asyncio.ensure_future(usage_recorder.record(**kwargs))
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
+def _fire_cache_set(
+    cache: Any,
+    cache_key: str,
+    body: dict[str, Any],
+    ttl_seconds: int,
+) -> None:
+    """Schedule a fire-and-forget cache SET. Errors logged + swallowed in RedisResponseCache."""
+    task = asyncio.ensure_future(cache.set(cache_key, body, ttl_seconds))
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
 def _check_expiry(authz: AuthzResult) -> None:
     """Raise ProblemError 401 ERR_AUTH_KEY_EXPIRED if the key has expired (M8).
 
@@ -164,6 +212,7 @@ class CompletionUseCase:
         model_checker: ModelChecker,
         budget_guard: BudgetGuard = PassthroughBudgetGuard(),  # noqa: B008
         rate_limiter: RateLimiter | None = None,
+        response_cache: ResponseCache | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -171,6 +220,7 @@ class CompletionUseCase:
         self._rate_limiter: RateLimiter = (
             rate_limiter if rate_limiter is not None else PassthroughRateLimiter()
         )
+        self._response_cache = response_cache
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -471,10 +521,14 @@ class CompletionUseCase:
         body: dict[str, Any],
         upstream: CompletionUpstream,
         usage_recorder: UsageRecorder,
-    ) -> tuple[int, dict[str, Any]]:
+        cache_ttl_seconds: int = 300,
+        metrics_registry: Any = None,
+        request_headers: dict[str, str] | None = None,
+    ) -> tuple[int, dict[str, Any], str | None]:
         """Handle a non-streaming completion.
 
-        Returns (status_code, json_body).
+        Returns (status_code, json_body, x_cache_value).
+        x_cache_value is "hit", "miss", "bypass", or None (cache disabled).
         On upstream 4xx: pass-through verbatim.
         On upstream 5xx / circuit open: raise ProblemError 502.
         """
@@ -482,7 +536,67 @@ class CompletionUseCase:
         # Validate payload fields (format only — catalog/tenant check is in _enforce_governance).
         model_id, _ = await self._validate_payload(body)
         # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
+        # Governance ALWAYS runs before cache lookup (contract §3 enforcement order).
         await self._enforce_governance(authz, model_id, self._budget_guard)
+
+        # --- Cache logic (non-streaming only, after governance) ---
+        cache = self._response_cache
+        cache_enabled = authz.cache_enabled
+        x_cache: str | None = None
+
+        if cache is not None and cache_enabled:
+            from gateway.proxy.infrastructure.response_cache import build_cache_key
+
+            no_cache = (request_headers or {}).get("cache-control", "").lower() == "no-cache"
+            cache_key = build_cache_key(str(authz.tenant_id), body)
+
+            if not no_cache:
+                # Try cache lookup
+                cached_body = await cache.get(cache_key)
+                if cached_body is not None:
+                    # HIT: return cached body, record usage with cached=True, cost=0
+                    x_cache = "hit"
+                    if metrics_registry is not None:
+                        try:
+                            metrics_registry.cache_events_total.labels(result="hit").inc()
+                        except Exception:  # noqa: S110
+                            pass
+                    cached_usage_raw = cached_body.get("usage")
+                    cached_usage: dict[str, Any] | None = (
+                        cached_usage_raw if isinstance(cached_usage_raw, dict) else None
+                    )
+                    _fire_record_cached(
+                        usage_recorder,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        model=model_id,
+                        usage=cached_usage,
+                        team_id=authz.team_id,
+                    )
+                    # TPM post-accounting uses cached token counts
+                    if authz.tpm_limit is not None and cached_usage is not None:
+                        total_tokens = cached_usage.get("total_tokens")
+                        if isinstance(total_tokens, int) and total_tokens > 0:
+                            _fire_record_tpm(
+                                self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
+                            )
+                    return 200, cached_body, x_cache
+                else:
+                    # MISS
+                    x_cache = "miss"
+                    if metrics_registry is not None:
+                        try:
+                            metrics_registry.cache_events_total.labels(result="miss").inc()
+                        except Exception:  # noqa: S110
+                            pass
+            else:
+                # BYPASS: Cache-Control: no-cache
+                x_cache = "bypass"
+                if metrics_registry is not None:
+                    try:
+                        metrics_registry.cache_events_total.labels(result="bypass").inc()
+                    except Exception:  # noqa: S110
+                        pass
 
         try:
             status, response_body = await upstream.complete(body)
@@ -501,6 +615,13 @@ class CompletionUseCase:
                 502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
             ) from None
 
+        # Store in cache on 200 (fire-and-forget; only when cache is active)
+        if cache is not None and cache_enabled and status == 200:
+            from gateway.proxy.infrastructure.response_cache import build_cache_key
+
+            ck = build_cache_key(str(authz.tenant_id), body)
+            _fire_cache_set(cache, ck, response_body, cache_ttl_seconds)
+
         # Record successful or upstream 4xx completion
         usage_raw = response_body.get("usage")
         usage: dict[str, Any] | None = usage_raw if isinstance(usage_raw, dict) else None
@@ -518,7 +639,7 @@ class CompletionUseCase:
             total_tokens = usage.get("total_tokens")
             if isinstance(total_tokens, int) and total_tokens > 0:
                 _fire_record_tpm(self._rate_limiter, key_id=authz.key_id, tokens=total_tokens)
-        return status, response_body
+        return status, response_body, x_cache
 
     async def stream(
         self,

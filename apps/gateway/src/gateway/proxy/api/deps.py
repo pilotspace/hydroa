@@ -28,6 +28,7 @@ from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.circuit_breaker_proxy import BoundCircuitBreakerUpstream
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
+from gateway.proxy.infrastructure.response_cache import RedisResponseCache
 
 # Singleton stateless hasher — safe to share
 _hasher = Sha256SecretHasher()
@@ -71,4 +72,8 @@ def get_completion_use_case(
     model_checker = SqlAlchemyModelChecker(session)
     budget_guard = request.app.state.budget_guard
     rate_limiter = getattr(request.app.state, "rate_limiter", None)
-    return CompletionUseCase(authenticator, model_checker, budget_guard, rate_limiter)
+    redis_client = getattr(request.app.state, "redis_client", None)
+    response_cache = RedisResponseCache(redis_client) if redis_client is not None else None
+    return CompletionUseCase(
+        authenticator, model_checker, budget_guard, rate_limiter, response_cache
+    )

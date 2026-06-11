@@ -28,6 +28,7 @@ def _row_to_api_key(row: ApiKeyRow) -> ApiKey:
         rpm_limit=row.rpm_limit,
         tpm_limit=row.tpm_limit,
         team_id=row.team_id,
+        cache_enabled=bool(getattr(row, "cache_enabled", False)),
     )
 
 
@@ -49,6 +50,7 @@ class SqlAlchemyApiKeyRepository:
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
+        cache_enabled: bool = False,
     ) -> ApiKey:
         """Insert a new api_keys row.
 
@@ -68,6 +70,7 @@ class SqlAlchemyApiKeyRepository:
             rpm_limit=rpm_limit,
             tpm_limit=tpm_limit,
             team_id=team_id,
+            cache_enabled=cache_enabled,
         )
         # Use begin_nested() (savepoint) so this works whether or not a transaction
         # is already active on the session (e.g. when team_repo shares the same session).
@@ -99,6 +102,7 @@ class SqlAlchemyApiKeyRepository:
                 rpm_limit=row.rpm_limit,
                 tpm_limit=row.tpm_limit,
                 team_id=row.team_id,
+                cache_enabled=bool(getattr(row, "cache_enabled", False)),
             )
             for row in rows
         ]
@@ -120,18 +124,25 @@ class SqlAlchemyApiKeyRepository:
 
     async def get_by_id(self, key_id: uuid.UUID) -> ApiKey | None:
         from gateway.teams.infrastructure.orm import TeamRow
+        from gateway.tenants.infrastructure.orm import TenantRow
 
-        # LEFT JOIN teams to populate team_budget_usd in one query (zero extra DB reads)
-        # MUST be LEFT JOIN so un-teamed keys and deleted-team keys still authenticate
+        # 3-table LEFT JOIN: api_keys → teams (team_budget_usd) → tenants (cache_enabled)
+        # All LEFT JOINs so un-teamed / un-tenanted keys still authenticate.
+        # Zero extra DB reads per contract §3 (response-caching).
         stmt = (
-            select(ApiKeyRow, TeamRow.team_budget_usd)
+            select(ApiKeyRow, TeamRow.team_budget_usd, TenantRow.cache_enabled)
             .outerjoin(TeamRow, ApiKeyRow.team_id == TeamRow.id)
+            .outerjoin(TenantRow, ApiKeyRow.tenant_id == TenantRow.id)
             .where(ApiKeyRow.id == key_id)
         )
         result = (await self._session.execute(stmt)).first()
         if result is None:
             return None
-        row, team_budget_usd = result
+        row, team_budget_usd, tenant_cache_enabled = result
+        # Effective cache = key-level OR tenant-level (both default false)
+        effective_cache = bool(getattr(row, "cache_enabled", False)) or bool(
+            tenant_cache_enabled or False
+        )
         return ApiKey(
             id=row.id,
             tenant_id=row.tenant_id,
@@ -148,6 +159,7 @@ class SqlAlchemyApiKeyRepository:
             tpm_limit=row.tpm_limit,
             team_id=row.team_id,
             team_budget_usd=team_budget_usd,
+            cache_enabled=effective_cache,
         )
 
     async def update(
@@ -162,6 +174,7 @@ class SqlAlchemyApiKeyRepository:
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
+        cache_enabled: bool | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey | None:
         """Update governance fields on an active (non-revoked) key owned by tenant_id.
@@ -201,6 +214,10 @@ class SqlAlchemyApiKeyRepository:
         #           team_id is not None = set to UUID value
         if team_id is not None or "team_id" in clear:
             row.team_id = None if "team_id" in clear else team_id
+
+        # cache_enabled: None = no change; True/False = set to value
+        if cache_enabled is not None:
+            row.cache_enabled = cache_enabled
 
         await self._session.commit()
         await self._session.refresh(row)
