@@ -86,6 +86,10 @@ exclude = [
     "tests/pii_v2/test_pii_v2.py",
     # semantic-cache: frozen test file; format excluded per no-test-edit contract
     "tests/semantic_cache/test_semantic_cache.py",
+    # semantic-cache: frozen conftest; format excluded per no-test-edit contract
+    "tests/semantic_cache/conftest.py",
+    # oidc-tenant-config: frozen test file; format excluded per no-test-edit contract
+    "tests/oidc_tenant_config/test_oidc_tenant_config.py",
 ]
 
 [tool.ruff.lint]
