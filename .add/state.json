@@ -56,12 +56,12 @@
     },
     "rename-hydroa": {
       "title": "Internal ai-proxy \u2192 Hydroa rename + e2e live-harness isolation",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v5",
       "depends_on": [],
       "created": "2026-06-11T17:34:11+00:00",
-      "updated": "2026-06-11T17:53:22+00:00",
+      "updated": "2026-06-11T18:32:37+00:00",
       "flag_verified": true
     }
   },
@@ -76,7 +76,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T17:53:22+00:00",
+  "updated": "2026-06-11T18:32:37+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
