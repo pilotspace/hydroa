@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "oidc-tenant-config",
+  "active_task": "rename-hydroa",
   "active_milestone": "v5",
   "tasks": {
     "oidc-jwks": {
@@ -53,6 +53,16 @@
       "created": "2026-06-11T15:15:00+00:00",
       "updated": "2026-06-11T16:50:22+00:00",
       "flag_verified": true
+    },
+    "rename-hydroa": {
+      "title": "Internal ai-proxy \u2192 Hydroa rename + e2e live-harness isolation",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v5",
+      "depends_on": [],
+      "created": "2026-06-11T17:34:11+00:00",
+      "updated": "2026-06-11T17:53:22+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -66,7 +76,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T16:50:22+00:00",
+  "updated": "2026-06-11T17:53:22+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
