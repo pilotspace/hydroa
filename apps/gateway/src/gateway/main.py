@@ -15,6 +15,7 @@ from gateway.alerting.application.dispatcher import AlertDispatcher
 from gateway.alerting.application.health_checker import UpstreamHealthChecker
 from gateway.alerting.infrastructure.httpx_pinger import HttpxUpstreamPinger
 from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
+from gateway.auth.api.oidc_router import oidc_router
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import admin_models_router, catalog_router, internal_catalog_router
@@ -310,6 +311,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.cache_ttl_seconds = settings.cache_ttl_seconds
 
     register_error_handlers(app)
+    app.include_router(oidc_router)
     app.include_router(health_router)
     app.include_router(internal_router)
     app.include_router(internal_catalog_router)

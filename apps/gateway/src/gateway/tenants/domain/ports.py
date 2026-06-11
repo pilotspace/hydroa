@@ -16,6 +16,20 @@ class IdentityRepository(Protocol):
 
     async def get_user_by_email(self, email: str) -> User | None: ...
 
+    async def get_or_provision_oidc_user(
+        self,
+        *,
+        email: str,
+        tenant_id: uuid.UUID,
+        password_hash: str,
+    ) -> User:
+        """Get existing user by email OR create with role=member if absent.
+
+        Raises OidcTenantConflictError if the user exists bound to a different tenant_id.
+        The provisioned user always has role=member regardless of any claims.
+        """
+        ...
+
 
 class PasswordHasher(Protocol):
     def hash(self, password: str) -> str: ...

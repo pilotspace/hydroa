@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.auth.domain.errors import OidcTenantConflictError
 from gateway.core.ids import uuid7
 from gateway.tenants.domain.entities import Role, User
 from gateway.tenants.domain.errors import EmailAlreadyRegisteredError
@@ -46,4 +47,58 @@ class SqlAlchemyIdentityRepository:
             email=row.email,
             password_hash=row.password_hash,
             role=Role(row.role),
+        )
+
+    async def get_or_provision_oidc_user(
+        self,
+        *,
+        email: str,
+        tenant_id: uuid.UUID,
+        password_hash: str,
+    ) -> User:
+        """Get existing user by email OR create with role=member if absent.
+
+        Raises OidcTenantConflictError if user exists bound to a different tenant_id.
+        The provisioned role is ALWAYS member — never from any claim.
+        """
+        row = (
+            await self._session.execute(select(UserRow).where(UserRow.email == email))
+        ).scalar_one_or_none()
+
+        if row is not None:
+            # User exists — verify tenant matches the domain mapping
+            if row.tenant_id != tenant_id:
+                raise OidcTenantConflictError(
+                    f"User {email!r} exists in tenant {row.tenant_id} but "
+                    f"domain mapping targets tenant {tenant_id}"
+                )
+            return User(
+                id=row.id,
+                tenant_id=row.tenant_id,
+                email=row.email,
+                password_hash=row.password_hash,
+                role=Role(row.role),
+            )
+
+        # Provision new user — role is ALWAYS member (never from claims)
+        new_user = UserRow(
+            id=uuid7(),
+            tenant_id=tenant_id,
+            email=email,
+            password_hash=password_hash,
+            role=Role.MEMBER,
+        )
+        # Use flush() + commit() rather than begin() because the SELECT above
+        # already auto-began the session transaction; calling begin() again
+        # raises InvalidRequestError.
+        self._session.add(new_user)
+        await self._session.flush()
+        await self._session.commit()
+
+        return User(
+            id=new_user.id,
+            tenant_id=new_user.tenant_id,
+            email=new_user.email,
+            password_hash=new_user.password_hash,
+            role=Role.MEMBER,
         )

@@ -72,6 +72,8 @@ exclude = [
     "tests/response_caching/test_response_caching.py",
     # guardrails-core: frozen test file; format excluded per no-test-edit contract
     "tests/guardrails/test_guardrails_core.py",
+    # sso-oidc: frozen test file; format excluded per no-test-edit contract
+    "tests/sso_oidc/test_sso_oidc.py",
 ]
 
 [tool.ruff.lint]
