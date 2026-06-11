@@ -1,0 +1,43 @@
+# Overlay for infra/docker-compose.e2e.yml — enables v4 features for live verification:
+#   - OTLP span export to a sink running on the HOST (:4318)
+#   - OIDC SSO with a test IdP running on the HOST (:9910)
+#   - Alert webhook sink on the HOST (:9909)
+#
+# OIDC domain mapping is NOT set here because the tenant UUID is not known until
+# scripts/live_v4_verify.py creates the tenant at runtime. The script writes
+# /tmp/v4_oidc_domain.env and recreates only the gateway service with that env file.
+#
+# Usage (always layered on top of the base e2e stack):
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     up --build -d --wait
+#
+services:
+  gateway:
+    environment:
+      # ── OTel ──────────────────────────────────────────────────────────────────
+      GATEWAY_OTEL_ENABLED: "true"
+      GATEWAY_OTEL_EXPORT_URL: "http://host.docker.internal:4318"
+      GATEWAY_OTEL_FLUSH_INTERVAL_SECONDS: "1"
+      # ── OIDC ──────────────────────────────────────────────────────────────────
+      # The domain mapping requires a runtime tenant UUID.
+      # The verify script uses docker compose up -d gateway (re-reads env_file)
+      # with GATEWAY_OIDC_DOMAIN_MAPPING injected via /tmp/v4_oidc_domain.env.
+      GATEWAY_OIDC_ENABLED: "true"
+      GATEWAY_OIDC_ISSUER: "http://host.docker.internal:9910"
+      # Override authorize URL so the test-IdP doesn't need a real /authorize endpoint.
+      # The script captures the 302 Location from /auth/oidc/login, extracts
+      # state + nonce from the cookies (not the URL), so any URL is fine here.
+      GATEWAY_OIDC_AUTHORIZE_URL: "http://host.docker.internal:9910/authorize"
+      GATEWAY_OIDC_CLIENT_ID: "hydroa-e2e"
+      GATEWAY_OIDC_CLIENT_SECRET: "e2e-secret"
+      GATEWAY_OIDC_REDIRECT_URI: "https://localhost:8443/auth/oidc/callback"
+      GATEWAY_OIDC_POST_LOGIN_REDIRECT: "/"
+      # GATEWAY_OIDC_DOMAIN_MAPPING: injected at runtime via /tmp/v4_oidc_domain.env
+      # ── Alert webhook (v3 precedent) ──────────────────────────────────────────
+      GATEWAY_ALERT_WEBHOOK_URL: "http://host.docker.internal:9909/hook"
+      GATEWAY_HEALTH_CHECK_INTERVAL_SECONDS: "15"
+    extra_hosts:
+      # Linux engines need the host-gateway alias; Docker Desktop has it natively
+      - "host.docker.internal:host-gateway"

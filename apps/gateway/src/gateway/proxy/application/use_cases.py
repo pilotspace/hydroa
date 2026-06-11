@@ -678,6 +678,7 @@ class CompletionUseCase:
         _model_id: str = ""
         _cached: bool = False
         _guardrail_blocked: bool = False
+        _pii_masked: bool = False
         _error_code: str | None = None
         try:
             authz = await self._authenticate(raw_key)
@@ -759,6 +760,9 @@ class CompletionUseCase:
                         )
                     if result.masked_messages is not None:
                         body = {**body, "messages": result.masked_messages}
+                        # §3: usage raw must carry pii_masked=true when pre-call
+                        # masking fired (defect found by live v4 verification).
+                        _pii_masked = True
             else:
                 guardrail_configs = {}
 
@@ -880,7 +884,7 @@ class CompletionUseCase:
             # Record successful or upstream 4xx completion
             usage_raw = response_body.get("usage")
             usage: dict[str, Any] | None = usage_raw if isinstance(usage_raw, dict) else None
-            _fire_record(
+            _fire_record_with_raw(
                 usage_recorder,
                 tenant_id=authz.tenant_id,
                 key_id=authz.key_id,
@@ -888,6 +892,7 @@ class CompletionUseCase:
                 usage=usage,
                 status=status,
                 team_id=authz.team_id,
+                pii_masked=_pii_masked,
             )
             # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
             if authz.tpm_limit is not None and usage is not None:
@@ -948,6 +953,7 @@ class CompletionUseCase:
         _stream_error_status: int | None = None  # set only on pre-generator errors
         _stream_error_code: str | None = None
         _stream_guardrail_blocked: bool = False
+        _stream_pii_masked: bool = False
         _stream_model_id: str = ""
         _emitter = self._span_emitter
         try:
@@ -1014,6 +1020,9 @@ class CompletionUseCase:
                         )
                     if stream_result.masked_messages is not None:
                         body = {**body, "messages": stream_result.masked_messages}
+                        # §3: usage raw must carry pii_masked=true when pre-call
+                        # masking fired (defect found by live v4 verification).
+                        _stream_pii_masked = True
 
                 # §1 documented v4 limitation: stream BODIES are not post-call inspected.
                 # Emit the one-time audit-log event when pii_mask mode=mask is active.
@@ -1071,7 +1080,7 @@ class CompletionUseCase:
                     return
                 # Tee: extract usage from collected SSE chunks after stream completes
                 extracted_usage = extract_usage_from_sse(collected)
-                _fire_record(
+                _fire_record_with_raw(
                     usage_recorder,
                     tenant_id=tenant_id,
                     key_id=key_id,
@@ -1079,6 +1088,7 @@ class CompletionUseCase:
                     usage=extracted_usage,
                     status=200,
                     team_id=team_id,
+                    pii_masked=_stream_pii_masked,
                 )
                 # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
                 if tpm_limit is not None and isinstance(extracted_usage, dict):
