@@ -35,6 +35,9 @@ class ApiKey:
     # Guardrails-core additive field (guardrails-core migration)
     # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
     guardrail_configs: dict[str, Any] = field(default_factory=dict)
+    # Semantic-cache additive field (semantic-cache migration)
+    # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
+    semantic_cache_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,3 +92,7 @@ class AuthzResult:
     # Populated at auth time from tenants.guardrail_configs via the existing LEFT JOIN tenants.
     # Empty dict = no guardrails configured (default).
     guardrail_configs: dict[str, Any] = field(default_factory=dict)
+    # Semantic-cache additive field (semantic-cache migration)
+    # Populated at auth time from tenants.semantic_cache_enabled via the existing LEFT JOIN tenants.
+    # Default False = semantic layer inactive (per-tenant opt-in).
+    semantic_cache_enabled: bool = False

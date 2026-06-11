@@ -36,6 +36,11 @@ class TenantRow(Base):
     guardrail_configs: Mapped[dict[str, Any]] = mapped_column(
         sa.JSON, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb")
     )
+    # Semantic-cache additive field (semantic-cache migration)
+    # BOOLEAN NOT NULL DEFAULT false — per-tenant opt-in for normalized near-duplicate cache
+    semantic_cache_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

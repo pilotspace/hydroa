@@ -313,6 +313,7 @@ class AuthzUseCase:
             team_budget_usd=row.team_budget_usd,
             cache_enabled=row.cache_enabled,
             guardrail_configs=getattr(row, "guardrail_configs", {}),
+            semantic_cache_enabled=getattr(row, "semantic_cache_enabled", False),
         )
 
 

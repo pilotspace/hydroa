@@ -137,6 +137,7 @@ class SqlAlchemyApiKeyRepository:
                 TeamRow.team_budget_usd,
                 TenantRow.cache_enabled,
                 TenantRow.guardrail_configs,
+                TenantRow.semantic_cache_enabled,
             )
             .outerjoin(TeamRow, ApiKeyRow.team_id == TeamRow.id)
             .outerjoin(TenantRow, ApiKeyRow.tenant_id == TenantRow.id)
@@ -145,7 +146,13 @@ class SqlAlchemyApiKeyRepository:
         result = (await self._session.execute(stmt)).first()
         if result is None:
             return None
-        row, team_budget_usd, tenant_cache_enabled, tenant_guardrail_configs = result
+        (
+            row,
+            team_budget_usd,
+            tenant_cache_enabled,
+            tenant_guardrail_configs,
+            tenant_semantic_cache_enabled,
+        ) = result
         # Effective cache = key-level OR tenant-level (both default false)
         effective_cache = bool(getattr(row, "cache_enabled", False)) or bool(
             tenant_cache_enabled or False
@@ -166,6 +173,8 @@ class SqlAlchemyApiKeyRepository:
         else:
             guardrail_configs = {}
 
+        effective_semantic_cache = bool(tenant_semantic_cache_enabled or False)
+
         return ApiKey(
             id=row.id,
             tenant_id=row.tenant_id,
@@ -184,6 +193,7 @@ class SqlAlchemyApiKeyRepository:
             team_budget_usd=team_budget_usd,
             cache_enabled=effective_cache,
             guardrail_configs=guardrail_configs,
+            semantic_cache_enabled=effective_semantic_cache,
         )
 
     async def update(

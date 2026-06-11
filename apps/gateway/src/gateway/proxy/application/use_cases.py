@@ -772,16 +772,19 @@ class CompletionUseCase:
             x_cache: str | None = None
 
             if cache is not None and cache_enabled:
-                from gateway.proxy.infrastructure.response_cache import build_cache_key
+                from gateway.proxy.infrastructure.response_cache import (
+                    build_cache_key,
+                    build_semantic_cache_key,
+                )
 
                 no_cache = (request_headers or {}).get("cache-control", "").lower() == "no-cache"
                 cache_key = build_cache_key(str(authz.tenant_id), body)
 
                 if not no_cache:
-                    # Try cache lookup
+                    # Step 4.5a: Try exact-match cache lookup
                     cached_body = await cache.get(cache_key)
                     if cached_body is not None:
-                        # HIT: apply post-call guardrails, then return cached body
+                        # EXACT HIT: apply post-call guardrails, then return cached body
                         x_cache = "hit"
                         _cached = True
                         if metrics_registry is not None:
@@ -824,7 +827,70 @@ class CompletionUseCase:
                         _status_code = 200
                         return 200, cached_body, x_cache
                     else:
-                        # MISS
+                        # Step 4.5b: Exact MISS — try semantic lookup if enabled
+                        semantic_cache_enabled = getattr(authz, "semantic_cache_enabled", False)
+                        if semantic_cache_enabled and hasattr(cache, "get_pointer"):
+                            sem_key = build_semantic_cache_key(str(authz.tenant_id), body)
+                            exact_key_str = await cache.get_pointer(sem_key)
+                            if exact_key_str is not None:
+                                # Dereference pointer: GET the exact-cache key body
+                                sem_cached_body = await cache.get(exact_key_str)
+                                if sem_cached_body is not None:
+                                    # SEMANTIC HIT
+                                    x_cache = "semantic_hit"
+                                    _cached = True
+                                    if metrics_registry is not None:
+                                        try:
+                                            metrics_registry.cache_events_total.labels(
+                                                result="semantic_hit"
+                                            ).inc()
+                                        except Exception:  # noqa: S110
+                                            pass
+                                    # Apply post-call PII mask on semantic hit (same as exact hit)
+                                    if guardrail_evaluator is not None and guardrail_configs:
+                                        if hasattr(guardrail_evaluator, "evaluate_post"):
+                                            try:
+                                                sem_cached_body = (
+                                                    await guardrail_evaluator.evaluate_post(
+                                                        sem_cached_body, guardrail_configs
+                                                    )
+                                                )
+                                            except Exception as _exc:
+                                                _log.warning(
+                                                    "guardrail evaluate_post raised on"
+                                                    " semantic HIT (fail-OPEN)",
+                                                    exc_info=_exc,
+                                                )
+                                    sem_usage_raw = sem_cached_body.get("usage")
+                                    sem_usage: dict[str, Any] | None = (
+                                        sem_usage_raw if isinstance(sem_usage_raw, dict) else None
+                                    )
+                                    _fire_record_cached(
+                                        usage_recorder,
+                                        tenant_id=authz.tenant_id,
+                                        key_id=authz.key_id,
+                                        model=model_id,
+                                        usage=sem_usage,
+                                        team_id=authz.team_id,
+                                    )
+                                    if authz.tpm_limit is not None and sem_usage is not None:
+                                        total_tokens = sem_usage.get("total_tokens")
+                                        if isinstance(total_tokens, int) and total_tokens > 0:
+                                            _fire_record_tpm(
+                                                self._rate_limiter,
+                                                key_id=authz.key_id,
+                                                tokens=total_tokens,
+                                            )
+                                    _status_code = 200
+                                    return 200, sem_cached_body, x_cache
+                                else:
+                                    # Dangling pointer: exact key expired — treat as MISS
+                                    _log.debug(
+                                        "semantic_cache: dangling pointer (exact key expired), "
+                                        "treating as MISS",
+                                        extra={"sem_key": sem_key, "exact_key": exact_key_str},
+                                    )
+                        # MISS (exact miss + semantic miss/disabled)
                         x_cache = "miss"
                         if metrics_registry is not None:
                             try:
@@ -861,10 +927,71 @@ class CompletionUseCase:
             # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
             # Must run BEFORE post-call guardrail masking so the stored body is unmasked.
             if cache is not None and cache_enabled and status == 200:
-                from gateway.proxy.infrastructure.response_cache import build_cache_key
+                from gateway.proxy.infrastructure.response_cache import (
+                    build_cache_key,
+                    build_semantic_cache_key,
+                )
 
-                ck = build_cache_key(str(authz.tenant_id), body)
-                _fire_cache_set(cache, ck, response_body, cache_ttl_seconds)
+                _sem_enabled = getattr(authz, "semantic_cache_enabled", False)
+                _is_bypass = x_cache == "bypass"
+
+                # On bypass with semantic_cache_enabled: the bypassed payload's OWN exact
+                # key is NOT stored (it would shadow the semantic layer on the very next
+                # request — SC15 contract). Instead the fresh body REFRESHES the entry the
+                # semantic pointer references, honoring no-cache refresh intent: future
+                # semantic hits serve the fresh body, never a stale one. Cold bypass (no
+                # pointer / dangling) degrades to the normal store-both path.
+                # On bypass without semantic: store the exact key normally (v4 behavior).
+                # On normal miss (not bypass): always store the exact key (+ pointer).
+                if not (_is_bypass and _sem_enabled):
+                    ck = build_cache_key(str(authz.tenant_id), body)
+                    _fire_cache_set(cache, ck, response_body, cache_ttl_seconds)
+
+                    # Also store semantic pointer key if semantic cache is enabled (on MISS only,
+                    # not on bypass — bypass leaves the pre-existing semantic pointer intact).
+                    if _sem_enabled and hasattr(cache, "set_pointer"):
+                        _sem_key = build_semantic_cache_key(str(authz.tenant_id), body)
+
+                        def _fire_set_pointer(
+                            _cache: Any,
+                            _sem_key: str,
+                            _exact_key: str,
+                            _ttl: int,
+                        ) -> None:
+                            _task = asyncio.ensure_future(
+                                _cache.set_pointer(_sem_key, _exact_key, _ttl)
+                            )
+                            _task.add_done_callback(
+                                lambda t: t.exception() if not t.cancelled() else None
+                            )
+
+                        _fire_set_pointer(cache, _sem_key, ck, cache_ttl_seconds)
+                elif hasattr(cache, "get_pointer") and hasattr(cache, "set_pointer"):
+                    _sem_key = build_semantic_cache_key(str(authz.tenant_id), body)
+                    _own_ck = build_cache_key(str(authz.tenant_id), body)
+
+                    async def _refresh_semantic_entry(
+                        _cache: Any,
+                        _sem_key: str,
+                        _own_ck: str,
+                        _body: dict[str, Any],
+                        _ttl: int,
+                    ) -> None:
+                        _pointed = await _cache.get_pointer(_sem_key)
+                        if _pointed is not None and await _cache.get(_pointed) is not None:
+                            # Refresh the pointed-to entry with the fresh upstream body.
+                            await _cache.set(_pointed, _body, _ttl)
+                        else:
+                            # Cold/dangling: behave like a normal miss-store.
+                            await _cache.set(_own_ck, _body, _ttl)
+                            await _cache.set_pointer(_sem_key, _own_ck, _ttl)
+
+                    _rtask = asyncio.ensure_future(
+                        _refresh_semantic_entry(
+                            cache, _sem_key, _own_ck, response_body, cache_ttl_seconds
+                        )
+                    )
+                    _rtask.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             # Step 5.5: Post-call guardrails (non-streaming only, on 200 response body).
             # Applied AFTER cache store so the cached body remains unmasked.
