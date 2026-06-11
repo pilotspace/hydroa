@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "team-attribution",
+  "active_task": "pii-v2",
   "active_milestone": "v5",
   "tasks": {
     "oidc-jwks": {
@@ -23,6 +23,16 @@
       "created": "2026-06-11T13:00:04+00:00",
       "updated": "2026-06-11T13:53:30+00:00",
       "flag_verified": true
+    },
+    "pii-v2": {
+      "title": "PII detection v2 \u2014 expanded built-ins + per-tenant custom patterns",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v5",
+      "depends_on": [],
+      "created": "2026-06-11T13:53:57+00:00",
+      "updated": "2026-06-11T14:07:52+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -36,7 +46,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T13:53:30+00:00",
+  "updated": "2026-06-11T14:07:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

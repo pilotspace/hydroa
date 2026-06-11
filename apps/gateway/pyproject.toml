@@ -82,6 +82,8 @@ exclude = [
     "tests/oidc_jwks/test_oidc_jwks.py",
     # team-attribution: frozen test file; format excluded per no-test-edit contract
     "tests/team_attribution/test_team_attribution.py",
+    # pii-v2: frozen test file; format excluded per no-test-edit contract
+    "tests/pii_v2/test_pii_v2.py",
 ]
 
 [tool.ruff.lint]
