@@ -42,6 +42,8 @@ from gateway.keys.application.use_cases import (
     UpdateKeyUseCase,
 )
 from gateway.keys.domain.errors import ForbiddenError, InvalidApiKeyError, KeyNotFoundError
+from gateway.teams.api.deps import get_team_repository
+from gateway.teams.infrastructure.repository import SqlAlchemyTeamRepository
 from gateway.tenants.domain.entities import Identity
 
 admin_router = APIRouter(prefix="/admin/keys", tags=["api-keys"])
@@ -76,11 +78,17 @@ async def create_key(
     body: CreateKeyRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
     use_case: Annotated[CreateKeyUseCase, Depends(get_create_key_use_case)],
+    team_repo: Annotated[SqlAlchemyTeamRepository, Depends(get_team_repository)],
 ) -> CreateKeyResponse:
     """Issue a new API key for the caller's tenant.
 
     The plaintext key is returned EXACTLY ONCE in this response and never stored.
     """
+    # Validate team attribution: team_id must belong to the caller's tenant
+    if body.team_id is not None:
+        if not await team_repo.get_team_for_tenant(body.team_id, identity.tenant_id):
+            raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found")
+
     key_id: uuid.UUID = uuid7()
     result = await use_case.execute(
         tenant_id=identity.tenant_id,
@@ -92,6 +100,7 @@ async def create_key(
         model_allowlist=body.model_allowlist,
         rpm_limit=body.rpm_limit,
         tpm_limit=body.tpm_limit,
+        team_id=body.team_id,
     )
     return CreateKeyResponse(
         key_id=result.key_id,
@@ -107,6 +116,7 @@ async def create_key(
         model_allowlist=result.model_allowlist,
         rpm_limit=result.rpm_limit,
         tpm_limit=result.tpm_limit,
+        team_id=result.team_id,
     )
 
 
@@ -134,6 +144,7 @@ async def list_keys(
             model_allowlist=item.model_allowlist,
             rpm_limit=item.rpm_limit,
             tpm_limit=item.tpm_limit,
+            team_id=item.team_id,
         )
         for item in items
     ]
@@ -145,6 +156,7 @@ async def patch_key(
     body: PatchKeyRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
     use_case: Annotated[UpdateKeyUseCase, Depends(get_update_key_use_case)],
+    team_repo: Annotated[SqlAlchemyTeamRepository, Depends(get_team_repository)],
 ) -> KeyInfoResponse:
     """Update governance fields on an active key.
 
@@ -160,6 +172,7 @@ async def patch_key(
     new_allowlist: list[str] | None = None
     new_rpm: int | None = None
     new_tpm: int | None = None
+    new_team_id: uuid.UUID | None = None
 
     if "monthly_budget_usd" in body.model_fields_set:
         if body.monthly_budget_usd is None:
@@ -197,6 +210,16 @@ async def patch_key(
         else:
             new_tpm = body.tpm_limit
 
+    # team_id PATCH: absent = no change; null = clear; UUID = set (validate ownership)
+    if "team_id" in body.model_fields_set:
+        if body.team_id is None:
+            fields_to_clear.add("team_id")
+        else:
+            # Validate team belongs to caller's tenant (404, not 403 — no existence leak)
+            if not await team_repo.get_team_for_tenant(body.team_id, identity.tenant_id):
+                raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found")
+            new_team_id = body.team_id
+
     try:
         updated = await use_case.execute(
             key_id=key_id,
@@ -208,6 +231,7 @@ async def patch_key(
             model_allowlist=new_allowlist,
             rpm_limit=new_rpm,
             tpm_limit=new_tpm,
+            team_id=new_team_id,
             _fields_to_clear=fields_to_clear,
         )
     except ForbiddenError:
@@ -233,6 +257,7 @@ async def patch_key(
         model_allowlist=updated.model_allowlist,
         rpm_limit=updated.rpm_limit,
         tpm_limit=updated.tpm_limit,
+        team_id=updated.team_id,
     )
 
 

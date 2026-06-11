@@ -30,6 +30,10 @@ from gateway.proxy.api.router import proxy_router
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
+from gateway.teams.api.router import teams_router
+from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
+    TeamMemberRow as _TeamMemberRow,
+)
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
@@ -308,6 +312,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)
+    app.include_router(teams_router)
     app.include_router(admin_models_router)
     app.include_router(proxy_router)
     app.include_router(usage_router)

@@ -64,6 +64,8 @@ exclude = [
     "tests/health_alerting/test_health_alerting.py",
     # model-mgmt: frozen test file; format excluded per no-test-edit contract
     "tests/model_mgmt/test_model_mgmt.py",
+    # teams-core: frozen test file; format excluded per no-test-edit contract
+    "tests/teams/test_teams_core.py",
 ]
 
 [tool.ruff.lint]

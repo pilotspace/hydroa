@@ -39,6 +39,8 @@ EXPECTED_TABLES = frozenset(
         "usage_records",
         "alert_events",  # added by spend-windows migration (f4a9b3c7e8d2)
         "tenant_model_overrides",  # SANCTIONED EDIT — model-mgmt TASK.md §3 manifest maintenance; disposition: additive migration e7f3b2a9c4d1 adds this table
+        "teams",  # SANCTIONED EDIT — teams-core TASK.md §3 manifest maintenance; disposition: additive migration 3a7f1c9e2b5d adds this table
+        "team_members",  # SANCTIONED EDIT — teams-core TASK.md §3 manifest maintenance; disposition: additive migration 3a7f1c9e2b5d adds this table
     }
 )
 

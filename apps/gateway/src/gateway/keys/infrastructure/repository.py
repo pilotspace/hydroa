@@ -27,6 +27,7 @@ def _row_to_api_key(row: ApiKeyRow) -> ApiKey:
         rotated_from_key_id=row.rotated_from_key_id,
         rpm_limit=row.rpm_limit,
         tpm_limit=row.tpm_limit,
+        team_id=row.team_id,
     )
 
 
@@ -47,6 +48,7 @@ class SqlAlchemyApiKeyRepository:
         model_allowlist: list[str] | None = None,
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
+        team_id: uuid.UUID | None = None,
     ) -> ApiKey:
         """Insert a new api_keys row.
 
@@ -65,9 +67,13 @@ class SqlAlchemyApiKeyRepository:
             model_allowlist=model_allowlist,
             rpm_limit=rpm_limit,
             tpm_limit=tpm_limit,
+            team_id=team_id,
         )
-        async with self._session.begin():
+        # Use begin_nested() (savepoint) so this works whether or not a transaction
+        # is already active on the session (e.g. when team_repo shares the same session).
+        async with self._session.begin_nested():
             self._session.add(row)
+        await self._session.commit()
         # Refresh to get server-side created_at
         await self._session.refresh(row)
         return _row_to_api_key(row)
@@ -92,6 +98,7 @@ class SqlAlchemyApiKeyRepository:
                 model_allowlist=row.model_allowlist,
                 rpm_limit=row.rpm_limit,
                 tpm_limit=row.tpm_limit,
+                team_id=row.team_id,
             )
             for row in rows
         ]
@@ -130,6 +137,7 @@ class SqlAlchemyApiKeyRepository:
         model_allowlist: list[str] | None = None,
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
+        team_id: uuid.UUID | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey | None:
         """Update governance fields on an active (non-revoked) key owned by tenant_id.
@@ -164,6 +172,11 @@ class SqlAlchemyApiKeyRepository:
             row.rpm_limit = None if "rpm_limit" in clear else rpm_limit
         if tpm_limit is not None or "tpm_limit" in clear:
             row.tpm_limit = None if "tpm_limit" in clear else tpm_limit
+        # team_id: absent (not in clear, team_id arg is None) = no change
+        #           "team_id" in clear = set to NULL
+        #           team_id is not None = set to UUID value
+        if team_id is not None or "team_id" in clear:
+            row.team_id = None if "team_id" in clear else team_id
 
         await self._session.commit()
         await self._session.refresh(row)

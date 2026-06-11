@@ -30,6 +30,8 @@ class CreateKeyResult:
     model_allowlist: list[str] | None = None
     rpm_limit: int | None = None
     tpm_limit: int | None = None
+    # teams-core additive field
+    team_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +65,7 @@ class CreateKeyUseCase:
         model_allowlist: list[str] | None = None,
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
+        team_id: uuid.UUID | None = None,
     ) -> CreateKeyResult:
         """Issue a new API key.
 
@@ -85,6 +88,7 @@ class CreateKeyUseCase:
             model_allowlist=model_allowlist,
             rpm_limit=rpm_limit,
             tpm_limit=tpm_limit,
+            team_id=team_id,
         )
         return CreateKeyResult(
             key_id=key_id,
@@ -96,6 +100,7 @@ class CreateKeyUseCase:
             model_allowlist=model_allowlist,
             rpm_limit=rpm_limit,
             tpm_limit=tpm_limit,
+            team_id=team_id,
         )
 
 
@@ -149,6 +154,7 @@ class UpdateKeyUseCase:
         model_allowlist: list[str] | None = None,
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
+        team_id: uuid.UUID | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey:
         """Update governance fields.
@@ -167,6 +173,7 @@ class UpdateKeyUseCase:
             model_allowlist=model_allowlist,
             rpm_limit=rpm_limit,
             tpm_limit=tpm_limit,
+            team_id=team_id,
             _fields_to_clear=_fields_to_clear,
         )
         if result is None:

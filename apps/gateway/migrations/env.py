@@ -46,6 +46,9 @@ from gateway.catalog.infrastructure.orm import (  # noqa: F401, E402
     TenantModelOverrideRow as _TenantModelOverrideRow,
 )
 
+# teams-core TASK.md §3: registers TeamRow and TeamMemberRow on Base.metadata.
+import gateway.teams.infrastructure.orm  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------

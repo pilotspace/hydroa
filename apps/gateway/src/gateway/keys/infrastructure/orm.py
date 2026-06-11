@@ -82,3 +82,11 @@ class ApiKeyRow(Base):
     # Rate-limit fields — rate-limits migration, all nullable
     rpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     tpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # Teams attribution — teams-core migration, nullable (ON DELETE SET NULL)
+    # NULL = un-teamed key; existing keys unaffected (backward-compatible additive column)
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("teams.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )

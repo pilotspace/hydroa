@@ -25,6 +25,8 @@ class ApiKey:
     # Rate-limit fields (additive — rate-limits migration, nullable)
     rpm_limit: int | None = None
     tpm_limit: int | None = None
+    # Teams attribution (additive — teams-core migration, nullable)
+    team_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +46,8 @@ class ApiKeyInfo:
     # Rate-limit fields (additive)
     rpm_limit: int | None = None
     tpm_limit: int | None = None
+    # Teams attribution (additive — teams-core migration, nullable)
+    team_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

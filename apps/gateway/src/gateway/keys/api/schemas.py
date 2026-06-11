@@ -18,6 +18,8 @@ class CreateKeyRequest(BaseModel):
     model_allowlist: list[str] | None = None
     rpm_limit: int | None = None
     tpm_limit: int | None = None
+    # teams-core additive field — optional; null = un-teamed
+    team_id: uuid.UUID | None = None
 
     @field_validator("rpm_limit", mode="before")
     @classmethod
@@ -104,6 +106,8 @@ class PatchKeyRequest(BaseModel):
     model_allowlist: list[str] | None = None
     rpm_limit: int | None = None
     tpm_limit: int | None = None
+    # teams-core additive field — absent = no change; null = clear; UUID = set
+    team_id: uuid.UUID | None = None
 
     @field_validator("rpm_limit", mode="before")
     @classmethod
@@ -238,6 +242,8 @@ class CreateKeyResponse(BaseModel):
     model_allowlist: list[str] | None = None
     rpm_limit: int | None = None
     tpm_limit: int | None = None
+    # teams-core additive field — null = un-teamed
+    team_id: uuid.UUID | None = None
 
 
 class RotateKeyResponse(BaseModel):
@@ -267,6 +273,8 @@ class KeyInfoResponse(BaseModel):
     model_allowlist: list[str] | None = None
     rpm_limit: int | None = None
     tpm_limit: int | None = None
+    # teams-core additive field — null = un-teamed
+    team_id: uuid.UUID | None = None
 
 
 class AuthzResponse(BaseModel):
