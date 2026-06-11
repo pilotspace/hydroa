@@ -25,6 +25,24 @@ class OidcTokenExchanger(Protocol):
         ...
 
 
+class OidcConfigResolver(Protocol):
+    """Port: resolve per-tenant OIDC IdP configuration by email domain.
+
+    Returns OidcProviderConfig if a DB row matches the given domain.
+    Returns None to signal: no DB row found — try the env Settings fallback.
+
+    Tests inject FakeOidcConfigResolver via app.state.oidc_config_resolver.
+    """
+
+    async def resolve(self, domain: str | None) -> Any:
+        """Return per-tenant config for domain, or None to signal env-fallback.
+
+        domain=None: no domain query param was supplied.
+        Returns OidcProviderConfig | None.
+        """
+        ...
+
+
 class JwksClient(Protocol):
     """Port: fetch the IdP JWKS and resolve the signing key for a given kid.
 

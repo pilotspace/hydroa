@@ -42,7 +42,7 @@ from gateway.auth.domain.errors import (
 
 if TYPE_CHECKING:
     from gateway.auth.application.jwks_key_cache import JwksKeyCache
-    from gateway.auth.domain.entities import DomainMapping
+    from gateway.auth.domain.entities import DomainMapping, OidcProviderConfig
     from gateway.auth.domain.ports import JwksClient, OidcTokenExchanger
     from gateway.core.config import Settings
     from gateway.tenants.domain.ports import IdentityRepository, TokenService
@@ -117,12 +117,16 @@ class OidcLoginUseCase:
         settings: Settings,
         jwks_client: JwksClient | None = None,
         jwks_key_cache: JwksKeyCache | None = None,
+        oidc_config: OidcProviderConfig | None = None,
     ) -> None:
         self._exchanger = exchanger
         self._repository = repository
         self._tokens = tokens
         self._settings = settings
         self._jwks_client = jwks_client
+        # Per-tenant OidcProviderConfig (when DB-backed path is active).
+        # When present, overrides oidc_issuer/oidc_client_id/oidc_jwks_url from settings.
+        self._oidc_config = oidc_config
         # Activation rule (§3): jwks_client present ⇒ verification ACTIVE. A missing
         # cache must never silently deactivate verification — fall back to a local
         # per-use-case cache (correctness over hit rate) rather than to skip-verify.
@@ -138,6 +142,27 @@ class OidcLoginUseCase:
         if jwks_client is None and settings.environment not in ("dev", "test"):
             logger.warning(_SIGNATURE_SKIP_WARNING)
             logging.getLogger(__name__).warning(_SIGNATURE_SKIP_WARNING)
+
+    @property
+    def _effective_issuer(self) -> str:
+        """Return the issuer to validate against: per-tenant config or env Settings."""
+        if self._oidc_config is not None:
+            return self._oidc_config.issuer
+        return self._settings.oidc_issuer
+
+    @property
+    def _effective_client_id(self) -> str:
+        """Return the client_id to validate against: per-tenant config or env Settings."""
+        if self._oidc_config is not None:
+            return self._oidc_config.client_id
+        return self._settings.oidc_client_id
+
+    @property
+    def _effective_jwks_url(self) -> str:
+        """Return the JWKS URL to use: per-tenant config or env Settings."""
+        if self._oidc_config is not None:
+            return self._oidc_config.jwks_url
+        return self._settings.oidc_jwks_url
 
     async def execute(
         self,
@@ -208,8 +233,10 @@ class OidcLoginUseCase:
                 )
 
             # 3. Resolve signing key via cache (kid-miss refresh inside JwksKeyCache).
+            #    Cache key is (jwks_url, kid) — prevents cross-tenant kid collisions (T11).
             kid: str | None = header.get("kid")
-            key = await self._jwks_key_cache.resolve(kid, self._jwks_client)
+            jwks_url = self._effective_jwks_url
+            key = await self._jwks_key_cache.resolve(jwks_url, kid, self._jwks_client)
 
             # 4. Decode and verify signature + exp (pyjwt validates exp automatically).
             #    aud is validated manually downstream; issuer= not passed to jwt.decode.
@@ -233,22 +260,24 @@ class OidcLoginUseCase:
             # The skip WARNING (naming GATEWAY_OIDC_JWKS_URL) was emitted in __init__.
             claims = _decode_id_token_claims(id_token)
 
-        # Validate iss
+        # Validate iss — use per-tenant config when available (tenant-confusion defense)
         iss: str = claims.get("iss", "")
-        if iss != self._settings.oidc_issuer:
+        effective_issuer = self._effective_issuer
+        if iss != effective_issuer:
             raise OidcTokenInvalidError(
-                f"ID token iss mismatch: expected {self._settings.oidc_issuer!r}, got {iss!r}"
+                f"ID token iss mismatch: expected {effective_issuer!r}, got {iss!r}"
             )
 
-        # Validate aud (can be str or list)
+        # Validate aud (can be str or list) — use per-tenant client_id
+        effective_client_id = self._effective_client_id
         aud: str | list[str] = claims.get("aud", "")
         if isinstance(aud, str):
             aud_list = [aud]
         else:
             aud_list = list(aud)
-        if self._settings.oidc_client_id not in aud_list:
+        if effective_client_id not in aud_list:
             raise OidcTokenInvalidError(
-                f"ID token aud does not contain client_id {self._settings.oidc_client_id!r}"
+                f"ID token aud does not contain client_id {effective_client_id!r}"
             )
 
         # Validate exp
@@ -268,16 +297,25 @@ class OidcLoginUseCase:
         email = email_raw.lower()
 
         # Step 6: domain mapping
+        # When a per-tenant OidcProviderConfig is active, the tenant_id is already
+        # resolved from the oidc_tenant_id cookie — use it directly.
+        # For the env-Settings path, use the GATEWAY_OIDC_DOMAIN_MAPPING fallback.
         domain = email.split("@", 1)[-1] if "@" in email else ""
         mapped_tenant_id: uuid.UUID | None = None
-        for mapping in self._domain_mappings:
-            if mapping.email_domain == domain:
-                mapped_tenant_id = mapping.tenant_id
-                break
-        if mapped_tenant_id is None:
-            raise OidcDomainNotMappedError(
-                f"Email domain {domain!r} not in GATEWAY_OIDC_DOMAIN_MAPPING"
-            )
+
+        if self._oidc_config is not None:
+            # Per-tenant DB path: tenant_id is pinned by the per-tenant config.
+            mapped_tenant_id = self._oidc_config.tenant_id
+        else:
+            # Env-Settings path: use GATEWAY_OIDC_DOMAIN_MAPPING
+            for mapping in self._domain_mappings:
+                if mapping.email_domain == domain:
+                    mapped_tenant_id = mapping.tenant_id
+                    break
+            if mapped_tenant_id is None:
+                raise OidcDomainNotMappedError(
+                    f"Email domain {domain!r} not in GATEWAY_OIDC_DOMAIN_MAPPING"
+                )
 
         # Step 7: provision or look up user (ALWAYS role=member)
         user = await self._repository.get_or_provision_oidc_user(

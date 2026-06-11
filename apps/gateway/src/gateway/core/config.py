@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     oidc_post_login_redirect: str = "/"  # GATEWAY_OIDC_POST_LOGIN_REDIRECT
     oidc_jwks_url: str = ""  # GATEWAY_OIDC_JWKS_URL (optional; enables RS256 JWKS verification)
 
+    # ── Per-tenant OIDC config (oidc-tenant-config task) ─────────────────────
+    # GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY — Fernet key (base64url); required for PUT /admin/oidc
+    oidc_config_encryption_key: str = ""
+    # GATEWAY_OIDC_ALLOW_HTTP_URLS — dev/test only; never True in production
+    oidc_allow_http_urls: bool = False
+
     @model_validator(mode="after")
     def _validate_otel_config(self) -> "Settings":
         """If otel_enabled=True, otel_export_url must be non-empty (startup guard)."""

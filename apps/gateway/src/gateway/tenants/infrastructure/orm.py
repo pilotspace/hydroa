@@ -58,4 +58,11 @@ class UserRow(Base):
     email: Mapped[str] = mapped_column(unique=True)
     password_hash: Mapped[str]
     role: Mapped[str] = mapped_column(server_default=text("'owner'"))
+    # auth_method — additive column (oidc-tenant-config migration a9b3c4d5e6f7).
+    # Sentinel-backfilled: rows with password_hash='!sso-no-password' → 'oidc'.
+    # New SSO users get 'oidc' at INSERT (set by get_or_provision_oidc_user).
+    # New password users keep DEFAULT 'password'.
+    auth_method: Mapped[str] = mapped_column(
+        sa.VARCHAR(32), nullable=False, server_default=text("'password'"), default="password"
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

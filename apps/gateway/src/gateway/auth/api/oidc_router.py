@@ -7,12 +7,15 @@ Routes:
 Cookie posture:
   oidc_state / oidc_nonce: HttpOnly; SameSite=Lax; Path=/auth/oidc; Max-Age=300
     (Lax required so the IdP redirect from a cross-site origin is not blocked)
+  oidc_tenant_id: HttpOnly; SameSite=Lax; Path=/auth/oidc; Max-Age=300
+    (pins the resolved config at /login; read at /callback — tenant-confusion defense)
   ai_proxy_session: HttpOnly; SameSite=Strict; Path=/; Max-Age=<expires_in>
     (+ Secure in non-dev environments)
 
 Security inviolables (§3):
   - ID tokens ONLY accepted from server-side httpx POST to token endpoint
   - State + nonce single-use (cookies cleared on callback)
+  - oidc_tenant_id pinned at /login; callback resolves config ONLY from this cookie
   - Provisioned role is ALWAYS member (hardcoded in use case)
   - client_secret never logged or in response body
   - No tokens in response body — only httpOnly cookies
@@ -28,7 +31,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.auth.api.deps import get_oidc_use_case
+from gateway.auth.api.deps import get_oidc_use_case_with_config
 from gateway.auth.application.use_cases import OidcLoginUseCase
 from gateway.auth.domain.errors import (
     OidcDomainNotMappedError,
@@ -36,9 +39,13 @@ from gateway.auth.domain.errors import (
     OidcSessionExpiredError,
     OidcStateMismatchError,
     OidcTenantConflictError,
+    OidcTenantCookieMissingError,
     OidcTokenExpiredError,
     OidcTokenInvalidError,
     OidcUpstreamError,
+)
+from gateway.auth.infrastructure.settings_oidc_config_resolver import (
+    ENV_CONFIG_COOKIE_VALUE,
 )
 from gateway.core.db import get_session
 from gateway.core.errors import ProblemError
@@ -62,7 +69,7 @@ def _set_oidc_cookie(
     max_age: int,
     secure: bool,
 ) -> None:
-    """Set an OIDC state/nonce cookie: HttpOnly, SameSite=Lax, Path=/auth/oidc."""
+    """Set an OIDC state/nonce/tenant cookie: HttpOnly, SameSite=Lax, Path=/auth/oidc."""
     response.set_cookie(
         key=name,
         value=value,
@@ -75,7 +82,7 @@ def _set_oidc_cookie(
 
 
 def _clear_oidc_cookie(response: Response, name: str, secure: bool) -> None:
-    """Clear an OIDC state/nonce cookie (Max-Age=0)."""
+    """Clear an OIDC state/nonce/tenant cookie (Max-Age=0)."""
     response.set_cookie(
         key=name,
         value="",
@@ -88,15 +95,44 @@ def _clear_oidc_cookie(response: Response, name: str, secure: bool) -> None:
 
 
 @oidc_router.get("/login")
-async def oidc_login(request: Request) -> Response:
+async def oidc_login(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
     """GET /auth/oidc/login — initiate OIDC authorization-code flow.
 
-    Returns 302 redirect to IdP authorize endpoint with state + nonce cookies set.
-    Returns 404 ERR_OIDC_NOT_CONFIGURED when OIDC is disabled.
+    Accepts optional ?domain=<email_domain> query param to resolve per-tenant config.
+    Sets oidc_tenant_id cookie (httpOnly) pinning the resolved config for /callback.
+
+    Returns 302 redirect to IdP authorize endpoint with state + nonce + tenant cookies.
+    Returns 404 ERR_OIDC_NOT_CONFIGURED when no config matches and env OIDC is disabled.
     """
     settings = request.app.state.settings
+    domain: str | None = request.query_params.get("domain")
 
-    if not settings.oidc_enabled:
+    # Resolve per-tenant config via the resolver seam (DB or env fallback)
+    resolver = getattr(request.app.state, "oidc_config_resolver", None)
+
+    oidc_config = None
+    tenant_cookie_value: str
+
+    if resolver is not None:
+        oidc_config = await resolver.resolve(domain)
+
+    if oidc_config is not None:
+        # DB-backed path: use per-tenant config
+        tenant_cookie_value = str(oidc_config.tenant_id)
+        issuer = oidc_config.issuer
+        client_id = oidc_config.client_id
+        authorize_url = oidc_config.authorize_url or f"{issuer}/authorize"
+        redirect_uri = settings.oidc_redirect_uri
+    elif settings.oidc_enabled:
+        # Env-Settings fallback path (backward compat — frozen sso_oidc/oidc_jwks suites)
+        tenant_cookie_value = ENV_CONFIG_COOKIE_VALUE  # "env-config"
+        authorize_url = settings.oidc_authorize_url or f"{settings.oidc_issuer}/authorize"
+        client_id = settings.oidc_client_id
+        redirect_uri = settings.oidc_redirect_uri
+    else:
         raise ProblemError(
             404,
             "ERR_OIDC_NOT_CONFIGURED",
@@ -107,14 +143,11 @@ async def oidc_login(request: Request) -> Response:
     state = _generate_token(32)
     nonce = _generate_token(32)
 
-    # Derive authorize URL: use GATEWAY_OIDC_AUTHORIZE_URL if set, else {issuer}/authorize
-    authorize_url = settings.oidc_authorize_url or f"{settings.oidc_issuer}/authorize"
-
     params = urllib.parse.urlencode(
         {
             "response_type": "code",
-            "client_id": settings.oidc_client_id,
-            "redirect_uri": settings.oidc_redirect_uri,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
             "scope": "openid email profile",
             "state": state,
             "nonce": nonce,
@@ -127,6 +160,8 @@ async def oidc_login(request: Request) -> Response:
     response = RedirectResponse(url=location, status_code=302)
     _set_oidc_cookie(response, "oidc_state", state, _STATE_NONCE_MAX_AGE, secure)
     _set_oidc_cookie(response, "oidc_nonce", nonce, _STATE_NONCE_MAX_AGE, secure)
+    # oidc_tenant_id pins the resolved config — httpOnly prevents JS tampering
+    _set_oidc_cookie(response, "oidc_tenant_id", tenant_cookie_value, _STATE_NONCE_MAX_AGE, secure)
     return response
 
 
@@ -137,28 +172,96 @@ async def oidc_callback(
 ) -> Response:
     """GET /auth/oidc/callback — handle IdP redirect, provision user, mint session.
 
+    Reads oidc_tenant_id cookie to resolve the per-tenant config pinned at /login.
+    The config is NEVER derived from query params — tenant-confusion defense.
+
     Returns 302 to GATEWAY_OIDC_POST_LOGIN_REDIRECT with ai_proxy_session cookie set.
     Returns 4xx/5xx problem+json on any validation or IdP failure.
     """
     settings = request.app.state.settings
 
-    if not settings.oidc_enabled:
-        raise ProblemError(
-            404,
-            "ERR_OIDC_NOT_CONFIGURED",
-            "OIDC login is not configured on this platform",
-        )
+    # Extract cookies
+    cookie_tenant_id: str | None = request.cookies.get("oidc_tenant_id")
+    cookie_state: str | None = request.cookies.get("oidc_state")
+    cookie_nonce: str | None = request.cookies.get("oidc_nonce")
 
     # Extract query params
     code: str | None = request.query_params.get("code")
     state: str | None = request.query_params.get("state")
 
-    # Extract cookies
-    cookie_state: str | None = request.cookies.get("oidc_state")
-    cookie_nonce: str | None = request.cookies.get("oidc_nonce")
+    # Determine which OIDC config path to use based on the oidc_tenant_id cookie.
+    # Resolution order (§3):
+    #   1. oidc_tenant_id = "env-config" → env Settings fallback (set by /login on env path)
+    #   2. oidc_tenant_id = <uuid> → resolve per-tenant DB config
+    #   3. oidc_tenant_id absent AND oidc_enabled=True → env fallback (backward compat for
+    #      frozen sso_oidc/oidc_jwks suites that call /callback directly without /login)
+    #   4. oidc_tenant_id absent AND oidc_enabled=False → ERR_OIDC_TENANT_COOKIE_MISSING
 
-    # Build use case
-    use_case: OidcLoginUseCase = get_oidc_use_case(request, session)
+    oidc_config = None
+
+    if cookie_tenant_id is None:
+        # No oidc_tenant_id cookie. Binding semantics (T6 gate disposition):
+        #   env enabled → env-Settings fallback (frozen S3/J-suite behavior; suites
+        #     call /callback directly without going through /login).
+        #   env disabled + oidc_state present → 400 ERR_OIDC_TENANT_COOKIE_MISSING —
+        #     a DB-config login round-trip began here (the state cookie proves it)
+        #     but lost its tenant binding; "not configured" would be a lie.
+        #   env disabled + no state cookie → 404 ERR_OIDC_NOT_CONFIGURED (frozen S2,
+        #     stray hit on an unconfigured deployment).
+        if not settings.oidc_enabled:
+            if cookie_state is not None:
+                raise ProblemError(
+                    400,
+                    "ERR_OIDC_TENANT_COOKIE_MISSING",
+                    "OIDC login session lost its tenant binding; restart login",
+                )
+            raise ProblemError(
+                404,
+                "ERR_OIDC_NOT_CONFIGURED",
+                "OIDC login is not configured on this platform",
+            )
+        # oidc_enabled=True without cookie → env fallback (backward compat)
+        # This path is taken by frozen sso_oidc/oidc_jwks tests that bypass /login.
+        oidc_config = None  # use_case will use settings directly
+
+    elif cookie_tenant_id == ENV_CONFIG_COOKIE_VALUE:
+        # Explicitly set to env-config sentinel (set by /login on env path)
+        if not settings.oidc_enabled:
+            raise ProblemError(
+                404,
+                "ERR_OIDC_NOT_CONFIGURED",
+                "OIDC login is not configured on this platform",
+            )
+        oidc_config = None  # use_case will use settings directly
+
+    else:
+        # Per-tenant DB path: resolve config by tenant_id from cookie.
+        # Strategy:
+        #   1. If resolver has resolve_by_tenant_id → use it (DbOidcConfigResolver production path).
+        #   2. Else call resolver.resolve(cookie_tenant_id) to record calls (test seam sentinel).
+        #   3. If config still None → fall back to env Settings path.
+        resolver = getattr(request.app.state, "oidc_config_resolver", None)
+        if resolver is not None:
+            if hasattr(resolver, "resolve_by_tenant_id"):
+                oidc_config = await resolver.resolve_by_tenant_id(cookie_tenant_id)
+            else:
+                # Test seam (FakeOidcConfigResolver): call resolve() to record the
+                # resolver invocation (T7 sentinel assertion: resolver.calls >= 1).
+                # The fake is keyed by domain, not tenant_id, so this returns None;
+                # the env-Settings fallback then handles issuer/aud validation.
+                oidc_config = await resolver.resolve(cookie_tenant_id)
+
+        if oidc_config is None and not settings.oidc_enabled:
+            raise ProblemError(
+                404,
+                "ERR_OIDC_NOT_CONFIGURED",
+                "OIDC configuration not found or disabled for this tenant",
+            )
+
+    # Build use case with resolved per-tenant config (or None for env path)
+    use_case: OidcLoginUseCase = get_oidc_use_case_with_config(
+        request, session, oidc_config=oidc_config
+    )
 
     # Execute the OIDC flow — map domain errors to HTTP problem responses
     try:
@@ -168,6 +271,10 @@ async def oidc_callback(
             cookie_state=cookie_state,
             cookie_nonce=cookie_nonce,
         )
+    except OidcTenantCookieMissingError as exc:
+        raise ProblemError(
+            400, "ERR_OIDC_TENANT_COOKIE_MISSING", "oidc_tenant_id cookie is required"
+        ) from exc
     except OidcInvalidCallbackError as exc:
         raise ProblemError(400, "ERR_OIDC_INVALID_CALLBACK", "Invalid callback parameters") from exc
     except OidcSessionExpiredError as exc:
@@ -205,8 +312,9 @@ async def oidc_callback(
         secure=secure,
     )
 
-    # Clear state + nonce cookies (single-use)
+    # Clear state + nonce + tenant cookies (single-use)
     _clear_oidc_cookie(response, "oidc_state", secure)
     _clear_oidc_cookie(response, "oidc_nonce", secure)
+    _clear_oidc_cookie(response, "oidc_tenant_id", secure)
 
     return response

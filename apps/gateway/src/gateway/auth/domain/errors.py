@@ -34,3 +34,15 @@ class OidcDomainNotMappedError(Exception):
 
 class OidcTenantConflictError(Exception):
     """User email exists bound to a different tenant than the domain mapping. → 403."""
+
+
+class OidcConfigEncryptionNotConfiguredError(Exception):
+    """PUT /admin/oidc called without GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY set. → 409."""
+
+
+class OidcConfigNotFoundError(Exception):
+    """GET /admin/oidc with no oidc_provider_configs row for the caller's tenant. → 404."""
+
+
+class OidcTenantCookieMissingError(Exception):
+    """GET /auth/oidc/callback called without oidc_tenant_id cookie. → 400."""

@@ -1315,6 +1315,11 @@ async def test_guardrails_core_migration_column_exists(
 
     # Confirm no new tables were added (EXPECTED_TABLES contract: guardrail_configs is
     # a column on tenants, not a new table)
+    # DISPOSITION EDIT (orchestrator, 2026-06-11, oidc-tenant-config §3): this inline
+    # inventory is a table MANIFEST mirroring tests/migrations EXPECTED_TABLES; the
+    # oidc-tenant-config freeze sanctioned adding the contracted oidc_provider_configs
+    # table to both manifests (teams-core precedent). The guardrails-core assertion's
+    # intent — guardrails added no tables of its own — is unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1322,7 +1327,7 @@ async def test_guardrails_core_migration_column_exists(
                 " AND tablename NOT IN "
                 "('tenants','users','api_keys','models','pricing_snapshots',"
                 " 'usage_records','alert_events','tenant_model_overrides',"
-                " 'teams','team_members','alembic_version')"
+                " 'teams','team_members','oidc_provider_configs','alembic_version')"
             )
         )
     ).fetchall()

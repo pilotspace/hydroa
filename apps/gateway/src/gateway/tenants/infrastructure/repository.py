@@ -81,12 +81,15 @@ class SqlAlchemyIdentityRepository:
             )
 
         # Provision new user — role is ALWAYS member (never from claims)
+        # auth_method='oidc' — set at INSERT for all SSO-provisioned users
+        # (the migration backfills existing rows with the sentinel hash).
         new_user = UserRow(
             id=uuid7(),
             tenant_id=tenant_id,
             email=email,
             password_hash=password_hash,
             role=Role.MEMBER,
+            auth_method="oidc",
         )
         # Use flush() + commit() rather than begin() because the SELECT above
         # already auto-began the session transaction; calling begin() again

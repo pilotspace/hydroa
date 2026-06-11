@@ -1026,47 +1026,35 @@ async def test_unknown_domain_returns_404() -> None:
 
 @pytest.mark.asyncio
 async def test_callback_without_tenant_cookie_returns_400() -> None:
-    """T6: GET /auth/oidc/callback without oidc_tenant_id cookie → 400
-    ERR_OIDC_TENANT_COOKIE_MISSING.
+    """T6: DB-config deployment (env OIDC disabled) — callback with a live login
+    round-trip (oidc_state cookie present) but WITHOUT the oidc_tenant_id cookie →
+    400 ERR_OIDC_TENANT_COOKIE_MISSING.
 
-    TRUE-RED: ERR_OIDC_TENANT_COOKIE_MISSING does not exist; the callback does not check
-    oidc_tenant_id cookie. AssertionError: expected 400 with new code, got either 302 or
-    400 with a different code (ERR_OIDC_SESSION_EXPIRED if state cookie also absent).
+    DISPOSITION EDIT (orchestrator, 2026-06-11): the original T6 arranged env-ENABLED
+    settings — the exact arrangement frozen sso-oidc S3 pins as 302 (env fallback);
+    the two tests were contradictory and the build correctly HARD-STOPPED. Per the
+    v4 S11 precedent the defective red test is amended in-file with this disposition
+    rather than weakening either contract. Binding semantics (recorded at the gate),
+    with cookie_tenant_id absent:
+      env enabled                          → env fallback (frozen S3/J-suite, unchanged)
+      env disabled + oidc_state present    → 400 ERR_OIDC_TENANT_COOKIE_MISSING
+                                             (a DB-config login lost its tenant binding)
+      env disabled + no state cookie       → 404 ERR_OIDC_NOT_CONFIGURED (frozen S2)
+
+    TRUE-RED (original defect class still covered): ERR_OIDC_TENANT_COOKIE_MISSING
+    did not exist pre-build; the callback did not inspect oidc_tenant_id.
     """
-    settings = make_env_oidc_settings(tenant_id=None)
+    settings = make_base_settings()  # env OIDC DISABLED — DB-config-only deployment
     engine, sessionmaker = await bootstrap_fresh_db(settings)
 
-    # Bootstrap a tenant for domain mapping
-    bootstrap_app = create_app(settings)
-    bootstrap_app.state.engine = engine
-    bootstrap_app.state.sessionmaker = sessionmaker
-    transport_b = httpx.ASGITransport(app=bootstrap_app)
-    async with httpx.AsyncClient(transport=transport_b, base_url="http://test") as client:
-        _, tenant_id = await signup_tenant(
-            client, tenant_name="T6Tenant", email="owner-t6@t6.test"
-        )
-    await bootstrap_app.state.engine.dispose()
-
-    settings_mapped = make_env_oidc_settings(
-        tenant_id=tenant_id,
-        issuer=FAKE_ISSUER_A,
-        client_id=FAKE_CLIENT_ID_A,
-        domain=FAKE_DOMAIN_A,
-    )
-    id_token = make_hs256_id_token(
-        email="alice@a.com",
-        issuer=FAKE_ISSUER_A,
-        audience=FAKE_CLIENT_ID_A,
-        nonce=FAKE_NONCE_A,
-    )
-    app = create_app(settings_mapped)
+    app = create_app(settings)
     app.state.engine = engine
     app.state.sessionmaker = sessionmaker
-    app.state.oidc_exchanger = FakeOidcExchanger(id_token=id_token)
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        # Call callback WITH oidc_state cookie but WITHOUT oidc_tenant_id cookie
+        # Callback WITH oidc_state cookie (login round-trip began) but WITHOUT
+        # the oidc_tenant_id cookie (tenant binding lost mid-flight).
         resp = await client.get(
             build_callback_url(code="valid-code", state=FAKE_STATE_A),
             cookies={
@@ -1080,6 +1068,8 @@ async def test_callback_without_tenant_cookie_returns_400() -> None:
         # No session or user created
         cookies = get_cookies_from_response(resp)
         assert "ai_proxy_session" not in cookies
+
+    await engine.dispose()
 
     await engine.dispose()
 

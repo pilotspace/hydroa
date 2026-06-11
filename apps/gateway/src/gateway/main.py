@@ -15,7 +15,11 @@ from gateway.alerting.application.dispatcher import AlertDispatcher
 from gateway.alerting.application.health_checker import UpstreamHealthChecker
 from gateway.alerting.infrastructure.httpx_pinger import HttpxUpstreamPinger
 from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
+from gateway.auth.api.oidc_admin_router import oidc_admin_router
 from gateway.auth.api.oidc_router import oidc_router
+from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
+    OidcProviderConfigRow as _OidcProviderConfigRow,
+)
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import admin_models_router, catalog_router, internal_catalog_router
@@ -347,17 +351,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Cache TTL — exposed on app.state so proxy router can read it per-request
     app.state.cache_ttl_seconds = settings.cache_ttl_seconds
 
-    # JWKS key cache — created when OIDC is enabled so tests can inject the seam
-    # and the production path has a shared cache across requests.
+    # JWKS key cache — always created so tests can inject the seam regardless of
+    # oidc_enabled (per-tenant DB config can be used even when oidc_enabled=False).
     # app.state.jwks_client starts unset (None by absence); tests inject via
     # oidc_app.state.jwks_client = FakeJwksClient(...).
-    if settings.oidc_enabled:
-        from gateway.auth.application.jwks_key_cache import JwksKeyCache
+    from gateway.auth.application.jwks_key_cache import JwksKeyCache
 
-        app.state.jwks_key_cache = JwksKeyCache()
+    app.state.jwks_key_cache = JwksKeyCache()
+
+    # OidcConfigResolver seam — always initialized (None = production DB resolver
+    # constructed per-request in deps.py; tests override via app.state.oidc_config_resolver).
+    # None here means: use DbOidcConfigResolver (session-scoped) in production.
+    app.state.oidc_config_resolver = None
 
     register_error_handlers(app)
     app.include_router(oidc_router)
+    app.include_router(oidc_admin_router)
     app.include_router(health_router)
     app.include_router(internal_router)
     app.include_router(internal_catalog_router)

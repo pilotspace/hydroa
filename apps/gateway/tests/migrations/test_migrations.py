@@ -41,6 +41,7 @@ EXPECTED_TABLES = frozenset(
         "tenant_model_overrides",  # SANCTIONED EDIT — model-mgmt TASK.md §3 manifest maintenance; disposition: additive migration e7f3b2a9c4d1 adds this table
         "teams",  # SANCTIONED EDIT — teams-core TASK.md §3 manifest maintenance; disposition: additive migration 3a7f1c9e2b5d adds this table
         "team_members",  # SANCTIONED EDIT — teams-core TASK.md §3 manifest maintenance; disposition: additive migration 3a7f1c9e2b5d adds this table
+        "oidc_provider_configs",  # SANCTIONED EDIT — oidc-tenant-config TASK.md §3 manifest maintenance; disposition: additive migration a9b3c4d5e6f7 adds this table
     }
 )
 

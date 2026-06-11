@@ -49,6 +49,9 @@ from gateway.catalog.infrastructure.orm import (  # noqa: F401, E402
 # teams-core TASK.md §3: registers TeamRow and TeamMemberRow on Base.metadata.
 import gateway.teams.infrastructure.orm  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
 
+# oidc-tenant-config TASK.md §3: registers OidcProviderConfigRow on Base.metadata.
+import gateway.auth.infrastructure.orm  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------
