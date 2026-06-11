@@ -22,9 +22,11 @@ Out: teams/organizations hierarchy + SCIM (v4) · response caching (v4) · guard
      management, RAG (v5+ long tail)
 
 ## Shared decisions & glossary deltas   (living — every task must honor these)
-- All limit/budget enforcement is fail-closed for hard limits (402/429) and fail-open for
-  soft signals (alerts must never block the data path) — mirrors the v1/v2 advisory-counter
-  vs ledger split (CONVENTIONS: Architecture)
+- Hard limits (402/429) are enforced fail-closed with respect to THEIR OWN state, but the
+  advisory Redis counters backing them are fail-OPEN on Redis outage (availability over
+  strictness; the Envoy edge 50/s limit remains the DDoS backstop) — amended 2026-06-11 at
+  the rate-limits freeze, consistent with the v1 budget-counter precedent; soft signals
+  never block the data path
 - Sliding-window rate limiting lives in Redis Lua (atomicity); the Envoy edge limit stays as
   the outer DDoS backstop — two layers, different jobs
 - Alert delivery is at-least-once via outbound webhook with bounded retry; alert events are

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "key-governance",
+  "active_task": "rate-limits",
   "active_milestone": "v3",
   "tasks": {
     "key-governance": {
@@ -16,12 +16,13 @@
     },
     "rate-limits": {
       "title": "App-level TPM/RPM sliding-window limits",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v3",
       "depends_on": [],
       "created": "2026-06-10T18:16:24+00:00",
-      "updated": "2026-06-10T18:16:24+00:00"
+      "updated": "2026-06-11T02:37:26+00:00",
+      "flag_verified": true
     },
     "spend-windows": {
       "title": "Rolling spend windows, soft-budget alerts, spend query API",
@@ -75,7 +76,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T02:25:48+00:00",
+  "updated": "2026-06-11T02:37:26+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
