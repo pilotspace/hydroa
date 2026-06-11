@@ -1,12 +1,78 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
-  "tasks": {},
-  "milestones": {},
+  "active_task": "teams-core",
+  "active_milestone": "v4",
+  "tasks": {
+    "teams-core": {
+      "title": "Teams within a tenant: CRUD, membership, roles, key attribution",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v4",
+      "depends_on": [],
+      "created": "2026-06-11T06:15:25+00:00",
+      "updated": "2026-06-11T06:15:25+00:00"
+    },
+    "team-governance": {
+      "title": "Team budget enforcement + team spend rollup",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v4",
+      "depends_on": [
+        "teams-core"
+      ],
+      "created": "2026-06-11T06:15:25+00:00",
+      "updated": "2026-06-11T06:15:25+00:00"
+    },
+    "response-caching": {
+      "title": "Opt-in exact-match Redis response cache",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v4",
+      "depends_on": [],
+      "created": "2026-06-11T06:15:25+00:00",
+      "updated": "2026-06-11T06:15:25+00:00"
+    },
+    "guardrails-core": {
+      "title": "Guardrail framework + prompt-injection and PII guardrails",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v4",
+      "depends_on": [],
+      "created": "2026-06-11T06:15:25+00:00",
+      "updated": "2026-06-11T06:15:25+00:00"
+    },
+    "sso-oidc": {
+      "title": "OIDC dashboard login through the BFF",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v4",
+      "depends_on": [],
+      "created": "2026-06-11T06:15:25+00:00",
+      "updated": "2026-06-11T06:15:25+00:00"
+    },
+    "obs-callbacks": {
+      "title": "OpenTelemetry trace export for the completion path",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v4",
+      "depends_on": [],
+      "created": "2026-06-11T06:15:25+00:00",
+      "updated": "2026-06-11T06:15:25+00:00"
+    }
+  },
+  "milestones": {
+    "v4": {
+      "title": "V4",
+      "goal": "",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-06-11T06:13:49+00:00",
+      "updated": "2026-06-11T06:13:49+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T05:58:04+00:00",
+  "updated": "2026-06-11T06:15:25+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
