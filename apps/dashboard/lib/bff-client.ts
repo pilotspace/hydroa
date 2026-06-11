@@ -121,6 +121,17 @@ export async function bffPut<T>(path: string, body: unknown): Promise<T> {
   return handleBffResponse<T>(res);
 }
 
+/** PATCH /api/gw/<path> — same pattern as bffPut but method: "PATCH" */
+export async function bffPatch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${appBase()}/api/gw${path}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return handleBffResponse<T>(res);
+}
+
 /** DELETE /api/gw/<path> */
 export async function bffDelete(path: string): Promise<void> {
   const res = await fetch(`${appBase()}/api/gw${path}`, {
