@@ -32,7 +32,7 @@ from sqlalchemy import DateTime
 from sqlalchemy.dialects.postgresql import TIMESTAMP as PG_TIMESTAMP
 from sqlalchemy.ext.asyncio import create_async_engine
 
-# ORM side-effect imports — register all six tables on Base.metadata.
+# ORM side-effect imports — register all tables on Base.metadata.
 # These are intentional side-effect imports: each module appends its ORM class
 # to Base.metadata at import time; they are never referenced by name here.
 import gateway.catalog.infrastructure.orm
@@ -40,6 +40,11 @@ import gateway.keys.infrastructure.orm
 import gateway.tenants.infrastructure.orm
 import gateway.usage.infrastructure.orm
 import gateway.usage.infrastructure.alert_events_orm  # noqa: F401 — registers AlertEventRow on Base.metadata
+
+# model-mgmt TASK.md §3: registers TenantModelOverrideRow on Base.metadata.
+from gateway.catalog.infrastructure.orm import (  # noqa: F401, E402
+    TenantModelOverrideRow as _TenantModelOverrideRow,
+)
 
 from gateway.core.db import Base
 

@@ -17,7 +17,7 @@ from gateway.alerting.infrastructure.httpx_pinger import HttpxUpstreamPinger
 from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
-from gateway.catalog.api.router import catalog_router, internal_catalog_router
+from gateway.catalog.api.router import admin_models_router, catalog_router, internal_catalog_router
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
@@ -308,6 +308,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)
+    app.include_router(admin_models_router)
     app.include_router(proxy_router)
     app.include_router(usage_router)
     app.include_router(budget_router)

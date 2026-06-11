@@ -27,3 +27,33 @@ class ModelsListResponse(BaseModel):
 
     object: str = "list"
     data: list[ModelItem]
+
+
+# ---------------------------------------------------------------------------
+# Admin model management schemas (model-mgmt TASK.md §3)
+# ---------------------------------------------------------------------------
+
+
+class AdminModelItem(BaseModel):
+    """Single model entry in GET /admin/models and PUT /admin/models/{model_id} responses.
+
+    enabled reflects the tenant's override: no override row = true (open by default).
+    """
+
+    id: str
+    name: str
+    context_length: int | None
+    enabled: bool
+
+
+class AdminModelsListResponse(BaseModel):
+    """Response for GET /admin/models."""
+
+    object: str = "list"
+    data: list[AdminModelItem]
+
+
+class PutModelRequest(BaseModel):
+    """Request body for PUT /admin/models/{model_id}."""
+
+    enabled: bool

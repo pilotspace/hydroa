@@ -12,7 +12,7 @@ from gateway.catalog.domain.ports import CatalogSource
 from gateway.catalog.infrastructure.repository import SqlAlchemyCatalogRepository
 from gateway.core.db import get_session
 from gateway.core.errors import ProblemError
-from gateway.tenants.domain.entities import Identity
+from gateway.tenants.domain.entities import Identity, Role
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
 
@@ -59,3 +59,22 @@ def get_current_identity(
         return tokens.decode(token)
     except InvalidTokenError:
         raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Invalid or expired token") from None
+
+
+def require_owner_or_admin(
+    identity: Annotated[Identity, Depends(get_current_identity)],
+) -> Identity:
+    """Raise 403 ERR_AUTH_FORBIDDEN if the caller is a member role.
+
+    Reuses the same pattern as gateway.keys.api.deps.require_owner_or_admin.
+    """
+    if identity.role == Role.MEMBER:
+        raise ProblemError(403, "ERR_AUTH_FORBIDDEN", "Insufficient role for this operation")
+    return identity
+
+
+def get_admin_models_session(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AsyncSession:
+    """Pass through the DB session for admin model endpoints."""
+    return session

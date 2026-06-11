@@ -45,3 +45,33 @@ class PricingSnapshotRow(Base):
     prompt_usd_per_token: Mapped[float] = mapped_column(Numeric(20, 10), nullable=False)
     completion_usd_per_token: Mapped[float] = mapped_column(Numeric(20, 10), nullable=False)
     captured_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+
+
+class TenantModelOverrideRow(Base):
+    """Per-tenant model enable/disable override.
+
+    Composite PK (tenant_id, model_id) — at most one row per (tenant, model) pair.
+    No override row = default enabled=true ("open by default", model-mgmt TASK.md §1 M5).
+    Both FKs are ON DELETE CASCADE: tenant deletion and catalog model hard-delete
+    clean up override rows automatically.
+
+    Added by migration: <new_rev>_tenant_model_overrides (model-mgmt TASK.md §3).
+    """
+
+    __tablename__ = "tenant_model_overrides"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    model_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("models.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)

@@ -38,6 +38,7 @@ EXPECTED_TABLES = frozenset(
         "pricing_snapshots",
         "usage_records",
         "alert_events",  # added by spend-windows migration (f4a9b3c7e8d2)
+        "tenant_model_overrides",  # SANCTIONED EDIT — model-mgmt TASK.md §3 manifest maintenance; disposition: additive migration e7f3b2a9c4d1 adds this table
     }
 )
 

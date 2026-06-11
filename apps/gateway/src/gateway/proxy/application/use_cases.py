@@ -36,6 +36,7 @@ from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableErr
 from gateway.proxy.domain.ports import (
     CompletionUpstream,
     KeyAuthenticator,
+    ModelAccess,
     ModelChecker,
     UsageRecorder,
 )
@@ -165,11 +166,21 @@ class CompletionUseCase:
         structlog.contextvars.bind_contextvars(tenant_id=str(result.tenant_id))
         return result
 
-    async def _validate_payload(self, body: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
-        """Validate model and messages fields.
+    async def _validate_payload(
+        self,
+        body: dict[str, Any],
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Validate model and messages fields (format only — no catalog check here).
 
         Returns (model_id, messages).
-        Raises ProblemError 422/400 on validation failure.
+        Raises ProblemError 422 on validation failure.
+
+        NOTE: The catalog active check (ERR_MODEL_UNKNOWN) and tenant-disabled check
+        (ERR_MODEL_DISABLED) are performed in _enforce_governance, AFTER the key-level
+        allowlist check — enforcing §3 M7 order:
+          1. model_id format validation  [here]
+          2. key-level allowlist check   [_enforce_governance step 1]
+          3. catalog+tenant check        [_enforce_governance step 2]
         """
         model_id = body.get("model")
         if not model_id or not isinstance(model_id, str) or not model_id.strip():
@@ -185,11 +196,40 @@ class CompletionUseCase:
                 "Field 'messages' must be a non-empty list",
             )
 
-        is_active = await self._model_checker.is_active(model_id)
-        if not is_active:
-            raise ProblemError(400, "ERR_MODEL_UNKNOWN", f"Model '{model_id}' is not available")
-
         return model_id, messages
+
+    async def _check_model_catalog(self, model_id: str, tenant_id: uuid.UUID | None = None) -> None:
+        """Check catalog active state and per-tenant override.
+
+        Enforcement order (§3 M7): called from _enforce_governance AFTER the
+        key-level allowlist check so allowlist always fires first.
+
+        Frozen-fake compatibility seam (model-mgmt TASK.md §3):
+          Frozen proxy-completions test fakes only implement is_active — they do not
+          have check_for_tenant. We use hasattr to detect capability:
+          - If the injected checker has check_for_tenant AND tenant_id is provided,
+            call check_for_tenant and interpret the tri-state ModelAccess enum.
+          - Otherwise fall back to is_active (frozen fakes satisfy this — no edits needed).
+          This is the standard soft-budget seam precedent used in this repo: additive
+          capability detection via hasattr, never forcing frozen fakes to implement new methods.
+        """
+        checker = self._model_checker
+        if tenant_id is not None and hasattr(checker, "check_for_tenant"):
+            access = await checker.check_for_tenant(model_id, tenant_id)
+            if access is ModelAccess.UNKNOWN:
+                raise ProblemError(400, "ERR_MODEL_UNKNOWN", f"Model '{model_id}' is not available")
+            if access is ModelAccess.TENANT_DISABLED:
+                raise ProblemError(
+                    403,
+                    "ERR_MODEL_DISABLED",
+                    "Model is disabled for this tenant",
+                )
+            # ModelAccess.ACTIVE — proceed
+        else:
+            # Fallback path: frozen fakes / no tenant_id (preserves existing behavior)
+            is_active = await checker.is_active(model_id)
+            if not is_active:
+                raise ProblemError(400, "ERR_MODEL_UNKNOWN", f"Model '{model_id}' is not available")
 
     async def _enforce_rate_limits(self, authz: AuthzResult) -> None:
         """Enforce RPM and TPM rate limits (M5-M7, M10).
@@ -236,19 +276,28 @@ class CompletionUseCase:
     ) -> None:
         """Enforce all governance rules in priority order (M8-M10, M12).
 
-        Order: expiry → model allowlist → per-key budget → tenant budget (fallback)
-               → RPM check → TPM check.
+        Order: expiry → model allowlist → catalog+tenant check → per-key budget
+               → tenant budget (fallback) → RPM check → TPM check.
         All governance data comes from AuthzResult — zero extra DB queries.
 
         Per-key budget: fail-open on Redis failure (advisory counter, A2/M13).
         Soft budget: no blocking — the seam is exposed via _compute_soft_exceeded().
         Rate limits: fail-open on Redis failure (M14); RPM before TPM (M7).
+
+        Enforcement order per §3 M7:
+          key-level allowlist (step 2) BEFORE tenant-disabled check (step 3).
+          Both use ERR_MODEL_NOT_ALLOWED and ERR_MODEL_DISABLED respectively.
         """
         # M8: Expiry check (fail-closed, DB-sourced — no infra failure risk)
         _check_expiry(authz)
 
         # M9: Model allowlist check (fail-closed, DB-sourced — no infra failure risk)
+        # MUST run BEFORE the tenant-disabled check (§3 M7 enforcement order).
         _check_model_allowlist(authz, model_id)
+
+        # Catalog active + per-tenant override check (§3 step 3 — after allowlist).
+        # Uses check_for_tenant when available (frozen-fake seam via hasattr).
+        await self._check_model_catalog(model_id, authz.tenant_id)
 
         # M10: Most-specific-wins budget enforcement.
         # A soft budget alone is a SIGNAL, not a limit — it must never exempt
@@ -361,9 +410,9 @@ class CompletionUseCase:
         On upstream 5xx / circuit open: raise ProblemError 502.
         """
         authz = await self._authenticate(raw_key)
-        # Validate payload first to get model_id for allowlist check
+        # Validate payload fields (format only — catalog/tenant check is in _enforce_governance).
         model_id, _ = await self._validate_payload(body)
-        # Enforce governance (expiry, allowlist, per-key budget, tenant budget)
+        # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
         await self._enforce_governance(authz, model_id, self._budget_guard)
 
         try:
@@ -415,7 +464,9 @@ class CompletionUseCase:
         On upstream error: raises ProblemError 502.
         """
         authz = await self._authenticate(raw_key)
+        # Validate payload fields (format only — catalog/tenant check is in _enforce_governance).
         model_id, _ = await self._validate_payload(body)
+        # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
         await self._enforce_governance(authz, model_id, self._budget_guard)
 
         try:
