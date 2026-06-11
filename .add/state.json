@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "response-caching",
+  "active_task": "guardrails-core",
   "active_milestone": "v4",
   "tasks": {
     "teams-core": {
@@ -38,12 +38,13 @@
     },
     "guardrails-core": {
       "title": "Guardrail framework + prompt-injection and PII guardrails",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v4",
       "depends_on": [],
       "created": "2026-06-11T06:15:25+00:00",
-      "updated": "2026-06-11T06:15:25+00:00"
+      "updated": "2026-06-11T09:01:12+00:00",
+      "flag_verified": true
     },
     "sso-oidc": {
       "title": "OIDC dashboard login through the BFF",
@@ -75,7 +76,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T08:45:57+00:00",
+  "updated": "2026-06-11T09:01:12+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
