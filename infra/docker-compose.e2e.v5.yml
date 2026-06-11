@@ -1,0 +1,58 @@
+# Overlay for infra/docker-compose.e2e.yml + infra/docker-compose.e2e.v4.yml — enables v5
+# features for live verification.
+#
+# Composes on top of v4 overlay; only ADDS env vars — never removes or overrides v4 keys
+# (except where v5 semantics require supersession, documented inline).
+#
+# New env vars (v5):
+#   GATEWAY_OIDC_JWKS_URL          — pinned JWKS URL for env-path RS256 verification (C1)
+#   GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY — Fernet key for Fernet-at-rest client_secret (C5)
+#                                         (this is a TEST key; safe to commit — dev only)
+#   GATEWAY_OIDC_ALLOW_HTTP_URLS   — allows http://host.docker.internal URLs in PUT /admin/oidc
+#                                         (SSRF guard bypass for the e2e harness; C5)
+#
+# Source for each env var:
+#   GATEWAY_OIDC_JWKS_URL:
+#     tmp/live-v5-context.md §V5-C1 "Overlay env: GATEWAY_OIDC_JWKS_URL"
+#     apps/gateway/src/gateway/core/config.py (oidc_jwks_url Settings field)
+#   GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY:
+#     tmp/live-v5-context.md §V5-C5 "GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY: fixed test Fernet key"
+#     apps/gateway/src/gateway/auth/api/oidc_admin_router.py:207-211 (enc_key check)
+#   GATEWAY_OIDC_ALLOW_HTTP_URLS:
+#     tmp/live-v5-context.md §V5-C5 "GATEWAY_OIDC_ALLOW_HTTP_URLS: true"
+#     apps/gateway/src/gateway/auth/api/oidc_admin_router.py:66-93 (_validate_oidc_url)
+#
+# Usage (always layered on top of base + v4 overlay):
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     up --build -d --wait
+#
+# The v5 verify script is invoked as:
+#   uv run --project apps/gateway python scripts/live_v5_verify.py
+
+services:
+  gateway:
+    environment:
+      # ── OIDC v5: JWKS URL for env-path RS256 signature verification ─────────
+      # Points to the IdP A mock on the host (:9910). The gateway fetches /jwks
+      # from this URL to resolve signing keys for env-configured OIDC tenants.
+      # Source: tmp/live-v5-context.md §V5-C1
+      # Note: this is the pinned "production-MUST" config for ACTIVE verification mode.
+      GATEWAY_OIDC_JWKS_URL: "http://host.docker.internal:9910/jwks"
+
+      # ── OIDC v5: Fernet encryption key for client_secret at rest ────────────
+      # Required by PUT /admin/oidc; without this key the handler returns 409.
+      # Source: apps/gateway/src/gateway/auth/api/oidc_admin_router.py:207-211
+      # This is a TEST key generated for the e2e harness ONLY — safe to commit.
+      # NEVER use in production. Rotate before any production deployment.
+      GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY: "5NCWwSiZHAdRmfPBYW3A8lOxbfbcYV0gXtyllLHj9X4="
+
+      # ── OIDC v5: allow http:// URLs in PUT /admin/oidc ──────────────────────
+      # Required because tenant IdP URLs reference http://host.docker.internal.
+      # The SSRF guard would reject non-https URLs in production; this setting
+      # disables the scheme check for the e2e harness only.
+      # Source: tmp/live-v5-context.md §V5-C5
+      # Source: apps/gateway/src/gateway/auth/api/oidc_admin_router.py:213 (allow_http)
+      GATEWAY_OIDC_ALLOW_HTTP_URLS: "true"

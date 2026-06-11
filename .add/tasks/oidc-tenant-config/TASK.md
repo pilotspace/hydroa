@@ -820,3 +820,25 @@ Spec delta for the next loop: <what production taught you>
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence.
+
+### Live-verify defects (v5 close, 2026-06-12) — found AFTER gate PASS, fixed same day
+Two production-wiring defects in this feature survived the frozen suite and were caught
+ONLY by the v5-close live verification (scripts/live_v5_verify.py C5f, two distinct IdPs):
+  1. HttpxOidcExchanger bound only env Settings — a per-tenant login exchanged its code
+     at the ENV IdP with ENV credentials (foreign-issuer token → 401 ERR_OIDC_TOKEN_INVALID).
+  2. create_app left app.state.oidc_config_resolver = None and nothing constructed the
+     production DbOidcConfigResolver — per-tenant resolution was silently DEAD in
+     production (login?domain= always fell into the env-config sentinel path).
+Both masked by the suite's app.state seam injections (FakeOidcExchanger /
+FakeOidcConfigResolver) — the seams bypassed exactly the production constructions that
+were broken. Fixes: per-tenant binding in HttpxOidcExchanger + get_oidc_config_resolver
+helper in deps.py wired at both router call sites; pinned by the new (unfrozen-at-build,
+now frozen) regression suite tests/oidc_exchanger_binding (E1–E6).
+
+### Competency deltas (additional, from live verification)
+- [TDD · open] every app.state test seam needs a paired production-wiring regression test
+  (seam-presence tests prove the seam, never the default construction) (evidence: both
+  C5f defects lived precisely where fakes were injected)
+- [ADD · open] the foundation's "milestone close requires LIVE edge verification" rule
+  caught two production-dead paths the full frozen suite could not — keep it binding
+  (evidence: v5 close, oidc-tenant-config defects #1 #2)

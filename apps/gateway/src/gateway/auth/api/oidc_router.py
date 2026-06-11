@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.auth.api.deps import get_oidc_use_case_with_config
+from gateway.auth.api.deps import get_oidc_config_resolver, get_oidc_use_case_with_config
 from gateway.auth.application.use_cases import OidcLoginUseCase
 from gateway.auth.domain.errors import (
     OidcDomainNotMappedError,
@@ -123,8 +123,11 @@ async def oidc_login(
     settings = request.app.state.settings
     domain: str | None = request.query_params.get("domain")
 
-    # Resolve per-tenant config via the resolver seam (DB or env fallback)
-    resolver = getattr(request.app.state, "oidc_config_resolver", None)
+    # Resolve per-tenant config via the resolver seam (DB or env fallback).
+    # get_oidc_config_resolver constructs the production DbOidcConfigResolver
+    # when the seam is None — reading the raw seam here left per-tenant OIDC
+    # dead in production (live-verify defect C5f #2, 2026-06-12).
+    resolver = get_oidc_config_resolver(request, session)
 
     oidc_config = None
     tenant_cookie_value: str
@@ -237,7 +240,7 @@ async def oidc_callback(
         #   1. If resolver has resolve_by_tenant_id → use it (DbOidcConfigResolver production path).
         #   2. Else call resolver.resolve(cookie_tenant_id) to record calls (test seam sentinel).
         #   3. If config still None → fall back to env Settings path.
-        resolver = getattr(request.app.state, "oidc_config_resolver", None)
+        resolver = get_oidc_config_resolver(request, session)
         if resolver is not None:
             if hasattr(resolver, "resolve_by_tenant_id"):
                 oidc_config = await resolver.resolve_by_tenant_id(cookie_tenant_id)

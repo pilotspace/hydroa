@@ -23,7 +23,7 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.auth.application.use_cases import OidcLoginUseCase
-from gateway.auth.domain.ports import OidcTokenExchanger
+from gateway.auth.domain.ports import OidcConfigResolver, OidcTokenExchanger
 
 if TYPE_CHECKING:
     from gateway.auth.application.jwks_key_cache import JwksKeyCache
@@ -31,13 +31,21 @@ if TYPE_CHECKING:
     from gateway.auth.domain.ports import JwksClient
 
 
-def get_oidc_exchanger(request: Request) -> OidcTokenExchanger:
-    """Resolve OidcTokenExchanger — test override seam via app.state.oidc_exchanger."""
+def get_oidc_exchanger(
+    request: Request, oidc_config: OidcProviderConfig | None = None
+) -> OidcTokenExchanger:
+    """Resolve OidcTokenExchanger — test override seam via app.state.oidc_exchanger.
+
+    When *oidc_config* is supplied (cookie-resolved per-tenant path), the
+    production exchanger binds that tenant's token endpoint and client
+    credentials — not the env IdP's (live-verify defect C5f, 2026-06-12).
+    The app.state seam keeps precedence so frozen-suite fakes are unaffected.
+    """
     exchanger: OidcTokenExchanger | None = getattr(request.app.state, "oidc_exchanger", None)
     if exchanger is None:
         from gateway.auth.infrastructure.httpx_oidc_exchanger import HttpxOidcExchanger
 
-        exchanger = HttpxOidcExchanger(settings=request.app.state.settings)
+        exchanger = HttpxOidcExchanger(settings=request.app.state.settings, oidc_config=oidc_config)
     return exchanger
 
 
@@ -72,6 +80,24 @@ def get_jwks_client(
     return None
 
 
+def get_oidc_config_resolver(request: Request, session: AsyncSession) -> OidcConfigResolver:
+    """Resolve OidcConfigResolver — test seam via app.state.oidc_config_resolver.
+
+    create_app initializes the seam to None; PRODUCTION must construct the
+    session-scoped DbOidcConfigResolver here. Before this helper existed,
+    both router call sites read the None seam and silently skipped per-tenant
+    resolution — per-tenant OIDC config was dead in production (live-verify
+    defect C5f #2, 2026-06-12). Frozen suites inject fakes and keep precedence.
+    """
+    injected: OidcConfigResolver | None = getattr(request.app.state, "oidc_config_resolver", None)
+    if injected is not None:
+        return injected
+
+    from gateway.auth.infrastructure.db_oidc_config_resolver import DbOidcConfigResolver
+
+    return DbOidcConfigResolver(session=session, settings=request.app.state.settings)
+
+
 def get_oidc_use_case(request: Request, session: AsyncSession) -> OidcLoginUseCase:
     """Build OidcLoginUseCase with per-request dependencies (env-path / legacy).
 
@@ -93,7 +119,7 @@ def get_oidc_use_case_with_config(
     """
     from gateway.tenants.infrastructure.repository import SqlAlchemyIdentityRepository
 
-    exchanger = get_oidc_exchanger(request)
+    exchanger = get_oidc_exchanger(request, oidc_config=oidc_config)
     jwks_client = get_jwks_client(request, oidc_config=oidc_config)
     jwks_key_cache: JwksKeyCache | None = getattr(request.app.state, "jwks_key_cache", None)
     repository = SqlAlchemyIdentityRepository(session)
