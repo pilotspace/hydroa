@@ -61,6 +61,25 @@ Testing: red/green TDD mandatory — tests red before build; pytest + pytest-asy
           seam: the use case detects the new method and falls back to the frozen one —
           frozen tests never edited (evidence: soft-budget seam, model-mgmt
           check_for_tenant; two milestones, zero frozen-test edits)
+        Folded from v4 (2026-06-11):
+        - the capability seam is now TYPED (supersedes the v3 hasattr rule for kwargs):
+          additive kwargs on a frozen port are declared as a `TypedDict(total=False)` in
+          the port module and the implementation declares `supported_extras: frozenset` —
+          callers filter against the declaration; never inspect.signature/hasattr probing
+          (evidence: UsageRecordExtras in proxy/domain/ports.py; user-mandated rework of
+          the inspect.signature dispatch mid-v4)
+        - a security control skipped by design needs a PRIMARY-SPEC citation plus pinned
+          preconditions written into §3 — preconditions are HARD-STOP tripwires, not prose
+          (evidence: sso-oidc TLS-channel ID-token validation per OIDC Core 1.0
+          §3.1.3.7(6); verify=False anywhere voids the sanction)
+        - milestone exit criteria are verified LIVE through the real edge before close;
+          frozen suites can miss raw-marker/side-channel assertions they were not written
+          to see (evidence: scripts/live_v4_verify.py found the unrecorded pii_masked
+          marker after 326 tests passed green)
+        - autouse fixtures that flip feature flags belong in the owning suite's conftest,
+          never the repo root — a root bridge silently enables the feature for every
+          future suite (evidence: obs-callbacks builder's root conftest, relocated at
+          review into tests/obs_callbacks/conftest.py with a disposition comment)
 Dependencies: every package in `.add/dependencies.allowlist`; CI gate
         (`scripts/check_allowlist.py`) rejects unknown packages
         Folded from v1 (2026-06-10): the allowlist governs PYTHON packages only — node

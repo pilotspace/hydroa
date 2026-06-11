@@ -17,6 +17,13 @@ Edge: Envoy front proxy — TLS, jwt_authn (dashboard JWTs), ext_authz (API keys
 ext_authz: Envoy external-authorization call to the gateway's `/internal/authz` to validate API keys.
 Dashboard: the Next.js admin UI (`apps/dashboard`).
 Write-behind: usage records buffered in Redis and flushed asynchronously to Postgres, keeping metering off the streaming hot path.
+Team: an optional grouping of API keys WITHIN a tenant for budget attribution; a key belongs to at most one team; teams never cross tenants (added v4, teams-core).
+team_budget_usd: monthly spend ceiling per TEAM — sits between the per-key monthly_budget_usd and the tenant budget_usd_monthly in the enforcement precedence key < team < tenant; exceeding it rejects with `ERR_BUDGET_EXCEEDED` (added v4, team-governance).
+cache_hit: a proxy response served from the opt-in exact-match response cache instead of upstream — usage row recorded with `cached=true` and cost 0; Redis stores the UNMASKED body, PII masking re-applied on read (added v4, response-caching).
+Guardrail: a per-tenant pre/post-call content control on proxy requests — prompt-injection detection (pre) and PII masking (post); configured via `tenants.guardrail_configs` JSONB through GET/PUT /admin/guardrails (added v4, guardrails-core).
+guardrail_mode: the action a guardrail takes — `block` (reject 400 `ERR_GUARDRAIL_BLOCKED`, fail-CLOSED) | `mask` (redact with literal placeholders, fail-OPEN) | `audit` (log + metric only); active blocking requires enabled=true AND mode=block (added v4, guardrails-core).
+oidc_claim_mapping: the email-domain → tenant mapping (`GATEWAY_OIDC_DOMAIN_MAPPING`) that binds an SSO login to a tenant; unmapped domains reject `ERR_OIDC_DOMAIN_NOT_MAPPED`, cross-tenant email conflicts reject `ERR_OIDC_TENANT_CONFLICT`; auto-provisioned users get MEMBER role and the `!sso-no-password` sentinel hash (added v4, sso-oidc).
+otel_span: the per-request `proxy.completion` trace span exported best-effort as OTLP/HTTP JSON (hand-rolled, bounded drop-oldest queue, all export errors swallowed) — emitted only post-authz; carries ai_proxy.tenant_id/key_id/team_id/model/status_code/stream/cached/guardrail_blocked (added v4, obs-callbacks).
 
 # ADD method vocabulary (domain-standard names; bridges to legacy terms)
 GOAL: the one durable outcome a project (and each milestone) runs toward — the loop's orientation anchor, declared as the lowercase `goal:` line in PROJECT.md / MILESTONE.md and surfaced by status/guide every session; distinct from a task's §1 Must (a single required behavior, not the whole-project outcome).
