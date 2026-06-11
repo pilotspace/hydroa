@@ -210,6 +210,6 @@ Spec delta for the next loop: OpenRouter delivers usage in the final streamed fr
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-  - [SDD · open] mock fixtures that mirror an assumed wire format can pass while live billing silently fails — pin at least one VERBATIM live-captured frame per external protocol (evidence: v1 streaming tests green while live ledger recorded 0/0 vs upstream 24/73)
-  - [TDD · open] for stream parsers, fragmentation is part of the input domain — include split-at-midpoint and byte-by-byte cases by default (evidence: tests/smoke parametrized fragmentation caught the rewrite regression-free)
+  - [SDD · folded v2] mock fixtures that mirror an assumed wire format can pass while live billing silently fails — pin at least one VERBATIM live-captured frame per external protocol (evidence: v1 streaming tests green while live ledger recorded 0/0 vs upstream 24/73)
+  - [TDD · folded v2] for stream parsers, fragmentation is part of the input domain — include split-at-midpoint and byte-by-byte cases by default (evidence: tests/smoke parametrized fragmentation caught the rewrite regression-free)
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->

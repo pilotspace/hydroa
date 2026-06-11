@@ -422,6 +422,6 @@ Spec delta for the next loop: k8s probe semantics are ready; when a real orchest
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-  - [TDD · open] batch-bounded loops (read N per iteration) hide early-exit defects when the emptiness check looks at the wrong set — assert drains against backlogs LARGER than the batch size in future drain tests (evidence: flush_once count=100 + PEL-only check exited early; caught at orchestrator review, not by the suite)
-  - [ADD · open] runbook advice that prescribes config (stop_grace_period) should be enforced in the artifact it describes, not just documented (evidence: prod compose now carries stop_grace_period 15s)
+  - [TDD · folded v2] batch-bounded loops (read N per iteration) hide early-exit defects when the emptiness check looks at the wrong set — assert drains against backlogs LARGER than the batch size in future drain tests (evidence: flush_once count=100 + PEL-only check exited early; caught at orchestrator review, not by the suite)
+  - [ADD · folded v2] runbook advice that prescribes config (stop_grace_period) should be enforced in the artifact it describes, not just documented (evidence: prod compose now carries stop_grace_period 15s)
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->

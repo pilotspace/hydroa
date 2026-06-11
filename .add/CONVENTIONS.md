@@ -34,6 +34,17 @@ Testing: red/green TDD mandatory — tests red before build; pytest + pytest-asy
           `within(<section>)` and name the owning component — bare `getByText` string or
           regex matchers over a whole page over-constrain the build when data repeats
           across sections (evidence: dashboard-usage duplicate-match collisions)
+        Folded from v2 (2026-06-11):
+        - stream/wire parsers test fragmentation as part of the input domain by default —
+          split-at-midpoint AND byte-by-byte chunk cases (evidence: live-upstream-smoke;
+          per-chunk parser lost the split usage frame)
+        - test arranges call CANONICAL routes only — an arrange that invents an endpoint
+          pushes builders into expanding product surface; builders treat the contract's
+          "Modules touched" list as a hard boundary (evidence: observability /tenants
+          compat router, rejected at review)
+        - drain/consume loops bounded by a batch size are tested against backlogs LARGER
+          than the batch, and emptiness checks must cover undelivered + pending sets
+          (evidence: ops-hardening flush_once count=100 early-exit, caught at review)
 Dependencies: every package in `.add/dependencies.allowlist`; CI gate
         (`scripts/check_allowlist.py`) rejects unknown packages
         Folded from v1 (2026-06-10): the allowlist governs PYTHON packages only — node
