@@ -35,11 +35,13 @@ from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
 from gateway.proxy.domain.ports import (
     CompletionUpstream,
+    GuardrailEvaluator,
     KeyAuthenticator,
     ModelAccess,
     ModelChecker,
     ResponseCache,
     UsageRecorder,
+    UsageRecordExtras,
 )
 from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
 from gateway.rate_limits.domain.errors import RateLimitExceededError
@@ -64,6 +66,43 @@ def _fire_record_tpm(
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
+def _dispatch_record(
+    usage_recorder: UsageRecorder,
+    *,
+    tenant_id: uuid.UUID,
+    key_id: uuid.UUID,
+    model: str,
+    usage: dict[str, Any] | None,
+    status: int,
+    extras: UsageRecordExtras | None = None,
+) -> None:
+    """Schedule a fire-and-forget usage record, forwarding only declared extras.
+
+    Stores the Task reference to satisfy RUF006 (avoids garbage-collected task).
+    Failures in the recorder are intentionally ignored — recording must never
+    affect the caller's response.
+
+    Typed capability seam (UsageRecordExtras): extras are filtered against the
+    recorder's `supported_extras` class attribute. v1-Protocol test fakes lack
+    the attribute (→ empty set) and receive only the base kwargs — same
+    backward-compat guarantee as the former inspect.signature introspection,
+    now an explicit declaration instead of runtime reflection.
+    """
+    supported: frozenset[str] = getattr(usage_recorder, "supported_extras", frozenset())
+    kwargs: dict[str, Any] = {
+        "tenant_id": tenant_id,
+        "key_id": key_id,
+        "model": model,
+        "usage": usage,
+        "status": status,
+    }
+    if extras:
+        kwargs.update({k: v for k, v in extras.items() if k in supported})
+    task = asyncio.ensure_future(usage_recorder.record(**kwargs))
+    # Suppress unhandled-exception noise if recorder raises unexpectedly.
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
 def _fire_record(
     usage_recorder: UsageRecorder,
     *,
@@ -74,46 +113,19 @@ def _fire_record(
     status: int,
     team_id: uuid.UUID | None = None,
 ) -> None:
-    """Schedule a fire-and-forget usage record.
-
-    Stores the Task reference to satisfy RUF006 (avoids garbage-collected task).
-    Failures in the recorder are intentionally ignored — recording must never
-    affect the caller's response.
-
-    team_id is forwarded to the recorder when set so it can INCRBYFLOAT the
-    per-team spend counter alongside the per-key counter (team-governance seam).
-    Uses hasattr seam: only passes team_id when the recorder supports it.
-    """
-    # Additive seam: pass team_id only when the concrete recorder supports it
-    # (avoids breaking frozen test fakes that implement the v1 Protocol signature).
-    if team_id is not None and hasattr(usage_recorder, "record"):
-        import inspect
-
-        sig = inspect.signature(usage_recorder.record)
-        if "team_id" in sig.parameters:
-            task = asyncio.ensure_future(
-                usage_recorder.record(  # type: ignore[call-arg]
-                    tenant_id=tenant_id,
-                    key_id=key_id,
-                    model=model,
-                    usage=usage,
-                    status=status,
-                    team_id=team_id,
-                )
-            )
-            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-            return
-    task = asyncio.ensure_future(
-        usage_recorder.record(
-            tenant_id=tenant_id,
-            key_id=key_id,
-            model=model,
-            usage=usage,
-            status=status,
-        )
+    """Fire-and-forget usage record; forwards team_id when set (team-governance seam)."""
+    extras: UsageRecordExtras = {}
+    if team_id is not None:
+        extras["team_id"] = team_id
+    _dispatch_record(
+        usage_recorder,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        model=model,
+        usage=usage,
+        status=status,
+        extras=extras,
     )
-    # Suppress unhandled-exception noise if recorder raises unexpectedly.
-    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
 def _fire_record_cached(
@@ -125,31 +137,23 @@ def _fire_record_cached(
     usage: dict[str, Any] | None,
     team_id: uuid.UUID | None = None,
 ) -> None:
-    """Schedule a fire-and-forget usage record for a cache hit (cost_usd=0).
+    """Fire-and-forget usage record for a cache hit (cached=true, cost_usd=0).
 
-    Injects cached=True into the raw field. Cost is 0 because the recorder's
-    INCRBYFLOAT guard only runs when cost_usd > 0 — no spend counter increment.
-    Capability seam: optional kwargs (cached, team_id) are passed only when the
-    recorder's signature accepts them — backward-compatible with frozen test
-    fakes that implement the v1 Protocol.
+    Cost is 0 because the recorder's INCRBYFLOAT guard only runs when
+    cost_usd > 0 — no spend counter increment.
     """
-    import inspect
-
-    params = inspect.signature(usage_recorder.record).parameters
-    kwargs: dict[str, Any] = {
-        "tenant_id": tenant_id,
-        "key_id": key_id,
-        "model": model,
-        "usage": usage,
-        "status": 200,
-    }
-    if "cached" in params:
-        kwargs["cached"] = True
-    if "team_id" in params and team_id is not None:
-        kwargs["team_id"] = team_id
-
-    task = asyncio.ensure_future(usage_recorder.record(**kwargs))
-    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+    extras: UsageRecordExtras = {"cached": True}
+    if team_id is not None:
+        extras["team_id"] = team_id
+    _dispatch_record(
+        usage_recorder,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        model=model,
+        usage=usage,
+        status=200,
+        extras=extras,
+    )
 
 
 def _fire_cache_set(
@@ -161,6 +165,83 @@ def _fire_cache_set(
     """Schedule a fire-and-forget cache SET. Errors logged + swallowed in RedisResponseCache."""
     task = asyncio.ensure_future(cache.set(cache_key, body, ttl_seconds))
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
+def _make_error_event(guardrail_configs: dict[str, Any]) -> Any:
+    """Build a GuardrailEvent with action='error' for the first active guardrail.
+
+    Used when evaluate_pre() raises unexpectedly — provides a metric event for
+    the fail-CLOSED/fail-OPEN code path.
+    """
+    from gateway.proxy.domain.entities import GuardrailEvent
+
+    first_name = next(iter(guardrail_configs), "unknown")
+    return GuardrailEvent(guardrail=first_name, action="error", detail="evaluator raised")
+
+
+def _fire_guardrail_metrics(
+    metrics_registry: Any,
+    events: list[Any],
+    guardrail_configs: dict[str, Any],
+) -> None:
+    """Increment guardrail_events_total counter for each event.
+
+    Uses the guardrail_configs to look up the mode for the label.
+    Swallows all errors — metrics must never fail a request.
+    """
+    if metrics_registry is None:
+        return
+    counter = getattr(metrics_registry, "guardrail_events_total", None)
+    if counter is None:
+        return
+    for event in events:
+        try:
+            guardrail_name = event.guardrail
+            action = event.action
+            # Determine the mode from configs; fall back to "unknown" gracefully
+            cfg = guardrail_configs.get(guardrail_name, {})
+            mode = cfg.get("mode", "unknown") if isinstance(cfg, dict) else "unknown"
+            counter.labels(guardrail=guardrail_name, mode=mode, action=action).inc()
+        except Exception:  # noqa: S110
+            pass
+
+
+def _fire_record_with_raw(
+    usage_recorder: UsageRecorder,
+    *,
+    tenant_id: uuid.UUID,
+    key_id: uuid.UUID,
+    model: str,
+    usage: dict[str, Any] | None,
+    status: int,
+    team_id: uuid.UUID | None = None,
+    guardrail_blocked: bool = False,
+    blocked_by: str | None = None,
+    pii_masked: bool = False,
+) -> None:
+    """Fire-and-forget usage record with optional guardrail raw markers.
+
+    guardrail_blocked/blocked_by/pii_masked are forwarded via the typed
+    UsageRecordExtras seam (declared-capability filtering in _dispatch_record).
+    """
+    extras: UsageRecordExtras = {}
+    if team_id is not None:
+        extras["team_id"] = team_id
+    if guardrail_blocked:
+        extras["guardrail_blocked"] = True
+    if blocked_by is not None:
+        extras["blocked_by"] = blocked_by
+    if pii_masked:
+        extras["pii_masked"] = True
+    _dispatch_record(
+        usage_recorder,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        model=model,
+        usage=usage,
+        status=status,
+        extras=extras,
+    )
 
 
 def _check_expiry(authz: AuthzResult) -> None:
@@ -213,6 +294,7 @@ class CompletionUseCase:
         budget_guard: BudgetGuard = PassthroughBudgetGuard(),  # noqa: B008
         rate_limiter: RateLimiter | None = None,
         response_cache: ResponseCache | None = None,
+        guardrail_evaluator: GuardrailEvaluator | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -221,6 +303,7 @@ class CompletionUseCase:
             rate_limiter if rate_limiter is not None else PassthroughRateLimiter()
         )
         self._response_cache = response_cache
+        self._guardrail_evaluator = guardrail_evaluator
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -539,7 +622,74 @@ class CompletionUseCase:
         # Governance ALWAYS runs before cache lookup (contract §3 enforcement order).
         await self._enforce_governance(authz, model_id, self._budget_guard)
 
-        # --- Cache logic (non-streaming only, after governance) ---
+        # --- Step 4: Pre-call guardrails (after governance, before cache lookup) ---
+        guardrail_evaluator = self._guardrail_evaluator
+        guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
+        if guardrail_evaluator is not None and guardrail_configs:
+            try:
+                result = await guardrail_evaluator.evaluate_pre(
+                    body.get("messages", []), guardrail_configs
+                )
+            except Exception as _exc:
+                # Evaluator itself raised unexpectedly (e.g. ErrorGuardrailEvaluator in tests).
+                # Apply fail-CLOSED/fail-OPEN at the use_case level.
+                _log.warning("guardrail evaluate_pre raised unexpectedly", exc_info=_exc)
+                _has_block = any(
+                    isinstance(cfg, dict) and cfg.get("enabled") and cfg.get("mode") == "block"
+                    for cfg in guardrail_configs.values()
+                )
+                if _has_block:
+                    # Fail-CLOSED: block the request
+                    _fire_guardrail_metrics(
+                        metrics_registry,
+                        [_make_error_event(guardrail_configs)],
+                        guardrail_configs,
+                    )
+                    _fire_record_with_raw(
+                        usage_recorder,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        model=model_id,
+                        usage=None,
+                        status=400,
+                        team_id=authz.team_id,
+                        guardrail_blocked=True,
+                        blocked_by="error",
+                    )
+                    raise ProblemError(
+                        400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
+                    ) from None
+                else:
+                    # Fail-OPEN: log error event, proceed
+                    _fire_guardrail_metrics(
+                        metrics_registry,
+                        [_make_error_event(guardrail_configs)],
+                        guardrail_configs,
+                    )
+                    # result is not set — fall through without masking/blocking
+                    result = None
+
+            if result is not None:
+                _fire_guardrail_metrics(metrics_registry, result.events, guardrail_configs)
+                if result.blocked:
+                    _fire_record_with_raw(
+                        usage_recorder,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        model=model_id,
+                        usage=None,
+                        status=400,
+                        team_id=authz.team_id,
+                        guardrail_blocked=True,
+                        blocked_by=result.blocked_by,
+                    )
+                    raise ProblemError(
+                        400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
+                    )
+                if result.masked_messages is not None:
+                    body = {**body, "messages": result.masked_messages}
+
+        # --- Step 4.5: Cache logic (non-streaming only, after guardrails) ---
         cache = self._response_cache
         cache_enabled = authz.cache_enabled
         x_cache: str | None = None
@@ -554,13 +704,26 @@ class CompletionUseCase:
                 # Try cache lookup
                 cached_body = await cache.get(cache_key)
                 if cached_body is not None:
-                    # HIT: return cached body, record usage with cached=True, cost=0
+                    # HIT: apply post-call guardrails, then return cached body
                     x_cache = "hit"
                     if metrics_registry is not None:
                         try:
                             metrics_registry.cache_events_total.labels(result="hit").inc()
                         except Exception:  # noqa: S110
                             pass
+                    # Step 5.5 on cache HIT: apply post-call PII mask if configured
+                    # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only).
+                    if guardrail_evaluator is not None and guardrail_configs:
+                        if hasattr(guardrail_evaluator, "evaluate_post"):
+                            try:
+                                cached_body = await guardrail_evaluator.evaluate_post(
+                                    cached_body, guardrail_configs
+                                )
+                            except Exception as _exc:
+                                _log.warning(
+                                    "guardrail evaluate_post raised on cache HIT (fail-OPEN)",
+                                    exc_info=_exc,
+                                )
                     cached_usage_raw = cached_body.get("usage")
                     cached_usage: dict[str, Any] | None = (
                         cached_usage_raw if isinstance(cached_usage_raw, dict) else None
@@ -615,12 +778,28 @@ class CompletionUseCase:
                 502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
             ) from None
 
-        # Store in cache on 200 (fire-and-forget; only when cache is active)
+        # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
+        # Must run BEFORE post-call guardrail masking so the stored body is unmasked.
         if cache is not None and cache_enabled and status == 200:
             from gateway.proxy.infrastructure.response_cache import build_cache_key
 
             ck = build_cache_key(str(authz.tenant_id), body)
             _fire_cache_set(cache, ck, response_body, cache_ttl_seconds)
+
+        # Step 5.5: Post-call guardrails (non-streaming only, on 200 response body).
+        # Applied AFTER cache store so the cached body remains unmasked.
+        # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only — never BLOCK).
+        if guardrail_evaluator is not None and guardrail_configs and status == 200:
+            if hasattr(guardrail_evaluator, "evaluate_post"):
+                try:
+                    response_body = await guardrail_evaluator.evaluate_post(
+                        response_body, guardrail_configs
+                    )
+                except Exception as _exc:
+                    _log.warning(
+                        "guardrail evaluate_post raised (fail-OPEN, returning original body)",
+                        exc_info=_exc,
+                    )
 
         # Record successful or upstream 4xx completion
         usage_raw = response_body.get("usage")
@@ -660,6 +839,71 @@ class CompletionUseCase:
         model_id, _ = await self._validate_payload(body)
         # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
         await self._enforce_governance(authz, model_id, self._budget_guard)
+
+        # --- Step 4: Pre-call guardrails (after governance, before upstream stream) ---
+        guardrail_evaluator = self._guardrail_evaluator
+        guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
+        if guardrail_evaluator is not None and guardrail_configs:
+            try:
+                stream_result = await guardrail_evaluator.evaluate_pre(
+                    body.get("messages", []), guardrail_configs
+                )
+            except Exception as _exc:
+                _log.warning(
+                    "guardrail evaluate_pre raised in stream (fail-CLOSED/OPEN)", exc_info=_exc
+                )
+                _has_block = any(
+                    isinstance(cfg, dict) and cfg.get("enabled") and cfg.get("mode") == "block"
+                    for cfg in guardrail_configs.values()
+                )
+                if _has_block:
+                    _fire_record_with_raw(
+                        usage_recorder,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        model=model_id,
+                        usage=None,
+                        status=400,
+                        team_id=authz.team_id,
+                        guardrail_blocked=True,
+                        blocked_by="error",
+                    )
+                    raise ProblemError(
+                        400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
+                    ) from None
+                stream_result = None
+
+            if stream_result is not None:
+                if stream_result.blocked:
+                    _fire_record_with_raw(
+                        usage_recorder,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        model=model_id,
+                        usage=None,
+                        status=400,
+                        team_id=authz.team_id,
+                        guardrail_blocked=True,
+                        blocked_by=stream_result.blocked_by,
+                    )
+                    raise ProblemError(
+                        400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
+                    )
+                if stream_result.masked_messages is not None:
+                    body = {**body, "messages": stream_result.masked_messages}
+
+            # §1 documented v4 limitation: stream BODIES are not post-call inspected.
+            # Emit the one-time audit-log event when pii_mask mode=mask is active.
+            pii_cfg = guardrail_configs.get("pii_mask")
+            if (
+                isinstance(pii_cfg, dict)
+                and pii_cfg.get("enabled")
+                and pii_cfg.get("mode") == "mask"
+            ):
+                _log.info(
+                    "streaming_pii_mask_skipped: post-call PII masking does not apply "
+                    "to stream bodies (guardrails-core v4 documented limitation)"
+                )
 
         try:
             gen = upstream.stream(body)

@@ -35,6 +35,7 @@ from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamR
     TeamMemberRow as _TeamMemberRow,
 )
 from gateway.tenants.api.cache_router import cache_router
+from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
@@ -314,6 +315,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(internal_catalog_router)
     app.include_router(tenants_router)
     app.include_router(cache_router)
+    app.include_router(guardrail_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)

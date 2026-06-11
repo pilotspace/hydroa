@@ -1,9 +1,10 @@
 """Domain entities for API keys — zero framework imports."""
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,9 @@ class ApiKey:
     team_budget_usd: Decimal | None = None
     # Response-caching additive field (response-caching migration)
     cache_enabled: bool = False
+    # Guardrails-core additive field (guardrails-core migration)
+    # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
+    guardrail_configs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,3 +85,7 @@ class AuthzResult:
     # Response-caching additive field (response-caching migration)
     # Effective = api_keys.cache_enabled OR tenants.cache_enabled (resolved at auth time)
     cache_enabled: bool = False
+    # Guardrails-core additive field (guardrails-core migration)
+    # Populated at auth time from tenants.guardrail_configs via the existing LEFT JOIN tenants.
+    # Empty dict = no guardrails configured (default).
+    guardrail_configs: dict[str, Any] = field(default_factory=dict)

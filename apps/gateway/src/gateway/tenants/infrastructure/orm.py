@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Numeric, func, text
@@ -29,6 +30,11 @@ class TenantRow(Base):
     # Response-caching additive field (response-caching migration)
     cache_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    # Guardrails-core additive field (guardrails-core migration)
+    # JSONB NOT NULL DEFAULT '{}'::jsonb — empty object = no guardrails enabled
+    guardrail_configs: Mapped[dict[str, Any]] = mapped_column(
+        sa.JSON, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb")
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

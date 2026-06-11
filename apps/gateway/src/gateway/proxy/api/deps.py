@@ -26,6 +26,7 @@ from gateway.proxy.application.use_cases import CompletionUseCase
 from gateway.proxy.domain.ports import CompletionUpstream, UsageRecorder
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.circuit_breaker_proxy import BoundCircuitBreakerUpstream
+from gateway.proxy.infrastructure.guardrail_evaluator import RegexGuardrailEvaluator
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
 from gateway.proxy.infrastructure.response_cache import RedisResponseCache
@@ -74,6 +75,19 @@ def get_completion_use_case(
     rate_limiter = getattr(request.app.state, "rate_limiter", None)
     redis_client = getattr(request.app.state, "redis_client", None)
     response_cache = RedisResponseCache(redis_client) if redis_client is not None else None
+    # PINNED override seam (guardrails-core §3 CONTRACT):
+    # Read app.state.guardrail_evaluator first (tests inject ErrorGuardrailEvaluator this way),
+    # else construct the default RegexGuardrailEvaluator — same app.state pattern as
+    # completion_upstream. This allows S13/S14 to inject a failing evaluator without
+    # modifying the frozen test suite.
+    guardrail_evaluator = getattr(request.app.state, "guardrail_evaluator", None)
+    if guardrail_evaluator is None:
+        guardrail_evaluator = RegexGuardrailEvaluator()
     return CompletionUseCase(
-        authenticator, model_checker, budget_guard, rate_limiter, response_cache
+        authenticator,
+        model_checker,
+        budget_guard,
+        rate_limiter,
+        response_cache,
+        guardrail_evaluator,
     )

@@ -3,6 +3,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,11 +127,17 @@ class SqlAlchemyApiKeyRepository:
         from gateway.teams.infrastructure.orm import TeamRow
         from gateway.tenants.infrastructure.orm import TenantRow
 
-        # 3-table LEFT JOIN: api_keys → teams (team_budget_usd) → tenants (cache_enabled)
+        # 3-table LEFT JOIN: api_keys → teams (team_budget_usd)
+        #   → tenants (cache_enabled, guardrail_configs)
         # All LEFT JOINs so un-teamed / un-tenanted keys still authenticate.
-        # Zero extra DB reads per contract §3 (response-caching).
+        # Zero extra DB reads per contract §3 (response-caching, guardrails-core).
         stmt = (
-            select(ApiKeyRow, TeamRow.team_budget_usd, TenantRow.cache_enabled)
+            select(
+                ApiKeyRow,
+                TeamRow.team_budget_usd,
+                TenantRow.cache_enabled,
+                TenantRow.guardrail_configs,
+            )
             .outerjoin(TeamRow, ApiKeyRow.team_id == TeamRow.id)
             .outerjoin(TenantRow, ApiKeyRow.tenant_id == TenantRow.id)
             .where(ApiKeyRow.id == key_id)
@@ -138,11 +145,27 @@ class SqlAlchemyApiKeyRepository:
         result = (await self._session.execute(stmt)).first()
         if result is None:
             return None
-        row, team_budget_usd, tenant_cache_enabled = result
+        row, team_budget_usd, tenant_cache_enabled, tenant_guardrail_configs = result
         # Effective cache = key-level OR tenant-level (both default false)
         effective_cache = bool(getattr(row, "cache_enabled", False)) or bool(
             tenant_cache_enabled or False
         )
+        # Deserialize guardrail_configs: asyncpg may return dict or str depending on driver version
+        import json as _json
+
+        raw_gc = tenant_guardrail_configs
+        if raw_gc is None:
+            guardrail_configs: dict[str, Any] = {}
+        elif isinstance(raw_gc, dict):
+            guardrail_configs = raw_gc
+        elif isinstance(raw_gc, str):
+            try:
+                guardrail_configs = _json.loads(raw_gc)
+            except Exception:
+                guardrail_configs = {}
+        else:
+            guardrail_configs = {}
+
         return ApiKey(
             id=row.id,
             tenant_id=row.tenant_id,
@@ -160,6 +183,7 @@ class SqlAlchemyApiKeyRepository:
             team_id=row.team_id,
             team_budget_usd=team_budget_usd,
             cache_enabled=effective_cache,
+            guardrail_configs=guardrail_configs,
         )
 
     async def update(

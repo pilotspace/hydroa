@@ -312,6 +312,7 @@ class AuthzUseCase:
             team_id=row.team_id,
             team_budget_usd=row.team_budget_usd,
             cache_enabled=row.cache_enabled,
+            guardrail_configs=getattr(row, "guardrail_configs", {}),
         )
 
 

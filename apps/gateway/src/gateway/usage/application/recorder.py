@@ -39,6 +39,14 @@ class RecordingUsageRecorder:
       session_factory: async_sessionmaker[AsyncSession] bound to the DB pool.
     """
 
+    # Typed capability seam (UsageRecordExtras in proxy/domain/ports.py):
+    # declares which additive record() kwargs this recorder accepts. Callers
+    # filter extras against this set — v1-Protocol fakes lack the attribute
+    # and therefore receive only the base kwargs.
+    supported_extras: frozenset[str] = frozenset(
+        {"team_id", "cached", "guardrail_blocked", "blocked_by", "pii_masked"}
+    )
+
     def __init__(
         self,
         *,
@@ -58,12 +66,17 @@ class RecordingUsageRecorder:
         status: int,
         team_id: uuid.UUID | None = None,
         cached: bool = False,
+        guardrail_blocked: bool = False,
+        blocked_by: str | None = None,
+        pii_masked: bool = False,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
         Must not raise.  Redis unavailability is logged and swallowed.
         cached=True: injects cached=true into raw field and forces cost_usd=0
         (the INCRBYFLOAT guard only runs when cost_usd > 0, so no spend counter increment).
+        guardrail_blocked=True: injects guardrail_blocked=true + blocked_by into raw field.
+        pii_masked=True: injects pii_masked=true into raw field.
         """
         try:
             await self._record_internal(
@@ -74,6 +87,9 @@ class RecordingUsageRecorder:
                 status=status,
                 team_id=team_id,
                 cached=cached,
+                guardrail_blocked=guardrail_blocked,
+                blocked_by=blocked_by,
+                pii_masked=pii_masked,
             )
         except Exception as exc:
             _log.warning(
@@ -96,6 +112,9 @@ class RecordingUsageRecorder:
         status: int,
         team_id: uuid.UUID | None = None,
         cached: bool = False,
+        guardrail_blocked: bool = False,
+        blocked_by: str | None = None,
+        pii_masked: bool = False,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -135,6 +154,12 @@ class RecordingUsageRecorder:
         }
         if cached:
             raw_payload["cached"] = True
+        if guardrail_blocked:
+            raw_payload["guardrail_blocked"] = True
+        if blocked_by is not None:
+            raw_payload["blocked_by"] = blocked_by
+        if pii_masked:
+            raw_payload["pii_masked"] = True
 
         event_fields: dict[str, str] = {
             "tenant_id": str(tenant_id),

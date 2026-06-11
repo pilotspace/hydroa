@@ -4,6 +4,8 @@ Contract FROZEN @ v1 (proxy-completions TASK.md §3).
 Additive extension @ model-mgmt TASK.md §3:
   - ModelAccess tri-state enum (ACTIVE | UNKNOWN | TENANT_DISABLED)
   - ModelChecker.check_for_tenant (new method — is_active UNCHANGED)
+Additive extension @ guardrails-core TASK.md §3:
+  - GuardrailEvaluator Protocol (evaluate_pre + evaluate_post)
 """
 
 from __future__ import annotations
@@ -11,9 +13,35 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TypedDict, runtime_checkable
 
 from gateway.keys.domain.entities import AuthzResult
+from gateway.proxy.domain.entities import GuardrailResult
+
+
+class UsageRecordExtras(TypedDict, total=False):
+    """Optional extension kwargs for UsageRecorder.record() — typed capability seam.
+
+    The v1 UsageRecorder Protocol signature is frozen; later tasks extended the
+    production recorder with additive kwargs. A recorder DECLARES which extras
+    it accepts via a class attribute `supported_extras: frozenset[str]` (absent
+    on v1-Protocol test fakes → treated as empty → only base kwargs are passed).
+    Callers filter this TypedDict against that declaration instead of runtime
+    signature introspection.
+
+    Fields:
+      team_id           — per-team spend attribution (team-governance)
+      cached            — cache-hit marker, forces cost_usd=0 (response-caching)
+      guardrail_blocked — raw marker on guardrail block (guardrails-core)
+      blocked_by        — guardrail name that triggered the block (guardrails-core)
+      pii_masked        — raw marker when pre-call PII masking fired (guardrails-core)
+    """
+
+    team_id: uuid.UUID
+    cached: bool
+    guardrail_blocked: bool
+    blocked_by: str
+    pii_masked: bool
 
 
 class ModelAccess(Enum):
@@ -120,12 +148,55 @@ class ResponseCache(Protocol):
         ...
 
 
+@runtime_checkable
+class GuardrailEvaluator(Protocol):
+    """Evaluate guardrails on a request (pre-call) and response (post-call).
+
+    New port for guardrails-core (TASK.md §3 CONTRACT).
+    Additive — default-None injection into CompletionUseCase is backward-compatible
+    with all frozen test fakes that do not implement this protocol.
+    """
+
+    async def evaluate_pre(
+        self,
+        messages: list[dict[str, Any]],
+        guardrail_configs: dict[str, Any],
+    ) -> GuardrailResult:
+        """Evaluate pre-call guardrails (prompt injection + PII mask).
+
+        Returns GuardrailResult. If blocked=True, the caller must raise
+        ProblemError(400, "ERR_GUARDRAIL_BLOCKED", ...) and fire a usage record.
+        If masked_messages is not None, the caller must substitute the body messages
+        before forwarding to upstream.
+        Fail-CLOSED: if any active guardrail is in BLOCK mode and an exception is
+        raised, returns GuardrailResult(blocked=True, ...) — never lets it through.
+        Fail-OPEN: if ALL active guardrails are in MASK/AUDIT mode, logs and returns
+        GuardrailResult(blocked=False, events=[GuardrailEvent(action="error", ...)]).
+        """
+        ...
+
+    async def evaluate_post(
+        self,
+        response_body: dict[str, Any],
+        guardrail_configs: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply post-call PII masking to the upstream response body.
+
+        Returns the (possibly modified) response body.
+        Only applies pii_mask in MASK mode to choices[*].message.content.
+        On error: logs + returns original body (always fail-OPEN — post-call is MASK/AUDIT only).
+        """
+        ...
+
+
 __all__ = [
     "AuthzResult",
     "CompletionUpstream",
+    "GuardrailEvaluator",
     "KeyAuthenticator",
     "ModelAccess",
     "ModelChecker",
     "ResponseCache",
+    "UsageRecordExtras",
     "UsageRecorder",
 ]

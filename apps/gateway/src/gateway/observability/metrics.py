@@ -85,6 +85,13 @@ class MetricsRegistry:
             registry=registry,
         )
 
+        self.guardrail_events_total = Counter(
+            "gateway_guardrail_events_total",
+            "Guardrail events by guardrail name, mode, and action",
+            ["guardrail", "mode", "action"],
+            registry=registry,
+        )
+
     @property
     def registry(self) -> CollectorRegistry:
         return self._registry
