@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "sso-oidc",
+  "active_task": "obs-callbacks",
   "active_milestone": "v4",
   "tasks": {
     "teams-core": {
@@ -58,12 +58,13 @@
     },
     "obs-callbacks": {
       "title": "OpenTelemetry trace export for the completion path",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v4",
       "depends_on": [],
       "created": "2026-06-11T06:15:25+00:00",
-      "updated": "2026-06-11T06:15:25+00:00"
+      "updated": "2026-06-11T10:49:26+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -77,7 +78,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T10:34:26+00:00",
+  "updated": "2026-06-11T10:49:26+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
