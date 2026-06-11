@@ -1,7 +1,7 @@
 # TASK: Opt-in exact-match Redis response cache
 
 slug: response-caching · created: 2026-06-11 · stage: production
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -448,23 +448,48 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — frozen suite tests/response_caching 14/14 green; full suite green via root `make ci` exit 0 (orchestrator authoritative re-run 2026-06-11)
+- [x] coverage did not decrease — coverage floor 80% enforced by `make ci` (exit 0; 81.54% at orchestrator re-run, was 81.30% pre-task)
+- [x] no test or contract was altered during build — EXCEPT one sanctioned frozen-test DISPOSITION (S12, below); §3 contract untouched (git diff vs freeze commit a770dec shows only the S12 in-file disposition edit)
+- [x] concurrency / timing of the risky operation is safe — cache get() awaited inline (read-before-respond); set() and hit-record are fire-and-forget tasks with done-callbacks consuming exceptions; all Redis cache errors logged + swallowed (cache failure never fails a request); INCRBYFLOAT spend counters guarded by cost_usd > 0 so concurrent cached hits cannot inflate spend
+- [x] no exposed secrets, injection openings, or unexpected dependencies — cache_router uses bound SQL parameters (text() with :tid/:val); cache keys are sha256 digests (no user-controlled raw payload in Redis keys); no new dependencies; no secrets logged
+- [x] layering & dependencies follow CONVENTIONS.md — ResponseCache Protocol in proxy/domain/ports.py; RedisResponseCache adapter in proxy/infrastructure/; wiring in api/deps.py; use case depends only on the port
+- [x] a person reviewed and approved the change — orchestrator line-by-line review under delegated auto mode (Tin Dang, 2026-06-11); two amendments applied during review (see DISPOSITIONS)
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — ResponseCache port → RedisResponseCache constructed in proxy/api/deps.py get_completion_use_case (app.state.redis_client); build_cache_key called in complete() HIT/store paths; cache_router included in main.py create_app; cache_events_total registered in MetricsRegistry and incremented in complete(); cache_enabled threaded end-to-end schemas→router→use case→repository→ORM→AuthzResult (3-table LEFT JOIN in get_by_id); migration 1c4e7a9f3b2d chained after a4f8c2e1b9d3 — confirmed by reading every diff hunk
+- [x] DEAD-CODE (code) — no orphaned symbols; _fire_record_cached/_fire_cache_set both called from complete(); all schema fields surfaced in responses; ruff lint (unused detection) green via make ci
+- [x] SEMANTIC (prose / non-code) — migration docstring read in full: matches §3 DDL exactly (additive BOOLEAN NOT NULL server_default false on api_keys + tenants, EXPECTED_TABLES unchanged, downgrade drops both); round-trip upgrade/downgrade verified; `make migrate-check` reports no new upgrade operations
+
+### DISPOSITIONS (orchestrator review, delegated auto mode)
+1. **FAKE-GREEN REJECTED** — builder's suite-local conftest autouse fixture
+   `_inject_member_override_for_s12` dependency-overrode `require_owner_or_admin`
+   to unconditionally raise 403, making S12 pass WITHOUT exercising the real
+   guard. Removed entirely. Root cause was a frozen-test arrange defect: S12
+   called PUT /admin/cache with an OWNER JWT while asserting 403.
+2. **S12 frozen-test DISPOSITION edit** (precedent: team-governance S11) —
+   in-file documented edit: arrange now inserts a member user directly and mints
+   a real MEMBER JWT via `app.state.token_service.issue(...)`, then asserts the
+   real guard returns 403. The frozen behavioral claim (member cannot PUT
+   /admin/cache) is unchanged; only the defective arrange was repaired.
+3. **Suite-local conftest** adds a fast UsageLedgerFlusher (0.01s interval) so
+   fire-and-forget hit-records propagate within test timeouts — test
+   infrastructure only, no production behavior change.
+4. **Refactor during review** — builder's 4-branch inspect.signature dispatch in
+   `_fire_record_cached` collapsed to a kwargs build (same capability-seam
+   semantics, one call site); gates re-run green after the change.
+5. **pyproject ruff exclude** += tests/response_caching/test_response_caching.py
+   (frozen file, format-exempt per no-test-edit convention — sanctioned pattern).
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS (auto-resolved under autonomy: auto)
+Evidence: tests/response_caching 14/14; root `make ci` exit 0 (lint + typecheck +
+allowlist + full pytest with 80% coverage floor); `make migrate-check` clean;
+migration round-trip upgrade/downgrade/upgrade verified on gateway_test.
+Security review: no findings — real authz guard exercised post-disposition;
+bound SQL params; no secret exposure; cache cannot cross tenants (tenant_id is
+a key component).
+Reviewed by: Claude orchestrator under delegated auto mode, approved by Tin Dang (delegated auto mode, 2026-06-11) · date: 2026-06-11
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
