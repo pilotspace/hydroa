@@ -6,12 +6,13 @@
   "tasks": {
     "teams-core": {
       "title": "Teams within a tenant: CRUD, membership, roles, key attribution",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v4",
       "depends_on": [],
       "created": "2026-06-11T06:15:25+00:00",
-      "updated": "2026-06-11T06:15:25+00:00"
+      "updated": "2026-06-11T06:28:29+00:00",
+      "flag_verified": true
     },
     "team-governance": {
       "title": "Team budget enforcement + team spend rollup",
@@ -72,7 +73,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T06:15:25+00:00",
+  "updated": "2026-06-11T06:28:29+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
