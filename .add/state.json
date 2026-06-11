@@ -1,12 +1,31 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
-  "tasks": {},
-  "milestones": {},
+  "active_task": "oidc-jwks",
+  "active_milestone": "v5",
+  "tasks": {
+    "oidc-jwks": {
+      "title": "RS256/JWKS ID-token signature verification",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v5",
+      "depends_on": [],
+      "created": "2026-06-11T12:08:22+00:00",
+      "updated": "2026-06-11T12:08:22+00:00"
+    }
+  },
+  "milestones": {
+    "v5": {
+      "title": "LiteLLM parity slice 3 \u2014 intelligence & hardening",
+      "goal": "a tenant gets semantically-cached responses, hardened PII protection, cryptographic OIDC verification with per-tenant IdP config, and team-attributed historical usage \u2014 under the Hydroa name internally",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-06-11T12:07:13+00:00",
+      "updated": "2026-06-11T12:07:13+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T11:59:41+00:00",
+  "updated": "2026-06-11T12:08:22+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
