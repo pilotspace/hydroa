@@ -48,12 +48,12 @@
     },
     "model-mgmt": {
       "title": "Runtime per-tenant model management",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v3",
       "depends_on": [],
       "created": "2026-06-10T18:16:24+00:00",
-      "updated": "2026-06-11T04:55:25+00:00",
+      "updated": "2026-06-11T05:18:28+00:00",
       "flag_verified": true
     },
     "dashboard-govern": {
@@ -79,7 +79,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T04:55:25+00:00",
+  "updated": "2026-06-11T05:18:28+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
