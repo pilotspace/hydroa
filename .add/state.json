@@ -1,17 +1,18 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "dashboard-govern",
+  "active_task": "key-governance",
   "active_milestone": "v3",
   "tasks": {
     "key-governance": {
       "title": "Per-key budgets, expiry, model allowlist, rotation",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v3",
       "depends_on": [],
       "created": "2026-06-10T18:16:24+00:00",
-      "updated": "2026-06-10T18:16:24+00:00"
+      "updated": "2026-06-11T01:58:51+00:00",
+      "flag_verified": true
     },
     "rate-limits": {
       "title": "App-level TPM/RPM sliding-window limits",
@@ -74,7 +75,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-10T18:16:24+00:00",
+  "updated": "2026-06-11T01:58:51+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
