@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "rate-limits",
+  "active_task": "spend-windows",
   "active_milestone": "v3",
   "tasks": {
     "key-governance": {
@@ -26,14 +26,15 @@
     },
     "spend-windows": {
       "title": "Rolling spend windows, soft-budget alerts, spend query API",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v3",
       "depends_on": [
         "key-governance"
       ],
       "created": "2026-06-10T18:16:24+00:00",
-      "updated": "2026-06-10T18:16:24+00:00"
+      "updated": "2026-06-11T03:20:52+00:00",
+      "flag_verified": true
     },
     "health-alerting": {
       "title": "Health checks + alert events + webhook delivery",
@@ -76,7 +77,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T02:57:20+00:00",
+  "updated": "2026-06-11T03:20:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

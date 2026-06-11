@@ -58,6 +58,8 @@ exclude = [
     "tests/key_governance/test_key_governance.py",
     # rate-limits: frozen test file; format excluded per no-test-edit contract
     "tests/rate_limits/test_rate_limits.py",
+    # spend-windows: frozen test file; format excluded per no-test-edit contract
+    "tests/spend_windows/test_spend_windows.py",
 ]
 
 [tool.ruff.lint]
