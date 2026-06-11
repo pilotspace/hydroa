@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     oidc_redirect_uri: str = ""  # GATEWAY_OIDC_REDIRECT_URI
     oidc_domain_mapping: str = "[]"  # GATEWAY_OIDC_DOMAIN_MAPPING (JSON list)
     oidc_post_login_redirect: str = "/"  # GATEWAY_OIDC_POST_LOGIN_REDIRECT
+    oidc_jwks_url: str = ""  # GATEWAY_OIDC_JWKS_URL (optional; enables RS256 JWKS verification)
 
     @model_validator(mode="after")
     def _validate_otel_config(self) -> "Settings":

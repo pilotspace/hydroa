@@ -41,18 +41,21 @@ from gateway.auth.domain.errors import (
 )
 
 if TYPE_CHECKING:
+    from gateway.auth.application.jwks_key_cache import JwksKeyCache
     from gateway.auth.domain.entities import DomainMapping
-    from gateway.auth.domain.ports import OidcTokenExchanger
+    from gateway.auth.domain.ports import JwksClient, OidcTokenExchanger
     from gateway.core.config import Settings
     from gateway.tenants.domain.ports import IdentityRepository, TokenService
 
 logger = structlog.get_logger(__name__)
 
-# WARNING sentinel — logged in non-dev environments to signal signature skip
+# WARNING sentinel — logged in non-dev environments to signal signature skip.
+# Updated (v5): names GATEWAY_OIDC_JWKS_URL as the remedy.
+# NEVER emitted when verification is active (jwks_client is not None).
 _SIGNATURE_SKIP_WARNING = (
-    "OIDC ID token signature NOT verified (v4: cryptography package absent). "
+    "OIDC ID token signature NOT verified (RS256/JWKS verification INACTIVE). "
     "TLS channel to IdP token endpoint is the trust anchor (OIDC Core §3.1.3.7(6)). "
-    "Add cryptography to allowlist in v5 for RS256 JWKS verification."
+    "Set GATEWAY_OIDC_JWKS_URL to enable RS256 JWKS signature verification."
 )
 
 SSO_PASSWORD_HASH_SENTINEL = "!sso-no-password"  # noqa: S105 — sentinel string, not a real password
@@ -112,15 +115,27 @@ class OidcLoginUseCase:
         repository: IdentityRepository,
         tokens: TokenService,
         settings: Settings,
+        jwks_client: JwksClient | None = None,
+        jwks_key_cache: JwksKeyCache | None = None,
     ) -> None:
         self._exchanger = exchanger
         self._repository = repository
         self._tokens = tokens
         self._settings = settings
+        self._jwks_client = jwks_client
+        # Activation rule (§3): jwks_client present ⇒ verification ACTIVE. A missing
+        # cache must never silently deactivate verification — fall back to a local
+        # per-use-case cache (correctness over hit rate) rather than to skip-verify.
+        if jwks_client is not None and jwks_key_cache is None:
+            from gateway.auth.application.jwks_key_cache import JwksKeyCache as _Cache
+
+            jwks_key_cache = _Cache()
+        self._jwks_key_cache = jwks_key_cache
         self._domain_mappings = _parse_domain_mappings(settings.oidc_domain_mapping)
 
-        # Log signature skip warning in non-dev environments
-        if settings.environment not in ("dev", "test"):
+        # Log signature skip warning in non-dev environments ONLY when verification
+        # is INACTIVE (jwks_client is None). Never emit on the active path.
+        if jwks_client is None and settings.environment not in ("dev", "test"):
             logger.warning(_SIGNATURE_SKIP_WARNING)
             logging.getLogger(__name__).warning(_SIGNATURE_SKIP_WARNING)
 
@@ -174,7 +189,49 @@ class OidcLoginUseCase:
             raise OidcUpstreamError("id_token absent from IdP token endpoint response")
 
         # Step 5: decode + validate claims
-        claims = _decode_id_token_claims(id_token)
+        # Activation rule (§3): jwks_client presence alone decides — __init__
+        # guarantees a cache exists whenever a client does, so a missing cache can
+        # never flip this branch to skip-verify.
+        if self._jwks_client is not None and self._jwks_key_cache is not None:
+            # ── Active path: RS256/JWKS signature verification ────────────────────
+            # 1. Peek at the JWT header to extract alg + kid (before any key fetch).
+            try:
+                header = jwt.get_unverified_header(id_token)
+            except jwt.DecodeError as exc:
+                raise OidcTokenInvalidError(f"Malformed ID token header: {exc}") from exc
+
+            # 2. Algorithm allowlist enforcement — SECURITY INVARIANT.
+            #    alg=none, HS256 (key-confusion), ES256, PS256 → all rejected.
+            if header.get("alg") != "RS256":
+                raise OidcTokenInvalidError(
+                    f"ID token alg {header.get('alg')!r} rejected; only RS256 is accepted"
+                )
+
+            # 3. Resolve signing key via cache (kid-miss refresh inside JwksKeyCache).
+            kid: str | None = header.get("kid")
+            key = await self._jwks_key_cache.resolve(kid, self._jwks_client)
+
+            # 4. Decode and verify signature + exp (pyjwt validates exp automatically).
+            #    aud is validated manually downstream; issuer= not passed to jwt.decode.
+            try:
+                claims: dict[str, Any] = jwt.decode(
+                    id_token,
+                    key,
+                    algorithms=["RS256"],
+                    options={"verify_aud": False},
+                )
+            except jwt.ExpiredSignatureError as exc:
+                raise OidcTokenExpiredError("ID token has expired") from exc
+            except jwt.InvalidTokenError as exc:
+                raise OidcTokenInvalidError(
+                    f"ID token signature verification failed: {exc}"
+                ) from exc
+        else:
+            # ── Inactive path: v4 TLS-channel mode (verify_signature=False) ───────
+            # Governed by OIDC Core §3.1.3.7(6) sanction — all v4 preconditions
+            # remain in force (server-side receipt, TLS, nonce binding, full claims).
+            # The skip WARNING (naming GATEWAY_OIDC_JWKS_URL) was emitted in __init__.
+            claims = _decode_id_token_claims(id_token)
 
         # Validate iss
         iss: str = claims.get("iss", "")

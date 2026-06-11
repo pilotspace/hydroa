@@ -347,6 +347,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Cache TTL — exposed on app.state so proxy router can read it per-request
     app.state.cache_ttl_seconds = settings.cache_ttl_seconds
 
+    # JWKS key cache — created when OIDC is enabled so tests can inject the seam
+    # and the production path has a shared cache across requests.
+    # app.state.jwks_client starts unset (None by absence); tests inject via
+    # oidc_app.state.jwks_client = FakeJwksClient(...).
+    if settings.oidc_enabled:
+        from gateway.auth.application.jwks_key_cache import JwksKeyCache
+
+        app.state.jwks_key_cache = JwksKeyCache()
+
     register_error_handlers(app)
     app.include_router(oidc_router)
     app.include_router(health_router)
