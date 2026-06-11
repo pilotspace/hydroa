@@ -17,6 +17,7 @@ dependencies = [
     "redis>=5",
     "alembic>=1.9",
     "prometheus-client>=0.21",
+    "cryptography>=48.0.1",
 ]
 
 [dependency-groups]
@@ -76,6 +77,8 @@ exclude = [
     "tests/sso_oidc/test_sso_oidc.py",
     # obs-callbacks: frozen test file; format excluded per no-test-edit contract
     "tests/obs_callbacks/test_obs_callbacks.py",
+    # oidc-jwks: frozen test file; format excluded per no-test-edit contract
+    "tests/oidc_jwks/test_oidc_jwks.py",
 ]
 
 [tool.ruff.lint]
