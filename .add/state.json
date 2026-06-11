@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "health-alerting",
+  "active_task": "model-mgmt",
   "active_milestone": "v3",
   "tasks": {
     "key-governance": {
@@ -48,12 +48,13 @@
     },
     "model-mgmt": {
       "title": "Runtime per-tenant model management",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v3",
       "depends_on": [],
       "created": "2026-06-10T18:16:24+00:00",
-      "updated": "2026-06-10T18:16:24+00:00"
+      "updated": "2026-06-11T04:55:25+00:00",
+      "flag_verified": true
     },
     "dashboard-govern": {
       "title": "Dashboard key-governance + spend surfaces",
@@ -78,7 +79,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T04:42:11+00:00",
+  "updated": "2026-06-11T04:55:25+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
