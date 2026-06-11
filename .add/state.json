@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "pii-v2",
+  "active_task": "semantic-cache",
   "active_milestone": "v5",
   "tasks": {
     "oidc-jwks": {
@@ -33,6 +33,16 @@
       "created": "2026-06-11T13:53:57+00:00",
       "updated": "2026-06-11T14:28:36+00:00",
       "flag_verified": true
+    },
+    "semantic-cache": {
+      "title": "Semantic response caching \u2014 similarity layer over the exact-match cache",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v5",
+      "depends_on": [],
+      "created": "2026-06-11T14:29:11+00:00",
+      "updated": "2026-06-11T14:43:35+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -46,7 +56,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T14:28:36+00:00",
+  "updated": "2026-06-11T14:43:35+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
