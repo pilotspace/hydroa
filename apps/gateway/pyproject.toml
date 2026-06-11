@@ -80,6 +80,8 @@ exclude = [
     "tests/obs_callbacks/test_obs_callbacks.py",
     # oidc-jwks: frozen test file; format excluded per no-test-edit contract
     "tests/oidc_jwks/test_oidc_jwks.py",
+    # team-attribution: frozen test file; format excluded per no-test-edit contract
+    "tests/team_attribution/test_team_attribution.py",
 ]
 
 [tool.ruff.lint]
