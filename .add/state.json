@@ -36,12 +36,12 @@
     },
     "semantic-cache": {
       "title": "Semantic response caching \u2014 similarity layer over the exact-match cache",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v5",
       "depends_on": [],
       "created": "2026-06-11T14:29:11+00:00",
-      "updated": "2026-06-11T14:43:35+00:00",
+      "updated": "2026-06-11T15:14:26+00:00",
       "flag_verified": true
     }
   },
@@ -56,7 +56,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T14:43:35+00:00",
+  "updated": "2026-06-11T15:14:26+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
