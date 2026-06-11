@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "model-mgmt",
+  "active_task": "dashboard-govern",
   "active_milestone": "v3",
   "tasks": {
     "key-governance": {
@@ -58,14 +58,15 @@
     },
     "dashboard-govern": {
       "title": "Dashboard key-governance + spend surfaces",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v3",
       "depends_on": [
         "spend-windows"
       ],
       "created": "2026-06-10T18:16:24+00:00",
-      "updated": "2026-06-10T18:16:24+00:00"
+      "updated": "2026-06-11T05:29:37+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -79,7 +80,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T05:18:28+00:00",
+  "updated": "2026-06-11T05:29:37+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
