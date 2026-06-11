@@ -45,6 +45,22 @@ Testing: red/green TDD mandatory — tests red before build; pytest + pytest-asy
         - drain/consume loops bounded by a batch size are tested against backlogs LARGER
           than the batch, and emptiness checks must cover undelivered + pending sets
           (evidence: ops-hardening flush_once count=100 early-exit, caught at review)
+        Folded from v3 (2026-06-11):
+        - contract prose specifies the OBSERVABLE surface (status + code + shape); it names
+          internal types only at a layer boundary that needs them — listing domain-error
+          class names in §3 invites dead code (evidence: model-mgmt ModelDisabledError /
+          ModelNotFoundError both born dead at build, removed at review)
+        - route params that may contain "/" (catalog model ids) use the :path converter and
+          the §3 contract says so — ASGI servers deliver the DECODED path (evidence:
+          model-mgmt PUT /admin/models/{model_id:path})
+        - jsdom tolerates invalid table DOM that real browsers restructure — dashboard
+          reviews include a markup-validity lens; component-test green does not prove valid
+          HTML (evidence: dashboard-govern nested-<tr> shipped green through 77 tests,
+          caught only at manual diff review)
+        - port extensions that frozen fakes cannot implement use the hasattr capability
+          seam: the use case detects the new method and falls back to the frozen one —
+          frozen tests never edited (evidence: soft-budget seam, model-mgmt
+          check_for_tenant; two milestones, zero frozen-test edits)
 Dependencies: every package in `.add/dependencies.allowlist`; CI gate
         (`scripts/check_allowlist.py`) rejects unknown packages
         Folded from v1 (2026-06-10): the allowlist governs PYTHON packages only — node

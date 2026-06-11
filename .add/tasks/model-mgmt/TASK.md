@@ -448,14 +448,14 @@ forward-compatible (no group_id column conflicts with the (tenant_id, model_id) 
 verification confirmed disable->403 on the very next request through TLS with no restart.
 
 ### Competency deltas
-- [SDD · open] contract prose listing internal domain-error class names invites dead code —
+- [SDD · folded] contract prose listing internal domain-error class names invites dead code —
   the observable surface (status+code) is the contract; name internal types only when a layer
   boundary needs them (evidence: ModelDisabledError/ModelNotFoundError both born dead at build,
   removed at review)
-- [TDD · open] route params that contain "/" need the :path converter under ASGI decoded
+- [TDD · folded] route params that contain "/" need the :path converter under ASGI decoded
   paths — encode this in the §3 contract when ids are slash-bearing (evidence: builder needed
   the test-driven hint; documented in §3 to avoid rediscovery)
-- [ADD · open] the hasattr capability seam is now used twice (soft-budget, check_for_tenant)
+- [ADD · folded] the hasattr capability seam is now used twice (soft-budget, check_for_tenant)
   to keep frozen fakes valid across port extensions — candidate for CONVENTIONS.md at fold
   (evidence: zero frozen-test edits across two port-extending tasks)
 
