@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     alert_retry_max: int = 3  # GATEWAY_ALERT_RETRY_MAX
     health_check_interval_seconds: int = 60  # GATEWAY_HEALTH_CHECK_INTERVAL_SECONDS (0 = disabled)
 
+    # ── OpenTelemetry trace export (obs-callbacks task) ──────────────────────
+    otel_enabled: bool = False  # GATEWAY_OTEL_ENABLED
+    otel_export_url: str = ""  # GATEWAY_OTEL_EXPORT_URL (required when enabled)
+    otel_service_name: str = "hydroa-gateway"  # GATEWAY_OTEL_SERVICE_NAME
+    otel_flush_interval_seconds: float = 5.0  # GATEWAY_OTEL_FLUSH_INTERVAL_SECONDS
+    otel_queue_max: int = 2048  # GATEWAY_OTEL_QUEUE_MAX
+
     # ── OIDC SSO (sso-oidc task) ─────────────────────────────────────────────
     oidc_enabled: bool = False  # GATEWAY_OIDC_ENABLED
     oidc_issuer: str = ""  # GATEWAY_OIDC_ISSUER (e.g. https://accounts.google.com)
@@ -35,6 +42,13 @@ class Settings(BaseSettings):
     oidc_redirect_uri: str = ""  # GATEWAY_OIDC_REDIRECT_URI
     oidc_domain_mapping: str = "[]"  # GATEWAY_OIDC_DOMAIN_MAPPING (JSON list)
     oidc_post_login_redirect: str = "/"  # GATEWAY_OIDC_POST_LOGIN_REDIRECT
+
+    @model_validator(mode="after")
+    def _validate_otel_config(self) -> "Settings":
+        """If otel_enabled=True, otel_export_url must be non-empty (startup guard)."""
+        if self.otel_enabled and not self.otel_export_url:
+            raise ValueError("GATEWAY_OTEL_EXPORT_URL must be set when GATEWAY_OTEL_ENABLED=true")
+        return self
 
     @model_validator(mode="after")
     def _forbid_dev_secret_outside_dev(self) -> "Settings":

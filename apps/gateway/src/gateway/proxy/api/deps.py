@@ -83,6 +83,14 @@ def get_completion_use_case(
     guardrail_evaluator = getattr(request.app.state, "guardrail_evaluator", None)
     if guardrail_evaluator is None:
         guardrail_evaluator = RegexGuardrailEvaluator()
+    # OTel span emitter seam — only wired when otel_enabled=True in settings.
+    # When otel_enabled=False (default): span_emitter is always None regardless of
+    # what may be set on app.state. This enforces the §3 CONTRACT inviolable:
+    # "otel_enabled=False → zero spans, zero behavior change."
+    # Tests that need span capture must use a settings fixture with otel_enabled=True.
+    _settings = getattr(request.app.state, "settings", None)
+    _otel_enabled: bool = getattr(_settings, "otel_enabled", False) if _settings else False
+    span_emitter = getattr(request.app.state, "span_emitter", None) if _otel_enabled else None
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -90,4 +98,5 @@ def get_completion_use_case(
         rate_limiter,
         response_cache,
         guardrail_evaluator,
+        span_emitter,
     )

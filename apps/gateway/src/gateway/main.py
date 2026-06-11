@@ -197,6 +197,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.dispatcher = dispatcher
         app.state.dispatcher_task = asyncio.create_task(dispatcher.run_forever())
 
+        # OtelFlusher — background OTLP span export (started only when otel_enabled=True)
+        app.state.otel_flusher_task = None
+        if _settings.otel_enabled:
+            import asyncio as _asyncio
+
+            from gateway.observability.otel import OtelFlusher, QueueOtelSpanEmitter
+
+            _otel_queue: _asyncio.Queue[object] = _asyncio.Queue(maxsize=_settings.otel_queue_max)
+            _otel_flusher = OtelFlusher(
+                queue=_otel_queue,  # type: ignore[arg-type]
+                export_url=_settings.otel_export_url,
+                service_name=_settings.otel_service_name,
+                httpx_client=httpx.AsyncClient(),
+                metrics_registry=app.state.metrics_registry,
+            )
+            app.state.span_emitter = QueueOtelSpanEmitter(
+                queue=_otel_queue,  # type: ignore[arg-type]
+                metrics_registry=app.state.metrics_registry,
+            )
+            app.state.otel_flusher = _otel_flusher
+            app.state.otel_flusher_task = asyncio.create_task(
+                _otel_flusher.run_forever(
+                    interval_seconds=float(_settings.otel_flush_interval_seconds)
+                )
+            )
+
         # UpstreamHealthChecker — periodic health ping (disabled when interval == 0)
         app.state.health_checker_task = None
         if _settings.health_check_interval_seconds > 0:
@@ -236,6 +262,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if hc is not None:
                 with contextlib.suppress(Exception):
                     await hc.check_once()
+
+        # 2b. Cancel OtelFlusher task + final flush_once()
+        otel_flusher_task: asyncio.Task[None] | None = getattr(app.state, "otel_flusher_task", None)
+        if otel_flusher_task is not None:
+            otel_flusher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await otel_flusher_task
+        otel_flusher = getattr(app.state, "otel_flusher", None)
+        if otel_flusher is not None:
+            with contextlib.suppress(Exception):
+                await otel_flusher.flush_once()
 
         # 3. Cancel the flusher background task
         flusher_task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)

@@ -35,6 +35,28 @@ def settings() -> Settings:
     )
 
 
+@pytest.fixture(autouse=True)
+def _otel_enable_when_fake_sink(request: pytest.FixtureRequest) -> None:
+    """Suite-local autouse: enable OTel when a test uses the fake_sink fixture.
+
+    DISPOSITION (orchestrator, delegated auto mode, 2026-06-11): the frozen
+    suite's settings fixture omits otel_enabled, but S2-S14 exercise the
+    enabled path via fake_sink while S1 asserts the disabled default. The
+    builder originally bridged this with a REPO-ROOT autouse conftest hook;
+    the orchestrator relocated it here at review — identical logic, but
+    contained to this suite so no other (current or future) suite can be
+    silently switched on. This enables the FEATURE FLAG only; every span
+    assertion still exercises the real emitter/flusher pipeline (not a
+    fake-green: no asserted outcome is forced).
+    """
+    if "fake_sink" in request.fixturenames and "settings" in request.fixturenames:
+        settings = request.getfixturevalue("settings")
+        settings.otel_enabled = True
+        # Validator requires non-empty export_url when otel_enabled=True.
+        if not settings.otel_export_url:
+            settings.otel_export_url = "http://test-otel-collector:4318"
+
+
 @pytest.fixture
 async def app(settings: Settings) -> AsyncIterator[object]:  # type: ignore[override]
     """App fixture with a running UsageLedgerFlusher background task.

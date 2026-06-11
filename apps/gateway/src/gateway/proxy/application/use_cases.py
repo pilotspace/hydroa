@@ -21,10 +21,12 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import os
+import time
 import uuid
 from collections.abc import AsyncIterator
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog.contextvars
 
@@ -48,8 +50,61 @@ from gateway.rate_limits.domain.errors import RateLimitExceededError
 from gateway.rate_limits.domain.ports import RateLimiter
 from gateway.usage.domain.extractor import extract_usage_from_sse
 
+if TYPE_CHECKING:
+    from gateway.observability.otel import OtelSpanEmitter
+
 _log = logging.getLogger(__name__)
 _ZERO = Decimal("0")
+
+
+# ---------------------------------------------------------------------------
+# Span emission helper — fire-and-forget, never raises into request path
+# ---------------------------------------------------------------------------
+
+
+def _emit_span_fire_forget(
+    span_emitter: OtelSpanEmitter,
+    authz: AuthzResult,
+    model_id: str,
+    status_code: int,
+    stream: bool,
+    cached: bool,
+    guardrail_blocked: bool,
+    start_ns: int,
+    error_code: str | None = None,
+) -> None:
+    """Build an OtelSpan and schedule fire-and-forget emission.
+
+    Must never raise — all errors are swallowed so observability never
+    affects the request path.
+    """
+    try:
+        from gateway.observability.otel import OtelSpan
+
+        end_ns = time.time_ns()
+        trace_id = os.urandom(16).hex()
+        span_id = os.urandom(8).hex()
+        team_id_str = str(authz.team_id) if authz.team_id is not None else None
+        span = OtelSpan(
+            trace_id=trace_id,
+            span_id=span_id,
+            name="proxy.completion",
+            start_time_ns=start_ns,
+            end_time_ns=end_ns,
+            tenant_id=str(authz.tenant_id),
+            key_id=str(authz.key_id),
+            team_id=team_id_str,
+            model=model_id,
+            status_code=status_code,
+            stream=stream,
+            cached=cached,
+            guardrail_blocked=guardrail_blocked,
+            error_code=error_code,
+        )
+        task = asyncio.ensure_future(span_emitter.emit(span))
+        task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+    except Exception:  # noqa: S110
+        pass
 
 
 def _fire_record_tpm(
@@ -295,6 +350,7 @@ class CompletionUseCase:
         rate_limiter: RateLimiter | None = None,
         response_cache: ResponseCache | None = None,
         guardrail_evaluator: GuardrailEvaluator | None = None,
+        span_emitter: OtelSpanEmitter | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -304,6 +360,7 @@ class CompletionUseCase:
         )
         self._response_cache = response_cache
         self._guardrail_evaluator = guardrail_evaluator
+        self._span_emitter = span_emitter
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -615,210 +672,255 @@ class CompletionUseCase:
         On upstream 4xx: pass-through verbatim.
         On upstream 5xx / circuit open: raise ProblemError 502.
         """
-        authz = await self._authenticate(raw_key)
-        # Validate payload fields (format only — catalog/tenant check is in _enforce_governance).
-        model_id, _ = await self._validate_payload(body)
-        # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
-        # Governance ALWAYS runs before cache lookup (contract §3 enforcement order).
-        await self._enforce_governance(authz, model_id, self._budget_guard)
-
-        # --- Step 4: Pre-call guardrails (after governance, before cache lookup) ---
-        guardrail_evaluator = self._guardrail_evaluator
-        guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
-        if guardrail_evaluator is not None and guardrail_configs:
-            try:
-                result = await guardrail_evaluator.evaluate_pre(
-                    body.get("messages", []), guardrail_configs
-                )
-            except Exception as _exc:
-                # Evaluator itself raised unexpectedly (e.g. ErrorGuardrailEvaluator in tests).
-                # Apply fail-CLOSED/fail-OPEN at the use_case level.
-                _log.warning("guardrail evaluate_pre raised unexpectedly", exc_info=_exc)
-                _has_block = any(
-                    isinstance(cfg, dict) and cfg.get("enabled") and cfg.get("mode") == "block"
-                    for cfg in guardrail_configs.values()
-                )
-                if _has_block:
-                    # Fail-CLOSED: block the request
-                    _fire_guardrail_metrics(
-                        metrics_registry,
-                        [_make_error_event(guardrail_configs)],
-                        guardrail_configs,
-                    )
-                    _fire_record_with_raw(
-                        usage_recorder,
-                        tenant_id=authz.tenant_id,
-                        key_id=authz.key_id,
-                        model=model_id,
-                        usage=None,
-                        status=400,
-                        team_id=authz.team_id,
-                        guardrail_blocked=True,
-                        blocked_by="error",
-                    )
-                    raise ProblemError(
-                        400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
-                    ) from None
-                else:
-                    # Fail-OPEN: log error event, proceed
-                    _fire_guardrail_metrics(
-                        metrics_registry,
-                        [_make_error_event(guardrail_configs)],
-                        guardrail_configs,
-                    )
-                    # result is not set — fall through without masking/blocking
-                    result = None
-
-            if result is not None:
-                _fire_guardrail_metrics(metrics_registry, result.events, guardrail_configs)
-                if result.blocked:
-                    _fire_record_with_raw(
-                        usage_recorder,
-                        tenant_id=authz.tenant_id,
-                        key_id=authz.key_id,
-                        model=model_id,
-                        usage=None,
-                        status=400,
-                        team_id=authz.team_id,
-                        guardrail_blocked=True,
-                        blocked_by=result.blocked_by,
-                    )
-                    raise ProblemError(
-                        400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
-                    )
-                if result.masked_messages is not None:
-                    body = {**body, "messages": result.masked_messages}
-
-        # --- Step 4.5: Cache logic (non-streaming only, after guardrails) ---
-        cache = self._response_cache
-        cache_enabled = authz.cache_enabled
-        x_cache: str | None = None
-
-        if cache is not None and cache_enabled:
-            from gateway.proxy.infrastructure.response_cache import build_cache_key
-
-            no_cache = (request_headers or {}).get("cache-control", "").lower() == "no-cache"
-            cache_key = build_cache_key(str(authz.tenant_id), body)
-
-            if not no_cache:
-                # Try cache lookup
-                cached_body = await cache.get(cache_key)
-                if cached_body is not None:
-                    # HIT: apply post-call guardrails, then return cached body
-                    x_cache = "hit"
-                    if metrics_registry is not None:
-                        try:
-                            metrics_registry.cache_events_total.labels(result="hit").inc()
-                        except Exception:  # noqa: S110
-                            pass
-                    # Step 5.5 on cache HIT: apply post-call PII mask if configured
-                    # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only).
-                    if guardrail_evaluator is not None and guardrail_configs:
-                        if hasattr(guardrail_evaluator, "evaluate_post"):
-                            try:
-                                cached_body = await guardrail_evaluator.evaluate_post(
-                                    cached_body, guardrail_configs
-                                )
-                            except Exception as _exc:
-                                _log.warning(
-                                    "guardrail evaluate_post raised on cache HIT (fail-OPEN)",
-                                    exc_info=_exc,
-                                )
-                    cached_usage_raw = cached_body.get("usage")
-                    cached_usage: dict[str, Any] | None = (
-                        cached_usage_raw if isinstance(cached_usage_raw, dict) else None
-                    )
-                    _fire_record_cached(
-                        usage_recorder,
-                        tenant_id=authz.tenant_id,
-                        key_id=authz.key_id,
-                        model=model_id,
-                        usage=cached_usage,
-                        team_id=authz.team_id,
-                    )
-                    # TPM post-accounting uses cached token counts
-                    if authz.tpm_limit is not None and cached_usage is not None:
-                        total_tokens = cached_usage.get("total_tokens")
-                        if isinstance(total_tokens, int) and total_tokens > 0:
-                            _fire_record_tpm(
-                                self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
-                            )
-                    return 200, cached_body, x_cache
-                else:
-                    # MISS
-                    x_cache = "miss"
-                    if metrics_registry is not None:
-                        try:
-                            metrics_registry.cache_events_total.labels(result="miss").inc()
-                        except Exception:  # noqa: S110
-                            pass
-            else:
-                # BYPASS: Cache-Control: no-cache
-                x_cache = "bypass"
-                if metrics_registry is not None:
-                    try:
-                        metrics_registry.cache_events_total.labels(result="bypass").inc()
-                    except Exception:  # noqa: S110
-                        pass
-
+        _start_ns = time.time_ns()
+        _authz: AuthzResult | None = None
+        _status_code: int = 502
+        _model_id: str = ""
+        _cached: bool = False
+        _guardrail_blocked: bool = False
+        _error_code: str | None = None
         try:
-            status, response_body = await upstream.complete(body)
-        except (UpstreamUnavailableError, CircuitOpenError):
-            # Circuit-breaker proxy has already counted the failure.
+            authz = await self._authenticate(raw_key)
+            _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # Validate payload fields (format only — catalog check is in _enforce_governance).
+            model_id, _ = await self._validate_payload(body)
+            _model_id = model_id
+            # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
+            # Governance ALWAYS runs before cache lookup (contract §3 enforcement order).
+            await self._enforce_governance(authz, model_id, self._budget_guard)
+
+            # --- Step 4: Pre-call guardrails (after governance, before cache lookup) ---
+            guardrail_evaluator = self._guardrail_evaluator
+            guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
+            if guardrail_evaluator is not None and guardrail_configs:
+                try:
+                    result = await guardrail_evaluator.evaluate_pre(
+                        body.get("messages", []), guardrail_configs
+                    )
+                except Exception as _exc:
+                    # Evaluator itself raised unexpectedly (e.g. ErrorGuardrailEvaluator in tests).
+                    # Apply fail-CLOSED/fail-OPEN at the use_case level.
+                    _log.warning("guardrail evaluate_pre raised unexpectedly", exc_info=_exc)
+                    _has_block = any(
+                        isinstance(cfg, dict) and cfg.get("enabled") and cfg.get("mode") == "block"
+                        for cfg in guardrail_configs.values()
+                    )
+                    if _has_block:
+                        # Fail-CLOSED: block the request
+                        _fire_guardrail_metrics(
+                            metrics_registry,
+                            [_make_error_event(guardrail_configs)],
+                            guardrail_configs,
+                        )
+                        _fire_record_with_raw(
+                            usage_recorder,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            usage=None,
+                            status=400,
+                            team_id=authz.team_id,
+                            guardrail_blocked=True,
+                            blocked_by="error",
+                        )
+                        _guardrail_blocked = True
+                        _status_code = 400
+                        raise ProblemError(
+                            400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
+                        ) from None
+                    else:
+                        # Fail-OPEN: log error event, proceed
+                        _fire_guardrail_metrics(
+                            metrics_registry,
+                            [_make_error_event(guardrail_configs)],
+                            guardrail_configs,
+                        )
+                        # result is not set — fall through without masking/blocking
+                        result = None
+
+                if result is not None:
+                    _fire_guardrail_metrics(metrics_registry, result.events, guardrail_configs)
+                    if result.blocked:
+                        _fire_record_with_raw(
+                            usage_recorder,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            usage=None,
+                            status=400,
+                            team_id=authz.team_id,
+                            guardrail_blocked=True,
+                            blocked_by=result.blocked_by,
+                        )
+                        _guardrail_blocked = True
+                        _status_code = 400
+                        raise ProblemError(
+                            400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
+                        )
+                    if result.masked_messages is not None:
+                        body = {**body, "messages": result.masked_messages}
+            else:
+                guardrail_configs = {}
+
+            # --- Step 4.5: Cache logic (non-streaming only, after guardrails) ---
+            cache = self._response_cache
+            cache_enabled = authz.cache_enabled
+            x_cache: str | None = None
+
+            if cache is not None and cache_enabled:
+                from gateway.proxy.infrastructure.response_cache import build_cache_key
+
+                no_cache = (request_headers or {}).get("cache-control", "").lower() == "no-cache"
+                cache_key = build_cache_key(str(authz.tenant_id), body)
+
+                if not no_cache:
+                    # Try cache lookup
+                    cached_body = await cache.get(cache_key)
+                    if cached_body is not None:
+                        # HIT: apply post-call guardrails, then return cached body
+                        x_cache = "hit"
+                        _cached = True
+                        if metrics_registry is not None:
+                            try:
+                                metrics_registry.cache_events_total.labels(result="hit").inc()
+                            except Exception:  # noqa: S110
+                                pass
+                        # Step 5.5 on cache HIT: apply post-call PII mask if configured
+                        # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only).
+                        if guardrail_evaluator is not None and guardrail_configs:
+                            if hasattr(guardrail_evaluator, "evaluate_post"):
+                                try:
+                                    cached_body = await guardrail_evaluator.evaluate_post(
+                                        cached_body, guardrail_configs
+                                    )
+                                except Exception as _exc:
+                                    _log.warning(
+                                        "guardrail evaluate_post raised on cache HIT (fail-OPEN)",
+                                        exc_info=_exc,
+                                    )
+                        cached_usage_raw = cached_body.get("usage")
+                        cached_usage: dict[str, Any] | None = (
+                            cached_usage_raw if isinstance(cached_usage_raw, dict) else None
+                        )
+                        _fire_record_cached(
+                            usage_recorder,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            usage=cached_usage,
+                            team_id=authz.team_id,
+                        )
+                        # TPM post-accounting uses cached token counts
+                        if authz.tpm_limit is not None and cached_usage is not None:
+                            total_tokens = cached_usage.get("total_tokens")
+                            if isinstance(total_tokens, int) and total_tokens > 0:
+                                _fire_record_tpm(
+                                    self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
+                                )
+                        _status_code = 200
+                        return 200, cached_body, x_cache
+                    else:
+                        # MISS
+                        x_cache = "miss"
+                        if metrics_registry is not None:
+                            try:
+                                metrics_registry.cache_events_total.labels(result="miss").inc()
+                            except Exception:  # noqa: S110
+                                pass
+                else:
+                    # BYPASS: Cache-Control: no-cache
+                    x_cache = "bypass"
+                    if metrics_registry is not None:
+                        try:
+                            metrics_registry.cache_events_total.labels(result="bypass").inc()
+                        except Exception:  # noqa: S110
+                            pass
+
+            try:
+                status, response_body = await upstream.complete(body)
+            except (UpstreamUnavailableError, CircuitOpenError):
+                # Circuit-breaker proxy has already counted the failure.
+                _fire_record(
+                    usage_recorder,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=model_id,
+                    usage=None,
+                    status=502,
+                    team_id=authz.team_id,
+                )
+                _status_code = 502
+                raise ProblemError(
+                    502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
+                ) from None
+
+            # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
+            # Must run BEFORE post-call guardrail masking so the stored body is unmasked.
+            if cache is not None and cache_enabled and status == 200:
+                from gateway.proxy.infrastructure.response_cache import build_cache_key
+
+                ck = build_cache_key(str(authz.tenant_id), body)
+                _fire_cache_set(cache, ck, response_body, cache_ttl_seconds)
+
+            # Step 5.5: Post-call guardrails (non-streaming only, on 200 response body).
+            # Applied AFTER cache store so the cached body remains unmasked.
+            # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only — never BLOCK).
+            if guardrail_evaluator is not None and guardrail_configs and status == 200:
+                if hasattr(guardrail_evaluator, "evaluate_post"):
+                    try:
+                        response_body = await guardrail_evaluator.evaluate_post(
+                            response_body, guardrail_configs
+                        )
+                    except Exception as _exc:
+                        _log.warning(
+                            "guardrail evaluate_post raised (fail-OPEN, returning original body)",
+                            exc_info=_exc,
+                        )
+
+            # Record successful or upstream 4xx completion
+            usage_raw = response_body.get("usage")
+            usage: dict[str, Any] | None = usage_raw if isinstance(usage_raw, dict) else None
             _fire_record(
                 usage_recorder,
                 tenant_id=authz.tenant_id,
                 key_id=authz.key_id,
                 model=model_id,
-                usage=None,
-                status=502,
+                usage=usage,
+                status=status,
                 team_id=authz.team_id,
             )
-            raise ProblemError(
-                502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
-            ) from None
+            # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
+            if authz.tpm_limit is not None and usage is not None:
+                total_tokens = usage.get("total_tokens")
+                if isinstance(total_tokens, int) and total_tokens > 0:
+                    _fire_record_tpm(self._rate_limiter, key_id=authz.key_id, tokens=total_tokens)
+            _status_code = status
+            return status, response_body, x_cache
 
-        # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
-        # Must run BEFORE post-call guardrail masking so the stored body is unmasked.
-        if cache is not None and cache_enabled and status == 200:
-            from gateway.proxy.infrastructure.response_cache import build_cache_key
-
-            ck = build_cache_key(str(authz.tenant_id), body)
-            _fire_cache_set(cache, ck, response_body, cache_ttl_seconds)
-
-        # Step 5.5: Post-call guardrails (non-streaming only, on 200 response body).
-        # Applied AFTER cache store so the cached body remains unmasked.
-        # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only — never BLOCK).
-        if guardrail_evaluator is not None and guardrail_configs and status == 200:
-            if hasattr(guardrail_evaluator, "evaluate_post"):
-                try:
-                    response_body = await guardrail_evaluator.evaluate_post(
-                        response_body, guardrail_configs
-                    )
-                except Exception as _exc:
-                    _log.warning(
-                        "guardrail evaluate_post raised (fail-OPEN, returning original body)",
-                        exc_info=_exc,
-                    )
-
-        # Record successful or upstream 4xx completion
-        usage_raw = response_body.get("usage")
-        usage: dict[str, Any] | None = usage_raw if isinstance(usage_raw, dict) else None
-        _fire_record(
-            usage_recorder,
-            tenant_id=authz.tenant_id,
-            key_id=authz.key_id,
-            model=model_id,
-            usage=usage,
-            status=status,
-            team_id=authz.team_id,
-        )
-        # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
-        if authz.tpm_limit is not None and usage is not None:
-            total_tokens = usage.get("total_tokens")
-            if isinstance(total_tokens, int) and total_tokens > 0:
-                _fire_record_tpm(self._rate_limiter, key_id=authz.key_id, tokens=total_tokens)
-        return status, response_body, x_cache
+        except ProblemError as _prob_err:
+            _status_code = _prob_err.status
+            _error_code = _prob_err.code
+            if _prob_err.code == "ERR_GUARDRAIL_BLOCKED":
+                _guardrail_blocked = True
+            raise
+        except Exception:
+            _status_code = 502
+            raise
+        finally:
+            # Span emission: only when authz succeeded (post-authz) and emitter is wired.
+            # Pre-authz 401 → _authz is None → no span (inviolable §3 contract).
+            if _authz is not None and self._span_emitter is not None:
+                _emit_span_fire_forget(
+                    self._span_emitter,
+                    _authz,
+                    _model_id,
+                    _status_code,
+                    False,  # stream=False for complete()
+                    _cached,
+                    _guardrail_blocked,
+                    _start_ns,
+                    error_code=_error_code,
+                )
 
     async def stream(
         self,
@@ -833,133 +935,199 @@ class CompletionUseCase:
         Authenticates and validates before yielding any bytes.
         Returns an async generator of raw SSE byte chunks.
         On upstream error: raises ProblemError 502.
+
+        Span emission contract (§3 pinned):
+          - Errors raised BEFORE the generator is returned → emitted in the
+            method-level finally (status from ProblemError or 502).
+          - Successful streams → span emitted inside _wrapped() after the last
+            chunk (status 200, end_time at last chunk).
+          - Pre-authz 401 → _authz is None → no span (inviolable).
         """
-        authz = await self._authenticate(raw_key)
-        # Validate payload fields (format only — catalog/tenant check is in _enforce_governance).
-        model_id, _ = await self._validate_payload(body)
-        # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
-        await self._enforce_governance(authz, model_id, self._budget_guard)
-
-        # --- Step 4: Pre-call guardrails (after governance, before upstream stream) ---
-        guardrail_evaluator = self._guardrail_evaluator
-        guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
-        if guardrail_evaluator is not None and guardrail_configs:
-            try:
-                stream_result = await guardrail_evaluator.evaluate_pre(
-                    body.get("messages", []), guardrail_configs
-                )
-            except Exception as _exc:
-                _log.warning(
-                    "guardrail evaluate_pre raised in stream (fail-CLOSED/OPEN)", exc_info=_exc
-                )
-                _has_block = any(
-                    isinstance(cfg, dict) and cfg.get("enabled") and cfg.get("mode") == "block"
-                    for cfg in guardrail_configs.values()
-                )
-                if _has_block:
-                    _fire_record_with_raw(
-                        usage_recorder,
-                        tenant_id=authz.tenant_id,
-                        key_id=authz.key_id,
-                        model=model_id,
-                        usage=None,
-                        status=400,
-                        team_id=authz.team_id,
-                        guardrail_blocked=True,
-                        blocked_by="error",
-                    )
-                    raise ProblemError(
-                        400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
-                    ) from None
-                stream_result = None
-
-            if stream_result is not None:
-                if stream_result.blocked:
-                    _fire_record_with_raw(
-                        usage_recorder,
-                        tenant_id=authz.tenant_id,
-                        key_id=authz.key_id,
-                        model=model_id,
-                        usage=None,
-                        status=400,
-                        team_id=authz.team_id,
-                        guardrail_blocked=True,
-                        blocked_by=stream_result.blocked_by,
-                    )
-                    raise ProblemError(
-                        400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
-                    )
-                if stream_result.masked_messages is not None:
-                    body = {**body, "messages": stream_result.masked_messages}
-
-            # §1 documented v4 limitation: stream BODIES are not post-call inspected.
-            # Emit the one-time audit-log event when pii_mask mode=mask is active.
-            pii_cfg = guardrail_configs.get("pii_mask")
-            if (
-                isinstance(pii_cfg, dict)
-                and pii_cfg.get("enabled")
-                and pii_cfg.get("mode") == "mask"
-            ):
-                _log.info(
-                    "streaming_pii_mask_skipped: post-call PII masking does not apply "
-                    "to stream bodies (guardrails-core v4 documented limitation)"
-                )
-
+        _start_ns = time.time_ns()
+        _authz: AuthzResult | None = None
+        _stream_error_status: int | None = None  # set only on pre-generator errors
+        _stream_error_code: str | None = None
+        _stream_guardrail_blocked: bool = False
+        _stream_model_id: str = ""
+        _emitter = self._span_emitter
         try:
-            gen = upstream.stream(body)
-        except (UpstreamUnavailableError, CircuitOpenError):
-            _fire_record(
-                usage_recorder,
-                tenant_id=authz.tenant_id,
-                key_id=authz.key_id,
-                model=model_id,
-                usage=None,
-                status=502,
-                team_id=authz.team_id,
-            )
-            raise ProblemError(
-                502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
-            ) from None
+            authz = await self._authenticate(raw_key)
+            _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # Validate payload fields (format only — catalog check is in _enforce_governance).
+            model_id, _ = await self._validate_payload(body)
+            _stream_model_id = model_id
+            # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
+            await self._enforce_governance(authz, model_id, self._budget_guard)
 
-        tenant_id = authz.tenant_id
-        key_id = authz.key_id
-        team_id = authz.team_id
-        tpm_limit = authz.tpm_limit
-        rate_limiter = self._rate_limiter
+            # --- Step 4: Pre-call guardrails (after governance, before upstream stream) ---
+            guardrail_evaluator = self._guardrail_evaluator
+            guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
+            if guardrail_evaluator is not None and guardrail_configs:
+                try:
+                    stream_result = await guardrail_evaluator.evaluate_pre(
+                        body.get("messages", []), guardrail_configs
+                    )
+                except Exception as _exc:
+                    _log.warning(
+                        "guardrail evaluate_pre raised in stream (fail-CLOSED/OPEN)", exc_info=_exc
+                    )
+                    _has_block = any(
+                        isinstance(cfg, dict) and cfg.get("enabled") and cfg.get("mode") == "block"
+                        for cfg in guardrail_configs.values()
+                    )
+                    if _has_block:
+                        _fire_record_with_raw(
+                            usage_recorder,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            usage=None,
+                            status=400,
+                            team_id=authz.team_id,
+                            guardrail_blocked=True,
+                            blocked_by="error",
+                        )
+                        _stream_error_status = 400
+                        _stream_guardrail_blocked = True
+                        raise ProblemError(
+                            400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
+                        ) from None
+                    stream_result = None
 
-        async def _wrapped() -> AsyncIterator[bytes]:
-            collected: list[bytes] = []
+                if stream_result is not None:
+                    if stream_result.blocked:
+                        _fire_record_with_raw(
+                            usage_recorder,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            usage=None,
+                            status=400,
+                            team_id=authz.team_id,
+                            guardrail_blocked=True,
+                            blocked_by=stream_result.blocked_by,
+                        )
+                        _stream_error_status = 400
+                        _stream_guardrail_blocked = True
+                        raise ProblemError(
+                            400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
+                        )
+                    if stream_result.masked_messages is not None:
+                        body = {**body, "messages": stream_result.masked_messages}
+
+                # §1 documented v4 limitation: stream BODIES are not post-call inspected.
+                # Emit the one-time audit-log event when pii_mask mode=mask is active.
+                pii_cfg = guardrail_configs.get("pii_mask")
+                if (
+                    isinstance(pii_cfg, dict)
+                    and pii_cfg.get("enabled")
+                    and pii_cfg.get("mode") == "mask"
+                ):
+                    _log.info(
+                        "streaming_pii_mask_skipped: post-call PII masking does not apply "
+                        "to stream bodies (guardrails-core v4 documented limitation)"
+                    )
+
             try:
-                async for chunk in gen:
-                    collected.append(chunk)
-                    yield chunk
+                gen = upstream.stream(body)
             except (UpstreamUnavailableError, CircuitOpenError):
-                # Can't change status code mid-stream; record and stop
+                _fire_record(
+                    usage_recorder,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=model_id,
+                    usage=None,
+                    status=502,
+                    team_id=authz.team_id,
+                )
+                _stream_error_status = 502
+                raise ProblemError(
+                    502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
+                ) from None
+
+            tenant_id = authz.tenant_id
+            key_id = authz.key_id
+            team_id = authz.team_id
+            tpm_limit = authz.tpm_limit
+            rate_limiter = self._rate_limiter
+
+            async def _wrapped() -> AsyncIterator[bytes]:
+                collected: list[bytes] = []
+                try:
+                    async for chunk in gen:
+                        collected.append(chunk)
+                        yield chunk
+                except (UpstreamUnavailableError, CircuitOpenError):
+                    # Can't change status code mid-stream; record and stop
+                    _fire_record(
+                        usage_recorder,
+                        tenant_id=tenant_id,
+                        key_id=key_id,
+                        model=model_id,
+                        usage=None,
+                        status=502,
+                        team_id=team_id,
+                    )
+                    return
+                # Tee: extract usage from collected SSE chunks after stream completes
+                extracted_usage = extract_usage_from_sse(collected)
                 _fire_record(
                     usage_recorder,
                     tenant_id=tenant_id,
                     key_id=key_id,
                     model=model_id,
-                    usage=None,
-                    status=502,
+                    usage=extracted_usage,
+                    status=200,
                     team_id=team_id,
                 )
-                return
-            # Tee: extract usage from collected SSE chunks after stream completes
-            extracted_usage = extract_usage_from_sse(collected)
-            _fire_record(
-                usage_recorder,
-                tenant_id=tenant_id,
-                key_id=key_id,
-                model=model_id,
-                usage=extracted_usage,
-                status=200,
-                team_id=team_id,
-            )
-            # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
-            if tpm_limit is not None and isinstance(extracted_usage, dict):
-                total_tokens = extracted_usage.get("total_tokens")
-                if total_tokens and isinstance(total_tokens, int) and total_tokens > 0:
-                    _fire_record_tpm(rate_limiter, key_id=key_id, tokens=total_tokens)
+                # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
+                if tpm_limit is not None and isinstance(extracted_usage, dict):
+                    total_tokens = extracted_usage.get("total_tokens")
+                    if total_tokens and isinstance(total_tokens, int) and total_tokens > 0:
+                        _fire_record_tpm(rate_limiter, key_id=key_id, tokens=total_tokens)
+                # Successful stream span — emitted here after the last chunk (§3 pinned).
+                # _authz and _emitter are captured from the enclosing scope.
+                if _authz is not None and _emitter is not None:
+                    _emit_span_fire_forget(
+                        _emitter,
+                        _authz,
+                        model_id,
+                        200,
+                        True,  # stream=True
+                        False,  # cached=False (streaming never cache-hits)
+                        False,  # guardrail_blocked=False (blocked before reaching here)
+                        _start_ns,
+                    )
 
-        return _wrapped()
+            # Successful generator setup — _wrapped() will emit the span itself.
+            # Signal to the method-level finally that no pre-generator error occurred.
+            _stream_error_status = None
+            return _wrapped()
+
+        except ProblemError as _prob_err:
+            if _stream_error_status is None:
+                _stream_error_status = _prob_err.status
+            _stream_error_code = _prob_err.code
+            if _prob_err.code == "ERR_GUARDRAIL_BLOCKED":
+                _stream_guardrail_blocked = True
+            raise
+        except Exception:
+            if _stream_error_status is None:
+                _stream_error_status = 502
+            raise
+        finally:
+            # Only emit here for pre-generator errors (auth/governance/guardrail failures).
+            # Successful streams set _stream_error_status=None before returning — _wrapped()
+            # handles the span in that case.
+            if _authz is not None and _emitter is not None and _stream_error_status is not None:
+                _emit_span_fire_forget(
+                    _emitter,
+                    _authz,
+                    _stream_model_id,
+                    _stream_error_status,
+                    True,  # stream=True
+                    False,  # cached=False
+                    _stream_guardrail_blocked,
+                    _start_ns,
+                    error_code=_stream_error_code,
+                )

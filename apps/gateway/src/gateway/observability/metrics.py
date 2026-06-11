@@ -92,6 +92,13 @@ class MetricsRegistry:
             registry=registry,
         )
 
+        self.otel_spans_total = Counter(
+            "gateway_otel_spans_total",
+            "OTel span export results by outcome",
+            ["result"],  # "exported" | "dropped" | "error"
+            registry=registry,
+        )
+
     @property
     def registry(self) -> CollectorRegistry:
         return self._registry

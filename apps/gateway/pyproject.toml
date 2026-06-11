@@ -74,6 +74,8 @@ exclude = [
     "tests/guardrails/test_guardrails_core.py",
     # sso-oidc: frozen test file; format excluded per no-test-edit contract
     "tests/sso_oidc/test_sso_oidc.py",
+    # obs-callbacks: frozen test file; format excluded per no-test-edit contract
+    "tests/obs_callbacks/test_obs_callbacks.py",
 ]
 
 [tool.ruff.lint]
