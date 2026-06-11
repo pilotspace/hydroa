@@ -1,11 +1,11 @@
 # Backup and Rollback Runbook
 
 This runbook covers backup procedures, restore drills, Alembic rollback, gateway image rollback,
-and secrets handling for the `ai-proxy` project.
+and secrets handling for the Hydroa (formerly ai-proxy) project.
 
-Compose project name: `ai-proxy-dev`  
-Dev Postgres: `localhost:5433` (container `ai-proxy-dev-db-1`)  
-Dev Redis: `localhost:6380` (container `ai-proxy-dev-redis-1`)  
+Compose project name: `hydroa-dev`  
+Dev Postgres: `localhost:5433` (container `hydroa-dev-db-1`)  
+Dev Redis: `localhost:6380` (container `hydroa-dev-redis-1`)  
 Production compose file: `infra/docker-compose.prod.yml`
 
 ---
@@ -14,10 +14,10 @@ Production compose file: `infra/docker-compose.prod.yml`
 
 ### Dev environment
 
-Use the running `db` container from the `ai-proxy-dev` compose project:
+Use the running `db` container from the `hydroa-dev` compose project:
 
 ```bash
-docker exec ai-proxy-dev-db-1 \
+docker exec hydroa-dev-db-1 \
   pg_dump -U gateway gateway_test \
   | gzip > backups/gateway_test_$(date +%Y%m%dT%H%M%S).sql.gz
 ```
@@ -34,7 +34,7 @@ docker exec $(docker compose -f infra/docker-compose.prod.yml ps -q db) \
   | gzip > /var/backups/gateway_$(date +%Y%m%dT%H%M%S).sql.gz
 ```
 
-Schedule via cron (`/etc/cron.d/ai-proxy-backup`):
+Schedule via cron (`/etc/cron.d/hydroa-backup`):
 
 ```
 0 2 * * * root docker exec ... pg_dump ... | gzip > /var/backups/...
@@ -155,10 +155,10 @@ Gateway images are tagged by git SHA or semantic version. Find the previous tag:
 
 ```bash
 # Local docker images
-docker images ai-proxy-gateway --format "{{.Tag}}\t{{.CreatedAt}}" | head -10
+docker images hydroa-gateway --format "{{.Tag}}\t{{.CreatedAt}}" | head -10
 
 # Or via the container registry (example: ghcr.io)
-docker image ls ghcr.io/<org>/ai-proxy-gateway
+docker image ls ghcr.io/<org>/hydroa-gateway
 ```
 
 ### Roll back the running container
@@ -168,7 +168,7 @@ docker image ls ghcr.io/<org>/ai-proxy-gateway
 export GATEWAY_IMAGE_TAG=<previous-tag>
 
 # 2. Pull the previous image
-docker pull ghcr.io/<org>/ai-proxy-gateway:${GATEWAY_IMAGE_TAG}
+docker pull ghcr.io/<org>/hydroa-gateway:${GATEWAY_IMAGE_TAG}
 
 # 3. Restart the gateway service with the previous image
 docker compose -f infra/docker-compose.prod.yml \

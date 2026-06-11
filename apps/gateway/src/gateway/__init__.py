@@ -1,1 +1,1 @@
-"""AI proxy gateway: OpenAI-compatible data plane + admin control plane."""
+"""Hydroa gateway: OpenAI-compatible data plane + admin control plane."""

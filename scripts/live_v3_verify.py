@@ -42,7 +42,7 @@ MODEL = os.environ.get("SMOKE_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
 BASE = os.environ.get("SMOKE_BASE", "https://localhost:8443")
 CA = os.environ.get("E2E_CA_CERT", "infra/envoy/certs/dev-ca.pem")
 SINK_PORT = 9909
-PG_CONTAINER = "ai-proxy-e2e-postgres-1"
+PG_CONTAINER = "hydroa-e2e-postgres-1"
 
 RESULTS: list[tuple[str, bool, str]] = []
 SINK_EVENTS: list[dict] = []

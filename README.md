@@ -4,8 +4,7 @@ Multi-tenant AI proxy platform over [OpenRouter](https://openrouter.ai) with
 per-tenant cost tracking, key governance, rate limiting, spend analytics,
 alerting, and an admin dashboard. Built with the
 [ADD methodology](https://github.com/pilotspace/ADD).
-(Formerly "ai-proxy"; internal module/compose identifiers keep the historical
-name until a dedicated rename pass.)
+(Formerly "ai-proxy"; internal branding and compose project names updated to Hydroa.)
 
 **Goal:** tenant setup → login → use any LLM model → cost tracked.
 

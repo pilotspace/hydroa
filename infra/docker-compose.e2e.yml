@@ -1,5 +1,5 @@
 ---
-# AI Proxy — e2e edge stack (contract §3, edge-envoy TASK.md v1)
+# Hydroa — e2e edge stack (contract §3, edge-envoy TASK.md v1)
 #
 # Services:
 #   postgres  — database (internal port 5432; no host port clash with dev stack on 5433)
@@ -14,7 +14,7 @@
 # Usage:
 #   GATEWAY_JWT_SECRET=e2e-test-secret-change-me docker compose -f infra/docker-compose.e2e.yml up --build -d --wait
 
-name: ai-proxy-e2e
+name: hydroa-e2e
 
 services:
 

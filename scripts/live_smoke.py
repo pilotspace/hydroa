@@ -69,7 +69,7 @@ def main() -> None:
     # Catalog sync runs inside the gateway container (/internal is edge-blocked).
     sync = subprocess.run(
         [
-            "docker", "exec", "ai-proxy-e2e-gateway-1", "python", "-c",
+            "docker", "exec", "hydroa-e2e-gateway-1", "python", "-c",
             "import urllib.request,json;"
             "req=urllib.request.Request('http://localhost:8000/internal/catalog/sync',method='POST');"
             "print(json.load(urllib.request.urlopen(req,timeout=60))['synced'])",
@@ -139,7 +139,7 @@ def main() -> None:
     # Cost reconciliation against the persisted pricing snapshot + markup.
     pricing = subprocess.run(
         [
-            "docker", "exec", "ai-proxy-e2e-postgres-1", "psql", "-U", "gateway",
+            "docker", "exec", "hydroa-e2e-postgres-1", "psql", "-U", "gateway",
             "-d", "gateway_e2e", "-At", "-c",
             "SELECT p.prompt_usd_per_token, p.completion_usd_per_token, t.markup_pct "
             "FROM pricing_snapshots p, tenants t "

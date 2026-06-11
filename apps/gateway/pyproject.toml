@@ -1,7 +1,7 @@
 [project]
-name = "gateway"
+name = "hydroa-gateway"
 version = "0.1.0"
-description = "AI proxy gateway: OpenAI-compatible data plane + admin control plane over OpenRouter"
+description = "Hydroa gateway: OpenAI-compatible data plane + admin control plane over OpenRouter"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -90,6 +90,8 @@ exclude = [
     "tests/semantic_cache/conftest.py",
     # oidc-tenant-config: frozen test file; format excluded per no-test-edit contract
     "tests/oidc_tenant_config/test_oidc_tenant_config.py",
+    # rename-hydroa: frozen test file; format excluded per no-test-edit contract
+    "tests/rename_hydroa/test_rename_hydroa.py",
 ]
 
 [tool.ruff.lint]

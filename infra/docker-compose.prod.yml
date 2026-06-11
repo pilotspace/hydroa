@@ -1,5 +1,5 @@
 ---
-# AI Proxy — production compose (contract §3, edge-tls TASK.md v2)
+# Hydroa — production compose (contract §3, edge-tls TASK.md v2)
 #
 # Production posture:
 #   - No dev defaults for any secret or credential — fail-fast if unset
@@ -26,7 +26,7 @@
 #   ... (all vars above)
 #   docker compose -f infra/docker-compose.prod.yml up -d --wait
 
-name: ai-proxy-prod
+name: hydroa-prod
 
 services:
 

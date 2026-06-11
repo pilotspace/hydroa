@@ -49,12 +49,16 @@ WEBHOOK_PORT = 9909   # alert webhook (v3 precedent)
 OTLP_PORT = 4318      # OTLP /v1/traces collector
 OIDC_IDP_PORT = 9910  # test OIDC IdP
 
-PG_CONTAINER = "ai-proxy-e2e-postgres-1"
-GW_CONTAINER = "ai-proxy-e2e-gateway-1"
+PG_CONTAINER = "hydroa-e2e-postgres-1"
+GW_CONTAINER = "hydroa-e2e-gateway-1"
 
 OIDC_ISSUER = f"http://host.docker.internal:{OIDC_IDP_PORT}"
 OIDC_CLIENT_ID = "hydroa-e2e"
 OIDC_DOMAIN = "oidc-v4.test"  # email domain mapped to the v4 tenant
+
+# Per-run unique ID — ensures the OIDC user email is unique across re-runs against
+# a long-lived stack (collision guard: both IdP mock claims and DB lookup use this).
+run_id = int(time.time())
 
 RESULTS: list[tuple[str, bool, str]] = []
 
@@ -150,7 +154,7 @@ class _OidcIdpHandler(BaseHTTPRequestHandler):
                 "iss": OIDC_ISSUER,
                 "aud": OIDC_CLIENT_ID,
                 "sub": f"test-sub-{now}",
-                "email": f"user@{OIDC_DOMAIN}",
+                "email": f"user-{run_id}@{OIDC_DOMAIN}",
                 "nonce": nonce,
                 "iat": now,
                 "exp": now + 300,
@@ -569,7 +573,7 @@ def main() -> None:
                f"id_token_in_body={'yes' if 'id_token' in body_text else 'no'}")
 
         # Verify user row in DB
-        oidc_email = f"user@{OIDC_DOMAIN}"
+        oidc_email = f"user-{run_id}@{OIDC_DOMAIN}"
         user_row = psql(
             f"SELECT email, password_hash FROM users"
             f" WHERE email='{oidc_email}' AND tenant_id='{tenant_id}'"

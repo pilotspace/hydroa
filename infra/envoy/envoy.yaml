@@ -1,5 +1,5 @@
 ---
-# Envoy edge config — AI Proxy Gateway (contract §3, edge-envoy TASK.md v1 + edge-tls TASK.md v2)
+# Envoy edge config — Hydroa Gateway (contract §3, edge-envoy TASK.md v1 + edge-tls TASK.md v2)
 #
 # Filter chain order (evaluated top-to-bottom per request):
 #   1. local_ratelimit  — global 50 req/s token bucket; 429 on exhaustion

@@ -1,5 +1,5 @@
 ---
-# Envoy production config — AI Proxy Gateway (contract §3, edge-tls TASK.md v2)
+# Envoy production config — Hydroa Gateway (contract §3, edge-tls TASK.md v2)
 #
 # Production posture:
 #   :8443 — TLS termination (real certs mounted via docker-compose.prod.yml volumes)

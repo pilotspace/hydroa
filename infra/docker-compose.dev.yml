@@ -1,4 +1,4 @@
-name: ai-proxy-dev
+name: hydroa-dev
 
 services:
   postgres:

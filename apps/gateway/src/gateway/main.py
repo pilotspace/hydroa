@@ -302,7 +302,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(Exception):
                 await httpx_client.aclose()
 
-    app = FastAPI(title="AI Proxy Gateway", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Hydroa Gateway", version="0.1.0", lifespan=lifespan)
 
     # Per-app Prometheus registry — prevents Duplicated timeseries errors when
     # multiple create_app() calls exist in a single pytest run.

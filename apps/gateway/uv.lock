@@ -438,65 +438,6 @@ wheels = [
 ]
 
 [[package]]
-name = "gateway"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "alembic" },
-    { name = "argon2-cffi" },
-    { name = "asyncpg" },
-    { name = "cryptography" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "prometheus-client" },
-    { name = "pydantic", extra = ["email"] },
-    { name = "pydantic-settings" },
-    { name = "pyjwt" },
-    { name = "redis" },
-    { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "structlog" },
-    { name = "tenacity" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = ">=1.9" },
-    { name = "argon2-cffi", specifier = ">=25.1.0" },
-    { name = "asyncpg", specifier = ">=0.31.0" },
-    { name = "cryptography", specifier = ">=48.0.1" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "prometheus-client", specifier = ">=0.21" },
-    { name = "pydantic", extras = ["email"], specifier = ">=2.10" },
-    { name = "pydantic-settings", specifier = ">=2.7" },
-    { name = "pyjwt", specifier = ">=2.13.0" },
-    { name = "redis", specifier = ">=5" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.50" },
-    { name = "structlog", specifier = ">=25.1" },
-    { name = "tenacity", specifier = ">=8.2" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.14" },
-    { name = "pytest", specifier = ">=8.3" },
-    { name = "pytest-asyncio", specifier = ">=0.25" },
-    { name = "pytest-cov", specifier = ">=6.0" },
-    { name = "ruff", specifier = ">=0.9" },
-]
-
-[[package]]
 name = "greenlet"
 version = "3.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -634,6 +575,65 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406, upload-time = "2024-12-06T15:37:23.222Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
+]
+
+[[package]]
+name = "hydroa-gateway"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "alembic" },
+    { name = "argon2-cffi" },
+    { name = "asyncpg" },
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "prometheus-client" },
+    { name = "pydantic", extra = ["email"] },
+    { name = "pydantic-settings" },
+    { name = "pyjwt" },
+    { name = "redis" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "structlog" },
+    { name = "tenacity" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.9" },
+    { name = "argon2-cffi", specifier = ">=25.1.0" },
+    { name = "asyncpg", specifier = ">=0.31.0" },
+    { name = "cryptography", specifier = ">=48.0.1" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "prometheus-client", specifier = ">=0.21" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.10" },
+    { name = "pydantic-settings", specifier = ">=2.7" },
+    { name = "pyjwt", specifier = ">=2.13.0" },
+    { name = "redis", specifier = ">=5" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.50" },
+    { name = "structlog", specifier = ">=25.1" },
+    { name = "tenacity", specifier = ">=8.2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.14" },
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "pytest-asyncio", specifier = ">=0.25" },
+    { name = "pytest-cov", specifier = ">=6.0" },
+    { name = "ruff", specifier = ">=0.9" },
 ]
 
 [[package]]

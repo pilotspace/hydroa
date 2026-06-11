@@ -95,10 +95,15 @@ Reject:
     compat-migration plan is a HARD-STOP (breaks live sessions, envoy JWT validation,
     metric dashboards, trace pipelines, existing deployments).
   - Any edit to a frozen ADD suite under apps/gateway/tests/ (every suite is frozen at its
-    task's gate; there is NO pyproject exclude list — the freeze is methodological) → violation
+    task's gate — the freeze is methodological, and it is MIRRORED by the pyproject
+    [tool.ruff] format `exclude = [...]` list that shields frozen test files) → violation
     of the no-test-edit contract unless a documented sanctioned-edit disposition exists.
-    <!-- orchestrator amendment at freeze: original draft cited a nonexistent
-         pyproject [tool.ruff] exclude list; corrected to the ADD freeze rule. -->
+    <!-- orchestrator amendment history: at freeze the orchestrator wrongly called the
+         draft's exclude-list reference fabricated (a terminal-wrapper-mangled grep showed
+         a false negative); verified during build review that the list EXISTS at
+         pyproject.toml [tool.ruff] exclude and the front draft was correct. The builder's
+         addition of tests/rename_hydroa/test_rename_hydroa.py to that list follows the
+         standing convention (14 prior frozen files) and is sanctioned. -->
   - Removing the compat note from envoy yamls or adding a new issuer line → wire break.
   - Renaming the src/ gateway package directory → breaks all imports and frozen suites.
   - Any uv.lock change that adds a new dependency not in .add/dependencies.allowlist →
@@ -398,7 +403,9 @@ pure file and app introspection — it runs inside `make ci` without any live st
 Safety rule (feature-specific): rename-only — no new API routes, no schema migrations, no new
 packages. Every change is a string substitution or line addition. The uv.lock must be
 regenerated via `uv lock` as part of the build. No file outside the rename table in §3 may
-be touched except uv.lock. The compat-pin list in §3 is a HARD-STOP boundary.
+be touched except uv.lock and the pyproject [tool.ruff] format-exclude list (which gains the
+rename suite's test file, per the standing frozen-suite convention — see the §1 amendment
+history note). The compat-pin list in §3 is a HARD-STOP boundary.
 
 Code lives in: `./src/` (task directory) — but note: this task's "code" is spread across
 the repo per the rename table; there is no new src/ module. The task directory src/ is
