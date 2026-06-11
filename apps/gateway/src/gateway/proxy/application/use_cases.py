@@ -31,6 +31,19 @@ from typing import TYPE_CHECKING, Any
 import structlog.contextvars
 
 from gateway.budgets.domain.ports import BudgetGuard, PassthroughBudgetGuard
+from gateway.core.error_catalog import (
+    AUTH_KEY_EXPIRED,
+    AUTH_KEY_INVALID,
+    BUDGET_EXCEEDED,
+    GUARDRAIL_BLOCKED,
+    MODEL_DISABLED,
+    MODEL_NOT_ALLOWED,
+    MODEL_UNKNOWN,
+    PAYLOAD_MESSAGES_REQUIRED,
+    PAYLOAD_MODEL_REQUIRED,
+    RATE_LIMITED,
+    UPSTREAM_UNAVAILABLE,
+)
 from gateway.core.errors import ProblemError
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
@@ -313,7 +326,7 @@ def _check_expiry(authz: AuthzResult) -> None:
     if exp.tzinfo is None:
         exp = exp.replace(tzinfo=datetime.UTC)
     if exp <= now_utc:
-        raise ProblemError(401, "ERR_AUTH_KEY_EXPIRED", "API key has expired")
+        raise AUTH_KEY_EXPIRED.exc()
 
 
 def _check_model_allowlist(authz: AuthzResult, model_id: str) -> None:
@@ -326,7 +339,7 @@ def _check_model_allowlist(authz: AuthzResult, model_id: str) -> None:
         # null = unlimited — all models allowed
         return
     if model_id not in authz.model_allowlist:
-        raise ProblemError(403, "ERR_MODEL_NOT_ALLOWED", "Model not permitted for this API key")
+        raise MODEL_NOT_ALLOWED.exc()
 
 
 def _parse_spend(raw: bytes | str | None) -> Decimal:
@@ -369,11 +382,11 @@ class CompletionUseCase:
         Returns the full AuthzResult so callers can enforce governance fields.
         """
         if not raw_key:
-            raise ProblemError(401, "ERR_AUTH_INVALID_KEY", "Missing or invalid API key")
+            raise AUTH_KEY_INVALID.exc()
         try:
             result = await self._authenticator.authenticate(raw_key)
         except InvalidApiKeyError:
-            raise ProblemError(401, "ERR_AUTH_INVALID_KEY", "Missing or invalid API key") from None
+            raise AUTH_KEY_INVALID.exc() from None
         # Bind tenant_id to the structlog context so the access log line (emitted
         # by RequestIdMiddleware after the response) carries it for authenticated paths.
         # On pre-auth 401 exits above, this line is never reached — field stays absent.
@@ -398,17 +411,11 @@ class CompletionUseCase:
         """
         model_id = body.get("model")
         if not model_id or not isinstance(model_id, str) or not model_id.strip():
-            raise ProblemError(
-                422, "ERR_PAYLOAD_INVALID", "Field 'model' is required and non-empty"
-            )
+            raise PAYLOAD_MODEL_REQUIRED.exc()
 
         messages = body.get("messages")
         if not messages or not isinstance(messages, list) or len(messages) == 0:
-            raise ProblemError(
-                422,
-                "ERR_PAYLOAD_INVALID",
-                "Field 'messages' must be a non-empty list",
-            )
+            raise PAYLOAD_MESSAGES_REQUIRED.exc()
 
         return model_id, messages
 
@@ -431,19 +438,15 @@ class CompletionUseCase:
         if tenant_id is not None and hasattr(checker, "check_for_tenant"):
             access = await checker.check_for_tenant(model_id, tenant_id)
             if access is ModelAccess.UNKNOWN:
-                raise ProblemError(400, "ERR_MODEL_UNKNOWN", f"Model '{model_id}' is not available")
+                raise MODEL_UNKNOWN.exc(model_id=model_id)
             if access is ModelAccess.TENANT_DISABLED:
-                raise ProblemError(
-                    403,
-                    "ERR_MODEL_DISABLED",
-                    "Model is disabled for this tenant",
-                )
+                raise MODEL_DISABLED.exc()
             # ModelAccess.ACTIVE — proceed
         else:
             # Fallback path: frozen fakes / no tenant_id (preserves existing behavior)
             is_active = await checker.is_active(model_id)
             if not is_active:
-                raise ProblemError(400, "ERR_MODEL_UNKNOWN", f"Model '{model_id}' is not available")
+                raise MODEL_UNKNOWN.exc(model_id=model_id)
 
     async def _enforce_rate_limits(self, authz: AuthzResult) -> None:
         """Enforce RPM and TPM rate limits (M5-M7, M10).
@@ -461,10 +464,7 @@ class CompletionUseCase:
             try:
                 await limiter.check_rpm(authz.key_id, authz.rpm_limit)
             except RateLimitExceededError as exc:
-                raise ProblemError(
-                    429,
-                    "ERR_RATE_LIMITED",
-                    "Rate limit exceeded",
+                raise RATE_LIMITED.exc(
                     detail=f"RPM limit {exc.limit} exceeded for key {exc.key_id}",
                     headers={"Retry-After": str(exc.retry_after_s)},
                 ) from None
@@ -474,10 +474,7 @@ class CompletionUseCase:
             try:
                 await limiter.check_tpm(authz.key_id, authz.tpm_limit)
             except RateLimitExceededError as exc:
-                raise ProblemError(
-                    429,
-                    "ERR_RATE_LIMITED",
-                    "Rate limit exceeded",
+                raise RATE_LIMITED.exc(
                     detail=f"TPM limit {exc.limit} exceeded for key {exc.key_id}",
                     headers={"Retry-After": str(exc.retry_after_s)},
                 ) from None
@@ -513,11 +510,8 @@ class CompletionUseCase:
         spent = _parse_spend(raw)
 
         if spent >= budget:
-            raise ProblemError(
-                402,
-                "ERR_BUDGET_EXCEEDED",
-                "Monthly budget exceeded",
-                detail=f"Team spend {spent} >= budget {budget} for team {team_id}",
+            raise BUDGET_EXCEEDED.exc(
+                detail=f"Team spend {spent} >= budget {budget} for team {team_id}"
             )
 
     async def _enforce_governance(
@@ -629,11 +623,8 @@ class CompletionUseCase:
 
         # Hard budget enforcement — only when monthly_budget_usd is set (M10).
         if budget is not None and spent >= budget:
-            raise ProblemError(
-                402,
-                "ERR_BUDGET_EXCEEDED",
-                "Monthly budget exceeded",
-                detail=f"Per-key spend {spent} >= budget {budget} for key {authz.key_id}",
+            raise BUDGET_EXCEEDED.exc(
+                detail=f"Per-key spend {spent} >= budget {budget} for key {authz.key_id}"
             )
 
     def _get_redis(self) -> Any:
@@ -726,9 +717,7 @@ class CompletionUseCase:
                         )
                         _guardrail_blocked = True
                         _status_code = 400
-                        raise ProblemError(
-                            400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
-                        ) from None
+                        raise GUARDRAIL_BLOCKED.exc() from None
                     else:
                         # Fail-OPEN: log error event, proceed
                         _fire_guardrail_metrics(
@@ -755,9 +744,7 @@ class CompletionUseCase:
                         )
                         _guardrail_blocked = True
                         _status_code = 400
-                        raise ProblemError(
-                            400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
-                        )
+                        raise GUARDRAIL_BLOCKED.exc()
                     if result.masked_messages is not None:
                         body = {**body, "messages": result.masked_messages}
                         # §3: usage raw must carry pii_masked=true when pre-call
@@ -920,9 +907,7 @@ class CompletionUseCase:
                     team_id=authz.team_id,
                 )
                 _status_code = 502
-                raise ProblemError(
-                    502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
-                ) from None
+                raise UPSTREAM_UNAVAILABLE.exc() from None
 
             # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
             # Must run BEFORE post-call guardrail masking so the stored body is unmasked.
@@ -1122,9 +1107,7 @@ class CompletionUseCase:
                         )
                         _stream_error_status = 400
                         _stream_guardrail_blocked = True
-                        raise ProblemError(
-                            400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
-                        ) from None
+                        raise GUARDRAIL_BLOCKED.exc() from None
                     stream_result = None
 
                 if stream_result is not None:
@@ -1142,9 +1125,7 @@ class CompletionUseCase:
                         )
                         _stream_error_status = 400
                         _stream_guardrail_blocked = True
-                        raise ProblemError(
-                            400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy"
-                        )
+                        raise GUARDRAIL_BLOCKED.exc()
                     if stream_result.masked_messages is not None:
                         body = {**body, "messages": stream_result.masked_messages}
                         # §3: usage raw must carry pii_masked=true when pre-call
@@ -1177,9 +1158,7 @@ class CompletionUseCase:
                     team_id=authz.team_id,
                 )
                 _stream_error_status = 502
-                raise ProblemError(
-                    502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable"
-                ) from None
+                raise UPSTREAM_UNAVAILABLE.exc() from None
 
             tenant_id = authz.tenant_id
             key_id = authz.key_id

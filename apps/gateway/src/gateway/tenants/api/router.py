@@ -2,7 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import (
+    AUTH_CREDENTIALS_INVALID,
+    AUTH_EMAIL_TAKEN,
+    AUTH_PASSWORD_WEAK,
+    AUTH_TOKEN_INVALID,
+)
 from gateway.tenants.api.deps import (
     get_bearer_token,
     get_identity_use_case,
@@ -41,13 +46,9 @@ async def signup(
             tenant_name=body.tenant_name, email=body.email, password=body.password
         )
     except WeakPasswordError:
-        raise ProblemError(
-            400, "ERR_AUTH_PASSWORD_WEAK", "Password must be at least 10 characters"
-        ) from None
+        raise AUTH_PASSWORD_WEAK.exc() from None
     except EmailAlreadyRegisteredError:
-        raise ProblemError(
-            409, "ERR_TENANT_EMAIL_TAKEN", "An account with this email already exists"
-        ) from None
+        raise AUTH_EMAIL_TAKEN.exc() from None
     return SignupResponse(tenant_id=tenant_id, user_id=user_id)
 
 
@@ -59,7 +60,7 @@ async def login(
     try:
         token, expires_in = await use_case.execute(email=body.email, password=body.password)
     except InvalidCredentialsError:
-        raise ProblemError(401, "ERR_AUTH_INVALID_CREDENTIALS", "Invalid credentials") from None
+        raise AUTH_CREDENTIALS_INVALID.exc() from None
     return LoginResponse(access_token=token, expires_in=expires_in)
 
 
@@ -71,7 +72,7 @@ async def me(
     try:
         identity = use_case.execute(token)
     except InvalidTokenError:
-        raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Invalid or expired token") from None
+        raise AUTH_TOKEN_INVALID.exc() from None
     return MeResponse(
         user_id=identity.user_id,
         tenant_id=identity.tenant_id,

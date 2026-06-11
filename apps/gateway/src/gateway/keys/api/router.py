@@ -12,7 +12,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import (
+    AUTH_FORBIDDEN,
+    AUTH_KEY_INVALID_AUTHZ,
+    KEY_NOT_FOUND,
+    PAYLOAD_EXPIRES_AT_INVALID,
+    TEAM_NOT_FOUND,
+)
 from gateway.core.ids import uuid7
 from gateway.keys.api.deps import (
     get_authz_use_case,
@@ -62,9 +68,7 @@ def _datetime_or_none(s: str | None) -> dt.datetime | None:
         parsed = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
         return parsed.astimezone(dt.UTC).replace(tzinfo=dt.UTC)
     except ValueError:
-        raise ProblemError(
-            422, "ERR_PAYLOAD_INVALID", f"Invalid expires_at format: {s!r}"
-        ) from None
+        raise PAYLOAD_EXPIRES_AT_INVALID.exc(value=s) from None
 
 
 def _fmt_expires(ts: dt.datetime | None) -> str | None:
@@ -87,7 +91,7 @@ async def create_key(
     # Validate team attribution: team_id must belong to the caller's tenant
     if body.team_id is not None:
         if not await team_repo.get_team_for_tenant(body.team_id, identity.tenant_id):
-            raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found")
+            raise TEAM_NOT_FOUND.exc()
 
     key_id: uuid.UUID = uuid7()
     result = await use_case.execute(
@@ -220,7 +224,7 @@ async def patch_key(
         else:
             # Validate team belongs to caller's tenant (404, not 403 — no existence leak)
             if not await team_repo.get_team_for_tenant(body.team_id, identity.tenant_id):
-                raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found")
+                raise TEAM_NOT_FOUND.exc()
             new_team_id = body.team_id
 
     # cache_enabled PATCH: absent = no change; True/False = set
@@ -243,11 +247,9 @@ async def patch_key(
             _fields_to_clear=fields_to_clear,
         )
     except ForbiddenError:
-        raise ProblemError(
-            403, "ERR_AUTH_FORBIDDEN", "Insufficient role for this operation"
-        ) from None
+        raise AUTH_FORBIDDEN.exc() from None
     except KeyNotFoundError:
-        raise ProblemError(404, "ERR_KEY_NOT_FOUND", "Key not found") from None
+        raise KEY_NOT_FOUND.exc() from None
 
     return KeyInfoResponse(
         key_id=updated.id,
@@ -307,11 +309,9 @@ async def rotate_key(
             _allowlist_provided=allowlist_provided,
         )
     except ForbiddenError:
-        raise ProblemError(
-            403, "ERR_AUTH_FORBIDDEN", "Insufficient role for this operation"
-        ) from None
+        raise AUTH_FORBIDDEN.exc() from None
     except KeyNotFoundError:
-        raise ProblemError(404, "ERR_KEY_NOT_FOUND", "Key not found") from None
+        raise KEY_NOT_FOUND.exc() from None
 
     return RotateKeyResponse(
         new_key_id=result.new_key_id,
@@ -343,11 +343,9 @@ async def revoke_key(
             role=identity.role,
         )
     except ForbiddenError:
-        raise ProblemError(
-            403, "ERR_AUTH_FORBIDDEN", "Insufficient role for this operation"
-        ) from None
+        raise AUTH_FORBIDDEN.exc() from None
     except KeyNotFoundError:
-        raise ProblemError(404, "ERR_KEY_NOT_FOUND", "Key not found") from None
+        raise KEY_NOT_FOUND.exc() from None
 
 
 def _extract_raw_key(request: Request) -> str:
@@ -394,7 +392,7 @@ async def authz(
     try:
         result = await use_case.execute(raw_key)
     except InvalidApiKeyError:
-        raise ProblemError(401, "ERR_AUTH_INVALID_KEY", "Invalid API key") from None
+        raise AUTH_KEY_INVALID_AUTHZ.exc() from None
     # Set response headers for Envoy ext_authz allowed_upstream_headers forwarding
     response.headers["x-tenant-id"] = str(result.tenant_id)
     response.headers["x-key-id"] = str(result.key_id)

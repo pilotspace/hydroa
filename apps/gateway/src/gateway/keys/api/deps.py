@@ -6,7 +6,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import AUTH_FORBIDDEN, AUTH_TOKEN_INVALID, AUTH_TOKEN_MISSING
 from gateway.keys.application.use_cases import (
     AuthzUseCase,
     CreateKeyUseCase,
@@ -35,7 +35,7 @@ def get_bearer_token(request: Request) -> str:
     header = request.headers.get("Authorization", "")
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token:
-        raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Missing or malformed bearer token")
+        raise AUTH_TOKEN_MISSING.exc()
     return token
 
 
@@ -47,7 +47,7 @@ def get_identity(
     try:
         return tokens.decode(token)
     except InvalidTokenError:
-        raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Invalid or expired token") from None
+        raise AUTH_TOKEN_INVALID.exc() from None
 
 
 def require_owner_or_admin(
@@ -55,7 +55,7 @@ def require_owner_or_admin(
 ) -> Identity:
     """Raise 403 if the caller is a member."""
     if identity.role == Role.MEMBER:
-        raise ProblemError(403, "ERR_AUTH_FORBIDDEN", "Insufficient role for this operation")
+        raise AUTH_FORBIDDEN.exc()
     return identity
 
 

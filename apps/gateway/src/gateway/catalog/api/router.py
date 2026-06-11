@@ -33,7 +33,11 @@ from gateway.catalog.domain.errors import (
     CatalogSourceUnavailableError,
 )
 from gateway.catalog.infrastructure.orm import ModelRow, TenantModelOverrideRow
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import (
+    CATALOG_EMPTY,
+    CATALOG_UPSTREAM_UNAVAILABLE,
+    MODEL_NOT_FOUND,
+)
 from gateway.tenants.domain.entities import Identity
 
 # Internal router — Envoy guards /internal/* at the edge (no auth in MVP).
@@ -58,9 +62,7 @@ async def sync_catalog(
     try:
         synced = await use_case.execute()
     except CatalogSourceUnavailableError as exc:
-        raise ProblemError(
-            502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream catalog source unavailable", str(exc)
-        ) from exc
+        raise CATALOG_UPSTREAM_UNAVAILABLE.exc(detail=str(exc)) from exc
     return SyncResponse(synced=synced)
 
 
@@ -77,9 +79,7 @@ async def list_models(
     try:
         models = await use_case.execute(tenant_id=identity.tenant_id)
     except CatalogEmptyError:
-        raise ProblemError(
-            409, "ERR_CATALOG_EMPTY", "No active models in catalog — run sync first"
-        ) from None
+        raise CATALOG_EMPTY.exc() from None
     return ModelsListResponse(
         data=[
             ModelItem(
@@ -167,7 +167,7 @@ async def put_admin_model(
         )
     ).one_or_none()
     if model_row is None:
-        raise ProblemError(404, "ERR_MODEL_NOT_FOUND", f"Model '{model_id}' not found in catalog")
+        raise MODEL_NOT_FOUND.exc(model_id=model_id)
 
     # Atomic upsert: single statement, no TOCTOU gap.
     stmt = (

@@ -48,7 +48,20 @@ from gateway.auth.infrastructure.settings_oidc_config_resolver import (
     ENV_CONFIG_COOKIE_VALUE,
 )
 from gateway.core.db import get_session
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import (
+    OIDC_DOMAIN_NOT_MAPPED,
+    OIDC_INVALID_CALLBACK,
+    OIDC_NOT_CONFIGURED,
+    OIDC_SESSION_EXPIRED,
+    OIDC_STATE_MISMATCH,
+    OIDC_TENANT_CONFLICT,
+    OIDC_TENANT_COOKIE_MISSING,
+    OIDC_TENANT_COOKIE_MISSING_BINDING,
+    OIDC_TENANT_NOT_CONFIGURED,
+    OIDC_TOKEN_EXPIRED,
+    OIDC_TOKEN_INVALID,
+    OIDC_UPSTREAM_ERROR,
+)
 
 oidc_router = APIRouter(prefix="/auth/oidc", tags=["oidc"])
 
@@ -133,11 +146,7 @@ async def oidc_login(
         client_id = settings.oidc_client_id
         redirect_uri = settings.oidc_redirect_uri
     else:
-        raise ProblemError(
-            404,
-            "ERR_OIDC_NOT_CONFIGURED",
-            "OIDC login is not configured on this platform",
-        )
+        raise OIDC_NOT_CONFIGURED.exc()
 
     # Generate cryptographically random state + nonce
     state = _generate_token(32)
@@ -210,16 +219,8 @@ async def oidc_callback(
         #     stray hit on an unconfigured deployment).
         if not settings.oidc_enabled:
             if cookie_state is not None:
-                raise ProblemError(
-                    400,
-                    "ERR_OIDC_TENANT_COOKIE_MISSING",
-                    "OIDC login session lost its tenant binding; restart login",
-                )
-            raise ProblemError(
-                404,
-                "ERR_OIDC_NOT_CONFIGURED",
-                "OIDC login is not configured on this platform",
-            )
+                raise OIDC_TENANT_COOKIE_MISSING_BINDING.exc()
+            raise OIDC_NOT_CONFIGURED.exc()
         # oidc_enabled=True without cookie → env fallback (backward compat)
         # This path is taken by frozen sso_oidc/oidc_jwks tests that bypass /login.
         oidc_config = None  # use_case will use settings directly
@@ -227,11 +228,7 @@ async def oidc_callback(
     elif cookie_tenant_id == ENV_CONFIG_COOKIE_VALUE:
         # Explicitly set to env-config sentinel (set by /login on env path)
         if not settings.oidc_enabled:
-            raise ProblemError(
-                404,
-                "ERR_OIDC_NOT_CONFIGURED",
-                "OIDC login is not configured on this platform",
-            )
+            raise OIDC_NOT_CONFIGURED.exc()
         oidc_config = None  # use_case will use settings directly
 
     else:
@@ -252,11 +249,7 @@ async def oidc_callback(
                 oidc_config = await resolver.resolve(cookie_tenant_id)
 
         if oidc_config is None and not settings.oidc_enabled:
-            raise ProblemError(
-                404,
-                "ERR_OIDC_NOT_CONFIGURED",
-                "OIDC configuration not found or disabled for this tenant",
-            )
+            raise OIDC_TENANT_NOT_CONFIGURED.exc()
 
     # Build use case with resolved per-tenant config (or None for env path)
     use_case: OidcLoginUseCase = get_oidc_use_case_with_config(
@@ -272,29 +265,23 @@ async def oidc_callback(
             cookie_nonce=cookie_nonce,
         )
     except OidcTenantCookieMissingError as exc:
-        raise ProblemError(
-            400, "ERR_OIDC_TENANT_COOKIE_MISSING", "oidc_tenant_id cookie is required"
-        ) from exc
+        raise OIDC_TENANT_COOKIE_MISSING.exc() from exc
     except OidcInvalidCallbackError as exc:
-        raise ProblemError(400, "ERR_OIDC_INVALID_CALLBACK", "Invalid callback parameters") from exc
+        raise OIDC_INVALID_CALLBACK.exc() from exc
     except OidcSessionExpiredError as exc:
-        raise ProblemError(400, "ERR_OIDC_SESSION_EXPIRED", "OIDC session expired") from exc
+        raise OIDC_SESSION_EXPIRED.exc() from exc
     except OidcStateMismatchError as exc:
-        raise ProblemError(400, "ERR_OIDC_STATE_MISMATCH", "State parameter mismatch") from exc
+        raise OIDC_STATE_MISMATCH.exc() from exc
     except OidcUpstreamError as exc:
-        raise ProblemError(502, "ERR_OIDC_UPSTREAM_ERROR", "IdP token exchange failed") from exc
+        raise OIDC_UPSTREAM_ERROR.exc() from exc
     except OidcTokenExpiredError as exc:
-        raise ProblemError(401, "ERR_OIDC_TOKEN_EXPIRED", "ID token has expired") from exc
+        raise OIDC_TOKEN_EXPIRED.exc() from exc
     except OidcTokenInvalidError as exc:
-        raise ProblemError(401, "ERR_OIDC_TOKEN_INVALID", "ID token validation failed") from exc
+        raise OIDC_TOKEN_INVALID.exc() from exc
     except OidcDomainNotMappedError as exc:
-        raise ProblemError(
-            403, "ERR_OIDC_DOMAIN_NOT_MAPPED", "Email domain not permitted for SSO login"
-        ) from exc
+        raise OIDC_DOMAIN_NOT_MAPPED.exc() from exc
     except OidcTenantConflictError as exc:
-        raise ProblemError(
-            403, "ERR_OIDC_TENANT_CONFLICT", "Email is bound to a different tenant"
-        ) from exc
+        raise OIDC_TENANT_CONFLICT.exc() from exc
 
     secure = settings.environment != "dev"
     post_login_redirect = settings.oidc_post_login_redirect

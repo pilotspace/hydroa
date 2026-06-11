@@ -28,7 +28,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import PAYLOAD_CUSTOM_PATTERN_INVALID
 from gateway.keys.api.deps import get_identity, require_owner_or_admin
 from gateway.tenants.domain.entities import Identity
 
@@ -138,12 +138,7 @@ def _validate_custom_patterns(patterns: list[CustomPatternItem]) -> None:
     """
     # V1: count check
     if len(patterns) > _MAX_CUSTOM_PATTERNS:
-        raise ProblemError(
-            422,
-            "ERR_PAYLOAD_INVALID",
-            "Custom pattern validation failed",
-            detail="too many custom patterns (max 8)",
-        )
+        raise PAYLOAD_CUSTOM_PATTERN_INVALID.exc(detail="too many custom patterns (max 8)")
 
     for item in patterns:
         name = item.name
@@ -151,59 +146,37 @@ def _validate_custom_patterns(patterns: list[CustomPatternItem]) -> None:
 
         # V2: name format
         if not _NAME_RE.match(name):
-            raise ProblemError(
-                422,
-                "ERR_PAYLOAD_INVALID",
-                "Custom pattern validation failed",
-                detail=f"invalid pattern name: {name}",
-            )
+            raise PAYLOAD_CUSTOM_PATTERN_INVALID.exc(detail=f"invalid pattern name: {name}")
 
         # V3: pattern length
         if len(pattern_str.encode()) > _MAX_PATTERN_BYTES:
-            raise ProblemError(
-                422,
-                "ERR_PAYLOAD_INVALID",
-                "Custom pattern validation failed",
-                detail=f"pattern too long (max 256 bytes): {name}",
+            raise PAYLOAD_CUSTOM_PATTERN_INVALID.exc(
+                detail=f"pattern too long (max 256 bytes): {name}"
             )
 
         # V4: valid regex syntax
         try:
             compiled = re.compile(pattern_str)
         except re.error:
-            raise ProblemError(
-                422,
-                "ERR_PAYLOAD_INVALID",
-                "Custom pattern validation failed",
-                detail=f"invalid regex syntax: {name}",
+            raise PAYLOAD_CUSTOM_PATTERN_INVALID.exc(
+                detail=f"invalid regex syntax: {name}"
             ) from None
 
         # V5: must not match empty string
         if compiled.search("") is not None:
-            raise ProblemError(
-                422,
-                "ERR_PAYLOAD_INVALID",
-                "Custom pattern validation failed",
-                detail=f"pattern matches empty string: {name}",
-            )
+            raise PAYLOAD_CUSTOM_PATTERN_INVALID.exc(detail=f"pattern matches empty string: {name}")
 
         # V6: no backreferences (numeric \1..\9 or named (?P=name) — both enable
         # super-linear backtracking that the V7 heuristic cannot see)
         if _BACKREFERENCE_RE.search(pattern_str) or _NAMED_BACKREFERENCE_TOKEN in pattern_str:
-            raise ProblemError(
-                422,
-                "ERR_PAYLOAD_INVALID",
-                "Custom pattern validation failed",
-                detail=f"pattern contains backreferences: {name}",
+            raise PAYLOAD_CUSTOM_PATTERN_INVALID.exc(
+                detail=f"pattern contains backreferences: {name}"
             )
 
         # V7: no nested quantifiers (ReDoS heuristic)
         if _NESTED_QUANTIFIER_RE.search(pattern_str):
-            raise ProblemError(
-                422,
-                "ERR_PAYLOAD_INVALID",
-                "Custom pattern validation failed",
-                detail=f"pattern contains nested quantifiers (ReDoS risk): {name}",
+            raise PAYLOAD_CUSTOM_PATTERN_INVALID.exc(
+                detail=f"pattern contains nested quantifiers (ReDoS risk): {name}"
             )
 
 

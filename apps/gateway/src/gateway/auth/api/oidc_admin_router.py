@@ -27,7 +27,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import (
+    AUTH_FORBIDDEN_OWNER_REQUIRED,
+    AUTH_TOKEN_INVALID,
+    INTERNAL_ERROR,
+    OIDC_CONFIG_NOT_FOUND,
+    OIDC_ENCRYPTION_NOT_CONFIGURED,
+)
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
 from gateway.tenants.domain.entities import Role
@@ -126,10 +132,10 @@ async def _get_owner_tenant_id(request: Request, session: AsyncSession) -> str:
     try:
         identity = use_case.execute(token)
     except Exception as exc:
-        raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Invalid or expired token") from exc
+        raise AUTH_TOKEN_INVALID.exc() from exc
 
     if identity.role != Role.OWNER:
-        raise ProblemError(403, "ERR_AUTH_FORBIDDEN", "Owner role required")
+        raise AUTH_FORBIDDEN_OWNER_REQUIRED.exc()
 
     return str(identity.tenant_id)
 
@@ -157,11 +163,7 @@ async def get_oidc_config(
     row: OidcProviderConfigRow | None = result.scalar_one_or_none()
 
     if row is None:
-        raise ProblemError(
-            404,
-            "ERR_OIDC_CONFIG_NOT_FOUND",
-            "No OIDC configuration found for this tenant",
-        )
+        raise OIDC_CONFIG_NOT_FOUND.exc()
 
     # SECURITY: client_secret NEVER returned
     return {
@@ -205,11 +207,7 @@ async def put_oidc_config(
     # Check encryption key before anything else
     enc_key = settings.oidc_config_encryption_key
     if not enc_key:
-        raise ProblemError(
-            409,
-            "ERR_OIDC_CONFIG_ENCRYPTION_NOT_CONFIGURED",
-            "GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY must be set to store OIDC client secrets",
-        )
+        raise OIDC_ENCRYPTION_NOT_CONFIGURED.exc()
 
     # SSRF URL validation — runs in handler before DB write (§3 contract)
     allow_http = settings.oidc_allow_http_urls
@@ -297,7 +295,7 @@ async def put_oidc_config(
     row: OidcProviderConfigRow | None = fetch_result.scalar_one_or_none()
 
     if row is None:
-        raise ProblemError(500, "ERR_INTERNAL", "Failed to retrieve saved OIDC config")
+        raise INTERNAL_ERROR.exc()
 
     # SECURITY: client_secret NEVER returned
     return {

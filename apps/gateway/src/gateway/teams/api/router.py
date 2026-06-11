@@ -7,7 +7,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import (
+    MEMBER_EXISTS,
+    MEMBER_NOT_FOUND,
+    TEAM_EXISTS,
+    TEAM_NOT_FOUND,
+    USER_NOT_FOUND,
+)
 from gateway.teams.api.deps import (
     get_add_member_use_case,
     get_create_team_use_case,
@@ -61,7 +67,7 @@ async def create_team(
             name=body.name,
         )
     except TeamExistsError:
-        raise ProblemError(409, "ERR_TEAM_EXISTS", "A team with this name already exists") from None
+        raise TEAM_EXISTS.exc() from None
 
     return TeamResponse(
         id=team.id,
@@ -113,7 +119,7 @@ async def patch_team_budget(
             team_budget_usd=budget,
         )
     except TeamNotFoundError:
-        raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found") from None
+        raise TEAM_NOT_FOUND.exc() from None
 
     return TeamResponse(
         id=team.id,
@@ -139,7 +145,7 @@ async def get_team(
             tenant_id=identity.tenant_id,
         )
     except TeamNotFoundError:
-        raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found") from None
+        raise TEAM_NOT_FOUND.exc() from None
 
     return TeamDetailResponse(
         id=detail.id,
@@ -173,7 +179,7 @@ async def delete_team(
             tenant_id=identity.tenant_id,
         )
     except TeamNotFoundError:
-        raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found") from None
+        raise TEAM_NOT_FOUND.exc() from None
 
 
 @teams_router.post("/{team_id}/members", status_code=201, response_model=AddMemberResponse)
@@ -192,13 +198,11 @@ async def add_member(
             role=body.role,
         )
     except TeamNotFoundError:
-        raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found") from None
+        raise TEAM_NOT_FOUND.exc() from None
     except UserNotFoundError:
-        raise ProblemError(404, "ERR_USER_NOT_FOUND", "User not found in this tenant") from None
+        raise USER_NOT_FOUND.exc() from None
     except MemberExistsError:
-        raise ProblemError(
-            409, "ERR_MEMBER_EXISTS", "User is already a member of this team"
-        ) from None
+        raise MEMBER_EXISTS.exc() from None
 
     return AddMemberResponse(
         team_id=member.team_id,
@@ -223,6 +227,6 @@ async def remove_member(
             user_id=user_id,
         )
     except TeamNotFoundError:
-        raise ProblemError(404, "ERR_TEAM_NOT_FOUND", "Team not found") from None
+        raise TEAM_NOT_FOUND.exc() from None
     except MemberNotFoundError:
-        raise ProblemError(404, "ERR_MEMBER_NOT_FOUND", "Member not found") from None
+        raise MEMBER_NOT_FOUND.exc() from None

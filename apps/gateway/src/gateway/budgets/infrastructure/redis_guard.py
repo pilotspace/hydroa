@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from gateway.core.error_catalog import BUDGET_EXCEEDED
 from gateway.core.errors import ProblemError
 
 _log = logging.getLogger(__name__)
@@ -75,11 +76,8 @@ class RedisBudgetGuard:
 
         # Step 3: Enforce ceiling
         if spent >= budget:
-            raise ProblemError(
-                402,
-                "ERR_BUDGET_EXCEEDED",
-                "Monthly budget exceeded",
-                detail=f"Spent {spent} >= budget {budget} for tenant {tenant_id}",
+            raise BUDGET_EXCEEDED.exc(
+                detail=f"Spent {spent} >= budget {budget} for tenant {tenant_id}"
             )
 
     async def _fetch_budget(self, tenant_id: uuid.UUID) -> Decimal | None:

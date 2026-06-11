@@ -8,7 +8,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import AUTH_FORBIDDEN
 from gateway.keys.api.deps import get_identity
 from gateway.teams.application.use_cases import (
     AddMemberUseCase,
@@ -28,7 +28,7 @@ def require_owner_or_admin(
 ) -> Identity:
     """Raise 403 if the caller is a member."""
     if identity.role == Role.MEMBER:
-        raise ProblemError(403, "ERR_AUTH_FORBIDDEN", "Insufficient role for this operation")
+        raise AUTH_FORBIDDEN.exc()
     return identity
 
 

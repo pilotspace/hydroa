@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.budgets.api.schemas import BudgetGetResponse, BudgetPutRequest, BudgetPutResponse
 from gateway.core.db import get_session
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import PAYLOAD_BUDGET_DECIMAL_INVALID, PAYLOAD_BUDGET_NEGATIVE
 from gateway.keys.api.deps import get_identity, require_owner_or_admin
 from gateway.tenants.domain.entities import Identity
 
@@ -95,18 +95,10 @@ async def put_budget(
         try:
             parsed = Decimal(new_value)
         except InvalidOperation:
-            raise ProblemError(
-                422,
-                "ERR_PAYLOAD_INVALID",
-                "budget_usd_monthly must be a valid decimal string or null",
-            ) from None
+            raise PAYLOAD_BUDGET_DECIMAL_INVALID.exc() from None
 
         if parsed < Decimal("0"):
-            raise ProblemError(
-                422,
-                "ERR_PAYLOAD_INVALID",
-                "budget_usd_monthly must be non-negative",
-            )
+            raise PAYLOAD_BUDGET_NEGATIVE.exc()
 
         persisted_str = str(parsed)
 

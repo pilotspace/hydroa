@@ -4,7 +4,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import AUTH_TOKEN_MISSING
 from gateway.tenants.application.use_cases import (
     GetIdentityUseCase,
     LoginUseCase,
@@ -49,5 +49,5 @@ def get_bearer_token(request: Request) -> str:
     header = request.headers.get("Authorization", "")
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token:
-        raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Missing or malformed bearer token")
+        raise AUTH_TOKEN_MISSING.exc()
     return token

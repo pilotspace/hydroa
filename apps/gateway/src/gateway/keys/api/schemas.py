@@ -7,6 +7,17 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from gateway.core.error_catalog import (
+    PAYLOAD_ALLOWLIST_BAD_ELEMENT,
+    PAYLOAD_ALLOWLIST_NOT_LIST,
+    PAYLOAD_DECIMAL_INVALID,
+    PAYLOAD_INT_INVALID,
+    PAYLOAD_INT_NOT_POSITIVE,
+    PAYLOAD_MONTHLY_BUDGET_NEGATIVE,
+    PAYLOAD_SOFT_BUDGET_NEGATIVE,
+    PAYLOAD_SOFT_EXCEEDS_HARD,
+)
+
 
 class CreateKeyRequest(BaseModel):
     model_config = ConfigDict(frozen=True, strict=False, str_strip_whitespace=True)
@@ -40,9 +51,7 @@ class CreateKeyRequest(BaseModel):
             return None
         d = _parse_decimal_str(v, "monthly_budget_usd")
         if d < Decimal("0"):
-            from gateway.core.errors import ProblemError
-
-            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "monthly_budget_usd must be >= 0")
+            raise PAYLOAD_MONTHLY_BUDGET_NEGATIVE.exc()
         return str(d)
 
     @field_validator("soft_budget_usd", mode="before")
@@ -52,9 +61,7 @@ class CreateKeyRequest(BaseModel):
             return None
         d = _parse_decimal_str(v, "soft_budget_usd")
         if d < Decimal("0"):
-            from gateway.core.errors import ProblemError
-
-            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "soft_budget_usd must be >= 0")
+            raise PAYLOAD_SOFT_BUDGET_NEGATIVE.exc()
         return str(d)
 
     @field_validator("model_allowlist", mode="before")
@@ -63,16 +70,10 @@ class CreateKeyRequest(BaseModel):
         if v is None:
             return None
         if not isinstance(v, list):
-            from gateway.core.errors import ProblemError
-
-            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "model_allowlist must be a list")
+            raise PAYLOAD_ALLOWLIST_NOT_LIST.exc()
         for item in v:
             if not isinstance(item, str) or item == "":
-                from gateway.core.errors import ProblemError
-
-                raise ProblemError(
-                    422, "ERR_PAYLOAD_INVALID", "model_allowlist elements must be non-empty strings"
-                )
+                raise PAYLOAD_ALLOWLIST_BAD_ELEMENT.exc()
         return v
 
     @model_validator(mode="after")
@@ -81,13 +82,7 @@ class CreateKeyRequest(BaseModel):
             hard = Decimal(self.monthly_budget_usd)
             soft = Decimal(self.soft_budget_usd)
             if soft > hard:
-                from gateway.core.errors import ProblemError
-
-                raise ProblemError(
-                    422,
-                    "ERR_PAYLOAD_INVALID",
-                    "soft_budget_usd must be <= monthly_budget_usd",
-                )
+                raise PAYLOAD_SOFT_EXCEEDS_HARD.exc()
         return self
 
 
@@ -130,9 +125,7 @@ class PatchKeyRequest(BaseModel):
             return None
         d = _parse_decimal_str(v, "monthly_budget_usd")
         if d < Decimal("0"):
-            from gateway.core.errors import ProblemError
-
-            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "monthly_budget_usd must be >= 0")
+            raise PAYLOAD_MONTHLY_BUDGET_NEGATIVE.exc()
         return str(d)
 
     @field_validator("soft_budget_usd", mode="before")
@@ -142,9 +135,7 @@ class PatchKeyRequest(BaseModel):
             return None
         d = _parse_decimal_str(v, "soft_budget_usd")
         if d < Decimal("0"):
-            from gateway.core.errors import ProblemError
-
-            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "soft_budget_usd must be >= 0")
+            raise PAYLOAD_SOFT_BUDGET_NEGATIVE.exc()
         return str(d)
 
     @field_validator("model_allowlist", mode="before")
@@ -153,16 +144,10 @@ class PatchKeyRequest(BaseModel):
         if v is None:
             return None
         if not isinstance(v, list):
-            from gateway.core.errors import ProblemError
-
-            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "model_allowlist must be a list")
+            raise PAYLOAD_ALLOWLIST_NOT_LIST.exc()
         for item in v:
             if not isinstance(item, str) or item == "":
-                from gateway.core.errors import ProblemError
-
-                raise ProblemError(
-                    422, "ERR_PAYLOAD_INVALID", "model_allowlist elements must be non-empty strings"
-                )
+                raise PAYLOAD_ALLOWLIST_BAD_ELEMENT.exc()
         return v
 
     @model_validator(mode="after")
@@ -171,13 +156,7 @@ class PatchKeyRequest(BaseModel):
             hard = Decimal(self.monthly_budget_usd)
             soft = Decimal(self.soft_budget_usd)
             if soft > hard:
-                from gateway.core.errors import ProblemError
-
-                raise ProblemError(
-                    422,
-                    "ERR_PAYLOAD_INVALID",
-                    "soft_budget_usd must be <= monthly_budget_usd",
-                )
+                raise PAYLOAD_SOFT_EXCEEDS_HARD.exc()
         return self
 
 
@@ -198,9 +177,7 @@ class RotateKeyRequest(BaseModel):
             return None
         d = _parse_decimal_str(v, "monthly_budget_usd")
         if d < Decimal("0"):
-            from gateway.core.errors import ProblemError
-
-            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "monthly_budget_usd must be >= 0")
+            raise PAYLOAD_MONTHLY_BUDGET_NEGATIVE.exc()
         return str(d)
 
     @field_validator("soft_budget_usd", mode="before")
@@ -210,9 +187,7 @@ class RotateKeyRequest(BaseModel):
             return None
         d = _parse_decimal_str(v, "soft_budget_usd")
         if d < Decimal("0"):
-            from gateway.core.errors import ProblemError
-
-            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "soft_budget_usd must be >= 0")
+            raise PAYLOAD_SOFT_BUDGET_NEGATIVE.exc()
         return str(d)
 
     @field_validator("model_allowlist", mode="before")
@@ -221,16 +196,10 @@ class RotateKeyRequest(BaseModel):
         if v is None:
             return None
         if not isinstance(v, list):
-            from gateway.core.errors import ProblemError
-
-            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "model_allowlist must be a list")
+            raise PAYLOAD_ALLOWLIST_NOT_LIST.exc()
         for item in v:
             if not isinstance(item, str) or item == "":
-                from gateway.core.errors import ProblemError
-
-                raise ProblemError(
-                    422, "ERR_PAYLOAD_INVALID", "model_allowlist elements must be non-empty strings"
-                )
+                raise PAYLOAD_ALLOWLIST_BAD_ELEMENT.exc()
         return v
 
 
@@ -297,11 +266,7 @@ def _parse_decimal_str(v: Any, field_name: str) -> Decimal:
     try:
         return Decimal(str(v))
     except Exception:
-        from gateway.core.errors import ProblemError
-
-        raise ProblemError(
-            422, "ERR_PAYLOAD_INVALID", f"{field_name} must be a valid decimal string"
-        ) from None
+        raise PAYLOAD_DECIMAL_INVALID.exc(field_name=field_name) from None
 
 
 def _parse_positive_int(v: Any, field_name: str) -> int | None:
@@ -311,17 +276,7 @@ def _parse_positive_int(v: Any, field_name: str) -> int | None:
     try:
         val = int(v)
     except (TypeError, ValueError):
-        from gateway.core.errors import ProblemError
-
-        raise ProblemError(
-            422, "ERR_PAYLOAD_INVALID", f"{field_name} must be a positive integer"
-        ) from None
+        raise PAYLOAD_INT_INVALID.exc(field_name=field_name) from None
     if val <= 0:
-        from gateway.core.errors import ProblemError
-
-        raise ProblemError(
-            422,
-            "ERR_PAYLOAD_INVALID",
-            f"{field_name} must be a positive integer (> 0)",
-        )
+        raise PAYLOAD_INT_NOT_POSITIVE.exc(field_name=field_name)
     return val

@@ -11,7 +11,7 @@ from gateway.catalog.application.use_cases import ListModelsForTenantUseCase, Sy
 from gateway.catalog.domain.ports import CatalogSource
 from gateway.catalog.infrastructure.repository import SqlAlchemyCatalogRepository
 from gateway.core.db import get_session
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import AUTH_FORBIDDEN, AUTH_TOKEN_INVALID, AUTH_TOKEN_MISSING
 from gateway.tenants.domain.entities import Identity, Role
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
@@ -54,11 +54,11 @@ def get_current_identity(
     header = request.headers.get("Authorization", "")
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token:
-        raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Missing or malformed bearer token")
+        raise AUTH_TOKEN_MISSING.exc()
     try:
         return tokens.decode(token)
     except InvalidTokenError:
-        raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Invalid or expired token") from None
+        raise AUTH_TOKEN_INVALID.exc() from None
 
 
 def require_owner_or_admin(
@@ -69,7 +69,7 @@ def require_owner_or_admin(
     Reuses the same pattern as gateway.keys.api.deps.require_owner_or_admin.
     """
     if identity.role == Role.MEMBER:
-        raise ProblemError(403, "ERR_AUTH_FORBIDDEN", "Insufficient role for this operation")
+        raise AUTH_FORBIDDEN.exc()
     return identity
 
 

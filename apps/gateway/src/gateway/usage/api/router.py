@@ -27,7 +27,16 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
-from gateway.core.errors import ProblemError
+from gateway.core.error_catalog import (
+    AUTH_TOKEN_INVALID,
+    AUTH_TOKEN_MISSING,
+    KEY_NOT_FOUND_IN_TENANT,
+    PAYLOAD_END_DATE_INVALID,
+    PAYLOAD_GROUP_BY_INVALID,
+    PAYLOAD_KEY_ID_UUID_INVALID,
+    PAYLOAD_START_DATE_INVALID,
+    PAYLOAD_WINDOW_INVALID,
+)
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
@@ -52,12 +61,12 @@ def _extract_identity(request: Request) -> Identity:
     header = request.headers.get("Authorization", "")
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token:
-        raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Missing or malformed bearer token")
+        raise AUTH_TOKEN_MISSING.exc()
     token_service = cast(TokenService, request.app.state.token_service)
     try:
         return token_service.decode(token)
     except InvalidTokenError:
-        raise ProblemError(401, "ERR_AUTH_INVALID_TOKEN", "Invalid or expired token") from None
+        raise AUTH_TOKEN_INVALID.exc() from None
 
 
 @usage_router.get("/usage", response_model=UsageTotalsResponse)
@@ -139,11 +148,7 @@ def _compute_window_bounds(
     """
     # Validate window
     if window not in _VALID_WINDOWS:
-        raise ProblemError(
-            422,
-            "ERR_PAYLOAD_INVALID",
-            f"window must be one of: day, week, month; got {window!r}",
-        )
+        raise PAYLOAD_WINDOW_INVALID.exc(window=window)
 
     granularity = _GRANULARITY[window]
     now_utc = datetime.datetime.now(datetime.UTC)
@@ -157,9 +162,7 @@ def _compute_window_bounds(
             d = datetime.date.fromisoformat(start)
             start_dt = datetime.datetime(d.year, d.month, d.day, tzinfo=datetime.UTC)
         except ValueError:
-            raise ProblemError(
-                422, "ERR_PAYLOAD_INVALID", f"Invalid ISO date for start: {start!r}"
-            ) from None
+            raise PAYLOAD_START_DATE_INVALID.exc(start=start) from None
 
     if end is not None:
         try:
@@ -169,9 +172,7 @@ def _compute_window_bounds(
                 d.year, d.month, d.day, tzinfo=datetime.UTC
             ) + datetime.timedelta(days=1)
         except ValueError:
-            raise ProblemError(
-                422, "ERR_PAYLOAD_INVALID", f"Invalid ISO date for end: {end!r}"
-            ) from None
+            raise PAYLOAD_END_DATE_INVALID.exc(end=end) from None
 
     # Determine window_start based on window type (if not overridden by start param)
     if start_dt is not None:
@@ -255,9 +256,7 @@ async def get_spend(
 
     # Validate window param (422 on invalid)
     if window not in _VALID_WINDOWS:
-        raise ProblemError(
-            422, "ERR_PAYLOAD_INVALID", f"window must be one of: day, week, month; got {window!r}"
-        )
+        raise PAYLOAD_WINDOW_INVALID.exc(window=window)
 
     # Validate optional key_id filter — must belong to caller's tenant
     key_uuid: uuid.UUID | None = None
@@ -265,9 +264,7 @@ async def get_spend(
         try:
             key_uuid = uuid.UUID(key_id)
         except ValueError:
-            raise ProblemError(
-                422, "ERR_PAYLOAD_INVALID", f"Invalid UUID for key_id: {key_id!r}"
-            ) from None
+            raise PAYLOAD_KEY_ID_UUID_INVALID.exc(key_id=key_id) from None
         # Tenant-scope check: verify key belongs to this tenant
         key_row = (
             await session.execute(
@@ -276,11 +273,7 @@ async def get_spend(
             )
         ).fetchone()
         if key_row is None:
-            raise ProblemError(
-                404,
-                "ERR_KEY_NOT_FOUND",
-                "Key not found or does not belong to this tenant",
-            )
+            raise KEY_NOT_FOUND_IN_TENANT.exc()
 
     # Compute window boundaries
     window_start, window_end, granularity = _compute_window_bounds(window, start, end)
@@ -370,10 +363,8 @@ async def get_spend(
     # ── group_by whitelist validation (422 for unknown values) ───────────────
     _VALID_GROUP_BY = {"key_id", "team_id"}
     if group_by is not None and group_by not in _VALID_GROUP_BY:
-        raise ProblemError(
-            422,
-            "ERR_PAYLOAD_INVALID",
-            f"group_by must be one of: {', '.join(sorted(_VALID_GROUP_BY))}; got {group_by!r}",
+        raise PAYLOAD_GROUP_BY_INVALID.exc(
+            valid=", ".join(sorted(_VALID_GROUP_BY)), group_by=group_by
         )
 
     # ── Breakdown (group_by=key_id or group_by=team_id) ──────────────────────
