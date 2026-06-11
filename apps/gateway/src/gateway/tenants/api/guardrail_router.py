@@ -6,11 +6,20 @@ Contract FROZEN @ v4 (guardrails-core TASK.md §3):
                             body: partial update (absent keys preserved)
                             returns: full merged config after update
   422 on invalid mode value (pii_mask mode=block, prompt_injection mode=mask)
+
+pii-v2 extension (TASK.md §3 CONTRACT — FROZEN):
+  PiiMaskConfig gains optional pii_custom_patterns field.
+  CustomPatternItem: name (^[A-Z][A-Z0-9_]{0,31}$), pattern (str)
+  Validation rules V1-V7 applied at PUT time; first failure → 422 ERR_PAYLOAD_INVALID.
+  Literal is NOT stored — derived server-side as "[{name}_REDACTED]".
+  pii_custom_patterns absent in PUT pii_mask block → removes custom list (list-replace).
+  pii_mask absent entirely → preserves existing pii_mask config (standard partial-merge).
 """
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
@@ -19,10 +28,25 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
+from gateway.core.errors import ProblemError
 from gateway.keys.api.deps import get_identity, require_owner_or_admin
 from gateway.tenants.domain.entities import Identity
 
 guardrail_router = APIRouter(prefix="/admin/guardrails", tags=["guardrails"])
+
+# ---------------------------------------------------------------------------
+# pii-v2 validation constants (§3 CONTRACT — FROZEN)
+# ---------------------------------------------------------------------------
+_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
+_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*?][^)]*\)[+*?{]")
+# Numeric backrefs (\1..\9) by regex; named backrefs ((?P=name)) by plain substring —
+# the substring cannot occur in a correctly-escaped literal, and rejecting the odd
+# char-class containing it is the right conservative direction for untrusted input.
+_BACKREFERENCE_RE = re.compile(r"\\[1-9]")
+_NAMED_BACKREFERENCE_TOKEN = "(?P="  # noqa: S105 — regex syntax fragment, not a secret
+_MAX_CUSTOM_PATTERNS = 8
+_MAX_PATTERN_BYTES = 256
+
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -47,14 +71,31 @@ class PromptInjectionConfig(BaseModel):
         return v
 
 
+class CustomPatternItem(BaseModel):
+    """A single tenant-supplied custom PII pattern.
+
+    name:    must match ^[A-Z][A-Z0-9_]{0,31}$
+    pattern: tenant regex string (validated V1-V7 at PUT time)
+
+    The literal field is NOT accepted here — it is derived server-side as
+    f"[{name}_REDACTED]". Any literal supplied in the JSON body is silently
+    ignored by Pydantic (model does not declare the field).
+    """
+
+    name: str
+    pattern: str
+
+
 class PiiMaskConfig(BaseModel):
     """Config for the pii_mask guardrail.
 
     Valid modes: mask | audit  (block is NOT valid for pii_mask)
+    pii_custom_patterns: optional list of custom patterns (validated at PUT time).
     """
 
     enabled: bool
     mode: str
+    pii_custom_patterns: list[CustomPatternItem] | None = None
 
     @field_validator("mode")
     @classmethod
@@ -82,6 +123,88 @@ class GuardrailConfigResponse(BaseModel):
 
     prompt_injection: dict[str, Any] | None = None
     pii_mask: dict[str, Any] | None = None
+
+
+# ---------------------------------------------------------------------------
+# pii-v2 validation (§3 CONTRACT V1-V7, applied in order at PUT time)
+# ---------------------------------------------------------------------------
+
+
+def _validate_custom_patterns(patterns: list[CustomPatternItem]) -> None:
+    """Apply V1-V7 validation rules to the custom pattern list.
+
+    Raises ProblemError 422 ERR_PAYLOAD_INVALID on the first violation.
+    Validation order: V1 (count) → then per-pattern V2-V7.
+    """
+    # V1: count check
+    if len(patterns) > _MAX_CUSTOM_PATTERNS:
+        raise ProblemError(
+            422,
+            "ERR_PAYLOAD_INVALID",
+            "Custom pattern validation failed",
+            detail="too many custom patterns (max 8)",
+        )
+
+    for item in patterns:
+        name = item.name
+        pattern_str = item.pattern
+
+        # V2: name format
+        if not _NAME_RE.match(name):
+            raise ProblemError(
+                422,
+                "ERR_PAYLOAD_INVALID",
+                "Custom pattern validation failed",
+                detail=f"invalid pattern name: {name}",
+            )
+
+        # V3: pattern length
+        if len(pattern_str.encode()) > _MAX_PATTERN_BYTES:
+            raise ProblemError(
+                422,
+                "ERR_PAYLOAD_INVALID",
+                "Custom pattern validation failed",
+                detail=f"pattern too long (max 256 bytes): {name}",
+            )
+
+        # V4: valid regex syntax
+        try:
+            compiled = re.compile(pattern_str)
+        except re.error:
+            raise ProblemError(
+                422,
+                "ERR_PAYLOAD_INVALID",
+                "Custom pattern validation failed",
+                detail=f"invalid regex syntax: {name}",
+            ) from None
+
+        # V5: must not match empty string
+        if compiled.search("") is not None:
+            raise ProblemError(
+                422,
+                "ERR_PAYLOAD_INVALID",
+                "Custom pattern validation failed",
+                detail=f"pattern matches empty string: {name}",
+            )
+
+        # V6: no backreferences (numeric \1..\9 or named (?P=name) — both enable
+        # super-linear backtracking that the V7 heuristic cannot see)
+        if _BACKREFERENCE_RE.search(pattern_str) or _NAMED_BACKREFERENCE_TOKEN in pattern_str:
+            raise ProblemError(
+                422,
+                "ERR_PAYLOAD_INVALID",
+                "Custom pattern validation failed",
+                detail=f"pattern contains backreferences: {name}",
+            )
+
+        # V7: no nested quantifiers (ReDoS heuristic)
+        if _NESTED_QUANTIFIER_RE.search(pattern_str):
+            raise ProblemError(
+                422,
+                "ERR_PAYLOAD_INVALID",
+                "Custom pattern validation failed",
+                detail=f"pattern contains nested quantifiers (ReDoS risk): {name}",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -151,8 +274,17 @@ async def put_guardrails(
     Absent top-level keys preserve existing values.
     Present keys fully replace that guardrail's config.
     null value for a key removes that guardrail's config.
+
+    pii-v2: pii_custom_patterns validation (V1-V7) applied atomically at PUT time.
+    On any validation failure: 422 ERR_PAYLOAD_INVALID; guardrail_configs NOT updated.
+    pii_custom_patterns absent in present pii_mask block → removes custom list.
+    pii_mask absent entirely → preserves existing pii_mask config.
     """
     tenant_id = str(identity.tenant_id)
+
+    # pii-v2: validate custom patterns BEFORE any DB read/write (atomic reject)
+    if body.pii_mask is not None and body.pii_mask.pii_custom_patterns is not None:
+        _validate_custom_patterns(body.pii_mask.pii_custom_patterns)
 
     # Fetch current config for merge
     current = await _fetch_guardrail_configs(session, tenant_id)
@@ -161,7 +293,6 @@ async def put_guardrails(
     updated = dict(current)
 
     # Check which fields were explicitly set in the request
-    # Pydantic model_fields_set contains only explicitly provided fields
     fields_set = body.model_fields_set
 
     if "prompt_injection" in fields_set:
@@ -174,7 +305,22 @@ async def put_guardrails(
         if body.pii_mask is None:
             updated.pop("pii_mask", None)
         else:
-            updated["pii_mask"] = body.pii_mask.model_dump()
+            # Build the pii_mask dict to store
+            pii_dump = body.pii_mask.model_dump()
+            # pii_custom_patterns: if present (even as empty list), replace entire list.
+            # If absent in the pii_mask block (None from Pydantic default), remove key.
+            # model_dump() returns None for absent optional field.
+            if pii_dump.get("pii_custom_patterns") is None:
+                # Absent pii_custom_patterns in the PUT pii_mask block → remove custom list
+                pii_dump.pop("pii_custom_patterns", None)
+            else:
+                # Present list (even empty): serialize as list of {name, pattern} dicts.
+                # Literals are NOT stored — they are derived server-side.
+                pii_dump["pii_custom_patterns"] = [
+                    {"name": p["name"], "pattern": p["pattern"]}
+                    for p in pii_dump["pii_custom_patterns"]
+                ]
+            updated["pii_mask"] = pii_dump
 
     # Persist the merged config as JSONB
     await session.execute(
