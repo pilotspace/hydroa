@@ -11,6 +11,10 @@ from prometheus_client import CollectorRegistry
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from gateway.alerting.application.dispatcher import AlertDispatcher
+from gateway.alerting.application.health_checker import UpstreamHealthChecker
+from gateway.alerting.infrastructure.httpx_pinger import HttpxUpstreamPinger
+from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import catalog_router, internal_catalog_router
@@ -141,13 +145,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
           1. Schema bootstrap if environment in ("dev", "test")
           2. Create UsageLedgerFlusher bound to redis_client + sessionmaker
           3. Start flusher background task → app.state.flusher_task
+          4. Start AlertDispatcher background task → app.state.dispatcher_task
+          5. Start UpstreamHealthChecker background task → app.state.health_checker_task
+             (skipped when health_check_interval_seconds == 0)
 
         Shutdown ordering:
-          1. Cancel flusher background task
-          2. drain_until_empty(timeout=shutdown_drain_timeout_seconds)
-          3. await redis_client.aclose()
-          4. await engine.dispose()
-          5. await httpx_client.aclose() if held
+          1. Cancel dispatcher + health_checker background tasks
+          2. Run one final run_once()/check_once() cycle for each
+          3. Cancel flusher background task
+          4. drain_until_empty(timeout=shutdown_drain_timeout_seconds)
+          5. await redis_client.aclose()
+          6. await engine.dispose()
+          7. await httpx_client.aclose() if held
         """
         _engine = app.state.engine
         _redis = app.state.redis_client
@@ -170,28 +179,76 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.flusher = flusher
         app.state.flusher_task = asyncio.create_task(flusher.run_forever())
 
+        # AlertDispatcher — background webhook delivery
+        webhook_sink = HttpxWebhookSink()
+        dispatcher = AlertDispatcher(
+            session_factory=_sessionmaker,
+            webhook_sink=webhook_sink,
+            webhook_url=_settings.alert_webhook_url,
+            retry_max=_settings.alert_retry_max,
+        )
+        app.state.dispatcher = dispatcher
+        app.state.dispatcher_task = asyncio.create_task(dispatcher.run_forever())
+
+        # UpstreamHealthChecker — periodic health ping (disabled when interval == 0)
+        app.state.health_checker_task = None
+        if _settings.health_check_interval_seconds > 0:
+            pinger = HttpxUpstreamPinger()
+            health_checker = UpstreamHealthChecker(
+                session_factory=_sessionmaker,
+                pinger=pinger,
+            )
+            app.state.health_checker = health_checker
+            app.state.health_checker_task = asyncio.create_task(
+                health_checker.run_forever(
+                    interval_seconds=float(_settings.health_check_interval_seconds)
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
-        # 1. Cancel the run_forever background task
-        task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)
-        if task is not None:
-            task.cancel()
+        # 1. Cancel dispatcher + health_checker tasks (before flusher drain)
+        dispatcher_task: asyncio.Task[None] | None = getattr(app.state, "dispatcher_task", None)
+        if dispatcher_task is not None:
+            dispatcher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await task
+                await dispatcher_task
 
-        # 2. Drain remaining PEL entries up to the timeout
+        health_task: asyncio.Task[None] | None = getattr(app.state, "health_checker_task", None)
+        if health_task is not None:
+            health_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await health_task
+
+        # 2. Final run_once()/check_once() drain cycle for dispatcher/health
+        with contextlib.suppress(Exception):
+            await dispatcher.run_once()
+        if _settings.health_check_interval_seconds > 0:
+            hc = getattr(app.state, "health_checker", None)
+            if hc is not None:
+                with contextlib.suppress(Exception):
+                    await hc.check_once()
+
+        # 3. Cancel the flusher background task
+        flusher_task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)
+        if flusher_task is not None:
+            flusher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await flusher_task
+
+        # 4. Drain remaining PEL entries up to the timeout
         await flusher.drain_until_empty(timeout=float(_settings.shutdown_drain_timeout_seconds))
 
-        # 3. Close Redis client
+        # 5. Close Redis client
         with contextlib.suppress(Exception):
             await _redis.aclose()
 
-        # 4. Dispose SQLAlchemy engine
+        # 6. Dispose SQLAlchemy engine
         with contextlib.suppress(Exception):
             await _engine.dispose()
 
-        # 5. Close httpx client if stored on app.state
+        # 7. Close httpx client if stored on app.state
         httpx_client: httpx.AsyncClient | None = getattr(app.state, "httpx_client", None)
         if httpx_client is not None:
             with contextlib.suppress(Exception):
@@ -202,6 +259,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Per-app Prometheus registry — prevents Duplicated timeseries errors when
     # multiple create_app() calls exist in a single pytest run.
     app.state.metrics_registry = MetricsRegistry(registry=CollectorRegistry())
+
+    # Pre-initialize lifespan-managed task handles so tests using ASGITransport
+    # (which does not trigger lifespan) can still inspect these attributes.
+    # The lifespan overwrites them on startup.
+    app.state.health_checker_task = None
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings

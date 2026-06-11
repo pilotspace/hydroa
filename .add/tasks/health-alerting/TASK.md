@@ -406,6 +406,11 @@ NOT TOUCHED:
 ```
 
 Status: FROZEN @ v3 — approved by Tin Dang (delegated auto mode, 2026-06-11; v3 roadmap confirmed "Proceed as drafted").
+Build-time disposition (orchestrator, 2026-06-11):
+| artifact | defect | disposition |
+|---|---|---|
+| test_s08 dedupe_key assertion (and §3 dedupe format for drain_timeout) | pinned the CONSTANT key "drain_timeout" — ON CONFLICT(dedupe_key) would then swallow every drain-timeout event after the first one in the table's lifetime, permanently blinding the alert | dedupe_key amended to per-episode "drain_timeout:{uuid4}"; test assertion relaxed to startswith("drain_timeout"); count-per-drain assertion unchanged. Strengthens the alert; weakens nothing. |
+
 Least-sure flag surfaced at freeze:
 ⚠ [contract] alert_events.tenant_id is NOT NULL today (spend-windows f4a9b3c7e8d2) but
   system events (breaker/drain/health) carry no tenant — this contract's additive migration

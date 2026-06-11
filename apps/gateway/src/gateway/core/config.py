@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6380/0"
     shutdown_drain_timeout_seconds: int = 10  # env: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
 
+    # ── Alerting / health (health-alerting task) ──────────────────────────────
+    alert_webhook_url: str = ""  # GATEWAY_ALERT_WEBHOOK_URL (empty = disabled)
+    alert_retry_max: int = 3  # GATEWAY_ALERT_RETRY_MAX
+    health_check_interval_seconds: int = 60  # GATEWAY_HEALTH_CHECK_INTERVAL_SECONDS (0 = disabled)
+
     @model_validator(mode="after")
     def _forbid_dev_secret_outside_dev(self) -> "Settings":
         if self.environment not in ("dev", "test") and self.jwt_secret == _DEV_JWT_SECRET:

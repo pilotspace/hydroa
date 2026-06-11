@@ -203,6 +203,24 @@ class UsageLedgerFlusher:
                     timeout,
                     remaining if remaining >= 0 else "unknown",
                 )
+                # M8: emit drain_timeout system event (bounded 0.5s; must never
+                # block or fail the shutdown path). dedupe_key is per-episode —
+                # a constant key would let ON CONFLICT swallow every drain
+                # timeout after the first one in the table's lifetime.
+                try:
+                    from gateway.alerting.application.event_emitter import emit_system_event
+
+                    emit_task = asyncio.ensure_future(
+                        emit_system_event(
+                            self._session_factory,
+                            event_type="drain_timeout",
+                            dedupe_key=f"drain_timeout:{uuid.uuid4()}",
+                            payload={"timeout_seconds": timeout},
+                        )
+                    )
+                    await asyncio.wait_for(asyncio.shield(emit_task), timeout=0.5)
+                except Exception as exc:
+                    _log.warning("flusher: drain_timeout alert not persisted", exc_info=exc)
                 return
 
             try:

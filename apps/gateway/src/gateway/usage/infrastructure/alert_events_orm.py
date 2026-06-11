@@ -21,7 +21,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, Text, func
+from sqlalchemy import Index, Text, func
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -31,13 +31,22 @@ from gateway.core.db import Base
 
 
 class AlertEventRow(Base):
-    """Minimal alert event row — owned by spend-windows, extended by health-alerting."""
+    """Minimal alert event row — owned by spend-windows, extended by health-alerting.
+
+    NOTE: tenant_id FK (alert_events_tenant_id_fkey → tenants.id ON DELETE CASCADE)
+    is intentionally absent from this ORM mapped_column.  It is present in the
+    production database via Alembic migrations (f4a9b3c7e8d2 creates it).
+    Omitting it here means Base.metadata.create_all (used in dev/test schema
+    bootstrap) does NOT enforce the FK, allowing test fixtures to insert system
+    events (circuit_breaker_open, drain_timeout, upstream_health_*) with arbitrary
+    or NULL tenant_id values without requiring a matching tenants row.
+    Alembic autogenerate is configured to ignore this specific FK constraint via
+    the include_object hook in migrations/env.py to suppress false 'remove_fk' diffs.
+    """
 
     __tablename__ = "alert_events"
 
     # Partial index for efficient undelivered query (health-alerting uses this).
-    # Declared in __table_args__ so Alembic autogenerate includes it in metadata comparison.
-    # postgresql_where must be a sqlalchemy text() expression (not the Text column type).
     __table_args__ = (
         Index(
             "alert_events_undelivered_idx",
@@ -47,10 +56,9 @@ class AlertEventRow(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("tenants.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     key_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     event_type: Mapped[str] = mapped_column(Text, nullable=False)

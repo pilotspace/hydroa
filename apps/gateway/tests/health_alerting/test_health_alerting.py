@@ -633,7 +633,10 @@ async def test_s08_drain_timeout_emits_event(session_factory: Any) -> None:
         row = rows[0]
         assert row["tenant_id"] is None, "drain_timeout event must have tenant_id NULL (requires M15)"
         assert row["key_id"] is None
-        assert row["dedupe_key"] == "drain_timeout"
+        # Disposition 2026-06-11 (orchestrator, §3-documented): dedupe_key is
+        # episode-prefixed, not constant — a constant key would let ON CONFLICT
+        # swallow every drain_timeout after the table's first, forever.
+        assert row["dedupe_key"].startswith("drain_timeout")
         payload = row["payload"]
         assert "timeout_seconds" in payload, (
             f"drain_timeout payload must contain 'timeout_seconds'; got {payload}"

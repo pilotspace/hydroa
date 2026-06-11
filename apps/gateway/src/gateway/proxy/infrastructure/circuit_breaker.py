@@ -14,8 +14,11 @@ Thread-safety: asyncio is single-threaded; no locking needed.
 
 from __future__ import annotations
 
+import asyncio
 import time
+import uuid
 from enum import Enum
+from typing import Any
 
 from gateway.proxy.domain.errors import CircuitOpenError
 
@@ -36,12 +39,18 @@ class CircuitBreaker:
         self,
         failure_threshold: int = _FAILURE_THRESHOLD,
         cooldown_seconds: float = _COOLDOWN_SECONDS,
+        *,
+        session_factory: Any = None,
     ) -> None:
         self._threshold = failure_threshold
         self._cooldown = cooldown_seconds
         self._state = _State.CLOSED
         self._failure_count = 0
         self._trip_time: float = 0.0
+        # Event emission hook (health-alerting): injected session_factory for alert_events
+        self._session_factory = session_factory
+        # Episode UUID — set when CLOSED→OPEN; cleared when back to CLOSED
+        self._open_episode_id: uuid.UUID | None = None
 
     def _check_transition(self) -> None:
         """Transition OPEN → HALF_OPEN if cooldown has elapsed."""
@@ -59,13 +68,15 @@ class CircuitBreaker:
         """Reset breaker to closed on successful upstream response."""
         self._failure_count = 0
         self._state = _State.CLOSED
+        self._open_episode_id = None
 
     def record_failure(self) -> None:
         """Increment failure counter; trip the breaker on threshold."""
         self._failure_count += 1
-        if self._failure_count >= self._threshold:
+        if self._failure_count >= self._threshold and self._state != _State.OPEN:
             self._state = _State.OPEN
             self._trip_time = time.monotonic()
+            self._emit_open_event()
 
     def call_allowed(self) -> bool:
         """Return True iff a call to upstream is permitted right now.
@@ -84,9 +95,10 @@ class CircuitBreaker:
         In HALF_OPEN: failure re-opens immediately.
         """
         if self._state == _State.HALF_OPEN:
-            # Probe failed — re-open immediately
+            # Probe failed — re-open immediately; new episode
             self._state = _State.OPEN
             self._trip_time = time.monotonic()
+            self._emit_open_event()
         else:
             self.record_failure()
 
@@ -94,3 +106,32 @@ class CircuitBreaker:
         """Raise CircuitOpenError if no call is allowed right now."""
         if not self.call_allowed():
             raise CircuitOpenError("Circuit breaker is open — upstream is unavailable")
+
+    def _emit_open_event(self) -> None:
+        """Fire-and-forget: emit circuit_breaker_open alert event (one per episode).
+
+        Only emits when session_factory is wired (production/test with DB).
+        Swallows all exceptions — must never raise into the breaker path.
+        """
+        if self._session_factory is None:
+            return
+        try:
+            # Assign a fresh episode UUID for this open transition
+            self._open_episode_id = uuid.uuid4()
+            episode_id = self._open_episode_id
+            session_factory = self._session_factory
+            from gateway.alerting.application.event_emitter import emit_system_event
+
+            task = asyncio.ensure_future(
+                emit_system_event(
+                    session_factory,
+                    event_type="circuit_breaker_open",
+                    dedupe_key=f"breaker_open:{episode_id}",
+                    payload={"state": "open"},
+                )
+            )
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        except Exception:  # noqa: S110 — must never raise into the breaker path
+            # Event emission is best-effort; the breaker state change already
+            # succeeded and the gauge/logs still record the transition.
+            pass
