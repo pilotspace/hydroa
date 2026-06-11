@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "team-governance",
+  "active_task": "response-caching",
   "active_milestone": "v4",
   "tasks": {
     "teams-core": {
@@ -28,12 +28,13 @@
     },
     "response-caching": {
       "title": "Opt-in exact-match Redis response cache",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v4",
       "depends_on": [],
       "created": "2026-06-11T06:15:25+00:00",
-      "updated": "2026-06-11T06:15:25+00:00"
+      "updated": "2026-06-11T07:58:00+00:00",
+      "flag_verified": true
     },
     "guardrails-core": {
       "title": "Guardrail framework + prompt-injection and PII guardrails",
@@ -74,7 +75,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-11T07:38:54+00:00",
+  "updated": "2026-06-11T07:58:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
