@@ -39,6 +39,7 @@ import gateway.catalog.infrastructure.orm
 import gateway.keys.infrastructure.orm
 import gateway.tenants.infrastructure.orm
 import gateway.usage.infrastructure.orm
+import gateway.usage.infrastructure.alert_events_orm  # noqa: F401 — registers AlertEventRow on Base.metadata
 
 from gateway.core.db import Base
 

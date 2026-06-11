@@ -69,6 +69,7 @@ ignore = ["S101"]  # assert is fine in tests; src is mypy-strict anyway
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S107", "RUF002", "RUF003", "E501", "F401", "F541", "F841", "RUF059", "RUF100", "I001"]  # fixture secrets/token literals + unicode chars are test data, not leaks; F401 for inline test imports; F541 for f-strings in frozen test assertions; F841/RUF059 for intentional unused variables in frozen test files; RUF100 for noqa directives in frozen test files that reference rules not in the enabled set; I001 for deferred/local imports inside test helper functions
 "migrations/**" = ["F401", "RUF100"]  # Alembic env.py uses intentional side-effect imports; migration versions use legacy Union/Sequence typing from mako template
+"src/gateway/usage/api/router.py" = ["S608"]  # granularity validated against whitelist; key_filter is hardcoded literal — no injection risk
 "tests/migrations/**" = ["PLC0415", "ARG001", "RUF100", "RUF043"]  # frozen test files: intentional late imports (PLC0415), unused fixture args (ARG001), regex string in pytest.raises match= (RUF043)
 
 [tool.mypy]

@@ -37,6 +37,7 @@ EXPECTED_TABLES = frozenset(
         "models",
         "pricing_snapshots",
         "usage_records",
+        "alert_events",  # added by spend-windows migration (f4a9b3c7e8d2)
     }
 )
 

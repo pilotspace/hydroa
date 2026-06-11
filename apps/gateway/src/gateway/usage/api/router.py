@@ -1,20 +1,28 @@
-"""GET /admin/usage — authenticated tenant usage totals + 50 newest records.
+"""GET /admin/usage and GET /admin/spend — authenticated tenant usage and spend windows.
 
-Contract (FROZEN @ v1 — TASK.md §3):
+GET /admin/usage contract (FROZEN @ v1 — TASK.md §3):
   - Authorization: Bearer <JWT>
   - 200: UsageTotalsResponse
   - 401: problem+json ERR_AUTH_INVALID_TOKEN
   - Totals and records come from Postgres ledger (NOT Redis counter).
   - Tenant isolation: only the authenticated tenant's rows are returned.
+
+GET /admin/spend contract (FROZEN @ spend-windows — TASK.md §3):
+  - Authorization: Bearer <JWT> (owner/admin role)
+  - 200: SpendWindowResponse with Decimal-exact aggregates from usage_records
+  - 401: ERR_AUTH_INVALID_TOKEN, 422: ERR_PAYLOAD_INVALID, 404: ERR_KEY_NOT_FOUND
+  - Aggregation via date_trunc over Postgres NUMERIC — no float arithmetic.
+  - Tenant isolation: WHERE tenant_id = :tenant_id always applied.
 """
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from decimal import Decimal
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,9 +31,19 @@ from gateway.core.errors import ProblemError
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
-from gateway.usage.api.schemas import UsageRecordItem, UsageTotalsResponse
+from gateway.usage.api.schemas import (
+    SpendBreakdownItem,
+    SpendBucket,
+    SpendTotals,
+    SpendWindowResponse,
+    UsageRecordItem,
+    UsageTotalsResponse,
+)
 
 usage_router = APIRouter(prefix="/admin", tags=["usage"])
+
+_VALID_WINDOWS = {"day", "week", "month"}
+_GRANULARITY = {"day": "day", "week": "week", "month": "month"}
 
 
 def _extract_identity(request: Request) -> Identity:
@@ -105,4 +123,284 @@ async def get_usage(
         total_prompt_tokens=total_prompt_tokens,
         total_completion_tokens=total_completion_tokens,
         records=records,
+    )
+
+
+def _compute_window_bounds(
+    window: str,
+    start: str | None,
+    end: str | None,
+) -> tuple[datetime.datetime, datetime.datetime, str]:
+    """Compute (window_start, window_end, granularity) from query params.
+
+    window_end is exclusive — callers pass (end_date + 1 day) for inclusive end.
+    Raises ProblemError 422 on invalid window value or invalid ISO date string.
+    """
+    # Validate window
+    if window not in _VALID_WINDOWS:
+        raise ProblemError(
+            422,
+            "ERR_PAYLOAD_INVALID",
+            f"window must be one of: day, week, month; got {window!r}",
+        )
+
+    granularity = _GRANULARITY[window]
+    now_utc = datetime.datetime.now(datetime.UTC)
+
+    # Parse optional start/end overrides
+    start_dt: datetime.datetime | None = None
+    end_dt: datetime.datetime | None = None
+
+    if start is not None:
+        try:
+            d = datetime.date.fromisoformat(start)
+            start_dt = datetime.datetime(d.year, d.month, d.day, tzinfo=datetime.UTC)
+        except ValueError:
+            raise ProblemError(
+                422, "ERR_PAYLOAD_INVALID", f"Invalid ISO date for start: {start!r}"
+            ) from None
+
+    if end is not None:
+        try:
+            d = datetime.date.fromisoformat(end)
+            # Inclusive end: add 1 day so WHERE created_at < window_end covers the full end day
+            end_dt = datetime.datetime(
+                d.year, d.month, d.day, tzinfo=datetime.UTC
+            ) + datetime.timedelta(days=1)
+        except ValueError:
+            raise ProblemError(
+                422, "ERR_PAYLOAD_INVALID", f"Invalid ISO date for end: {end!r}"
+            ) from None
+
+    # Determine window_start based on window type (if not overridden by start param)
+    if start_dt is not None:
+        window_start = start_dt
+    else:
+        if window == "month":
+            window_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        elif window == "week":
+            # ISO week: Monday-aligned date_trunc('week')
+            # date_trunc('week') in Postgres gives Monday 00:00 UTC
+            days_since_monday = now_utc.weekday()  # Monday=0
+            window_start = (now_utc - datetime.timedelta(days=days_since_monday)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+        else:  # day
+            window_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Determine window_end (exclusive upper bound).
+    # When no explicit end is supplied, use the end of the current period so that
+    # all records within the period are included (tests may seed records at any
+    # hour within the day/week/month).
+    if end_dt is not None:
+        window_end = end_dt
+    elif window == "month":
+        # End of current month = start of next month
+        if now_utc.month == 12:
+            window_end = now_utc.replace(
+                year=now_utc.year + 1,
+                month=1,
+                day=1,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+        else:
+            window_end = now_utc.replace(
+                month=now_utc.month + 1,
+                day=1,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+    elif window == "week":
+        # End of current ISO week = start of next Monday
+        days_until_next_monday = 7 - now_utc.weekday()
+        window_end = (now_utc + datetime.timedelta(days=days_until_next_monday)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    else:  # day
+        # End of current UTC day = start of tomorrow
+        window_end = (now_utc + datetime.timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+
+    return window_start, window_end, granularity
+
+
+@usage_router.get("/spend", response_model=SpendWindowResponse)
+async def get_spend(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    window: Annotated[str, Query()] = "month",
+    key_id: Annotated[str | None, Query()] = None,
+    group_by: Annotated[str | None, Query()] = None,
+    start: Annotated[str | None, Query()] = None,
+    end: Annotated[str | None, Query()] = None,
+) -> SpendWindowResponse:
+    """Return windowed spend aggregates from the usage_records ledger.
+
+    Contract (FROZEN @ spend-windows — TASK.md §3):
+    - JWT admin/owner auth required (same Bearer token as /admin/usage).
+    - Aggregation uses date_trunc + NUMERIC SUM — no float arithmetic.
+    - Tenant isolation: every query includes WHERE tenant_id = :tenant_id.
+    - Empty window → 200 with zero totals + empty buckets (never 404).
+    - Invalid window → 422 ERR_PAYLOAD_INVALID.
+    """
+    identity = _extract_identity(request)
+    tenant_id: uuid.UUID = identity.tenant_id
+
+    # Validate window param (422 on invalid)
+    if window not in _VALID_WINDOWS:
+        raise ProblemError(
+            422, "ERR_PAYLOAD_INVALID", f"window must be one of: day, week, month; got {window!r}"
+        )
+
+    # Validate optional key_id filter — must belong to caller's tenant
+    key_uuid: uuid.UUID | None = None
+    if key_id is not None:
+        try:
+            key_uuid = uuid.UUID(key_id)
+        except ValueError:
+            raise ProblemError(
+                422, "ERR_PAYLOAD_INVALID", f"Invalid UUID for key_id: {key_id!r}"
+            ) from None
+        # Tenant-scope check: verify key belongs to this tenant
+        key_row = (
+            await session.execute(
+                text("SELECT id FROM api_keys WHERE id = :kid AND tenant_id = :tid"),
+                {"kid": str(key_uuid), "tid": str(tenant_id)},
+            )
+        ).fetchone()
+        if key_row is None:
+            raise ProblemError(
+                404,
+                "ERR_KEY_NOT_FOUND",
+                "Key not found or does not belong to this tenant",
+            )
+
+    # Compute window boundaries
+    window_start, window_end, granularity = _compute_window_bounds(window, start, end)
+
+    # Build query params dict
+    params: dict[str, object] = {
+        "tenant_id": str(tenant_id),
+        "window_start": window_start.replace(tzinfo=None),  # asyncpg expects naive UTC
+        "window_end": window_end.replace(tzinfo=None),
+    }
+
+    key_filter = ""
+    if key_uuid is not None:
+        key_filter = " AND key_id = :key_id"
+        params["key_id"] = str(key_uuid)
+
+    # ── Bucket aggregation query (per §3 contract SQL) ──────────────────────────
+    # Uses date_trunc with NUMERIC arithmetic — exact, no float drift.
+    # granularity is validated against _VALID_WINDOWS whitelist above; key_filter
+    # is a hardcoded literal string " AND key_id = :key_id" or "". S608 is a
+    # false positive — no user-supplied values are interpolated into the SQL text.
+    _bucket_sql_str = (
+        "SELECT"
+        f"  date_trunc('{granularity}', created_at AT TIME ZONE 'UTC') AS bucket_start,"
+        "  COUNT(*) AS requests,"
+        "  COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,"
+        "  COALESCE(SUM(completion_tokens), 0) AS completion_tokens,"
+        "  COALESCE(SUM(cost_usd), 0) AS cost_usd"
+        " FROM usage_records"
+        " WHERE tenant_id = :tenant_id"
+        "   AND created_at >= :window_start"
+        "   AND created_at <  :window_end"
+        f"{key_filter}"
+        " GROUP BY bucket_start"
+        " ORDER BY bucket_start ASC"
+    )
+    bucket_sql = text(_bucket_sql_str)
+
+    bucket_rows = (await session.execute(bucket_sql, params)).fetchall()
+
+    # Build buckets list
+    buckets: list[SpendBucket] = []
+    total_requests = 0
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    total_cost = Decimal("0")
+
+    for row in bucket_rows:
+        bs = row[0]
+        bucket_start_str = bs.isoformat() if hasattr(bs, "isoformat") else str(bs)
+        b_cost = Decimal(str(row[4]))
+        buckets.append(
+            SpendBucket(
+                bucket_start=bucket_start_str,
+                requests=int(row[1]),
+                prompt_tokens=int(row[2]),
+                completion_tokens=int(row[3]),
+                cost_usd=str(b_cost),
+            )
+        )
+        total_requests += int(row[1])
+        total_prompt_tokens += int(row[2])
+        total_completion_tokens += int(row[3])
+        total_cost += b_cost
+
+    # ── Totals ────────────────────────────────────────────────────────────────
+    # Computed as sum of bucket rows (same WHERE clause → exact reconciliation).
+    if buckets:
+        totals_bucket_start = buckets[0].bucket_start
+    else:
+        # Empty window: use the window_start as bucket_start
+        totals_bucket_start = window_start.replace(tzinfo=None).isoformat()
+
+    # bucket_end = last bucket end = window_end (exclusive) - 1 microsecond, or now()
+    effective_end = window_end - datetime.timedelta(microseconds=1)
+    totals_bucket_end = effective_end.replace(tzinfo=None).isoformat()
+
+    totals = SpendTotals(
+        bucket_start=totals_bucket_start,
+        bucket_end=totals_bucket_end,
+        requests=total_requests,
+        prompt_tokens=total_prompt_tokens,
+        completion_tokens=total_completion_tokens,
+        cost_usd=str(total_cost),
+    )
+
+    # ── Breakdown (only when group_by=key_id) ────────────────────────────────
+    breakdown: list[SpendBreakdownItem] | None = None
+    if group_by == "key_id":
+        _breakdown_sql_str = (
+            "SELECT"
+            "  key_id,"
+            "  COUNT(*) AS requests,"
+            "  COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,"
+            "  COALESCE(SUM(completion_tokens), 0) AS completion_tokens,"
+            "  COALESCE(SUM(cost_usd), 0) AS cost_usd"
+            " FROM usage_records"
+            " WHERE tenant_id = :tenant_id"
+            "   AND created_at >= :window_start"
+            "   AND created_at <  :window_end"
+            f"{key_filter}"
+            " GROUP BY key_id"
+            " ORDER BY cost_usd DESC"
+        )
+        breakdown_sql = text(_breakdown_sql_str)
+        breakdown_rows = (await session.execute(breakdown_sql, params)).fetchall()
+        breakdown = [
+            SpendBreakdownItem(
+                key_id=uuid.UUID(str(row[0])),
+                requests=int(row[1]),
+                prompt_tokens=int(row[2]),
+                completion_tokens=int(row[3]),
+                cost_usd=str(Decimal(str(row[4]))),
+            )
+            for row in breakdown_rows
+        ]
+
+    return SpendWindowResponse(
+        window=window,
+        bucket_size=granularity,
+        totals=totals,
+        buckets=buckets,
+        breakdown=breakdown,
     )

@@ -35,6 +35,9 @@ from gateway.tenants.infrastructure.orm import (
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.flusher import UsageLedgerFlusher
 from gateway.usage.application.recorder import RecordingUsageRecorder
+from gateway.usage.infrastructure.alert_events_orm import (
+    AlertEventRow as _AlertEventRow,  # noqa: F401 — registers alert_events ORM metadata
+)
 from gateway.usage.infrastructure.orm import (
     UsageRecordRow as _UsageRecordRow,  # noqa: F401 — registers ORM metadata
 )

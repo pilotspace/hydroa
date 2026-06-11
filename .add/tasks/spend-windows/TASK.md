@@ -467,6 +467,12 @@ Least-sure flag surfaced at freeze:
   (_check_per_key_budget's computed _soft_exceeded), fire-and-forget, idempotent via the
   dedupe_key UNIQUE — cost if wrong: green tests with zero production alert rows; verify
   phase must confirm the wiring in src, not just test output.
+Build-time disposition (orchestrator, 2026-06-11): tests/migrations/test_migrations.py
+EXPECTED_TABLES gained one line — "alert_events". That frozen test is a schema-parity
+MANIFEST: it must enumerate every contracted table, and this contract's §3 DDL creates one.
+Assertion strength unchanged (still fails on any UNcontracted table). Sanctioned as the
+manifest's designed maintenance path, not a weakening.
+
 Freeze-time note: the first red draft was INVERTED (asserted the absent state); orchestrator
 caught it pre-freeze and the suite was rewritten to assert target behavior (15 red for the
 right reasons + 1 deliberate invariant lock). Candidate TDD delta at task close.

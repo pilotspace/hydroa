@@ -250,12 +250,18 @@ class CompletionUseCase:
         # M9: Model allowlist check (fail-closed, DB-sourced — no infra failure risk)
         _check_model_allowlist(authz, model_id)
 
-        # M10: Most-specific-wins budget enforcement
+        # M10: Most-specific-wins budget enforcement.
+        # A soft budget alone is a SIGNAL, not a limit — it must never exempt
+        # the key from tenant-budget enforcement. So: hard per-key budget wins
+        # outright; otherwise the soft seam runs (alert only, cannot 402) AND
+        # the tenant budget still enforces.
         if authz.monthly_budget_usd is not None:
-            # Per-key budget is set — use it (key budget wins over tenant budget)
             await self._check_per_key_budget(authz)
         else:
-            # No per-key budget — fall back to tenant budget (existing RedisBudgetGuard)
+            if authz.soft_budget_usd is not None:
+                # Soft-alert seam only (budget None → no per-key 402 possible)
+                await self._check_per_key_budget(authz)
+            # No hard per-key budget — tenant budget enforces (RedisBudgetGuard)
             await budget_guard.check(authz.tenant_id)
 
         # M10 (rate limits): RPM check → TPM check — after governance, before upstream
@@ -264,11 +270,13 @@ class CompletionUseCase:
     async def _check_per_key_budget(self, authz: AuthzResult) -> None:
         """Check per-key Redis spend counter against key's monthly_budget_usd.
 
+        Also fires the soft-budget alert event if soft_budget_usd is set (M11).
         Fail-open: Redis unavailable → allow (advisory counter pattern, M13).
         Counter key: usage:spend:key:{key_id}:{YYYYMM}
         """
         budget = authz.monthly_budget_usd
-        if budget is None:
+        # Return early only if neither hard nor soft budget needs a Redis read.
+        if budget is None and authz.soft_budget_usd is None:
             return
 
         yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
@@ -289,13 +297,30 @@ class CompletionUseCase:
 
         spent = _parse_spend(raw)
 
-        # Soft budget seam (M11): compute but do not block
-        # The soft_budget_exceeded boolean is available here for health-alerting tasks.
-        # TODO(spend-windows): consume soft_budget_exceeded from request context here.
-        if authz.soft_budget_usd is not None:
-            _soft_exceeded = spent >= authz.soft_budget_usd
+        # Soft budget seam (M11): fire-and-forget alert event when crossing detected.
+        # Scheduled here (pre-flight), never awaited — hot-path latency unaffected.
+        # ON CONFLICT (dedupe_key) DO NOTHING → idempotent across repeated crossings.
+        if authz.soft_budget_usd is not None and spent >= authz.soft_budget_usd:
+            session_factory = self._get_session_factory()
+            if session_factory is not None:
+                from gateway.usage.application.alert_writer import (
+                    _persist_soft_budget_alert,
+                )
 
-        if spent >= budget:
+                _task = asyncio.ensure_future(
+                    _persist_soft_budget_alert(
+                        session_factory,
+                        authz.tenant_id,
+                        authz.key_id,
+                        authz.soft_budget_usd,
+                        spent,
+                    )
+                )
+                # Keep reference to prevent GC; swallow exceptions in callback.
+                _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+        # Hard budget enforcement — only when monthly_budget_usd is set (M10).
+        if budget is not None and spent >= budget:
             raise ProblemError(
                 402,
                 "ERR_BUDGET_EXCEEDED",
@@ -311,6 +336,15 @@ class CompletionUseCase:
         """
         guard = self._budget_guard
         return getattr(guard, "_redis", None)
+
+    def _get_session_factory(self) -> Any:
+        """Return the session_factory if available via the budget guard.
+
+        Attempts to extract _session_factory from RedisBudgetGuard; returns None if unavailable.
+        This avoids adding a direct DB dependency to CompletionUseCase.
+        """
+        guard = self._budget_guard
+        return getattr(guard, "_session_factory", None)
 
     async def complete(
         self,
