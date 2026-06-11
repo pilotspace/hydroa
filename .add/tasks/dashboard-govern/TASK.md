@@ -731,9 +731,17 @@ Watch (reuse scenarios as monitors):
   - POST /admin/keys/{id}/rotate 4xx rate
   - GET /admin/spend 4xx rate (401/403/422)
   - Rotation banner dismiss rate vs rotation call rate (banner always shows once)
-Spec delta for the next loop: <what production taught you>
+Spec delta for the next loop: governance editor styling is utilitarian — a UI-polish pass
+is a v4 candidate; expires_at deserves a date-picker; model-mgmt dashboard surface deferred.
 
 ### Competency deltas
-What did this loop teach the foundation? One line each, tagged by competency
-(`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence.
+- [UDD · open] two near-identical field names for different concepts (per-key monthly_budget_usd
+  vs tenant budget_usd_monthly) is a standing hazard — GLOSSARY should pin both with a
+  contrast note (evidence: §3 needed an explicit NOTE + body-capture test to keep them apart)
+- [TDD · open] jsdom tolerates invalid table DOM that real browsers restructure — component
+  tests cannot catch nested-<tr>; add a markup-validity lens to dashboard review checklists
+  (evidence: nested <tr> shipped green through 77 tests, caught only by manual diff review)
+- [ADD · open] reusing the BFF catch-all for new admin surfaces (vs per-endpoint handlers)
+  held up for a second milestone — promote to a Key Decision at fold (evidence: zero new
+  route handlers needed for four new gateway endpoints)
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->

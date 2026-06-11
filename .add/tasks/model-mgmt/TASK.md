@@ -441,8 +441,23 @@ Reviewed by: Tin Dang (delegated auto mode) · date: 2026-06-11
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
-Spec delta for the next loop: <what production taught you>
+Watch (reuse scenarios as monitors): ERR_MODEL_DISABLED 403 rate per tenant ·
+PUT /admin/models 4xx rate · hot-path p99 (LEFT JOIN added to the per-request catalog check)
+Spec delta for the next loop: access groups (named model bundles) deferred to v4 — schema is
+forward-compatible (no group_id column conflicts with the (tenant_id, model_id) PK); live
+verification confirmed disable->403 on the very next request through TLS with no restart.
+
+### Competency deltas
+- [SDD · open] contract prose listing internal domain-error class names invites dead code —
+  the observable surface (status+code) is the contract; name internal types only when a layer
+  boundary needs them (evidence: ModelDisabledError/ModelNotFoundError both born dead at build,
+  removed at review)
+- [TDD · open] route params that contain "/" need the :path converter under ASGI decoded
+  paths — encode this in the §3 contract when ids are slash-bearing (evidence: builder needed
+  the test-driven hint; documented in §3 to avoid rediscovery)
+- [ADD · open] the hasattr capability seam is now used twice (soft-budget, check_for_tenant)
+  to keep frozen fakes valid across port extensions — candidate for CONVENTIONS.md at fold
+  (evidence: zero frozen-test edits across two port-extending tasks)
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
