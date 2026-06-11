@@ -135,11 +135,19 @@ class RecordingUsageRecorder:
         # Push to Redis Stream — must not drop the event even on cost-0
         await self._redis.xadd(STREAM_KEY, event_fields)
 
-        # Advisory spend counter — IEEE 754 float, ledger is source of truth
+        # Advisory spend counters — IEEE 754 float, ledger is source of truth
         if cost_usd > _ZERO:
             yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
+            # Tenant counter (existing)
             spend_key = f"usage:spend:{tenant_id}:{yyyymm}"
             await self._redis.incrbyfloat(spend_key, float(cost_usd))
+            # Per-key counter (key-governance seam — M10/A2)
+            # Keyed: usage:spend:key:{key_id}:{YYYYMM}
+            # This counter is read by CompletionUseCase._check_per_key_budget() for
+            # most-specific-wins enforcement. Soft-budget alerting will also read it
+            # when the spend-windows/health-alerting tasks land.
+            per_key_spend_key = f"usage:spend:key:{key_id}:{yyyymm}"
+            await self._redis.incrbyfloat(per_key_spend_key, float(cost_usd))
 
 
 async def _fetch_latest_pricing(

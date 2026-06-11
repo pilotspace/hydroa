@@ -12,6 +12,8 @@ from gateway.keys.application.use_cases import (
     CreateKeyUseCase,
     ListKeysUseCase,
     RevokeKeyUseCase,
+    RotateKeyUseCase,
+    UpdateKeyUseCase,
 )
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
@@ -73,6 +75,18 @@ def get_revoke_key_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> RevokeKeyUseCase:
     return RevokeKeyUseCase(SqlAlchemyApiKeyRepository(session))
+
+
+def get_update_key_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UpdateKeyUseCase:
+    return UpdateKeyUseCase(SqlAlchemyApiKeyRepository(session))
+
+
+def get_rotate_key_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RotateKeyUseCase:
+    return RotateKeyUseCase(SqlAlchemyApiKeyRepository(session), _hasher)
 
 
 def get_authz_use_case(

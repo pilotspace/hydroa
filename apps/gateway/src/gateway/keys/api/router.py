@@ -5,7 +5,9 @@ Two routers:
   internal_router — /internal/authz  (X-Api-Key or Authorization: Bearer authenticated, no JWT)
 """
 
+import datetime as dt
 import uuid
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -18,6 +20,8 @@ from gateway.keys.api.deps import (
     get_identity,
     get_list_keys_use_case,
     get_revoke_key_use_case,
+    get_rotate_key_use_case,
+    get_update_key_use_case,
     require_owner_or_admin,
 )
 from gateway.keys.api.schemas import (
@@ -25,18 +29,46 @@ from gateway.keys.api.schemas import (
     CreateKeyRequest,
     CreateKeyResponse,
     KeyInfoResponse,
+    PatchKeyRequest,
+    RotateKeyRequest,
+    RotateKeyResponse,
 )
 from gateway.keys.application.use_cases import (
     AuthzUseCase,
     CreateKeyUseCase,
     ListKeysUseCase,
     RevokeKeyUseCase,
+    RotateKeyUseCase,
+    UpdateKeyUseCase,
 )
 from gateway.keys.domain.errors import ForbiddenError, InvalidApiKeyError, KeyNotFoundError
 from gateway.tenants.domain.entities import Identity
 
 admin_router = APIRouter(prefix="/admin/keys", tags=["api-keys"])
 authz_router = APIRouter(tags=["api-keys-internal"])
+
+
+def _decimal_or_none(s: str | None) -> Decimal | None:
+    return Decimal(s) if s is not None else None
+
+
+def _datetime_or_none(s: str | None) -> dt.datetime | None:
+    if s is None:
+        return None
+    # Parse ISO-8601 UTC string
+    try:
+        parsed = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return parsed.astimezone(dt.UTC).replace(tzinfo=dt.UTC)
+    except ValueError:
+        raise ProblemError(
+            422, "ERR_PAYLOAD_INVALID", f"Invalid expires_at format: {s!r}"
+        ) from None
+
+
+def _fmt_expires(ts: dt.datetime | None) -> str | None:
+    if ts is None:
+        return None
+    return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @admin_router.post("", status_code=201, response_model=CreateKeyResponse)
@@ -54,8 +86,24 @@ async def create_key(
         tenant_id=identity.tenant_id,
         name=body.name,
         key_id=key_id,
+        monthly_budget_usd=_decimal_or_none(body.monthly_budget_usd),
+        soft_budget_usd=_decimal_or_none(body.soft_budget_usd),
+        expires_at=_datetime_or_none(body.expires_at),
+        model_allowlist=body.model_allowlist,
     )
-    return CreateKeyResponse(key_id=result.key_id, name=result.name, key=result.key)
+    return CreateKeyResponse(
+        key_id=result.key_id,
+        name=result.name,
+        key=result.key,
+        monthly_budget_usd=(
+            str(result.monthly_budget_usd) if result.monthly_budget_usd is not None else None
+        ),
+        soft_budget_usd=(
+            str(result.soft_budget_usd) if result.soft_budget_usd is not None else None
+        ),
+        expires_at=_fmt_expires(result.expires_at),
+        model_allowlist=result.model_allowlist,
+    )
 
 
 @admin_router.get("", response_model=list[KeyInfoResponse])
@@ -72,9 +120,155 @@ async def list_keys(
             prefix=item.prefix,
             created_at=item.created_at,
             revoked_at=item.revoked_at,
+            monthly_budget_usd=(
+                str(item.monthly_budget_usd) if item.monthly_budget_usd is not None else None
+            ),
+            soft_budget_usd=(
+                str(item.soft_budget_usd) if item.soft_budget_usd is not None else None
+            ),
+            expires_at=item.expires_at,
+            model_allowlist=item.model_allowlist,
         )
         for item in items
     ]
+
+
+@admin_router.patch("/{key_id}", response_model=KeyInfoResponse)
+async def patch_key(
+    key_id: uuid.UUID,
+    body: PatchKeyRequest,
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    use_case: Annotated[UpdateKeyUseCase, Depends(get_update_key_use_case)],
+) -> KeyInfoResponse:
+    """Update governance fields on an active key.
+
+    All body fields are optional — omit means no change.
+    Returns 404 for revoked or cross-tenant keys (no information leak).
+    """
+    # For PATCH: field present+null = clear; field absent = no-change.
+    # model_fields_set contains only the fields that were present in the JSON body.
+    fields_to_clear: set[str] = set()
+    new_monthly: Decimal | None = None
+    new_soft: Decimal | None = None
+    new_expires: dt.datetime | None = None
+    new_allowlist: list[str] | None = None
+
+    if "monthly_budget_usd" in body.model_fields_set:
+        if body.monthly_budget_usd is None:
+            fields_to_clear.add("monthly_budget_usd")
+        else:
+            new_monthly = _decimal_or_none(body.monthly_budget_usd)
+
+    if "soft_budget_usd" in body.model_fields_set:
+        if body.soft_budget_usd is None:
+            fields_to_clear.add("soft_budget_usd")
+        else:
+            new_soft = _decimal_or_none(body.soft_budget_usd)
+
+    if "expires_at" in body.model_fields_set:
+        if body.expires_at is None:
+            fields_to_clear.add("expires_at")
+        else:
+            new_expires = _datetime_or_none(body.expires_at)
+
+    if "model_allowlist" in body.model_fields_set:
+        if body.model_allowlist is None:
+            fields_to_clear.add("model_allowlist")
+        else:
+            new_allowlist = body.model_allowlist
+
+    try:
+        updated = await use_case.execute(
+            key_id=key_id,
+            tenant_id=identity.tenant_id,
+            role=identity.role,
+            monthly_budget_usd=new_monthly,
+            soft_budget_usd=new_soft,
+            expires_at=new_expires,
+            model_allowlist=new_allowlist,
+            _fields_to_clear=fields_to_clear,
+        )
+    except ForbiddenError:
+        raise ProblemError(
+            403, "ERR_AUTH_FORBIDDEN", "Insufficient role for this operation"
+        ) from None
+    except KeyNotFoundError:
+        raise ProblemError(404, "ERR_KEY_NOT_FOUND", "Key not found") from None
+
+    return KeyInfoResponse(
+        key_id=updated.id,
+        name=updated.name,
+        prefix=f"sk-{updated.id.hex[:8]}",
+        created_at=updated.created_at,
+        revoked_at=updated.revoked_at,
+        monthly_budget_usd=(
+            str(updated.monthly_budget_usd) if updated.monthly_budget_usd is not None else None
+        ),
+        soft_budget_usd=(
+            str(updated.soft_budget_usd) if updated.soft_budget_usd is not None else None
+        ),
+        expires_at=updated.expires_at,
+        model_allowlist=updated.model_allowlist,
+    )
+
+
+@admin_router.post("/{key_id}/rotate", status_code=201, response_model=RotateKeyResponse)
+async def rotate_key(
+    key_id: uuid.UUID,
+    body: RotateKeyRequest,
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    use_case: Annotated[RotateKeyUseCase, Depends(get_rotate_key_use_case)],
+) -> RotateKeyResponse:
+    """Rotate an API key: revoke old, issue new atomically.
+
+    Fields not supplied in the body are inherited from the old key.
+    Returns 201 with the new plaintext key (shown once).
+    Returns 403 for member-role callers.
+    Returns 404 for revoked or cross-tenant keys.
+    """
+    # Detect which fields were explicitly provided vs. absent (for inherit semantics)
+    budget_provided = "monthly_budget_usd" in body.model_fields_set
+    soft_provided = "soft_budget_usd" in body.model_fields_set
+    expires_provided = "expires_at" in body.model_fields_set
+    allowlist_provided = "model_allowlist" in body.model_fields_set
+
+    try:
+        result = await use_case.execute(
+            old_key_id=key_id,
+            tenant_id=identity.tenant_id,
+            role=identity.role,
+            monthly_budget_usd=(
+                _decimal_or_none(body.monthly_budget_usd) if budget_provided else None
+            ),
+            soft_budget_usd=(_decimal_or_none(body.soft_budget_usd) if soft_provided else None),
+            expires_at=_datetime_or_none(body.expires_at) if expires_provided else None,
+            model_allowlist=body.model_allowlist if allowlist_provided else None,
+            _budget_provided=budget_provided,
+            _soft_budget_provided=soft_provided,
+            _expires_provided=expires_provided,
+            _allowlist_provided=allowlist_provided,
+        )
+    except ForbiddenError:
+        raise ProblemError(
+            403, "ERR_AUTH_FORBIDDEN", "Insufficient role for this operation"
+        ) from None
+    except KeyNotFoundError:
+        raise ProblemError(404, "ERR_KEY_NOT_FOUND", "Key not found") from None
+
+    return RotateKeyResponse(
+        new_key_id=result.new_key_id,
+        superseded_key_id=result.superseded_key_id,
+        key=result.key,
+        name=result.name,
+        monthly_budget_usd=(
+            str(result.monthly_budget_usd) if result.monthly_budget_usd is not None else None
+        ),
+        soft_budget_usd=(
+            str(result.soft_budget_usd) if result.soft_budget_usd is not None else None
+        ),
+        expires_at=_fmt_expires(result.expires_at),
+        model_allowlist=result.model_allowlist,
+    )
 
 
 @admin_router.delete("/{key_id}", status_code=204)

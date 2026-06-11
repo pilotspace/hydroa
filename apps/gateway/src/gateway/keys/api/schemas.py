@@ -2,14 +2,204 @@
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class CreateKeyRequest(BaseModel):
     model_config = ConfigDict(frozen=True, strict=False, str_strip_whitespace=True)
 
     name: str = Field(min_length=1, max_length=200)
+    monthly_budget_usd: str | None = None
+    soft_budget_usd: str | None = None
+    expires_at: str | None = None
+    model_allowlist: list[str] | None = None
+
+    @field_validator("monthly_budget_usd", mode="before")
+    @classmethod
+    def validate_monthly_budget(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        d = _parse_decimal_str(v, "monthly_budget_usd")
+        if d < Decimal("0"):
+            from gateway.core.errors import ProblemError
+
+            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "monthly_budget_usd must be >= 0")
+        return str(d)
+
+    @field_validator("soft_budget_usd", mode="before")
+    @classmethod
+    def validate_soft_budget(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        d = _parse_decimal_str(v, "soft_budget_usd")
+        if d < Decimal("0"):
+            from gateway.core.errors import ProblemError
+
+            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "soft_budget_usd must be >= 0")
+        return str(d)
+
+    @field_validator("model_allowlist", mode="before")
+    @classmethod
+    def validate_allowlist(cls, v: Any) -> list[str] | None:
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            from gateway.core.errors import ProblemError
+
+            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "model_allowlist must be a list")
+        for item in v:
+            if not isinstance(item, str) or item == "":
+                from gateway.core.errors import ProblemError
+
+                raise ProblemError(
+                    422, "ERR_PAYLOAD_INVALID", "model_allowlist elements must be non-empty strings"
+                )
+        return v
+
+    @model_validator(mode="after")
+    def validate_soft_lte_hard(self) -> "CreateKeyRequest":
+        if self.monthly_budget_usd is not None and self.soft_budget_usd is not None:
+            hard = Decimal(self.monthly_budget_usd)
+            soft = Decimal(self.soft_budget_usd)
+            if soft > hard:
+                from gateway.core.errors import ProblemError
+
+                raise ProblemError(
+                    422,
+                    "ERR_PAYLOAD_INVALID",
+                    "soft_budget_usd must be <= monthly_budget_usd",
+                )
+        return self
+
+
+class PatchKeyRequest(BaseModel):
+    """PATCH /admin/keys/{key_id} body — all fields optional; omit = no change.
+
+    Uses a sentinel UNSET value so the router can distinguish:
+      - field absent from JSON → not in model_fields_set → no change
+      - field present as null  → in model_fields_set, value None → clear to NULL
+      - field present as value → in model_fields_set, value str → update
+    """
+
+    model_config = ConfigDict(frozen=True, strict=False, str_strip_whitespace=True)
+
+    monthly_budget_usd: str | None = None
+    soft_budget_usd: str | None = None
+    expires_at: str | None = None
+    model_allowlist: list[str] | None = None
+
+    @field_validator("monthly_budget_usd", mode="before")
+    @classmethod
+    def validate_monthly_budget(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        d = _parse_decimal_str(v, "monthly_budget_usd")
+        if d < Decimal("0"):
+            from gateway.core.errors import ProblemError
+
+            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "monthly_budget_usd must be >= 0")
+        return str(d)
+
+    @field_validator("soft_budget_usd", mode="before")
+    @classmethod
+    def validate_soft_budget(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        d = _parse_decimal_str(v, "soft_budget_usd")
+        if d < Decimal("0"):
+            from gateway.core.errors import ProblemError
+
+            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "soft_budget_usd must be >= 0")
+        return str(d)
+
+    @field_validator("model_allowlist", mode="before")
+    @classmethod
+    def validate_allowlist(cls, v: Any) -> list[str] | None:
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            from gateway.core.errors import ProblemError
+
+            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "model_allowlist must be a list")
+        for item in v:
+            if not isinstance(item, str) or item == "":
+                from gateway.core.errors import ProblemError
+
+                raise ProblemError(
+                    422, "ERR_PAYLOAD_INVALID", "model_allowlist elements must be non-empty strings"
+                )
+        return v
+
+    @model_validator(mode="after")
+    def validate_soft_lte_hard(self) -> "PatchKeyRequest":
+        if self.monthly_budget_usd is not None and self.soft_budget_usd is not None:
+            hard = Decimal(self.monthly_budget_usd)
+            soft = Decimal(self.soft_budget_usd)
+            if soft > hard:
+                from gateway.core.errors import ProblemError
+
+                raise ProblemError(
+                    422,
+                    "ERR_PAYLOAD_INVALID",
+                    "soft_budget_usd must be <= monthly_budget_usd",
+                )
+        return self
+
+
+class RotateKeyRequest(BaseModel):
+    """POST /admin/keys/{key_id}/rotate body — all fields optional; omit = inherit from old row."""
+
+    model_config = ConfigDict(frozen=True, strict=False, str_strip_whitespace=True)
+
+    monthly_budget_usd: str | None = None
+    soft_budget_usd: str | None = None
+    expires_at: str | None = None
+    model_allowlist: list[str] | None = None
+
+    @field_validator("monthly_budget_usd", mode="before")
+    @classmethod
+    def validate_monthly_budget(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        d = _parse_decimal_str(v, "monthly_budget_usd")
+        if d < Decimal("0"):
+            from gateway.core.errors import ProblemError
+
+            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "monthly_budget_usd must be >= 0")
+        return str(d)
+
+    @field_validator("soft_budget_usd", mode="before")
+    @classmethod
+    def validate_soft_budget(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        d = _parse_decimal_str(v, "soft_budget_usd")
+        if d < Decimal("0"):
+            from gateway.core.errors import ProblemError
+
+            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "soft_budget_usd must be >= 0")
+        return str(d)
+
+    @field_validator("model_allowlist", mode="before")
+    @classmethod
+    def validate_allowlist(cls, v: Any) -> list[str] | None:
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            from gateway.core.errors import ProblemError
+
+            raise ProblemError(422, "ERR_PAYLOAD_INVALID", "model_allowlist must be a list")
+        for item in v:
+            if not isinstance(item, str) or item == "":
+                from gateway.core.errors import ProblemError
+
+                raise ProblemError(
+                    422, "ERR_PAYLOAD_INVALID", "model_allowlist elements must be non-empty strings"
+                )
+        return v
 
 
 class CreateKeyResponse(BaseModel):
@@ -18,6 +208,23 @@ class CreateKeyResponse(BaseModel):
     key_id: uuid.UUID
     name: str
     key: str  # plaintext "sk-<hex>.<secret>" — shown EXACTLY ONCE
+    monthly_budget_usd: str | None = None
+    soft_budget_usd: str | None = None
+    expires_at: str | None = None
+    model_allowlist: list[str] | None = None
+
+
+class RotateKeyResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    new_key_id: uuid.UUID
+    superseded_key_id: uuid.UUID
+    key: str  # plaintext new secret, shown ONCE
+    name: str
+    monthly_budget_usd: str | None = None
+    soft_budget_usd: str | None = None
+    expires_at: str | None = None
+    model_allowlist: list[str] | None = None
 
 
 class KeyInfoResponse(BaseModel):
@@ -28,6 +235,10 @@ class KeyInfoResponse(BaseModel):
     prefix: str
     created_at: datetime
     revoked_at: datetime | None
+    monthly_budget_usd: str | None = None
+    soft_budget_usd: str | None = None
+    expires_at: datetime | None = None
+    model_allowlist: list[str] | None = None
 
 
 class AuthzResponse(BaseModel):
@@ -35,3 +246,15 @@ class AuthzResponse(BaseModel):
 
     tenant_id: uuid.UUID
     key_id: uuid.UUID
+
+
+def _parse_decimal_str(v: Any, field_name: str) -> Decimal:
+    """Parse a value to Decimal; raise ProblemError 422 on failure."""
+    try:
+        return Decimal(str(v))
+    except Exception:
+        from gateway.core.errors import ProblemError
+
+        raise ProblemError(
+            422, "ERR_PAYLOAD_INVALID", f"{field_name} must be a valid decimal string"
+        ) from None
