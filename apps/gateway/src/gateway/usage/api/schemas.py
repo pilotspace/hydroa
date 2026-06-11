@@ -113,6 +113,9 @@ class TeamSpendBreakdownItem(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     cost_usd: str  # str(Decimal) — exact; sorted cost_usd DESC (NULL bucket last)
+    # team-attribution additive field: ledger column SUM (historical, at-request-time)
+    # "0" when no ledger rows have team_id set yet; reconcilable against cost_usd.
+    ledger_cost_usd: str  # str(Decimal) — exact; "0" when no attributed rows exist
 
 
 class SpendWindowResponse(BaseModel):

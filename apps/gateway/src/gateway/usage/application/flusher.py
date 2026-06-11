@@ -117,6 +117,16 @@ class UsageLedgerFlusher:
         pricing_snapshot_id_str = _field("pricing_snapshot_id")
         status = int(_field("status") or "0")
         raw_str = _field("raw") or "{}"
+        # team-attribution: missing or empty string → NULL (old-format event safety).
+        # Corrupt value also → NULL (mirrors pricing_snapshot_id): a bad attribution
+        # marker must never poison the ledger pipeline into un-acked redelivery.
+        team_id_str = _field("team_id")
+        team_id: uuid.UUID | None = None
+        if team_id_str:
+            try:
+                team_id = uuid.UUID(team_id_str)
+            except ValueError:
+                team_id = None
 
         try:
             tenant_id = uuid.UUID(tenant_id_str)
@@ -147,11 +157,11 @@ class UsageLedgerFlusher:
                     text(
                         "INSERT INTO usage_records"
                         " (id, tenant_id, key_id, model_id, prompt_tokens, completion_tokens,"
-                        "  cost_usd, status, pricing_snapshot_id, raw)"
+                        "  cost_usd, status, pricing_snapshot_id, raw, team_id)"
                         " VALUES"
                         " (:id, :tenant_id, :key_id, :model_id, :prompt_tokens,"
                         "  :completion_tokens, :cost_usd, :status, :pricing_snapshot_id,"
-                        "  :raw)"
+                        "  :raw, :team_id)"
                         " ON CONFLICT (id) DO NOTHING"
                     ),
                     {
@@ -165,6 +175,7 @@ class UsageLedgerFlusher:
                         "status": status,
                         "pricing_snapshot_id": pricing_snapshot_id,
                         "raw": json.dumps(raw_dict),
+                        "team_id": team_id,
                     },
                 )
 

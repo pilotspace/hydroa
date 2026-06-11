@@ -172,6 +172,8 @@ class RecordingUsageRecorder:
             "status": str(status),
             "raw": json.dumps(raw_payload),
             "created_at": created_at,
+            # team-attribution: empty string encodes NULL (backward-compatible with old consumers)
+            "team_id": str(team_id) if team_id is not None else "",
         }
 
         # Push to Redis Stream — must not drop the event even on cost-0

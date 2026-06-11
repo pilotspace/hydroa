@@ -432,6 +432,28 @@ async def get_spend(
         )
         team_breakdown_sql = text(_team_breakdown_sql_str)
         team_breakdown_rows = (await session.execute(team_breakdown_sql, params)).fetchall()
+
+        # Second aggregation: ledger_cost_usd — SUM(cost_usd) grouped by usage_records.team_id
+        # (historical, at-request-time attribution). NULL-safe: NULL team_id gets its own bucket.
+        # Strictly tenant-scoped (WHERE tenant_id = :tenant_id).
+        _ledger_sql_str = (
+            "SELECT"
+            "  ur.team_id,"
+            "  COALESCE(SUM(ur.cost_usd), 0) AS ledger_cost_usd"
+            " FROM usage_records ur"
+            " WHERE ur.tenant_id = :tenant_id"
+            "   AND ur.created_at >= :window_start"
+            "   AND ur.created_at <  :window_end"
+            " GROUP BY ur.team_id"
+        )
+        ledger_rows = (await session.execute(text(_ledger_sql_str), params)).fetchall()
+        # Build lookup: team_id (UUID or None) → ledger_cost_usd (Decimal)
+        # NULL team_id in SQL comes back as Python None — handled explicitly.
+        _ledger_map: dict[uuid.UUID | None, Decimal] = {}
+        for lr in ledger_rows:
+            _lid = uuid.UUID(str(lr[0])) if lr[0] is not None else None
+            _ledger_map[_lid] = Decimal(str(lr[1]))
+
         breakdown = [
             TeamSpendBreakdownItem(
                 team_id=uuid.UUID(str(row[0])) if row[0] is not None else None,
@@ -440,6 +462,12 @@ async def get_spend(
                 prompt_tokens=int(row[3]),
                 completion_tokens=int(row[4]),
                 cost_usd=str(Decimal(str(row[5]))),
+                ledger_cost_usd=str(
+                    _ledger_map.get(
+                        uuid.UUID(str(row[0])) if row[0] is not None else None,
+                        Decimal("0"),
+                    )
+                ),
             )
             for row in team_breakdown_rows
         ]

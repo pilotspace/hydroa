@@ -12,7 +12,8 @@ Schema contract (FROZEN @ v1 — TASK.md §3):
     status              int         NOT NULL,
     pricing_snapshot_id uuid        NULL,
     raw                 jsonb       NOT NULL,
-    created_at          timestamptz NOT NULL DEFAULT now()
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    team_id             uuid        NULL          -- team-attribution (team-attribution TASK.md §3)
   )
 
 APPEND-ONLY: no UPDATE or DELETE ever issued against this table.
@@ -24,7 +25,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Integer, Numeric, Text, func
+from sqlalchemy import ForeignKey, Index, Integer, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -42,6 +43,9 @@ class UsageRecordRow(Base):
     """
 
     __tablename__ = "usage_records"
+    # Composite index for team-rollup queries: tenant_id first (all queries are
+    # tenant-scoped), then team_id for efficient per-team aggregation.
+    __table_args__ = (Index("ix_usage_records_tenant_team", "tenant_id", "team_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -60,3 +64,5 @@ class UsageRecordRow(Base):
     )
     raw: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    # team-attribution: nullable — no FK (append-only ledger; team deletion must not cascade)
+    team_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
