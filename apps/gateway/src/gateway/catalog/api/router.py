@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,17 +52,31 @@ admin_models_router = APIRouter(prefix="/admin/models", tags=["admin-models"])
 
 @internal_catalog_router.post("/sync", response_model=SyncResponse)
 async def sync_catalog(
+    request: Request,
     use_case: Annotated[SyncCatalogUseCase, Depends(get_sync_use_case)],
 ) -> SyncResponse:
     """Fetch current model list from CatalogSource and persist to catalog.
 
     Returns {"synced": N} where N is the count of models processed.
     Returns 502 ERR_UPSTREAM_UNAVAILABLE if the upstream source is unreachable.
+
+    After a successful sync, refreshes the provider resolver cache (fail-safe —
+    a refresh error never changes the sync response shape).
     """
     try:
         synced = await use_case.execute()
     except CatalogSourceUnavailableError as exc:
         raise CATALOG_UPSTREAM_UNAVAILABLE.exc(detail=str(exc)) from exc
+
+    # Fail-safe provider resolver refresh — keep the model→provider map in sync
+    # after a catalog sync. Never let a refresh error affect the sync response.
+    try:
+        _r = getattr(request.app.state, "provider_resolver", None)
+        if _r is not None:
+            await _r.refresh()
+    except Exception:  # noqa: S110 — intentional; refresh is fail-safe, never alters sync response
+        pass
+
     return SyncResponse(synced=synced)
 
 

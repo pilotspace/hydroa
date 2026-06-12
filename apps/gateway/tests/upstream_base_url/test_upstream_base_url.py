@@ -150,9 +150,12 @@ def test_bu4_create_app_wires_custom_base_url() -> None:
     settings = _make_settings(openrouter_base_url=_STUB_BASE_URL)
     app = create_app(settings)
 
-    upstream = app.state.completion_upstream
+    # v9: the raw OpenRouter adapter relocated to app.state.openrouter_completion_upstream
+    # (app.state.completion_upstream is now the provider-dispatch wrapper). base_url threading
+    # is unchanged; assert it against the raw adapter.
+    upstream = app.state.openrouter_completion_upstream
     assert isinstance(upstream, OpenRouterCompletionUpstream), (
-        f"Expected completion_upstream to be OpenRouterCompletionUpstream, got {type(upstream)}"
+        f"Expected openrouter_completion_upstream to be OpenRouterCompletionUpstream, got {type(upstream)}"
     )
     assert hasattr(upstream, "_base_url"), (
         "completion_upstream must expose _base_url after create_app()"
@@ -179,9 +182,10 @@ def test_bu5_create_app_default_base_url_no_regression() -> None:
     settings = _make_settings()  # no openrouter_base_url override
     app = create_app(settings)
 
-    upstream = app.state.completion_upstream
+    # v9: raw OpenRouter adapter relocated to app.state.openrouter_completion_upstream.
+    upstream = app.state.openrouter_completion_upstream
     assert isinstance(upstream, OpenRouterCompletionUpstream), (
-        f"Expected completion_upstream to be OpenRouterCompletionUpstream, got {type(upstream)}"
+        f"Expected openrouter_completion_upstream to be OpenRouterCompletionUpstream, got {type(upstream)}"
     )
     assert hasattr(upstream, "_base_url"), (
         "completion_upstream must expose _base_url after create_app() with defaults"

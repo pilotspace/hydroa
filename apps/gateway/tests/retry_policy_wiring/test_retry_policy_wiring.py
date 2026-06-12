@@ -42,7 +42,10 @@ def test_default_wiring_max_retries_zero() -> None:
     settings = _make_settings()
     app = create_app(settings)
 
-    upstream = app.state.completion_upstream
+    # v9: the raw OpenRouter adapter relocated to app.state.openrouter_completion_upstream
+    # (app.state.completion_upstream is now the provider-dispatch wrapper). The Settings →
+    # adapter threading invariant is unchanged; assert it against the raw adapter.
+    upstream = app.state.openrouter_completion_upstream
     assert isinstance(upstream, OpenRouterCompletionUpstream)
     assert upstream._max_retries == 0, (
         f"Expected _max_retries=0 (default), got {upstream._max_retries}"
@@ -54,7 +57,7 @@ def test_custom_max_retries_wired() -> None:
     settings = _make_settings(upstream_max_retries=3)
     app = create_app(settings)
 
-    upstream = app.state.completion_upstream
+    upstream = app.state.openrouter_completion_upstream  # v9: raw adapter relocated
     assert upstream._max_retries == 3, f"Expected _max_retries=3, got {upstream._max_retries}"
 
 
@@ -63,7 +66,7 @@ def test_custom_backoff_base_wired() -> None:
     settings = _make_settings(upstream_retry_backoff_base_s=1.5)
     app = create_app(settings)
 
-    upstream = app.state.completion_upstream
+    upstream = app.state.openrouter_completion_upstream  # v9: raw adapter relocated
     assert upstream._backoff_base == 1.5, (
         f"Expected _backoff_base=1.5, got {upstream._backoff_base}"
     )
@@ -74,7 +77,7 @@ def test_metrics_registry_wired() -> None:
     settings = _make_settings()
     app = create_app(settings)
 
-    upstream = app.state.completion_upstream
+    upstream = app.state.openrouter_completion_upstream  # v9: raw adapter relocated
     assert upstream._metrics_registry is not None, (
         "Expected metrics_registry to be wired into completion_upstream"
     )

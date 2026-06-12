@@ -138,6 +138,24 @@ class Settings(BaseSettings):
     # NEVER set to a non-https URL in production deployments.
     openai_base_url: str = "https://api.openai.com/v1"
 
+    # ── Anthropic direct provider (provider-chat-dispatch task) ──────────────
+    # GATEWAY_ANTHROPIC_API_KEY — secret; empty = Anthropic provider absent.
+    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
+    # labels/span attributes.
+    anthropic_api_key: str = ""
+    # GATEWAY_ANTHROPIC_BASE_URL — Override in e2e overlays to point at a stub.
+    anthropic_base_url: str = "https://api.anthropic.com/v1"
+    # GATEWAY_ANTHROPIC_VERSION — Anthropic-Version header value.
+    anthropic_version: str = "2023-06-01"
+
+    # ── Google direct provider (provider-chat-dispatch task) ──────────────────
+    # GATEWAY_GOOGLE_API_KEY — secret; empty = Google provider absent.
+    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
+    # labels/span attributes.
+    google_api_key: str = ""
+    # GATEWAY_GOOGLE_BASE_URL — Override in e2e overlays to point at a stub.
+    google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.
     # Default 0 = opt-in (byte-identical to v5 "NEVER retry" behavior at default settings).

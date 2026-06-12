@@ -275,6 +275,28 @@ class UpstreamProvider(Protocol):
 
 
 @runtime_checkable
+class ProviderResolver(Protocol):
+    """Resolve the catalog provider name for a served model id.
+
+    Additive extension @ provider-chat-dispatch TASK.md §3 (FROZEN @ v1).
+
+    Implementations hold an in-memory cache built from the catalog at startup
+    and refreshed on /internal/catalog/sync. The hot path is in-memory only.
+
+    Contract:
+      - provider_for NEVER raises. Unknown/unset model_id returns "openrouter".
+      - refresh() is fail-safe: errors are logged + swallowed; last-good map kept.
+    """
+
+    async def provider_for(self, model_id: str) -> str:
+        """Return the catalog provider for model_id; 'openrouter' for unknown/unset.
+
+        NEVER raises — resolution failure degrades to 'openrouter'.
+        """
+        ...
+
+
+@runtime_checkable
 class DeploymentLoadGate(Protocol):
     """Async port exposing per-deployment live load metrics backed by Redis.
 
@@ -358,6 +380,7 @@ __all__ = [
     "ModelAccess",
     "ModelChecker",
     "ModelHealthGate",
+    "ProviderResolver",
     "ResponseCache",
     "UpstreamProvider",
     "UsageRecordExtras",

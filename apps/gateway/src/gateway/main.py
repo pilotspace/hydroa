@@ -39,10 +39,12 @@ from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import UpstreamProvider
+from gateway.proxy.infrastructure.catalog_provider_resolver import CatalogProviderResolver
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
+from gateway.proxy.infrastructure.provider_aware_upstream import ProviderAwareCompletionUpstream
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate
@@ -196,6 +198,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             async with _engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
 
+        # Warm up the provider resolver cache from the catalog DB.
+        # Fail-safe: refresh() never raises; empty map at startup → all "openrouter".
+        await app.state.provider_resolver.refresh()
+
         flusher = UsageLedgerFlusher(
             redis=_redis,
             session_factory=_sessionmaker,
@@ -336,12 +342,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.catalog_source = OpenRouterCatalogSource(httpx.AsyncClient())
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()
-    app.state.completion_upstream = OpenRouterCompletionUpstream(
+    # Raw OpenRouter upstream — used directly by the provider adapter map and the
+    # OpenRouterUpstreamFacade (embeddings/images). NOT the dispatch wrapper.
+    _openrouter_upstream = OpenRouterCompletionUpstream(
         api_key=settings.openrouter_api_key,
         base_url=settings.openrouter_base_url,
         max_retries=settings.upstream_max_retries,
         backoff_base=settings.upstream_retry_backoff_base_s,
         metrics_registry=app.state.metrics_registry,
+    )
+    # Public seam for production-wiring regression tests: the RAW OpenRouter
+    # upstream is the live adapter that Settings (max_retries / backoff_base /
+    # base_url / metrics_registry) are threaded into. v9 relocated it out of
+    # app.state.completion_upstream (now the dispatch wrapper), so the v6
+    # wiring-regression rule asserts config threading against this name.
+    app.state.openrouter_completion_upstream = _openrouter_upstream
+
+    # Build the catalog loader closure for the provider resolver.
+    # Imports ModelRow locally to avoid a circular import at module level.
+    from sqlalchemy import select as _sa_select
+
+    from gateway.catalog.infrastructure.orm import ModelRow as _ModelRow
+
+    async def _load_provider_map() -> dict[str, str]:
+        async with app.state.sessionmaker() as _session:
+            _rows = (await _session.execute(_sa_select(_ModelRow.id, _ModelRow.provider))).all()
+            return {row.id: row.provider for row in _rows}
+
+    app.state.provider_resolver = CatalogProviderResolver(loader=_load_provider_map)
+
+    # Chat adapter map — "openrouter" is always present; additional providers are
+    # added by later tasks (anthropic-provider, gemini-provider) when their key is set.
+    _chat_adapters: dict[str, object] = {"openrouter": _openrouter_upstream}
+
+    # Dispatch wrapper — implements CompletionUpstream; selection only.
+    app.state.completion_upstream = ProviderAwareCompletionUpstream(
+        adapters=_chat_adapters,  # type: ignore[arg-type]
+        resolver=app.state.provider_resolver,
     )
 
     # Usage metering: wire RecordingUsageRecorder + background flusher
@@ -427,7 +464,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # The registry is consulted ONLY by non-chat endpoint tasks (embeddings/images/audio).
     # "openrouter" facade wraps completion_upstream for interface consistency.
     # "openai" is added only when openai_api_key is non-empty (empty = provider absent).
-    _openrouter_facade = OpenRouterUpstreamFacade(upstream=app.state.completion_upstream)
+    # CRITICAL: facade wraps the RAW _openrouter_upstream, NOT the dispatch wrapper.
+    # The dispatch wrapper is for chat only; the facade is for non-chat modalities
+    # (embeddings/images/audio) and must not add provider-dispatch overhead.
+    _openrouter_facade = OpenRouterUpstreamFacade(upstream=_openrouter_upstream)
     _providers: dict[str, UpstreamProvider] = {"openrouter": _openrouter_facade}
     if settings.openai_api_key:
         _providers["openai"] = OpenAIDirectProvider(

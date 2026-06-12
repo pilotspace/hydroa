@@ -105,6 +105,8 @@ exclude = [
     # routing-admin: frozen test suite; format excluded per no-test-edit contract
     "tests/routing_admin/test_routing_admin.py",
     "tests/routing_admin/conftest.py",
+    # provider-chat-dispatch: frozen test suite; format excluded per no-test-edit contract
+    "tests/provider_chat_dispatch/test_provider_chat_dispatch.py",
 ]
 
 [tool.ruff.lint]

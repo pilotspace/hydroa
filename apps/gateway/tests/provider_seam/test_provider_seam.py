@@ -562,10 +562,17 @@ def test_ps10_production_wiring_registry_has_openrouter_and_openai() -> None:
         f"provider_registry['openai'] must be OpenAIDirectProvider; got {type(openai_entry)}"
     )
 
-    # v6 chat path must be unchanged — completion_upstream is still the OpenRouter adapter
-    assert isinstance(app.state.completion_upstream, OpenRouterCompletionUpstream), (
-        "app.state.completion_upstream must still be OpenRouterCompletionUpstream "
-        "(v6 chat path must be byte-identical)"
+    # v9: the raw OpenRouter chat adapter relocated to app.state.openrouter_completion_upstream;
+    # app.state.completion_upstream is now the provider-dispatch wrapper. The openrouter chat
+    # path remains byte-identical (the wrapper delegates to this same adapter for provider="openrouter").
+    from gateway.proxy.infrastructure.provider_aware_upstream import ProviderAwareCompletionUpstream
+
+    assert isinstance(app.state.openrouter_completion_upstream, OpenRouterCompletionUpstream), (
+        "app.state.openrouter_completion_upstream must be the raw OpenRouterCompletionUpstream "
+        "(openrouter chat path must be byte-identical)"
+    )
+    assert isinstance(app.state.completion_upstream, ProviderAwareCompletionUpstream), (
+        "app.state.completion_upstream must be the provider-dispatch wrapper (v9)"
     )
 
 
