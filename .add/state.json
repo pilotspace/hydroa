@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "audio-endpoints",
+  "active_task": "v7-live-verify",
   "active_milestone": "v7",
   "tasks": {
     "provider-seam": {
@@ -53,6 +53,16 @@
       "created": "2026-06-12T09:30:54+00:00",
       "updated": "2026-06-12T10:00:13+00:00",
       "flag_verified": true
+    },
+    "v7-live-verify": {
+      "title": "v7 live close \u2014 OpenAI provider stub overlay + multi-modal billing double-pass",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v7",
+      "depends_on": [],
+      "created": "2026-06-12T10:53:02+00:00",
+      "updated": "2026-06-12T10:55:15+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -66,7 +76,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T10:00:13+00:00",
+  "updated": "2026-06-12T10:55:15+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
