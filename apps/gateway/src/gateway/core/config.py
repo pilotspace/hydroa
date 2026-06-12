@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     # GATEWAY_UPSTREAM_RETRY_BACKOFF_BASE_S — base for exponential backoff (seconds).
     upstream_retry_backoff_base_s: float = Field(default=0.5, gt=0)
 
+    # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
+    # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
+    # the cooldown for a model. 0 = disabled (feature off, v5 byte-identical behavior).
+    cooldown_failure_threshold: int = Field(default=0, ge=0, le=100)
+    # GATEWAY_COOLDOWN_TTL_S — seconds the cooldown open flag lives; also probe token TTL.
+    cooldown_ttl_s: int = Field(default=60, ge=1, le=3600)
+    # GATEWAY_COOLDOWN_WINDOW_S — failure counter expiry window (sliding; NX-set on first INCR).
+    cooldown_window_s: int = Field(default=60, ge=1, le=3600)
+
     # ── Model-group aliases with ordered candidate fallbacks (model-fallbacks task) ──
     # GATEWAY_MODEL_GROUPS — JSON dict mapping alias string to ordered candidate list.
     # e.g. GATEWAY_MODEL_GROUPS='{"fast": ["vendor/model-a:free", "vendor/model-b"]}'

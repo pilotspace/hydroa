@@ -98,6 +98,9 @@ exclude = [
     # model-fallbacks: frozen test suite; format excluded per no-test-edit contract
     "tests/model_fallbacks/test_model_fallbacks.py",
     "tests/model_fallbacks/conftest.py",
+    # cooldown-circuit: frozen test suite; format excluded per no-test-edit contract
+    "tests/cooldown_circuit/test_cooldown_circuit.py",
+    "tests/cooldown_circuit/conftest.py",
 ]
 
 [tool.ruff.lint]

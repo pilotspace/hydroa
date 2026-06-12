@@ -118,6 +118,16 @@ class MetricsRegistry:
             registry=registry,
         )
 
+        # labels — model: upstream model id (public catalog id);
+        #          transition in {tripped, probe, closed, reopened}
+        # Registered unconditionally so metric family appears in /internal/metrics output.
+        self.cooldown_transitions_total = Counter(
+            "gateway_cooldown_transitions_total",
+            "Cooldown circuit breaker state transitions by model and transition type",
+            ["model", "transition"],
+            registry=registry,
+        )
+
     @property
     def registry(self) -> CollectorRegistry:
         return self._registry

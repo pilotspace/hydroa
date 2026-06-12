@@ -35,6 +35,7 @@ from gateway.proxy.api.router import proxy_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
+from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
@@ -331,20 +332,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         metrics_registry=app.state.metrics_registry,
     )
 
-    # Model-group alias router — sits above completion_upstream in the use-case call chain.
-    # health_gate=None here: cooldown-circuit task wires the Redis gate in a later task.
-    # SEAM NOTE: The router is constructed with app.state.completion_upstream as its default
-    # upstream. However, the use case passes the per-request upstream (circuit-breaker-wrapped,
-    # potentially a test fake) via the `upstream` override kwarg on router.complete() and
-    # router.stream(). This preserves the frozen-suite injection contract: tests that set
-    # app.state.completion_upstream = FakeUpstream still work correctly.
-    app.state.model_router = FallbackModelRouter(
-        upstream=app.state.completion_upstream,
-        model_groups=settings.model_groups,
-        health_gate=None,
-        metrics_registry=app.state.metrics_registry,
-    )
-
     # Usage metering: wire RecordingUsageRecorder + background flusher
     # Tests inject fakes via app.state.usage_recorder AFTER app creation;
     # the default here is used in production only.
@@ -365,6 +352,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Rate limiter: wire RedisLuaRateLimiter for production;
     # tests override via app.state.rate_limiter after app creation.
     app.state.rate_limiter = RedisLuaRateLimiter(redis=redis_client)
+
+    # Cooldown circuit breaker gate — constructed only when threshold > 0.
+    # Construction does NOT connect to Redis (safe without lifespan).
+    # threshold == 0 (default) → gate is None; preserves v5 behavior byte-identically.
+    if settings.cooldown_failure_threshold > 0:
+        app.state.cooldown_gate = RedisCooldownGate(
+            redis=redis_client,
+            metrics_registry=app.state.metrics_registry,
+            threshold=settings.cooldown_failure_threshold,
+            ttl_s=settings.cooldown_ttl_s,
+            window_s=settings.cooldown_window_s,
+        )
+    else:
+        app.state.cooldown_gate = None
+
+    # Model-group alias router — sits above completion_upstream in the use-case call chain.
+    # health_gate is wired from app.state.cooldown_gate (None when feature disabled).
+    # SEAM NOTE: The router is constructed with app.state.completion_upstream as its default
+    # upstream. However, the use case passes the per-request upstream (circuit-breaker-wrapped,
+    # potentially a test fake) via the `upstream` override kwarg on router.complete() and
+    # router.stream(). This preserves the frozen-suite injection contract: tests that set
+    # app.state.completion_upstream = FakeUpstream still work correctly.
+    app.state.model_router = FallbackModelRouter(
+        upstream=app.state.completion_upstream,
+        model_groups=settings.model_groups,
+        health_gate=app.state.cooldown_gate,
+        metrics_registry=app.state.metrics_registry,
+    )
 
     # Cache TTL — exposed on app.state so proxy router can read it per-request
     app.state.cache_ttl_seconds = settings.cache_ttl_seconds
