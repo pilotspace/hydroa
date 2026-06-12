@@ -37,6 +37,12 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.tool_translation import (
+    build_tool_call_delta,
+    dump_tool_arguments,
+    load_tool_arguments,
+    synthesize_tool_call_id,
+)
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 
 if TYPE_CHECKING:
@@ -54,6 +60,62 @@ _DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 # ---------------------------------------------------------------------------
 
 
+def _tools_to_gemini(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate OpenAI tools → Gemini ``tools:[{functionDeclarations:[...]}]``."""
+    decls: list[dict[str, Any]] = []
+    for tool in tools:
+        fn = tool.get("function", {})
+        decl: dict[str, Any] = {"name": fn.get("name", "")}
+        if "description" in fn:
+            decl["description"] = fn["description"]
+        if "parameters" in fn:
+            decl["parameters"] = fn["parameters"]
+        decls.append(decl)
+    return [{"functionDeclarations": decls}]
+
+
+def _tool_choice_to_gemini(choice: Any) -> dict[str, Any] | None:
+    """Translate OpenAI tool_choice → Gemini functionCallingConfig.
+
+    "auto"→{mode:AUTO} · "required"→{mode:ANY} · "none"→{mode:NONE} ·
+    {type:function, function:{name}}→{mode:ANY, allowedFunctionNames:[name]}.
+    Unknown → None (omit toolConfig).
+    """
+    if choice == "auto":
+        return {"mode": "AUTO"}
+    if choice == "required":
+        return {"mode": "ANY"}
+    if choice == "none":
+        return {"mode": "NONE"}
+    if isinstance(choice, dict) and choice.get("type") == "function":
+        name = choice.get("function", {}).get("name", "")
+        return {"mode": "ANY", "allowedFunctionNames": [name]}
+    return None
+
+
+def _assistant_tool_calls_to_parts(msg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build Gemini ``model`` parts from an OpenAI assistant message with tool_calls.
+
+    Leading text becomes a ``{text}`` part; each tool call a ``{functionCall:{name,args}}``
+    part (``arguments`` JSON string → ``args`` object).
+    """
+    parts: list[dict[str, Any]] = []
+    text = msg.get("content")
+    if isinstance(text, str) and text:
+        parts.append({"text": text})
+    for call in msg.get("tool_calls", []):
+        fn = call.get("function", {})
+        parts.append(
+            {
+                "functionCall": {
+                    "name": fn.get("name", ""),
+                    "args": load_tool_arguments(fn.get("arguments", "")),
+                }
+            }
+        )
+    return parts
+
+
 def _openai_to_gemini_request(
     payload: dict[str, Any],
     *,
@@ -64,24 +126,61 @@ def _openai_to_gemini_request(
     - role=="system" messages → top-level ``systemInstruction:{parts:[{text}]}``;
       multiple system messages joined with "\\n\\n".
     - role=="user" → Gemini role "user"; role=="assistant" → Gemini role "model".
-    - Each non-system message → ``{role, parts:[{text: content}]}`` in ``contents``.
+    - An assistant message with ``tool_calls`` → a ``model`` content of ``functionCall``
+      parts (v10). A ``role:"tool"`` message → a ``user`` content with a
+      ``functionResponse`` part, the function name resolved from the tool_call_id via the
+      assistant ``tool_calls`` seen earlier in the request (Gemini correlates by name).
+    - Each remaining non-system message → ``{role, parts:[{text: content}]}``.
     - ``generationConfig``: maxOutputTokens (from max_tokens or default), plus
       temperature / topP / stopSequences when present.
+    - ``tools`` → Gemini ``tools`` (functionDeclarations); ``tool_choice`` → ``toolConfig``.
     - ``model`` is NOT in the body — it goes in the URL path.
+
+    Raises ValueError("tool_call_id_required") when a ``role:"tool"`` message lacks
+    ``tool_call_id`` (no key to resolve the functionResponse name).
     """
     messages: list[dict[str, Any]] = payload.get("messages", [])
+
+    # First pass: map every assistant tool_call id → its function name (for the
+    # functionResponse correlation, which Gemini keys by name, not id).
+    id_to_name: dict[str, str] = {}
+    for msg in messages:
+        if msg.get("role") == "assistant":
+            for call in msg.get("tool_calls", []):
+                cid = call.get("id")
+                if cid:
+                    id_to_name[cid] = call.get("function", {}).get("name", "")
 
     system_parts: list[str] = []
     contents: list[dict[str, Any]] = []
     for msg in messages:
         role = msg.get("role", "")
-        content = str(msg.get("content", ""))
         if role == "system":
-            system_parts.append(content)
+            system_parts.append(str(msg.get("content", "")))
+        elif role == "assistant" and msg.get("tool_calls"):
+            contents.append({"role": "model", "parts": _assistant_tool_calls_to_parts(msg)})
         elif role == "assistant":
-            contents.append({"role": "model", "parts": [{"text": content}]})
+            contents.append({"role": "model", "parts": [{"text": str(msg.get("content", ""))}]})
+        elif role == "tool":
+            tool_call_id = msg.get("tool_call_id")
+            if not tool_call_id:
+                raise ValueError("tool_call_id_required")
+            name = id_to_name.get(tool_call_id, tool_call_id)
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "functionResponse": {
+                                "name": name,
+                                "response": {"result": msg.get("content", "")},
+                            }
+                        }
+                    ],
+                }
+            )
         else:
-            contents.append({"role": "user", "parts": [{"text": content}]})
+            contents.append({"role": "user", "parts": [{"text": str(msg.get("content", ""))}]})
 
     generation_config: dict[str, Any] = {
         "maxOutputTokens": payload.get("max_tokens", default_max_tokens),
@@ -100,6 +199,13 @@ def _openai_to_gemini_request(
     }
     if system_parts:
         result["systemInstruction"] = {"parts": [{"text": "\n\n".join(system_parts)}]}
+
+    tools = payload.get("tools")
+    if tools:
+        result["tools"] = _tools_to_gemini(tools)
+    fcc = _tool_choice_to_gemini(payload.get("tool_choice"))
+    if fcc is not None:
+        result["toolConfig"] = {"functionCallingConfig": fcc}
 
     return result
 
@@ -128,12 +234,30 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
     Defensive: missing candidates → empty content, finish_reason "stop", usage zeros.
     """
     candidates: list[dict[str, Any]] = body.get("candidates", [])
+    tool_calls: list[dict[str, Any]] = []
     if candidates:
         candidate = candidates[0]
         content_obj: dict[str, Any] = candidate.get("content", {})
         parts: list[dict[str, Any]] = content_obj.get("parts", [])
         text = "".join(p.get("text", "") for p in parts if "text" in p)
-        finish_reason = _map_gemini_finish_reason(candidate.get("finishReason"))
+        for part in parts:
+            fc = part.get("functionCall")
+            if fc:
+                name = fc.get("name", "")
+                tool_calls.append(
+                    {
+                        "id": synthesize_tool_call_id(name, len(tool_calls)),
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": dump_tool_arguments(fc.get("args", {})),
+                        },
+                    }
+                )
+        # functionCall presence signals a tool turn (Gemini has no distinct finishReason)
+        finish_reason = (
+            "tool_calls" if tool_calls else _map_gemini_finish_reason(candidate.get("finishReason"))
+        )
     else:
         text = ""
         finish_reason = "stop"
@@ -143,6 +267,14 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
     completion_tokens: int = usage_raw.get("candidatesTokenCount", 0)
     total_tokens: int = usage_raw.get("totalTokenCount", 0)
 
+    # content is null when the model returned only tool calls (OpenAI convention)
+    message: dict[str, Any] = {
+        "role": "assistant",
+        "content": text if text else (None if tool_calls else ""),
+    }
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+
     return {
         "id": "",
         "object": "chat.completion",
@@ -151,7 +283,7 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": text},
+                "message": message,
                 "finish_reason": finish_reason,
             }
         ],
@@ -220,6 +352,8 @@ def _translate_gemini_sse(chunks: Iterable[dict[str, Any]]) -> Iterable[bytes]:
 
     finish_reason: str = "stop"
     last_usage: dict[str, Any] = {}
+    tc_count: int = 0
+    saw_tool_call: bool = False
 
     chunk_list = list(chunks)
     for chunk in chunk_list:
@@ -238,9 +372,30 @@ def _translate_gemini_sse(chunks: Iterable[dict[str, Any]]) -> Iterable[bytes]:
                         + json.dumps(_make_chunk({"content": part["text"]}, None)).encode()
                         + b"\n\n"
                     )
+                elif "functionCall" in part:
+                    # Gemini emits the whole call in one part → one combined fragment
+                    fc = part["functionCall"]
+                    name = fc.get("name", "")
+                    frag = build_tool_call_delta(
+                        tc_count,
+                        id=synthesize_tool_call_id(name, tc_count),
+                        name=name,
+                        arguments_fragment=dump_tool_arguments(fc.get("args", {})),
+                    )
+                    tc_count += 1
+                    saw_tool_call = True
+                    yield (
+                        b"data: "
+                        + json.dumps(_make_chunk({"tool_calls": [frag]}, None)).encode()
+                        + b"\n\n"
+                    )
         # Capture the last usageMetadata seen
         if "usageMetadata" in chunk:
             last_usage = chunk["usageMetadata"]
+
+    # A functionCall in the stream signals a tool turn (Gemini has no tool finishReason)
+    if saw_tool_call:
+        finish_reason = "tool_calls"
 
     # Terminal chunk: finish_reason + usage
     prompt_tokens: int = last_usage.get("promptTokenCount", 0)

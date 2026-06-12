@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "anthropic-tool-use",
+  "active_task": "gemini-tool-use",
   "active_milestone": "v10",
   "tasks": {
     "tool-use-contract": {
@@ -25,6 +25,18 @@
       "created": "2026-06-12T18:45:11+00:00",
       "updated": "2026-06-12T18:53:30+00:00",
       "flag_verified": true
+    },
+    "gemini-tool-use": {
+      "title": "Google Gemini tool-use translation",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v10",
+      "depends_on": [
+        "tool-use-contract"
+      ],
+      "created": "2026-06-12T18:54:07+00:00",
+      "updated": "2026-06-12T19:01:47+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -38,7 +50,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T18:53:30+00:00",
+  "updated": "2026-06-12T19:01:47+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
