@@ -470,21 +470,21 @@ strategies degrade to declared primary on streams — the pre-approved boundary)
 task needs load-aware streaming it must rework the sync use_cases.py:1237 call site.
 
 ### Competency deltas
-- [ADD · open] The "frozen behavioral pin → supersession" pattern works ADDITIVELY: a frozen
+- [ADD · folded] The "frozen behavioral pin → supersession" pattern works ADDITIVELY: a frozen
   sync seam (order()) is superseded by adding an OPTIONAL async capability (aorder) selected via
   isinstance at the call site — the frozen tests keep calling order() synchronously and stay
   green, zero re-freeze. (evidence: routing-strategy test_rs1..rs8 + model_fallbacks all green
   under the async-aware router.) This is the reusable recipe for evolving any frozen Protocol.
-- [SDD · open] A fail-OPEN port that returns a NEUTRAL value on error (in_flight=0 / ewma=0.0)
+- [SDD · folded] A fail-OPEN port that returns a NEUTRAL value on error (in_flight=0 / ewma=0.0)
   makes the consumer degrade gracefully to a deterministic default (declared order) with no
   try/except at the call site beyond the port boundary — the optimization never becomes a
   correctness gate. (evidence: BS7 — a raising load_gate still serves declared-first.)
-- [TDD · open] `make ci` runs `ruff check .` (the WHOLE tree incl. tests/); a subagent that
+- [TDD · folded] `make ci` runs `ruff check .` (the WHOLE tree incl. tests/); a subagent that
   lints only `src/` can miss a test-file RUF rule (here RUF001 ambiguous `α` in an assert
   message). Lesson: brief build/test subagents to run the SAME lint scope as the gate, or the
   orchestrator re-lints tests/ before the authoritative run. (evidence: make ci #1 aborted at
   lint on tests/balance_strategies; fixed cosmetically, no assertion touched.)
-- [ADD · open] The `rtk` tee log filename/rotation is unreliable for a re-run; capturing the
+- [ADD · folded] The `rtk` tee log filename/rotation is unreliable for a re-run; capturing the
   authoritative pytest+coverage to an orchestrator-owned path (`> /tmp/...log 2>&1`) is the
   robust way to read the real gate result when the wrapper log is missing. (evidence: the
   re-run produced no new rtk make_ci log; direct capture gave 572 passed / 81.79%.)

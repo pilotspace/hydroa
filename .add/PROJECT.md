@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-12 · foundation-version: 8
+slug: ai-proxy · stage: production · updated: 2026-06-12 · foundation-version: 9
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -35,6 +35,15 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     addition while keeping compile-time exhaustiveness. Provider (openrouter·openai) is
     catalog metadata, never client-specified — the provider-selection seam routes each
     modality to its direct provider by (modality, provider)
+- Folded from v8 (2026-06-12):
+  - A **model group** (alias) is an ordered list of **Deployments** (model_id + optional
+    weight/tpm_limit/rpm_limit), not bare model-id strings; a bare string coerces to a
+    weight-1/no-limit Deployment (v6 back-compat). Three ORTHOGONAL per-deployment gates
+    coexist, each a distinct domain concept with its own port: **cooldown** (UNHEALTHY,
+    v6) · **load** (IN-FLIGHT/LATENCY, balance-strategies) · **limit** (SATURATED). Naming
+    them as separate glossary terms keeps the router logic and the 429-saturated vs
+    503-cooldown-exhausted distinction unambiguous; billing still keys on the SERVED
+    deployment's catalog id (v6 invariant preserved across load-balanced selection)
 
 ## Spec / Living Document (SDD) — what we are building, now
 
@@ -81,7 +90,28 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     or accept the gap explicitly (3 inherited deltas this milestone)
   - OPEN: an empty-but-present upstream API key produces an opaque client-side 500 with
     no actionable message; the spec should require a boot-time guard that rejects a
-    configured-yet-empty upstream key (evidence: the only v7 C5 failure mode)
+    configured-yet-empty upstream key (evidence: the only v7 C5 failure mode — now
+    DOUBLY evidenced: the v8 stack reproduced the identical "Illegal header value
+    b'Bearer '" 500 on its first live run; still open as a gateway boot-guard)
+- Folded from v8 (2026-06-12):
+  - Settled: a fail-OPEN port returns a NEUTRAL value on error (in_flight=0 / ewma=0.0 /
+    is_saturated=False) so the consumer degrades to a deterministic default (declared
+    order) — an optimization/availability gate never becomes a correctness gate, no
+    try/except past the port boundary
+  - Settled: a new domain error reuses an EXISTING error-catalog spec (the router raises
+    `AllDeploymentsSaturatedError`; one additive use-case except clause maps it to the
+    existing RATE_LIMITED → 429) — no new status/code literal, the HTTP contract stays
+    centralized and no API handler changes
+  - Settled: extend a frozen config value as an ADDITIVE second view (model_groups
+    `list[str]` → `list[Deployment]` PLUS a preserved string-view property), never a type
+    change to the bound field — frozen exact-shape consumers (/admin/routing) keep reading
+    the old view unchanged
+  - Settled: a default strategy that returns its input unchanged (`OrderedStrategy →
+    list(candidates)`) is the byte-identical-preservation lever — the entire v6 fallback
+    loop is reused verbatim and frozen suites stay green with zero loop-body edits
+  - Settled: a router that load-balances is only TRUSTWORTHY once distribution is
+    OBSERVABLE at the edge (a per-deployment served-count readout), not just unit-asserted
+    — the live close proved weighted-shuffle (dep-a:dep-b ≈ 8:32 then 13:27 over weight 1:3)
 
 ## Users (UDD) — UI/UX: design before code
 
@@ -168,3 +198,11 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-12 | A "module stays byte-identical" invariant has no compile-time enforcement — it rests on a behavioral test + manual git diff of named INVIOLABLE files; downstream contracts spell out the forbidden import (fold: ADD/embeddings+provider-seam) | future: an ArchUnit-style import test; chat-untouched held this milestone via EM11 + git diff | folded v7 |
 | 2026-06-12 | Billed-quantity / fallback policy is a BUSINESS decision surfaced as a [contract] flag at §3 top, resolved at freeze, never silently coded (fold: ADD/images-endpoint) | images dropped the `or requested-n` fallback at freeze to bill exactly len(data) | folded v7 |
 | 2026-06-12 | Live-verify e2e closes self-contain upstream creds (non-secret placeholder) in the compose overlay, never operator shell env (fold: ADD/v7-live-verify) | empty `${VAR:-}` interpolation → malformed Bearer rejected by httpx/h11 before egress → opaque 500 (v7 C5); audit v4–v6 overlays | folded v7 |
+| 2026-06-12 | A model group is an ordered list of Deployments (model_id+weight+tpm/rpm); three orthogonal per-deployment gates — cooldown(UNHEALTHY)/load(IN-FLIGHT/LATENCY)/limit(SATURATED) — each its own port; billing keys on the served deployment id (fold: DDD/deployment-limits) | distinct domain terms keep router logic + 429-vs-503 unambiguous; v6 billing invariant survives load-balancing | folded v8 |
+| 2026-06-12 | Extend a frozen config value as an ADDITIVE second view + preserved old-view property, never a type change to the bound field (fold: SDD/deployment-model) | frozen exact-shape consumers (/admin/routing) keep reading the old view; 63/63 v6 regression green | folded v8 |
+| 2026-06-12 | A new domain error reuses an EXISTING error-catalog spec via one additive use-case except clause (AllDeploymentsSaturatedError→RATE_LIMITED/429) (fold: SDD/deployment-limits) | no new status/code literal; HTTP contract stays centralized; no API handler change | folded v8 |
+| 2026-06-12 | A fail-OPEN port returns a NEUTRAL value on error (in_flight=0/ewma=0/is_saturated=False) so the consumer degrades to a deterministic default (fold: SDD/balance-strategies) | optimization/availability gate never becomes a correctness gate; no try/except past the port boundary | folded v8 |
+| 2026-06-12 | Frozen behavioral pin → supersession works ADDITIVELY: add an OPTIONAL async capability (aorder) selected via isinstance at the call site; frozen sync seam (order()) untouched (fold: ADD/routing-strategy+balance-strategies) | frozen tests keep calling the sync seam → zero re-freeze; the reusable recipe for evolving any frozen Protocol | folded v8 |
+| 2026-06-12 | Cross-cutting candidate constraints filter UPSTREAM of the routing strategy (saturation skip) (fold: ADD/deployment-limits) | composes with EVERY strategy + the v6 loop untouched — the strategy only ever sees survivors | folded v8 |
+| 2026-06-12 | A load-balancing router is only trustworthy once distribution is OBSERVABLE at the edge (per-deployment served-count readout), and a cooldown live check asserts the AUTHORITATIVE gate state (/admin/routing snapshot_state), not stub-counter inference (fold: SDD+ADD/v8-live-verify) | weighted-shuffle proven 8:32/13:27 over weight 1:3; stub-counter cooldown flaked under shuffle+retries, /admin/routing poll passed 29/29 ×2 | folded v8 |
+| 2026-06-12 | A live harness firing bursts must pace under the edge rate limit (Envoy local_ratelimit 50 req/s global); a statistical check needs volume → it needs pacing (fold: TDD/v8-live-verify) | C1's 40-req sample + C5's trip loop drained the bucket → 429 local_rate_limited on a following /admin/keys; 50ms/req + settle fixed it | folded v8 |

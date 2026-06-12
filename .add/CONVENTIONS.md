@@ -104,6 +104,28 @@ Testing: red/green TDD mandatory — tests red before build; pytest + pytest-asy
           never the repo root — a root bridge silently enables the feature for every
           future suite (evidence: obs-callbacks builder's root conftest, relocated at
           review into tests/obs_callbacks/conftest.py with a disposition comment)
+        Folded from v8 (2026-06-12):
+        - `make ci` runs `ruff check .` over the WHOLE tree incl. tests/ — brief build/test
+          subagents to run the SAME lint scope as the gate, or the orchestrator re-lints
+          tests/ before the authoritative run (evidence: a src-only subagent left a RUF001
+          ambiguous Greek `α` in a balance-strategies assert message; use ASCII in messages)
+        - a front test that asserts on EXISTING code must match that type's real surface at
+          AUTHORING time, not at build — read the source (evidence: DL2b first asserted
+          `ProblemError.status_code`, but the field is `.status`; caught at test-review by
+          reading core/errors.py before the front froze, not as a red-for-wrong-reason)
+        - weighted-random behavior is assertable DETERMINISTICALLY via an injected
+          `random.Random(seed)` + a distribution band over many draws (e.g. 1000 draws,
+          0.80<b_share<0.98), never by mocking — keeps the test honest about the real algo
+        - the gateway suite has a ROTATING set of timing/env flakes (health_alerting s07–s11
+          fixed-50ms async-write race, semantic_cache, response_caching, a guardrails case)
+          independent of the change under test; a green gate needs a flaky-isolation pass
+          (full-suite-minus-flaky deterministic green) + a stash-repro to attribute reds.
+          Candidate fix: poll-until-row instead of a fixed sleep
+        - a live harness firing bursts must PACE under the edge rate limit (Envoy
+          local_ratelimit = 50 req/s global): a statistical check (weighted distribution)
+          needs volume, so it needs pacing — the two are coupled (evidence: C1's 40-request
+          sample + C5's trip loop drained the bucket → 429 "local_rate_limited" on a
+          following /admin/keys; 50 ms/req + a settle fixed it)
 Dependencies: every package in `.add/dependencies.allowlist`; CI gate
         (`scripts/check_allowlist.py`) rejects unknown packages
         Folded from v1 (2026-06-10): the allowlist governs PYTHON packages only — node
@@ -150,6 +172,35 @@ Build/harness conventions folded from v1 (2026-06-10):
           (evidence: v7 C5 came up with an empty GATEWAY_OPENROUTER_API_KEY; fixed by
           baking stub-openrouter-key into docker-compose.e2e.v7.yml; audit v4–v6 overlays
           for the same shell-env dependency)
+        Build/harness conventions folded from v8 (2026-06-12):
+        - the v7 self-contained-creds lesson RECURRED because a new overlay composes only
+          a SUBSET of siblings: docker-compose.e2e.v8.yml stacks base+v4+v5+v6 (NOT v7),
+          so it did not inherit v7's placeholder and the base `${VAR:-}` empty default won
+          → the identical "Illegal header value b'Bearer '" 500. STRENGTHENED rule: every
+          overlay that drives an upstream SETS its own non-secret placeholder, and the
+          builder briefing/CONTEXT.md must state which sibling overlays are and are NOT
+          composed (a "kept from v6" claim is wrong if v6 never set the key)
+        - "frozen behavioral pin → supersession" works ADDITIVELY: supersede a frozen SYNC
+          seam by adding an OPTIONAL async capability (aorder) selected via `isinstance` at
+          the call site — frozen tests keep calling the sync seam (order()) and stay green,
+          zero re-freeze (evidence: routing-strategy rs1..rs8 + model_fallbacks green under
+          the async-aware router). The reusable recipe for evolving any frozen Protocol
+        - a pure-sync seam is the cleanest concurrency story under an asyncio loop (atomic
+          within one step) but it PINS the seam sync; when a known async successor exists,
+          freeze the SUPERSESSION NOTE in the §3 contract up front so the re-pin is a
+          planned follow-up, not a surprise re-freeze (evidence: routing-strategy order())
+        - a cross-cutting candidate constraint (saturation skip) filters UPSTREAM of the
+          routing strategy — it composes with EVERY strategy (ordered/shuffle/least-busy/
+          latency) and the v6 loop without touching any of them, because the strategy only
+          ever sees survivors (evidence: deployment-limits filter above _strategy_order_async)
+        - a cooldown/health-gate LIVE check asserts the AUTHORITATIVE gate state (GET
+          /admin/routing snapshot_state), never infers it from upstream-stub call counters —
+          under a non-deterministic strategy (simple-shuffle) + upstream retries the counter
+          is muddied and the inference flakes (evidence: C5 stub-counter version failed,
+          primary counter 3→6 under retries; the /admin/routing-poll version passed 29/29 ×2)
+        - capture the authoritative pytest+coverage to an orchestrator-owned path
+          (`> /tmp/...log 2>&1`); the `rtk` tee log filename/rotation is unreliable for a
+          re-run and `ls -t` can return a stale cached name
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

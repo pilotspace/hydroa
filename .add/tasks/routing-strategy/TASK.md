@@ -342,15 +342,15 @@ per-deployment TPM/RPM candidate filtering UPSTREAM of the strategy (filter cand
 strategy orders the survivors).
 
 ### Competency deltas
-- [ADD · open] A pure-sync seam with no `await` is the cleanest concurrency story under an
+- [ADD · folded] A pure-sync seam with no `await` is the cleanest concurrency story under an
   asyncio event loop (atomic within one step) — but it pins the seam sync. When a known async
   successor exists, freeze the SUPERSESSION NOTE in the contract up front (done here) so the
   re-pin is a planned follow-up, not a surprise re-freeze. (evidence: §3 SUPERSESSION NOTE +
   the sync-vs-async least-sure flag surfaced at freeze.)
-- [TDD · open] Weighted-random behavior is assertable deterministically via an injected
+- [TDD · folded] Weighted-random behavior is assertable deterministically via an injected
   `random.Random(seed)` + a 1000-draw distribution band (0.80<b_share<0.98), not by mocking —
   keeps the test honest about the real algorithm. (evidence: test_rs3 green, stable across runs.)
-- [SDD · open] A default strategy that returns its input unchanged (`OrderedStrategy →
+- [SDD · folded] A default strategy that returns its input unchanged (`OrderedStrategy →
   list(candidates)`) is the byte-identical-preservation lever: the entire v6 fallback loop is
   reused verbatim and the frozen suites stay green with zero loop-body edits. (evidence:
   model_fallbacks + routing_admin + proxy suites green under the new seam.)

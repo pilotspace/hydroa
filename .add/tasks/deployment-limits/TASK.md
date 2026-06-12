@@ -409,21 +409,21 @@ in §3. The v8 router surface is now complete: strategy (primary) + load_gate (i
 limit_gate (TPM/RPM) + v6 fallback + cooldown, billing on the served id.
 
 ### Competency deltas
-- [SDD · open] Reusing an EXISTING error-catalog spec (RATE_LIMITED → 429) for a new domain error
+- [SDD · folded] Reusing an EXISTING error-catalog spec (RATE_LIMITED → 429) for a new domain error
   (AllDeploymentsSaturatedError) keeps the HTTP contract centralized: the router raises a DOMAIN
   error, a single additive use-case except clause maps it — no new status/code literal, no API
   handler change. (evidence: DL2b asserts the catalog produces 429; the clause is the only
   use_cases.py edit and sits before the broad handler.)
-- [ADD · open] "Filter UPSTREAM of the strategy" is the clean place for a cross-cutting candidate
+- [ADD · folded] "Filter UPSTREAM of the strategy" is the clean place for a cross-cutting candidate
   constraint (saturation) — it composes with EVERY strategy (ordered/shuffle/least-busy/latency)
   and the v6 loop without touching any of them, because the strategy only ever sees survivors.
   (evidence: DL8 — least-busy orders the post-filter survivor set; v6 fallback unchanged.)
-- [TDD · open] A test that asserts an attribute on an EXISTING type must match that type's real
+- [TDD · folded] A test that asserts an attribute on an EXISTING type must match that type's real
   surface — DL2b first asserted `ProblemError.status_code` but the field is `.status`; caught at
   test-review by reading core/errors.py before the front froze, not at build (where it would have
   been a red-for-wrong-reason). Lesson: when a front test touches existing code, verify its API at
   authoring time. (evidence: the DL2b `.status` correction.)
-- [DDD · open] Three orthogonal per-deployment gates now coexist cleanly because each is a distinct
+- [DDD · folded] Three orthogonal per-deployment gates now coexist cleanly because each is a distinct
   domain concept with its own port: cooldown (UNHEALTHY, v6) · load (IN-FLIGHT/LATENCY,
   balance-strategies) · limit (SATURATED, this task). Naming them as separate Saturated/Cooled/
   in-flight glossary terms kept the router logic and the 429-vs-503 distinction unambiguous.

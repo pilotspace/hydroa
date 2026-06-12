@@ -392,22 +392,22 @@ configured-yet-empty upstream key) would convert this opaque runtime 500 into a 
 startup error and is now doubly evidenced (v7 C5 + v8 first run).
 
 ### Competency deltas
-- [ADD · open] live-verify overlays must be self-contained: each overlay that drives an
+- [ADD · folded] live-verify overlays must be self-contained: each overlay that drives an
   upstream must SET its own non-secret placeholder key, never inherit it from a sibling
   overlay it doesn't compose. Evidence: v8 stack (base+v4+v5+v6+v8, no v7) booted with an
   empty OpenRouter key → every upstream chat 500'd ("Illegal header value b'Bearer '"),
   the identical v7 C5 failure; fixed by baking the placeholder into the v8 overlay.
-- [ADD · open] a cooldown/health-gate live check should assert the AUTHORITATIVE gate
+- [ADD · folded] a cooldown/health-gate live check should assert the AUTHORITATIVE gate
   state (GET /admin/routing snapshot_state), not infer it from upstream-stub call
   counters: under a non-deterministic strategy (simple-shuffle) + upstream retries the
   counter is muddied and the inference flaked. Evidence: C5 stub-counter version failed
   (primary counter 3->6 under retries); the /admin/routing-poll version passed 29/29 ×2.
-- [TDD · open] a live harness that fires bursts must respect the edge rate limit
+- [TDD · folded] a live harness that fires bursts must respect the edge rate limit
   (Envoy local_ratelimit = 50 req/s global): C1's 40-request distribution sample + C5's
   trip loop drained the bucket and 429'd a following /admin/keys call ("local_rate_limited");
   pacing bursts under the bucket (50 ms/req) + a settle fixed it. A statistical check
   (weighted distribution) needs volume, so it needs pacing — the two are coupled.
-- [SDD · open] proving load-balanced distribution LIVE needs a per-deployment served-count
+- [SDD · folded] proving load-balanced distribution LIVE needs a per-deployment served-count
   readout the v6 stub lacked; the v8 stub's GET /__counters made weighted-shuffle observable
   (dep-a:dep-b ≈ 8:32 then 13:27 over weight 1:3). A router that distributes is only
   trustworthy once distribution is *observable* at the edge, not just unit-asserted.

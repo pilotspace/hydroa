@@ -361,12 +361,12 @@ carries. The string-view/object-view split is the pattern to keep: surface a new
 internal structure WITHOUT mutating the frozen API shape consumers (here /admin/routing).
 
 ### Competency deltas
-- [SDD · open] extending a frozen config value (model_groups: list[str] → list[Deployment])
+- [SDD · folded] extending a frozen config value (model_groups: list[str] → list[Deployment])
   is safest as an ADDITIVE second view (settings.deployments) plus a preserved
   string-view property, NOT a type change to the bound field — the field's exact-shape
   consumers (here /admin/routing RA1/RA8, frozen) keep reading the old view unchanged
   (evidence: 63/63 v6 routing/fallback regression green; routing_admin_router.py untouched).
-- [TDD · open] CI has a cluster of timing/environmental flaky tests (health_alerting
+- [TDD · folded] CI has a cluster of timing/environmental flaky tests (health_alerting
   s07–s11 fixed-50ms async-write race; semantic_cache; response_caching; a guardrails
   case) that produce a ROTATING red set independent of the change under test — a green
   gate needs a flaky-isolation pass (full-suite-minus-flaky deterministic green) plus a

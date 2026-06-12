@@ -50,16 +50,16 @@ Out: cross-region/geo routing; cost-based routing; client-specified deployment
   strategies build against it)
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] deployment-model    depends-on: none              — extend model-group config from ordered string-list to a list of Deployment objects (model_id + weight + tpm_limit + rpm_limit); back-compat string coercion; GLOSSARY Deployment/Model-group/Routing-strategy
-- [ ] routing-strategy    depends-on: deployment-model  — RoutingStrategy Protocol + simple-shuffle (weighted-random) default; selects the primary deployment, then defers to the v6 fallback chain on failure
-- [ ] balance-strategies  depends-on: routing-strategy  — least-busy (Redis in-flight counter) + latency-based (Redis EWMA) strategies, config-selectable; default stays simple-shuffle
-- [ ] deployment-limits   depends-on: routing-strategy  — per-deployment TPM/RPM limits skip a saturated deployment at selection (usage-based routing); all saturated → clean 429; reuses v1 rate-limit infra
-- [ ] v8-live-verify      depends-on: balance-strategies, deployment-limits — e2e double-pass: a multi-deployment alias distributes by strategy, honors per-deployment limits, fallback+cooldown still remove failures, chat billing unaffected
+- [x] deployment-model    depends-on: none              — extend model-group config from ordered string-list to a list of Deployment objects (model_id + weight + tpm_limit + rpm_limit); back-compat string coercion; GLOSSARY Deployment/Model-group/Routing-strategy
+- [x] routing-strategy    depends-on: deployment-model  — RoutingStrategy Protocol + simple-shuffle (weighted-random) default; selects the primary deployment, then defers to the v6 fallback chain on failure
+- [x] balance-strategies  depends-on: routing-strategy  — least-busy (Redis in-flight counter) + latency-based (Redis EWMA) strategies, config-selectable; default stays simple-shuffle
+- [x] deployment-limits   depends-on: routing-strategy  — per-deployment TPM/RPM limits skip a saturated deployment at selection (usage-based routing); all saturated → clean 429; reuses v1 rate-limit infra
+- [x] v8-live-verify      depends-on: balance-strategies, deployment-limits — e2e double-pass: a multi-deployment alias distributes by strategy, honors per-deployment limits, fallback+cooldown still remove failures, chat billing unaffected
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A model alias with ≥2 deployments distributes requests across them per the configured strategy — not always the first deployment (← routing-strategy)
-- [ ] simple-shuffle honors deployment weights; least-busy selects the fewest in-flight; latency-based selects the lowest recent-latency deployment (← balance-strategies)
-- [ ] A deployment over its TPM or RPM limit is SKIPPED at selection (another deployment serves); when every deployment is saturated the request gets a clean 429, not a 500 (← deployment-limits)
-- [ ] v6 fallback ordering and per-deployment cooldown still remove failed/unhealthy deployments after the strategy picks; the ledger bills the SERVED deployment's catalog model id (← deployment-model)
-- [ ] Backward compatibility: a bare-string model group (the v6 shape) behaves as a single weight-1, no-limit deployment and the chat path stays byte-identical to v6 (← deployment-model)
-- [ ] All of the above proven LIVE through the TLS edge with a multi-deployment stub overlay, two consecutive clean passes (← v8-live-verify)
+- [x] A model alias with ≥2 deployments distributes requests across them per the configured strategy — not always the first deployment (← routing-strategy)
+- [x] simple-shuffle honors deployment weights; least-busy selects the fewest in-flight; latency-based selects the lowest recent-latency deployment (← balance-strategies)
+- [x] A deployment over its TPM or RPM limit is SKIPPED at selection (another deployment serves); when every deployment is saturated the request gets a clean 429, not a 500 (← deployment-limits)
+- [x] v6 fallback ordering and per-deployment cooldown still remove failed/unhealthy deployments after the strategy picks; the ledger bills the SERVED deployment's catalog model id (← deployment-model)
+- [x] Backward compatibility: a bare-string model group (the v6 shape) behaves as a single weight-1, no-limit deployment and the chat path stays byte-identical to v6 (← deployment-model)
+- [x] All of the above proven LIVE through the TLS edge with a multi-deployment stub overlay, two consecutive clean passes (← v8-live-verify)
