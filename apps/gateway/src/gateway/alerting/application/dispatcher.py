@@ -100,11 +100,11 @@ class AlertDispatcher:
                     " ORDER BY created_at"
                 )
             )
-            return [dict(r._mapping) for r in result.fetchall()]
+            return [dict(r._mapping) for r in result.fetchall()]  # pyright: ignore[reportPrivateUsage]  — _mapping is SQLAlchemy Row's public API
 
     async def _deliver_row(self, row: dict) -> None:  # type: ignore[type-arg]
         """Attempt to deliver one row with bounded exponential retry."""
-        payload = {
+        payload: dict[str, object] = {
             "event_id": str(row["id"]),
             "event_type": str(row["event_type"]),
             "tenant_id": str(row["tenant_id"]) if row["tenant_id"] is not None else None,

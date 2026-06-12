@@ -72,10 +72,9 @@ async def test_pu1_per_token_cost_byte_identical_to_v6(
         # No pricing_unit or quantity extras — chat path
     )
 
-    expected_cost = (
-        Decimal("100") * Decimal("0.0000025")
-        + Decimal("50") * Decimal("0.00001")
-    ) * (Decimal("1") + Decimal("20") / Decimal("100"))
+    expected_cost = (Decimal("100") * Decimal("0.0000025") + Decimal("50") * Decimal("0.00001")) * (
+        Decimal("1") + Decimal("20") / Decimal("100")
+    )
 
     assert stream.events, "No event pushed to Redis Stream"
     evt = stream.last_event
@@ -244,7 +243,9 @@ async def test_pu4_per_character_cost(
         quantity=Decimal("480"),
     )
 
-    expected_cost = Decimal("480") * Decimal("0.000015") * (Decimal("1") + Decimal("10") / Decimal("100"))
+    expected_cost = (
+        Decimal("480") * Decimal("0.000015") * (Decimal("1") + Decimal("10") / Decimal("100"))
+    )
 
     assert stream.events, "No event pushed"
     evt = stream.last_event
@@ -307,8 +308,7 @@ async def test_pu5_markup_applied_uniformly_across_all_units(
         assert stream.events, f"No event for {pricing_unit_val}"
         got = Decimal(stream.last_event["cost_usd"])
         assert got == expected, (
-            f"Markup not applied uniformly for {pricing_unit_val}: "
-            f"got {got}, expected {expected}"
+            f"Markup not applied uniformly for {pricing_unit_val}: got {got}, expected {expected}"
         )
 
 
@@ -451,10 +451,7 @@ async def test_pu7_pricing_snapshots_has_pricing_unit_column_backfilled_per_toke
 
     row = (
         await db_session.execute(
-            text(
-                "SELECT pricing_unit, unit_usd_per_unit"
-                " FROM pricing_snapshots WHERE id = :id"
-            ),
+            text("SELECT pricing_unit, unit_usd_per_unit FROM pricing_snapshots WHERE id = :id"),
             {"id": snap_id},
         )
     ).fetchone()
@@ -463,9 +460,7 @@ async def test_pu7_pricing_snapshots_has_pricing_unit_column_backfilled_per_toke
     assert str(row[0]) == "per_token", (
         f"Expected pricing_unit='per_token' (DEFAULT), got {row[0]!r}"
     )
-    assert row[1] is None, (
-        f"Expected unit_usd_per_unit=NULL for a per_token row, got {row[1]!r}"
-    )
+    assert row[1] is None, f"Expected unit_usd_per_unit=NULL for a per_token row, got {row[1]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -501,12 +496,8 @@ def test_pu8_typed_seam_filtering_pricing_unit_and_quantity() -> None:
 
     # 2. supported_extras on the recorder must include both
     supported = RecordingUsageRecorder.supported_extras
-    assert "pricing_unit" in supported, (
-        f"supported_extras missing 'pricing_unit'; has: {supported}"
-    )
-    assert "quantity" in supported, (
-        f"supported_extras missing 'quantity'; has: {supported}"
-    )
+    assert "pricing_unit" in supported, f"supported_extras missing 'pricing_unit'; has: {supported}"
+    assert "quantity" in supported, f"supported_extras missing 'quantity'; has: {supported}"
 
     # 3. Filtering: a full extras dict with an unknown key — only declared keys pass
     from gateway.proxy.application.use_cases import _dispatch_record  # type: ignore[import]
@@ -644,8 +635,7 @@ async def test_pu9_default_per_token_no_extras_identical_to_v6(
     )
 
     expected_cost = (
-        Decimal("100") * Decimal("0.0000025")
-        + Decimal("50") * Decimal("0.00001")
+        Decimal("100") * Decimal("0.0000025") + Decimal("50") * Decimal("0.00001")
     ) * Decimal("1.20")
 
     assert stream.events, "No event pushed"
@@ -693,7 +683,7 @@ def test_pu10_single_bill_one_recorded_row_per_non_token_request() -> None:
             usage=None,
             status=200,
             pricing_unit="per_image",  # NEW kwarg — must be accepted
-            quantity=Decimal("2"),     # NEW kwarg — must be accepted
+            quantity=Decimal("2"),  # NEW kwarg — must be accepted
         )
         # Let the ensure_future coroutine run
         await asyncio.sleep(0)

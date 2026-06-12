@@ -1,6 +1,6 @@
 """Fire-and-forget alert event writer for soft-budget crossing detection.
 
-This module owns the _persist_soft_budget_alert coroutine, which must be scheduled
+This module owns the persist_soft_budget_alert coroutine, which must be scheduled
 as a fire-and-forget asyncio task (never awaited on the hot path).
 
 Contract (FROZEN @ spend-windows — TASK.md §3 + §5):
@@ -11,7 +11,7 @@ Contract (FROZEN @ spend-windows — TASK.md §3 + §5):
   - payload: {"soft_budget_usd": "<decimal string>", "key_spend_usd": "<decimal string>"}
   - delivered_at: NULL at creation (health-alerting sets this)
 
-Wire: asyncio.ensure_future(_persist_soft_budget_alert(...)) in _check_per_key_budget.
+Wire: asyncio.ensure_future(persist_soft_budget_alert(...)) in _check_per_key_budget.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 _log = logging.getLogger(__name__)
 
 
-async def _persist_soft_budget_alert(
+async def persist_soft_budget_alert(
     session_factory: async_sessionmaker[AsyncSession],
     tenant_id: uuid.UUID,
     key_id: uuid.UUID,

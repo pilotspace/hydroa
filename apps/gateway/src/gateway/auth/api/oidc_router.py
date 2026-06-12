@@ -132,7 +132,7 @@ async def oidc_login(
     oidc_config = None
     tenant_cookie_value: str
 
-    if resolver is not None:
+    if resolver is not None:  # pyright: ignore[reportUnnecessaryComparison]  — defensive; get_oidc_config_resolver may return None when OIDC DI is unconfigured
         oidc_config = await resolver.resolve(domain)
 
     if oidc_config is not None:
@@ -241,9 +241,9 @@ async def oidc_callback(
         #   2. Else call resolver.resolve(cookie_tenant_id) to record calls (test seam sentinel).
         #   3. If config still None → fall back to env Settings path.
         resolver = get_oidc_config_resolver(request, session)
-        if resolver is not None:
+        if resolver is not None:  # pyright: ignore[reportUnnecessaryComparison]  — defensive; get_oidc_config_resolver may return None when OIDC DI is unconfigured
             if hasattr(resolver, "resolve_by_tenant_id"):
-                oidc_config = await resolver.resolve_by_tenant_id(cookie_tenant_id)
+                oidc_config = await resolver.resolve_by_tenant_id(cookie_tenant_id)  # pyright: ignore[reportAttributeAccessIssue]  — guarded by hasattr; concrete DbOidcConfigResolver has resolve_by_tenant_id, Protocol doesn't
             else:
                 # Test seam (FakeOidcConfigResolver): call resolve() to record the
                 # resolver invocation (T7 sentinel assertion: resolver.calls >= 1).

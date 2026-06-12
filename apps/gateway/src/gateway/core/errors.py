@@ -38,12 +38,12 @@ def problem_response(status: int, code: str, title: str, detail: str | None = No
 
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProblemError)
-    async def on_problem(_request: Request, exc: ProblemError) -> Response:
+    async def on_problem(_request: Request, exc: ProblemError) -> Response:  # pyright: ignore[reportUnusedFunction]  — registered via decorator; not called directly
         resp = problem_response(exc.status, exc.code, exc.title, exc.detail)
         for key, val in exc.headers.items():
             resp.headers[key] = val
         return resp
 
     @app.exception_handler(RequestValidationError)
-    async def on_validation(_request: Request, _exc: RequestValidationError) -> Response:
+    async def on_validation(_request: Request, _exc: RequestValidationError) -> Response:  # pyright: ignore[reportUnusedFunction]  — registered via decorator; not called directly
         return problem_response(422, "ERR_PAYLOAD_INVALID", "Request payload failed validation")

@@ -9,7 +9,7 @@ lint:
 	cd $(GATEWAY) && uv run ruff check . && uv run ruff format --check .
 
 typecheck:
-	cd $(GATEWAY) && uv run mypy
+	cd $(GATEWAY) && uv run pyright
 
 allowlist:
 	python3 scripts/check_allowlist.py

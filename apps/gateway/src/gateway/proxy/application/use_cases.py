@@ -648,11 +648,11 @@ class CompletionUseCase:
             session_factory = self._get_session_factory()
             if session_factory is not None:
                 from gateway.usage.application.alert_writer import (
-                    _persist_soft_budget_alert,
+                    persist_soft_budget_alert,
                 )
 
                 _task = asyncio.ensure_future(
-                    _persist_soft_budget_alert(
+                    persist_soft_budget_alert(
                         session_factory,
                         authz.tenant_id,
                         authz.key_id,
@@ -864,7 +864,7 @@ class CompletionUseCase:
                         semantic_cache_enabled = getattr(authz, "semantic_cache_enabled", False)
                         if semantic_cache_enabled and hasattr(cache, "get_pointer"):
                             sem_key = build_semantic_cache_key(str(authz.tenant_id), body)
-                            exact_key_str = await cache.get_pointer(sem_key)
+                            exact_key_str = await cache.get_pointer(sem_key)  # pyright: ignore[reportAttributeAccessIssue]  — guarded by hasattr; concrete ResponseCache has get_pointer, Protocol doesn't
                             if exact_key_str is not None:
                                 # Dereference pointer: GET the exact-cache key body
                                 sem_cached_body = await cache.get(exact_key_str)
@@ -1283,7 +1283,7 @@ class CompletionUseCase:
                         _fire_record_tpm(rate_limiter, key_id=key_id, tokens=total_tokens)
                 # Successful stream span — emitted here after the last chunk (§3 pinned).
                 # _authz and _emitter are captured from the enclosing scope.
-                if _authz is not None and _emitter is not None:
+                if _authz is not None and _emitter is not None:  # pyright: ignore[reportUnnecessaryComparison]  — defensive None check; _authz captured from enclosing scope
                     _emit_span_fire_forget(
                         _emitter,
                         _authz,

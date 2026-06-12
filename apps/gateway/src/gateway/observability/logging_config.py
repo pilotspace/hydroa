@@ -17,7 +17,7 @@ import structlog
 from structlog.types import EventDict, WrappedLogger
 
 # Tracks whether configure_structlog has been called in production mode
-_CONFIGURED: bool = False
+_configured: bool = False
 
 
 def _make_test_sink(capture: list[dict[str, Any]]) -> Any:
@@ -44,10 +44,10 @@ def configure_structlog(
     Safety: Authorization header values and raw key material must NEVER be bound
     to any log context — the middleware enforces this by not reading those headers.
     """
-    global _CONFIGURED  # module-level flag for idempotency guard
+    global _configured  # module-level flag for idempotency guard
 
     # In production (no test_capture), only configure once
-    if test_capture is None and _CONFIGURED:
+    if test_capture is None and _configured:
         return
 
     shared_processors: list[Any] = [
@@ -79,4 +79,4 @@ def configure_structlog(
     logging.getLogger().setLevel(logging.WARNING)
 
     if test_capture is None:
-        _CONFIGURED = True
+        _configured = True

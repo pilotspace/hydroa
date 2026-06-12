@@ -78,7 +78,7 @@ class DbOidcConfigResolver:
         try:
             from cryptography.fernet import Fernet
 
-            fernet = Fernet(enc_key.encode() if isinstance(enc_key, str) else enc_key)
+            fernet = Fernet(enc_key.encode() if isinstance(enc_key, str) else enc_key)  # pyright: ignore[reportUnnecessaryIsInstance]  — defensive isinstance retained for runtime safety on the crypto path
             client_secret = fernet.decrypt(row.client_secret_enc).decode()
         except Exception as exc:
             logger.error(
@@ -134,7 +134,7 @@ class DbOidcConfigResolver:
         try:
             from cryptography.fernet import Fernet
 
-            fernet = Fernet(enc_key.encode() if isinstance(enc_key, str) else enc_key)
+            fernet = Fernet(enc_key.encode() if isinstance(enc_key, str) else enc_key)  # pyright: ignore[reportUnnecessaryIsInstance]  — defensive isinstance retained for runtime safety on the crypto path
             client_secret = fernet.decrypt(row.client_secret_enc).decode()
         except Exception as exc:
             logger.error(

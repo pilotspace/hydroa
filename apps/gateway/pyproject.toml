@@ -27,7 +27,7 @@ dev = [
     "pytest-asyncio>=0.25",
     "pytest-cov>=6.0",
     "ruff>=0.9",
-    "mypy>=1.14",
+    "pyright>=1.1.390",
 ]
 
 [build-system]
@@ -116,10 +116,20 @@ ignore = ["S101"]  # assert is fine in tests; src is mypy-strict anyway
 "src/gateway/usage/api/router.py" = ["S608"]  # granularity validated against whitelist; key_filter is hardcoded literal — no injection risk
 "tests/migrations/**" = ["PLC0415", "ARG001", "RUF100", "RUF043"]  # frozen test files: intentional late imports (PLC0415), unused fixture args (ARG001), regex string in pytest.raises match= (RUF043)
 
-[tool.mypy]
-strict = true
-packages = ["gateway"]
-mypy_path = "src"
+[tool.pyright]
+include = ["src/gateway"]
+extraPaths = ["src"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+# Replaces mypy --strict (2026-06-12). Strict mode retained for its real checks
+# (unused imports/functions, attribute-access, argument-type), but the
+# reportUnknown* family is disabled: it flags partially-unknown types at untyped
+# third-party boundaries (Redis, raw dict parsing) that mypy --strict never
+# enforced — keeping it on would mean 122 errors of churn unrelated to behavior.
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

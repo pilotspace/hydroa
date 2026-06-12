@@ -88,13 +88,15 @@ class FakeSession:
             if not self.has_pricing:
                 return FakeResult(None)
             return FakeResult(
-                FakeRow((
-                    str(self.snapshot_id),
-                    str(self.prompt_price),
-                    str(self.completion_price),
-                    self.pricing_unit,
-                    str(self.unit_usd_per_unit) if self.unit_usd_per_unit is not None else None,
-                ))
+                FakeRow(
+                    (
+                        str(self.snapshot_id),
+                        str(self.prompt_price),
+                        str(self.completion_price),
+                        self.pricing_unit,
+                        str(self.unit_usd_per_unit) if self.unit_usd_per_unit is not None else None,
+                    )
+                )
             )
         if "tenants" in sql:
             return FakeResult(FakeRow((str(self.markup_pct),)))

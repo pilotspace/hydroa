@@ -189,7 +189,7 @@ class FallbackModelRouter:
                 continue
 
             # Step 2: rewrite payload["model"] = candidate.
-            rewritten = {**payload, "model": candidate}
+            rewritten: dict[str, object] = {**payload, "model": candidate}
 
             try:
                 # Step 3: call upstream. CircuitOpenError and any non-fallback
@@ -254,5 +254,5 @@ class FallbackModelRouter:
             return _upstream.stream(payload)
 
         # Alias: resolve to first candidate only (§3 STREAMING BOUNDARY).
-        rewritten = {**payload, "model": candidates[0]}
+        rewritten: dict[str, object] = {**payload, "model": candidates[0]}
         return _upstream.stream(rewritten)
