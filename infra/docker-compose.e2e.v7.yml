@@ -1,0 +1,58 @@
+# Overlay for:
+#   infra/docker-compose.e2e.yml
+#   infra/docker-compose.e2e.v4.yml
+#   infra/docker-compose.e2e.v5.yml
+#   infra/docker-compose.e2e.v6.yml
+#
+# Composes ADDITIVELY on top of the v6 overlay — does NOT override any v6 key.
+# v6 chat routing (GATEWAY_OPENROUTER_BASE_URL, GATEWAY_MODEL_GROUPS, cooldown
+# knobs) is preserved untouched so the C5 chat-unaffected check stays green.
+#
+# New env vars (v7):
+#   GATEWAY_OPENAI_API_KEY  — bearer token sent to the OpenAI-compatible stub.
+#     "stub-openai-key" is a placeholder; no real secret is embedded here.
+#   GATEWAY_OPENAI_BASE_URL — points the gateway at the OpenAI stub on the host.
+#     The stub must be running on :9921 before the gateway's first multi-modal
+#     request.  scripts/live_v7_verify.py starts it automatically in a daemon
+#     thread; no separate stub container is needed.
+#     Source: v7-live-verify TASK.md §3 CONTRACT
+#
+# Usage (always layered on top of base + v4 + v5 + v6 overlays):
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v7.yml \
+#     up -d --wait
+#
+# The v7 OpenAI stub must be started before the verify script.
+# The verify script (scripts/live_v7_verify.py) starts v7_openai_stub.py
+# automatically in a daemon thread. No separate stub container is needed.
+#
+# The v7 verify script is invoked as:
+#   uv run --project apps/gateway python scripts/live_v7_verify.py
+#
+# Double-pass close rule: run the verify script twice in sequence; both must exit 0.
+
+services:
+  gateway:
+    environment:
+      # ── v7: OpenAI direct provider credentials ───────────────────────────────
+      # Wires create_app's provider_registry to build an OpenAIDirectProvider
+      # pointed at the v7 multi-modal stub on :9921.
+      # NOTE: http:// is intentional for the stub (not production). TLS is
+      # still enforced by the Envoy edge (:8443). Auth is not disabled.
+      # Source: v7-live-verify TASK.md §3 CONTRACT
+      GATEWAY_OPENAI_API_KEY: "stub-openai-key"
+      GATEWAY_OPENAI_BASE_URL: "http://host.docker.internal:9921/v1"
+      # ── chat-unaffected (C5): non-empty OpenRouter bearer ────────────────────
+      # The base compose sources GATEWAY_OPENROUTER_API_KEY from the shell env
+      # (default ""); the v6 overlay does NOT set it. An EMPTY key makes the
+      # gateway emit an "Authorization: Bearer " header that httpx/h11 reject
+      # client-side (LocalProtocolError) BEFORE the request leaves the pod — so
+      # chat 500s regardless of upstream. The v6 fault stub never validates the
+      # key value, so a non-secret placeholder is sufficient and keeps real keys
+      # entirely out of the live close. This fills the base's empty default; it
+      # does NOT override any v6-set value (the v6 overlay sets no OpenRouter key).
+      GATEWAY_OPENROUTER_API_KEY: "stub-openrouter-key"
