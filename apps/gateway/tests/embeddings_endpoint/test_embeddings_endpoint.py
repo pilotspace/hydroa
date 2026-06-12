@@ -134,6 +134,7 @@ async def test_em2_single_usage_record_per_token_usage_carried(
 
     # Allow the fire-and-forget task a chance to run in the test event loop.
     import asyncio
+
     await asyncio.sleep(0)
 
     assert spy.call_count == 1, f"expected 1 record call, got {spy.call_count}"
@@ -271,6 +272,7 @@ async def test_em6_budget_exceeded_402(
 
     # Seed the Redis spend counter above the budget.
     import datetime
+
     yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
     spend_key = f"usage:spend:key:{api_key_info['key_id']}:{yyyymm}"
 
@@ -319,6 +321,7 @@ async def test_em7_rpm_exceeded_429_retry_after(
     # Seed the RPM zset to simulate the window being full.
     # The RedisLuaRateLimiter uses key: ratelimit:rpm:{key_id}
     import time
+
     now_ms = int(time.time() * 1000)
     rpm_key = f"ratelimit:rpm:{api_key_info['key_id']}"
 
@@ -505,9 +508,7 @@ async def test_em10_non_chat_governance_helper_unit_test() -> None:
         async def is_active(self, model_id: str) -> bool:
             return True
 
-        async def check_for_tenant(
-            self, model_id: str, tenant_id: uuid.UUID
-        ) -> ModelAccess:
+        async def check_for_tenant(self, model_id: str, tenant_id: uuid.UUID) -> ModelAccess:
             return ModelAccess.ACTIVE
 
     class FakeBudgetGuardOk:
@@ -557,9 +558,7 @@ async def test_em10_non_chat_governance_helper_unit_test() -> None:
         await governance_restricted.authorize("sk-em-restricted", MODEL_ID)
     err = exc_info.value
     assert err.status == 403, f"expected 403, got {err.status}"
-    assert err.code == "ERR_MODEL_NOT_ALLOWED", (
-        f"expected ERR_MODEL_NOT_ALLOWED, got {err.code}"
-    )
+    assert err.code == "ERR_MODEL_NOT_ALLOWED", f"expected ERR_MODEL_NOT_ALLOWED, got {err.code}"
 
     # --- Test 4: budget exceeded → 402 ERR_BUDGET_EXCEEDED ---
     governance_budget = NonChatGovernance(
@@ -617,9 +616,7 @@ async def test_em11_regression_chat_path_200_untouched(
     assert resp.status_code == 200, (
         f"chat path regression: expected 200, got {resp.status_code}: {resp.text}"
     )
-    assert resp.json() == CHAT_RESPONSE_BODY, (
-        f"chat response body mismatch: {resp.json()}"
-    )
+    assert resp.json() == CHAT_RESPONSE_BODY, f"chat response body mismatch: {resp.json()}"
     assert fake_chat.call_count == 1, (
         f"FakeCompletionUpstream.complete() should have been called once, got {fake_chat.call_count}"
     )

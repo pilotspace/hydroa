@@ -70,9 +70,7 @@ class FakeUpstreamProvider:
     def set_post_json_response(self, status: int, body: dict[str, Any]) -> None:
         self._post_json_response = (status, body)
 
-    async def post_json(
-        self, path: str, payload: dict[str, Any]
-    ) -> tuple[int, dict[str, Any]]:
+    async def post_json(self, path: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         self.post_json_calls.append({"path": path, "payload": dict(payload)})
         return self._post_json_response
 

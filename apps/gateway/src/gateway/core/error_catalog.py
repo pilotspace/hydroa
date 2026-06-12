@@ -153,6 +153,11 @@ PAYLOAD_MESSAGES_REQUIRED = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "Field 'messages' must be a non-empty list"
 )
 
+#: Proxy: ``input`` field missing or empty (embeddings endpoint).
+PAYLOAD_INPUT_REQUIRED = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "Field 'input' is required and non-empty"
+)
+
 # --- keys/api/schemas.py field validators ---
 
 #: ``monthly_budget_usd`` is negative.
