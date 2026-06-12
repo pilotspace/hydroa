@@ -86,6 +86,7 @@ COOLDOWN_RECOVERY_POLL_CEILING_S = 15.0
 
 PG_CONTAINER = "hydroa-e2e-postgres-1"
 GW_CONTAINER = "hydroa-e2e-gateway-1"
+REDIS_CONTAINER = "hydroa-e2e-redis-1"
 
 # Per-run unique ID — embeds in every tenant email and key name (C6 isolation)
 run_id = int(time.time())
@@ -183,6 +184,39 @@ def _wait_gateway_healthy(timeout: float = 60.0) -> None:
     print("  WARN: gateway may not be healthy")
 
 
+def _reset_gateway_state(client_factory_url: str) -> None:
+    """Reset per-process and per-model resilience state before a pass.
+
+    The fault checks intentionally drive the GLOBAL in-process circuit breaker
+    and the Redis cooldown keys; a verify pass must start from a clean slate or
+    residue from a prior pass leaks into the first checks (observed live:
+    breaker left OPEN by a prior run turned C1 into an immediate 502).
+      1. docker restart the gateway (clears the per-replica breaker).
+      2. DEL gateway:cooldown:* in the e2e Redis (the fails window outlives
+         the short test TTLs).
+      3. Poll the TLS edge /health until the gateway is back (<=60 s).
+    """
+    subprocess.run(["docker", "restart", GW_CONTAINER],
+                   capture_output=True, text=True, check=True, timeout=120)
+    subprocess.run(
+        ["docker", "exec", REDIS_CONTAINER, "sh", "-c",
+         "redis-cli --scan --pattern 'gateway:cooldown:*' | xargs -r redis-cli del"],
+        capture_output=True, text=True, check=True, timeout=30,
+    )
+    import httpx as _httpx
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        try:
+            r = _httpx.get(f"{client_factory_url}/health", verify=False, timeout=5)
+            if r.status_code == 200:
+                print("  [reset] gateway restarted, cooldown keys flushed, edge healthy")
+                return
+        except Exception:
+            pass
+        time.sleep(1)
+    raise RuntimeError("gateway did not become healthy within 60s after reset")
+
+
 def _catalog_sync() -> None:
     sync = subprocess.run(
         ["docker", "exec", GW_CONTAINER, "python", "-c",
@@ -195,6 +229,24 @@ def _catalog_sync() -> None:
         print(f"  [catalog] WARN: {sync.stderr[:200]}", file=sys.stderr)
     else:
         print(f"  [catalog] synced {sync.stdout.strip()} models")
+    # Seed the stub models into the catalog: the alias-aware entry check
+    # (model-fallbacks A4) validates every candidate via check_for_tenant +
+    # is_active, and the stub ids are not part of the real OpenRouter sync.
+    seed_sql = (
+        "INSERT INTO models (id,name,context_length,active,created_at,updated_at) VALUES "
+        "('stub/primary','v6 stub primary',8192,true,now(),now()),"
+        "('stub/fallback','v6 stub fallback',8192,true,now(),now()) "
+        "ON CONFLICT (id) DO UPDATE SET active=true;"
+        "INSERT INTO pricing_snapshots (id,model_id,prompt_usd_per_token,completion_usd_per_token,captured_at) VALUES "
+        "(gen_random_uuid(),'stub/primary',0,0,now()),"
+        "(gen_random_uuid(),'stub/fallback',0,0,now());"
+    )
+    subprocess.run(
+        ["docker", "exec", PG_CONTAINER, "psql", "-U", "gateway", "-d", "gateway_e2e",
+         "-tA", "-c", seed_sql],
+        capture_output=True, text=True, check=True, timeout=30,
+    )
+    print("  [catalog] seeded stub/primary + stub/fallback")
 
 
 # ---------------------------------------------------------------------------
@@ -262,13 +314,12 @@ def main() -> None:
     print(f"run_id={run_id}")
 
     # ── TLS client ────────────────────────────────────────────────────────────
-    ca = CA if os.path.exists(CA) else os.path.join("..", "..", CA)
-    tls_verify: str | bool = ca if os.path.exists(ca) else False
-    if not os.path.exists(ca if isinstance(ca, str) else ""):
-        print(f"  [tls] CA cert not found at {ca!r}, falling back to verify=False")
-        tls_verify = False
+    # verify=False: the e2e edge uses a self-signed cert whose CA lacks the
+    # key-usage extension Python 3.14 enforces — same posture as live_v5_verify.
+    client = httpx.Client(verify=False, timeout=90, follow_redirects=True)
 
-    client = httpx.Client(verify=tls_verify, timeout=90, follow_redirects=True)
+    # ── Clean-slate reset (breaker + cooldown residue) ────────────────────────
+    _reset_gateway_state(BASE)
 
     # ── Catalog sync ──────────────────────────────────────────────────────────
     _catalog_sync()
@@ -386,7 +437,7 @@ def main() -> None:
     c2_db_model = ""
     while time.time() < deadline:
         c2_db_model = psql(
-            f"SELECT model FROM usage_records WHERE key_id='{c2_key_id}' LIMIT 1"
+            f"SELECT model_id FROM usage_records WHERE key_id='{c2_key_id}' LIMIT 1"
         )
         if c2_db_model:
             break
@@ -416,10 +467,13 @@ def main() -> None:
 
     # Force 2+ consecutive failures on stub/primary via alias requests
     # (gateway's FallbackModelRouter will attempt stub/primary first each time)
+    # Alias requests: the FallbackModelRouter records gate failures per candidate
+    # on the ALIAS path only (plain ids bypass the gate by frozen contract), and
+    # each request ends in a fallback SUCCESS which resets the global breaker.
     for i in range(3):
         client.post(
             f"{BASE}/v1/chat/completions",
-            json={"model": STUB_PRIMARY,
+            json={"model": V6_ALIAS,
                   "messages": [{"role": "user", "content": f"C3 trip {i}"}],
                   "max_tokens": 8, "stream": False},
             headers={"Authorization": f"Bearer {c3_raw_key}"},
@@ -461,9 +515,12 @@ def main() -> None:
            f"last_state={last_state_rec!r} (expected != 'open')")
 
     # Trigger a probe/completion to exercise the half-open → closed transition
+    # Probe goes through the ALIAS: in half-open the gate admits one probe for
+    # stub/primary; the router attempts it first and a 200 with model==primary
+    # proves the probe path closed the circuit.
     r_c3_probe = client.post(
         f"{BASE}/v1/chat/completions",
-        json={"model": STUB_PRIMARY,
+        json={"model": V6_ALIAS,
               "messages": [{"role": "user", "content": "C3 probe after TTL"}],
               "max_tokens": 8, "stream": False},
         headers={"Authorization": f"Bearer {c3_raw_key}"},
