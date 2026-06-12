@@ -19,6 +19,7 @@ dependencies = [
     "prometheus-client>=0.21",
     "cryptography>=48.0.1",
     "tenacity>=8.2",
+    "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]

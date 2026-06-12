@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "embeddings-endpoint",
+  "active_task": "audio-endpoints",
   "active_milestone": "v7",
   "tasks": {
     "provider-seam": {
@@ -33,6 +33,26 @@
       "created": "2026-06-12T08:56:58+00:00",
       "updated": "2026-06-12T09:28:52+00:00",
       "flag_verified": true
+    },
+    "images-endpoint": {
+      "title": "POST /v1/images/generations \u2014 per-image priced, via provider seam, reuses NonChatGovernance",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v7",
+      "depends_on": [],
+      "created": "2026-06-12T09:30:54+00:00",
+      "updated": "2026-06-12T09:45:25+00:00",
+      "flag_verified": true
+    },
+    "audio-endpoints": {
+      "title": "POST /v1/audio/transcriptions (STT, per-second) + /v1/audio/speech (TTS, per-character streaming), reuses NonChatGovernance",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v7",
+      "depends_on": [],
+      "created": "2026-06-12T09:30:54+00:00",
+      "updated": "2026-06-12T09:45:58+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -46,7 +66,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T09:28:52+00:00",
+  "updated": "2026-06-12T09:45:58+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
