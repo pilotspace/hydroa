@@ -59,16 +59,22 @@ Out: multiple upstream PROVIDERS (Hydroa speaks OpenRouter only — OpenRouter i
 - admin health/routing read surface -> owning task routing-admin
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] retry-policy      depends-on: none            — bounded upstream retries + backoff/jitter + timeout policy; precise retryable set; single-bill invariant
-- [ ] model-fallbacks   depends-on: retry-policy    — model-group aliases with ordered candidates; fall-through on retryable exhaustion; served-model billing
-- [ ] cooldown-circuit  depends-on: retry-policy    — per-model consecutive-failure circuit breaker in Redis; half-open probe; fallback skips cooled candidates
-- [ ] routing-admin     depends-on: model-fallbacks, cooldown-circuit — GET /admin/routing health+config surface; metrics/span events for retry/fallback/cooldown
-- [ ] v6-live-verify    depends-on: all-of-above    — live close harness: fault-injecting upstream stub overlay + scripts/live_v6_verify.py (double-pass rule)
+- [x] retry-policy      depends-on: none            — bounded upstream retries + backoff/jitter + timeout policy; precise retryable set; single-bill invariant
+- [x] model-fallbacks   depends-on: retry-policy    — model-group aliases with ordered candidates; fall-through on retryable exhaustion; served-model billing
+- [x] cooldown-circuit  depends-on: retry-policy    — per-model consecutive-failure circuit breaker in Redis; half-open probe; fallback skips cooled candidates
+- [x] routing-admin     depends-on: model-fallbacks, cooldown-circuit — GET /admin/routing health+config surface; metrics/span events for retry/fallback/cooldown
+- [x] v6-live-verify    depends-on: all-of-above    — live close harness: fault-injecting upstream stub overlay + scripts/live_v6_verify.py (double-pass rule)
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A pre-stream upstream failure (connect error / 5xx / 429) is retried within the configured budget and the client receives a normal 200 with exactly ONE ledger row for the served model (← retry-policy)
-- [ ] A request to a model-group alias whose first candidate is failing is served by the next candidate; the ledger row and usage raw carry the SERVED model id and its pricing snapshot (← model-fallbacks)
-- [ ] A candidate exceeding the consecutive-failure threshold is cooled down (skipped by routing) and recovers via half-open probe after TTL; transitions visible in metrics (← cooldown-circuit)
-- [ ] GET /admin/routing returns per-candidate health/cooldown state, tenant-authenticated, secrets-free (← routing-admin)
-- [ ] Mid-stream failures keep v5 semantics exactly (no retry/fallback after first forwarded byte) — frozen streaming suites stay green (← retry-policy)
-- [ ] All of the above proven LIVE through the TLS edge with the fault-injecting overlay, two consecutive clean passes (← v6-live-verify)
+- [x] A pre-stream upstream failure (connect error / 5xx / 429) is retried within the configured budget and the client receives a normal 200 with exactly ONE ledger row for the served model (← retry-policy)
+- [x] A request to a model-group alias whose first candidate is failing is served by the next candidate; the ledger row and usage raw carry the SERVED model id and its pricing snapshot (← model-fallbacks)
+- [x] A candidate exceeding the consecutive-failure threshold is cooled down (skipped by routing) and recovers via half-open probe after TTL; transitions visible in metrics (← cooldown-circuit)
+- [x] GET /admin/routing returns per-candidate health/cooldown state, tenant-authenticated, secrets-free (← routing-admin)
+- [x] Mid-stream failures keep v5 semantics exactly (no retry/fallback after first forwarded byte) — frozen streaming suites stay green (← retry-policy)
+- [x] All of the above proven LIVE through the TLS edge with the fault-injecting overlay, two consecutive clean passes (← v6-live-verify)
+
+## Close record (2026-06-12)
+All 5 tasks gate-PASS; all 6 exit criteria proven LIVE through the TLS edge
+(scripts/live_v6_verify.py double-pass: run_id 1781238604 + 1781238634, both
+exit 0, 18/18 checks; fault-injecting stub overlay docker-compose.e2e.v6.yml).
+Defaults preserve v5 byte-identically; resilience is opt-in via GATEWAY_ knobs.

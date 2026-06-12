@@ -1,0 +1,60 @@
+{
+  "milestone": {
+    "title": "Routing & resilience",
+    "goal": "",
+    "stage": "mvp",
+    "status": "done",
+    "created": "2026-06-12T00:17:05+00:00",
+    "updated": "2026-06-12T04:32:08+00:00"
+  },
+  "tasks": {
+    "retry-policy": {
+      "title": "Bounded upstream retries + backoff + timeout policy",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v6",
+      "depends_on": [],
+      "created": "2026-06-12T00:18:42+00:00",
+      "updated": "2026-06-12T02:27:33+00:00",
+      "flag_verified": true
+    },
+    "model-fallbacks": {
+      "title": "Model-group aliases with ordered candidate fallbacks; served-model billing",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v6",
+      "depends_on": [],
+      "created": "2026-06-12T02:13:24+00:00",
+      "updated": "2026-06-12T03:22:06+00:00"
+    },
+    "cooldown-circuit": {
+      "title": "Per-model cooldown circuit breaker in Redis with half-open probe",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v6",
+      "depends_on": [],
+      "created": "2026-06-12T02:13:24+00:00",
+      "updated": "2026-06-12T03:41:38+00:00",
+      "flag_verified": true
+    },
+    "routing-admin": {
+      "title": "GET /admin/routing health+config surface for retry/fallback/cooldown",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v6",
+      "depends_on": [],
+      "created": "2026-06-12T03:42:04+00:00",
+      "updated": "2026-06-12T04:03:02+00:00"
+    },
+    "v6-live-verify": {
+      "title": "v6 live close harness \u2014 fault-injecting upstream stub + double-pass verify",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v6",
+      "depends_on": [],
+      "created": "2026-06-12T03:51:46+00:00",
+      "updated": "2026-06-12T04:31:48+00:00"
+    }
+  },
+  "archived_at": "2026-06-12T04:32:08+00:00"
+}
