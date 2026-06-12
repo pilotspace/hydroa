@@ -29,6 +29,11 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.tool_translation import (
+    build_tool_call_delta,
+    dump_tool_arguments,
+    load_tool_arguments,
+)
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 
 if TYPE_CHECKING:
@@ -49,6 +54,61 @@ _KNOWN_ERROR_TYPES = frozenset(
 # ---------------------------------------------------------------------------
 
 
+def _tools_to_anthropic(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate OpenAI tools → Anthropic tools (``parameters`` → ``input_schema``)."""
+    out: list[dict[str, Any]] = []
+    for tool in tools:
+        fn = tool.get("function", {})
+        entry: dict[str, Any] = {"name": fn.get("name", "")}
+        if "description" in fn:
+            entry["description"] = fn["description"]
+        entry["input_schema"] = fn.get("parameters", {})
+        out.append(entry)
+    return out
+
+
+def _tool_choice_to_anthropic(choice: Any) -> dict[str, Any] | None:
+    """Translate OpenAI tool_choice → Anthropic tool_choice.
+
+    "auto"→{type:auto} · "required"→{type:any} · "none"→{type:none} ·
+    {type:function, function:{name}}→{type:tool, name}. Unknown → None (omit).
+    """
+    if choice == "auto":
+        return {"type": "auto"}
+    if choice == "required":
+        return {"type": "any"}
+    if choice == "none":
+        return {"type": "none"}
+    if isinstance(choice, dict) and choice.get("type") == "function":
+        name = choice.get("function", {}).get("name", "")
+        return {"type": "tool", "name": name}
+    return None
+
+
+def _assistant_tool_calls_to_content(msg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build an Anthropic assistant content-block list from an OpenAI assistant message.
+
+    Any text ``content`` becomes a leading ``{type:"text",text}`` block; each entry in
+    ``tool_calls`` becomes a ``{type:"tool_use", id, name, input}`` block (``arguments``
+    JSON string → ``input`` object).
+    """
+    blocks: list[dict[str, Any]] = []
+    text = msg.get("content")
+    if isinstance(text, str) and text:
+        blocks.append({"type": "text", "text": text})
+    for call in msg.get("tool_calls", []):
+        fn = call.get("function", {})
+        blocks.append(
+            {
+                "type": "tool_use",
+                "id": call.get("id", ""),
+                "name": fn.get("name", ""),
+                "input": load_tool_arguments(fn.get("arguments", "")),
+            }
+        )
+    return blocks
+
+
 def _openai_to_anthropic_request(
     payload: dict[str, Any],
     *,
@@ -58,23 +118,59 @@ def _openai_to_anthropic_request(
 
     - role=="system" messages are lifted to the top-level ``system`` string;
       multiple system messages are joined with "\\n\\n".
+    - An assistant message carrying ``tool_calls`` becomes an assistant message whose
+      ``content`` is a ``tool_use`` block list (v10).
+    - A run of consecutive ``role:"tool"`` messages collapses into ONE ``user`` message
+      whose ``content`` is a ``tool_result`` block list (v10).
     - Remaining messages map 1:1 to ``messages:[{role, content}]``.
     - ``max_tokens``: uses the request value when present, else ``default_max_tokens``
       (Anthropic requires this field; OpenAI makes it optional).
     - Pass-through when present: ``temperature``, ``top_p``.
     - OpenAI ``stop`` (str | list) → Anthropic ``stop_sequences`` (list).
+    - ``tools`` → Anthropic ``tools`` (input_schema); ``tool_choice`` mapped (v10).
     - ``model`` passes through verbatim.
     - ``stream`` is NOT included by this helper; the caller adds it when needed.
+
+    Raises ValueError("tool_call_id_required") when a ``role:"tool"`` message lacks
+    ``tool_call_id`` (no correlation id for the tool_result block).
     """
     messages: list[dict[str, Any]] = payload.get("messages", [])
 
     system_parts: list[str] = []
     non_system: list[dict[str, Any]] = []
-    for msg in messages:
-        if msg.get("role") == "system":
+    i = 0
+    n = len(messages)
+    while i < n:
+        msg = messages[i]
+        role = msg.get("role")
+        if role == "system":
             system_parts.append(str(msg.get("content", "")))
+            i += 1
+        elif role == "tool":
+            # Collapse a run of consecutive tool messages into ONE user message.
+            results: list[dict[str, Any]] = []
+            while i < n and messages[i].get("role") == "tool":
+                tmsg = messages[i]
+                tool_call_id = tmsg.get("tool_call_id")
+                if not tool_call_id:
+                    raise ValueError("tool_call_id_required")
+                results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_call_id,
+                        "content": tmsg.get("content", ""),
+                    }
+                )
+                i += 1
+            non_system.append({"role": "user", "content": results})
+        elif role == "assistant" and msg.get("tool_calls"):
+            non_system.append(
+                {"role": "assistant", "content": _assistant_tool_calls_to_content(msg)}
+            )
+            i += 1
         else:
-            non_system.append({"role": msg["role"], "content": msg.get("content", "")})
+            non_system.append({"role": role, "content": msg.get("content", "")})
+            i += 1
 
     result: dict[str, Any] = {
         "model": payload["model"],
@@ -93,6 +189,13 @@ def _openai_to_anthropic_request(
     stop = payload.get("stop")
     if stop is not None:
         result["stop_sequences"] = [stop] if isinstance(stop, str) else list(stop)
+
+    tools = payload.get("tools")
+    if tools:
+        result["tools"] = _tools_to_anthropic(tools)
+    tool_choice = _tool_choice_to_anthropic(payload.get("tool_choice"))
+    if tool_choice is not None:
+        result["tool_choice"] = tool_choice
 
     return result
 
@@ -118,15 +221,39 @@ def _map_finish_reason(stop_reason: str | None) -> str:
 def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
     """Translate an Anthropic 200 Messages response → OpenAI chat.completion body.
 
-    Content: concatenate the ``text`` of every content block with type=="text".
+    Content: concatenate the ``text`` of every ``text`` content block. ``tool_use``
+    blocks (v10) become OpenAI ``message.tool_calls`` (``input`` object → ``arguments``
+    JSON string). When only ``tool_use`` blocks are present, ``message.content`` is null.
     Usage: input_tokens→prompt_tokens, output_tokens→completion_tokens.
     """
     content_blocks: list[dict[str, Any]] = body.get("content", [])
     text = "".join(b.get("text", "") for b in content_blocks if b.get("type") == "text")
 
+    tool_calls: list[dict[str, Any]] = []
+    for block in content_blocks:
+        if block.get("type") == "tool_use":
+            tool_calls.append(
+                {
+                    "id": block.get("id", ""),
+                    "type": "function",
+                    "function": {
+                        "name": block.get("name", ""),
+                        "arguments": dump_tool_arguments(block.get("input", {})),
+                    },
+                }
+            )
+
     usage_raw: dict[str, Any] = body.get("usage", {})
     prompt_tokens: int = usage_raw.get("input_tokens", 0)
     completion_tokens: int = usage_raw.get("output_tokens", 0)
+
+    # content is null when the assistant returned only tool calls (OpenAI convention)
+    message: dict[str, Any] = {
+        "role": "assistant",
+        "content": text if text else (None if tool_calls else ""),
+    }
+    if tool_calls:
+        message["tool_calls"] = tool_calls
 
     return {
         "id": body.get("id", ""),
@@ -136,7 +263,7 @@ def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": text},
+                "message": message,
                 "finish_reason": _map_finish_reason(body.get("stop_reason")),
             }
         ],
@@ -182,10 +309,12 @@ def _translate_anthropic_sse(
 
     Events consumed:
       message_start         → first chunk ``delta:{role:"assistant"}``; capture input_tokens.
-      content_block_delta   → text_delta → chunk ``delta:{content:<text>}``.
+      content_block_start   → tool_use block → first ``delta:{tool_calls:[{id,name}]}`` (v10).
+      content_block_delta   → text_delta → chunk ``delta:{content:<text>}``;
+                              input_json_delta → ``delta:{tool_calls:[{arguments}]}`` (v10).
       message_delta         → capture stop_reason + output_tokens.
       message_stop          → emit terminal frame + [DONE].
-      ping / content_block_start / content_block_stop / unknown → ignored.
+      ping / content_block_stop / unknown → ignored.
     """
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -194,6 +323,10 @@ def _translate_anthropic_sse(
     chunk_model: str = ""
     created: int = int(time.time())
     terminal_emitted: bool = False
+    # v10 tool streaming: map each Anthropic content-block index → its OpenAI
+    # tool_calls index (counts only tool_use blocks, text blocks excluded).
+    block_to_tc: dict[int, int] = {}
+    tc_count: int = 0
 
     def _make_chunk(delta: dict[str, Any], fr: str | None) -> dict[str, Any]:
         return {
@@ -221,12 +354,33 @@ def _translate_anthropic_sse(
             chunk = _make_chunk({"role": "assistant"}, None)
             yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
+        elif event_name == "content_block_start":
+            block = data.get("content_block", {})
+            if block.get("type") == "tool_use":
+                block_index = data.get("index", 0)
+                tc_index = tc_count
+                block_to_tc[block_index] = tc_index
+                tc_count += 1
+                frag = build_tool_call_delta(
+                    tc_index, id=block.get("id", ""), name=block.get("name", "")
+                )
+                chunk = _make_chunk({"tool_calls": [frag]}, None)
+                yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+
         elif event_name == "content_block_delta":
             delta = data.get("delta", {})
             if delta.get("type") == "text_delta":
                 text = delta.get("text", "")
                 chunk = _make_chunk({"content": text}, None)
                 yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+            elif delta.get("type") == "input_json_delta":
+                tc_index = block_to_tc.get(data.get("index", 0))
+                if tc_index is not None:
+                    frag = build_tool_call_delta(
+                        tc_index, arguments_fragment=delta.get("partial_json", "")
+                    )
+                    chunk = _make_chunk({"tool_calls": [frag]}, None)
+                    yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
         elif event_name == "message_delta":
             delta = data.get("delta", {})
