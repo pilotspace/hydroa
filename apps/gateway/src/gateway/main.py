@@ -39,6 +39,7 @@ from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import UpstreamProvider
+from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
 from gateway.proxy.infrastructure.catalog_provider_resolver import CatalogProviderResolver
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
@@ -374,6 +375,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Chat adapter map — "openrouter" is always present; additional providers are
     # added by later tasks (anthropic-provider, gemini-provider) when their key is set.
     _chat_adapters: dict[str, object] = {"openrouter": _openrouter_upstream}
+
+    # Anthropic adapter — registered only when the api key is non-empty.
+    # Empty key → adapter absent → models with provider="anthropic" dispatch-fallback
+    # to openrouter (the frozen fail-safe). NEVER constructs with an empty key
+    # (would send x-api-key:"" to Anthropic — v7 empty-bearer lesson).
+    if settings.anthropic_api_key:
+        _chat_adapters["anthropic"] = AnthropicCompletionUpstream(
+            api_key=settings.anthropic_api_key,
+            base_url=settings.anthropic_base_url,
+            anthropic_version=settings.anthropic_version,
+            default_max_tokens=settings.anthropic_default_max_tokens,
+            metrics_registry=app.state.metrics_registry,
+        )
+
+    # Public seam for wiring tests: exposes the adapter map so tests can assert
+    # which adapters are registered (mirrors the openrouter_completion_upstream seam).
+    app.state.chat_adapters = _chat_adapters
 
     # Dispatch wrapper — implements CompletionUpstream; selection only.
     app.state.completion_upstream = ProviderAwareCompletionUpstream(

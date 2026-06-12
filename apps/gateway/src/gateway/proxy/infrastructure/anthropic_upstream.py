@@ -1,0 +1,435 @@
+"""Infrastructure adapter: AnthropicCompletionUpstream.
+
+Translates OpenAI chat-completions ⇄ Anthropic Messages API for both
+non-streaming (complete) and streaming SSE (stream) paths.
+
+Wire protocol:
+  POST {base_url}/messages
+  Headers: x-api-key: <key>  anthropic-version: <version>  content-type: application/json
+  NEVER an Authorization Bearer header (Anthropic uses x-api-key).
+
+Resilience mirrors OpenRouterCompletionUpstream:
+  - httpx.AsyncClient with per-timeout knobs
+  - Per-instance CircuitBreaker (5 consecutive failures → 30 s open)
+  - 5xx / transport errors → UpstreamUnavailableError (gateway → 502 / v8 fallback)
+  - 4xx → pass through as OpenAI-shaped error body; no exception raised
+
+Security:
+  The Anthropic api key is a SECRET — NEVER logged, echoed, committed, or placed in
+  metric labels / span attributes / exception messages.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from collections.abc import AsyncIterator, Iterable
+from typing import TYPE_CHECKING, Any
+
+import httpx
+
+from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+
+if TYPE_CHECKING:
+    from gateway.observability.metrics import MetricsRegistry
+
+_CONNECT_TIMEOUT = 10.0
+_NON_STREAM_TIMEOUT = 120.0
+_STREAM_READ_TIMEOUT = 300.0
+
+# Anthropic error types that map through verbatim
+_KNOWN_ERROR_TYPES = frozenset(
+    {"invalid_request_error", "authentication_error", "rate_limit_error"}
+)
+
+
+# ---------------------------------------------------------------------------
+# Pure translation helpers (module-level, no I/O — unit-tested directly)
+# ---------------------------------------------------------------------------
+
+
+def _openai_to_anthropic_request(
+    payload: dict[str, Any],
+    *,
+    default_max_tokens: int,
+) -> dict[str, Any]:
+    """Translate an OpenAI chat-completions request body → Anthropic Messages body.
+
+    - role=="system" messages are lifted to the top-level ``system`` string;
+      multiple system messages are joined with "\\n\\n".
+    - Remaining messages map 1:1 to ``messages:[{role, content}]``.
+    - ``max_tokens``: uses the request value when present, else ``default_max_tokens``
+      (Anthropic requires this field; OpenAI makes it optional).
+    - Pass-through when present: ``temperature``, ``top_p``.
+    - OpenAI ``stop`` (str | list) → Anthropic ``stop_sequences`` (list).
+    - ``model`` passes through verbatim.
+    - ``stream`` is NOT included by this helper; the caller adds it when needed.
+    """
+    messages: list[dict[str, Any]] = payload.get("messages", [])
+
+    system_parts: list[str] = []
+    non_system: list[dict[str, Any]] = []
+    for msg in messages:
+        if msg.get("role") == "system":
+            system_parts.append(str(msg.get("content", "")))
+        else:
+            non_system.append({"role": msg["role"], "content": msg.get("content", "")})
+
+    result: dict[str, Any] = {
+        "model": payload["model"],
+        "messages": non_system,
+        "max_tokens": payload.get("max_tokens", default_max_tokens),
+    }
+
+    if system_parts:
+        result["system"] = "\n\n".join(system_parts)
+
+    if "temperature" in payload:
+        result["temperature"] = payload["temperature"]
+    if "top_p" in payload:
+        result["top_p"] = payload["top_p"]
+
+    stop = payload.get("stop")
+    if stop is not None:
+        result["stop_sequences"] = [stop] if isinstance(stop, str) else list(stop)
+
+    return result
+
+
+def _map_finish_reason(stop_reason: str | None) -> str:
+    """Map Anthropic stop_reason → OpenAI finish_reason.
+
+    end_turn        → "stop"
+    max_tokens      → "length"
+    stop_sequence   → "stop"
+    tool_use        → "tool_calls"
+    None / unknown  → "stop"
+    """
+    mapping = {
+        "end_turn": "stop",
+        "max_tokens": "length",
+        "stop_sequence": "stop",
+        "tool_use": "tool_calls",
+    }
+    return mapping.get(stop_reason or "", "stop")  # type: ignore[arg-type]
+
+
+def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
+    """Translate an Anthropic 200 Messages response → OpenAI chat.completion body.
+
+    Content: concatenate the ``text`` of every content block with type=="text".
+    Usage: input_tokens→prompt_tokens, output_tokens→completion_tokens.
+    """
+    content_blocks: list[dict[str, Any]] = body.get("content", [])
+    text = "".join(b.get("text", "") for b in content_blocks if b.get("type") == "text")
+
+    usage_raw: dict[str, Any] = body.get("usage", {})
+    prompt_tokens: int = usage_raw.get("input_tokens", 0)
+    completion_tokens: int = usage_raw.get("output_tokens", 0)
+
+    return {
+        "id": body.get("id", ""),
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": body.get("model", ""),
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": text},
+                "finish_reason": _map_finish_reason(body.get("stop_reason")),
+            }
+        ],
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+    }
+
+
+def _anthropic_error_to_openai(body: dict[str, Any]) -> dict[str, Any]:
+    """Translate an Anthropic error envelope → OpenAI error body.
+
+    Anthropic shape: ``{"type":"error","error":{"type":<t>,"message":<m>}}``
+    OpenAI shape:    ``{"error":{"message":<m>,"type":<mapped>,"code":<mapped>}}``
+
+    Known types pass through verbatim; others become "upstream_error".
+    Defensive: missing fields degrade gracefully.
+    """
+    err_obj: dict[str, Any] = body.get("error", {}) if isinstance(body.get("error"), dict) else {}
+    raw_type: str = err_obj.get("type", "") if isinstance(err_obj.get("type"), str) else ""
+    message: str = err_obj.get("message", "") if isinstance(err_obj.get("message"), str) else ""
+
+    mapped_type = raw_type if raw_type in _KNOWN_ERROR_TYPES else "upstream_error"
+
+    return {
+        "error": {
+            "message": message,
+            "type": mapped_type,
+            "code": mapped_type,
+        }
+    }
+
+
+def _translate_anthropic_sse(
+    events: Iterable[tuple[str, dict[str, Any]]],
+) -> Iterable[bytes]:
+    """Translate an iterable of (event_name, data_obj) pairs → OpenAI SSE chunk bytes.
+
+    Yields ``b"data: " + json_chunk + b"\\n\\n"`` for each meaningful event, then
+    a terminal frame carrying ``finish_reason`` + ``usage``, then ``b"data: [DONE]\\n\\n"``.
+
+    Events consumed:
+      message_start         → first chunk ``delta:{role:"assistant"}``; capture input_tokens.
+      content_block_delta   → text_delta → chunk ``delta:{content:<text>}``.
+      message_delta         → capture stop_reason + output_tokens.
+      message_stop          → emit terminal frame + [DONE].
+      ping / content_block_start / content_block_stop / unknown → ignored.
+    """
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    finish_reason: str = "stop"
+    chunk_id: str = ""
+    chunk_model: str = ""
+    created: int = int(time.time())
+    terminal_emitted: bool = False
+
+    def _make_chunk(delta: dict[str, Any], fr: str | None) -> dict[str, Any]:
+        return {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": chunk_model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": delta,
+                    "finish_reason": fr,
+                }
+            ],
+        }
+
+    for event_name, data in events:
+        if event_name == "message_start":
+            msg = data.get("message", {})
+            chunk_id = msg.get("id", "")
+            chunk_model = msg.get("model", "")
+            usage = msg.get("usage", {})
+            prompt_tokens = usage.get("input_tokens", 0)
+            # Yield first role chunk
+            chunk = _make_chunk({"role": "assistant"}, None)
+            yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+
+        elif event_name == "content_block_delta":
+            delta = data.get("delta", {})
+            if delta.get("type") == "text_delta":
+                text = delta.get("text", "")
+                chunk = _make_chunk({"content": text}, None)
+                yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+
+        elif event_name == "message_delta":
+            delta = data.get("delta", {})
+            finish_reason = _map_finish_reason(delta.get("stop_reason"))
+            usage = data.get("usage", {})
+            completion_tokens = usage.get("output_tokens", completion_tokens)
+
+        elif event_name == "message_stop":
+            # Emit terminal frame
+            terminal_chunk: dict[str, Any] = _make_chunk({}, finish_reason)
+            terminal_chunk["usage"] = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            }
+            yield b"data: " + json.dumps(terminal_chunk).encode() + b"\n\n"
+            yield b"data: [DONE]\n\n"
+            terminal_emitted = True
+
+        # ping / content_block_start / content_block_stop / unknown → ignored
+
+    # If the stream ends without a message_stop event, emit the terminal frame anyway
+    if not terminal_emitted:
+        terminal_chunk = _make_chunk({}, finish_reason)
+        terminal_chunk["usage"] = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        }
+        yield b"data: " + json.dumps(terminal_chunk).encode() + b"\n\n"
+        yield b"data: [DONE]\n\n"
+
+
+# ---------------------------------------------------------------------------
+# Adapter class
+# ---------------------------------------------------------------------------
+
+
+class AnthropicCompletionUpstream:
+    """Forwards chat completions to the Anthropic Messages API.
+
+    Implements the CompletionUpstream Protocol (complete + stream).
+    Translates OpenAI chat-completions ⇄ Anthropic Messages API shapes.
+
+    A single instance is shared for the lifetime of the application.
+    The circuit breaker state is per-instance (per-replica).
+
+    SECURITY: the api_key is NEVER logged, echoed, or placed in any
+    metric label / span attribute / exception message.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str = "https://api.anthropic.com/v1",
+        anthropic_version: str = "2023-06-01",
+        default_max_tokens: int = 4096,
+        metrics_registry: MetricsRegistry | None = None,
+    ) -> None:
+        # Stored privately — never exposed in logs/errors/metrics
+        self._api_key = api_key
+        self._version = anthropic_version
+        self._default_max_tokens = default_max_tokens
+        self._metrics_registry = metrics_registry
+
+        self._breaker = CircuitBreaker()
+        self._client = httpx.AsyncClient(
+            base_url=base_url,
+            timeout=httpx.Timeout(
+                connect=_CONNECT_TIMEOUT,
+                read=_NON_STREAM_TIMEOUT,
+                write=_NON_STREAM_TIMEOUT,
+                pool=_CONNECT_TIMEOUT,
+            ),
+        )
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Build Anthropic auth headers. NEVER includes Authorization Bearer."""
+        return {
+            "x-api-key": self._api_key,
+            "anthropic-version": self._version,
+            "content-type": "application/json",
+        }
+
+    async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        """Forward a non-streaming chat request to the Anthropic Messages API.
+
+        Returns (status_code, openai_shaped_body).
+        - 200  → translated OpenAI chat.completion
+        - 4xx  → OpenAI error body (no exception; gateway forwards the status)
+        - 5xx  → UpstreamUnavailableError
+        - transport error → UpstreamUnavailableError
+        """
+        self._breaker.guard()
+
+        anthropic_body = _openai_to_anthropic_request(
+            payload,
+            default_max_tokens=self._default_max_tokens,
+        )
+
+        try:
+            resp = await self._client.post(
+                "/messages",
+                json=anthropic_body,
+                headers=self._auth_headers(),
+            )
+        except (
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.PoolTimeout,
+            httpx.ReadTimeout,
+            httpx.WriteTimeout,
+            httpx.NetworkError,
+        ) as exc:
+            self._breaker.on_upstream_error()
+            raise UpstreamUnavailableError(str(exc)) from exc
+
+        status = resp.status_code
+
+        if status >= 500:
+            self._breaker.on_upstream_error()
+            raise UpstreamUnavailableError(f"Upstream returned {status}")
+
+        self._breaker.record_success()
+
+        if status >= 400:
+            return status, _anthropic_error_to_openai(resp.json())
+
+        return 200, _anthropic_to_openai(resp.json())
+
+    def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
+        """Return an async generator that yields OpenAI SSE chunk bytes.
+
+        The circuit breaker is checked before the stream opens.
+        Anthropic SSE events are collected from the wire stream, then the complete
+        event list is fed to _translate_anthropic_sse (stateful helper that needs the
+        full sequence to emit the terminal usage frame correctly). The translated
+        OpenAI chunk bytes are yielded in order.
+        """
+        self._breaker.guard()
+
+        async def _gen() -> AsyncIterator[bytes]:
+            anthropic_body = {
+                **_openai_to_anthropic_request(
+                    payload,
+                    default_max_tokens=self._default_max_tokens,
+                ),
+                "stream": True,
+            }
+
+            try:
+                async with self._client.stream(
+                    "POST",
+                    "/messages",
+                    json=anthropic_body,
+                    headers=self._auth_headers(),
+                    timeout=httpx.Timeout(
+                        connect=_CONNECT_TIMEOUT,
+                        read=_STREAM_READ_TIMEOUT,
+                        write=_NON_STREAM_TIMEOUT,
+                        pool=_CONNECT_TIMEOUT,
+                    ),
+                ) as response:
+                    if response.status_code >= 500:
+                        self._breaker.on_upstream_error()
+                        raise UpstreamUnavailableError(
+                            f"Upstream returned {response.status_code} on stream"
+                        )
+                    self._breaker.record_success()
+
+                    # Collect Anthropic SSE events incrementally line-by-line.
+                    # _translate_anthropic_sse is stateful (accumulates prompt/completion
+                    # tokens across events) so we buffer the complete sequence and pass
+                    # it once to the translator for correct terminal-frame generation.
+                    events: list[tuple[str, dict[str, Any]]] = []
+                    current_event: str = ""
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if line.startswith("event:"):
+                            current_event = line[len("event:") :].strip()
+                        elif line.startswith("data:"):
+                            raw = line[len("data:") :].strip()
+                            if not raw or raw == "[DONE]":
+                                continue
+                            try:
+                                data_obj: dict[str, Any] = json.loads(raw)
+                            except (json.JSONDecodeError, ValueError):
+                                continue
+                            # Use event_type from the data object when event: line absent
+                            event_name = current_event or data_obj.get("type", "")
+                            events.append((event_name, data_obj))
+                            current_event = ""
+                        elif line == "":
+                            # blank line = SSE frame boundary; reset pending event name
+                            current_event = ""
+
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                self._breaker.on_upstream_error()
+                raise UpstreamUnavailableError(str(exc)) from exc
+
+            # Translate the buffered event sequence → OpenAI SSE chunk bytes
+            for chunk in _translate_anthropic_sse(events):
+                yield chunk
+
+        return _gen()

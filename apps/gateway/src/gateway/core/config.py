@@ -147,6 +147,9 @@ class Settings(BaseSettings):
     anthropic_base_url: str = "https://api.anthropic.com/v1"
     # GATEWAY_ANTHROPIC_VERSION — Anthropic-Version header value.
     anthropic_version: str = "2023-06-01"
+    # GATEWAY_ANTHROPIC_DEFAULT_MAX_TOKENS — default max_tokens for Anthropic requests
+    # when the OpenAI caller omits max_tokens (Anthropic requires this field).
+    anthropic_default_max_tokens: int = 4096
 
     # ── Google direct provider (provider-chat-dispatch task) ──────────────────
     # GATEWAY_GOOGLE_API_KEY — secret; empty = Google provider absent.
