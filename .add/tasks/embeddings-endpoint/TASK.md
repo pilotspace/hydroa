@@ -746,12 +746,12 @@ Spec delta for the next loop:
     in governance.py AND CompletionUseCase._enforce_governance in use_cases.py in the same PR
 
 ### Competency deltas
-- [SDD · open] NonChatGovernance drops the chat M11 soft-budget-alert seam on the non-chat path
+- [SDD · folded] NonChatGovernance drops the chat M11 soft-budget-alert seam on the non-chat path
   (HARD 402 is preserved; only the advisory fire-and-forget alert is absent). Evidence: frozen
   [contract] flag + governance.py `_check_per_key_budget` omits `persist_soft_budget_alert`.
   Soft-budget-alert parity for embeddings/images/audio should be revisited at v7 close (a future
   slice could add an alert seam shared by chat + non-chat, or accept the gap explicitly).
-- [ADD · open] The chat-untouched invariant has no compile-time enforcement — it rests on EM11 +
+- [ADD · folded] The chat-untouched invariant has no compile-time enforcement — it rests on EM11 +
   a manual `git diff --stat` of the three INVIOLABLE files. Evidence: §3 INVIOLABLE note + the
   verify WIRING check. A future improvement: an ArchUnit-style test asserting non-chat modules
   never import CompletionUseCase's private governance methods.

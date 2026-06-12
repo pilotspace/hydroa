@@ -695,9 +695,9 @@ Spec delta for the next loop:
     in governance.py AND CompletionUseCase._enforce_governance in use_cases.py in the same PR
 
 ### Competency deltas
-- [SDD · open] NonChatGovernance drops the chat M11 soft-budget-alert seam on the non-chat path
+- [SDD · folded] NonChatGovernance drops the chat M11 soft-budget-alert seam on the non-chat path
   (inherited from embeddings-endpoint disposition 1). HARD 402 is preserved; advisory alert absent.
   Soft-budget-alert parity for images should be revisited at v7 close together with embeddings/audio.
-- [ADD · open] The billed-quantity fallback policy (actual-returned vs requested-n) is a business
+- [ADD · folded] The billed-quantity fallback policy (actual-returned vs requested-n) is a business
   decision not a technical one. The [contract] flag at §3 top ensures it is surfaced before freeze.
 </output>

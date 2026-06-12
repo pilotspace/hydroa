@@ -349,11 +349,11 @@ an empty-but-configured upstream key would convert a runtime 500 into a clear
 boot-time error.
 
 ### Competency deltas
-- [ADD · open] live-verify e2e closes need their upstream creds self-contained in
+- [ADD · folded] live-verify e2e closes need their upstream creds self-contained in
   the overlay, not sourced from operator shell env — the v7 stack came up with an
   empty GATEWAY_OPENROUTER_API_KEY and C5 failed opaquely (evidence: C5 500
   "Illegal header value b'Bearer '"; fixed by baking a placeholder into the v7
   overlay). Consider auditing v4–v6 overlays for the same shell-env dependency.
-- [SDD · open] an empty-but-present upstream key produces a client-side 500 with
+- [SDD · folded] an empty-but-present upstream key produces a client-side 500 with
   no actionable message; the spec should require a boot-time guard that rejects a
   configured-yet-empty upstream key (evidence: the only C5 failure mode this loop).

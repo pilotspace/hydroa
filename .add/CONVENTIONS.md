@@ -129,6 +129,27 @@ Build/harness conventions folded from v1 (2026-06-10):
           interface before the consuming task builds against it — never two divergent
           duck-typed copies (evidence: ModelHealthGate owned by model-fallbacks, the
           Redis gate in cooldown-circuit built to the frozen shape)
+        Build/harness conventions folded from v7 (2026-06-12):
+        - a "module X stays byte-identical" invariant has no compile-time enforcement —
+          it rests on a behavioral test (EM11) plus a manual `git diff --stat` of the
+          named INVIOLABLE files at the verify WIRING check; downstream task contracts
+          must spell out the boundary as an explicit "do NOT import/use <private symbol>"
+          constraint. Future improvement: an ArchUnit-style test asserting the forbidden
+          import (evidence: chat-untouched invariant across provider-seam + the 3 v7
+          non-chat endpoints, enforced only by EM11 + git diff this milestone)
+        - a billed-quantity / fallback policy (e.g. bill actual-returned vs requested-n)
+          is a BUSINESS decision, not a technical default — it must surface as a
+          [contract] flag at §3 top and be resolved at freeze, never silently coded
+          (evidence: images-endpoint dropped the `or requested-n` fallback at freeze to
+          avoid over-billing failed/empty responses; billed exactly len(data))
+        - live-verify e2e closes must SELF-CONTAIN their upstream credentials in the
+          compose overlay (a non-secret placeholder), never source them from operator
+          shell env — an empty-but-interpolated key (`${VAR:-}`) yields a malformed
+          `Authorization: Bearer ` header that httpx/h11 reject client-side
+          (LocalProtocolError) before egress, surfacing as an opaque upstream 500
+          (evidence: v7 C5 came up with an empty GATEWAY_OPENROUTER_API_KEY; fixed by
+          baking stub-openrouter-key into docker-compose.e2e.v7.yml; audit v4–v6 overlays
+          for the same shell-env dependency)
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

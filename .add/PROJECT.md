@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-12 · foundation-version: 7
+slug: ai-proxy · stage: production · updated: 2026-06-12 · foundation-version: 8
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -28,6 +28,13 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     the freeze flag caught this spec/GLOSSARY conflict before any code existed
   - Domain ports are `typing.Protocol`s with fakes injected via `app.state` — decouples
     every test from real HTTP/IO (model-catalog: 15 tests, zero network calls)
+- Folded from v7 (2026-06-12):
+  - Modality (chat·embedding·image·audio_stt·audio_tts) is a domain concept stored as
+    TEXT with a `Literal` type alias, NOT a DB ENUM — the value set is bounded but may
+    grow (e.g. "video"), and TEXT+Literal avoids `ALTER TYPE` migrations on each
+    addition while keeping compile-time exhaustiveness. Provider (openrouter·openai) is
+    catalog metadata, never client-specified — the provider-selection seam routes each
+    modality to its direct provider by (modality, provider)
 
 ## Spec / Living Document (SDD) — what we are building, now
 
@@ -56,6 +63,25 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     state table in §3 — an in-process enum (CLOSED/OPEN/HALF_OPEN) has no direct
     multi-key Redis analogue; the half-open window needs its own marker key to be
     distinguishable from CLOSED (the defect a 5-row state table surfaced pre-build)
+- Folded from v7 (2026-06-12):
+  - Settled: non-chat billing is unit-dispatched by a `pricing_unit` discriminator
+    (per_token·per_image·per_second·per_character) + `quantity` on the ledger; the bill
+    fires exactly once per accepted request against the SERVED model (single-bill
+    preserved per modality). Image quantity = entries upstream RETURNED (never
+    requested-n — no over-bill on failed/empty)
+  - Settled: STT duration source depends on the caller requesting `verbose_json`
+    response_format — absent a duration field, cost is $0 with a WARN (never a guess);
+    accurate per_second billing requires the explicit format
+  - Settled: TTS bills at-start (per_character on len(input)) the moment a 200 is
+    committed, BEFORE streaming bytes — customers are charged for stream failures after
+    the 200, matching OpenAI's billing model (no post-stream reconciliation)
+  - OPEN: the chat M11 soft-budget-alert (advisory, fire-and-forget) is DROPPED on the
+    non-chat path — `NonChatGovernance` preserves the HARD 402 but omits the alert for
+    embeddings/images/audio. Revisit: add a shared alert seam used by chat + non-chat,
+    or accept the gap explicitly (3 inherited deltas this milestone)
+  - OPEN: an empty-but-present upstream API key produces an opaque client-side 500 with
+    no actionable message; the spec should require a boot-time guard that rejects a
+    configured-yet-empty upstream key (evidence: the only v7 C5 failure mode)
 
 ## Users (UDD) — UI/UX: design before code
 
@@ -133,3 +159,12 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-12 | risk=high tasks carry an explicit retryable-classification TABLE in §1 (fold: ADD/retry-policy) | the table format is load-bearing — it prevents ambiguous build-phase interpretation of which failures retry | folded v6 |
 | 2026-06-12 | A [contract]-flag spec alone cannot resolve becomes a BUILD constraint with an acceptance criterion, not just a §3 flag (fold: ADD/cooldown-circuit) | the concurrent-probe race needs the TTL relationship (probe duration < probe TTL) enforced, not merely noted | folded v6 |
 | 2026-06-12 | Parallel tasks sharing a protocol: the OWNING task defines + freezes the interface before the consuming task builds (fold: ADD/model-fallbacks) | ModelHealthGate owned by model-fallbacks, consumed by cooldown-circuit — frozen-first avoids divergent duck-typed copies | folded v6 |
+| 2026-06-12 | Modality stored as TEXT + Literal alias (not DB ENUM); provider is catalog metadata, never client-specified (fold: DDD/provider-seam) | bounded-but-growable value set avoids ALTER TYPE per addition while keeping compile-time exhaustiveness; the seam routes (modality, provider) → direct provider | folded v7 |
+| 2026-06-12 | Non-chat billing is unit-dispatched by a pricing_unit discriminator + quantity, billed once per accepted request against the served model; image quantity = entries upstream RETURNED (fold: SDD/pricing-units + images-endpoint) | per_token/per_image/per_second/per_character need distinct math; billing requested-n over-bills failed/empty responses | folded v7 |
+| 2026-06-12 | STT per_second billing requires the caller request verbose_json; absent duration → $0 + WARN, never a guess (fold: SDD/audio-endpoints) | duration is only present in verbose_json; guessing would misbill | folded v7 |
+| 2026-06-12 | TTS bills at-start (per_character on len(input)) the moment a 200 is committed, before streaming bytes (fold: SDD/audio-endpoints) | matches OpenAI's model — customers charged for post-200 stream failures; no post-stream reconciliation | folded v7 |
+| 2026-06-12 | OPEN: chat M11 soft-budget-alert is dropped on the non-chat path (HARD 402 preserved); revisit a shared alert seam or accept the gap (fold: SDD/embeddings+images+audio, 3 inherited) | NonChatGovernance is a standalone re-impl of the chat checks; the advisory alert was not ported | folded v7 (open follow-up) |
+| 2026-06-12 | OPEN: spec should require a boot-time guard rejecting a configured-yet-empty upstream key (fold: SDD/v7-live-verify) | an empty key yields a malformed Bearer header → opaque client-side 500; a startup guard converts it to a clear boot error | folded v7 (open follow-up) |
+| 2026-06-12 | A "module stays byte-identical" invariant has no compile-time enforcement — it rests on a behavioral test + manual git diff of named INVIOLABLE files; downstream contracts spell out the forbidden import (fold: ADD/embeddings+provider-seam) | future: an ArchUnit-style import test; chat-untouched held this milestone via EM11 + git diff | folded v7 |
+| 2026-06-12 | Billed-quantity / fallback policy is a BUSINESS decision surfaced as a [contract] flag at §3 top, resolved at freeze, never silently coded (fold: ADD/images-endpoint) | images dropped the `or requested-n` fallback at freeze to bill exactly len(data) | folded v7 |
+| 2026-06-12 | Live-verify e2e closes self-contain upstream creds (non-secret placeholder) in the compose overlay, never operator shell env (fold: ADD/v7-live-verify) | empty `${VAR:-}` interpolation → malformed Bearer rejected by httpx/h11 before egress → opaque 500 (v7 C5); audit v4–v6 overlays | folded v7 |

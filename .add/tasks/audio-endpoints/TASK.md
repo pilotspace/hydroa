@@ -935,8 +935,8 @@ Spec delta for the next loop:
   - TTS over-billing on stream failure: revisit with a billing-correction task if complaint rate rises
 
 ### Competency deltas
-- [SDD · open] STT duration source depends on verbose_json response_format — caller must explicitly
+- [SDD · folded] STT duration source depends on verbose_json response_format — caller must explicitly
   request it for accurate billing; absent duration → $0 cost, WARN only.
   Evidence: AU2b test + [contract] flag in §3.
-- [SDD · open] TTS bill-at-start: customers charged for stream failures after 200 is committed.
+- [SDD · folded] TTS bill-at-start: customers charged for stream failures after 200 is committed.
   Evidence: AT2 test + [contract] flag in §3. Matches OpenAI billing model.

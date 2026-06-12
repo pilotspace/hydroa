@@ -807,10 +807,10 @@ Spec delta for the next loop:
     the select_provider function becomes a strategy seam — extend at that point.
 
 ### Competency deltas
-- [DDD · open] Modality is a domain concept stored as TEXT with a Literal type alias —
+- [DDD · folded] Modality is a domain concept stored as TEXT with a Literal type alias —
   not a DB ENUM. This avoids ALTER TYPE migrations for future modality additions.
   Evidence: the five modality values are bounded but may grow (e.g. "video" in a future slice).
-- [ADD · open] The chat-untouched boundary is a cross-cutting invariant that cannot be
+- [ADD · folded] The chat-untouched boundary is a cross-cutting invariant that cannot be
   enforced by the type system alone — it requires explicit "do NOT use get_completion_upstream
   from non-chat endpoints" constraints in downstream task contracts.
   Evidence: §3 inviolable boundary note + PS9 wiring regression.
