@@ -1,0 +1,41 @@
+# v10 tool-use-live-verify overlay — additive on base + v4 + v5 + v6 overlays.
+#
+# Wires the Anthropic, Google Gemini, and OpenRouter upstreams to the v10 TOOL stub
+# on the host (127.0.0.1:9924). Identical in shape to the v9 overlay but pointed at
+# the v10 tool-aware stub (which returns tool_calls / functionCalls on turn 1 and a
+# final text answer once a tool result is present).
+#
+# Placeholder keys only — NEVER a real secret. The stub binds 127.0.0.1; TLS is still
+# enforced by the Envoy edge (:8443); auth is not disabled. http:// is intentional for
+# the loopback-host base URLs. host.docker.internal resolves to the Docker Desktop host.
+#
+# Source: tool-use-live-verify TASK.md §3 CONTRACT (FROZEN @ v1)
+#
+# Usage (layered on top of base + v4 + v5 + v6):
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v10.yml \
+#     up --build -d --wait
+#
+# The v10 tool stub is started by scripts/live_v10_verify.py in a daemon thread before
+# any check runs. Double-pass close rule: run the verify script twice; both must exit 0.
+
+services:
+  gateway:
+    environment:
+      # ── v10: Anthropic provider → v10 tool stub on :9924 ─────────────────────
+      GATEWAY_ANTHROPIC_API_KEY: "stub-anthropic-key"
+      GATEWAY_ANTHROPIC_BASE_URL: "http://host.docker.internal:9924/v1"
+
+      # ── v10: Google Gemini provider → v10 tool stub on :9924 ──────────────────
+      GATEWAY_GOOGLE_API_KEY: "stub-google-key"
+      GATEWAY_GOOGLE_BASE_URL: "http://host.docker.internal:9924/v1beta"
+
+      # ── v10: OpenRouter base URL override → v10 tool stub on :9924 ────────────
+      GATEWAY_OPENROUTER_BASE_URL: "http://host.docker.internal:9924/api/v1"
+
+      # ── v10: OpenRouter API key — non-secret placeholder (NEVER a real key) ───
+      GATEWAY_OPENROUTER_API_KEY: "stub-openrouter-key"

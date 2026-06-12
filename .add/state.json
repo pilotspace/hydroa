@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "gemini-tool-use",
+  "active_task": "tool-use-live-verify",
   "active_milestone": "v10",
   "tasks": {
     "tool-use-contract": {
@@ -37,6 +37,19 @@
       "created": "2026-06-12T18:54:07+00:00",
       "updated": "2026-06-12T19:01:47+00:00",
       "flag_verified": true
+    },
+    "tool-use-live-verify": {
+      "title": "Tool-use live double-pass (e2e)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v10",
+      "depends_on": [
+        "anthropic-tool-use",
+        "gemini-tool-use"
+      ],
+      "created": "2026-06-12T19:02:47+00:00",
+      "updated": "2026-06-12T19:12:32+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -50,7 +63,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T19:01:47+00:00",
+  "updated": "2026-06-12T19:12:32+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
