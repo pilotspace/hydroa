@@ -1,9 +1,19 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "deployment-model",
   "active_milestone": "v8",
-  "tasks": {},
+  "tasks": {
+    "deployment-model": {
+      "title": "Deployment / model-group config \u2014 string-or-object union with weight + tpm/rpm limits",
+      "phase": "tests",
+      "gate": "none",
+      "milestone": "v8",
+      "depends_on": [],
+      "created": "2026-06-12T13:05:51+00:00",
+      "updated": "2026-06-12T13:11:18+00:00"
+    }
+  },
   "milestones": {
     "v8": {
       "title": "LiteLLM parity slice 6 \u2014 router & load-balancing",
@@ -15,7 +25,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T13:04:05+00:00",
+  "updated": "2026-06-12T13:11:18+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
