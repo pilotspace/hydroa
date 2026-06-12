@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "deployment-limits",
+  "active_task": "v8-live-verify",
   "active_milestone": "v8",
   "tasks": {
     "deployment-model": {
@@ -43,6 +43,16 @@
       "created": "2026-06-12T15:20:21+00:00",
       "updated": "2026-06-12T15:44:07+00:00",
       "flag_verified": true
+    },
+    "v8-live-verify": {
+      "title": "e2e double-pass: multi-deployment alias distributes by strategy, honors per-deployment limits, fallback+cooldown remove failures, chat billing unaffected \u2014 LIVE through the TLS edge",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v8",
+      "depends_on": [],
+      "created": "2026-06-12T15:46:21+00:00",
+      "updated": "2026-06-12T16:18:46+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -56,7 +66,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T15:44:07+00:00",
+  "updated": "2026-06-12T16:18:46+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

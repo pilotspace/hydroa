@@ -1,0 +1,78 @@
+# v8-live-verify overlay — additive on base + v4 + v5 + v6 overlays.
+#
+# Overrides GATEWAY_OPENROUTER_BASE_URL to point the gateway at the v8
+# router stub on the host (127.0.0.1:9922), sets GATEWAY_ROUTING_STRATEGY,
+# and declares the v8 model groups (5 aliases, 8 distinct deployment ids).
+#
+# The v6 overlay values it KEEPS (by composing on top):
+#   GATEWAY_UPSTREAM_MAX_RETRIES=2
+#   GATEWAY_COOLDOWN_FAILURE_THRESHOLD=2
+#   GATEWAY_COOLDOWN_TTL_S=5
+#   GATEWAY_COOLDOWN_WINDOW_S=60
+#
+# It also SETS GATEWAY_OPENROUTER_API_KEY="stub-openrouter-key" (non-secret
+# placeholder). The base compose defaults this key to EMPTY ("${...:-}") and the
+# v6 overlay does NOT set it — only the v7 overlay does, and the v8 stack does not
+# compose v7. An empty key produces an "Illegal header value b'Bearer '"
+# client-side rejection (the v7 lesson) → every upstream chat 500s. The v8 overlay
+# bakes the placeholder in so the v8 stack is self-contained (no shell-env dep).
+#
+# Usage (always layered on top of base + v4 + v5 + v6):
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v8.yml \
+#     up --build -d --wait
+#
+# The v8 router stub must be running before gateway processes its first request.
+# The verify script (scripts/live_v8_verify.py) starts v8_router_stub.py
+# automatically in a daemon thread. No separate stub container is needed.
+#
+# The v8 verify script is invoked as:
+#   uv run --project apps/gateway python scripts/live_v8_verify.py
+#
+# Double-pass close rule: run the verify script twice in sequence; both must exit 0.
+# Each pass resets gateway + Redis state and uses a fresh run_id.
+
+services:
+  gateway:
+    environment:
+      # ── v8: OpenRouter base URL override (→ v8 router stub on :9922) ─────────
+      # Overrides the v6 overlay's :9920 value. The stub speaks the OpenRouter
+      # chat-completions surface. http:// is intentional (stub on loopback); TLS
+      # is still enforced by the Envoy edge (:8443). Auth is not disabled.
+      # Source: v8-live-verify TASK.md §3 CONTRACT (FROZEN)
+      GATEWAY_OPENROUTER_BASE_URL: "http://host.docker.internal:9922/api/v1"
+
+      # ── v8: OpenRouter API key — non-secret placeholder (NEVER a real key) ──────
+      # The base compose defaults this to EMPTY; v6 does not set it. An empty key
+      # → "Illegal header value b'Bearer '" rejected client-side (v7 lesson) →
+      # every upstream chat 500s. Baking the placeholder makes the stack self-
+      # contained. This is a FAKE value (stub upstream); no real secret is used.
+      GATEWAY_OPENROUTER_API_KEY: "stub-openrouter-key"
+
+      # ── v8: Routing strategy ─────────────────────────────────────────────────
+      # simple-shuffle: primary deployment is selected by weighted-random draw
+      # (per Deployment.weight). The rest of the group becomes the fallback tail.
+      # Source: v8-live-verify TASK.md §3 CONTRACT (FROZEN)
+      GATEWAY_ROUTING_STRATEGY: "simple-shuffle"
+
+      # ── v8: Model-group aliases (5 aliases, 8 distinct deployment ids) ────────
+      # v8-dist  : weighted distribution check (C1) — dep-a weight 1, dep-b weight 3
+      # v8-limit : per-deployment limit skip (C2)   — lim-a rpm_limit 5, lim-b no limit
+      # v8-allsat: all-saturated 429 (C3)           — both sat-a and sat-b rpm_limit 3
+      # v8-fb    : v6 fallback + cooldown (C4/C5)   — bare strings, no limits
+      # v8-bill  : billing served-id (C6)           — equal weight, either may serve
+      #
+      # Because ≥1 deployment declares an rpm_limit, the gateway wires the
+      # limit_gate at startup. No-limit aliases (v8-fb, no-limit members of v8-dist
+      # and v8-bill) hit the zero-Redis fast path and never saturate.
+      # Source: v8-live-verify TASK.md §3 CONTRACT (FROZEN)
+      GATEWAY_MODEL_GROUPS: |
+        {"v8-dist":[{"model_id":"stub/dep-a","weight":1},{"model_id":"stub/dep-b","weight":3}],
+         "v8-limit":[{"model_id":"stub/lim-a","rpm_limit":5},{"model_id":"stub/lim-b"}],
+         "v8-allsat":[{"model_id":"stub/sat-a","rpm_limit":3},{"model_id":"stub/sat-b","rpm_limit":3}],
+         "v8-fb":["stub/fb-primary","stub/fb-secondary"],
+         "v8-bill":[{"model_id":"stub/bill-a","weight":1},{"model_id":"stub/bill-b","weight":1}]}
