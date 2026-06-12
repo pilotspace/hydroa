@@ -32,6 +32,7 @@ from gateway.observability.logging_config import configure_structlog
 from gateway.observability.metrics import MetricsRegistry, expose_metrics
 from gateway.observability.middleware import RequestIdMiddleware
 from gateway.proxy.api.router import proxy_router
+from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
@@ -411,6 +412,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(keys_authz_router)
     app.include_router(teams_router)
     app.include_router(admin_models_router)
+    app.include_router(routing_admin_router)
     app.include_router(proxy_router)
     app.include_router(usage_router)
     app.include_router(budget_router)

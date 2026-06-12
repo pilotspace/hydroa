@@ -207,6 +207,45 @@ class RedisCooldownGate:
             # fail-OPEN: no-op
 
     # ------------------------------------------------------------------
+    # Routing-admin read surface (additive; NOT part of ModelHealthGate protocol)
+    # ------------------------------------------------------------------
+
+    async def snapshot_state(self, model_id: str) -> str:
+        """Return the current circuit state for model_id as a string.
+
+        Returns one of: "open" | "half_open" | "closed" | "unknown".
+
+        Contract (routing-admin TASK.md §3):
+          1. GET gateway:cooldown:open:{model_id} → present → "open"
+          2. GET gateway:cooldown:half:{model_id} → present → "half_open"
+          3. Else → "closed"
+          4. Any Redis exception → "unknown" + emit WARNING (B3: model_id ok; no key strings)
+
+        Side-effects: NONE — read-only; zero Redis writes; zero metric increments.
+
+        NOTE: This method is concrete-class only — it is NOT part of the frozen
+        ModelHealthGate protocol. If a second ModelHealthGate implementation is
+        introduced in the future, it must either implement snapshot_state or the
+        routing-admin router must add an isinstance guard. See routing-admin §3.
+        """
+        try:
+            redis: Any = self._redis
+            open_val = await redis.get(_PFX_OPEN + model_id)
+            if open_val is not None:
+                return "open"
+            half_val = await redis.get(_PFX_HALF + model_id)
+            if half_val is not None:
+                return "half_open"
+            return "closed"
+        except Exception as exc:
+            structlog.get_logger().warning(
+                "cooldown_gate_redis_error",
+                model_id=model_id,
+                error=type(exc).__name__,
+            )
+            return "unknown"
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

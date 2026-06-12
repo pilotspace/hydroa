@@ -101,6 +101,9 @@ exclude = [
     # cooldown-circuit: frozen test suite; format excluded per no-test-edit contract
     "tests/cooldown_circuit/test_cooldown_circuit.py",
     "tests/cooldown_circuit/conftest.py",
+    # routing-admin: frozen test suite; format excluded per no-test-edit contract
+    "tests/routing_admin/test_routing_admin.py",
+    "tests/routing_admin/conftest.py",
 ]
 
 [tool.ruff.lint]
