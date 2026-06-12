@@ -1,12 +1,32 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
-  "tasks": {},
-  "milestones": {},
+  "active_task": "tool-use-contract",
+  "active_milestone": "v10",
+  "tasks": {
+    "tool-use-contract": {
+      "title": "Tool-translation contract (FREEZE FIRST)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v10",
+      "depends_on": [],
+      "created": "2026-06-12T18:31:53+00:00",
+      "updated": "2026-06-12T18:44:26+00:00",
+      "flag_verified": true
+    }
+  },
+  "milestones": {
+    "v10": {
+      "title": "LiteLLM parity slice 8 \u2014 tool-use / function-calling across providers",
+      "goal": "a tenant sends OpenAI tools + tool_choice to a chat model on any provider (OpenRouter, Anthropic, Gemini) and gets OpenAI-shaped tool_calls back \u2014 non-stream and streaming \u2014 with native translation, billing, and v8 routing intact",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-12T18:29:51+00:00",
+      "updated": "2026-06-12T18:29:51+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T18:27:11+00:00",
+  "updated": "2026-06-12T18:44:26+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
