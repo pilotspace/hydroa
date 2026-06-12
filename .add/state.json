@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "cooldown-circuit",
+  "active_task": "routing-admin",
   "active_milestone": "v6",
   "tasks": {
     "retry-policy": {
@@ -32,6 +32,15 @@
       "created": "2026-06-12T02:13:24+00:00",
       "updated": "2026-06-12T03:41:38+00:00",
       "flag_verified": true
+    },
+    "routing-admin": {
+      "title": "GET /admin/routing health+config surface for retry/fallback/cooldown",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v6",
+      "depends_on": [],
+      "created": "2026-06-12T03:42:04+00:00",
+      "updated": "2026-06-12T03:51:46+00:00"
     }
   },
   "milestones": {
@@ -45,7 +54,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T03:41:38+00:00",
+  "updated": "2026-06-12T03:51:46+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
