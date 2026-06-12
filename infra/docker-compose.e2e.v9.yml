@@ -1,0 +1,78 @@
+# v9-live-verify overlay — additive on base + v4 + v5 + v6 overlays.
+#
+# Composes ADDITIVELY on top of the v6 overlay — does NOT override any v6 key.
+# Wires Anthropic, Google Gemini, and OpenRouter upstreams to the v9 provider
+# stub on the host (127.0.0.1:9923).
+#
+# The v6 overlay values this keeps (by composing on top):
+#   GATEWAY_UPSTREAM_MAX_RETRIES=2
+#   GATEWAY_COOLDOWN_FAILURE_THRESHOLD=2
+#   GATEWAY_COOLDOWN_TTL_S=5
+#   GATEWAY_COOLDOWN_WINDOW_S=60
+#
+# New env vars (v9):
+#   GATEWAY_ANTHROPIC_API_KEY   — bearer sent to the Anthropic stub (POST {base}/messages).
+#     "stub-anthropic-key" is a placeholder; no real secret is embedded here.
+#   GATEWAY_ANTHROPIC_BASE_URL  — points the gateway Anthropic adapter at :9923/v1.
+#     The stub is started by scripts/live_v9_verify.py in a daemon thread.
+#   GATEWAY_GOOGLE_API_KEY      — bearer sent to the Gemini stub (x-goog-api-key header).
+#     "stub-google-key" is a placeholder; no real secret is embedded here.
+#   GATEWAY_GOOGLE_BASE_URL     — points the gateway Gemini adapter at :9923/v1beta.
+#   GATEWAY_OPENROUTER_BASE_URL — overrides v6's :9920 value → :9923/api/v1.
+#   GATEWAY_OPENROUTER_API_KEY  — non-secret placeholder (same empty-bearer lesson as v7/v8).
+#
+# NOTE: http:// is intentional for all three base URLs (stub on loopback host).
+# TLS is still enforced by the Envoy edge (:8443). Auth is not disabled.
+# host.docker.internal resolves to the Docker Desktop host (macOS/Windows); on
+# Linux add extra_hosts: host-gateway in the gateway service if needed.
+#
+# Source: v9-live-verify TASK.md §3 CONTRACT (FROZEN @ v1)
+#
+# Usage (always layered on top of base + v4 + v5 + v6 overlays):
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v9.yml \
+#     up --build -d --wait
+#
+# The v9 provider stub must be running before the gateway processes its first
+# provider request. The verify script (scripts/live_v9_verify.py) starts
+# v9_provider_stub.py automatically in a daemon thread before any check runs.
+#
+# The v9 verify script is invoked as:
+#   uv run --project apps/gateway python scripts/live_v9_verify.py
+#
+# Double-pass close rule: run the verify script twice in sequence; both must exit 0.
+# Each pass uses a fresh run_id (int(time.time())) and a fresh tenant+key.
+
+services:
+  gateway:
+    environment:
+      # ── v9: Anthropic provider credentials ──────────────────────────────────
+      # Wires the AnthropicCompletionUpstream to POST {base}/messages on :9923.
+      # NEVER a real secret — "stub-anthropic-key" is the placeholder value.
+      # Source: v9-live-verify TASK.md §3 CONTRACT (FROZEN)
+      GATEWAY_ANTHROPIC_API_KEY: "stub-anthropic-key"
+      GATEWAY_ANTHROPIC_BASE_URL: "http://host.docker.internal:9923/v1"
+
+      # ── v9: Google Gemini provider credentials ───────────────────────────────
+      # Wires GeminiCompletionUpstream + GoogleEmbeddingsProvider to :9923/v1beta.
+      # NEVER a real secret — "stub-google-key" is the placeholder value.
+      # Source: v9-live-verify TASK.md §3 CONTRACT (FROZEN)
+      GATEWAY_GOOGLE_API_KEY: "stub-google-key"
+      GATEWAY_GOOGLE_BASE_URL: "http://host.docker.internal:9923/v1beta"
+
+      # ── v9: OpenRouter base URL override (→ v9 provider stub on :9923) ───────
+      # Overrides any prior overlay's GATEWAY_OPENROUTER_BASE_URL. The stub
+      # speaks the OpenRouter chat-completions surface at /api/v1.
+      # Source: v9-live-verify TASK.md §3 CONTRACT (FROZEN)
+      GATEWAY_OPENROUTER_BASE_URL: "http://host.docker.internal:9923/api/v1"
+
+      # ── v9: OpenRouter API key — non-secret placeholder (NEVER a real key) ───
+      # The base compose defaults this to EMPTY; an empty key produces an
+      # "Illegal header value b'Bearer '" rejection client-side (v7 lesson).
+      # Baking the placeholder makes the stack self-contained (no shell-env dep).
+      # This is a FAKE value (stub upstream); no real secret is used.
+      GATEWAY_OPENROUTER_API_KEY: "stub-openrouter-key"
