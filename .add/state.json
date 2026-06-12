@@ -1,9 +1,30 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "provider-seam",
   "active_milestone": "v7",
-  "tasks": {},
+  "tasks": {
+    "provider-seam": {
+      "title": "Provider-selection seam + catalog modality/provider + OpenAI direct adapter",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v7",
+      "depends_on": [],
+      "created": "2026-06-12T07:25:22+00:00",
+      "updated": "2026-06-12T07:42:22+00:00",
+      "flag_verified": true
+    },
+    "pricing-units": {
+      "title": "Per-unit pricing model (pricing_unit discriminator + quantity) with recorder dispatch",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v7",
+      "depends_on": [],
+      "created": "2026-06-12T07:25:22+00:00",
+      "updated": "2026-06-12T07:42:15+00:00",
+      "flag_verified": true
+    }
+  },
   "milestones": {
     "v7": {
       "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider",
@@ -15,7 +36,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T07:23:19+00:00",
+  "updated": "2026-06-12T07:42:22+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
