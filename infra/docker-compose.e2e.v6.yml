@@ -1,0 +1,72 @@
+# DRAFT — v6-live-verify spec phase. Structure and env values are FINAL
+# (frozen in .add/tasks/v6-live-verify/TASK.md §3 OVERLAY CONTRACT).
+# BUILD phase: verify that GATEWAY_OPENROUTER_BASE_URL join semantics work
+# with httpx base_url (see §3 [part] flag). No changes expected to env values.
+#
+# Overlay for:
+#   infra/docker-compose.e2e.yml
+#   infra/docker-compose.e2e.v4.yml
+#   infra/docker-compose.e2e.v5.yml
+#
+# Composes additively on top of the v5 overlay — does NOT override any v5 key.
+#
+# New env vars (v6):
+#   GATEWAY_OPENROUTER_BASE_URL — points the gateway at the fault stub on the host.
+#     The stub must be running on :9920 before gateway processes its first request.
+#     Source: v6-live-verify TASK.md §3 SETTINGS KNOB CONTRACT
+#   GATEWAY_UPSTREAM_MAX_RETRIES=2 — enables bounded retries (C1 check needs ≥2).
+#   GATEWAY_MODEL_GROUPS — alias "v6-alias" over two stub model ids (C2, C3 checks).
+#   GATEWAY_COOLDOWN_FAILURE_THRESHOLD=2 — trip cooldown after 2 consecutive failures (C3).
+#   GATEWAY_COOLDOWN_TTL_S=5 — short TTL for testable half-open recovery (C3).
+#     WARNING: 5 s is NOT a production-safe value. Operators must set a longer TTL
+#     (e.g. ≥60 s) in production deployments.
+#   GATEWAY_COOLDOWN_WINDOW_S=60 — failure counter expiry window (C3).
+#
+# Usage (always layered on top of base + v4 + v5 overlays):
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     up --build -d --wait
+#
+# The v6 fault stub must be started before the verify script:
+#   The verify script (scripts/live_v6_verify.py) starts v6_fault_stub.py
+#   automatically in a daemon thread. No separate stub container is needed.
+#
+# The v6 verify script is invoked as:
+#   uv run --project apps/gateway python scripts/live_v6_verify.py
+#
+# Double-pass close rule: run the verify script twice in sequence; both must exit 0.
+
+services:
+  gateway:
+    environment:
+      # ── v6: OpenRouter base URL override ─────────────────────────────────────
+      # Points the gateway at the fault-injecting stub on :9920.
+      # The stub speaks the OpenRouter chat-completions surface.
+      # Source: v6-live-verify TASK.md §3 SETTINGS KNOB CONTRACT
+      # NOTE: http:// is intentional for the stub (not production). TLS is
+      # still enforced by the Envoy edge (:8443). Auth is not disabled.
+      GATEWAY_OPENROUTER_BASE_URL: "http://host.docker.internal:9920/api/v1"
+
+      # ── v6: Upstream retry policy ────────────────────────────────────────────
+      # Enables 2 retries for the C1 check (pre-stream 5xx retry within budget).
+      # Source: v6-live-verify TASK.md §3 OVERLAY CONTRACT
+      GATEWAY_UPSTREAM_MAX_RETRIES: "2"
+
+      # ── v6: Model-group alias for v6 checks ──────────────────────────────────
+      # "v6-alias" maps to [stub/primary, stub/fallback] in priority order.
+      # Used by C1 (retry), C2 (fallback), C3 (cooldown), C4 (admin surface).
+      # Source: v6-live-verify TASK.md §3 OVERLAY CONTRACT
+      GATEWAY_MODEL_GROUPS: '{"v6-alias": ["stub/primary", "stub/fallback"]}'
+
+      # ── v6: Cooldown circuit breaker ─────────────────────────────────────────
+      # threshold=2: cooldown trips after 2 consecutive failures (C3 check).
+      # ttl_s=5: short TTL enables testable half-open recovery within the script.
+      #          WARNING: 5 s is e2e-harness only — NOT safe for production.
+      # window_s=60: failure counter expiry window.
+      # Source: v6-live-verify TASK.md §3 OVERLAY CONTRACT
+      GATEWAY_COOLDOWN_FAILURE_THRESHOLD: "2"
+      GATEWAY_COOLDOWN_TTL_S: "5"
+      GATEWAY_COOLDOWN_WINDOW_S: "60"
