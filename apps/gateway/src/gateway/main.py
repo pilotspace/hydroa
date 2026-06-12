@@ -45,6 +45,7 @@ from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletio
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
+from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
@@ -384,13 +385,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # potentially a test fake) via the `upstream` override kwarg on router.complete() and
     # router.stream(). This preserves the frozen-suite injection contract: tests that set
     # app.state.completion_upstream = FakeUpstream still work correctly.
+    # Load-balancing gate — constructed only when strategy needs it.
+    # Construction does NOT connect to Redis (safe without lifespan).
+    # None for ordered/simple-shuffle → v6 byte-identical (zero new Redis IO).
+    if settings.routing_strategy in {"least-busy", "latency"}:
+        _load_gate: RedisDeploymentLoadGate | None = RedisDeploymentLoadGate(
+            redis=redis_client,
+            alpha=settings.loadbal_ewma_alpha,
+            in_flight_ttl_s=settings.loadbal_inflight_ttl_s,
+        )
+    else:
+        _load_gate = None
+
     app.state.model_router = FallbackModelRouter(
         upstream=app.state.completion_upstream,
         model_groups=settings.model_groups,
         health_gate=app.state.cooldown_gate,
         metrics_registry=app.state.metrics_registry,
         deployments=settings.deployments,
-        strategy=build_strategy(settings.routing_strategy),
+        strategy=build_strategy(settings.routing_strategy, _load_gate),
+        load_gate=_load_gate,
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).

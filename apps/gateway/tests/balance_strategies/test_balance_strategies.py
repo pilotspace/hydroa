@@ -47,6 +47,7 @@ _SETTINGS_KWARGS: dict[str, Any] = {
 
 # ── Shared response helper ─────────────────────────────────────────────────────
 
+
 def _body(model: str) -> dict[str, Any]:
     return {"id": f"gen-{model}", "model": model, "choices": [], "usage": {}}
 
@@ -192,7 +193,9 @@ async def test_bs1_least_busy_picks_fewest_inflight() -> None:
     assert up.calls[0]["model"] == B
 
     # The full permutation covers all candidates (BS1 permutation guard).
-    aorder_result = await strat.aorder(ALIAS, [A, B, C], [_deployment(A, 1), _deployment(B, 1), _deployment(C, 1)])
+    aorder_result = await strat.aorder(
+        ALIAS, [A, B, C], [_deployment(A, 1), _deployment(B, 1), _deployment(C, 1)]
+    )
     assert sorted(aorder_result) == sorted([A, B, C]), "aorder must return a full permutation"
     assert aorder_result[0] == B, "aorder primary must be B"
 
@@ -287,10 +290,12 @@ async def test_bs4_least_busy_release_on_exhausted_raise() -> None:
 
     gate = FakeLoadGate(in_flight_map={A: 0, B: 1})
     strat = LeastBusyStrategy(load_gate=gate)
-    up = _Upstream([
-        UpstreamUnavailableError("a down"),
-        UpstreamUnavailableError("b down"),
-    ])
+    up = _Upstream(
+        [
+            UpstreamUnavailableError("a down"),
+            UpstreamUnavailableError("b down"),
+        ]
+    )
     router = FallbackModelRouter(
         upstream=up,
         model_groups={ALIAS: [A, B]},
@@ -396,9 +401,7 @@ async def test_bs7_load_gate_redis_error_fails_open() -> None:
     # Must NOT raise — fail-OPEN means degrade to declared order, still serve.
     _status, _body_, served = await router.complete(dict(PAYLOAD))
 
-    assert served == A, (
-        f"Redis error must degrade to declared-first (A); got {served}"
-    )
+    assert served == A, f"Redis error must degrade to declared-first (A); got {served}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -483,9 +486,7 @@ async def test_bs9_load_aware_stream_ordered_fallback() -> None:
     )
     # No in_flight or aorder calls on the stream path.
     async_ops = [op for (op, _) in gate.calls if op in ("in_flight", "latency_ewma")]
-    assert async_ops == [], (
-        f"stream must not trigger any async load_gate reads; found: {async_ops}"
-    )
+    assert async_ops == [], f"stream must not trigger any async load_gate reads; found: {async_ops}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -677,16 +678,14 @@ async def test_bs_loadgate_inflight_roundtrip() -> None:
     await load_gate.release(dep)
     await load_gate.release(dep)  # now at -1 raw
     inflight_clamped = await load_gate.in_flight(dep)
-    assert inflight_clamped >= 0, (
-        f"in_flight must clamp negative to 0; got {inflight_clamped}"
-    )
+    assert inflight_clamped >= 0, f"in_flight must clamp negative to 0; got {inflight_clamped}"
 
     # EWMA update: alpha=0.5, first sample 200ms → ewma = 0.5*200 + 0.5*0 = 100.0
     dep2 = "dep-2"
     await load_gate.record_latency(dep2, 200.0)
     ewma_val = await load_gate.latency_ewma(dep2)
     assert abs(ewma_val - 100.0) < 1.0, (
-        f"expected EWMA ≈ 100.0 (α=0.5, sample=200, prev=0); got {ewma_val}"
+        f"expected EWMA ~= 100.0 (alpha=0.5, sample=200, prev=0); got {ewma_val}"
     )
 
     # Unseen deployment → ewma returns 0.0.

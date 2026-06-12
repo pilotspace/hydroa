@@ -274,9 +274,41 @@ class UpstreamProvider(Protocol):
         ...
 
 
+@runtime_checkable
+class DeploymentLoadGate(Protocol):
+    """Async port exposing per-deployment live load metrics backed by Redis.
+
+    Additive extension @ balance-strategies TASK.md §3.
+    Fail-OPEN: any Redis read error returns the neutral value (in_flight=0 /
+    ewma=0.0); acquire/release errors are swallowed. Logs deployment_id only —
+    never key strings or secrets.
+    """
+
+    async def acquire(self, deployment_id: str) -> None:
+        """Increment in-flight counter and refresh EXPIRE(ttl) for the key."""
+        ...
+
+    async def release(self, deployment_id: str) -> None:
+        """Decrement in-flight counter (read clamps negative→0)."""
+        ...
+
+    async def in_flight(self, deployment_id: str) -> int:
+        """Return current in-flight count (≥ 0). Fail-OPEN → 0 on error."""
+        ...
+
+    async def record_latency(self, deployment_id: str, latency_ms: float) -> None:
+        """Update the per-deployment EWMA latency with a new sample."""
+        ...
+
+    async def latency_ewma(self, deployment_id: str) -> float:
+        """Return recent EWMA latency in ms. Unseen deployment → 0.0. Fail-OPEN → 0.0."""
+        ...
+
+
 __all__ = [
     "AuthzResult",
     "CompletionUpstream",
+    "DeploymentLoadGate",
     "GuardrailEvaluator",
     "KeyAuthenticator",
     "ModelAccess",

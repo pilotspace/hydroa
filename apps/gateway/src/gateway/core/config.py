@@ -194,10 +194,40 @@ class Settings(BaseSettings):
             for alias, deployments in self.deployments.items()
         }
 
+    # ── Load-balancing knobs (balance-strategies v8) ──────────────────────────
+    # GATEWAY_LOADBAL_EWMA_ALPHA — smoothing factor for the per-deployment latency
+    # EWMA (0 < alpha <= 1). Default 0.3 (moderate smoothing). Used only when
+    # routing_strategy in {least-busy, latency}.
+    loadbal_ewma_alpha: float = 0.3
+    # GATEWAY_LOADBAL_INFLIGHT_TTL_S — TTL in seconds for the per-deployment
+    # in-flight counter key in Redis. A missed release self-heals within this
+    # window. Must be > 0. Default 60.
+    loadbal_inflight_ttl_s: int = 60
+
+    @model_validator(mode="after")
+    def _validate_loadbal_alpha(self) -> "Settings":
+        """Reject an out-of-range GATEWAY_LOADBAL_EWMA_ALPHA at startup."""
+        if not (0.0 < self.loadbal_ewma_alpha <= 1.0):
+            raise ValueError(
+                f"INVALID_LOADBAL_ALPHA: loadbal_ewma_alpha must be in (0, 1], "
+                f"got {self.loadbal_ewma_alpha}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_loadbal_ttl(self) -> "Settings":
+        """Reject a non-positive GATEWAY_LOADBAL_INFLIGHT_TTL_S at startup."""
+        if self.loadbal_inflight_ttl_s <= 0:
+            raise ValueError(
+                f"INVALID_LOADBAL_TTL: loadbal_inflight_ttl_s must be > 0, "
+                f"got {self.loadbal_inflight_ttl_s}"
+            )
+        return self
+
     @model_validator(mode="after")
     def _validate_routing_strategy(self) -> "Settings":
         """Reject an unknown GATEWAY_ROUTING_STRATEGY at startup (fail-closed)."""
-        valid = {"ordered", "simple-shuffle"}
+        valid = {"ordered", "simple-shuffle", "least-busy", "latency"}
         if self.routing_strategy not in valid:
             raise ValueError(
                 f"UNKNOWN_ROUTING_STRATEGY: '{self.routing_strategy}' is not one of {sorted(valid)}"

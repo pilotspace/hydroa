@@ -43,14 +43,19 @@ SEAM INJECTION CONTRACT (critical for frozen suites):
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from gateway.proxy.application.routing_strategy import OrderedStrategy, RoutingStrategy
+from gateway.proxy.application.routing_strategy import (
+    AsyncRoutingStrategy,
+    OrderedStrategy,
+    RoutingStrategy,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
-from gateway.proxy.domain.ports import CompletionUpstream, ModelHealthGate
+from gateway.proxy.domain.ports import CompletionUpstream, DeploymentLoadGate, ModelHealthGate
 
 if TYPE_CHECKING:
     from gateway.core.config import Deployment
@@ -81,15 +86,18 @@ class FallbackModelRouter:
 
     def __init__(
         self,
-        upstream: CompletionUpstream,
-        model_groups: dict[str, list[str]],
+        upstream: CompletionUpstream | None = None,
+        model_groups: dict[str, list[str]] | None = None,
         health_gate: ModelHealthGate | None = None,
         metrics_registry: Any = None,
         deployments: dict[str, list[Deployment]] | None = None,
         strategy: RoutingStrategy | None = None,
+        load_gate: DeploymentLoadGate | None = None,
     ) -> None:
-        self._upstream = upstream
-        self._model_groups = model_groups
+        # upstream and model_groups kept as positional-compatible; None only for
+        # test convenience (tests always pass them explicitly).
+        self._upstream: CompletionUpstream = upstream  # type: ignore[assignment]
+        self._model_groups: dict[str, list[str]] = model_groups or {}
         self._health_gate = health_gate
         self._metrics_registry = metrics_registry
         # Normalized deployment view (deployment-model v8). The router's own
@@ -98,6 +106,9 @@ class FallbackModelRouter:
         self._deployments: dict[str, list[Deployment]] = deployments or {}
         # Routing strategy (routing-strategy v8). None ⇒ OrderedStrategy → v6 byte-identical.
         self._strategy: RoutingStrategy = strategy if strategy is not None else OrderedStrategy()
+        # Load gate (balance-strategies v8). None ⇒ no acquire/release/record_latency;
+        # byte-identical to v6 when None.
+        self._load_gate: DeploymentLoadGate | None = load_gate
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -157,14 +168,32 @@ class FallbackModelRouter:
         return self._model_groups.get(model_id)
 
     def _strategy_order(self, alias: str, candidates: list[str]) -> list[str]:
-        """Ask the routing strategy for the attempt order; guard it is a permutation.
+        """Ask the routing strategy for the attempt order (sync); guard it is a permutation.
 
         For the default OrderedStrategy this returns `candidates` unchanged
         (v6 byte-identical). A strategy that adds/drops/duplicates a candidate is a
         programming bug — abort rather than serve a wrong/partial set.
+        Used by stream() (sync path) and as fallback when no async capability.
         """
         deployments = self._deployments.get(alias, [])
         order = self._strategy.order(alias, candidates, deployments)
+        if len(order) != len(candidates) or set(order) != set(candidates):
+            raise ValueError(
+                f"INVALID_ROUTING_ORDER: strategy returned a non-permutation for alias '{alias}'"
+            )
+        return order
+
+    async def _strategy_order_async(self, alias: str, candidates: list[str]) -> list[str]:
+        """Ask the routing strategy for the attempt order (async-aware).
+
+        Prefers aorder() when the strategy implements AsyncRoutingStrategy; falls back
+        to sync order(). Permutation guard covers both paths.
+        """
+        deployments = self._deployments.get(alias, [])
+        if isinstance(self._strategy, AsyncRoutingStrategy):
+            order = await self._strategy.aorder(alias, candidates, deployments)
+        else:
+            order = self._strategy.order(alias, candidates, deployments)
         if len(order) != len(candidates) or set(order) != set(candidates):
             raise ValueError(
                 f"INVALID_ROUTING_ORDER: strategy returned a non-permutation for alias '{alias}'"
@@ -204,8 +233,9 @@ class FallbackModelRouter:
 
         # Alias path — iterate candidates with fallback, in the strategy's order.
         gate = self._health_gate
+        load_gate = self._load_gate
         alias = model_id
-        order = self._strategy_order(alias, candidates)
+        order = await self._strategy_order_async(alias, candidates)
         last_fallen: str | None = None
 
         for i, candidate in enumerate(order):
@@ -228,12 +258,18 @@ class FallbackModelRouter:
             # Step 2: rewrite payload["model"] = candidate.
             rewritten: dict[str, object] = {**payload, "model": candidate}
 
+            # Step 2b (load-gate): acquire in-flight slot before the upstream call.
+            if load_gate is not None:
+                await load_gate.acquire(candidate)
+
+            # Step 3: call upstream inside try/finally so release fires on ALL exit edges.
+            _t_start = time.monotonic()
             try:
-                # Step 3: call upstream. CircuitOpenError and any non-fallback
-                # exception propagate naturally (abort loop, no gate call).
+                # CircuitOpenError and any non-fallback exception propagate naturally
+                # (abort loop, no health gate call). The finally still releases.
                 status, body = await _upstream.complete(rewritten)
             except UpstreamUnavailableError:
-                # Step 5: fall-through to the next candidate.
+                # Step 5: fall-through to the next candidate (release fires in finally).
                 if gate is not None:
                     await gate.record_failure(candidate)
                 structlog.get_logger().warning(
@@ -247,8 +283,18 @@ class FallbackModelRouter:
                 )
                 last_fallen = candidate
                 continue
+            finally:
+                # Release on ALL four exit edges: served-return (before return below),
+                # UpstreamUnavailable fallthrough-continue, exhausted raise, other re-raise.
+                if load_gate is not None:
+                    await load_gate.release(candidate)
 
             # Step 4: candidate answered (any status including 4xx passthrough).
+            # record_latency AFTER a candidate answers (not on UpstreamUnavailableError).
+            if load_gate is not None:
+                elapsed_ms = (time.monotonic() - _t_start) * 1000.0
+                await load_gate.record_latency(candidate, elapsed_ms)
+
             if gate is not None:
                 await gate.record_success(candidate)
 
