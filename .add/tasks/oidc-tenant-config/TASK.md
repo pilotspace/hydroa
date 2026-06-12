@@ -836,9 +836,9 @@ helper in deps.py wired at both router call sites; pinned by the new (unfrozen-a
 now frozen) regression suite tests/oidc_exchanger_binding (E1–E6).
 
 ### Competency deltas (additional, from live verification)
-- [TDD · open] every app.state test seam needs a paired production-wiring regression test
+- [TDD · folded v5] every app.state test seam needs a paired production-wiring regression test
   (seam-presence tests prove the seam, never the default construction) (evidence: both
   C5f defects lived precisely where fakes were injected)
-- [ADD · open] the foundation's "milestone close requires LIVE edge verification" rule
+- [ADD · folded v5] the foundation's "milestone close requires LIVE edge verification" rule
   caught two production-dead paths the full frozen suite could not — keep it binding
   (evidence: v5 close, oidc-tenant-config defects #1 #2)

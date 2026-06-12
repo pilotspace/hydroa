@@ -500,6 +500,6 @@ a layout.tsx refactor from "use client" to a server layout should be scoped.
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [ADD · open] rename-only tasks need a file-by-file contract table (not API shape) + explicit compat-pin list as the §3 shape; the template METHOD/path schema is replaced by a rename table (evidence: this task)
-- [SDD · open] "use client" root layouts prevent Next.js metadata export — the constraint must be surfaced at §1 spec time to pick the correct mechanism (server component metadata vs JSX title element) before build (evidence: dashboard layout.tsx "use client" constraint)
-- [TDD · open] pure-file/grep test suites (no DB/network) are the right tool for rename-regression pins — they catch a revert or merge accident before CI even reaches the integration tests (evidence: R1–R5 design in this task)
+- [ADD · folded v5] rename-only tasks need a file-by-file contract table (not API shape) + explicit compat-pin list as the §3 shape; the template METHOD/path schema is replaced by a rename table (evidence: this task)
+- [SDD · folded v5] "use client" root layouts prevent Next.js metadata export — the constraint must be surfaced at §1 spec time to pick the correct mechanism (server component metadata vs JSX title element) before build (evidence: dashboard layout.tsx "use client" constraint)
+- [TDD · folded v5] pure-file/grep test suites (no DB/network) are the right tool for rename-regression pins — they catch a revert or merge accident before CI even reaches the integration tests (evidence: R1–R5 design in this task)

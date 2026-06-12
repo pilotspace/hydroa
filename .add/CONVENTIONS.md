@@ -61,6 +61,20 @@ Testing: red/green TDD mandatory — tests red before build; pytest + pytest-asy
           seam: the use case detects the new method and falls back to the frozen one —
           frozen tests never edited (evidence: soft-budget seam, model-mgmt
           check_for_tenant; two milestones, zero frozen-test edits)
+        Folded from v5 (2026-06-12):
+        - every app.state test-injection seam is PAIRED with a production-wiring
+          regression test that asserts the default (no-seam) construction returns the
+          real adapter — seam-presence tests alone prove the fake, never the wiring
+          (evidence: tests/oidc_exchanger_binding; two production-dead OIDC paths found
+          live behind passing frozen suites)
+        - milestone close REQUIRES the live edge verification pass — two consecutive
+          clean runs against a long-lived stack (re-runnability doubles as the identity-
+          isolation proof); never waived because gates are green
+        - rename/branding tasks freeze a file-by-file rename table + a wire compat-pin
+          list as their §3 shape; pure-file/grep suites pin the result; wire pins get a
+          green-by-design guard test that must stay green forever
+        - Next.js "use client" root layouts cannot export metadata — pick the server-
+          component placement at §1 time
         Folded from v4 (2026-06-11):
         - the capability seam is now TYPED (supersedes the v3 hasattr rule for kwargs):
           additive kwargs on a frozen port are declared as a `TypedDict(total=False)` in

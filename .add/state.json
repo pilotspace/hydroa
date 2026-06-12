@@ -2,11 +2,20 @@
   "project": "ai-proxy",
   "stage": "production",
   "active_task": null,
-  "active_milestone": null,
+  "active_milestone": "v6",
   "tasks": {},
-  "milestones": {},
+  "milestones": {
+    "v6": {
+      "title": "Routing & resilience",
+      "goal": "",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-06-12T00:17:05+00:00",
+      "updated": "2026-06-12T00:17:05+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T00:07:04+00:00",
+  "updated": "2026-06-12T00:17:05+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
