@@ -65,6 +65,7 @@ from gateway.usage.domain.extractor import extract_usage_from_sse
 
 if TYPE_CHECKING:
     from gateway.observability.otel import OtelSpanEmitter
+    from gateway.proxy.application.fallback_router import FallbackModelRouter
 
 _log = logging.getLogger(__name__)
 _ZERO = Decimal("0")
@@ -85,6 +86,7 @@ def _emit_span_fire_forget(
     guardrail_blocked: bool,
     start_ns: int,
     error_code: str | None = None,
+    fallback: bool = False,
 ) -> None:
     """Build an OtelSpan and schedule fire-and-forget emission.
 
@@ -113,6 +115,7 @@ def _emit_span_fire_forget(
             cached=cached,
             guardrail_blocked=guardrail_blocked,
             error_code=error_code,
+            fallback=fallback,
         )
         task = asyncio.ensure_future(span_emitter.emit(span))
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
@@ -419,11 +422,25 @@ class CompletionUseCase:
 
         return model_id, messages
 
-    async def _check_model_catalog(self, model_id: str, tenant_id: uuid.UUID | None = None) -> None:
+    async def _check_model_catalog(
+        self,
+        model_id: str,
+        tenant_id: uuid.UUID | None = None,
+        model_groups: dict[str, list[str]] | None = None,
+    ) -> None:
         """Check catalog active state and per-tenant override.
 
         Enforcement order (§3 M7): called from _enforce_governance AFTER the
         key-level allowlist check so allowlist always fires first.
+
+        Alias-aware (model-fallbacks §3 CATALOG INTERACTION A4):
+          When model_id is an alias key in model_groups, ALL candidates in the
+          group are validated via check_for_tenant + is_active. Any candidate
+          failing => MODEL_UNKNOWN for the whole request (conservative: never
+          route to or bill a model the tenant cannot access; fallback may serve
+          ANY candidate, so all must be authorized up front).
+          Cost: <=5 catalog lookups per alias request (bounded by Settings validator #3).
+          Plain model ids keep the existing single check, byte-identical.
 
         Frozen-fake compatibility seam (model-mgmt TASK.md §3):
           Frozen proxy-completions test fakes only implement is_active — they do not
@@ -435,6 +452,27 @@ class CompletionUseCase:
           capability detection via hasattr, never forcing frozen fakes to implement new methods.
         """
         checker = self._model_checker
+
+        # Alias-aware: when model_id is an alias, validate every candidate.
+        if model_groups and model_id in model_groups:
+            candidates = model_groups[model_id]
+            for candidate_id in candidates:
+                await self._check_single_model(checker, candidate_id, tenant_id)
+            return
+
+        # Plain model id — existing single check (byte-identical for non-alias requests).
+        await self._check_single_model(checker, model_id, tenant_id)
+
+    async def _check_single_model(
+        self,
+        checker: ModelChecker,
+        model_id: str,
+        tenant_id: uuid.UUID | None,
+    ) -> None:
+        """Check a single model id against the catalog (extracted helper).
+
+        Raises MODEL_UNKNOWN or MODEL_DISABLED as appropriate.
+        """
         if tenant_id is not None and hasattr(checker, "check_for_tenant"):
             access = await checker.check_for_tenant(model_id, tenant_id)
             if access is ModelAccess.UNKNOWN:
@@ -519,6 +557,7 @@ class CompletionUseCase:
         authz: AuthzResult,
         model_id: str,
         budget_guard: BudgetGuard,
+        model_groups: dict[str, list[str]] | None = None,
     ) -> None:
         """Enforce all governance rules in priority order (M8-M10, M12).
 
@@ -534,6 +573,9 @@ class CompletionUseCase:
         Enforcement order per §3 M7:
           key-level allowlist (step 2) BEFORE tenant-disabled check (step 3).
           Both use ERR_MODEL_NOT_ALLOWED and ERR_MODEL_DISABLED respectively.
+
+        model_groups: when provided, the catalog check is alias-aware (§3 A4):
+          alias keys validate all candidates; plain ids use the existing single check.
         """
         # M8: Expiry check (fail-closed, DB-sourced — no infra failure risk)
         _check_expiry(authz)
@@ -543,8 +585,8 @@ class CompletionUseCase:
         _check_model_allowlist(authz, model_id)
 
         # Catalog active + per-tenant override check (§3 step 3 — after allowlist).
-        # Uses check_for_tenant when available (frozen-fake seam via hasattr).
-        await self._check_model_catalog(model_id, authz.tenant_id)
+        # Alias-aware when model_groups provided (§3 A4): validates all candidates.
+        await self._check_model_catalog(model_id, authz.tenant_id, model_groups)
 
         # M10: Most-specific-wins budget enforcement.
         # A soft budget alone is a SIGNAL, not a limit — it must never exempt
@@ -655,6 +697,7 @@ class CompletionUseCase:
         cache_ttl_seconds: int = 300,
         metrics_registry: Any = None,
         request_headers: dict[str, str] | None = None,
+        model_router: FallbackModelRouter | None = None,
     ) -> tuple[int, dict[str, Any], str | None]:
         """Handle a non-streaming completion.
 
@@ -667,6 +710,7 @@ class CompletionUseCase:
         _authz: AuthzResult | None = None
         _status_code: int = 502
         _model_id: str = ""
+        _fallback: bool = False
         _cached: bool = False
         _guardrail_blocked: bool = False
         _pii_masked: bool = False
@@ -679,7 +723,9 @@ class CompletionUseCase:
             _model_id = model_id
             # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
             # Governance ALWAYS runs before cache lookup (contract §3 enforcement order).
-            await self._enforce_governance(authz, model_id, self._budget_guard)
+            # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
+            _model_groups = model_router.model_groups if model_router is not None else None
+            await self._enforce_governance(authz, model_id, self._budget_guard, _model_groups)
 
             # --- Step 4: Pre-call guardrails (after governance, before cache lookup) ---
             guardrail_evaluator = self._guardrail_evaluator
@@ -894,7 +940,25 @@ class CompletionUseCase:
                             pass
 
             try:
-                status, response_body = await upstream.complete(body)
+                # Route through model_router when wired (model-fallbacks §3).
+                # The router returns a 3-tuple (status, body, served_model_id).
+                # served_model_id is the catalog candidate id we actually routed to —
+                # used for billing/recording, NEVER the alias string and NEVER body["model"].
+                # Plain model ids pass through transparently (served == model_id).
+                # When model_router is None (frozen suites that do not wire the router):
+                # fall back to direct upstream.complete() with served_model_id = model_id.
+                if model_router is not None:
+                    status, response_body, served_model_id = await model_router.complete(
+                        body, upstream=upstream
+                    )
+                    # Span attribution (§3 OBSERVABILITY): fallback occurred when the
+                    # served candidate differs from the alias group's first choice.
+                    _candidates = model_router.candidates_for(model_id)
+                    _fallback = _candidates is not None and served_model_id != _candidates[0]
+                    _model_id = served_model_id
+                else:
+                    status, response_body = await upstream.complete(body)
+                    served_model_id = model_id
             except (UpstreamUnavailableError, CircuitOpenError):
                 # Circuit-breaker proxy has already counted the failure.
                 _fire_record(
@@ -993,14 +1057,18 @@ class CompletionUseCase:
                             exc_info=_exc,
                         )
 
-            # Record successful or upstream 4xx completion
+            # Record successful or upstream 4xx completion.
+            # BILLING: use served_model_id (the catalog candidate we actually routed to),
+            # NOT model_id (which may be an alias) and NOT response_body["model"]
+            # (which may differ from the catalog id due to OpenRouter format variants).
+            # §3 A1: served_model_id is the 3rd element of model_router.complete()'s 3-tuple.
             usage_raw = response_body.get("usage")
             usage: dict[str, Any] | None = usage_raw if isinstance(usage_raw, dict) else None
             _fire_record_with_raw(
                 usage_recorder,
                 tenant_id=authz.tenant_id,
                 key_id=authz.key_id,
-                model=model_id,
+                model=served_model_id,
                 usage=usage,
                 status=status,
                 team_id=authz.team_id,
@@ -1037,6 +1105,7 @@ class CompletionUseCase:
                     _guardrail_blocked,
                     _start_ns,
                     error_code=_error_code,
+                    fallback=_fallback,
                 )
 
     async def stream(
@@ -1046,6 +1115,7 @@ class CompletionUseCase:
         body: dict[str, Any],
         upstream: CompletionUpstream,
         usage_recorder: UsageRecorder,
+        model_router: FallbackModelRouter | None = None,
     ) -> AsyncIterator[bytes]:
         """Handle a streaming completion.
 
@@ -1075,7 +1145,11 @@ class CompletionUseCase:
             model_id, _ = await self._validate_payload(body)
             _stream_model_id = model_id
             # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
-            await self._enforce_governance(authz, model_id, self._budget_guard)
+            # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
+            _stream_model_groups = model_router.model_groups if model_router is not None else None
+            await self._enforce_governance(
+                authz, model_id, self._budget_guard, _stream_model_groups
+            )
 
             # --- Step 4: Pre-call guardrails (after governance, before upstream stream) ---
             guardrail_evaluator = self._guardrail_evaluator
@@ -1146,7 +1220,13 @@ class CompletionUseCase:
                     )
 
             try:
-                gen = upstream.stream(body)
+                # Route stream through model_router when wired — resolves alias to first
+                # candidate only (§3 STREAMING BOUNDARY). No fallback on stream failure.
+                # When model_router is None, fall back to direct upstream.stream().
+                if model_router is not None:
+                    gen = model_router.stream(body, upstream=upstream)
+                else:
+                    gen = upstream.stream(body)
             except (UpstreamUnavailableError, CircuitOpenError):
                 _fire_record(
                     usage_recorder,

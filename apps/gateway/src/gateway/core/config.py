@@ -60,6 +60,59 @@ class Settings(BaseSettings):
     # GATEWAY_UPSTREAM_RETRY_BACKOFF_BASE_S — base for exponential backoff (seconds).
     upstream_retry_backoff_base_s: float = Field(default=0.5, gt=0)
 
+    # ── Model-group aliases with ordered candidate fallbacks (model-fallbacks task) ──
+    # GATEWAY_MODEL_GROUPS — JSON dict mapping alias string to ordered candidate list.
+    # e.g. GATEWAY_MODEL_GROUPS='{"fast": ["vendor/model-a:free", "vendor/model-b"]}'
+    # Default {} = feature off, v5 byte-identical behavior.
+    # Validators (model_validator, mode="after"):
+    #   1. All candidate lists must be non-empty → ValidationError "EMPTY_CANDIDATE_LIST"
+    #   2. No alias key may appear as a candidate id in ANY group
+    #      → ValidationError "ALIAS_COLLIDES_WITH_CANDIDATE"
+    #   3. No candidate list may exceed 5 entries → ValidationError "TOO_MANY_CANDIDATES"
+    #      (bounds the per-request catalog-validation cost per §3 CATALOG INTERACTION)
+    model_groups: dict[str, list[str]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_model_groups(self) -> "Settings":
+        """Validate model_groups at startup (§3 SETTINGS validators 1-3).
+
+        1. Empty candidate list → ValidationError "EMPTY_CANDIDATE_LIST"
+        2. Alias key collides with any candidate id in any group
+           → ValidationError "ALIAS_COLLIDES_WITH_CANDIDATE"
+        3. Candidate list exceeds 5 entries → ValidationError "TOO_MANY_CANDIDATES"
+        """
+        groups = self.model_groups
+        if not groups:
+            return self
+
+        # Collect all candidate ids across all groups for collision check.
+        all_candidate_ids: set[str] = set()
+        for candidates in groups.values():
+            for cid in candidates:
+                all_candidate_ids.add(cid)
+
+        errors: list[str] = []
+        for alias, candidates in groups.items():
+            if len(candidates) == 0:
+                errors.append(
+                    f"EMPTY_CANDIDATE_LIST: alias '{alias}' must have at least one candidate"
+                )
+                continue
+            if len(candidates) > 5:
+                errors.append(
+                    f"TOO_MANY_CANDIDATES: alias '{alias}' has {len(candidates)} candidates"
+                    f" (at most 5 allowed — bounds per-request catalog-validation cost)"
+                )
+            if alias in all_candidate_ids:
+                errors.append(
+                    f"ALIAS_COLLIDES_WITH_CANDIDATE: alias '{alias}' collides with a"
+                    f" candidate id in the same or another group"
+                )
+
+        if errors:
+            raise ValueError("; ".join(errors))
+        return self
+
     @model_validator(mode="after")
     def _validate_otel_config(self) -> "Settings":
         """If otel_enabled=True, otel_export_url must be non-empty (startup guard)."""

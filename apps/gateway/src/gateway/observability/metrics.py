@@ -108,6 +108,16 @@ class MetricsRegistry:
             registry=registry,
         )
 
+        # labels — alias: alias string; from_model: candidate that fell through or was skipped;
+        #          to_model: candidate that served or "_exhausted" sentinel;
+        #          outcome: fell_through | served | exhausted
+        self.model_fallbacks_total = Counter(
+            "gateway_model_fallbacks_total",
+            "Model-group fallback events by alias, from_model, to_model, and outcome",
+            ["alias", "from_model", "to_model", "outcome"],
+            registry=registry,
+        )
+
     @property
     def registry(self) -> CollectorRegistry:
         return self._registry

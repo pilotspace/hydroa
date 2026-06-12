@@ -46,6 +46,10 @@ class OtelSpan:
     stream: bool  # True for streaming path
     cached: bool = field(default=False)  # True on cache HIT (x_cache == "hit")
     guardrail_blocked: bool = field(default=False)  # True when ERR_GUARDRAIL_BLOCKED raised
+    # True when the fallback router served a different candidate than the
+    # group's first choice (model-fallbacks §3 OBSERVABILITY — additive field,
+    # default False keeps all prior span shapes byte-identical).
+    fallback: bool = field(default=False)
     # ProblemError code for error spans ("ERR_BUDGET_EXCEEDED" etc.); None for
     # success or non-Problem errors — used as status.message in OTLP export.
     error_code: str | None = field(default=None)
@@ -66,6 +70,8 @@ class OtelSpan:
             attrs["ai_proxy.cached"] = "true"
         if self.guardrail_blocked:
             attrs["ai_proxy.guardrail_blocked"] = "true"
+        if self.fallback:
+            attrs["ai_proxy.fallback"] = "true"
         return attrs
 
 
@@ -116,6 +122,8 @@ def _span_to_otlp(span: OtelSpan) -> dict[str, Any]:
         attributes.append({"key": "ai_proxy.cached", "value": {"stringValue": "true"}})
     if span.guardrail_blocked:
         attributes.append({"key": "ai_proxy.guardrail_blocked", "value": {"stringValue": "true"}})
+    if span.fallback:
+        attributes.append({"key": "ai_proxy.fallback", "value": {"stringValue": "true"}})
 
     # Status: code=1 (OK) for <400, code=2 (ERROR) otherwise
     if span.status_code < 400:

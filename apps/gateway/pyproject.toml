@@ -95,6 +95,9 @@ exclude = [
     # retry-policy: frozen test suite; format excluded per no-test-edit contract
     "tests/retry_policy/test_retry_policy.py",
     "tests/retry_policy/conftest.py",
+    # model-fallbacks: frozen test suite; format excluded per no-test-edit contract
+    "tests/model_fallbacks/test_model_fallbacks.py",
+    "tests/model_fallbacks/conftest.py",
 ]
 
 [tool.ruff.lint]

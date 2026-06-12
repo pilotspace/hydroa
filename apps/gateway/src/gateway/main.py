@@ -32,6 +32,7 @@ from gateway.observability.logging_config import configure_structlog
 from gateway.observability.metrics import MetricsRegistry, expose_metrics
 from gateway.observability.middleware import RequestIdMiddleware
 from gateway.proxy.api.router import proxy_router
+from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
@@ -327,6 +328,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         api_key=settings.openrouter_api_key,
         max_retries=settings.upstream_max_retries,
         backoff_base=settings.upstream_retry_backoff_base_s,
+        metrics_registry=app.state.metrics_registry,
+    )
+
+    # Model-group alias router — sits above completion_upstream in the use-case call chain.
+    # health_gate=None here: cooldown-circuit task wires the Redis gate in a later task.
+    # SEAM NOTE: The router is constructed with app.state.completion_upstream as its default
+    # upstream. However, the use case passes the per-request upstream (circuit-breaker-wrapped,
+    # potentially a test fake) via the `upstream` override kwarg on router.complete() and
+    # router.stream(). This preserves the frozen-suite injection contract: tests that set
+    # app.state.completion_upstream = FakeUpstream still work correctly.
+    app.state.model_router = FallbackModelRouter(
+        upstream=app.state.completion_upstream,
+        model_groups=settings.model_groups,
+        health_gate=None,
         metrics_registry=app.state.metrics_registry,
     )
 

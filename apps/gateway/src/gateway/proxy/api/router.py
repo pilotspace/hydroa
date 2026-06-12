@@ -42,12 +42,19 @@ async def completions(
     body: dict[str, Any] = await request.json()
     stream_requested = bool(body.get("stream", False))
 
+    # Resolve model_router from app.state per-request (fail-open: None if not wired).
+    # This preserves the frozen-suite injection contract: tests that inject fakes into
+    # app.state.completion_upstream are unaffected because the router receives the
+    # per-request circuit-breaker-wrapped upstream via its `upstream` override kwarg.
+    model_router = getattr(getattr(request.app, "state", None), "model_router", None)
+
     if stream_requested:
         gen = await use_case.stream(
             raw_key=raw_key,
             body=body,
             upstream=upstream,
             usage_recorder=usage_recorder,
+            model_router=model_router,
         )
         return StreamingResponse(gen, media_type="text/event-stream")
 
@@ -65,6 +72,7 @@ async def completions(
         cache_ttl_seconds=cache_ttl,
         metrics_registry=metrics_registry,
         request_headers=req_headers,
+        model_router=model_router,
     )
     # Upstream 4xx: pass through verbatim — JSONResponse with upstream status
     resp = JSONResponse(content=response_body, status_code=status)

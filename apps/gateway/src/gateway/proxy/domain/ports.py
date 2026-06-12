@@ -6,6 +6,8 @@ Additive extension @ model-mgmt TASK.md §3:
   - ModelChecker.check_for_tenant (new method — is_active UNCHANGED)
 Additive extension @ guardrails-core TASK.md §3:
   - GuardrailEvaluator Protocol (evaluate_pre + evaluate_post)
+Additive extension @ model-fallbacks TASK.md §3:
+  - ModelHealthGate Protocol (is_available / record_failure / record_success)
 """
 
 from __future__ import annotations
@@ -189,6 +191,30 @@ class GuardrailEvaluator(Protocol):
         ...
 
 
+@runtime_checkable
+class ModelHealthGate(Protocol):
+    """Health gate for per-candidate availability checks.
+
+    Additive protocol for model-fallbacks task (TASK.md §3).
+    None (default wiring) = all candidates available; zero gate interaction.
+    The cooldown-circuit task implements the Redis-backed gate.
+
+    Gate calls MUST never raise out of the router (gate is fail-open by contract).
+    """
+
+    async def is_available(self, model_id: str) -> bool:
+        """Return True iff the model should be attempted. False = skip (cooled)."""
+        ...
+
+    async def record_failure(self, model_id: str) -> None:
+        """Record that this candidate raised UpstreamUnavailableError."""
+        ...
+
+    async def record_success(self, model_id: str) -> None:
+        """Record that this candidate returned any (status, body) — including 4xx."""
+        ...
+
+
 __all__ = [
     "AuthzResult",
     "CompletionUpstream",
@@ -196,6 +222,7 @@ __all__ = [
     "KeyAuthenticator",
     "ModelAccess",
     "ModelChecker",
+    "ModelHealthGate",
     "ResponseCache",
     "UsageRecordExtras",
     "UsageRecorder",
