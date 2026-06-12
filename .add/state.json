@@ -70,13 +70,13 @@
       "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider",
       "goal": "a tenant can call embeddings, image-generation, and audio (STT+TTS) endpoints through the same authenticated, governed, accurately-billed proxy, served by a direct provider selected per model modality while OpenRouter still serves chat",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-12T07:23:19+00:00",
-      "updated": "2026-06-12T07:23:19+00:00"
+      "updated": "2026-06-12T11:23:29+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T11:22:25+00:00",
+  "updated": "2026-06-12T11:23:29+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
