@@ -92,6 +92,9 @@ exclude = [
     "tests/oidc_tenant_config/test_oidc_tenant_config.py",
     # rename-hydroa: frozen test file; format excluded per no-test-edit contract
     "tests/rename_hydroa/test_rename_hydroa.py",
+    # retry-policy: frozen test suite; format excluded per no-test-edit contract
+    "tests/retry_policy/test_retry_policy.py",
+    "tests/retry_policy/conftest.py",
 ]
 
 [tool.ruff.lint]

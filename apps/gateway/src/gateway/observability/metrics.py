@@ -99,6 +99,15 @@ class MetricsRegistry:
             registry=registry,
         )
 
+        # labels — reason: connect_error|pool_timeout|upstream_5xx|upstream_429
+        #          outcome: retried|exhausted|breaker_open
+        self.upstream_retries_total = Counter(
+            "gateway_upstream_retries_total",
+            "Upstream retry attempts by reason and outcome",
+            ["reason", "outcome"],
+            registry=registry,
+        )
+
     @property
     def registry(self) -> CollectorRegistry:
         return self._registry

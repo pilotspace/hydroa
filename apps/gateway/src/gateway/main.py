@@ -324,7 +324,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()
     app.state.completion_upstream = OpenRouterCompletionUpstream(
-        api_key=settings.openrouter_api_key
+        api_key=settings.openrouter_api_key,
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        metrics_registry=app.state.metrics_registry,
     )
 
     # Usage metering: wire RecordingUsageRecorder + background flusher

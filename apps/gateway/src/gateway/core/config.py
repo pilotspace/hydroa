@@ -1,6 +1,6 @@
 import json
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_JWT_SECRET = "dev-only-secret-change-me"  # noqa: S105 — dev default; prod sets GATEWAY_JWT_SECRET
@@ -49,6 +49,16 @@ class Settings(BaseSettings):
     oidc_config_encryption_key: str = ""
     # GATEWAY_OIDC_ALLOW_HTTP_URLS — dev/test only; never True in production
     oidc_allow_http_urls: bool = False
+
+    # ── Upstream retry policy (retry-policy task) ─────────────────────────────
+    # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.
+    # Default 0 = opt-in (byte-identical to v5 "NEVER retry" behavior at default settings).
+    # Valid range: 0..5. Values outside this range raise ValidationError at startup.
+    # With max_retries=5 and base=0.5s the expected worst-case delay budget is ~18 s
+    # (sum of backoff caps), leaving ~102 s of actual request time within the 120 s envelope.
+    upstream_max_retries: int = Field(default=0, ge=0, le=5)
+    # GATEWAY_UPSTREAM_RETRY_BACKOFF_BASE_S — base for exponential backoff (seconds).
+    upstream_retry_backoff_base_s: float = Field(default=0.5, gt=0)
 
     @model_validator(mode="after")
     def _validate_otel_config(self) -> "Settings":
