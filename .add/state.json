@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "pricing-units",
+  "active_task": "embeddings-endpoint",
   "active_milestone": "v7",
   "tasks": {
     "provider-seam": {
@@ -23,6 +23,16 @@
       "created": "2026-06-12T07:25:22+00:00",
       "updated": "2026-06-12T08:49:29+00:00",
       "flag_verified": true
+    },
+    "embeddings-endpoint": {
+      "title": "POST /v1/embeddings \u2014 token-priced, via provider seam; establishes reusable non-chat governance",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v7",
+      "depends_on": [],
+      "created": "2026-06-12T08:56:58+00:00",
+      "updated": "2026-06-12T09:11:24+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -36,7 +46,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T08:49:29+00:00",
+  "updated": "2026-06-12T09:11:24+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
