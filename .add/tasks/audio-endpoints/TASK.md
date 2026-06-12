@@ -1,7 +1,7 @@
 # TASK: POST /v1/audio/transcriptions (STT, per-second) + /v1/audio/speech (TTS, per-character streaming), reuses NonChatGovernance
 
 slug: audio-endpoints · created: 2026-06-12 · stage: production · risk: high · autonomy: conservative
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -879,23 +879,44 @@ Code lives in: `./src/`
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — tests/audio_endpoints/ 18/18 (AU1–AU9b STT + AT1–AT6 TTS + green-by-design
+      regression); authoritative `make ci` EXIT=0 (lint + pyright + allowlist + allowlist-node + full
+      suite, --cov-fail-under=80). Embeddings + images + chat suites all green (zero regression).
+- [x] coverage did not decrease — `--cov-fail-under=80` enforced inside the passing gate.
+- [x] no test or contract was altered during build — the build touched no tests; §3 contract
+      unchanged after freeze.
+- [x] concurrency / timing of the risky operation is safe — TTS bill-at-start: governance.authorize
+      AND select_provider run (and can raise) BEFORE _fire_record_with_raw, which fires exactly once
+      BEFORE stream_bytes is called and BEFORE the router constructs StreamingResponse — verified by
+      reading SpeechUseCase.execute step order (AT2 single-bill, AT3 governance-raises-pre-stream,
+      AT6 provider-absent-503-pre-stream). stream_bytes is the sync-returns-AsyncIterator form (NO
+      await), so breaker.guard runs at first byte inside the committed 200 stream (accepted
+      no-retry-after-first-byte). STT: single record; duration absent → quantity 0, recorder WARN,
+      never raises into the proxy path. Governance fail-open inherited from NonChatGovernance.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — no secret touched/logged
+      (OpenAIDirectProvider owns the key); parameterized ModelRow query; the one new dependency
+      python-multipart 0.0.32 was already on the .add allowlist (allowlist gate passed).
+- [x] layering & dependencies follow CONVENTIONS.md — api(audio_router/deps) → application(
+      audio_use_case: Transcription/Speech) → infrastructure(provider_registry/model_checker);
+      identical to embeddings/images.
+- [x] a person reviewed and approved the change — orchestrator read audio_use_case.py (both use
+      cases, the bill-at-start ordering, STT duration handling) + audio_router.py (form parse,
+      StreamingResponse) + both additive diffs + INVIOLABLE git diff (empty across chat/governance/
+      embeddings/images). Tin Dang (delegated auto mode).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — audio_router registered in main.py (app.include_router(audio_router), additive
+      after images_router) + imported; get_transcription_use_case/get_speech_use_case/
+      get_provider_registry consumed by the two routes via Depends; Transcription/SpeechUseCase built
+      by deps; NonChatGovernance reused unchanged; PAYLOAD_FILE_REQUIRED/PAYLOAD_VOICE_REQUIRED raised
+      in the use cases; _RESPONSE_FORMAT_MEDIA_TYPES consumed for the TTS media_type. AU1 + AT1
+      exercise the full wired chains.
+- [x] DEAD-CODE (code) — no orphaned symbol; passthrough field tuple + media-type map both used.
+      ruff F401/I001 clean in the passing gate.
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS  (auto-resolved on complete evidence — delegated auto mode; no security finding)
+Reviewed by: Tin Dang (delegated auto mode, 2026-06-12) · date: 2026-06-12
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 

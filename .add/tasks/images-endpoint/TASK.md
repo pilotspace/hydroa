@@ -1,7 +1,7 @@
 # TASK: POST /v1/images/generations — per-image priced, via provider seam, reuses NonChatGovernance
 
 slug: images-endpoint · created: 2026-06-12 · stage: production · risk: high · autonomy: conservative
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -644,23 +644,35 @@ Code lives in:
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — tests/images_endpoint/ 11/11 (IM1–IM10 + IM10 green-by-design regression);
+      authoritative `make ci` EXIT=0 (lint + pyright + allowlist + allowlist-node + full suite,
+      --cov-fail-under=80). Built sequentially with audio; the combined gate is green.
+- [x] coverage did not decrease — `--cov-fail-under=80` enforced inside the passing gate.
+- [x] no test or contract was altered during build — IM2 comment + §1/§3 prose were aligned to the
+      freeze-time billing resolution (no requested-n fallback) BEFORE the build, by the orchestrator;
+      no assertion changed (IM2 still asserts quantity==Decimal(2)). The build touched no tests.
+- [x] concurrency / timing of the risky operation is safe — ImagesUseCase is a single async flow;
+      one fire-and-forget _fire_record_with_raw (single-bill, IM2); governance fail-open inherited
+      from NonChatGovernance; upstream errors → 502, provider-absent → 503. No shared mutable state.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — no secret touched/logged
+      (OpenAIDirectProvider owns the key); parameterized ModelRow query; no new dependency.
+- [x] layering & dependencies follow CONVENTIONS.md — api(images_router/deps) → application(
+      images_use_case) → infrastructure(provider_registry/model_checker); identical to embeddings.
+- [x] a person reviewed and approved the change — orchestrator read images_use_case.py line-by-line
+      (len(data) billing, single-bill, error mapping) + both additive diffs + INVIOLABLE git diff
+      (empty across chat/governance/embeddings). Tin Dang (delegated auto mode).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — images_router registered in main.py (app.include_router(images_router),
+      additive after embeddings_router) + imported; get_images_use_case/get_provider_registry
+      consumed by the router via Depends; ImagesUseCase built by the dep; NonChatGovernance reused
+      unchanged; PAYLOAD_PROMPT_REQUIRED raised in the use case. IM1 exercises the full wired chain.
+- [x] DEAD-CODE (code) — no orphaned symbol; images_deps reuses get_provider_registry from
+      embeddings_deps (no duplicate). ruff F401/I001 clean in the passing gate.
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS  (auto-resolved on complete evidence — delegated auto mode; no security finding)
+Reviewed by: Tin Dang (delegated auto mode, 2026-06-12) · date: 2026-06-12
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
