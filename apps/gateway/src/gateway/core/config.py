@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     # GATEWAY_OIDC_ALLOW_HTTP_URLS — dev/test only; never True in production
     oidc_allow_http_urls: bool = False
 
+    # ── OpenRouter upstream base URL (v6-live-verify task) ──────────────────────
+    # GATEWAY_OPENROUTER_BASE_URL — base URL for OpenRouterCompletionUpstream.
+    # Default is byte-identical to the prior module constant (_BASE_URL).
+    # Override in e2e overlays to point the gateway at the fault stub.
+    # NEVER set to a non-https URL in production deployments.
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.
     # Default 0 = opt-in (byte-identical to v5 "NEVER retry" behavior at default settings).

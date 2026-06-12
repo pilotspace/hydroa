@@ -107,14 +107,16 @@ class OpenRouterCompletionUpstream:
         self,
         api_key: str,
         *,
+        base_url: str = _BASE_URL,
         max_retries: int = 0,
         backoff_base: float = 0.5,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
         self._api_key = api_key
+        self._base_url = base_url
         self._breaker = CircuitBreaker()
         self._client = httpx.AsyncClient(
-            base_url=_BASE_URL,
+            base_url=base_url,
             timeout=httpx.Timeout(
                 connect=_CONNECT_TIMEOUT,
                 read=_NON_STREAM_TIMEOUT,
