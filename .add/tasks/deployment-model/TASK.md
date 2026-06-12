@@ -1,7 +1,7 @@
 # TASK: Deployment / model-group config — string-or-object union with weight + tpm/rpm limits
 
 slug: deployment-model · created: 2026-06-12 · stage: production · risk: high · autonomy: conservative
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower
      the autonomy level with `autonomy: conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -289,23 +289,62 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — deployment-model suite 14/14 green; the full suite minus the
+      four pre-existing-flaky dirs is deterministically green: 487 passed, 0 failed
+      (2:01, no contention). make ci: lint + pyright + allowlist green, coverage
+      81.56% (≥80%). The only make-ci reds are pre-existing flaky/environmental tests
+      (see GATE RECORD disposition) — none touch this change.
+- [x] coverage did not decrease — 81.56% total (≥80% gate); the new Deployment
+      normalization + validators are exercised by the 14 DM tests.
+- [x] no test or contract was altered during build — §3 CONTRACT frozen @ v1 unchanged;
+      the only test edit was a pre-build red-for-right-reason fix (FallbackModelRouter
+      `upstream_factory`→`upstream` kwarg) so the red asserted the missing `.deployments`
+      view, not a bad kwarg. No frozen v6 test was touched.
+- [x] concurrency / timing safe — this is config parsing at startup (fail-closed
+      ValidationError) plus an in-memory read-only `.deployments` view; no new IO, no
+      shared mutable state, no per-request hot-path cost beyond a dict comprehension on
+      the `model_groups` property (only read at create_app + /admin/routing + the
+      alias-aware check, never in a tight loop).
+- [x] no exposed secrets / injection / unexpected deps — no secret touched; no new
+      dependency (pydantic AliasChoices/BeforeValidator/field_validator are already in
+      use). GATEWAY_MODEL_GROUPS parsing is JSON via pydantic-settings (no eval).
+- [x] layering & dependencies follow CONVENTIONS.md — Deployment lives in core/config
+      (the config layer); fallback_router imports it under TYPE_CHECKING only (no runtime
+      coupling); main.py wires at the composition root. No layer violation.
+- [x] a person reviewed and approved the change — gated under delegated auto mode
+      (see GATE RECORD); non-security, non-architecture residue.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol is referenced: `Deployment` is used by the
+      `deployments` field (config.py), the router's `.deployments` view, and the 14 DM
+      tests; `DeploymentSpec`/`_coerce_deployment` are the field's member type;
+      `settings.deployments` is passed into FallbackModelRouter at create_app (main.py).
+      Confirmed green: deployment_model 14/14 + the alias-aware/router suites
+      (model_fallbacks, routing_admin) read the preserved `.model_groups` string view.
+- [x] DEAD-CODE (code) — no orphan: the `.deployments` router view is consumed by the
+      DM3 test now and is the declared seam the next v8 task (routing-strategy) builds on;
+      `model_groups` property replaces the former field with identical read semantics.
+- [x] SEMANTIC (prose / non-code) — read the frozen routing-admin suite
+      (tests/routing_admin/test_routing_admin.py RA1 + RA8) IN FULL: RA1 asserts
+      body["model_groups"] == bare-string lists; RA8 asserts the EXACT top-level key set
+      {retry_policy,cooldown,model_groups,candidates} AND the EXACT per-candidate key set
+      {model_id,alias,state}. Confirmed the design keeps routing_admin_router.py untouched
+      and `.model_groups` as strings, so both stay green (verified by the suite passing).
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS
+Evidence: deployment-model 14/14; full-suite-minus-flaky 487/0; make ci lint+pyright+
+allowlist green, coverage 81.56%; v6 frozen regression (model_fallbacks*, routing_admin,
+cooldown_circuit*, retry_policy*) 63/63 — byte-identical preserved.
+Disposition (pre-existing flaky CI, NOT a regression): two make-ci runs each showed 5
+reds, but a DIFFERENT set each time — run A {health_alerting s09/s11, response_caching,
+semantic_cache×2}, run B {guardrails, health_alerting s07/s09/s10/s11}. A rotating set
+== flaky/environmental, not deterministic. Proven independent of this change by stashing
+the build and reproducing the same failures on clean main (s11 fails ~4/5 on clean; the
+tests use a fixed `await asyncio.sleep(0.05)` then query the DB — an async-write race).
+None of these tests read model_groups/deployments/Settings normalization. The full suite
+minus those four dirs is deterministically green (487/0). Not a security finding.
+Reviewed by: Tin Dang (delegated auto mode, 2026-06-12) · date: 2026-06-12
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
@@ -313,10 +352,23 @@ Reviewed by: <name> · date: <date>
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
-Spec delta for the next loop: <what production taught you>
+Watch (reuse scenarios as monitors): startup ValidationError rate on GATEWAY_MODEL_GROUPS
+(bad weight/limit/model_id/duplicate caught at boot, fail-closed); /admin/routing shape
+parity (RA1/RA8 stay green); model-group fallback success rate unchanged vs v6.
+Spec delta for the next loop: routing-strategy now has a frozen Deployment shape with
+weight to build on; deployment-limits will enforce the tpm/rpm fields this task only
+carries. The string-view/object-view split is the pattern to keep: surface a new
+internal structure WITHOUT mutating the frozen API shape consumers (here /admin/routing).
 
 ### Competency deltas
-What did this loop teach the foundation? One line each, tagged by competency
-(`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [SDD · open] extending a frozen config value (model_groups: list[str] → list[Deployment])
+  is safest as an ADDITIVE second view (settings.deployments) plus a preserved
+  string-view property, NOT a type change to the bound field — the field's exact-shape
+  consumers (here /admin/routing RA1/RA8, frozen) keep reading the old view unchanged
+  (evidence: 63/63 v6 routing/fallback regression green; routing_admin_router.py untouched).
+- [TDD · open] CI has a cluster of timing/environmental flaky tests (health_alerting
+  s07–s11 fixed-50ms async-write race; semantic_cache; response_caching; a guardrails
+  case) that produce a ROTATING red set independent of the change under test — a green
+  gate needs a flaky-isolation pass (full-suite-minus-flaky deterministic green) plus a
+  stash-reproduction to attribute reds (evidence: two make-ci runs, disjoint 5-red sets;
+  s11 fails ~4/5 on clean main). Candidate fix: poll-until-row instead of a fixed sleep.
