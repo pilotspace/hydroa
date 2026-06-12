@@ -57,8 +57,8 @@ Out: Anthropic embeddings (no native API — defer to a Voyage/3rd-party slice);
 - [ ] provider-breadth-live-verify  depends-on: anthropic-provider, gemini-provider — e2e double-pass: route a chat through Anthropic + Gemini stubs and an embedding through Gemini; billing rows on the served model with correct usage; governance (401/402) intact; OpenRouter + OpenAI paths byte-identical; streaming verified per chat provider.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A catalog model with provider=anthropic routes /v1/chat/completions through the Anthropic Messages translation and returns an OpenAI-shaped response (stream + non-stream) (← anthropic-provider)
-- [ ] A catalog model with provider=google routes chat (generateContent) AND /v1/embeddings (embedContent) with correct OpenAI⇄native translation (← gemini-provider)
-- [ ] Billing keys on the served model id with correct usage tokens for every provider; governance (401 auth / 402 budget) unchanged across providers (← provider-chat-dispatch)
-- [ ] The OpenRouter + OpenAI paths stay byte-identical (default provider unchanged); a model with no provider override behaves exactly as v8 (← provider-chat-dispatch)
-- [ ] All of the above proven LIVE through the TLS edge with per-provider stubs, two consecutive clean passes (← provider-breadth-live-verify)
+- [x] A catalog model with provider=anthropic routes /v1/chat/completions through the Anthropic Messages translation and returns an OpenAI-shaped response (stream + non-stream) (← anthropic-provider) — live C1/C2 (7/4 billed)
+- [x] A catalog model with provider=google routes chat (generateContent) AND /v1/embeddings (embedContent) with correct OpenAI⇄native translation (← gemini-provider) — live C3/C4 (9/6) + C5 (order-preserved embeddings)
+- [x] Billing keys on the served model id with correct usage tokens for every provider; governance (401 auth / 402 budget) unchanged across providers (← provider-chat-dispatch) — live C1/C3 served-id billing + C6 (401+402, 0 rows)
+- [x] The OpenRouter + OpenAI paths stay byte-identical (default provider unchanged); a model with no provider override behaves exactly as v8 (← provider-chat-dispatch) — live C7 (5/3/8) + 628 unit suite green, openrouter path untouched
+- [x] All of the above proven LIVE through the TLS edge with per-provider stubs, two consecutive clean passes (← provider-breadth-live-verify) — live double-pass 35/35 ×2 through https://localhost:8443
