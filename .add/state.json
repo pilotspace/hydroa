@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "routing-strategy",
+  "active_task": "balance-strategies",
   "active_milestone": "v8",
   "tasks": {
     "deployment-model": {
@@ -23,6 +23,15 @@
       "created": "2026-06-12T14:29:34+00:00",
       "updated": "2026-06-12T14:47:16+00:00",
       "flag_verified": true
+    },
+    "balance-strategies": {
+      "title": "least-busy + latency routing strategies (Redis-backed, async order)",
+      "phase": "tests",
+      "gate": "none",
+      "milestone": "v8",
+      "depends_on": [],
+      "created": "2026-06-12T14:48:13+00:00",
+      "updated": "2026-06-12T14:53:34+00:00"
     }
   },
   "milestones": {
@@ -36,7 +45,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T14:47:16+00:00",
+  "updated": "2026-06-12T14:53:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
