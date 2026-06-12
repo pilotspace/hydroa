@@ -380,24 +380,24 @@ generateContent/embedContent; the chat_adapters seam + dispatch are ready — Ge
 `_chat_adapters["google"]` + a "google" UpstreamProvider for embeddings.
 
 ### Competency deltas
-- [SDD · open] First real schema-TRANSLATION surface (OpenAI⇄Anthropic) landed as a self-contained
+- [SDD · folded] First real schema-TRANSLATION surface (OpenAI⇄Anthropic) landed as a self-contained
   adapter with module-level pure helpers — non-stream + stream + usage + errors — proving the v9
   dispatch seam carries a non-OpenAI wire format end-to-end (evidence: 16/16 green incl. a realistic
   recorded-stream drift detector; extract_usage_from_sse cross-check passes). Reusable template for
   every future provider.
-- [DDD · open] Decision recorded: raw per-provider httpx translation OVER vendor SDKs — matches the
+- [DDD · folded] Decision recorded: raw per-provider httpx translation OVER vendor SDKs — matches the
   LiteLLM parity target (its llms/anthropic is hand-rolled httpx) and keeps ONE resilience contract
   (CircuitBreaker/timeout/UpstreamUnavailableError/v8-fallback) across all upstreams; avoids
   per-provider SDK dependency sprawl (anthropic+google-genai+boto3+azure…). Applies to Gemini +
   all later providers (evidence: human steer 2026-06-13).
-- [TDD · open] FOLLOW-UP (non-blocking): stream() buffers the FULL Anthropic event sequence before
+- [TDD · folded] FOLLOW-UP (non-blocking): stream() buffers the FULL Anthropic event sequence before
   emitting any OpenAI chunk → output + billing correct, but time-to-first-byte == full generation
   time (not incremental). The frozen `_translate_anthropic_sse(events)` helper (sync, consumes the
   whole iterable) shaped this; true incremental streaming needs a stateful per-event translator
   (process-one-event + finalize) without changing that frozen signature. Track for a streaming-
   latency hardening slice (applies to Gemini too). Evidence: anthropic_upstream.py stream() buffers
   into `events` then translates after the `async with` closes.
-- [ADD · open] The live-verify (task 4) is the designated catch for the freeze's least-sure flag
+- [ADD · folded] The live-verify (task 4) is the designated catch for the freeze's least-sure flag
   (SSE field names validated against documented fixtures, not a live key) — the CI hardening test
   reduces but does not eliminate that risk; the milestone must not close until task-4's recorded-
   stream replay passes the TLS-edge double-pass.

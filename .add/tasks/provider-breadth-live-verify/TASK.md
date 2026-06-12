@@ -328,19 +328,19 @@ Bedrock + Azure (distinct auth surfaces — SigV4 / Azure deployment URLs), the 
 hardening (incremental SSE for anthropic+gemini), and exact Gemini-embedding token counting.
 
 ### Competency deltas
-- [ADD · open] The v9 milestone closed via the foundation's live-double-pass rule with ZERO harness
+- [ADD · folded] The v9 milestone closed via the foundation's live-double-pass rule with ZERO harness
   iteration — the seed-then-restart-gateway resolver-refresh mechanism worked first-try (the freeze
   ⚠ flag's mitigation held). Evidence: 35/35 ×2, first run clean. Confirms the freeze-first
   per-provider methodology (dispatch seam frozen first, each provider's translation fixture-grounded
   + verified by its own unit suite, then ONE live double-pass) is the repeatable shape for adding a
   provider.
-- [SDD · open] A single path-routed host stub proved sufficient to exercise three distinct provider
+- [SDD · folded] A single path-routed host stub proved sufficient to exercise three distinct provider
   wire formats (OpenAI/Anthropic/Gemini incl. SSE + embeddings) through the real TLS edge — the
   per-provider e2e harness does not need one stub per provider. Reusable for the next provider slice.
-- [DDD · open] Provider breadth is now end-to-end real: catalog provider ∈ {openrouter,openai,
+- [DDD · folded] Provider breadth is now end-to-end real: catalog provider ∈ {openrouter,openai,
   anthropic,google} routes chat + (google) embeddings through the OpenAI-compatible surface with
   billing on the served id and governance intact — the v9 glossary delta ("provider as a first-class
   routing dimension on every modality") is fully realized and live-verified.
-- [TDD · open] Carry-forward follow-ups (from tasks 2–3, still open): incremental SSE streaming for
+- [TDD · folded] Carry-forward follow-ups (from tasks 2–3, still open): incremental SSE streaming for
   anthropic+gemini (both buffer today); exact Gemini-embedding token counting (chars/4 estimate). The
   live run did not surface new defects — these remain deliberate, documented scope cuts, not bugs.

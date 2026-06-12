@@ -1,62 +1,12 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "provider-breadth-live-verify",
-  "active_milestone": "v9",
-  "tasks": {
-    "provider-chat-dispatch": {
-      "title": "make the chat completion path provider-aware: dispatch by served-model provider to a ChatTranslator adapter (OpenAI<->native, stream+non-stream, usage+errors); OpenRouter stays default byte-identical",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v9",
-      "depends_on": [],
-      "created": "2026-06-12T16:33:56+00:00",
-      "updated": "2026-06-12T17:01:03+00:00",
-      "flag_verified": true
-    },
-    "anthropic-provider": {
-      "title": "Anthropic Messages API chat adapter: translate OpenAI chat <-> Anthropic /messages (request, response, SSE stream, usage, errors); register as provider='anthropic' chat adapter",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v9",
-      "depends_on": [],
-      "created": "2026-06-12T17:02:19+00:00",
-      "updated": "2026-06-12T17:30:35+00:00",
-      "flag_verified": true
-    },
-    "gemini-provider": {
-      "title": "Google Gemini adapter: chat (generateContent + streamGenerateContent SSE) via the dispatch seam + embeddings (embedContent/batchEmbedContents) via the v7 UpstreamProvider seam; x-goog-api-key auth; OpenAI<->native translation",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v9",
-      "depends_on": [],
-      "created": "2026-06-12T17:32:43+00:00",
-      "updated": "2026-06-12T17:45:41+00:00",
-      "flag_verified": true
-    },
-    "provider-breadth-live-verify": {
-      "title": "e2e double-pass through the TLS edge: Anthropic + Gemini chat (stream + non-stream) + Gemini embeddings via a single per-provider stub; billing on served id with correct usage; governance 401/402 intact; openrouter byte-identical",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v9",
-      "depends_on": [],
-      "created": "2026-06-12T18:03:58+00:00",
-      "updated": "2026-06-12T18:21:15+00:00",
-      "flag_verified": true
-    }
-  },
-  "milestones": {
-    "v9": {
-      "title": "LiteLLM parity slice 7 \u2014 provider breadth (Anthropic + Google Gemini, chat + embeddings)",
-      "goal": "a tenant calls Anthropic (chat) and Google Gemini (chat + embeddings) models through the same OpenAI-compatible /v1 surface, with native-API translation, billing, governance, and v8 routing intact",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-12T16:32:36+00:00",
-      "updated": "2026-06-12T18:21:57+00:00"
-    }
-  },
+  "active_task": null,
+  "active_milestone": null,
+  "tasks": {},
+  "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T18:21:57+00:00",
+  "updated": "2026-06-12T18:27:11+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -180,6 +130,18 @@
         "v8-live-verify"
       ],
       "archived": "2026-06-12"
+    },
+    {
+      "slug": "v9",
+      "title": "LiteLLM parity slice 7 \u2014 provider breadth (Anthropic + Google Gemini, chat + embeddings)",
+      "tasks": 4,
+      "task_slugs": [
+        "provider-chat-dispatch",
+        "anthropic-provider",
+        "gemini-provider",
+        "provider-breadth-live-verify"
+      ],
+      "archived": "2026-06-13"
     }
   ]
 }

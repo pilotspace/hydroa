@@ -398,17 +398,17 @@ a Gemini embedding through per-provider stubs at the TLS edge (double-pass) and 
 the served model id with correct usage, governance (401/402) intact, openrouter/openai byte-identical.
 
 ### Competency deltas
-- [SDD · open] Gemini exercised BOTH provider seams at once — chat via the v9 CompletionUpstream
+- [SDD · folded] Gemini exercised BOTH provider seams at once — chat via the v9 CompletionUpstream
   dispatch AND embeddings via the v7 UpstreamProvider registry — proving a single provider can span
   both without touching either frozen seam (evidence: 19/19 green; both wiring tests assert
   presence/absence on each seam). Confirms the v7+v9 seam split composes cleanly.
-- [DDD · open] Provider value-set widened to {openrouter,openai,anthropic,google} across chat +
+- [DDD · folded] Provider value-set widened to {openrouter,openai,anthropic,google} across chat +
   embeddings with NO datastore/migration change (catalog ModelRow.provider already TEXT) — the
   "provider as first-class routing dimension" glossary delta is fully realized for v9's scope.
-- [TDD · open] FOLLOW-UP (non-blocking, shared with anthropic): Gemini stream() also buffers the
+- [TDD · folded] FOLLOW-UP (non-blocking, shared with anthropic): Gemini stream() also buffers the
   full SSE before emitting → correct billing, not incremental TTFB. One streaming-latency hardening
   slice should cover BOTH anthropic + gemini (same buffer-then-translate shape).
-- [UDD · open] FOLLOW-UP: google-embedding usage is a chars/4 ESTIMATE (Gemini embed returns no
+- [UDD · folded] FOLLOW-UP: google-embedding usage is a chars/4 ESTIMATE (Gemini embed returns no
   token count) → embedding SPEND is approximate for one provider. If exact embedding billing matters
   to a tenant, this needs a real tokenizer or a Gemini countTokens pre-call (a cost/accuracy slice).
   Evidence: _gemini_embed_to_openai estimates usage; flagged as the freeze's ⚠ least-sure point.

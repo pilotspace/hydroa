@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-12 · foundation-version: 9
+slug: ai-proxy · stage: production · updated: 2026-06-13 · foundation-version: 10
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -44,6 +44,20 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     them as separate glossary terms keeps the router logic and the 429-saturated vs
     503-cooldown-exhausted distinction unambiguous; billing still keys on the SERVED
     deployment's catalog id (v6 invariant preserved across load-balanced selection)
+- Folded from v9 (2026-06-13):
+  - **Provider** graduates from non-chat-only metadata to a FIRST-CLASS routing
+    dimension on EVERY modality including chat. Provider ∈ {openrouter (default),
+    openai, anthropic, google}; the catalog model row's `provider` (TEXT — already
+    present, NO migration) selects the upstream adapter. A **ChatTranslator** is the
+    per-provider seam mapping an OpenAI chat-completions request ⇄ a provider-native
+    request/response (+ SSE), DISTINCT from the v7 `UpstreamProvider` (transport-only,
+    non-chat). One provider can span BOTH seams (Gemini: chat via the dispatch map +
+    embeddings via the v7 registry) without touching either frozen seam.
+  - INVARIANT (proven live, v9): adding a provider NEVER changes the default path —
+    provider=openrouter/openai chat stays byte-identical; billing still keys on the
+    SERVED model id with the provider's NATIVE usage tokens. Gemini embeddings are the
+    one exception: no native token count → a documented `max(1, ceil(chars/4))`
+    ESTIMATE (exact counting is an open follow-up)
 
 ## Spec / Living Document (SDD) — what we are building, now
 
@@ -112,6 +126,25 @@ goal: a user can set up their tenant → log in → call any LLM model through t
   - Settled: a router that load-balances is only TRUSTWORTHY once distribution is
     OBSERVABLE at the edge (a per-deployment served-count readout), not just unit-asserted
     — the live close proved weighted-shuffle (dep-a:dep-b ≈ 8:32 then 13:27 over weight 1:3)
+- Folded from v9 (2026-06-13):
+  - Settled: the chat completion path is PROVIDER-AWARE via a dispatch wrapper
+    (`ProviderAwareCompletionUpstream`) over a `dict[provider→adapter]` map, resolving
+    the served model's provider through an in-memory `CatalogProviderResolver`
+    (model_id→provider, refreshed at startup + on /internal/catalog/sync). Unknown/unset
+    provider → fail-SAFE to the "openrouter" default adapter; the v8 router/billing path
+    is UNCHANGED behind the wrapper
+  - Settled: each non-OpenAI provider stream() MUST emit a TERMINAL OpenAI chunk carrying
+    `usage:{prompt_tokens,completion_tokens,total_tokens}` before `data: [DONE]` — the
+    frozen `extract_usage_from_sse` scans joined frames in reverse for the LAST usage
+    frame, so translation correctness IS billing correctness on the stream path
+  - Settled: a provider's wire translation is grounded in a VERBATIM SSE fixture shared
+    between the adapter unit suite and the live stub (Anthropic 7/4, Gemini 9/6) — the
+    stub bytes match the unit fixtures, so a green unit suite predicts a green live pass
+  - OPEN: Anthropic + Gemini stream() both BUFFER the full upstream event list before
+    translating (no incremental TTFB) — a streaming-hardening follow-up
+  - OPEN: Gemini embeddings have no native token count → usage is ESTIMATED as
+    `max(1, ceil(total_chars/4))`; exact counting (a tokenizer or count API) is a
+    follow-up
 
 ## Users (UDD) — UI/UX: design before code
 
@@ -206,3 +239,8 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-12 | Cross-cutting candidate constraints filter UPSTREAM of the routing strategy (saturation skip) (fold: ADD/deployment-limits) | composes with EVERY strategy + the v6 loop untouched — the strategy only ever sees survivors | folded v8 |
 | 2026-06-12 | A load-balancing router is only trustworthy once distribution is OBSERVABLE at the edge (per-deployment served-count readout), and a cooldown live check asserts the AUTHORITATIVE gate state (/admin/routing snapshot_state), not stub-counter inference (fold: SDD+ADD/v8-live-verify) | weighted-shuffle proven 8:32/13:27 over weight 1:3; stub-counter cooldown flaked under shuffle+retries, /admin/routing poll passed 29/29 ×2 | folded v8 |
 | 2026-06-12 | A live harness firing bursts must pace under the edge rate limit (Envoy local_ratelimit 50 req/s global); a statistical check needs volume → it needs pacing (fold: TDD/v8-live-verify) | C1's 40-req sample + C5's trip loop drained the bucket → 429 local_rate_limited on a following /admin/keys; 50ms/req + settle fixed it | folded v8 |
+| 2026-06-13 | Provider is a first-class chat routing dimension: ProviderAwareCompletionUpstream dispatches by the served model's catalog provider to a per-provider ChatTranslator; unknown/unset → fail-safe openrouter; v8 router/billing untouched behind the wrapper (fold: DDD+SDD/provider-chat-dispatch) | makes the OpenRouter-hardwired chat path provider-aware additively; default path stays byte-identical (C7 5/3/8 + 628-unit suite green) | folded v9 |
+| 2026-06-13 | Raw httpx per provider over vendor SDKs (Anthropic/Google), one shared resilience contract (CircuitBreaker/timeout/UpstreamUnavailableError/v8-fallback) (fold: ADD/anthropic-provider+gemini-provider, user-confirmed) | matches LiteLLM's own hand-rolled llms/anthropic httpx; avoids per-provider SDK dependency sprawl + divergent resilience seams; Tin chose "Keep raw httpx" at the SDK fork | folded v9 |
+| 2026-06-13 | Every non-OpenAI stream() emits a TERMINAL OpenAI usage chunk before [DONE]; wire translation grounded in a VERBATIM SSE fixture shared by the adapter unit suite + the live stub (fold: SDD+TDD/anthropic-provider+gemini-provider) | the frozen extract_usage_from_sse reads the LAST usage frame → translation IS billing on the stream path; matching stub/unit bytes make a green unit suite predict the live pass | folded v9 |
+| 2026-06-13 | A new in-memory resolver map (model_id→provider) refreshes at lifespan startup + on /internal/catalog/sync; the live harness SEEDS rows then RESTARTS the gateway so refresh() reads them (fold: ADD/provider-chat-dispatch+v9-live-verify) | the freeze's least-sure flag (seed-then-restart refreshes the resolver) confirmed first-try; no source-sync = no deactivation; double-pass 35/35 ×2 | folded v9 |
+| 2026-06-13 | Gemini embeddings usage is ESTIMATED max(1, ceil(total_chars/4)) — no native token count (fold: SDD/gemini-provider, open follow-up); Anthropic+Gemini stream() BUFFER full event list before translating (open TTFB follow-up) | embedContent/batchEmbedContents return no usageMetadata token counts; documented estimate billed, exact counting deferred | folded v9 (open follow-up) |

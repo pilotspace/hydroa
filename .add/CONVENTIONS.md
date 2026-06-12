@@ -201,6 +201,37 @@ Build/harness conventions folded from v1 (2026-06-10):
         - capture the authoritative pytest+coverage to an orchestrator-owned path
           (`> /tmp/...log 2>&1`); the `rtk` tee log filename/rotation is unreliable for a
           re-run and `ls -t` can return a stale cached name
+        Build/harness conventions folded from v9 (2026-06-13):
+        - a multi-provider chat path dispatches by the SERVED model's catalog provider
+          through a wrapper (`ProviderAwareCompletionUpstream`) over a
+          `dict[provider→adapter]` map; an unknown/unset provider FAIL-SAFES to the
+          "openrouter" default adapter — the v8 router/billing path stays untouched
+          BEHIND the wrapper, so the default chat path is byte-identical (evidence: C7
+          5/3/8 + the 628-unit suite green with the OpenRouter path unmodified)
+        - a relocated composition seam needs a PUBLIC alias for its wiring tests: v9 moved
+          `app.state.completion_upstream` to the dispatch wrapper, so the OpenRouter
+          wiring/retry/base-url suites were redirected to a new
+          `app.state.openrouter_completion_upstream` seam (behavior preserved, the
+          dispatch-type assertion strengthened) — legitimate regression-maintenance, NOT
+          test-weakening (evidence: 7 wiring assertions redirected, ps10 strengthened)
+        - every non-OpenAI provider stream() MUST emit a TERMINAL OpenAI chunk carrying
+          `usage:{prompt_tokens,completion_tokens,total_tokens}` before `data: [DONE]` —
+          the frozen `extract_usage_from_sse` scans joined frames in REVERSE for the LAST
+          usage frame, so a provider's SSE translation IS its stream-path billing
+          correctness (evidence: Anthropic 7/4 + Gemini 9/6 terminal usage, live C2/C4)
+        - ground each provider's wire translation in a VERBATIM SSE fixture shared by the
+          adapter unit suite AND the live stub — the stub bytes match the unit fixtures,
+          so a green unit suite PREDICTS a green live pass (evidence: v9_provider_stub.py
+          SSE == the _ANTHROPIC_SSE / _GEMINI_SSE unit fixtures; double-pass first-try)
+        - a new in-memory resolver map (model_id→provider) refreshes at lifespan startup +
+          on /internal/catalog/sync; the live harness SEEDS provider-tagged rows via
+          psql docker-exec then RESTARTS the gateway so the lifespan refresh() reads them
+          (no source-sync = no deactivation) — confirmed the freeze's least-sure flag
+          first-try (evidence: seed-then-restart, 35/35 ×2, no fallback, no iteration)
+        - raw httpx per provider over vendor SDKs keeps ONE resilience contract
+          (CircuitBreaker/timeout/UpstreamUnavailableError/v8-fallback) across every
+          provider — matches LiteLLM's own hand-rolled llms/anthropic httpx; avoids
+          per-provider SDK dependency sprawl + divergent resilience seams (Tin-confirmed)
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

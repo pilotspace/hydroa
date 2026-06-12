@@ -376,19 +376,19 @@ into `_chat_adapters` (main.py) keyed by provider name + register the provider o
 rows — the dispatch seam is ready; each provider freezes its OWN native-API translation (fixtures).
 
 ### Competency deltas
-- [DDD · open] Provider became a first-class routing dimension on chat via a thin dispatch port
+- [DDD · folded] Provider became a first-class routing dimension on chat via a thin dispatch port
   (ProviderResolver) + wrapper, leaving the v8 router/use-case/billing untouched — additive
   supersession over a frozen seam works at the composition root (evidence: 0 edits to
   fallback_router.py/use_cases.py; openrouter path byte-identical, 593 green).
-- [TDD · open] Front-loaded red suite covered the dispatch seam in isolation with fakes (resolver +
+- [TDD · folded] Front-loaded red suite covered the dispatch seam in isolation with fakes (resolver +
   adapter spies) — no DB/network — so BUILD was a pure green-make; the gap it MISSED was the 7
   prior-milestone white-box wiring asserts on app.state.completion_upstream (evidence: target 10/10
   green but full gate surfaced 7 wiring failures). Lesson: a contract that RELOCATES a named
   app.state seam must enumerate the prior wiring-regression tests that assert that seam.
-- [ADD · open] The CONTEXT.md "do-not-touch frozen tests" list should be derived by grepping the
+- [ADD · folded] The CONTEXT.md "do-not-touch frozen tests" list should be derived by grepping the
   changed app.state attribute, not hand-enumerated — the 3 wiring suites (provider_seam,
   retry_policy_wiring, upstream_base_url) were the foreseeable blast radius of moving
   completion_upstream and were not pre-listed (evidence: this verify caught them, not the freeze).
-- [SDD · open] A public `app.state.openrouter_completion_upstream` seam is now the canonical anchor
+- [SDD · folded] A public `app.state.openrouter_completion_upstream` seam is now the canonical anchor
   for the v6 production-wiring-regression rule (Settings→live-adapter threading) — future seam
   relocations should expose a stable public name rather than let tests reach private internals.
