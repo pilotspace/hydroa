@@ -1,7 +1,7 @@
 # TASK: per-deployment TPM/RPM limits skip saturated deployment at selection (429 when all saturated)
 
 slug: deployment-limits · created: 2026-06-12 · stage: production · risk: high · autonomy: conservative
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower
      the autonomy level with `autonomy: conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -347,23 +347,50 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — deployment_limits 11/11 green; authoritative full suite 583 passed,
+      0 failed (`uv run pytest --cov -m 'not e2e'`, 0 flake recurrence); v6 + routing-strategy +
+      balance-strategies regression green (byte-identical preserved for the limit_gate=None path).
+- [x] coverage did not decrease — 81.97% (≥80% gate), UP from the 81.79% baseline.
+      redis_limit_gate.py is 92% — only its record_* fail-soft except branches (lines 121-122,
+      138-139) are unexercised; reachable on a real Redis error, not dead.
+- [x] no test or contract was altered during build — §3 CONTRACT untouched; no test file was
+      modified during the build (the orchestrator fixed ONE pre-build test bug at the tests phase:
+      DL2b asserted `exc.status_code` but ProblemError exposes `.status` — corrected before the
+      front was committed, no assertion weakened).
+- [x] concurrency / timing of the risky operation is safe — is_saturated/record_* use Redis
+      INCR/INCRBY (atomic) on per-minute buckets. The KNOWN soft-overshoot (peek-then-record race,
+      bounded by concurrency, self-healing per 60 s window) is the §3 freeze flag — accepted as a
+      PROTECTIVE/soft limit, never a billing/security gate (those stay the v1 per-API-key limiter).
+      The filter is fail-OPEN per candidate (try/except → admit) so a Redis outage never blocks
+      traffic and never produces a false-429 or 500. Saturation(429) and cooldown-exhaustion(503)
+      are distinct outcomes (DL7).
+- [x] no exposed secrets, injection openings, or unexpected dependencies — Redis keys use
+      deployment_id only (gateway:deplimit:{rpm,tpm}:{id}:{bucket}); all WARNING logs carry
+      deployment_id + error-type only; no injection; stdlib + existing deps only (allowlist OK).
+- [x] layering & dependencies follow CONVENTIONS.md — DeploymentLimitGate (domain port) +
+      AllDeploymentsSaturatedError (domain error); RedisDeploymentLimitGate (infrastructure);
+      router filter + use-case 429 mapping (application); main.py (composition) wires. 429 reuses
+      the EXISTING core/error_catalog RATE_LIMITED spec. No upward/cross-layer import. pyright 0
+      errors; ruff + ruff format clean (incl. tests/).
+- [x] a person reviewed and approved the change — Tin Dang (delegated auto mode, 2026-06-12), same
+      delegation as the §3 freeze; security checked clean (no HARD-STOP). Orchestrator manually
+      reviewed every changed file (router filter/record, use-case except placement, redis gate, wiring).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol referenced: `DeploymentLimitGate` (port) ← implemented by
+      RedisDeploymentLimitGate + typed in router; `AllDeploymentsSaturatedError` → raised by router,
+      caught by use_cases.py except clause (mapped to RATE_LIMITED.exc); `RedisDeploymentLimitGate`
+      → main.py create_app (wired iff a deployment declares a limit); `limit_gate` kwarg →
+      FallbackModelRouter + main.py. (verified via diff + the DL9 wiring test asserting
+      router._limit_gate type per config.)
+- [x] DEAD-CODE (code) — no orphaned symbol. The use-case except clause is placed BEFORE the broad
+      (UpstreamUnavailableError, CircuitOpenError) handler and catches only its distinct class, so
+      it neither shadows nor is shadowed. redis_limit_gate.py uncovered lines are fail-soft except
+      branches (reachable on a real Redis error), not dead code.
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS
+Reviewed by: Tin Dang (delegated auto mode) · date: 2026-06-12
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
@@ -371,10 +398,33 @@ Reviewed by: <name> · date: <date>
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
-Spec delta for the next loop: <what production taught you>
+Watch (reuse scenarios as monitors): per-deployment 429 ERR_RATE_LIMITED rate (all-saturated
+events — a spike means a group is under-provisioned); per-deployment RPM/TPM window utilisation
+(observed overshoot vs configured limit quantifies the soft-limit race); is_saturated fail-OPEN
+WARNING count (Redis health); ratio of saturation-skips to cooldown-skips (limit vs health pressure).
+Spec delta for the next loop: v8-live-verify (task 5) must prove the 429 path E2E through the TLS
+edge with a multi-deployment stub overlay where one deployment is forced saturated; if soft-overshoot
+proves material in production, the bounded follow-up is the atomic INCR-then-compare RPM path noted
+in §3. The v8 router surface is now complete: strategy (primary) + load_gate (in-flight/latency) +
+limit_gate (TPM/RPM) + v6 fallback + cooldown, billing on the served id.
 
 ### Competency deltas
-What did this loop teach the foundation? One line each, tagged by competency
-(`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [SDD · open] Reusing an EXISTING error-catalog spec (RATE_LIMITED → 429) for a new domain error
+  (AllDeploymentsSaturatedError) keeps the HTTP contract centralized: the router raises a DOMAIN
+  error, a single additive use-case except clause maps it — no new status/code literal, no API
+  handler change. (evidence: DL2b asserts the catalog produces 429; the clause is the only
+  use_cases.py edit and sits before the broad handler.)
+- [ADD · open] "Filter UPSTREAM of the strategy" is the clean place for a cross-cutting candidate
+  constraint (saturation) — it composes with EVERY strategy (ordered/shuffle/least-busy/latency)
+  and the v6 loop without touching any of them, because the strategy only ever sees survivors.
+  (evidence: DL8 — least-busy orders the post-filter survivor set; v6 fallback unchanged.)
+- [TDD · open] A test that asserts an attribute on an EXISTING type must match that type's real
+  surface — DL2b first asserted `ProblemError.status_code` but the field is `.status`; caught at
+  test-review by reading core/errors.py before the front froze, not at build (where it would have
+  been a red-for-wrong-reason). Lesson: when a front test touches existing code, verify its API at
+  authoring time. (evidence: the DL2b `.status` correction.)
+- [DDD · open] Three orthogonal per-deployment gates now coexist cleanly because each is a distinct
+  domain concept with its own port: cooldown (UNHEALTHY, v6) · load (IN-FLIGHT/LATENCY,
+  balance-strategies) · limit (SATURATED, this task). Naming them as separate Saturated/Cooled/
+  in-flight glossary terms kept the router logic and the 429-vs-503 distinction unambiguous.
+  (evidence: DL7 — saturated≠cooled produces 429≠503.)
