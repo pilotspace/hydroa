@@ -220,14 +220,18 @@ def test_ps5_modelrow_orm_has_modality_provider_columns() -> None:
         f"ModelRow ORM must have a 'provider' column; found: {column_names}"
     )
 
-    # Verify server_default values are set (they encode the migration default)
+    # Verify server_default values are set (they encode the migration default).
+    # NB: mapper.columns["modality"] is a sqlalchemy Column, which exposes
+    # .server_default directly — it has no .columns attribute in SQLAlchemy 2.x
+    # (orchestrator test-defect fix: the original .columns[0] indirection raised
+    # AttributeError; assertion intent — server_default present — is unchanged).
     modality_col = mapper.columns["modality"]
     provider_col = mapper.columns["provider"]
 
-    assert modality_col.columns[0].server_default is not None, (
+    assert modality_col.server_default is not None, (
         "modality column must have a server_default='chat'"
     )
-    assert provider_col.columns[0].server_default is not None, (
+    assert provider_col.server_default is not None, (
         "provider column must have a server_default='openrouter'"
     )
 
@@ -393,6 +397,7 @@ async def test_ps8_openai_provider_post_json_calls_correct_url(
         timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0),
     )
     from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+
     provider._breaker = CircuitBreaker()
 
     status, body = await provider.post_json("/embeddings", EMBEDDING_PAYLOAD)
@@ -546,9 +551,7 @@ def test_ps10_production_wiring_registry_has_openrouter_and_openai() -> None:
 
     # openrouter entry must be present
     openrouter_entry = app.state.provider_registry.get("openrouter")
-    assert openrouter_entry is not None, (
-        "provider_registry must always contain 'openrouter' entry"
-    )
+    assert openrouter_entry is not None, "provider_registry must always contain 'openrouter' entry"
 
     # openai entry must be present when key is set
     openai_entry = app.state.provider_registry.get("openai")
@@ -637,9 +640,7 @@ def test_upstream_provider_protocol_has_all_three_methods() -> None:
     if protocol_attrs is not None:
         # Python 3.12+ exposes __protocol_attrs__
         missing = required_methods - set(protocol_attrs)
-        assert not missing, (
-            f"UpstreamProvider Protocol is missing methods: {missing}"
-        )
+        assert not missing, f"UpstreamProvider Protocol is missing methods: {missing}"
     else:
         # Fallback: check the abstract methods are callable on instances
         fake = FakeUpstreamProvider(name="method-check")

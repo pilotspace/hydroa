@@ -387,3 +387,15 @@ OIDC_TENANT_CONFLICT = ErrorSpec(
 #: Unexpected internal error (used in the OIDC admin router after a DB upsert
 #: that succeeded but then returned no row on the follow-up SELECT).
 INTERNAL_ERROR = ErrorSpec(500, "ERR_INTERNAL", "Failed to retrieve saved OIDC config")
+
+# ---------------------------------------------------------------------------
+# Provider selection errors (provider-seam task)
+# ---------------------------------------------------------------------------
+
+#: Requested provider is absent from the registry (key not configured or disabled).
+#: Dynamic: {provider} — the provider name from the catalog row.
+PROVIDER_UNAVAILABLE = ErrorSpec(
+    503,
+    "ERR_PROVIDER_UNAVAILABLE",
+    "Provider '{provider}' is not configured or unavailable",
+)

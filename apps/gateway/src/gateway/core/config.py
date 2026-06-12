@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     # NEVER set to a non-https URL in production deployments.
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    # ── OpenAI direct provider (provider-seam task) ───────────────────────────
+    # GATEWAY_OPENAI_API_KEY — secret; empty = OpenAI provider absent from registry.
+    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
+    # labels/span attributes.  Follows the same handling as openrouter_api_key.
+    openai_api_key: str = ""
+    # GATEWAY_OPENAI_BASE_URL — Override in e2e overlays to point at a stub.
+    # NEVER set to a non-https URL in production deployments.
+    openai_base_url: str = "https://api.openai.com/v1"
+
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.
     # Default 0 = opt-in (byte-identical to v5 "NEVER retry" behavior at default settings).

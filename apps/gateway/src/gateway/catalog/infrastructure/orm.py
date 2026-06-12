@@ -17,6 +17,11 @@ class ModelRow(Base):
 
     id is the OpenRouter model id string (e.g. "anthropic/claude-opus-4").
     active is set to false when the model is absent from the upstream response.
+
+    Additive columns (provider-seam TASK.md §3):
+      modality — one of {chat, embedding, image, audio_stt, audio_tts}; default "chat"
+      provider — upstream provider name (registry key); default "openrouter"
+    Every pre-existing row gets modality="chat", provider="openrouter" via migration default.
     """
 
     __tablename__ = "models"
@@ -25,6 +30,8 @@ class ModelRow(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     context_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    modality: Mapped[str] = mapped_column(Text, nullable=False, server_default="chat")
+    provider: Mapped[str] = mapped_column(Text, nullable=False, server_default="openrouter")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

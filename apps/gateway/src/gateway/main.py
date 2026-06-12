@@ -18,7 +18,7 @@ from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
 from gateway.auth.api.oidc_admin_router import oidc_admin_router
 from gateway.auth.api.oidc_router import oidc_router
 from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
-    OidcProviderConfigRow as _OidcProviderConfigRow,
+    OidcProviderConfigRow as _OidcProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
@@ -34,13 +34,17 @@ from gateway.observability.middleware import RequestIdMiddleware
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
+from gateway.proxy.domain.ports import UpstreamProvider
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
+from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
+from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
-    TeamMemberRow as _TeamMemberRow,
+    TeamMemberRow as _TeamMemberRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
@@ -48,16 +52,16 @@ from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
 from gateway.tenants.infrastructure.orm import (
-    TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata
+    TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.flusher import UsageLedgerFlusher
 from gateway.usage.application.recorder import RecordingUsageRecorder
 from gateway.usage.infrastructure.alert_events_orm import (
-    AlertEventRow as _AlertEventRow,  # noqa: F401 — registers alert_events ORM metadata
+    AlertEventRow as _AlertEventRow,  # noqa: F401 — registers alert_events ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.usage.infrastructure.orm import (
-    UsageRecordRow as _UsageRecordRow,  # noqa: F401 — registers ORM metadata
+    UsageRecordRow as _UsageRecordRow,  # noqa: F401 — registers ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 
 internal_router = APIRouter(prefix="/internal")
@@ -151,7 +155,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # logger call — including those triggered during module imports below.
     configure_structlog()
 
-    @contextlib.asynccontextmanager
+    @contextlib.asynccontextmanager  # pyright: ignore[reportDeprecated]  — Pyright 1.1.410 stub false-positive; stdlib asynccontextmanager is not deprecated
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         """Single lifespan context manager — replaces the deprecated on_event handlers.
 
@@ -382,6 +386,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         health_gate=app.state.cooldown_gate,
         metrics_registry=app.state.metrics_registry,
     )
+
+    # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).
+    # The chat path (app.state.completion_upstream / app.state.model_router) is UNCHANGED.
+    # The registry is consulted ONLY by non-chat endpoint tasks (embeddings/images/audio).
+    # "openrouter" facade wraps completion_upstream for interface consistency.
+    # "openai" is added only when openai_api_key is non-empty (empty = provider absent).
+    _openrouter_facade = OpenRouterUpstreamFacade(upstream=app.state.completion_upstream)
+    _providers: dict[str, UpstreamProvider] = {"openrouter": _openrouter_facade}
+    if settings.openai_api_key:
+        _providers["openai"] = OpenAIDirectProvider(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            metrics_registry=app.state.metrics_registry,
+        )
+    app.state.provider_registry = ProviderRegistry(_providers)
 
     # Cache TTL — exposed on app.state so proxy router can read it per-request
     app.state.cache_ttl_seconds = settings.cache_ttl_seconds

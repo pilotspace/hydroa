@@ -78,9 +78,7 @@ class FakeUpstreamProvider:
     def set_post_json_response(self, status: int, body: dict[str, Any]) -> None:
         self._post_json_response = (status, body)
 
-    async def post_json(
-        self, path: str, payload: dict[str, Any]
-    ) -> tuple[int, dict[str, Any]]:
+    async def post_json(self, path: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         self.post_json_calls.append({"path": path, "payload": payload})
         return self._post_json_response
 
@@ -90,9 +88,7 @@ class FakeUpstreamProvider:
         self.post_multipart_calls.append({"path": path, "files": files, "data": data})
         return (200, {"text": "transcription"})
 
-    def stream_bytes(
-        self, path: str, payload: dict[str, Any]
-    ) -> AsyncIterator[bytes]:
+    def stream_bytes(self, path: str, payload: dict[str, Any]) -> AsyncIterator[bytes]:
         self.stream_bytes_calls.append({"path": path, "payload": payload})
 
         async def _gen() -> AsyncIterator[bytes]:
@@ -122,9 +118,7 @@ class FakeCompletionUpstream:
     def call_count(self) -> int:
         return len(self.complete_calls)
 
-    async def complete(
-        self, payload: dict[str, Any]
-    ) -> tuple[int, dict[str, Any]]:
+    async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         self.complete_calls.append(dict(payload))
         return self._complete_response
 
@@ -243,6 +237,4 @@ def fake_provider_registry() -> FakeProviderRegistry:
 @pytest.fixture
 def mock_transport_200_embedding() -> SequencedMockTransport:
     """Transport that returns 200 with a minimal embedding response body."""
-    return SequencedMockTransport(
-        [make_json_response(200, EMBEDDING_RESPONSE_BODY)]
-    )
+    return SequencedMockTransport([make_json_response(200, EMBEDDING_RESPONSE_BODY)])

@@ -8,6 +8,9 @@ Additive extension @ guardrails-core TASK.md §3:
   - GuardrailEvaluator Protocol (evaluate_pre + evaluate_post)
 Additive extension @ model-fallbacks TASK.md §3:
   - ModelHealthGate Protocol (is_available / record_failure / record_success)
+Additive extension @ provider-seam TASK.md §3:
+  - UpstreamProvider Protocol (post_json / post_multipart / stream_bytes)
+    Three-method surface for non-chat modalities (embedding/image/audio_stt/audio_tts).
 """
 
 from __future__ import annotations
@@ -215,6 +218,59 @@ class ModelHealthGate(Protocol):
         ...
 
 
+@runtime_checkable
+class UpstreamProvider(Protocol):
+    """Typed port for non-chat upstream adapters (provider-seam TASK.md §3).
+
+    Three-method surface designed by inspection of the four non-chat modalities:
+      embeddings  → post_json("/embeddings", ...) → (status, body)
+      images      → post_json("/images/generations", ...) → (status, body)
+      audio_stt   → post_multipart("/audio/transcriptions", files, data) → (status, body)
+      audio_tts   → stream_bytes("/audio/speech", ...) → AsyncIterator[bytes]
+
+    Must be runtime_checkable so isinstance(provider, UpstreamProvider) works in
+    production wiring regression tests (PS8, PS10).
+
+    The chat path (CompletionUpstream) is NOT replaced; this is an additive seam.
+    """
+
+    async def post_json(
+        self,
+        path: str,
+        payload: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
+        """POST path with JSON body; returns (status_code, json_body).
+
+        Used by: embeddings (POST /embeddings), images (POST /images/generations).
+        """
+        ...
+
+    async def post_multipart(
+        self,
+        path: str,
+        files: dict[str, Any],
+        data: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
+        """POST path with multipart/form-data; returns (status_code, json_body).
+
+        Used by: audio STT (POST /audio/transcriptions).
+        """
+        ...
+
+    def stream_bytes(
+        self,
+        path: str,
+        payload: dict[str, Any],
+    ) -> AsyncIterator[bytes]:
+        """Return an async generator yielding raw bytes.
+
+        Used by: audio TTS (POST /audio/speech).
+        Raises UpstreamUnavailableError on first byte failure.
+        Zero retry machinery (same rule as CompletionUpstream.stream()).
+        """
+        ...
+
+
 __all__ = [
     "AuthzResult",
     "CompletionUpstream",
@@ -224,6 +280,7 @@ __all__ = [
     "ModelChecker",
     "ModelHealthGate",
     "ResponseCache",
+    "UpstreamProvider",
     "UsageRecordExtras",
     "UsageRecorder",
 ]
