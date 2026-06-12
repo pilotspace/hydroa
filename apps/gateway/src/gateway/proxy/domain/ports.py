@@ -305,9 +305,53 @@ class DeploymentLoadGate(Protocol):
         ...
 
 
+@runtime_checkable
+class DeploymentLimitGate(Protocol):
+    """Async port for per-deployment RPM/TPM saturation checks and recording.
+
+    Additive extension @ deployment-limits TASK.md §3.
+    Fail-OPEN: any Redis error in is_saturated → False (admit, never false-429).
+    record_* errors are fail-soft (swallowed). Logs deployment_id only — never
+    key strings or secrets.
+
+    is_saturated is a READ-ONLY peek:
+      True iff (rpm_limit is not None AND rpm-window count >= rpm_limit)
+            OR (tpm_limit is not None AND tpm-window sum >= tpm_limit).
+      Both None => False with ZERO Redis commands (fast path).
+    """
+
+    async def is_saturated(
+        self,
+        deployment_id: str,
+        rpm_limit: int | None,
+        tpm_limit: int | None,
+    ) -> bool:
+        """Return True iff deployment has exceeded its RPM or TPM limit this window.
+
+        Both-None fast path: returns False with zero Redis IO.
+        Fail-OPEN: any error returns False (admit).
+        """
+        ...
+
+    async def record_request(self, deployment_id: str) -> None:
+        """Increment the per-minute RPM window for deployment_id (on serve).
+
+        Fail-soft: errors are swallowed (logged with deployment_id only).
+        """
+        ...
+
+    async def record_tokens(self, deployment_id: str, tokens: int) -> None:
+        """Add tokens to the per-minute TPM window for deployment_id (post-response).
+
+        Fail-soft: errors are swallowed (logged with deployment_id only).
+        """
+        ...
+
+
 __all__ = [
     "AuthzResult",
     "CompletionUpstream",
+    "DeploymentLimitGate",
     "DeploymentLoadGate",
     "GuardrailEvaluator",
     "KeyAuthenticator",

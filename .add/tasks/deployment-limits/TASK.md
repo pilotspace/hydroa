@@ -1,7 +1,7 @@
 # TASK: per-deployment TPM/RPM limits skip saturated deployment at selection (429 when all saturated)
 
 slug: deployment-limits · created: 2026-06-12 · stage: production · risk: high · autonomy: conservative
-phase: tests   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower
      the autonomy level with `autonomy: conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->

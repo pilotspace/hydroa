@@ -54,8 +54,13 @@ from gateway.proxy.application.routing_strategy import (
     OrderedStrategy,
     RoutingStrategy,
 )
-from gateway.proxy.domain.errors import UpstreamUnavailableError
-from gateway.proxy.domain.ports import CompletionUpstream, DeploymentLoadGate, ModelHealthGate
+from gateway.proxy.domain.errors import AllDeploymentsSaturatedError, UpstreamUnavailableError
+from gateway.proxy.domain.ports import (
+    CompletionUpstream,
+    DeploymentLimitGate,
+    DeploymentLoadGate,
+    ModelHealthGate,
+)
 
 if TYPE_CHECKING:
     from gateway.core.config import Deployment
@@ -93,6 +98,7 @@ class FallbackModelRouter:
         deployments: dict[str, list[Deployment]] | None = None,
         strategy: RoutingStrategy | None = None,
         load_gate: DeploymentLoadGate | None = None,
+        limit_gate: DeploymentLimitGate | None = None,
     ) -> None:
         # upstream and model_groups kept as positional-compatible; None only for
         # test convenience (tests always pass them explicitly).
@@ -109,6 +115,9 @@ class FallbackModelRouter:
         # Load gate (balance-strategies v8). None ⇒ no acquire/release/record_latency;
         # byte-identical to v6 when None.
         self._load_gate: DeploymentLoadGate | None = load_gate
+        # Limit gate (deployment-limits v8). None ⇒ no saturation filter/recording;
+        # byte-identical to v6/balance-strategies when None.
+        self._limit_gate: DeploymentLimitGate | None = limit_gate
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -234,7 +243,29 @@ class FallbackModelRouter:
         # Alias path — iterate candidates with fallback, in the strategy's order.
         gate = self._health_gate
         load_gate = self._load_gate
+        limit_gate = self._limit_gate
         alias = model_id
+
+        # Deployment-limits filter (v8): skip saturated candidates BEFORE the strategy.
+        # When limit_gate is None this block is completely skipped — byte-identical to v6.
+        if limit_gate is not None:
+            deps = {d.model_id: d for d in self._deployments.get(alias, [])}
+            survivors: list[str] = []
+            for c in candidates:
+                dep = deps.get(c)
+                rpm = dep.rpm_limit if dep is not None else None
+                tpm = dep.tpm_limit if dep is not None else None
+                try:
+                    saturated = await limit_gate.is_saturated(c, rpm, tpm)
+                except Exception:
+                    # Fail-OPEN: any gate error admits the candidate.
+                    saturated = False
+                if not saturated:
+                    survivors.append(c)
+            if not survivors:
+                raise AllDeploymentsSaturatedError(alias)
+            candidates = survivors
+
         order = await self._strategy_order_async(alias, candidates)
         last_fallen: str | None = None
 
@@ -302,6 +333,16 @@ class FallbackModelRouter:
                 self._inc_counter(
                     alias=alias, from_model=last_fallen, to_model=candidate, outcome="served"
                 )
+
+            # Deployment-limits recording: record RPM hit and response tokens for the
+            # SERVED candidate only. When limit_gate is None this block is skipped —
+            # byte-identical to v6/balance-strategies.
+            if limit_gate is not None:
+                await limit_gate.record_request(candidate)
+                _usage = body.get("usage")
+                _tokens: Any = _usage.get("total_tokens") if isinstance(_usage, dict) else None
+                if isinstance(_tokens, int) and _tokens > 0:
+                    await limit_gate.record_tokens(candidate, _tokens)
 
             return status, body, candidate
 

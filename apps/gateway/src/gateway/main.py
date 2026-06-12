@@ -45,6 +45,7 @@ from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletio
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
+from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate
 from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.teams.api.router import teams_router
@@ -397,6 +398,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     else:
         _load_gate = None
 
+    # Deployment-limits gate — constructed only when at least one configured
+    # deployment declares an rpm_limit or tpm_limit. Construction does NOT connect
+    # to Redis (safe without lifespan). None preserves v6/balance-strategies
+    # byte-identical behavior (zero new Redis IO for no-limit configs).
+    _has_any_limit = any(
+        d.rpm_limit is not None or d.tpm_limit is not None
+        for deps in settings.deployments.values()
+        for d in deps
+    )
+    _limit_gate: RedisDeploymentLimitGate | None = (
+        RedisDeploymentLimitGate(redis=redis_client) if _has_any_limit else None
+    )
+
     app.state.model_router = FallbackModelRouter(
         upstream=app.state.completion_upstream,
         model_groups=settings.model_groups,
@@ -405,6 +419,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         deployments=settings.deployments,
         strategy=build_strategy(settings.routing_strategy, _load_gate),
         load_gate=_load_gate,
+        limit_gate=_limit_gate,
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).

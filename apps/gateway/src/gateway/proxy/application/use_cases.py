@@ -47,7 +47,11 @@ from gateway.core.error_catalog import (
 from gateway.core.errors import ProblemError
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
-from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
+from gateway.proxy.domain.errors import (
+    AllDeploymentsSaturatedError,
+    CircuitOpenError,
+    UpstreamUnavailableError,
+)
 from gateway.proxy.domain.ports import (
     CompletionUpstream,
     GuardrailEvaluator,
@@ -969,6 +973,14 @@ class CompletionUseCase:
                 else:
                     status, response_body = await upstream.complete(body)
                     served_model_id = model_id
+            except AllDeploymentsSaturatedError as exc:
+                # Deployment-limits: every candidate of the alias group exceeded its
+                # per-deployment RPM/TPM limit. Map to 429 ERR_RATE_LIMITED with
+                # Retry-After so the caller knows when to retry.
+                raise RATE_LIMITED.exc(
+                    detail=f"all deployments for '{exc.alias}' are rate-limited",
+                    headers={"Retry-After": "60"},
+                ) from exc
             except (UpstreamUnavailableError, CircuitOpenError):
                 # Circuit-breaker proxy has already counted the failure.
                 _fire_record(
