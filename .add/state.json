@@ -1,82 +1,21 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "v7-live-verify",
-  "active_milestone": "v7",
-  "tasks": {
-    "provider-seam": {
-      "title": "Provider-selection seam + catalog modality/provider + OpenAI direct adapter",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v7",
-      "depends_on": [],
-      "created": "2026-06-12T07:25:22+00:00",
-      "updated": "2026-06-12T08:34:08+00:00",
-      "flag_verified": true
-    },
-    "pricing-units": {
-      "title": "Per-unit pricing model (pricing_unit discriminator + quantity) with recorder dispatch",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v7",
-      "depends_on": [],
-      "created": "2026-06-12T07:25:22+00:00",
-      "updated": "2026-06-12T08:49:29+00:00",
-      "flag_verified": true
-    },
-    "embeddings-endpoint": {
-      "title": "POST /v1/embeddings \u2014 token-priced, via provider seam; establishes reusable non-chat governance",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v7",
-      "depends_on": [],
-      "created": "2026-06-12T08:56:58+00:00",
-      "updated": "2026-06-12T09:28:52+00:00",
-      "flag_verified": true
-    },
-    "images-endpoint": {
-      "title": "POST /v1/images/generations \u2014 per-image priced, via provider seam, reuses NonChatGovernance",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v7",
-      "depends_on": [],
-      "created": "2026-06-12T09:30:54+00:00",
-      "updated": "2026-06-12T09:59:30+00:00",
-      "flag_verified": true
-    },
-    "audio-endpoints": {
-      "title": "POST /v1/audio/transcriptions (STT, per-second) + /v1/audio/speech (TTS, per-character streaming), reuses NonChatGovernance",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v7",
-      "depends_on": [],
-      "created": "2026-06-12T09:30:54+00:00",
-      "updated": "2026-06-12T10:00:13+00:00",
-      "flag_verified": true
-    },
-    "v7-live-verify": {
-      "title": "v7 live close \u2014 OpenAI provider stub overlay + multi-modal billing double-pass",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v7",
-      "depends_on": [],
-      "created": "2026-06-12T10:53:02+00:00",
-      "updated": "2026-06-12T11:22:25+00:00",
-      "flag_verified": true
-    }
-  },
+  "active_task": null,
+  "active_milestone": "v8",
+  "tasks": {},
   "milestones": {
-    "v7": {
-      "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider",
-      "goal": "a tenant can call embeddings, image-generation, and audio (STT+TTS) endpoints through the same authenticated, governed, accurately-billed proxy, served by a direct provider selected per model modality while OpenRouter still serves chat",
+    "v8": {
+      "title": "LiteLLM parity slice 6 \u2014 router & load-balancing",
+      "goal": "a model alias with multiple deployments distributes requests across them by a configured routing strategy, honoring per-deployment rate limits, with v6 fallback+cooldown and billing intact",
       "stage": "production",
-      "status": "done",
-      "created": "2026-06-12T07:23:19+00:00",
-      "updated": "2026-06-12T11:23:29+00:00"
+      "status": "active",
+      "created": "2026-06-12T13:04:05+00:00",
+      "updated": "2026-06-12T13:04:05+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T11:23:29+00:00",
+  "updated": "2026-06-12T13:04:05+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -171,6 +110,20 @@
         "cooldown-circuit",
         "routing-admin",
         "v6-live-verify"
+      ],
+      "archived": "2026-06-12"
+    },
+    {
+      "slug": "v7",
+      "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider",
+      "tasks": 6,
+      "task_slugs": [
+        "provider-seam",
+        "pricing-units",
+        "embeddings-endpoint",
+        "images-endpoint",
+        "audio-endpoints",
+        "v7-live-verify"
       ],
       "archived": "2026-06-12"
     }
