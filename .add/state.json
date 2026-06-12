@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "anthropic-provider",
+  "active_task": "gemini-provider",
   "active_milestone": "v9",
   "tasks": {
     "provider-chat-dispatch": {
@@ -23,6 +23,16 @@
       "created": "2026-06-12T17:02:19+00:00",
       "updated": "2026-06-12T17:30:35+00:00",
       "flag_verified": true
+    },
+    "gemini-provider": {
+      "title": "Google Gemini adapter: chat (generateContent + streamGenerateContent SSE) via the dispatch seam + embeddings (embedContent/batchEmbedContents) via the v7 UpstreamProvider seam; x-goog-api-key auth; OpenAI<->native translation",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v9",
+      "depends_on": [],
+      "created": "2026-06-12T17:32:43+00:00",
+      "updated": "2026-06-12T17:45:41+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -36,7 +46,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T17:30:35+00:00",
+  "updated": "2026-06-12T17:45:41+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

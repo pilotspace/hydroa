@@ -107,6 +107,10 @@ exclude = [
     "tests/routing_admin/conftest.py",
     # provider-chat-dispatch: frozen test suite; format excluded per no-test-edit contract
     "tests/provider_chat_dispatch/test_provider_chat_dispatch.py",
+    # anthropic-provider: frozen test suite; format excluded per no-test-edit contract
+    "tests/anthropic_provider/test_anthropic_provider.py",
+    # gemini-provider: frozen test suite; format excluded per no-test-edit contract
+    "tests/gemini_provider/test_gemini_provider.py",
 ]
 
 [tool.ruff.lint]

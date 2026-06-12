@@ -158,6 +158,9 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     # GATEWAY_GOOGLE_BASE_URL — Override in e2e overlays to point at a stub.
     google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    # GATEWAY_GOOGLE_DEFAULT_MAX_TOKENS — default max_tokens for Gemini requests
+    # when the OpenAI caller omits max_tokens.
+    google_default_max_tokens: int = 4096
 
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.

@@ -42,6 +42,10 @@ from gateway.proxy.domain.ports import UpstreamProvider
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
 from gateway.proxy.infrastructure.catalog_provider_resolver import CatalogProviderResolver
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.gemini_upstream import (
+    GeminiCompletionUpstream,
+    GoogleEmbeddingsProvider,
+)
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
@@ -389,6 +393,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             metrics_registry=app.state.metrics_registry,
         )
 
+    # Google (Gemini) adapter — registered only when the api key is non-empty.
+    # Empty key → adapter absent → models with provider="google" dispatch-fallback
+    # to openrouter. NEVER constructs with an empty key (v7 empty-bearer lesson).
+    if settings.google_api_key:
+        _chat_adapters["google"] = GeminiCompletionUpstream(
+            api_key=settings.google_api_key,
+            base_url=settings.google_base_url,
+            default_max_tokens=settings.google_default_max_tokens,
+            metrics_registry=app.state.metrics_registry,
+        )
+
     # Public seam for wiring tests: exposes the adapter map so tests can assert
     # which adapters are registered (mirrors the openrouter_completion_upstream seam).
     app.state.chat_adapters = _chat_adapters
@@ -491,6 +506,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _providers["openai"] = OpenAIDirectProvider(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
+            metrics_registry=app.state.metrics_registry,
+        )
+    if settings.google_api_key:
+        _providers["google"] = GoogleEmbeddingsProvider(
+            api_key=settings.google_api_key,
+            base_url=settings.google_base_url,
             metrics_registry=app.state.metrics_registry,
         )
     app.state.provider_registry = ProviderRegistry(_providers)
