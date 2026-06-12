@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "retry-policy",
+  "active_task": "cooldown-circuit",
   "active_milestone": "v6",
   "tasks": {
     "retry-policy": {
@@ -16,21 +16,22 @@
     },
     "model-fallbacks": {
       "title": "Model-group aliases with ordered candidate fallbacks; served-model billing",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v6",
       "depends_on": [],
       "created": "2026-06-12T02:13:24+00:00",
-      "updated": "2026-06-12T02:13:24+00:00"
+      "updated": "2026-06-12T02:39:19+00:00"
     },
     "cooldown-circuit": {
       "title": "Per-model cooldown circuit breaker in Redis with half-open probe",
-      "phase": "specify",
+      "phase": "build",
       "gate": "none",
       "milestone": "v6",
       "depends_on": [],
       "created": "2026-06-12T02:13:24+00:00",
-      "updated": "2026-06-12T02:13:24+00:00"
+      "updated": "2026-06-12T02:39:35+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -44,7 +45,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T02:27:33+00:00",
+  "updated": "2026-06-12T02:39:35+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
