@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "provider-seam",
+  "active_task": "pricing-units",
   "active_milestone": "v7",
   "tasks": {
     "provider-seam": {
@@ -16,12 +16,12 @@
     },
     "pricing-units": {
       "title": "Per-unit pricing model (pricing_unit discriminator + quantity) with recorder dispatch",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v7",
       "depends_on": [],
       "created": "2026-06-12T07:25:22+00:00",
-      "updated": "2026-06-12T07:42:15+00:00",
+      "updated": "2026-06-12T08:49:29+00:00",
       "flag_verified": true
     }
   },
@@ -36,7 +36,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T08:34:08+00:00",
+  "updated": "2026-06-12T08:49:29+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
