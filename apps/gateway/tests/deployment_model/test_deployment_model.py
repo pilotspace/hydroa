@@ -109,7 +109,7 @@ def test_dm3_router_exposes_deployments_and_string_view() -> None:
         ]
     }
     router = FallbackModelRouter(
-        upstream_factory=None,  # type: ignore[arg-type]
+        upstream=None,  # type: ignore[arg-type]
         model_groups={"fast": ["vendor/a", "vendor/b"]},
         deployments=deployments,
     )

@@ -44,12 +44,15 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.ports import CompletionUpstream, ModelHealthGate
+
+if TYPE_CHECKING:
+    from gateway.core.config import Deployment
 
 _log = logging.getLogger(__name__)
 
@@ -81,11 +84,16 @@ class FallbackModelRouter:
         model_groups: dict[str, list[str]],
         health_gate: ModelHealthGate | None = None,
         metrics_registry: Any = None,
+        deployments: dict[str, list[Deployment]] | None = None,
     ) -> None:
         self._upstream = upstream
         self._model_groups = model_groups
         self._health_gate = health_gate
         self._metrics_registry = metrics_registry
+        # Normalized deployment view (deployment-model v8). The router's own
+        # fallback logic still iterates the bare-string `model_groups` (byte-identical
+        # to v6); `deployments` is exposed for the v8 routing-strategy layer.
+        self._deployments: dict[str, list[Deployment]] = deployments or {}
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -126,6 +134,15 @@ class FallbackModelRouter:
     def model_groups(self) -> dict[str, list[str]]:
         """Read-only view of the configured alias groups (for alias-aware checks)."""
         return self._model_groups
+
+    @property
+    def deployments(self) -> dict[str, list[Deployment]]:
+        """Read-only normalized deployment view (alias -> [Deployment, ...], order-preserved).
+
+        Exposed for the v8 routing-strategy layer; the router's own fallback path
+        still iterates the bare-string `model_groups` view (v6 byte-identical).
+        """
+        return self._deployments
 
     def candidates_for(self, model_id: str) -> list[str] | None:
         """Return the ordered candidate list when model_id is an alias, else None.

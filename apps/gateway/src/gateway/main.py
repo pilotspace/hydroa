@@ -388,6 +388,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         model_groups=settings.model_groups,
         health_gate=app.state.cooldown_gate,
         metrics_registry=app.state.metrics_registry,
+        deployments=settings.deployments,
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).

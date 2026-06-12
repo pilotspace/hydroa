@@ -1,9 +1,81 @@
 import json
+from typing import Annotated
 
-from pydantic import Field, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_JWT_SECRET = "dev-only-secret-change-me"  # noqa: S105 — dev default; prod sets GATEWAY_JWT_SECRET
+
+
+class Deployment(BaseModel):
+    """One normalized member of a model group (deployment-model TASK.md §3 FROZEN @ v1).
+
+    A model group's members are Deployments: a concrete model_id plus an optional
+    weight (default 1) and optional tpm/rpm limits. A bare model-id string in
+    GATEWAY_MODEL_GROUPS coerces to Deployment(model_id, weight=1, tpm_limit=None,
+    rpm_limit=None), so the v6 all-string config is byte-identical.
+
+    Immutable value object. weight/tpm/rpm are CARRIED here; the routing strategy
+    (routing-strategy) and limit enforcement (deployment-limits) are later v8 tasks.
+    `protected_namespaces=()` allows the `model_id` field name (mirrors how
+    Settings already carries `model_groups`).
+    """
+
+    model_config = ConfigDict(frozen=True, protected_namespaces=())
+
+    # validate_default=True so a deployment object that omits model_id (default "")
+    # still triggers the non-empty check (DEPLOYMENT_MODEL_ID_REQUIRED) rather than
+    # silently constructing an id-less deployment.
+    model_id: str = Field(default="", validate_default=True)
+    weight: int = 1
+    tpm_limit: int | None = None
+    rpm_limit: int | None = None
+
+    @field_validator("model_id")
+    @classmethod
+    def _require_model_id(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError(
+                "DEPLOYMENT_MODEL_ID_REQUIRED: a deployment must have a non-empty model_id"
+            )
+        return v
+
+    @field_validator("weight")
+    @classmethod
+    def _positive_weight(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                f"INVALID_DEPLOYMENT_WEIGHT: weight must be a positive integer, got {v}"
+            )
+        return v
+
+    @field_validator("tpm_limit", "rpm_limit")
+    @classmethod
+    def _positive_limit(cls, v: int | None) -> int | None:
+        if v is not None and v <= 0:
+            raise ValueError(
+                f"INVALID_DEPLOYMENT_LIMIT: tpm_limit/rpm_limit must be positive when set, got {v}"
+            )
+        return v
+
+
+def _coerce_deployment(value: object) -> object:
+    """BeforeValidator: a bare string member becomes a Deployment dict (weight-1, no limits)."""
+    if isinstance(value, str):
+        return {"model_id": value}
+    return value
+
+
+# A model-group member: a bare string (coerced) or a deployment object.
+DeploymentSpec = Annotated[Deployment, BeforeValidator(_coerce_deployment)]
 
 
 class Settings(BaseSettings):
@@ -85,50 +157,76 @@ class Settings(BaseSettings):
     # GATEWAY_COOLDOWN_WINDOW_S — failure counter expiry window (sliding; NX-set on first INCR).
     cooldown_window_s: int = Field(default=60, ge=1, le=3600)
 
-    # ── Model-group aliases with ordered candidate fallbacks (model-fallbacks task) ──
-    # GATEWAY_MODEL_GROUPS — JSON dict mapping alias string to ordered candidate list.
-    # e.g. GATEWAY_MODEL_GROUPS='{"fast": ["vendor/model-a:free", "vendor/model-b"]}'
-    # Default {} = feature off, v5 byte-identical behavior.
-    # Validators (model_validator, mode="after"):
-    #   1. All candidate lists must be non-empty → ValidationError "EMPTY_CANDIDATE_LIST"
-    #   2. No alias key may appear as a candidate id in ANY group
-    #      → ValidationError "ALIAS_COLLIDES_WITH_CANDIDATE"
-    #   3. No candidate list may exceed 5 entries → ValidationError "TOO_MANY_CANDIDATES"
-    #      (bounds the per-request catalog-validation cost per §3 CATALOG INTERACTION)
-    model_groups: dict[str, list[str]] = Field(default_factory=dict)
+    # ── Model-group aliases → ordered Deployments (model-fallbacks v6 + deployment-model v8) ──
+    # GATEWAY_MODEL_GROUPS — JSON dict mapping alias string to an ordered member list.
+    # A member is EITHER a bare model-id string (v6 shape) OR a deployment object:
+    #   {"model_id": "vendor/model", "weight": 3, "tpm_limit": 100000, "rpm_limit": 600}
+    # A bare string coerces to Deployment(model_id, weight=1, tpm_limit=None, rpm_limit=None),
+    # so the v6 all-string config is byte-identical.
+    #   e.g. GATEWAY_MODEL_GROUPS='{"fast": ["vendor/a:free", {"model_id":"vendor/b","weight":2}]}'
+    # Default {} = feature off, v5/v6 byte-identical behavior.
+    # `deployments` is the canonical normalized view; `model_groups` (property) is the
+    # bare-string view that the FallbackModelRouter, /admin/routing (RA1/RA8), and the
+    # alias-aware catalog check read — kept byte-identical to v6.
+    # Bound to the SAME env var (GATEWAY_MODEL_GROUPS) and the `model_groups=` init kwarg
+    # via validation_alias, so every existing caller and overlay keeps working unchanged.
+    deployments: dict[str, list[DeploymentSpec]] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("model_groups", "GATEWAY_MODEL_GROUPS"),
+    )
+
+    @property
+    def model_groups(self) -> dict[str, list[str]]:
+        """Bare-string view of the deployment groups (alias -> [model_id, ...], order-preserved).
+
+        v6 byte-identical: this is what create_app passes to the router, what
+        /admin/routing returns, and what the alias-aware catalog check iterates.
+        """
+        return {
+            alias: [d.model_id for d in deployments]
+            for alias, deployments in self.deployments.items()
+        }
 
     @model_validator(mode="after")
     def _validate_model_groups(self) -> "Settings":
-        """Validate model_groups at startup (§3 SETTINGS validators 1-3).
+        """Validate the normalized deployment groups at startup (fail-closed).
 
-        1. Empty candidate list → ValidationError "EMPTY_CANDIDATE_LIST"
-        2. Alias key collides with any candidate id in any group
-           → ValidationError "ALIAS_COLLIDES_WITH_CANDIDATE"
-        3. Candidate list exceeds 5 entries → ValidationError "TOO_MANY_CANDIDATES"
+        Per-member rules (INVALID_DEPLOYMENT_WEIGHT / INVALID_DEPLOYMENT_LIMIT /
+        DEPLOYMENT_MODEL_ID_REQUIRED) fire during Deployment field validation. This
+        after-validator enforces the cross-member rules over the model_id view:
+          - EMPTY_CANDIDATE_LIST       — a group with no members
+          - DUPLICATE_DEPLOYMENT       — same model_id twice in one group (ambiguous target)
+          - TOO_MANY_CANDIDATES        — > 5 members (bounds per-request catalog cost; v6)
+          - ALIAS_COLLIDES_WITH_CANDIDATE — an alias key also used as a member model_id (v6)
         """
-        groups = self.model_groups
+        groups = self.deployments
         if not groups:
             return self
 
-        # Collect all candidate ids across all groups for collision check.
-        all_candidate_ids: set[str] = set()
-        for candidates in groups.values():
-            for cid in candidates:
-                all_candidate_ids.add(cid)
+        # Collect all member model_ids across all groups for the collision check.
+        all_member_ids: set[str] = set()
+        for deployments in groups.values():
+            for dep in deployments:
+                all_member_ids.add(dep.model_id)
 
         errors: list[str] = []
-        for alias, candidates in groups.items():
-            if len(candidates) == 0:
+        for alias, deployments in groups.items():
+            member_ids = [dep.model_id for dep in deployments]
+            if len(member_ids) == 0:
                 errors.append(
                     f"EMPTY_CANDIDATE_LIST: alias '{alias}' must have at least one candidate"
                 )
                 continue
-            if len(candidates) > 5:
+            if len(member_ids) > 5:
                 errors.append(
-                    f"TOO_MANY_CANDIDATES: alias '{alias}' has {len(candidates)} candidates"
+                    f"TOO_MANY_CANDIDATES: alias '{alias}' has {len(member_ids)} candidates"
                     f" (at most 5 allowed — bounds per-request catalog-validation cost)"
                 )
-            if alias in all_candidate_ids:
+            if len(set(member_ids)) != len(member_ids):
+                errors.append(
+                    f"DUPLICATE_DEPLOYMENT: alias '{alias}' lists the same model_id more than once"
+                )
+            if alias in all_member_ids:
                 errors.append(
                     f"ALIAS_COLLIDES_WITH_CANDIDATE: alias '{alias}' collides with a"
                     f" candidate id in the same or another group"
