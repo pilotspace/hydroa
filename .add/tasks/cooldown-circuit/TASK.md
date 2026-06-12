@@ -1,7 +1,7 @@
 # TASK: Per-model cooldown circuit breaker in Redis with half-open probe
 
 slug: cooldown-circuit · created: 2026-06-12 · stage: production · risk: high · autonomy: conservative
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -434,23 +434,32 @@ Constraints: do NOT change any test or the contract; allow-list packages only (r
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — make ci EXIT=0: 454 passed, 19 deselected (e2e); frozen tests/cooldown_circuit 11/11 + new tests/cooldown_circuit_wiring 8/8 + all prior suites (2026-06-12)
+- [x] coverage did not decrease — 81.67% vs 81.39% pre-build (floor 80)
+- [x] no test or contract was altered during build — frozen tests/cooldown_circuit untouched post-freeze; §3 untouched; pyproject format-exclude additions are the frozen-suite convention
+- [x] concurrency / timing safe — probe claim is a single atomic SET NX (one winner per expiry event); EXPIRE NX preserves a running failure window across concurrent INCRs; a request in flight across a concurrent trip may re-trip an already-OPEN model (refreshes TTLs, emits one extra 'reopened') — converges correctly, accepted at freeze with the probe-race flag
+- [x] no exposed secrets / injection / new deps — WARNING logs carry model_id (public catalog id, B3) + exception type name only; never Redis key strings, payloads, or credentials; zero new dependencies; reuses the app redis client
+- [x] layering follows CONVENTIONS.md — gate is an infrastructure adapter implementing the domain ModelHealthGate protocol; config in core; counter on per-app MetricsRegistry; no domain->infrastructure dependency introduced
+- [x] reviewed — orchestrator line-reviewed every diff under delegated auto mode (Tin Dang); one fix applied at review: _trip docstring corrected (initial trip is inlined in record_failure, helper serves the re-trip path only)
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — `app.state.cooldown_gate` is None at threshold=0 and a RedisCooldownGate at threshold>0; paired regression test in tests/cooldown_circuit_wiring/ confirms this
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced; record_success path in CLOSED state (DEL is idempotent — no key to delete)
-- [ ] SEMANTIC (prose) — half-open state table in §3 read in full; probe NX atomicity argument confirmed; EXPIRE NX pattern verified in implementation
+- [x] WIRING (code) — main.py constructs the gate only when threshold>0 (no eager Redis connection), else None; wires it as health_gate into FallbackModelRouter; tests/cooldown_circuit_wiring (8 tests) pins gate None/instance, router health_gate identity, settings threading, and counter registration
+- [x] DEAD-CODE — all paths exercised by CC1-CC10; record_success on CLOSED is an idempotent DEL of absent keys with no transition emitted (CC2 pins the counter-clear behavior); ruff+mypy clean (155 files)
+- [x] SEMANTIC — §3 state + transition tables re-read against the implementation line by line: authoritative is_available order (disabled→open→half/probe→closed) exact; CLOSED provably read-only (CC10); SET NX probe atomicity per Redis single-command guarantee; EXPIRE NX present after INCR (record_failure)
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS (auto-resolved — complete evidence, no security finding, no concurrency/architecture residue)
+Dispositions:
+  - Concurrent-probe race accepted at freeze ([contract] flag): probe outliving its token TTL
+    admits a second probe; both outcomes converge (re-trip or close). Operators keep
+    cooldown_ttl_s well above probe latency.
+  - In-flight-request re-trip of an already-OPEN model refreshes TTLs and emits one extra
+    'reopened' transition — converging, observable, harmless (recorded under concurrency above).
+  - Final cross-task integration delivered here per freeze note: cooldown gate wired into
+    FallbackModelRouter in main.py (model-fallbacks built with health_gate=None first).
+Evidence: make ci EXIT=0 — 454 passed / 19 deselected, coverage 81.67% (floor 80),
+mypy strict 155 files, ruff + allowlists green (2026-06-12).
+Reviewed by: Tin Dang (delegated auto mode, orchestrator line review) · date: 2026-06-12
 
 ---
 

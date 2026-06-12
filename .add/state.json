@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "model-fallbacks",
+  "active_task": "cooldown-circuit",
   "active_milestone": "v6",
   "tasks": {
     "retry-policy": {
@@ -25,12 +25,12 @@
     },
     "cooldown-circuit": {
       "title": "Per-model cooldown circuit breaker in Redis with half-open probe",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v6",
       "depends_on": [],
       "created": "2026-06-12T02:13:24+00:00",
-      "updated": "2026-06-12T02:39:35+00:00",
+      "updated": "2026-06-12T03:41:38+00:00",
       "flag_verified": true
     }
   },
@@ -45,7 +45,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T03:22:06+00:00",
+  "updated": "2026-06-12T03:41:38+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
