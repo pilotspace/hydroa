@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "balance-strategies",
+  "active_task": "deployment-limits",
   "active_milestone": "v8",
   "tasks": {
     "deployment-model": {
@@ -33,6 +33,15 @@
       "created": "2026-06-12T14:48:13+00:00",
       "updated": "2026-06-12T15:19:58+00:00",
       "flag_verified": true
+    },
+    "deployment-limits": {
+      "title": "per-deployment TPM/RPM limits skip saturated deployment at selection (429 when all saturated)",
+      "phase": "tests",
+      "gate": "none",
+      "milestone": "v8",
+      "depends_on": [],
+      "created": "2026-06-12T15:20:21+00:00",
+      "updated": "2026-06-12T15:25:52+00:00"
     }
   },
   "milestones": {
@@ -46,7 +55,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T15:19:58+00:00",
+  "updated": "2026-06-12T15:25:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
