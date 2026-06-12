@@ -158,6 +158,19 @@ PAYLOAD_INPUT_REQUIRED = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "Field 'input' is required and non-empty"
 )
 
+#: Proxy: ``prompt`` field missing or empty (images endpoint).
+PAYLOAD_PROMPT_REQUIRED = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "Field 'prompt' is required and non-empty"
+)
+
+#: Proxy: ``file`` field missing from multipart form (audio STT endpoint).
+PAYLOAD_FILE_REQUIRED = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "Field 'file' is required")
+
+#: Proxy: ``voice`` field missing or empty (audio TTS endpoint).
+PAYLOAD_VOICE_REQUIRED = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "Field 'voice' is required and non-empty"
+)
+
 # --- keys/api/schemas.py field validators ---
 
 #: ``monthly_budget_usd`` is negative.

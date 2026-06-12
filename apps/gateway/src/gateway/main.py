@@ -31,7 +31,9 @@ from gateway.keys.api.router import authz_router as keys_authz_router
 from gateway.observability.logging_config import configure_structlog
 from gateway.observability.metrics import MetricsRegistry, expose_metrics
 from gateway.observability.middleware import RequestIdMiddleware
+from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.embeddings_router import embeddings_router
+from gateway.proxy.api.images_router import images_router
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
@@ -436,6 +438,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routing_admin_router)
     app.include_router(proxy_router)
     app.include_router(embeddings_router)
+    app.include_router(images_router)
+    app.include_router(audio_router)
     app.include_router(usage_router)
     app.include_router(budget_router)
 
