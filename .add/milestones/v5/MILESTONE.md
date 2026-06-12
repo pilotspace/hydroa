@@ -59,17 +59,32 @@ Out: passthrough endpoints (needs its own upstream intake — carried v4 decisio
 - semantic-cache key/similarity contract (tenant-scoped, threshold, opt-in flag) -> owning task semantic-cache
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] oidc-jwks         depends-on: none           — RS256/JWKS ID-token signature verification (cryptography to allowlist); live-harness IdP grows a JWKS endpoint
-- [ ] team-attribution  depends-on: none           — persist team_id on usage ledger rows; ledger-derived per-team historical rollups
-- [ ] pii-v2            depends-on: none           — expanded built-in PII types + validated per-tenant custom patterns
-- [ ] semantic-cache    depends-on: none           — similarity layer over the exact-match response cache, tenant-scoped, opt-in
-- [ ] oidc-tenant-config depends-on: oidc-jwks     — DB-backed per-tenant IdP config (issuer/client/secret/domain mapping), env config as fallback
-- [ ] rename-hydroa     depends-on: all-of-above   — internal ai-proxy → hydroa rename pass + live-harness isolation fix (unique per-run e2e identities)
+- [x] oidc-jwks         depends-on: none           — RS256/JWKS ID-token signature verification (cryptography to allowlist); live-harness IdP grows a JWKS endpoint
+- [x] team-attribution  depends-on: none           — persist team_id on usage ledger rows; ledger-derived per-team historical rollups
+- [x] pii-v2            depends-on: none           — expanded built-in PII types + validated per-tenant custom patterns
+- [x] semantic-cache    depends-on: none           — similarity layer over the exact-match response cache, tenant-scoped, opt-in
+- [x] oidc-tenant-config depends-on: oidc-jwks     — DB-backed per-tenant IdP config (issuer/client/secret/domain mapping), env config as fallback
+- [x] rename-hydroa     depends-on: all-of-above   — internal ai-proxy → hydroa rename pass + live-harness isolation fix (unique per-run e2e identities)
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] An OIDC callback presenting an ID token with an invalid signature is rejected 401 `ERR_OIDC_TOKEN_INVALID`; a valid RS256 token verified against the IdP JWKS logs in — proven live through the TLS edge (← oidc-jwks)
-- [ ] A teamed key's proxied request writes a ledger row carrying its team_id, and a ledger-derived per-team rollup reconciles with the Redis spend counters (← team-attribution)
-- [ ] A v2 built-in PII type AND a tenant-defined custom pattern are masked live with their literal placeholders; an invalid/dangerous custom regex is rejected 422 at PUT (← pii-v2)
-- [ ] A semantically similar but non-identical prompt is served from cache with cached=true and cost 0, tenant-scoped (a second tenant with the same prompt misses) (← semantic-cache)
-- [ ] Two tenants authenticate via two DIFFERENT IdP configs in one deployment; GET of the config never returns the client_secret (← oidc-tenant-config)
-- [ ] Internal naming reads hydroa (pyproject, compose, docs, README, dashboard title); full suite + `make ci` green; zero wire-visible identifiers changed without a compat note; live harness re-runs clean twice in a row (isolation fix) (← rename-hydroa)
+- [x] An OIDC callback presenting an ID token with an invalid signature is rejected 401 `ERR_OIDC_TOKEN_INVALID`; a valid RS256 token verified against the IdP JWKS logs in — proven live through the TLS edge (← oidc-jwks)
+- [x] A teamed key's proxied request writes a ledger row carrying its team_id, and a ledger-derived per-team rollup reconciles with the Redis spend counters (← team-attribution)
+- [x] A v2 built-in PII type AND a tenant-defined custom pattern are masked live with their literal placeholders; an invalid/dangerous custom regex is rejected 422 at PUT (← pii-v2)
+- [x] A semantically similar but non-identical prompt is served from cache with cached=true and cost 0, tenant-scoped (a second tenant with the same prompt misses) (← semantic-cache)
+- [x] Two tenants authenticate via two DIFFERENT IdP configs in one deployment; GET of the config never returns the client_secret (← oidc-tenant-config)
+- [x] Internal naming reads hydroa (pyproject, compose, docs, README, dashboard title); full suite + `make ci` green; zero wire-visible identifiers changed without a compat note; live harness re-runs clean twice in a row (isolation fix) (← rename-hydroa)
+
+## Close record (2026-06-12)
+All 6 exit criteria verified LIVE through the TLS edge (https://localhost:8443, Envoy,
+hydroa-e2e stack, 3 overlays) by scripts/live_v5_verify.py — TWO consecutive clean
+passes (24/24 each, run_id 1781222733 then 1781222773 against the same long-lived
+stack: per-run identity isolation proven, closing the rename-hydroa §6 deferred check).
+Evidence highlights: forged RS256 token → 401 ERR_OIDC_TOKEN_INVALID + valid token
+verified against the IdP JWKS; teamed ledger row + ledger/counter reconcile; IBAN
+built-in + tenant custom pattern masked live + dangerous regex 422; normalization
+variant → X-Cache: semantic_hit with cost 0 + second tenant miss; two tenants on two
+DIFFERENT IdPs (distinct RSA keys/kids/issuers) in one deployment, client_secret never
+returned; containers named hydroa-e2e-*, make ci green (399 tests).
+Live verification additionally surfaced and fixed two production defects in
+oidc-tenant-config wiring (see its TASK.md §7 defect record + fix(auth) commit) —
+the close was held until both fixes were re-proven live.
