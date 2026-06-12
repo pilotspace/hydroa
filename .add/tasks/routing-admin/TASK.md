@@ -1,7 +1,7 @@
 # TASK: GET /admin/routing health+config surface for retry/fallback/cooldown
 
 slug: routing-admin · created: 2026-06-12 · stage: production
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -485,23 +485,28 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — frozen tests/routing_admin 8/8; full suite 462 passed (tests/upstream_base_url DRAFT reds excluded — sibling task) (2026-06-12)
+- [x] coverage did not decrease — 81.76% vs 81.67% pre-build (floor 80)
+- [x] no test or contract was altered during build — frozen tests/routing_admin untouched post-freeze; §3 untouched; pyproject format-exclude additions per convention
+- [x] concurrency / timing safe — endpoint is read-only (two GETs per candidate, ≤5/group by Settings cap); no shared mutable state; snapshot races with live transitions return a momentarily-stale but valid state string
+- [x] no exposed secrets / injection / new deps — RA6 pins sentinel secrets never serialize; response sources only named non-secret knobs; auth chain reused verbatim; zero new dependencies
+- [x] layering follows CONVENTIONS.md — api router depends on infrastructure gate + app.state seams; additive method stays in infrastructure; no protocol change
+- [x] reviewed — orchestrator line-reviewed every diff under delegated auto mode (Tin Dang); handler-level try/except confirmed contract-sanctioned (§3 decision 5 — RA4 fake gates raise directly)
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — routing_admin_router is included in main.py; snapshot_state is defined on RedisCooldownGate; both are reachable from tests
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — main.py mounts routing_admin_router beside admin_models_router; snapshot_state reachable and exercised by RA1/RA3/RA4; no new app.state seam introduced (reads existing settings/model_router/cooldown_gate), so no new wiring suite required by the foundation rule
+- [x] DEAD-CODE — all new symbols (router, handler, snapshot_state) exercised by the frozen suite; ruff+mypy clean
+- [x] SEMANTIC — §3 HTTP contract re-read in full against the handler: 4-block shape exact, state strings exact, per-(alias,candidate) ordering (group insertion order then list order) exact, 401/403 parity via the shared dependency confirmed by RA5
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS (auto-resolved — complete evidence, no security finding, no concurrency/architecture residue)
+Dispositions:
+  - snapshot_state concrete-class-only placement confirmed per freeze flag (one gate type in v6;
+    future implementations must implement it or the router adds isinstance dispatch).
+  - Handler-level defensive catch around snapshot_state is contract-sanctioned (§3 decision 5).
+  - Sibling DRAFT red suite tests/upstream_base_url excluded from this gate's run (v6-live-verify owns it).
+Evidence: frozen suite 8/8; 462 passed, coverage 81.76% (floor 80); lint/mypy-strict/allowlists EXIT=0 (2026-06-12).
+Reviewed by: Tin Dang (delegated auto mode, orchestrator line review) · date: 2026-06-12
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 

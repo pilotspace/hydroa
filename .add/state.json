@@ -35,11 +35,20 @@
     },
     "routing-admin": {
       "title": "GET /admin/routing health+config surface for retry/fallback/cooldown",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v6",
       "depends_on": [],
       "created": "2026-06-12T03:42:04+00:00",
+      "updated": "2026-06-12T04:03:02+00:00"
+    },
+    "v6-live-verify": {
+      "title": "v6 live close harness \u2014 fault-injecting upstream stub + double-pass verify",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v6",
+      "depends_on": [],
+      "created": "2026-06-12T03:51:46+00:00",
       "updated": "2026-06-12T03:51:46+00:00"
     }
   },
@@ -54,7 +63,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-12T03:51:46+00:00",
+  "updated": "2026-06-12T04:03:02+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
