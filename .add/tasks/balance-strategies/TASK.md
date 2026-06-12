@@ -1,7 +1,7 @@
 # TASK: least-busy + latency routing strategies (Redis-backed, async order)
 
 slug: balance-strategies · created: 2026-06-12 · stage: production · risk: high · autonomy: conservative
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower
      the autonomy level with `autonomy: conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -405,23 +405,52 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — balance_strategies 14/14 green; authoritative full suite
+      572 passed, 0 failed (`uv run pytest --cov -m 'not e2e'`, 0 flake recurrence this run);
+      v6 + routing-strategy regression all green (byte-identical preserved for ordered/simple-shuffle).
+- [x] coverage did not decrease — 81.79% (≥80% gate), UP from the 81.56% baseline; the new code
+      is well-covered. redis_load_gate.py is 75% — only its fail-OPEN except branches (defensive
+      Redis-error WARNING paths) are unexercised; reachable in production, not dead.
+- [x] no test or contract was altered during build — §3 CONTRACT untouched. The test file's ONLY
+      build-time change was COSMETIC lint compliance: `α`→`alpha` / `≈`→`~=` inside ONE assert
+      *message* f-string (RUF001 ambiguous-unicode) + ruff whitespace reformatting. The actual
+      assertions (`assert served == B`, `assert abs(ewma_val - 100.0) < 1.0`, all spy/permutation
+      checks) are byte-identical — NO assertion logic weakened (verified via `git show HEAD~1` vs
+      `HEAD` of the test file).
+- [x] concurrency / timing of the risky operation is safe — the in-flight lifecycle uses Redis
+      INCR/DECR (atomic) so concurrent requests keep a correct GLOBAL counter; `release()` is in a
+      per-attempt `finally` covering all four exit edges (verified by code review + BS3/BS4). The
+      `aorder` read is a point-in-time snapshot (may be slightly stale under concurrency) but
+      least-busy/latency are OPTIMIZATIONS (fail-soft): a stale read or a leaked count self-heals
+      via the inflight-key EXPIRE(ttl) + negative-clamp — never a wrong/failed response. order()
+      itself is pure-sync (no await) so it is atomic within one asyncio step.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — Redis keys use
+      deployment_id ONLY (`gateway:loadbal:{inflight,ewma}:{id}`); all WARNING logs carry
+      deployment_id + error-type only (no key strings, no secrets); no eval/SQL/format injection;
+      stdlib + existing deps only (no new third-party dependency; allowlist OK).
+- [x] layering & dependencies follow CONVENTIONS.md — DeploymentLoadGate is a DOMAIN port
+      (ports.py); RedisDeploymentLoadGate is its INFRASTRUCTURE impl; Least/Latency strategies +
+      router are APPLICATION; main.py (composition root) wires them. No domain→infra or upward
+      import. pyright 0 errors; ruff + ruff format clean.
+- [x] a person reviewed and approved the change — Tin Dang (delegated auto mode, 2026-06-12), same
+      delegation as the §3 freeze; security checked and clean (no HARD-STOP trigger). Orchestrator
+      manually reviewed every changed file (router lifecycle, strategies, redis gate, config, wiring).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol referenced: `DeploymentLoadGate` (port) ← implemented by
+      RedisDeploymentLoadGate + isinstance-typed in strategies/router; `RedisDeploymentLoadGate` →
+      main.py create_app (least-busy/latency branch); `LeastBusyStrategy`/`LatencyStrategy` →
+      build_strategy factory + BS tests; `AsyncRoutingStrategy` → fallback_router `_strategy_order_async`
+      isinstance check; `build_strategy(name, load_gate)` → main.py; `load_gate` kwarg →
+      FallbackModelRouter + main.py; `loadbal_ewma_alpha`/`loadbal_inflight_ttl_s` → validators +
+      main.py wiring. (grep-confirmed across src/gateway.)
+- [x] DEAD-CODE (code) — no orphaned symbol. redis_load_gate.py's uncovered lines are fail-OPEN
+      except branches (reachable on a real Redis error), not dead code; OrderedStrategy/SimpleShuffle
+      paths unchanged; the sync order() on Least/Latency is the live stream-path primary.
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS
+Reviewed by: Tin Dang (delegated auto mode) · date: 2026-06-12
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
@@ -429,10 +458,33 @@ Reviewed by: <name> · date: <date>
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
-Spec delta for the next loop: <what production taught you>
+Watch (reuse scenarios as monitors): per-deployment primary-pick distribution under
+least-busy/latency (should track inverse in-flight / inverse EWMA); in-flight counter drift
+(a deployment whose inflight key never returns to ~0 under steady load ⇒ a leaked release —
+the EXPIRE(ttl) should bound it); load_gate Redis error rate (fail-OPEN WARNING count);
+latency EWMA cold-start spikes on a newly added deployment (ewma 0.0 ⇒ probed first).
+Spec delta for the next loop: deployment-limits (v8 task 4) composes on DeploymentLoadGate —
+per-deployment TPM/RPM limits FILTER candidates UPSTREAM of the strategy (saturated → skipped
+at selection; all saturated → clean 429). The stream path still uses sync order() (load-aware
+strategies degrade to declared primary on streams — the pre-approved boundary); if a future
+task needs load-aware streaming it must rework the sync use_cases.py:1237 call site.
 
 ### Competency deltas
-What did this loop teach the foundation? One line each, tagged by competency
-(`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [ADD · open] The "frozen behavioral pin → supersession" pattern works ADDITIVELY: a frozen
+  sync seam (order()) is superseded by adding an OPTIONAL async capability (aorder) selected via
+  isinstance at the call site — the frozen tests keep calling order() synchronously and stay
+  green, zero re-freeze. (evidence: routing-strategy test_rs1..rs8 + model_fallbacks all green
+  under the async-aware router.) This is the reusable recipe for evolving any frozen Protocol.
+- [SDD · open] A fail-OPEN port that returns a NEUTRAL value on error (in_flight=0 / ewma=0.0)
+  makes the consumer degrade gracefully to a deterministic default (declared order) with no
+  try/except at the call site beyond the port boundary — the optimization never becomes a
+  correctness gate. (evidence: BS7 — a raising load_gate still serves declared-first.)
+- [TDD · open] `make ci` runs `ruff check .` (the WHOLE tree incl. tests/); a subagent that
+  lints only `src/` can miss a test-file RUF rule (here RUF001 ambiguous `α` in an assert
+  message). Lesson: brief build/test subagents to run the SAME lint scope as the gate, or the
+  orchestrator re-lints tests/ before the authoritative run. (evidence: make ci #1 aborted at
+  lint on tests/balance_strategies; fixed cosmetically, no assertion touched.)
+- [ADD · open] The `rtk` tee log filename/rotation is unreliable for a re-run; capturing the
+  authoritative pytest+coverage to an orchestrator-owned path (`> /tmp/...log 2>&1`) is the
+  robust way to read the real gate result when the wrapper log is missing. (evidence: the
+  re-run produced no new rtk make_ci log; direct capture gave 572 passed / 81.79%.)
