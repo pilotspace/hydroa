@@ -289,11 +289,17 @@ def _fire_record_with_raw(
     guardrail_blocked: bool = False,
     blocked_by: str | None = None,
     pii_masked: bool = False,
+    pricing_unit: str | None = None,
+    quantity: Decimal | None = None,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
     guardrail_blocked/blocked_by/pii_masked are forwarded via the typed
     UsageRecordExtras seam (declared-capability filtering in _dispatch_record).
+
+    Additive extension (pricing-units TASK.md §3):
+      pricing_unit / quantity are forwarded via UsageRecordExtras when set.
+      Chat/embeddings callers pass nothing new — defaults None → per_token path.
     """
     extras: UsageRecordExtras = {}
     if team_id is not None:
@@ -304,6 +310,10 @@ def _fire_record_with_raw(
         extras["blocked_by"] = blocked_by
     if pii_masked:
         extras["pii_masked"] = True
+    if pricing_unit is not None:
+        extras["pricing_unit"] = pricing_unit
+    if quantity is not None:
+        extras["quantity"] = quantity
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,

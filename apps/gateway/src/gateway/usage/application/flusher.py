@@ -127,6 +127,11 @@ class UsageLedgerFlusher:
                 team_id = uuid.UUID(team_id_str)
             except ValueError:
                 team_id = None
+        # pricing-units (pricing-units TASK.md §3): backward-compat with pre-v7 events
+        # (missing field → default 'per_token' / NULL).
+        pricing_unit_str = _field("pricing_unit") or "per_token"
+        quantity_str = _field("quantity")
+        quantity: Decimal | None = Decimal(quantity_str) if quantity_str else None
 
         try:
             tenant_id = uuid.UUID(tenant_id_str)
@@ -157,11 +162,12 @@ class UsageLedgerFlusher:
                     text(
                         "INSERT INTO usage_records"
                         " (id, tenant_id, key_id, model_id, prompt_tokens, completion_tokens,"
-                        "  cost_usd, status, pricing_snapshot_id, raw, team_id)"
+                        "  cost_usd, status, pricing_snapshot_id, raw, team_id,"
+                        "  pricing_unit, quantity)"
                         " VALUES"
                         " (:id, :tenant_id, :key_id, :model_id, :prompt_tokens,"
                         "  :completion_tokens, :cost_usd, :status, :pricing_snapshot_id,"
-                        "  :raw, :team_id)"
+                        "  :raw, :team_id, :pricing_unit, :quantity)"
                         " ON CONFLICT (id) DO NOTHING"
                     ),
                     {
@@ -176,6 +182,8 @@ class UsageLedgerFlusher:
                         "pricing_snapshot_id": pricing_snapshot_id,
                         "raw": json.dumps(raw_dict),
                         "team_id": team_id,
+                        "pricing_unit": pricing_unit_str,
+                        "quantity": quantity,
                     },
                 )
 

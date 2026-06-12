@@ -44,7 +44,15 @@ class RecordingUsageRecorder:
     # filter extras against this set — v1-Protocol fakes lack the attribute
     # and therefore receive only the base kwargs.
     supported_extras: frozenset[str] = frozenset(
-        {"team_id", "cached", "guardrail_blocked", "blocked_by", "pii_masked"}
+        {
+            "team_id",
+            "cached",
+            "guardrail_blocked",
+            "blocked_by",
+            "pii_masked",
+            "pricing_unit",
+            "quantity",
+        }
     )
 
     def __init__(
@@ -69,6 +77,8 @@ class RecordingUsageRecorder:
         guardrail_blocked: bool = False,
         blocked_by: str | None = None,
         pii_masked: bool = False,
+        pricing_unit: str | None = None,
+        quantity: Decimal | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -77,6 +87,8 @@ class RecordingUsageRecorder:
         (the INCRBYFLOAT guard only runs when cost_usd > 0, so no spend counter increment).
         guardrail_blocked=True: injects guardrail_blocked=true + blocked_by into raw field.
         pii_masked=True: injects pii_masked=true into raw field.
+        pricing_unit: discriminator; None → defaults to snapshot value or 'per_token'.
+        quantity: billed quantity for non-token units; None → per_token path.
         """
         try:
             await self._record_internal(
@@ -90,6 +102,8 @@ class RecordingUsageRecorder:
                 guardrail_blocked=guardrail_blocked,
                 blocked_by=blocked_by,
                 pii_masked=pii_masked,
+                pricing_unit=pricing_unit,
+                quantity=quantity,
             )
         except Exception as exc:
             _log.warning(
@@ -115,6 +129,8 @@ class RecordingUsageRecorder:
         guardrail_blocked: bool = False,
         blocked_by: str | None = None,
         pii_masked: bool = False,
+        pricing_unit: str | None = None,
+        quantity: Decimal | None = None,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -122,6 +138,8 @@ class RecordingUsageRecorder:
         completion_tokens = 0
         cost_usd = _ZERO
         pricing_snapshot_id: str = ""
+        resolved_pricing_unit = "per_token"
+        resolved_quantity: Decimal | None = None
 
         if not cached:
             # Only fetch pricing for non-cached records; cached hits always cost 0
@@ -129,20 +147,81 @@ class RecordingUsageRecorder:
                 pricing = await _fetch_latest_pricing(session, model)
                 markup_pct = await _fetch_markup_pct(session, tenant_id)
 
-            if pricing is not None and usage is not None:
-                snap_id, prompt_price, completion_price = pricing
+            if pricing is not None:
+                (
+                    snap_id,
+                    prompt_price,
+                    completion_price,
+                    snapshot_pricing_unit,
+                    unit_usd_per_unit,
+                ) = pricing
                 pricing_snapshot_id = str(snap_id)
-                prompt_tokens = int(str(usage.get("prompt_tokens", 0)))
-                completion_tokens = int(str(usage.get("completion_tokens", 0)))
-                cost_usd = (
-                    Decimal(str(prompt_tokens)) * Decimal(str(prompt_price))
-                    + Decimal(str(completion_tokens)) * Decimal(str(completion_price))
-                ) * (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100"))
+
+                # Resolve pricing_unit: extras > snapshot > default
+                # Only accept the four known values; unknown → per_token (backward-compat)
+                _known_units = {"per_token", "per_image", "per_second", "per_character"}
+                if pricing_unit is not None and pricing_unit in _known_units:
+                    resolved_pricing_unit = pricing_unit
+                elif snapshot_pricing_unit in _known_units:
+                    resolved_pricing_unit = snapshot_pricing_unit
+                else:
+                    resolved_pricing_unit = "per_token"
+
+                if resolved_pricing_unit == "per_token":
+                    # v6 path — BYTE-IDENTICAL (same operand order, no intermediate rounding)
+                    if usage is not None:
+                        prompt_tokens = int(str(usage.get("prompt_tokens", 0)))
+                        completion_tokens = int(str(usage.get("completion_tokens", 0)))
+                    cost_usd = (
+                        Decimal(str(prompt_tokens)) * Decimal(str(prompt_price))
+                        + Decimal(str(completion_tokens)) * Decimal(str(completion_price))
+                    ) * (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100"))
+                else:
+                    # Non-token path: per_image / per_second / per_character
+                    prompt_tokens = 0
+                    completion_tokens = 0
+                    # Resolve quantity from extras; clamp negative to 0
+                    if quantity is not None:
+                        q = Decimal(str(quantity))
+                        if q < _ZERO:
+                            _log.warning(
+                                "negative_quantity_clamped",
+                                extra={
+                                    "pricing_unit": resolved_pricing_unit,
+                                    "quantity": str(quantity),
+                                    "model": model,
+                                },
+                            )
+                            q = _ZERO
+                        resolved_quantity = q
+                    else:
+                        resolved_quantity = _ZERO
+                    # unit_price NULL on a non-token snapshot → cost=0 + WARNING
+                    if unit_usd_per_unit is None:
+                        _log.warning(
+                            "unit_price_missing_for_non_token_unit",
+                            extra={
+                                "pricing_unit": resolved_pricing_unit,
+                                "model": model,
+                                "pricing_snapshot_id": pricing_snapshot_id,
+                            },
+                        )
+                        cost_usd = _ZERO
+                    else:
+                        cost_usd = (
+                            resolved_quantity
+                            * Decimal(str(unit_usd_per_unit))
+                            * (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100"))
+                        )
         else:
             # Cached hit: cost=0; still read token counts from usage for the record
             if usage is not None:
                 prompt_tokens = int(str(usage.get("prompt_tokens", 0)))
                 completion_tokens = int(str(usage.get("completion_tokens", 0)))
+            # Preserve the pricing_unit from extras even on cache hits (for event fields)
+            _known_units = {"per_token", "per_image", "per_second", "per_character"}
+            if pricing_unit is not None and pricing_unit in _known_units:
+                resolved_pricing_unit = pricing_unit
 
         created_at = datetime.datetime.now(datetime.UTC).isoformat()
         raw_payload: dict[str, object] = {
@@ -161,6 +240,9 @@ class RecordingUsageRecorder:
         if pii_masked:
             raw_payload["pii_masked"] = True
 
+        # Encode quantity: empty string for per_token (NULL), str(q) for non-token
+        quantity_str = str(resolved_quantity) if resolved_quantity is not None else ""
+
         event_fields: dict[str, str] = {
             "tenant_id": str(tenant_id),
             "key_id": str(key_id),
@@ -174,6 +256,9 @@ class RecordingUsageRecorder:
             "created_at": created_at,
             # team-attribution: empty string encodes NULL (backward-compatible with old consumers)
             "team_id": str(team_id) if team_id is not None else "",
+            # pricing-units: new contract fields (pricing-units TASK.md §3)
+            "pricing_unit": resolved_pricing_unit,
+            "quantity": quantity_str,
         }
 
         # Push to Redis Stream — must not drop the event even on cost-0
@@ -204,12 +289,20 @@ class RecordingUsageRecorder:
 async def _fetch_latest_pricing(
     session: AsyncSession,
     model_id: str,
-) -> tuple[uuid.UUID, Decimal, Decimal] | None:
-    """Return (snapshot_id, prompt_price, completion_price) or None if not found."""
+) -> tuple[uuid.UUID, Decimal, Decimal, str, Decimal | None] | None:
+    """Return (snapshot_id, prompt_price, completion_price, pricing_unit, unit_usd_per_unit).
+
+    Returns None if no pricing snapshot found for the model.
+
+    Additive extension (pricing-units TASK.md §3):
+      pricing_unit      — discriminator; defaults to 'per_token' for old rows.
+      unit_usd_per_unit — per-unit price for non-token rows; NULL for per_token rows.
+    """
     row = (
         await session.execute(
             text(
-                "SELECT id, prompt_usd_per_token, completion_usd_per_token"
+                "SELECT id, prompt_usd_per_token, completion_usd_per_token,"
+                " pricing_unit, unit_usd_per_unit"
                 " FROM pricing_snapshots"
                 " WHERE model_id = :model_id"
                 " ORDER BY captured_at DESC"
@@ -220,10 +313,13 @@ async def _fetch_latest_pricing(
     ).fetchone()
     if row is None:
         return None
+    unit_usd: Decimal | None = Decimal(str(row[4])) if row[4] is not None else None
     return (
         uuid.UUID(str(row[0])),
         Decimal(str(row[1])),
         Decimal(str(row[2])),
+        str(row[3]) if row[3] is not None else "per_token",
+        unit_usd,
     )
 
 

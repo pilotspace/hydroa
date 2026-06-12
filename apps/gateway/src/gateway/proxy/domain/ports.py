@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from decimal import Decimal
 from enum import Enum
 from typing import Any, Protocol, TypedDict, runtime_checkable
 
@@ -47,6 +48,8 @@ class UsageRecordExtras(TypedDict, total=False):
     guardrail_blocked: bool
     blocked_by: str
     pii_masked: bool
+    pricing_unit: str
+    quantity: Decimal
 
 
 class ModelAccess(Enum):

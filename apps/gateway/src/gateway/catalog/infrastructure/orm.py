@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -41,6 +42,11 @@ class PricingSnapshotRow(Base):
 
     NEVER UPDATE OR DELETE rows from this table.
     captured_at is set by the database server clock at insert time.
+
+    Additive columns (pricing-units TASK.md §3):
+      pricing_unit      — discriminator; one of per_token|per_image|per_second|per_character
+                          NOT NULL DEFAULT 'per_token'; all existing rows carry per_token.
+      unit_usd_per_unit — generic per-unit price for non-token rows; NULL for per_token rows.
     """
 
     __tablename__ = "pricing_snapshots"
@@ -52,6 +58,8 @@ class PricingSnapshotRow(Base):
     prompt_usd_per_token: Mapped[float] = mapped_column(Numeric(20, 10), nullable=False)
     completion_usd_per_token: Mapped[float] = mapped_column(Numeric(20, 10), nullable=False)
     captured_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    pricing_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default="per_token")
+    unit_usd_per_unit: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
 
 
 class TenantModelOverrideRow(Base):

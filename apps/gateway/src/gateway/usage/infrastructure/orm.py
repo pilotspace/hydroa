@@ -66,3 +66,6 @@ class UsageRecordRow(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
     # team-attribution: nullable — no FK (append-only ledger; team deletion must not cascade)
     team_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    # pricing-units (pricing-units TASK.md §3): discriminator + billed quantity
+    pricing_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default="per_token")
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
