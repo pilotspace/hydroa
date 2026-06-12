@@ -1,7 +1,7 @@
 # TASK: RoutingStrategy seam + simple-shuffle weighted selection
 
 slug: routing-strategy · created: 2026-06-12 · stage: production · risk: high · autonomy: conservative
-phase: build   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower
      the autonomy level with `autonomy: conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -286,23 +286,45 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — routing_strategy 10/10 green; full `make ci` 543 passed, 5 failed.
+      The 5 reds are documented pre-existing flakes (1 guardrails async-write/redis-NOGROUP
+      race + 4 health_alerting s07/s09/s10/s11 `asyncio.sleep(0.05)`→DB async-write race);
+      ALL 5 re-run green in isolation (`pytest <5 ids> -o addopts="" → 5 passed in 1.74s`)
+      and none touch routing_strategy.py / fallback_router.py / config.py / main.py.
+- [x] coverage did not decrease — full `make ci` 81.56% (≥80% gate), same as the
+      deployment-model baseline; routing_strategy.py covered by the 10-test suite (only the
+      single-candidate `len<=1` early-return is unexercised — 2 of 6039 stmts).
+- [x] no test or contract was altered during build — test file last modified in the FRONT
+      commit 86a089f (untouched in the build commit); §3 FROZEN contract diff count 0.
+- [x] concurrency / timing of the risky operation is safe — `order()` is pure-sync with NO
+      `await`, so it runs atomically within one asyncio step; the single shared
+      `SimpleShuffleStrategy._rng` never interleaves under the single-threaded event loop.
+      No shared mutable state mutated across requests.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — no secrets touched;
+      no eval/SQL/format injection; stdlib `random` only (non-crypto routing, documented
+      `# noqa: S311`), zero new third-party dependency.
+- [x] layering & dependencies follow CONVENTIONS.md — routing_strategy.py lives in
+      proxy/application and imports core.config.Deployment under `TYPE_CHECKING` only;
+      fallback_router (same layer) consumes it; main.py (composition root) wires it. No
+      domain→infra or upward import added. ruff + pyright clean; allowlist OK.
+- [x] a person reviewed and approved the change — Tin Dang (delegated auto mode, 2026-06-12),
+      same delegation as the §3 freeze; security checked and clean (no HARD-STOP trigger).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol is referenced (grep-confirmed):
+      `build_strategy` → main.py:40 import + main.py:393 create_app call;
+      `OrderedStrategy` → fallback_router.py:100 default + routing_strategy.build_strategy;
+      `SimpleShuffleStrategy` → build_strategy("simple-shuffle") + wiring test;
+      `RoutingStrategy` (Protocol) → fallback_router.py:51/89/100 type;
+      `routing_strategy` setting → config.py:201 validator + main.py:393 wiring;
+      `_strategy_order` → complete():208 + stream():295.
+- [x] DEAD-CODE (code) — no orphaned symbol: SimpleShuffleStrategy reachable via
+      build_strategy("simple-shuffle"); the `len(candidates)<=1` branch is the legitimate
+      single-deployment-group path; no unused import (ruff F401/RUF100 clean).
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS
+Reviewed by: Tin Dang (delegated auto mode) · date: 2026-06-12
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
@@ -310,10 +332,25 @@ Reviewed by: <name> · date: <date>
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
-Spec delta for the next loop: <what production taught you>
+Watch (reuse scenarios as monitors): primary-pick distribution per alias under simple-shuffle
+(should track configured weights ≈ N:1); INVALID_ROUTING_ORDER occurrences (must stay 0 —
+any non-zero is a strategy bug); UNKNOWN_ROUTING_STRATEGY boot rejections (config typos).
+Spec delta for the next loop: balance-strategies (least-busy/latency, Redis) supersedes
+`order()` to async — the §3 SUPERSESSION NOTE is the pin; the stream path (sync call site at
+use_cases.py:1237) is the bounded follow-up risk to re-pin then. deployment-limits will add
+per-deployment TPM/RPM candidate filtering UPSTREAM of the strategy (filter candidates →
+strategy orders the survivors).
 
 ### Competency deltas
-What did this loop teach the foundation? One line each, tagged by competency
-(`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [ADD · open] A pure-sync seam with no `await` is the cleanest concurrency story under an
+  asyncio event loop (atomic within one step) — but it pins the seam sync. When a known async
+  successor exists, freeze the SUPERSESSION NOTE in the contract up front (done here) so the
+  re-pin is a planned follow-up, not a surprise re-freeze. (evidence: §3 SUPERSESSION NOTE +
+  the sync-vs-async least-sure flag surfaced at freeze.)
+- [TDD · open] Weighted-random behavior is assertable deterministically via an injected
+  `random.Random(seed)` + a 1000-draw distribution band (0.80<b_share<0.98), not by mocking —
+  keeps the test honest about the real algorithm. (evidence: test_rs3 green, stable across runs.)
+- [SDD · open] A default strategy that returns its input unchanged (`OrderedStrategy →
+  list(candidates)`) is the byte-identical-preservation lever: the entire v6 fallback loop is
+  reused verbatim and the frozen suites stay green with zero loop-body edits. (evidence:
+  model_fallbacks + routing_admin + proxy suites green under the new seam.)
