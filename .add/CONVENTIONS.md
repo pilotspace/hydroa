@@ -232,6 +232,34 @@ Build/harness conventions folded from v1 (2026-06-10):
           (CircuitBreaker/timeout/UpstreamUnavailableError/v8-fallback) across every
           provider — matches LiteLLM's own hand-rolled llms/anthropic httpx; avoids
           per-provider SDK dependency sprawl + divergent resilience seams (Tin-confirmed)
+        Build/harness conventions folded from v10 (2026-06-13):
+        - extend a frozen seam for a richer SHAPE by adding ADDITIVE branches to the SAME
+          pure helpers, never a new adapter class: v10 tools landed in the v9 per-provider
+          request/response/SSE helper triad with the adapter class untouched and NO
+          re-freeze — provider tool-translation is a repeatable 4-step template (request
+          tools/tool_choice + message restructure · response native-call→tool_calls ·
+          streaming native-event→delta fragment · no-tools byte-identical pin)
+        - a streaming fragment helper (`build_tool_call_delta`) absorbs ASYMMETRIC provider
+          granularity at one UNIFORM seam: Gemini emits one combined id+name+args fragment,
+          Anthropic streams id+name then incremental input_json_delta needing a content-
+          block→tool_calls index REMAP (a `block_to_tc` dict) — the remap recurs for any
+          provider interleaving text+tool events (evidence: both stream suites green)
+        - a freeze-first contract task's red suite MIXES unit tests (new helpers) with
+          CHARACTERIZATION pins (tools flow unstripped through the v9 dispatch seam; no-
+          tools byte-identical) — the pins guard a behavior that already works so the
+          provider tasks cannot silently break it; some pins are GREEN-BY-DESIGN from the
+          start and MUST stay green through the build (evidence: 2 of 10 anthropic red
+          tests green-by-design; test_request_passthrough_tools_unstripped green pre-build)
+        - VERIFY the request-side assumption IN CODE before freezing (router.py:42 forwards
+          a raw dict, so tools/tool_choice flow unstripped) so the contract pins a real
+          invariant — a Pydantic request model would strip tools and break passthrough
+        - a multi-turn protocol is proven LIVE by ONE STATELESS request-inspection stub:
+          the turn is discriminated by the presence of a TRANSLATED tool result (Anthropic
+          tool_result block / Gemini functionResponse part), no server-side turn state —
+          operator-run live checks double as the red→green suite for cross-provider
+          translation (red against a v9-only gateway, green after the provider tasks);
+          a name-correlation test needs a TWO-MESSAGE fixture (assistant tool_calls turn +
+          the tool message) to exercise id→name resolution honestly (evidence: 18/18 ×2)
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

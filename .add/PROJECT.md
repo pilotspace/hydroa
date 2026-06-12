@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-13 · foundation-version: 10
+slug: ai-proxy · stage: production · updated: 2026-06-13 · foundation-version: 11
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -58,6 +58,26 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     SERVED model id with the provider's NATIVE usage tokens. Gemini embeddings are the
     one exception: no native token count → a documented `max(1, ceil(chars/4))`
     ESTIMATE (exact counting is an open follow-up)
+- Folded from v10 (2026-06-13):
+  - **Tool / function-call** enters the domain as a canonical (OpenAI) vocabulary EVERY
+    provider maps to/from: a request MAY carry `tools` + `tool_choice`; a response MAY
+    carry `message.tool_calls` (finish_reason "tool_calls"); a follow-up turn carries
+    `role:"tool"` messages keyed by `tool_call_id`. **Tool-call-id synthesis** is a
+    first-class concept for id-less native providers — the id is gateway-owned,
+    name+index-derived (blake2b), secret-free. `function.arguments` is a JSON STRING on
+    the OpenAI wire but a JSON OBJECT natively → translate with json dumps/loads AT the
+    boundary, fail-safe (malformed args forward raw, never crash a translator)
+  - Each provider's tool model has a distinct SHAPE the translator must respect:
+    Anthropic is CONTENT-BLOCK-based (tool_use / tool_result blocks restructure the
+    MESSAGE — assistant tool_calls → content blocks; a run of role:"tool" → ONE user
+    turn of tool_result blocks), while Gemini is id-LESS (functionCall correlated back by
+    NAME via an id→name map rebuilt from the assistant tool_calls echoed in the same
+    request — id is for the OpenAI client, name is for Gemini). Same-name PARALLEL Gemini
+    calls remain name-ambiguous on return (documented residual risk)
+  - INVARIANT (proven live, v10): a request WITHOUT `tools` engages ZERO tool plumbing
+    and is byte-identical to v9; OpenRouter/OpenAI tool requests stay byte-identical
+    passthrough; tool-call tokens are counted by the provider's native usage (no separate
+    tool billing), still keyed on the SERVED model id
 
 ## Spec / Living Document (SDD) — what we are building, now
 
@@ -145,6 +165,26 @@ goal: a user can set up their tenant → log in → call any LLM model through t
   - OPEN: Gemini embeddings have no native token count → usage is ESTIMATED as
     `max(1, ceil(total_chars/4))`; exact counting (a tokenizer or count API) is a
     follow-up
+- Folded from v10 (2026-06-13):
+  - Settled: tool-use is DEPTH not breadth — tools landed as ADDITIVE branches in the
+    SAME v9 per-provider helper triad (request/response/SSE) with ZERO adapter-class
+    change; the v9 ChatTranslator seam absorbed a non-trivial richer request/response
+    shape without a re-freeze. The freeze-first SHARED-SEAM pattern (freeze the canonical
+    types + pure helpers + the passthrough/byte-identical pins FIRST, providers build
+    against them) is now proven for a SHAPE change, not just a dispatch wrapper
+  - Settled: provider tool-translation is a REPEATABLE 4-step shape (request
+    tools/tool_choice + message restructure · response native-call→tool_calls · streaming
+    native-event→delta fragment · no-tools byte-identical pin), proven twice
+    (anthropic+gemini landed identically-shaped) — the next provider (Bedrock/Azure)
+    follows the same template against the frozen contract
+  - Settled: streaming tool-calls are ASYMMETRIC in granularity but UNIFORM at the OpenAI
+    seam — Gemini emits one combined id+name+args fragment (whole functionCall in one
+    part); Anthropic streams id+name then incremental input_json_delta fragments, needing
+    an index REMAP (content-block index ≠ OpenAI tool_calls index, bridged by a
+    block_to_tc dict) — both produced via the SAME build_tool_call_delta helper
+  - OPEN (carried): parallel-tool-call streaming beyond fragment-per-index, JSON-mode /
+    structured-outputs `response_format`, and same-name parallel Gemini call
+    disambiguation remain follow-ups (Out of v10 scope)
 
 ## Users (UDD) — UI/UX: design before code
 
@@ -244,3 +284,8 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-13 | Every non-OpenAI stream() emits a TERMINAL OpenAI usage chunk before [DONE]; wire translation grounded in a VERBATIM SSE fixture shared by the adapter unit suite + the live stub (fold: SDD+TDD/anthropic-provider+gemini-provider) | the frozen extract_usage_from_sse reads the LAST usage frame → translation IS billing on the stream path; matching stub/unit bytes make a green unit suite predict the live pass | folded v9 |
 | 2026-06-13 | A new in-memory resolver map (model_id→provider) refreshes at lifespan startup + on /internal/catalog/sync; the live harness SEEDS rows then RESTARTS the gateway so refresh() reads them (fold: ADD/provider-chat-dispatch+v9-live-verify) | the freeze's least-sure flag (seed-then-restart refreshes the resolver) confirmed first-try; no source-sync = no deactivation; double-pass 35/35 ×2 | folded v9 |
 | 2026-06-13 | Gemini embeddings usage is ESTIMATED max(1, ceil(total_chars/4)) — no native token count (fold: SDD/gemini-provider, open follow-up); Anthropic+Gemini stream() BUFFER full event list before translating (open TTFB follow-up) | embedContent/batchEmbedContents return no usageMetadata token counts; documented estimate billed, exact counting deferred | folded v9 (open follow-up) |
+| 2026-06-13 | Tool/function-call is a canonical (OpenAI) vocabulary every provider maps to/from; tool-call-id SYNTHESIS (blake2b name+index, secret-free) is first-class for id-less providers (Gemini), correlated back by NAME; arguments are a JSON string on the wire / object natively, translated fail-safe at the boundary (fold: DDD/tool-use-contract) | one canonical shape keeps the /v1 surface uniform; Gemini's id-less functionCall round-trips via an id→name map rebuilt from echoed assistant tool_calls; 16/16 contract green | folded v10 |
+| 2026-06-13 | Tool-use is DEPTH not breadth — tools landed as ADDITIVE branches in the SAME v9 per-provider helper triad (request/response/SSE), zero adapter-class change, no re-freeze; the freeze-first SHARED-SEAM pattern now proven for a SHAPE change (fold: SDD/anthropic-tool-use+gemini-tool-use) | the v9 ChatTranslator seam absorbed a non-trivial richer request/response shape; provider tool-translation is a repeatable 4-step template for the next provider | folded v10 |
+| 2026-06-13 | Streaming tool-calls are ASYMMETRIC in granularity (Gemini one combined fragment; Anthropic id+name then incremental input_json_delta needing a content-block→tool_calls index REMAP) but UNIFORM at the OpenAI seam via one build_tool_call_delta helper (fold: ADD/anthropic-tool-use+gemini-tool-use) | a frozen streaming-fragment shape absorbed both providers without change; the block_to_tc index remap recurs for any provider interleaving text+tool events | folded v10 |
+| 2026-06-13 | A multi-turn protocol is proven LIVE by a single STATELESS request-inspection stub (turn discriminated by the presence of a translated tool result), no server-side turn state (fold: ADD+TDD/tool-use-live-verify) | the freeze least-sure flag validated 18/18 ×2, both passes exit 0, no turn-state bug; operator-run live checks served as the red→green suite for cross-provider translation | folded v10 |
+| 2026-06-13 | The request-side passthrough assumption was VERIFIED IN CODE before freezing (router.py:42 forwards a raw dict, so tools/tool_choice flow unstripped) — the contract pins a real invariant, not a hoped-for one (fold: ADD/tool-use-contract) | a Pydantic ChatRequest model would strip tools and break passthrough; §1 framing rejected that option on this verified ground; no-tools byte-identical to v9 | folded v10 |

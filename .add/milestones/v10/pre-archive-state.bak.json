@@ -1,0 +1,60 @@
+{
+  "milestone": {
+    "title": "LiteLLM parity slice 8 \u2014 tool-use / function-calling across providers",
+    "goal": "a tenant sends OpenAI tools + tool_choice to a chat model on any provider (OpenRouter, Anthropic, Gemini) and gets OpenAI-shaped tool_calls back \u2014 non-stream and streaming \u2014 with native translation, billing, and v8 routing intact",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-12T18:29:51+00:00",
+    "updated": "2026-06-12T19:13:32+00:00"
+  },
+  "tasks": {
+    "tool-use-contract": {
+      "title": "Tool-translation contract (FREEZE FIRST)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v10",
+      "depends_on": [],
+      "created": "2026-06-12T18:31:53+00:00",
+      "updated": "2026-06-12T18:44:26+00:00",
+      "flag_verified": true
+    },
+    "anthropic-tool-use": {
+      "title": "Anthropic tool-use translation",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v10",
+      "depends_on": [
+        "tool-use-contract"
+      ],
+      "created": "2026-06-12T18:45:11+00:00",
+      "updated": "2026-06-12T18:53:30+00:00",
+      "flag_verified": true
+    },
+    "gemini-tool-use": {
+      "title": "Google Gemini tool-use translation",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v10",
+      "depends_on": [
+        "tool-use-contract"
+      ],
+      "created": "2026-06-12T18:54:07+00:00",
+      "updated": "2026-06-12T19:01:47+00:00",
+      "flag_verified": true
+    },
+    "tool-use-live-verify": {
+      "title": "Tool-use live double-pass (e2e)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v10",
+      "depends_on": [
+        "anthropic-tool-use",
+        "gemini-tool-use"
+      ],
+      "created": "2026-06-12T19:02:47+00:00",
+      "updated": "2026-06-12T19:12:32+00:00",
+      "flag_verified": true
+    }
+  },
+  "archived_at": "2026-06-12T19:15:38+00:00"
+}

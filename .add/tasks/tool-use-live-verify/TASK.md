@@ -256,6 +256,6 @@ is a reliable turn discriminator. Gemini same-name parallel calls remain name-am
 return (residual freeze risk, not exercised here).
 
 ### Competency deltas
-- [ADD · open] live e2e proof of a multi-turn protocol fits the one-stateless-stub harness pattern (request-inspection turn discrimination) — evidence: 18/18 ×2, both passes exit 0, no turn-state bug.
-- [TDD · open] operator-run live checks served as the red→green suite for cross-provider translation (red against v9-only gateway, green after v10 tasks 2+3) — evidence: C1–C4 failed pre-build, passed post-build; C5 byte-identical throughout.
-- [SDD · open] the frozen harness contract (stub surfaces + overlay env + check list) let the stub/overlay/verify be built independently and compose first-try — evidence: seed-then-restart resolver refresh worked first-try on the new :9924 port.
+- [ADD · folded] live e2e proof of a multi-turn protocol fits the one-stateless-stub harness pattern (request-inspection turn discrimination) — evidence: 18/18 ×2, both passes exit 0, no turn-state bug.
+- [TDD · folded] operator-run live checks served as the red→green suite for cross-provider translation (red against v9-only gateway, green after v10 tasks 2+3) — evidence: C1–C4 failed pre-build, passed post-build; C5 byte-identical throughout.
+- [SDD · folded] the frozen harness contract (stub surfaces + overlay env + check list) let the stub/overlay/verify be built independently and compose first-try — evidence: seed-then-restart resolver refresh worked first-try on the new :9924 port.
