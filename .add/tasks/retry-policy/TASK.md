@@ -382,6 +382,6 @@ Watch (reuse scenarios as monitors):
 Spec delta for the next loop: model-fallbacks task inherits the retryable set from this contract; if read timeouts are reclassified after OpenRouter documentation becomes available, the retryable table change propagates to model-fallbacks as well.
 
 ### Competency deltas
-- [SDD · open] The "NEVER retry" prose in a frozen task required a SUPERSESSION pattern rather than file edit — evidence: proxy-completions TASK.md §1 pin; JwksKeyCache precedent confirmed the approach works across milestones.
-- [TDD · open] Full-jitter backoff requires monkeypatching both `random.uniform` AND `asyncio.sleep` to assert timing without wall-clock waits — evidence: R4 design captures the sleep call rather than measuring elapsed time.
-- [ADD · open] Risk=high tasks need explicit retryable-classification tables in §1 to prevent ambiguous build-phase interpretation; the table format proved load-bearing here.
+- [SDD · folded] The "NEVER retry" prose in a frozen task required a SUPERSESSION pattern rather than file edit — evidence: proxy-completions TASK.md §1 pin; JwksKeyCache precedent confirmed the approach works across milestones.
+- [TDD · folded] Full-jitter backoff requires monkeypatching both `random.uniform` AND `asyncio.sleep` to assert timing without wall-clock waits — evidence: R4 design captures the sleep call rather than measuring elapsed time.
+- [ADD · folded] Risk=high tasks need explicit retryable-classification tables in §1 to prevent ambiguous build-phase interpretation; the table format proved load-bearing here.

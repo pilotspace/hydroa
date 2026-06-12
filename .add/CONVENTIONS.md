@@ -34,6 +34,16 @@ Testing: red/green TDD mandatory — tests red before build; pytest + pytest-asy
           `within(<section>)` and name the owning component — bare `getByText` string or
           regex matchers over a whole page over-constrain the build when data repeats
           across sections (evidence: dashboard-usage duplicate-match collisions)
+        Folded from v6 (2026-06-12):
+        - full-jitter backoff timing is asserted by monkeypatching BOTH `random.uniform`
+          AND `asyncio.sleep` — capture the computed delay, never sleep wall-clock
+          (evidence: retry_policy R4)
+        - GREEN-BY-DESIGN tests (asserting the ABSENCE of behavior, e.g. no stream
+          fallback) are labeled as such in the §4 plan so a pre-build green is not
+          mistaken for a wrong-reason red (evidence: model_fallbacks F11)
+        - a fake async Redis for concurrent SET-NX tests processes commands atomically and
+          orders task yields explicitly — asyncio.gather gives no interleaving guarantee, so
+          the single-probe NX assertion needs deterministic ordering (evidence: cooldown_circuit C4)
         Folded from v2 (2026-06-11):
         - stream/wire parsers test fragmentation as part of the input domain by default —
           split-at-midpoint AND byte-by-byte chunk cases (evidence: live-upstream-smoke;
@@ -106,6 +116,19 @@ Build/harness conventions folded from v1 (2026-06-10):
         - when frozen test files conflict with lint/format rules, suppress at config level
           (pyproject per-file-ignores or format excludes) — frozen tests are never edited
           to satisfy tooling
+        Build/harness conventions folded from v6 (2026-06-12):
+        - risk=high tasks carry an explicit retryable/classification TABLE in §1 — the
+          table format is load-bearing, fixing which failures retry/fall-through before
+          the build can interpret it ambiguously (evidence: retry_policy retryable set,
+          model_fallbacks fall-through table)
+        - a [contract]-level flag that spec alone cannot resolve becomes a BUILD constraint
+          with an acceptance criterion, not merely a §3 note — e.g. the concurrent-probe
+          race requires the TTL relationship (probe duration < probe TTL) enforced
+          (evidence: cooldown_circuit half-open)
+        - when parallel tasks share a protocol, the OWNING task defines and freezes the
+          interface before the consuming task builds against it — never two divergent
+          duck-typed copies (evidence: ModelHealthGate owned by model-fallbacks, the
+          Redis gate in cooldown-circuit built to the frozen shape)
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

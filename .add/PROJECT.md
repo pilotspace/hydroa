@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-12 · foundation-version: 6
+slug: ai-proxy · stage: production · updated: 2026-06-12 · foundation-version: 7
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -43,6 +43,19 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     flush is the "child row with unset parent id" bug class
   - Settled: multi-row sync operations (upsert + snapshot + deactivate) live in ONE
     transaction — zero rows written on source failure, idempotent on unchanged input
+- Folded from v6 (2026-06-12):
+  - Settled: served-model billing keys on the value the router RETURNS (the fallback
+    router's 3-tuple `(status, body, served_model_id)`), never `response_body["model"]`
+    — the upstream's body model string can drift from the catalog id (e.g. ":free"
+    variants); the candidate id we routed to is the only authoritative billing signal
+  - Settled: a frozen behavioral pin (e.g. "NEVER retry") is changed by the SUPERSESSION
+    pattern — record the supersession at the new task's freeze, leave the frozen file
+    untouched, and keep the new default behavior-preserving so the prior pin stays
+    byte-identical until opted in
+  - Settled: a distributed TTL-keyed state machine (Redis cooldown) gets an explicit
+    state table in §3 — an in-process enum (CLOSED/OPEN/HALF_OPEN) has no direct
+    multi-key Redis analogue; the half-open window needs its own marker key to be
+    distinguishable from CLOSED (the defect a 5-row state table surfaced pre-build)
 
 ## Users (UDD) — UI/UX: design before code
 
@@ -111,3 +124,12 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-12 | Milestone-close LIVE edge verification is load-bearing and stays binding at every close — never waived for an all-gates-green milestone (fold: ADD/v5-close evidence) | the v5 live pass caught two production defects (exchanger + resolver wiring) invisible to 399 green tests | folded v5 |
 | 2026-06-12 | Pure-file/grep regression suites (no DB/network) pin rename/branding invariants and wire compat literals (fold: TDD/rename-hydroa) | they catch reverts and merge accidents in milliseconds, before integration suites even start | folded v5 |
 | 2026-06-12 | Next.js "use client" root layouts cannot export metadata — surface the constraint at §1 spec time and place metadata in the nearest server components (fold: SDD/rename-hydroa) | discovering the constraint at build time forces unplanned mechanism choices | folded v5 |
+| 2026-06-12 | Served-model billing keys on the router's returned candidate id (3-tuple 3rd element), never body["model"] (fold: SDD/model-fallbacks, corrected at fold) | OpenRouter body model string can drift from the catalog id (":free" variants); the routed candidate id is the only authoritative billing signal | folded v6 |
+| 2026-06-12 | Frozen behavioral pins changed via SUPERSESSION (record at new freeze, frozen file untouched, default behavior-preserving) (fold: SDD/retry-policy) | "NEVER retry" superseded by a precise retryable set; default retries=0 keeps v5 byte-identical; JwksKeyCache precedent | folded v6 |
+| 2026-06-12 | Distributed TTL-keyed state machines get an explicit §3 state table; the half-open window needs its own marker key (fold: SDD/cooldown-circuit) | an in-process enum has no multi-key Redis analogue; without a half marker CLOSED and HALF_OPEN are indistinguishable and healthy traffic throttles to ~1 req/TTL | folded v6 |
+| 2026-06-12 | Full-jitter backoff timing asserted by monkeypatching BOTH random.uniform AND asyncio.sleep — capture the computed delay, never wall-clock (fold: TDD/retry-policy) | deterministic, fast timing assertions with zero real sleeps | folded v6 |
+| 2026-06-12 | GREEN-BY-DESIGN tests (assert ABSENCE of behavior) are marked explicitly in the §4 plan (fold: TDD/model-fallbacks) | prevents red-phase confusion when an "absence" test is green before build (e.g. no stream fallback) | folded v6 |
+| 2026-06-12 | Fake async Redis for concurrent SET-NX tests processes commands atomically and orders task yields explicitly (fold: TDD/cooldown-circuit) | asyncio.gather does not guarantee interleaving; the single-probe NX guarantee needs deterministic ordering in the fake | folded v6 |
+| 2026-06-12 | risk=high tasks carry an explicit retryable-classification TABLE in §1 (fold: ADD/retry-policy) | the table format is load-bearing — it prevents ambiguous build-phase interpretation of which failures retry | folded v6 |
+| 2026-06-12 | A [contract]-flag spec alone cannot resolve becomes a BUILD constraint with an acceptance criterion, not just a §3 flag (fold: ADD/cooldown-circuit) | the concurrent-probe race needs the TTL relationship (probe duration < probe TTL) enforced, not merely noted | folded v6 |
+| 2026-06-12 | Parallel tasks sharing a protocol: the OWNING task defines + freezes the interface before the consuming task builds (fold: ADD/model-fallbacks) | ModelHealthGate owned by model-fallbacks, consumed by cooldown-circuit — frozen-first avoids divergent duck-typed copies | folded v6 |

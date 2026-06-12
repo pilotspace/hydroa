@@ -683,10 +683,13 @@ Spec delta for the next loop:
     first-available candidate id; adds a cache-warm-up round-trip per new alias resolution.
 
 ### Competency deltas
-  - [SDD · open] Served-model billing required surfacing the concrete model id from the response
+  - [SDD · folded] (fold correction: the authoritative served-model signal is the router's
+    returned candidate id — the 3-tuple's 3rd element — NOT response_body["model"], whose
+    string can drift from the catalog id, e.g. ":free" variants; see Key Decisions v7.)
+  - [SDD · folded] Served-model billing required surfacing the concrete model id from the response
     body rather than passing the router's input — evidence: F7 scenario; response_body["model"]
     is the only authoritative served-model signal at the use-case boundary.
-  - [TDD · open] GREEN-BY-DESIGN tests (F11) are a valid pattern for "absence of behavior" —
+  - [TDD · folded] GREEN-BY-DESIGN tests (F11) are a valid pattern for "absence of behavior" —
     marking them explicitly in the plan prevents confusion at red-phase verification.
-  - [ADD · open] Parallel tasks sharing a protocol definition (ModelHealthGate) require the
+  - [ADD · folded] Parallel tasks sharing a protocol definition (ModelHealthGate) require the
     owning task to define the frozen interface before the consuming task builds against it.
