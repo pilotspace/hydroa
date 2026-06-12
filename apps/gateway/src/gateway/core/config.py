@@ -175,6 +175,13 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("model_groups", "GATEWAY_MODEL_GROUPS"),
     )
 
+    # ── Routing strategy (routing-strategy v8) ────────────────────────────────
+    # GATEWAY_ROUTING_STRATEGY — how a model group's PRIMARY deployment is selected.
+    #   "ordered"        — declared order (default; v6 byte-identical)
+    #   "simple-shuffle" — weighted-random primary by Deployment.weight, rest as fallback tail
+    # Unknown value → ValidationError "UNKNOWN_ROUTING_STRATEGY" (fail-closed at startup).
+    routing_strategy: str = "ordered"
+
     @property
     def model_groups(self) -> dict[str, list[str]]:
         """Bare-string view of the deployment groups (alias -> [model_id, ...], order-preserved).
@@ -186,6 +193,16 @@ class Settings(BaseSettings):
             alias: [d.model_id for d in deployments]
             for alias, deployments in self.deployments.items()
         }
+
+    @model_validator(mode="after")
+    def _validate_routing_strategy(self) -> "Settings":
+        """Reject an unknown GATEWAY_ROUTING_STRATEGY at startup (fail-closed)."""
+        valid = {"ordered", "simple-shuffle"}
+        if self.routing_strategy not in valid:
+            raise ValueError(
+                f"UNKNOWN_ROUTING_STRATEGY: '{self.routing_strategy}' is not one of {sorted(valid)}"
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_model_groups(self) -> "Settings":

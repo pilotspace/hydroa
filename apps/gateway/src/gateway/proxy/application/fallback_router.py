@@ -48,6 +48,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from gateway.proxy.application.routing_strategy import OrderedStrategy, RoutingStrategy
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.ports import CompletionUpstream, ModelHealthGate
 
@@ -85,6 +86,7 @@ class FallbackModelRouter:
         health_gate: ModelHealthGate | None = None,
         metrics_registry: Any = None,
         deployments: dict[str, list[Deployment]] | None = None,
+        strategy: RoutingStrategy | None = None,
     ) -> None:
         self._upstream = upstream
         self._model_groups = model_groups
@@ -94,6 +96,8 @@ class FallbackModelRouter:
         # fallback logic still iterates the bare-string `model_groups` (byte-identical
         # to v6); `deployments` is exposed for the v8 routing-strategy layer.
         self._deployments: dict[str, list[Deployment]] = deployments or {}
+        # Routing strategy (routing-strategy v8). None ⇒ OrderedStrategy → v6 byte-identical.
+        self._strategy: RoutingStrategy = strategy if strategy is not None else OrderedStrategy()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -152,6 +156,21 @@ class FallbackModelRouter:
         """
         return self._model_groups.get(model_id)
 
+    def _strategy_order(self, alias: str, candidates: list[str]) -> list[str]:
+        """Ask the routing strategy for the attempt order; guard it is a permutation.
+
+        For the default OrderedStrategy this returns `candidates` unchanged
+        (v6 byte-identical). A strategy that adds/drops/duplicates a candidate is a
+        programming bug — abort rather than serve a wrong/partial set.
+        """
+        deployments = self._deployments.get(alias, [])
+        order = self._strategy.order(alias, candidates, deployments)
+        if len(order) != len(candidates) or set(order) != set(candidates):
+            raise ValueError(
+                f"INVALID_ROUTING_ORDER: strategy returned a non-permutation for alias '{alias}'"
+            )
+        return order
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -183,13 +202,14 @@ class FallbackModelRouter:
             status, body = await _upstream.complete(payload)
             return status, body, model_id
 
-        # Alias path — iterate candidates with fallback.
+        # Alias path — iterate candidates with fallback, in the strategy's order.
         gate = self._health_gate
         alias = model_id
+        order = self._strategy_order(alias, candidates)
         last_fallen: str | None = None
 
-        for i, candidate in enumerate(candidates):
-            next_model = candidates[i + 1] if i + 1 < len(candidates) else "_exhausted"
+        for i, candidate in enumerate(order):
+            next_model = order[i + 1] if i + 1 < len(order) else "_exhausted"
 
             # Step 1: health gate check — skip = fell_through without an upstream call.
             if gate is not None and not await gate.is_available(candidate):
@@ -242,7 +262,7 @@ class FallbackModelRouter:
         # All candidates exhausted or gated (loop ended without return).
         self._inc_counter(
             alias=alias,
-            from_model=candidates[-1] if candidates else "_exhausted",
+            from_model=order[-1] if order else "_exhausted",
             to_model="_exhausted",
             outcome="exhausted",
         )
@@ -270,6 +290,8 @@ class FallbackModelRouter:
             # Plain model id — delegate directly.
             return _upstream.stream(payload)
 
-        # Alias: resolve to first candidate only (§3 STREAMING BOUNDARY).
-        rewritten: dict[str, object] = {**payload, "model": candidates[0]}
+        # Alias: resolve to the strategy PRIMARY only (§3 STREAMING BOUNDARY — no
+        # fallback on stream). For OrderedStrategy this is candidates[0] (v6 byte-identical).
+        primary = self._strategy_order(model_id, candidates)[0]
+        rewritten: dict[str, object] = {**payload, "model": primary}
         return _upstream.stream(rewritten)

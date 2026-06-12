@@ -37,6 +37,7 @@ from gateway.proxy.api.images_router import images_router
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
+from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import UpstreamProvider
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
@@ -389,6 +390,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         health_gate=app.state.cooldown_gate,
         metrics_registry=app.state.metrics_registry,
         deployments=settings.deployments,
+        strategy=build_strategy(settings.routing_strategy),
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).
