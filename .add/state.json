@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "key-budget-governance-ui",
+  "active_task": "ui-ux-verify",
   "active_milestone": "v13",
   "tasks": {
     "design-system-foundation": {
@@ -105,6 +105,39 @@
         ],
         "snapshot_md5": "06d6dc7aa821a94ccf553f5de010c687"
       }
+    },
+    "ui-ux-verify": {
+      "title": "Verification pass across the redesigned usage/cost + key/budget journeys (axe a11y, keyboard, responsive, suites green)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v13",
+      "depends_on": [
+        "usage-cost-ui",
+        "key-budget-governance-ui"
+      ],
+      "created": "2026-06-13T16:56:31+00:00",
+      "updated": "2026-06-13T17:18:30+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2a8599af223ff6e0bc3d03abb48b9019",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/tests/",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/components/usage/",
+          "apps/dashboard/components/spend/",
+          "apps/dashboard/components/keys/",
+          "apps/dashboard/components/ui/",
+          "apps/dashboard/lib/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/ui-ux-verify/"
+        ],
+        "snapshot_md5": "c2a0e01d318669e73f16059c306f6048"
+      }
     }
   },
   "milestones": {
@@ -126,7 +159,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T16:55:11+00:00",
+  "updated": "2026-06-13T17:18:30+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
