@@ -47,6 +47,22 @@ Record it in the §6 **Deep checks** block — where each new symbol is called (
 search), the dead-code scan result, or the prose you read in full and what it confirmed.
 An unfilled Deep checks block is a **shallow verify**, not a PASS.
 
+## Part four — was the green earned?
+
+A green suite proves the tests pass — not that the build EARNED them. Three judgment cheats
+pass the unchanged suite without earning it: src overfit to the test fixtures (special-cased
+to the literal inputs, not the general behavior §1 asked for), vacuous asserts (tautological —
+green even against an empty implementation), and real logic stubbed away (the function returns
+a constant the tests happen to accept). These cheats are invisible to the mechanical tamper
+tripwire, which only sees edited files. Score them with an adversarial refute-read: an
+independent reviewer — a subagent under `autonomy: auto` is recommended, the engine never
+spawns one — prompted to argue the green was NOT earned from outside the build context. This
+is the verify-gate, whole-suite specialization of run.md's adversarial verify (see run.md), not
+a new discipline. A confirmed earned-green failure is HARD-STOP-class: never auto-passed, never
+RISK-ACCEPTED — but a first cheat is a chance to redo: a confirmed cheat (mechanical tamper or a
+reported earned-green failure) enters the bounded self-heal loop — it returns to build for an honest
+redo, and only after the loop's cap does it HARD-STOP to the human (the loop lives in run.md).
+
 ## Record exactly one outcome (no silent pass)
 
 When you present this gate to the human, open with the ARC (goal · done · plan) per

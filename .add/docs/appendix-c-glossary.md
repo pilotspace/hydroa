@@ -24,6 +24,10 @@
 
 **Gate** — a checkpoint with an explicit pass/fail exit. Its outcome is `PASS`, `RISK-ACCEPTED`, or `HARD-STOP`.
 
+**Ground (phase-0 preamble)** — the per-task phase *before* Specify in which the AI gathers the real current codebase the task touches — files, symbols, signatures, patterns, conventions — into a lean **grounding map**, surfacing the **anchors** the frozen contract will cite. It is AI-owned and adds no approval (the one approval stays at the contract freeze); it precedes the seven steps as step 0 so the contract, tests, and build are grounded in the code as it actually is, not in assumption. Lives in the `add` skill's `phases/0-ground.md`.
+
+**Grounding map / anchors** — the §0 GROUND artifact: the real files, symbols, and conventions a task touches, plus the **anchors** — the symbols the frozen contract names. Task-specific delta only: it defers to `PROJECT.md` / `CONVENTIONS.md` for architecture and never re-runs the setup brownfield scan. `add.py status` / `check` surface whether the active task's contract is grounded (measure, never block — the contract-freeze checklist asks the human to confirm it).
+
 **`HARD-STOP`** — a gate outcome meaning work cannot proceed; triggered by any failing test or security finding.
 
 **Intake** — the step *before* a task: sizing a raw request into versioned scope by classifying it into one **request bucket**. The AI proposes `{bucket, rationale, command}`; the human confirms. Lives in the `add` skill's `intake.md` (the intake level, above the per-task flow).
@@ -70,7 +74,9 @@
 
 **Scope level** (formerly "altitude") — the granularity a decision lives at: intake level (request → versioned scope) · milestone level · setup/foundation level · task level. (A cross-stage decision lives one level out, at the **stage-graduation** loop — which `graduate.md` also numbers as a scope level; see **Stage graduation**.) One ⚠-assumption notation is shared across every scope level.
 
-**Autonomy level** (formerly "autonomy dial") — the per-task setting (`autonomy: auto | conservative`) choosing who resolves Verify; high-risk scope refuses an unguarded `auto`.
+**Autonomy level** (formerly "autonomy dial") — the explicit per-task setting (`autonomy: manual | conservative | auto`, an ordered ladder manual < conservative < auto) choosing who resolves Verify: `auto` auto-PASSes on complete evidence, `conservative` keeps a human at the gate, `manual` is the strict floor (the human owns the gate; nothing auto-resolves). A high-risk scope refuses an unguarded `auto` — it must be lowered to `manual` or `conservative`. New tasks seed a visible, overridable `autonomy: auto`; a live task with no level warns (`implicit_autonomy`), a token outside the set is rejected (`unknown_autonomy_level`).
+
+**Auto-ready goal** — a milestone goal whose every exit criterion **cites a verifier** (`(verify: <test|command|metric>)`), so the engine can self-verify the result against the goal without human judgment. It is the prerequisite by which **autonomy is earned by goal-clarity**: the **autonomy level** governs *who* resolves Verify, but a clarified, machine-checkable goal is what makes a self-verifying run meaningful. `add.py check` raises a `goal_not_auto_ready` **WARN** (never red) for the active milestone until it has an auto-ready goal (≥1 exit criterion and every one cited), and `status` surfaces it (`goal-ready: auto-ready ✓` / cited-of-total); a zero-criteria goal reads not-auto-ready and is milestone-shaping's nudge, not this warning's. The lint forces a citation *slot* per criterion — it raises the floor but **cannot prove the citation is real** (a human can write `(verify: it works)`): citation-theater is the accepted irreducible floor, and the freeze gate and autonomy behavior are unchanged by it.
 
 **Automated quality gate** (formerly "evidence auto-gate") — the Verify resolver under `autonomy: auto`: a run may auto-PASS on complete evidence, recorded as *auto-resolved*; a security finding always escalates (`HARD-STOP`).
 
@@ -103,6 +109,7 @@ This book uses plain step names. Teams connecting it to a larger formal standard
 | Plain step (this book) | Formal phase name |
 |------------------------|-------------------|
 | Project setup | Foundation |
+| Ground (preamble) | Codebase Discovery (the §0 grounding map) |
 | Specify | Domain Discovery + Spec Definition |
 | (design portion) | UX-Driven Design |
 | Scenarios | Behavior specification (Given/When/Then) |
