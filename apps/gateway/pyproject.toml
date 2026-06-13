@@ -117,6 +117,8 @@ exclude = [
     "tests/anthropic_tool_use/test_anthropic_tool_use.py",
     # gemini-tool-use: frozen test suite; format excluded per no-test-edit contract
     "tests/gemini_tool_use/test_gemini_tool_use.py",
+    # response-format-contract: frozen test suite; format excluded per no-test-edit contract
+    "tests/response_format_translation/test_response_format_translation.py",
 ]
 
 [tool.ruff.lint]
