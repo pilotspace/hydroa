@@ -1,5 +1,7 @@
 import json
-from typing import Annotated
+import os
+from collections.abc import Mapping
+from typing import Annotated, Final
 
 from pydantic import (
     AliasChoices,
@@ -13,6 +15,42 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_JWT_SECRET = "dev-only-secret-change-me"  # noqa: S105 — dev default; prod sets GATEWAY_JWT_SECRET
+
+
+class EmptyUpstreamKeyError(ValueError):
+    """Raised at BOOT when an upstream API key env var is present but empty.
+
+    A fatal startup misconfiguration — never mapped to an HTTP status (the app must not
+    start). Distinct from an ABSENT var, which cleanly disables that provider.
+    """
+
+
+#: Upstream API key env vars guarded at boot. A new provider MUST add its var here.
+_UPSTREAM_KEY_ENV_VARS: Final[tuple[str, ...]] = (
+    "GATEWAY_OPENROUTER_API_KEY",
+    "GATEWAY_OPENAI_API_KEY",
+    "GATEWAY_ANTHROPIC_API_KEY",
+    "GATEWAY_GOOGLE_API_KEY",
+)
+
+
+def validate_upstream_keys(env: Mapping[str, str] | None = None) -> None:
+    """Fail fast at boot if any upstream key env var is PRESENT but empty/whitespace.
+
+    Only the raw environment can distinguish "configured-yet-empty" (a misconfiguration
+    → boot failure) from "absent" (the provider is intentionally disabled → allowed),
+    because Settings collapses both to "". An empty key would otherwise reach an adapter
+    as ``Bearer ''`` and surface as an opaque per-request 500 (the v7+v8 live failure).
+
+    The error names ONLY the offending variable + a fix hint — never a key value.
+    """
+    environ: Mapping[str, str] = os.environ if env is None else env
+    for name in _UPSTREAM_KEY_ENV_VARS:
+        if name in environ and environ[name].strip() == "":
+            raise EmptyUpstreamKeyError(
+                f"{name} is set but empty; unset it to disable the provider or provide a "
+                f"non-empty key"
+            )
 
 
 class Deployment(BaseModel):

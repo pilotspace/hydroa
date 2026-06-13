@@ -24,7 +24,7 @@ from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import admin_models_router, catalog_router, internal_catalog_router
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
-from gateway.core.config import Settings
+from gateway.core.config import Settings, validate_upstream_keys
 from gateway.core.errors import register_error_handlers
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
@@ -163,6 +163,10 @@ async def health() -> dict[str, str]:
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Composition root: wires infrastructure adapters into domain ports."""
     settings = settings if settings is not None else Settings()
+
+    # Boot guard (v12): fail fast if an upstream API key env var is present but empty,
+    # BEFORE constructing any adapter (an empty key → Bearer '' → opaque 500; v7+v8).
+    validate_upstream_keys()
 
     # Configure structlog once per process (idempotent).  Must run before any
     # logger call — including those triggered during module imports below.

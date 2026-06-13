@@ -125,6 +125,8 @@ exclude = [
     "tests/anthropic_json_mode/test_anthropic_json_mode.py",
     # gemini-embed-tokens: frozen test suite; format excluded per no-test-edit contract
     "tests/gemini_embed_tokens/test_gemini_embed_tokens.py",
+    # empty-key-boot-guard: frozen test suite; format excluded per no-test-edit contract
+    "tests/empty_key_boot_guard/test_empty_key_boot_guard.py",
 ]
 
 [tool.ruff.lint]

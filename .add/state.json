@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "gemini-embed-tokens",
+  "active_task": "empty-key-boot-guard",
   "active_milestone": "v12",
   "tasks": {
     "gemini-embed-tokens": {
@@ -12,6 +12,16 @@
       "depends_on": [],
       "created": "2026-06-13T08:02:13+00:00",
       "updated": "2026-06-13T08:12:47+00:00",
+      "flag_verified": true
+    },
+    "empty-key-boot-guard": {
+      "title": "Boot guard: reject a configured-yet-empty upstream API key",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T08:13:17+00:00",
+      "updated": "2026-06-13T08:21:31+00:00",
       "flag_verified": true
     }
   },
@@ -34,7 +44,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T08:12:47+00:00",
+  "updated": "2026-06-13T08:21:31+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
