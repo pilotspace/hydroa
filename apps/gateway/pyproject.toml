@@ -127,6 +127,8 @@ exclude = [
     "tests/gemini_embed_tokens/test_gemini_embed_tokens.py",
     # empty-key-boot-guard: frozen test suite; format excluded per no-test-edit contract
     "tests/empty_key_boot_guard/test_empty_key_boot_guard.py",
+    # nonchat-soft-budget-alert: frozen test suite; format excluded per no-test-edit contract
+    "tests/nonchat_soft_budget_alert/test_nonchat_soft_budget_alert.py",
 ]
 
 [tool.ruff.lint]

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "empty-key-boot-guard",
+  "active_task": "nonchat-soft-budget-alert",
   "active_milestone": "v12",
   "tasks": {
     "gemini-embed-tokens": {
@@ -22,6 +22,16 @@
       "depends_on": [],
       "created": "2026-06-13T08:13:17+00:00",
       "updated": "2026-06-13T08:21:31+00:00",
+      "flag_verified": true
+    },
+    "nonchat-soft-budget-alert": {
+      "title": "Fire soft-budget alert on the non-chat path (embeddings/images/audio)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T08:21:59+00:00",
+      "updated": "2026-06-13T08:32:48+00:00",
       "flag_verified": true
     }
   },
@@ -44,7 +54,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T08:21:31+00:00",
+  "updated": "2026-06-13T08:32:48+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

@@ -9,6 +9,7 @@ Contract FROZEN @ embeddings-endpoint (TASK.md §3).
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import uuid
@@ -63,12 +64,16 @@ class NonChatGovernance:
         budget_guard: Any,
         rate_limiter: RateLimiter | None,
         redis_client: Any,
+        session_factory: Any = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
         self._budget_guard = budget_guard
         self._rate_limiter = rate_limiter
         self._redis_client = redis_client
+        # Optional app-scoped async_sessionmaker for the advisory soft-budget alert
+        # (fire-and-forget write to alert_events). None → alert disabled (back-compat).
+        self._session_factory = session_factory
 
     async def authorize(
         self,
@@ -120,7 +125,10 @@ class NonChatGovernance:
             await self._check_team_budget(authz)
             # Step 7: tenant budget SKIPPED — per-key wins (most-specific-wins)
         else:
-            # Step 5: No hard per-key budget — skip per-key check
+            # Step 5: No hard per-key budget — but the soft-alert seam still runs
+            # (mirror use_cases.py:616-618; budget None → no per-key 402 possible).
+            if authz.soft_budget_usd is not None:
+                await self._check_per_key_budget(authz)
             # Step 6: Team budget check — fail-open on Redis errors
             await self._check_team_budget(authz)
             # Step 7: Tenant budget enforces (RedisBudgetGuard)
@@ -195,12 +203,14 @@ class NonChatGovernance:
     async def _check_per_key_budget(self, authz: AuthzResult) -> None:
         """Check per-key Redis spend counter against key's monthly_budget_usd.
 
-        HARD 402 enforcement only (soft-budget alert deferred for non-chat path).
+        Also fires the advisory soft-budget alert (mirrors the chat path,
+        use_cases.py:_check_per_key_budget) when soft_budget_usd is crossed.
         Fail-open: Redis unavailable → allow (advisory counter pattern).
         Counter key: usage:spend:key:{key_id}:{YYYYMM}
         """
         budget = authz.monthly_budget_usd
-        if budget is None:
+        # Return early only if neither hard nor soft budget needs a Redis read.
+        if budget is None and authz.soft_budget_usd is None:
             return
 
         yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
@@ -221,7 +231,32 @@ class NonChatGovernance:
 
         spent = _parse_spend(raw)
 
-        if spent >= budget:
+        # Soft budget seam: fire-and-forget alert event when crossing detected
+        # (chat-identical). Scheduled here (pre-flight), never awaited — hot-path
+        # latency unaffected. ON CONFLICT (dedupe_key) DO NOTHING → idempotent.
+        if (
+            authz.soft_budget_usd is not None
+            and spent >= authz.soft_budget_usd
+            and self._session_factory is not None
+        ):
+            from gateway.usage.application.alert_writer import (
+                persist_soft_budget_alert,
+            )
+
+            _task = asyncio.ensure_future(
+                persist_soft_budget_alert(
+                    self._session_factory,
+                    authz.tenant_id,
+                    authz.key_id,
+                    authz.soft_budget_usd,
+                    spent,
+                )
+            )
+            # Keep reference to prevent GC; swallow exceptions in callback.
+            _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+        # Hard budget enforcement — only when monthly_budget_usd is set.
+        if budget is not None and spent >= budget:
             raise BUDGET_EXCEEDED.exc(
                 detail=f"Per-key spend {spent} >= budget {budget} for key {authz.key_id}"
             )

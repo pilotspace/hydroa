@@ -53,6 +53,7 @@ def get_images_use_case(
         budget_guard=budget_guard,
         rate_limiter=rate_limiter,
         redis_client=redis_client,
+        session_factory=request.app.state.sessionmaker,
     )
     return ImagesUseCase(governance=governance, session=session)
 

@@ -59,6 +59,7 @@ def get_transcription_use_case(
         budget_guard=budget_guard,
         rate_limiter=rate_limiter,
         redis_client=redis_client,
+        session_factory=request.app.state.sessionmaker,
     )
     return TranscriptionUseCase(governance=governance, session=session)
 
@@ -87,5 +88,6 @@ def get_speech_use_case(
         budget_guard=budget_guard,
         rate_limiter=rate_limiter,
         redis_client=redis_client,
+        session_factory=request.app.state.sessionmaker,
     )
     return SpeechUseCase(governance=governance, session=session)

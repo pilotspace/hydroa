@@ -59,5 +59,6 @@ def get_embeddings_use_case(
         budget_guard=budget_guard,
         rate_limiter=rate_limiter,
         redis_client=redis_client,
+        session_factory=request.app.state.sessionmaker,
     )
     return EmbeddingsUseCase(governance=governance, session=session)
