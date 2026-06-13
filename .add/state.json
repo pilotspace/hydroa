@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "test-db-isolation",
+  "active_task": "v12-live-verify",
   "active_milestone": "v12",
   "tasks": {
     "gemini-embed-tokens": {
@@ -43,6 +43,16 @@
       "created": "2026-06-13T08:34:03+00:00",
       "updated": "2026-06-13T10:08:40+00:00",
       "flag_verified": true
+    },
+    "v12-live-verify": {
+      "title": "Live double-pass: exact Gemini-embed billing, non-chat soft alert, empty-key boot guard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T10:09:33+00:00",
+      "updated": "2026-06-13T10:29:26+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -64,7 +74,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T10:08:40+00:00",
+  "updated": "2026-06-13T10:29:26+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

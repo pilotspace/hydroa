@@ -1,0 +1,40 @@
+# v12 exact-billing-live-verify overlay — additive on base + v4 + v5 + v6 overlays.
+#
+# Wires the Google Gemini upstream to the v12 embed stub on the host (127.0.0.1:9926)
+# and sets a non-empty OpenRouter key so the boot guard (C3) does not trip the main stack.
+# The :countTokens verb in the stub returns {"totalTokens": 42} — enabling the EXACT
+# Gemini-embed billing path (v12 task 1). The soft-budget alert (task 3) and empty-key
+# boot guard (task 2) are tested by the verify script against this running stack.
+#
+# Placeholder keys only — NEVER a real secret. The stub binds 127.0.0.1; TLS is still
+# enforced by the Envoy edge (:8443); auth is not disabled. http:// is intentional for
+# the loopback-host base URLs. host.docker.internal resolves to the Docker Desktop host.
+#
+# Source: v12-live-verify TASK.md §3 CONTRACT (FROZEN @ v1)
+#
+# Usage (layered on top of base + v4 + v5 + v6):
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v12.yml \
+#     up --build -d --wait
+#
+# The v12 embed stub is started by scripts/live_v12_verify.py in a daemon thread before
+# any check runs. Double-pass close rule: run the verify script twice; both must exit 0.
+
+services:
+  gateway:
+    environment:
+      # ── v12: Google Gemini provider → v12 embed stub on :9926 ─────────────────
+      # The stub serves :countTokens → {"totalTokens": 42} (EXACT billing, C1)
+      # and embedContent / batchEmbedContents for the embedding round-trip.
+      # Placeholder key — NEVER a real secret.
+      GATEWAY_GOOGLE_API_KEY: "stub-google-key"
+      GATEWAY_GOOGLE_BASE_URL: "http://host.docker.internal:9926/v1beta"
+
+      # ── v12: OpenRouter API key — non-secret placeholder ──────────────────────
+      # Must be non-empty so the boot guard (EmptyUpstreamKeyError) does NOT fire
+      # for the main stack. C3 tests the empty-key guard via a separate one-shot run.
+      GATEWAY_OPENROUTER_API_KEY: "stub-openrouter-key"
