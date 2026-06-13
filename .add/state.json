@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "response-format-contract",
+  "active_task": "gemini-json-mode",
   "active_milestone": "v11",
   "tasks": {
     "response-format-contract": {
@@ -12,6 +12,16 @@
       "depends_on": [],
       "created": "2026-06-13T06:30:59+00:00",
       "updated": "2026-06-13T07:07:49+00:00",
+      "flag_verified": true
+    },
+    "gemini-json-mode": {
+      "title": "Gemini JSON-mode / responseSchema translation",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v11",
+      "depends_on": [],
+      "created": "2026-06-13T07:08:50+00:00",
+      "updated": "2026-06-13T07:13:23+00:00",
       "flag_verified": true
     }
   },
@@ -26,7 +36,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T07:07:49+00:00",
+  "updated": "2026-06-13T07:13:23+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

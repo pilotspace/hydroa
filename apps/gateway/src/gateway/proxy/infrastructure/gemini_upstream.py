@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.response_format_translation import extract_response_format
 from gateway.proxy.domain.tool_translation import (
     build_tool_call_delta,
     dump_tool_arguments,
@@ -192,6 +193,16 @@ def _openai_to_gemini_request(
     stop = payload.get("stop")
     if stop is not None:
         generation_config["stopSequences"] = [stop] if isinstance(stop, str) else list(stop)
+
+    # response_format → Gemini native structured output (v11). extract_response_format
+    # returns None for absent / {type:"text"} (byte-identical v9/v10), else json_object /
+    # json_schema; it raises ERR_UNSUPPORTED_RESPONSE_FORMAT / ERR_INVALID_JSON_SCHEMA.
+    response_format = extract_response_format(payload)
+    if response_format is not None:
+        generation_config["responseMimeType"] = "application/json"
+        json_schema = response_format.get("json_schema")
+        if response_format["type"] == "json_schema" and json_schema is not None:
+            generation_config["responseSchema"] = json_schema["schema"]
 
     result: dict[str, Any] = {
         "contents": contents,
