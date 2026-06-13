@@ -1,0 +1,41 @@
+{
+  "_comment": "Frozen build allow-list for the design-system-foundation task (§3 F). The test_deps_allowlisted guard asserts apps/dashboard/package.json dependencies+devDependencies are a SUBSET of this set. A dependency not listed here is an 'unlisted_dependency' reject. Add a package here ONLY via a contract change-request.",
+  "dependencies": [
+    "next",
+    "react",
+    "react-dom",
+    "@tanstack/react-query",
+    "zod",
+    "lucide-react",
+    "class-variance-authority",
+    "clsx",
+    "tailwind-merge",
+    "@radix-ui/react-dialog",
+    "@radix-ui/react-select",
+    "@radix-ui/react-slot",
+    "@radix-ui/react-label",
+    "recharts",
+    "tw-animate-css"
+  ],
+  "devDependencies": [
+    "typescript",
+    "@types/react",
+    "@types/react-dom",
+    "@types/node",
+    "tailwindcss",
+    "@tailwindcss/postcss",
+    "postcss",
+    "vitest",
+    "@vitejs/plugin-react",
+    "@testing-library/react",
+    "@testing-library/jest-dom",
+    "@testing-library/user-event",
+    "msw",
+    "jsdom",
+    "@vitest/coverage-v8",
+    "eslint",
+    "eslint-config-next",
+    "vitest-axe",
+    "axe-core"
+  ]
+}

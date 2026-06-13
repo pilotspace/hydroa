@@ -1,0 +1,76 @@
+{
+  "components": {
+    "Screen": {
+      "description": "Top-level page region — the surface a journey renders into.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "padding": { "type": "token", "token": "dimension" }
+      }
+    },
+    "Card": {
+      "description": "A bounded content container with surface, border, and radius.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" },
+        "gap": { "type": "token", "token": "dimension" }
+      }
+    },
+    "Heading": {
+      "description": "A section/page title.",
+      "props": {
+        "text": { "type": "string" },
+        "color": { "type": "token", "token": "color" },
+        "size": { "type": "token", "token": "dimension" },
+        "level": { "type": "enum", "values": ["1", "2", "3"] }
+      }
+    },
+    "Text": {
+      "description": "Body or muted copy.",
+      "props": {
+        "text": { "type": "string" },
+        "color": { "type": "token", "token": "color" },
+        "size": { "type": "token", "token": "dimension" }
+      }
+    },
+    "Button": {
+      "description": "Primary action control.",
+      "props": {
+        "label": { "type": "string" },
+        "variant": { "type": "enum", "values": ["default", "secondary", "outline", "ghost", "destructive"] },
+        "bg": { "type": "token", "token": "color" },
+        "fg": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" }
+      }
+    },
+    "Badge": {
+      "description": "A small status/label chip.",
+      "props": {
+        "label": { "type": "string" },
+        "variant": { "type": "enum", "values": ["default", "secondary", "outline", "success", "warning", "destructive"] },
+        "bg": { "type": "token", "token": "color" },
+        "fg": { "type": "token", "token": "color" }
+      }
+    },
+    "StatCard": {
+      "description": "A labelled metric tile (label + value).",
+      "props": {
+        "label": { "type": "string" },
+        "value": { "type": "string" },
+        "bg": { "type": "token", "token": "color" },
+        "valueColor": { "type": "token", "token": "color" }
+      }
+    },
+    "Field": {
+      "description": "A labelled form input.",
+      "props": {
+        "label": { "type": "string" },
+        "placeholder": { "type": "string" },
+        "border": { "type": "token", "token": "color" },
+        "ring": { "type": "token", "token": "color" }
+      }
+    }
+  }
+}

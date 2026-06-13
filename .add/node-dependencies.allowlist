@@ -15,6 +15,14 @@ class-variance-authority
 clsx
 tailwind-merge
 
+# --- design-system foundation (v13 design-system-foundation) ---
+@radix-ui/react-dialog
+@radix-ui/react-select
+@radix-ui/react-slot
+@radix-ui/react-label
+recharts
+tw-animate-css
+
 # --- devDependencies (apps/dashboard) ---
 typescript
 @types/react
@@ -33,3 +41,5 @@ jsdom
 @vitest/coverage-v8
 eslint
 eslint-config-next
+vitest-axe
+axe-core

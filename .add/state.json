@@ -1,21 +1,74 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
-  "tasks": {},
+  "active_task": "design-system-foundation",
+  "active_milestone": "v13",
+  "tasks": {
+    "design-system-foundation": {
+      "title": "Freeze shared design tokens + component variants + state components + responsive/a11y primitives + shell",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v13",
+      "depends_on": [],
+      "created": "2026-06-13T13:35:10+00:00",
+      "updated": "2026-06-13T14:44:20+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8965198f2e0fc3b5e7323e67e94e5783",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/design/",
+          ".add/DESIGN.md",
+          ".add/node-dependencies.allowlist",
+          "apps/dashboard/lib/cn.ts",
+          "apps/dashboard/components/ui/",
+          "apps/dashboard/app/globals.css",
+          "apps/dashboard/app/layout.tsx",
+          "apps/dashboard/app/(dashboard)/layout.tsx",
+          "apps/dashboard/package.json",
+          "apps/dashboard/package-lock.json",
+          "apps/dashboard/components.json",
+          "apps/dashboard/tests/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          ".add/tasks/design-system-foundation/"
+        ],
+        "snapshot_md5": "32b2ccb9d0da06c2fabc93906ea1660c"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-13T14:43:28+00:00",
+            "reason": "scope_violation: task 'design-system-foundation' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/coverage/lcov-report/components/auth/LoginForm.tsx.html \u00b7 apps/dashboard/coverage/lcov-report/components/auth/SignupForm.tsx.html \u00b7 apps/dashboard/coverage/lcov-report/components/auth/index.html \u00b7 apps/dashboard/coverage/lcov-report/components/keys/CreateKeyDialog.tsx.html \u00b7 apps/dashboard/coverage/lcov-report/components/keys/KeyGovernanceEditor.tsx.html (38 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    }
+  },
   "milestones": {
     "v13": {
       "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
       "goal": "a tenant owner/developer experiences the usage/cost dashboard and the key & budget governance journeys as a polished, consistent, accessible, and responsive product \u2014 unified design system, clearer task flows, WCAG 2.2 AA, and tablet/mobile breakpoints \u2014 with NO change to the underlying data, BFF, or gateway contracts",
       "stage": "production",
-      "status": "planned",
+      "status": "active",
       "created": "2026-06-13T07:53:45+00:00",
       "updated": "2026-06-13T07:53:45+00:00"
+    },
+    "v14": {
+      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
+      "goal": "the dashboard runs on a Next.js version with no open critical/high npm advisories, with all existing behavioral suites green after the breaking upgrade",
+      "stage": "production",
+      "status": "planned",
+      "created": "2026-06-13T14:45:24+00:00",
+      "updated": "2026-06-13T14:45:24+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T10:33:14+00:00",
+  "updated": "2026-06-13T14:45:24+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
