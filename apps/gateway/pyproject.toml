@@ -129,6 +129,8 @@ exclude = [
     "tests/empty_key_boot_guard/test_empty_key_boot_guard.py",
     # nonchat-soft-budget-alert: frozen test suite; format excluded per no-test-edit contract
     "tests/nonchat_soft_budget_alert/test_nonchat_soft_budget_alert.py",
+    # test-db-isolation: frozen test suite; format excluded per no-test-edit contract
+    "tests/test_db_isolation/test_db_isolation.py",
 ]
 
 [tool.ruff.lint]

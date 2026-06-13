@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "nonchat-soft-budget-alert",
+  "active_task": "test-db-isolation",
   "active_milestone": "v12",
   "tasks": {
     "gemini-embed-tokens": {
@@ -33,6 +33,16 @@
       "created": "2026-06-13T08:21:59+00:00",
       "updated": "2026-06-13T08:32:48+00:00",
       "flag_verified": true
+    },
+    "test-db-isolation": {
+      "title": "Deterministic test DB isolation \u2014 kill the FK-violation flake",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T08:34:03+00:00",
+      "updated": "2026-06-13T10:08:40+00:00",
+      "flag_verified": true
     }
   },
   "milestones": {
@@ -54,7 +64,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T08:32:48+00:00",
+  "updated": "2026-06-13T10:08:40+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
