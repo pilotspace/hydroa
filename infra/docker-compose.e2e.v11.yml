@@ -1,0 +1,42 @@
+# v11 json-mode-live-verify overlay — additive on base + v4 + v5 + v6 overlays.
+#
+# Wires the Anthropic, Google Gemini, and OpenRouter upstreams to the v11 JSON stub
+# on the host (127.0.0.1:9925). Identical in shape to the v10 overlay but pointed at
+# the v11 response_format-aware stub (which inspects the TRANSLATED request: an Anthropic
+# "json_output" coercion tool → tool_use input that the gateway unwraps into JSON content;
+# a Gemini generationConfig.responseMimeType → a JSON-string text part; OpenRouter plain).
+#
+# Placeholder keys only — NEVER a real secret. The stub binds 127.0.0.1; TLS is still
+# enforced by the Envoy edge (:8443); auth is not disabled. http:// is intentional for
+# the loopback-host base URLs. host.docker.internal resolves to the Docker Desktop host.
+#
+# Source: json-mode-live-verify TASK.md §3 CONTRACT (FROZEN @ v1)
+#
+# Usage (layered on top of base + v4 + v5 + v6):
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v11.yml \
+#     up --build -d --wait
+#
+# The v11 json stub is started by scripts/live_v11_verify.py in a daemon thread before
+# any check runs. Double-pass close rule: run the verify script twice; both must exit 0.
+
+services:
+  gateway:
+    environment:
+      # ── v11: Anthropic provider → v11 json stub on :9925 ─────────────────────
+      GATEWAY_ANTHROPIC_API_KEY: "stub-anthropic-key"
+      GATEWAY_ANTHROPIC_BASE_URL: "http://host.docker.internal:9925/v1"
+
+      # ── v11: Google Gemini provider → v11 json stub on :9925 ──────────────────
+      GATEWAY_GOOGLE_API_KEY: "stub-google-key"
+      GATEWAY_GOOGLE_BASE_URL: "http://host.docker.internal:9925/v1beta"
+
+      # ── v11: OpenRouter base URL override → v11 json stub on :9925 ────────────
+      GATEWAY_OPENROUTER_BASE_URL: "http://host.docker.internal:9925/api/v1"
+
+      # ── v11: OpenRouter API key — non-secret placeholder (NEVER a real key) ───
+      GATEWAY_OPENROUTER_API_KEY: "stub-openrouter-key"
