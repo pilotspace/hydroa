@@ -217,7 +217,10 @@ async def test_chat_satisfies_protocol() -> None:
 
 
 async def test_embeddings_single_embedcontent() -> None:
+    # v12 supersession: billing is now the EXACT :countTokens count, not chars/4.
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(":countTokens"):
+            return httpx.Response(200, json={"totalTokens": 3})
         assert request.url.path.endswith(":embedContent")
         sent = json.loads(request.content)
         assert sent == {"content": {"parts": [{"text": "hello"}]}}
@@ -231,11 +234,14 @@ async def test_embeddings_single_embedcontent() -> None:
     assert body["model"] == "text-embedding-004"
     assert body["data"] == [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2]}]
     assert "usage" in body
-    assert body["usage"]["prompt_tokens"] == max(1, math.ceil(len("hello") / 4))
+    assert body["usage"]["prompt_tokens"] == 3  # exact count (v12), not ceil(5/4)
 
 
 async def test_embeddings_batch_preserves_order() -> None:
+    # v12 supersession: a :countTokens leg now runs after a successful batch embed.
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(":countTokens"):
+            return httpx.Response(200, json={"totalTokens": 4})
         assert request.url.path.endswith(":batchEmbedContents")
         sent = json.loads(request.content)
         assert [r["content"]["parts"][0]["text"] for r in sent["requests"]] == ["a", "bb"]
@@ -248,6 +254,7 @@ async def test_embeddings_batch_preserves_order() -> None:
         {"object": "embedding", "index": 0, "embedding": [1.0]},
         {"object": "embedding", "index": 1, "embedding": [2.0]},
     ]
+    assert body["usage"]["prompt_tokens"] == 4  # exact aggregate count (v12)
 
 
 def test_embeddings_usage_estimate_helper() -> None:

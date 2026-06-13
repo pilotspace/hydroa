@@ -29,6 +29,7 @@ Security:
 from __future__ import annotations
 
 import json
+import logging
 import math
 import time
 from collections.abc import AsyncIterator, Iterable
@@ -48,6 +49,8 @@ from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
+
+logger = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT = 10.0
 _NON_STREAM_TIMEOUT = 120.0
@@ -427,14 +430,18 @@ def _gemini_embed_to_openai(
     body: dict[str, Any],
     model: str,
     inp: str | list[str],
+    *,
+    exact_tokens: int | None = None,
 ) -> dict[str, Any]:
     """Translate a Gemini embed response → OpenAI embeddings list.
 
     Single (embedContent): body has ``{embedding:{values:[float]}}``
     Batch (batchEmbedContents): body has ``{embeddings:[{values:[float]}]}``
 
-    Order is preserved. Usage is estimated (chars/4) because Gemini embed
-    returns no token count.
+    Order is preserved. Usage billing (v12):
+      - ``exact_tokens`` set  → bill on the EXACT Gemini ``:countTokens`` count.
+      - ``exact_tokens`` None → documented FALLBACK to the ``ceil(chars/4)`` estimate
+        (Gemini embed responses carry no token count).
     """
     if "embedding" in body:
         # Single embedContent response
@@ -445,20 +452,24 @@ def _gemini_embed_to_openai(
 
     data = [{"object": "embedding", "index": i, "embedding": vec} for i, vec in enumerate(vectors)]
 
-    # Estimate usage: chars / 4 (documented approximation; Gemini returns no token count)
-    if isinstance(inp, str):
-        total_chars = len(inp)
+    if exact_tokens is not None:
+        tokens = exact_tokens
     else:
-        total_chars = sum(len(s) for s in inp)
-    est = max(1, math.ceil(total_chars / 4))
+        # Fallback estimate: chars / 4 (documented approximation; used only when the
+        # :countTokens leg failed — see GoogleEmbeddingsProvider.post_json).
+        if isinstance(inp, str):
+            total_chars = len(inp)
+        else:
+            total_chars = sum(len(s) for s in inp)
+        tokens = max(1, math.ceil(total_chars / 4))
 
     return {
         "object": "list",
         "data": data,
         "model": model,
         "usage": {
-            "prompt_tokens": est,
-            "total_tokens": est,
+            "prompt_tokens": tokens,
+            "total_tokens": tokens,
         },
     }
 
@@ -670,6 +681,35 @@ class GoogleEmbeddingsProvider:
             "content-type": "application/json",
         }
 
+    async def _count_gemini_tokens(self, model: str, inp: str | list[str]) -> int | None:
+        """Return the EXACT Gemini token count for the embed input, or None (fail-SAFE).
+
+        POST /models/{model}:countTokens with ALL inputs as contents (one round-trip,
+        not one-per-input) → {totalTokens:int>=1}. Any failure (timeout/network/status
+        >=400 / missing-or-<1 totalTokens) returns None so the caller falls back to the
+        chars/4 estimate. A count-leg failure NEVER raises and NEVER trips the embed
+        circuit breaker — billing accuracy is best-effort; the embedding is the product.
+        """
+        texts = [inp] if isinstance(inp, str) else list(inp)
+        request_body: dict[str, Any] = {"contents": [{"parts": [{"text": s}]} for s in texts]}
+        try:
+            resp = await self._client.post(
+                f"/models/{model}:countTokens",
+                json=request_body,
+                headers=self._auth_headers(),
+            )
+        except (httpx.TimeoutException, httpx.NetworkError):
+            return None
+        if resp.status_code >= 400:
+            return None
+        try:
+            total = resp.json().get("totalTokens")
+        except (ValueError, AttributeError):
+            return None
+        if not isinstance(total, int) or total < 1:
+            return None
+        return total
+
     async def post_json(
         self,
         path: str,
@@ -721,7 +761,13 @@ class GoogleEmbeddingsProvider:
         if status >= 400:
             return status, _gemini_error_to_openai(resp.json())
 
-        return 200, _gemini_embed_to_openai(resp.json(), model, inp)
+        # Exact-token billing (v12): count tokens via :countTokens AFTER a successful
+        # embed; fall back to the chars/4 estimate (WARN) if the count leg fails.
+        exact_tokens = await self._count_gemini_tokens(model, inp)
+        if exact_tokens is None:
+            logger.warning("gemini embed token count unavailable; billing on chars/4 estimate")
+
+        return 200, _gemini_embed_to_openai(resp.json(), model, inp, exact_tokens=exact_tokens)
 
     async def post_multipart(
         self,

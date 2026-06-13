@@ -1,9 +1,20 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "gemini-embed-tokens",
   "active_milestone": "v12",
-  "tasks": {},
+  "tasks": {
+    "gemini-embed-tokens": {
+      "title": "Exact Gemini-embed token billing (replace chars/4 estimate)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T08:02:13+00:00",
+      "updated": "2026-06-13T08:12:47+00:00",
+      "flag_verified": true
+    }
+  },
   "milestones": {
     "v12": {
       "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt",
@@ -23,7 +34,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T07:53:45+00:00",
+  "updated": "2026-06-13T08:12:47+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
