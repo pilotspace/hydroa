@@ -6,6 +6,7 @@
  */
 
 import { ApiError } from "@/lib/api-client";
+import { Card, CardContent, Loading, ErrorState } from "@/components/ui";
 
 export interface UsageRecord {
   id: string;
@@ -46,20 +47,16 @@ export function UsageStatsCards({
 }: UsageStatsCardsProps) {
   if (isLoading) {
     return (
-      <div
-        role="status"
-        aria-busy="true"
-        aria-label="Loading usage statistics"
+      <Loading
+        label="Loading usage statistics"
         data-testid="loading"
         className="animate-pulse"
-      >
-        <span>Loading…</span>
-      </div>
+      />
     );
   }
 
   if (isError) {
-    return <p role="alert">{getErrorTitle(error)}</p>;
+    return <ErrorState title={getErrorTitle(error)} />;
   }
 
   if (!data) return null;
@@ -74,10 +71,12 @@ export function UsageStatsCards({
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
       {cards.map((card) => (
-        <div key={card.label} className="rounded border p-4">
-          <p className="text-sm text-gray-500">{card.label}</p>
-          <p className="text-2xl font-semibold">{card.value}</p>
-        </div>
+        <Card key={card.label}>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">{card.label}</p>
+            <p className="text-2xl font-semibold text-foreground">{card.value}</p>
+          </CardContent>
+        </Card>
       ))}
     </div>
   );

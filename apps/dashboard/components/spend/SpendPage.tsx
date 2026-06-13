@@ -21,6 +21,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { bffGet, BffError } from "@/lib/bff-client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
+import { Loading, ErrorState, Empty } from "@/components/ui";
+import { SpendSparkline } from "./SpendSparkline";
 
 type SpendWindow = "day" | "week" | "month";
 
@@ -75,17 +78,26 @@ export function SpendPage() {
     !isLoading && !isError && data !== undefined && data.totals.requests === 0;
 
   return (
-    <div data-testid="spend-page">
-      <h1>Spend Analytics</h1>
+    <div data-testid="spend-page" className="flex flex-col gap-6">
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        Spend Analytics
+      </h1>
 
-      {/* Window selector — drives the query param */}
-      <div>
-        <label htmlFor="window-selector">Time window</label>
+      {/* Window selector — drives the query param (native <select> preserved
+          so userEvent.selectOptions in the BFF tests keeps working) */}
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor="window-selector"
+          className="text-sm font-medium text-foreground"
+        >
+          Time window
+        </label>
         <select
           id="window-selector"
           data-testid="window-selector"
           value={window}
           onChange={(e) => setWindow(e.target.value as SpendWindow)}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="day">day</option>
           <option value="week">week</option>
@@ -95,68 +107,105 @@ export function SpendPage() {
 
       {/* Loading state */}
       {isLoading && (
-        <div
-          role="status"
-          aria-busy="true"
-          aria-label="Loading spend data"
+        <Loading
+          label="Loading spend data"
           data-testid="spend-loading"
-        >
-          <span className="animate-pulse">Loading…</span>
-        </div>
+          className="animate-pulse"
+        />
       )}
 
       {/* Error state (403, 422, etc.) */}
       {isError && !isLoading && (
-        <p role="alert" data-testid="spend-error">
-          {getErrorMessage(error)}
-        </p>
+        <div data-testid="spend-error">
+          <ErrorState title={getErrorMessage(error)} />
+        </div>
       )}
 
       {/* Zero-state */}
       {isZeroState && (
         <div data-testid="spend-zero-state">
-          <p>No usage in this period</p>
-          <p>
-            {data.totals.requests} requests — ${data.totals.cost_usd}
-          </p>
+          <Empty
+            title="No usage in this period"
+            description={`${data.totals.requests} requests — $${data.totals.cost_usd}`}
+          />
         </div>
       )}
 
       {/* Data state */}
       {!isLoading && !isError && data !== undefined && !isZeroState && (
-        <div data-testid="spend-data">
+        <div data-testid="spend-data" className="flex flex-col gap-6">
+          {/* Spend-over-time chart (additive, decorative; data fallback below) */}
+          <SpendSparkline buckets={data.buckets} />
+
           {/* Totals */}
-          <section>
-            <h2>Totals ({window})</h2>
-            <dl>
-              <dt>Cost (USD)</dt>
-              <dd data-testid="totals-cost">{data.totals.cost_usd}</dd>
+          <Card>
+            <CardHeader>
+              <CardTitle>Totals ({window})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div>
+                  <dt className="text-sm text-muted-foreground">Cost (USD)</dt>
+                  <dd
+                    data-testid="totals-cost"
+                    className="text-2xl font-semibold text-foreground"
+                  >
+                    {data.totals.cost_usd}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">Requests</dt>
+                  <dd
+                    data-testid="totals-requests"
+                    className="text-2xl font-semibold text-foreground"
+                  >
+                    {data.totals.requests}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">Prompt tokens</dt>
+                  <dd
+                    data-testid="totals-prompt"
+                    className="text-2xl font-semibold text-foreground"
+                  >
+                    {data.totals.prompt_tokens}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">
+                    Completion tokens
+                  </dt>
+                  <dd
+                    data-testid="totals-completion"
+                    className="text-2xl font-semibold text-foreground"
+                  >
+                    {data.totals.completion_tokens}
+                  </dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
 
-              <dt>Requests</dt>
-              <dd data-testid="totals-requests">{data.totals.requests}</dd>
-
-              <dt>Prompt tokens</dt>
-              <dd data-testid="totals-prompt">{data.totals.prompt_tokens}</dd>
-
-              <dt>Completion tokens</dt>
-              <dd data-testid="totals-completion">
-                {data.totals.completion_tokens}
-              </dd>
-            </dl>
-          </section>
-
-          {/* Buckets */}
+          {/* Buckets — accessible data fallback for the chart */}
           {data.buckets.length > 0 && (
-            <section>
-              <h2>Buckets</h2>
-              <ul>
-                {data.buckets.map((bucket) => (
-                  <li key={bucket.bucket_start} data-testid="spend-bucket">
-                    <span>{bucket.bucket_start}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            <Card>
+              <CardHeader>
+                <CardTitle>Buckets</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="flex flex-col gap-1">
+                  {data.buckets.map((bucket) => (
+                    <li
+                      key={bucket.bucket_start}
+                      data-testid="spend-bucket"
+                      className="text-sm text-foreground"
+                    >
+                      <span>{bucket.bucket_start}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}

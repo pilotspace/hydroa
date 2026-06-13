@@ -7,6 +7,15 @@
  */
 
 import { UsageData } from "./UsageStatsCards";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  Empty,
+} from "@/components/ui";
 
 interface UsageTableProps {
   isLoading: boolean;
@@ -21,33 +30,33 @@ export function UsageTable({ isLoading, isError, data }: UsageTableProps) {
   if (!data) return null;
 
   if (data.records.length === 0) {
-    return <p>No usage records yet</p>;
+    return <Empty title="No usage records yet" />;
   }
 
   return (
-    <table>
-      <thead>
-        <tr>
-          <th>Model</th>
-          <th>Prompt Tokens</th>
-          <th>Completion Tokens</th>
-          <th>Cost (USD)</th>
-          <th>Status</th>
-          <th>Date</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Model</TableHead>
+          <TableHead>Prompt Tokens</TableHead>
+          <TableHead>Completion Tokens</TableHead>
+          <TableHead>Cost (USD)</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Date</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {data.records.map((rec) => (
-          <tr key={rec.id}>
-            <td>{rec.model_id}</td>
-            <td>{rec.prompt_tokens}</td>
-            <td>{rec.completion_tokens}</td>
-            <td>{rec.cost_usd}</td>
-            <td>{rec.status}</td>
-            <td>{rec.created_at}</td>
-          </tr>
+          <TableRow key={rec.id}>
+            <TableCell>{rec.model_id}</TableCell>
+            <TableCell>{rec.prompt_tokens}</TableCell>
+            <TableCell>{rec.completion_tokens}</TableCell>
+            <TableCell>{rec.cost_usd}</TableCell>
+            <TableCell>{rec.status}</TableCell>
+            <TableCell>{rec.created_at}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

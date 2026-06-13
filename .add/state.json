@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "design-system-foundation",
+  "active_task": "usage-cost-ui",
   "active_milestone": "v13",
   "tasks": {
     "design-system-foundation": {
@@ -47,6 +47,35 @@
           }
         ]
       }
+    },
+    "usage-cost-ui": {
+      "title": "Refresh the usage/cost dashboard (/usage + /spend) onto the design system + charts",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v13",
+      "depends_on": [
+        "design-system-foundation"
+      ],
+      "created": "2026-06-13T14:49:58+00:00",
+      "updated": "2026-06-13T15:22:04+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "eaff644d1ed48d443b36111fbf93e133",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/usage/",
+          "apps/dashboard/components/spend/",
+          "apps/dashboard/tests-bff/spend-chart.test.tsx",
+          "apps/dashboard/tests/design-system/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/usage-cost-ui/"
+        ],
+        "snapshot_md5": "798a3ede780ffa5fdf89610a02825e6a"
+      }
     }
   },
   "milestones": {
@@ -68,7 +97,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T14:45:24+00:00",
+  "updated": "2026-06-13T15:22:04+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

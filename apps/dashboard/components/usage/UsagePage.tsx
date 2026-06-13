@@ -17,6 +17,7 @@ import { UsageStatsCards, UsageData } from "./UsageStatsCards";
 import { UsageTable } from "./UsageTable";
 import { BudgetWidget, BudgetData } from "./BudgetWidget";
 import { ModelCatalogTable, ModelsData } from "@/components/models/ModelCatalogTable";
+import { Card, CardHeader, CardContent } from "@/components/ui";
 
 export function UsagePage() {
   // Role from /api/auth/me — no JWT decode client-side
@@ -46,12 +47,14 @@ export function UsagePage() {
   });
 
   return (
-    <div>
-      <h1>Usage &amp; Cost Analytics</h1>
+    <div className="flex flex-col gap-6">
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        Usage &amp; Cost Analytics
+      </h1>
 
       {/* Usage aggregate cards */}
       <section>
-        <h2>Usage Summary</h2>
+        <h2 className="mb-3 text-lg font-medium text-foreground">Usage Summary</h2>
         <UsageStatsCards
           isLoading={usageQuery.isLoading}
           isError={usageQuery.isError}
@@ -62,17 +65,25 @@ export function UsagePage() {
 
       {/* Usage records table */}
       <section>
-        <h2>Usage Records</h2>
-        <UsageTable
-          isLoading={usageQuery.isLoading}
-          isError={usageQuery.isError}
-          data={usageQuery.data}
-        />
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold leading-none tracking-tight text-foreground">
+              Usage Records
+            </h2>
+          </CardHeader>
+          <CardContent>
+            <UsageTable
+              isLoading={usageQuery.isLoading}
+              isError={usageQuery.isError}
+              data={usageQuery.data}
+            />
+          </CardContent>
+        </Card>
       </section>
 
       {/* Budget widget */}
       <section>
-        <h2>Budget</h2>
+        <h2 className="mb-3 text-lg font-medium text-foreground">Budget</h2>
         <BudgetWidget
           isLoading={budgetQuery.isLoading}
           isError={budgetQuery.isError}
@@ -84,13 +95,21 @@ export function UsagePage() {
 
       {/* Model catalog */}
       <section>
-        <h2>Model Catalog</h2>
-        <ModelCatalogTable
-          isLoading={modelsQuery.isLoading}
-          isError={modelsQuery.isError}
-          error={modelsQuery.error}
-          data={modelsQuery.data}
-        />
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold leading-none tracking-tight text-foreground">
+              Model Catalog
+            </h2>
+          </CardHeader>
+          <CardContent>
+            <ModelCatalogTable
+              isLoading={modelsQuery.isLoading}
+              isError={modelsQuery.isError}
+              error={modelsQuery.error}
+              data={modelsQuery.data}
+            />
+          </CardContent>
+        </Card>
       </section>
     </div>
   );

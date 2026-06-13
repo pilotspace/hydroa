@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { ApiError } from "@/lib/api-client";
 import { BudgetEditForm } from "./BudgetEditForm";
+import { Card, CardContent, Button, Loading, ErrorState } from "@/components/ui";
 
 export interface BudgetData {
   budget_usd_monthly: string | null;
@@ -40,20 +41,11 @@ export function BudgetWidget({
   const [isEditing, setIsEditing] = useState(false);
 
   if (isLoading) {
-    return (
-      <div
-        role="status"
-        aria-busy="true"
-        aria-label="Loading budget"
-        className="animate-pulse"
-      >
-        <span>Loading budget…</span>
-      </div>
-    );
+    return <Loading label="Loading budget" className="animate-pulse" />;
   }
 
   if (isError) {
-    return <p role="alert">{getErrorTitle(error)}</p>;
+    return <ErrorState title={getErrorTitle(error)} />;
   }
 
   if (!data) return null;
@@ -62,29 +54,33 @@ export function BudgetWidget({
     data.budget_usd_monthly === null ? "Unlimited" : data.budget_usd_monthly;
 
   return (
-    <div>
-      <div>
-        <span>Monthly Budget: </span>
-        <span>{ceiling}</span>
-      </div>
-      <div>
-        <span>Spent this month: </span>
-        <span>{data.spent_usd_month}</span>
-      </div>
-      {canEdit && !isEditing && (
-        <button
-          type="button"
-          onClick={() => setIsEditing(true)}
-        >
-          Edit Budget
-        </button>
-      )}
-      {isEditing && (
-        <BudgetEditForm
-          currentValue={data.budget_usd_monthly}
-          onCancel={() => setIsEditing(false)}
-        />
-      )}
-    </div>
+    <Card>
+      <CardContent className="flex flex-col gap-3 p-4">
+        <div className="text-sm text-foreground">
+          <span className="text-muted-foreground">Monthly Budget: </span>
+          <span className="font-semibold">{ceiling}</span>
+        </div>
+        <div className="text-sm text-foreground">
+          <span className="text-muted-foreground">Spent this month: </span>
+          <span className="font-semibold">{data.spent_usd_month}</span>
+        </div>
+        {canEdit && !isEditing && (
+          <Button
+            type="button"
+            variant="outline"
+            className="self-start"
+            onClick={() => setIsEditing(true)}
+          >
+            Edit Budget
+          </Button>
+        )}
+        {isEditing && (
+          <BudgetEditForm
+            currentValue={data.budget_usd_monthly}
+            onCancel={() => setIsEditing(false)}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
