@@ -250,9 +250,9 @@ text part → message.content) — the cheapest possible provider integration, t
 of the spectrum from Anthropic's coercion.
 
 ### Competency deltas
-- [SDD · open] response_format on a native-field provider (Gemini) is REQUEST-SIDE ONLY: responseMimeType/responseSchema added to the existing generationConfig, output already maps to message.content via the unchanged v9 response path — no response/SSE code (evidence: gemini-json-mode touched only _openai_to_gemini_request; 38/38 gemini suites green).
-- [ADD · open] the frozen-contract extractor (extract_response_format) is the SHARED no-op/validation gate every provider reuses — Gemini gets the byte-identical guarantee + the two rejections for free by calling it, rather than re-implementing the parse (evidence: 1 import + 1 call delivered the whole request branch).
+- [SDD · folded] response_format on a native-field provider (Gemini) is REQUEST-SIDE ONLY: responseMimeType/responseSchema added to the existing generationConfig, output already maps to message.content via the unchanged v9 response path — no response/SSE code (evidence: gemini-json-mode touched only _openai_to_gemini_request; 38/38 gemini suites green).
+- [ADD · folded] the frozen-contract extractor (extract_response_format) is the SHARED no-op/validation gate every provider reuses — Gemini gets the byte-identical guarantee + the two rejections for free by calling it, rather than re-implementing the parse (evidence: 1 import + 1 call delivered the whole request branch).
 
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+<!-- e.g.  - [DDD · folded] the model missed multi-tenancy (evidence: scenario_x failed) -->

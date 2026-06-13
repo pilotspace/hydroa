@@ -1,62 +1,12 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "json-mode-live-verify",
-  "active_milestone": "v11",
-  "tasks": {
-    "response-format-contract": {
-      "title": "Response-format translation contract (FREEZE FIRST)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v11",
-      "depends_on": [],
-      "created": "2026-06-13T06:30:59+00:00",
-      "updated": "2026-06-13T07:07:49+00:00",
-      "flag_verified": true
-    },
-    "gemini-json-mode": {
-      "title": "Gemini JSON-mode / responseSchema translation",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v11",
-      "depends_on": [],
-      "created": "2026-06-13T07:08:50+00:00",
-      "updated": "2026-06-13T07:13:23+00:00",
-      "flag_verified": true
-    },
-    "anthropic-json-mode": {
-      "title": "Anthropic JSON-mode via tool-coercion + unwrap",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v11",
-      "depends_on": [],
-      "created": "2026-06-13T07:14:08+00:00",
-      "updated": "2026-06-13T07:21:07+00:00",
-      "flag_verified": true
-    },
-    "json-mode-live-verify": {
-      "title": "JSON-mode live double-pass (e2e)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v11",
-      "depends_on": [],
-      "created": "2026-06-13T07:21:57+00:00",
-      "updated": "2026-06-13T07:30:21+00:00",
-      "flag_verified": true
-    }
-  },
-  "milestones": {
-    "v11": {
-      "title": "LiteLLM parity slice 9 \u2014 JSON-mode / structured outputs across providers",
-      "goal": "a tenant sends response_format (json_object or json_schema) to a chat model on any provider (OpenRouter, Anthropic, Gemini) and gets back JSON-conformant output \u2014 non-stream and streaming \u2014 with native translation, billing, tool-use, and v8 routing intact",
-      "stage": "production",
-      "status": "active",
-      "created": "2026-06-13T06:29:09+00:00",
-      "updated": "2026-06-13T06:29:09+00:00"
-    }
-  },
+  "active_task": null,
+  "active_milestone": null,
+  "tasks": {},
+  "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T07:30:21+00:00",
+  "updated": "2026-06-13T07:33:49+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -202,6 +152,18 @@
         "anthropic-tool-use",
         "gemini-tool-use",
         "tool-use-live-verify"
+      ],
+      "archived": "2026-06-13"
+    },
+    {
+      "slug": "v11",
+      "title": "LiteLLM parity slice 9 \u2014 JSON-mode / structured outputs across providers",
+      "tasks": 4,
+      "task_slugs": [
+        "response-format-contract",
+        "gemini-json-mode",
+        "anthropic-json-mode",
+        "json-mode-live-verify"
       ],
       "archived": "2026-06-13"
     }

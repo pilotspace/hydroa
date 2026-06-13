@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-13 · foundation-version: 11
+slug: ai-proxy · stage: production · updated: 2026-06-13 · foundation-version: 12
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -78,6 +78,28 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     and is byte-identical to v9; OpenRouter/OpenAI tool requests stay byte-identical
     passthrough; tool-call tokens are counted by the provider's native usage (no separate
     tool billing), still keyed on the SERVED model id
+- Folded from v11 (2026-06-13):
+  - **response_format** enters the domain as a canonical (OpenAI) directive every provider
+    maps to/from: `{type:"text"|"json_object"|"json_schema"}`, with `json_schema:{name,
+    schema, strict?}`. The MODEL OUTPUT always comes back as `message.content` (a JSON
+    STRING), NEVER a new response field. Two native mechanisms exist across providers:
+    NATIVE structured-output (Gemini `generationConfig.responseMimeType` +
+    `responseSchema`) vs **JSON-schema tool coercion** for a provider with NO native field
+    (Anthropic) — emit one synthetic forced tool (`json_output`, a gateway-owned reserved
+    name) whose `input_schema` IS the requested schema, then UNWRAP the returned tool_use
+    block's `input` back into `message.content` (tool_use → content inversion). The
+    coercion is gateway-owned and invisible to the caller (no tool_calls leak); `json_output`
+    is the correlation key on every leg (request build, response unwrap, stream route)
+  - response_format COMPOSES with v10 tools rather than conflicting: a request MAY carry
+    BOTH a real `tools` list AND `response_format` — on Anthropic the coercion tool is
+    APPENDED alongside caller tools (only the `json_output` block is unwrapped; caller tools
+    still surface as `tool_calls`). The Anthropic json_schema path REUSES v10's
+    Tool/ToolChoiceNamed + tool helpers wholesale rather than inventing a parallel mechanism
+  - INVARIANT (proven live, v11): a request WITHOUT `response_format` (or `{type:"text"}`)
+    engages ZERO json plumbing and is byte-identical to v10; OpenRouter/OpenAI response_format
+    requests stay byte-identical passthrough; the gateway TRANSLATES the directive but does
+    NOT validate/repair the model's output against the schema (translate-don't-enforce);
+    billing still keys on the SERVED model id with native usage
 
 ## Spec / Living Document (SDD) — what we are building, now
 
@@ -185,6 +207,29 @@ goal: a user can set up their tenant → log in → call any LLM model through t
   - OPEN (carried): parallel-tool-call streaming beyond fragment-per-index, JSON-mode /
     structured-outputs `response_format`, and same-name parallel Gemini call
     disambiguation remain follow-ups (Out of v10 scope)
+- Folded from v11 (2026-06-13):
+  - Settled: response_format is DEPTH on the v9 ChatTranslator seam (like v10 tools) AND
+    COMPOSES with v10 — Gemini is REQUEST-SIDE ONLY (responseMimeType/responseSchema added
+    to the existing generationConfig; the unchanged v9 response path already maps output to
+    message.content — no response/SSE code), while Anthropic REUSES v10's tool-coercion
+    seam (build_json_coercion_tool returns canonical v10 Tool/ToolChoiceNamed types). A new
+    directive seam reused a prior seam's machinery wholesale rather than inventing a parallel
+    mechanism
+  - Settled: the frozen-contract extractor (extract_response_format) is the SHARED
+    no-op/validation gate every provider reuses — a provider gets the byte-identical
+    guarantee + the two rejections for free by calling it (Gemini: 1 import + 1 call
+    delivered the whole request branch), rather than re-implementing the parse
+  - Settled: the streaming coercion unwrap needs THREE coordinated touchpoints in one SSE
+    pass (content_block_start MARKS the coercion block, input_json_delta ROUTES by that
+    index to delta.content, message_delta OVERRIDES finish to "stop") bridged by a per-call
+    state pair (coercion_block_index/saw_coercion); the same shape recurs for any provider
+    that streams a coerced block. A live `_sse_has_tool_calls` guard makes the no-leak
+    invariant OBSERVABLE, not just asserted-absent
+  - OPEN (carried): `strict`-mode schema-subset rejection and parallel-tool +
+    response_format co-existence remain unexercised; carried v9/v10 opens persist
+    (incremental-SSE TTFB, exact Gemini-embed tokens, parallel-tool-call streaming,
+    same-name Gemini disambiguation) plus the v7 non-chat soft-budget-alert + empty-key
+    boot guard
 
 ## Users (UDD) — UI/UX: design before code
 
@@ -289,3 +334,9 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-13 | Streaming tool-calls are ASYMMETRIC in granularity (Gemini one combined fragment; Anthropic id+name then incremental input_json_delta needing a content-block→tool_calls index REMAP) but UNIFORM at the OpenAI seam via one build_tool_call_delta helper (fold: ADD/anthropic-tool-use+gemini-tool-use) | a frozen streaming-fragment shape absorbed both providers without change; the block_to_tc index remap recurs for any provider interleaving text+tool events | folded v10 |
 | 2026-06-13 | A multi-turn protocol is proven LIVE by a single STATELESS request-inspection stub (turn discriminated by the presence of a translated tool result), no server-side turn state (fold: ADD+TDD/tool-use-live-verify) | the freeze least-sure flag validated 18/18 ×2, both passes exit 0, no turn-state bug; operator-run live checks served as the red→green suite for cross-provider translation | folded v10 |
 | 2026-06-13 | The request-side passthrough assumption was VERIFIED IN CODE before freezing (router.py:42 forwards a raw dict, so tools/tool_choice flow unstripped) — the contract pins a real invariant, not a hoped-for one (fold: ADD/tool-use-contract) | a Pydantic ChatRequest model would strip tools and break passthrough; §1 framing rejected that option on this verified ground; no-tools byte-identical to v9 | folded v10 |
+| 2026-06-13 | response_format is a canonical OpenAI directive (text/json_object/json_schema) with TWO native mechanisms — native (Gemini responseMimeType/responseSchema) vs JSON-schema tool COERCION (Anthropic, no native field): a synthetic forced `json_output` tool UNWRAPPED back into message.content (tool_use→content inversion), no tool_calls leak (fold: DDD/response-format-contract+anthropic-json-mode) | the model output always returns as a message.content JSON string, never a new field; the gateway-owned json_output name is the correlation key on every leg; 15+10 unit green + LIVE C1/C2 no-leak | folded v11 |
+| 2026-06-13 | response_format COMPOSES with v10 tools (coercion tool APPENDED alongside caller tools, only json_output unwrapped) and REUSES v10's Tool/ToolChoiceNamed + helpers — a new directive seam reused a prior seam's machinery wholesale (fold: SDD/anthropic-json-mode+response-format-contract) | freeze-first SHARED-SEAM pattern repeats a THIRD time and this time COMPOSES; caller tools still surface as tool_calls (composition test green) | folded v11 |
+| 2026-06-13 | response_format on a native-field provider (Gemini) is REQUEST-SIDE ONLY (responseMimeType/responseSchema on the existing generationConfig; unchanged v9 response path maps output to message.content); the shared extract_response_format gate delivers byte-identical + the two rejections for free (fold: SDD+ADD/gemini-json-mode) | gemini-json-mode touched only _openai_to_gemini_request; 1 import + 1 call delivered the whole request branch; 38/38 gemini suites green | folded v11 |
+| 2026-06-13 | The streaming coercion unwrap needs THREE coordinated SSE touchpoints (mark block / route input_json_delta to delta.content / override finish to stop) bridged by per-call state; a live `_sse_has_tool_calls` guard makes the no-leak invariant OBSERVABLE (fold: ADD+TDD/anthropic-json-mode+json-mode-live-verify) | the same shape recurs for any provider streaming a coerced block; double-pass 13/13 ×2 both exit 0, port :9925 seed-then-restart first-try | folded v11 |
+| 2026-06-13 | A contract task proves passthrough/byte-identical pins GREEN-BY-DESIGN against UNCHANGED dispatch code with a spy adapter, and verifies the raw-dict passthrough invariant IN CODE before freezing (router.py:42) (fold: ADD/response-format-contract) | 3/15 tests guard response_format-unstripped + openrouter-verbatim + no-rf-byte-identical and pass before any provider build; reused the v10 _SpyAdapter/_ScriptedResolver pattern verbatim | folded v11 |
+| 2026-06-13 | OPEN: the full `-m 'not e2e'` suite is NON-DETERMINISTIC against the shared dev Postgres (FK-violation flake, 16/34/44 varying); the trustworthy per-change gate is the no-DB blast-radius run (translation+dispatch suites) — the foundation needs per-test DB isolation OR a documented make test-fast (fold: TDD/response-format-contract, recurring v8) | each failing suite passes IN ISOLATION; a zero-blast-radius pure-module change still showed 16/34/44 variance; deterministic no-DB run was 83/83 | folded v11 (open follow-up) |

@@ -260,6 +260,30 @@ Build/harness conventions folded from v1 (2026-06-10):
           translation (red against a v9-only gateway, green after the provider tasks);
           a name-correlation test needs a TWO-MESSAGE fixture (assistant tool_calls turn +
           the tool message) to exercise id→name resolution honestly (evidence: 18/18 ×2)
+        Build/harness conventions folded from v11 (2026-06-13):
+        - a NEW directive seam can COMPOSE with a prior one rather than duplicate it: v11
+          response_format reused v10's tool seam wholesale for Anthropic — a synthetic
+          forced `json_output` tool (build_json_coercion_tool returns the canonical v10
+          Tool/ToolChoiceNamed types) whose tool_use is UNWRAPPED back into message.content
+          (tool_use→content inversion), APPENDED alongside caller tools so both coexist
+          (only json_output is unwrapped; caller tools still surface as tool_calls)
+        - prefer a SHARED frozen extractor (extract_response_format) as the single no-op +
+          validation gate every provider calls — a provider gets the byte-identical
+          guarantee + the rejections for free (Gemini: 1 import + 1 call delivered the whole
+          request branch); response_format on a native-field provider is REQUEST-SIDE ONLY
+          (responseMimeType/responseSchema on the existing generationConfig; the unchanged
+          v9 response path already maps output to message.content — no response/SSE code)
+        - a streamed coerced block needs THREE coordinated SSE touchpoints bridged by per-
+          call state (coercion_block_index/saw_coercion): content_block_start MARKS the
+          block, input_json_delta ROUTES by that index to delta.content (not delta.tool_calls),
+          message_delta OVERRIDES finish to "stop" — the shape recurs for any provider that
+          streams a coerced block; a live `_sse_has_tool_calls` guard makes the no-leak
+          invariant OBSERVABLE, not just asserted-absent (evidence: 13/13 ×2, both exit 0)
+        - GATE INTEGRITY under a flaky shared DB: the full `-m 'not e2e'` suite is NON-
+          DETERMINISTIC against the shared dev Postgres (FK-violation flake, 16/34/44
+          varying; each suite passes IN ISOLATION) — DO NOT auto-pass on it. The trustworthy
+          per-change gate is the no-DB blast-radius run (translation+dispatch suites,
+          deterministic); record the flake honestly, never a false PASS (recurring v8 lesson)
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

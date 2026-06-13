@@ -264,6 +264,6 @@ held). response_format strict-mode rejection and parallel-tool + response_format
 co-existence remain unexercised (residual, not in scope here).
 
 ### Competency deltas
-- [ADD · open] response_format (request-side native for Gemini, tool-coercion for Anthropic, passthrough for OpenRouter) fits the one-stateless-stub live harness with no new infra — evidence: 13/13 ×2, both passes exit 0, port :9925 seed-then-restart resolver refresh worked first-try.
-- [TDD · open] the live checks served as the red→green suite for the coerce+unwrap path (red against a v10-only gateway, green after v11 tasks 2+3); the _sse_has_tool_calls guard makes the no-leak invariant observable, not just asserted-absent — evidence: C1/C2 NO tool_calls confirmed on both non-stream and stream.
-- [SDD · open] freezing the harness contract (stub surfaces + overlay env + check list) let stub/overlay/verify be built independently and compose first-try — evidence: C1–C6 passed on the first live run after build, no harness rework.
+- [ADD · folded] response_format (request-side native for Gemini, tool-coercion for Anthropic, passthrough for OpenRouter) fits the one-stateless-stub live harness with no new infra — evidence: 13/13 ×2, both passes exit 0, port :9925 seed-then-restart resolver refresh worked first-try.
+- [TDD · folded] the live checks served as the red→green suite for the coerce+unwrap path (red against a v10-only gateway, green after v11 tasks 2+3); the _sse_has_tool_calls guard makes the no-leak invariant observable, not just asserted-absent — evidence: C1/C2 NO tool_calls confirmed on both non-stream and stream.
+- [SDD · folded] freezing the harness contract (stub surfaces + overlay env + check list) let stub/overlay/verify be built independently and compose first-try — evidence: C1–C6 passed on the first live run after build, no harness rework.
