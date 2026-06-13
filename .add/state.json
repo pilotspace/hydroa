@@ -145,9 +145,9 @@
       "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
       "goal": "a tenant owner/developer experiences the usage/cost dashboard and the key & budget governance journeys as a polished, consistent, accessible, and responsive product \u2014 unified design system, clearer task flows, WCAG 2.2 AA, and tablet/mobile breakpoints \u2014 with NO change to the underlying data, BFF, or gateway contracts",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-13T07:53:45+00:00",
-      "updated": "2026-06-13T07:53:45+00:00"
+      "updated": "2026-06-13T17:22:10+00:00"
     },
     "v14": {
       "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
@@ -159,7 +159,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T17:18:30+00:00",
+  "updated": "2026-06-13T17:22:10+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

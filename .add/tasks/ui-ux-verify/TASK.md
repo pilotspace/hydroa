@@ -281,10 +281,14 @@ Reviewed by: Tin (delegated auto mode) + adversarial earned-green subagent (mode
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
-Spec delta for the next loop: <what production taught you>
+Watch (reuse scenarios as monitors): the axe-serious|critical count per surface (must stay 0); the keyboard-trap assertions (any regression = a dialog became inoperable); the 122-test floor + 80% coverage gate in CI.
+Spec delta for the next loop: the browser-only residue (color-contrast ratios + true visual breakpoints) is the one criterion half this env cannot prove — a follow-up infra task (Playwright/agent-browser + a stub gateway) should close it; until then the residue is honestly carried, not silently passed. The deferred UI/UX surfaces (auth, model catalog, SSO/OIDC, routing-admin, team-governance) are the next UI/UX milestone.
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [TDD · open] a VERIFY-ONLY task can be legitimately green-on-first-run (no product code to write); the honest red-first is file-absence, and integrity comes from a DISCRIMINATING MUTATION check — inject a known-critical violation (img-no-alt) through the SAME helper and confirm it's caught — not from manufacturing a red (evidence: img-no-alt → `image-alt` caught, then deleted; the 12/12 green is earned, not vacuous).
+- [TDD · open] axe in jsdom must filter on `impact ∈ {serious,critical}` rather than `toHaveNoViolations()` — the latter fails on MODERATE best-practice rules (region/landmark) that fire when a component is scanned in isolation, masking the real gate; color-contrast must be rule-disabled (no canvas) (evidence: `axeSeriousCritical` filters impact + disables color-contrast; isolated-state scans pass cleanly).
+- [UDD · open] the 4 state patterns + responsive intent are jsdom-verifiable only as PRESENCE proxies (role=status/alert, Empty, `sm:`/`lg:` classes); true contrast + visual breakpoints are browser residue — name the residue under an `unverifiable_claim` reject rather than faking a green (evidence: criterion #4/#6 split into a jsdom-proven half + a declared browser-residue half).
+- [ADD · open] strengthening tests mid-build (after an adversarial review finds coverage gaps) requires going BACK to the tests phase and RE-CROSSING tests→build to re-snapshot the tripwire — editing tests while in build trips `build_tampered` (evidence: phase tests → add Shift+Tab + isolated axe scans → advance re-snapshot → gate clean).
+- [ADD · open] the adversarial earned-green refute-read pays off AGAIN on a verify task: it returned EARNED-WITH-GAPS and surfaced 3 real coverage gaps (Shift+Tab wrap untested on both dialogs, isolated state renders un-scanned) that the green would otherwise have hidden (evidence: all 3 closed this loop, focus-trap branch coverage rose 73.91%→75%).
