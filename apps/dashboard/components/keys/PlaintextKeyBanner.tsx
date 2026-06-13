@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { Button } from "@/components/ui";
 
 interface PlaintextKeyBannerProps {
   plaintextKey: string;
@@ -29,17 +30,27 @@ export function PlaintextKeyBanner({ plaintextKey, onDismiss }: PlaintextKeyBann
   }
 
   return (
-    <div role="alert" aria-live="polite">
-      <p>
-        <strong>You won&apos;t see this key again</strong>
+    <div
+      role="alert"
+      aria-live="polite"
+      className="flex flex-col gap-3 rounded-lg border border-success/30 bg-success/5 p-4"
+    >
+      <p className="text-sm font-semibold text-foreground">
+        You won&apos;t see this key again
       </p>
-      <code>{plaintextKey}</code>
-      <button type="button" onClick={handleCopy}>
-        {copied ? "Copied!" : "Copy"}
-      </button>
-      <button type="button" onClick={onDismiss}>
-        Done
-      </button>
+      {/* The plaintext secret is rendered ONLY in this visible <code> leaf — never
+          logged, persisted, or copied into an attribute. Cleared by the parent on dismiss. */}
+      <code className="block break-all rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm text-foreground">
+        {plaintextKey}
+      </code>
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
+          {copied ? "Copied!" : "Copy"}
+        </Button>
+        <Button type="button" size="sm" onClick={onDismiss}>
+          Done
+        </Button>
+      </div>
     </div>
   );
 }

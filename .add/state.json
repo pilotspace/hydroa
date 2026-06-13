@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "usage-cost-ui",
+  "active_task": "key-budget-governance-ui",
   "active_milestone": "v13",
   "tasks": {
     "design-system-foundation": {
@@ -76,6 +76,35 @@
         ],
         "snapshot_md5": "798a3ede780ffa5fdf89610a02825e6a"
       }
+    },
+    "key-budget-governance-ui": {
+      "title": "Refresh the key & budget governance surfaces (/keys) onto the design system",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v13",
+      "depends_on": [
+        "design-system-foundation"
+      ],
+      "created": "2026-06-13T15:26:02+00:00",
+      "updated": "2026-06-13T16:55:11+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "45ee31f2024681613c77700fd88caf31",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/keys/",
+          "apps/dashboard/lib/use-focus-trap.ts",
+          "apps/dashboard/tests/keys-dialog-a11y.test.tsx",
+          "apps/dashboard/tests/design-system/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/key-budget-governance-ui/"
+        ],
+        "snapshot_md5": "06d6dc7aa821a94ccf553f5de010c687"
+      }
     }
   },
   "milestones": {
@@ -97,7 +126,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T15:22:04+00:00",
+  "updated": "2026-06-13T16:55:11+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
