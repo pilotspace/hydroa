@@ -314,4 +314,4 @@ Spec delta for the next loop: <what production taught you>
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+<!-- e.g.  - [DDD · folded] the model missed multi-tenancy (evidence: scenario_x failed) -->

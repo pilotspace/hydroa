@@ -1,0 +1,63 @@
+{
+  "milestone": {
+    "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt",
+    "goal": "the proxy bills exactly for every modality (no estimates), fails fast and clearly on misconfiguration, surfaces soft-budget alerts uniformly across chat and non-chat, and runs a deterministic test suite",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-13T07:53:45+00:00",
+    "updated": "2026-06-13T10:30:55+00:00"
+  },
+  "tasks": {
+    "gemini-embed-tokens": {
+      "title": "Exact Gemini-embed token billing (replace chars/4 estimate)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T08:02:13+00:00",
+      "updated": "2026-06-13T08:12:47+00:00",
+      "flag_verified": true
+    },
+    "empty-key-boot-guard": {
+      "title": "Boot guard: reject a configured-yet-empty upstream API key",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T08:13:17+00:00",
+      "updated": "2026-06-13T08:21:31+00:00",
+      "flag_verified": true
+    },
+    "nonchat-soft-budget-alert": {
+      "title": "Fire soft-budget alert on the non-chat path (embeddings/images/audio)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T08:21:59+00:00",
+      "updated": "2026-06-13T08:32:48+00:00",
+      "flag_verified": true
+    },
+    "test-db-isolation": {
+      "title": "Deterministic test DB isolation \u2014 kill the FK-violation flake",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T08:34:03+00:00",
+      "updated": "2026-06-13T10:08:40+00:00",
+      "flag_verified": true
+    },
+    "v12-live-verify": {
+      "title": "Live double-pass: exact Gemini-embed billing, non-chat soft alert, empty-key boot guard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v12",
+      "depends_on": [],
+      "created": "2026-06-13T10:09:33+00:00",
+      "updated": "2026-06-13T10:29:26+00:00",
+      "flag_verified": true
+    }
+  },
+  "archived_at": "2026-06-13T10:33:14+00:00"
+}

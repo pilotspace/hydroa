@@ -244,11 +244,11 @@ _UPSTREAM_KEY_ENV_VARS — consider deriving the list from the Settings field me
 can't drift (a follow-up; the explicit tuple is fine for 4 providers today).
 
 ### Competency deltas
-- [ADD · open] some misconfigurations are observable ONLY at the raw-environment level, not
+- [ADD · folded] some misconfigurations are observable ONLY at the raw-environment level, not
   the parsed-config level — Settings collapses unset and set-empty to "", so a boot guard that
   must tell "disabled" from "misconfigured" reads os.environ directly (evidence: the
   Settings-level wiring tests stay green while the env-level guard catches present-empty).
-- [SDD · open] a fail-fast boot guard at the composition root converts an opaque per-request
+- [SDD · folded] a fail-fast boot guard at the composition root converts an opaque per-request
   500 into a clear startup error naming the fix — the v7+v8 empty-bearer class is eliminated at
   the boundary rather than handled per-adapter (evidence: create_app raises before any adapter;
   7/7 green incl. the two create_app boot-path tests).

@@ -284,6 +284,41 @@ Build/harness conventions folded from v1 (2026-06-10):
           varying; each suite passes IN ISOLATION) — DO NOT auto-pass on it. The trustworthy
           per-change gate is the no-DB blast-radius run (translation+dispatch suites,
           deterministic); record the flake honestly, never a false PASS (recurring v8 lesson)
+          [RESOLVED in v12 — see below: the FK flake is now killed at its source]
+        Build/harness conventions folded from v12 (2026-06-13):
+        - the recurring FK-violation flake (v8–v11) is killed by a SURGICAL, group-preserving
+          per-test Redis clear (global autouse fixture in tests/conftest.py): the contaminator
+          is leaked UNDELIVERED `usage:events` stream entries (record() pushes fire-and-forget;
+          a later flusher-driving suite's XREADGROUP `>` consumes them and INSERTs usage_records
+          against its freshly-recreated schema → FK). Clear with `XTRIM usage:events MAXLEN 0`
+          (clears backlog, PRESERVES the `ledger-flusher` consumer group) + `DEL usage:spend:*`.
+          NEVER FLUSHDB — it deletes the stream WITH its consumer group → every flusher-driving
+          suite fails NOGROUP on XREADGROUP and the suite runs ~3x slower (tests retry on broken
+          state). Evidence: 2 consecutive clean full runs (730 passed ×2, 595s/643s ≈ the 585s
+          neutralized baseline) vs FLUSHDB's 5 failures + 1222s.
+        - a test-isolation fixture must NEVER cancel pending asyncio tasks: cancelling all
+          non-current tasks kills the pytest-asyncio/anyio runner task (CancelledError at
+          teardown). Function-scoped event loops already reap a test's leaked fire-and-forget
+          tasks at loop close, so a SETUP-ONLY pre-test clear is the sufficient guarantee
+          (no teardown drain needed). redis.exceptions.RedisError does NOT subclass builtin
+          ConnectionError — catch RedisError for graceful Redis-down no-op.
+        - `make test-fast` (root Makefile) is the documented fast per-change gate: the no-DB
+          MockTransport/pure-unit suites (translation + dispatch + provider), --no-cov, infra-
+          free (the autouse clear degrades to a no-op when Redis is absent). `make test` (full
+          suite) stays the thorough gate, now deterministic.
+        - a billing-behavior CHANGE SUPERSEDES prior estimate tests rather than weakening them:
+          when Gemini embeddings graduated estimate→exact (:countTokens), the v9 estimate tests
+          were updated to the exact-count contract and documented as supersession at the freeze
+          (NOT a test weakened to pass) — the distinction is the green-by-design fallback tests
+          that prove the estimate path still works as a documented last resort.
+        - extend a concrete class you OWN by EXPLICIT constructor DI, never runtime reflection:
+          NonChatGovernance gained an optional `session_factory` param (default None) to fire the
+          shared soft-budget alert seam — reflection-free, honoring the no-hasattr/inspect rule;
+          the chat path's legacy `getattr(guard, "_session_factory")` is the pattern NOT to copy.
+        - LIVE-VERIFY against the shared e2e DB: count-based assertions must use a before/after
+          DELTA, never an absolute or "recent-window" count — consecutive double-pass runs share
+          the e2e Postgres, so a prior pass's legitimate rows false-positive a "no spurious rows"
+          check (v12 C4b: switched "unknown key_ids in last 60s" → usage_records delta == 0).
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

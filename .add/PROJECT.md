@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-13 · foundation-version: 12
+slug: ai-proxy · stage: production · updated: 2026-06-13 · foundation-version: 13
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -100,6 +100,24 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     requests stay byte-identical passthrough; the gateway TRANSLATES the directive but does
     NOT validate/repair the model's output against the schema (translate-don't-enforce);
     billing still keys on the SERVED model id with native usage
+- Folded from v12 (2026-06-13) — billing accuracy + ops hardening:
+  - **exact token billing** is the domain rule: every modality bills on a REAL count, an
+    estimate is a documented last-resort fallback, never the default. Gemini embeddings carry
+    NO inline usage → recover the count via a SEPARATE provider endpoint on the same adapter
+    (`:countTokens`), made FAIL-SAFE (None → ceil(chars/4) fallback) so billing accuracy is
+    never an availability gate (the count leg NEVER trips the embed circuit breaker; the
+    embedding is the product). Billing still keys on the SERVED model id.
+  - **boot guard** (fail-fast at the composition root): a configured-yet-EMPTY upstream key
+    (`GATEWAY_*_API_KEY=""`) is a MISCONFIGURATION, not a disabled provider — `create_app`
+    raises `EmptyUpstreamKeyError` before any adapter, converting the opaque per-request
+    "Bearer ''" 500 (seen live v7+v8) into a clear startup error. ABSENT key = provider
+    disabled (allowed). Some misconfigs are observable ONLY at the raw `os.environ` level —
+    Settings collapses unset and set-empty to `""`, so the guard reads the environment directly.
+  - **soft-budget alerts are UNIFORM across chat and non-chat**: an embeddings/images/audio
+    request crossing a key's `soft_budget_usd` writes the SAME `soft_budget_exceeded`
+    alert_event (shared `persist_soft_budget_alert` + `alert_events`, dedupe_key
+    `soft_budget:{key_id}:{YYYYMM}`, fire-and-forget, idempotent) as chat. Advisory only — the
+    HARD 402 path is byte-identical. Proven live (C2: one row, idempotent on repeat, 200).
 
 ## Spec / Living Document (SDD) — what we are building, now
 
@@ -339,4 +357,9 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-13 | response_format on a native-field provider (Gemini) is REQUEST-SIDE ONLY (responseMimeType/responseSchema on the existing generationConfig; unchanged v9 response path maps output to message.content); the shared extract_response_format gate delivers byte-identical + the two rejections for free (fold: SDD+ADD/gemini-json-mode) | gemini-json-mode touched only _openai_to_gemini_request; 1 import + 1 call delivered the whole request branch; 38/38 gemini suites green | folded v11 |
 | 2026-06-13 | The streaming coercion unwrap needs THREE coordinated SSE touchpoints (mark block / route input_json_delta to delta.content / override finish to stop) bridged by per-call state; a live `_sse_has_tool_calls` guard makes the no-leak invariant OBSERVABLE (fold: ADD+TDD/anthropic-json-mode+json-mode-live-verify) | the same shape recurs for any provider streaming a coerced block; double-pass 13/13 ×2 both exit 0, port :9925 seed-then-restart first-try | folded v11 |
 | 2026-06-13 | A contract task proves passthrough/byte-identical pins GREEN-BY-DESIGN against UNCHANGED dispatch code with a spy adapter, and verifies the raw-dict passthrough invariant IN CODE before freezing (router.py:42) (fold: ADD/response-format-contract) | 3/15 tests guard response_format-unstripped + openrouter-verbatim + no-rf-byte-identical and pass before any provider build; reused the v10 _SpyAdapter/_ScriptedResolver pattern verbatim | folded v11 |
-| 2026-06-13 | OPEN: the full `-m 'not e2e'` suite is NON-DETERMINISTIC against the shared dev Postgres (FK-violation flake, 16/34/44 varying); the trustworthy per-change gate is the no-DB blast-radius run (translation+dispatch suites) — the foundation needs per-test DB isolation OR a documented make test-fast (fold: TDD/response-format-contract, recurring v8) | each failing suite passes IN ISOLATION; a zero-blast-radius pure-module change still showed 16/34/44 variance; deterministic no-DB run was 83/83 | folded v11 (open follow-up) |
+| 2026-06-13 | OPEN: the full `-m 'not e2e'` suite is NON-DETERMINISTIC against the shared dev Postgres (FK-violation flake, 16/34/44 varying); the trustworthy per-change gate is the no-DB blast-radius run (translation+dispatch suites) — the foundation needs per-test DB isolation OR a documented make test-fast (fold: TDD/response-format-contract, recurring v8) | each failing suite passes IN ISOLATION; a zero-blast-radius pure-module change still showed 16/34/44 variance; deterministic no-DB run was 83/83 | RESOLVED v12 (see below) |
+| 2026-06-13 | Gemini embeddings bill EXACT tokens via a fail-safe `:countTokens` round-trip on the same adapter (None → documented ceil(chars/4) fallback; count leg never trips the embed circuit breaker) (fold: SDD/gemini-embed-tokens) | provider carries no inline embed usage; billing accuracy must never be an availability gate; LIVE C1 billed exact 42 not 3 | folded v12 |
+| 2026-06-13 | Empty-key BOOT GUARD at the composition root: create_app raises EmptyUpstreamKeyError on a configured-yet-empty GATEWAY_*_API_KEY (read from raw os.environ — Settings collapses unset/set-empty to ""); absent = disabled (fold: SDD+ADD/empty-key-boot-guard) | converts the opaque per-request "Bearer ''" 500 (live v7+v8) into a clear startup error at the boundary; LIVE C3: empty→exit1, absent→boots | folded v12 |
+| 2026-06-13 | Non-chat soft-budget alert reuses the chat seam via EXPLICIT reflection-free constructor DI (NonChatGovernance gains optional session_factory; fires the shared persist_soft_budget_alert); hard-402 byte-identical (fold: ADD/nonchat-soft-budget-alert) | one alert seam not a parallel re-impl; honors the no-hasattr/inspect rule (the chat getattr seam is the pattern NOT to copy); LIVE C2: 1 row idempotent, 200 | folded v12 |
+| 2026-06-13 | RESOLVED the FK-violation flake: a SURGICAL group-preserving per-test Redis clear (autouse XTRIM usage:events + DEL usage:spend:*, NEVER FLUSHDB which destroys the ledger-flusher consumer group); fixtures NEVER cancel tasks (kills the pytest-asyncio runner); `make test-fast` is the no-DB fast gate (fold: TDD+ADD/test-db-isolation) | 2 consecutive clean full runs (730 passed ×2) vs FLUSHDB's 5 failures + 3x slowdown; the contaminator was leaked undelivered usage:events consumed cross-suite | folded v12 |
+| 2026-06-13 | LIVE-VERIFY count assertions use a before/after DELTA, never absolute/recent-window counts — the e2e Postgres is shared across double-pass runs (fold: TDD/v12-live-verify) | v12 C4b false-positived on pass 2 against pass 1's legitimate rows; delta==0 isolates the bad-key request; double-pass 11/11 ×2 | folded v12 |

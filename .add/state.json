@@ -1,69 +1,10 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "v12-live-verify",
-  "active_milestone": "v12",
-  "tasks": {
-    "gemini-embed-tokens": {
-      "title": "Exact Gemini-embed token billing (replace chars/4 estimate)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v12",
-      "depends_on": [],
-      "created": "2026-06-13T08:02:13+00:00",
-      "updated": "2026-06-13T08:12:47+00:00",
-      "flag_verified": true
-    },
-    "empty-key-boot-guard": {
-      "title": "Boot guard: reject a configured-yet-empty upstream API key",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v12",
-      "depends_on": [],
-      "created": "2026-06-13T08:13:17+00:00",
-      "updated": "2026-06-13T08:21:31+00:00",
-      "flag_verified": true
-    },
-    "nonchat-soft-budget-alert": {
-      "title": "Fire soft-budget alert on the non-chat path (embeddings/images/audio)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v12",
-      "depends_on": [],
-      "created": "2026-06-13T08:21:59+00:00",
-      "updated": "2026-06-13T08:32:48+00:00",
-      "flag_verified": true
-    },
-    "test-db-isolation": {
-      "title": "Deterministic test DB isolation \u2014 kill the FK-violation flake",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v12",
-      "depends_on": [],
-      "created": "2026-06-13T08:34:03+00:00",
-      "updated": "2026-06-13T10:08:40+00:00",
-      "flag_verified": true
-    },
-    "v12-live-verify": {
-      "title": "Live double-pass: exact Gemini-embed billing, non-chat soft alert, empty-key boot guard",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v12",
-      "depends_on": [],
-      "created": "2026-06-13T10:09:33+00:00",
-      "updated": "2026-06-13T10:29:26+00:00",
-      "flag_verified": true
-    }
-  },
+  "active_task": null,
+  "active_milestone": null,
+  "tasks": {},
   "milestones": {
-    "v12": {
-      "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt",
-      "goal": "the proxy bills exactly for every modality (no estimates), fails fast and clearly on misconfiguration, surfaces soft-budget alerts uniformly across chat and non-chat, and runs a deterministic test suite",
-      "stage": "production",
-      "status": "active",
-      "created": "2026-06-13T07:53:45+00:00",
-      "updated": "2026-06-13T07:53:45+00:00"
-    },
     "v13": {
       "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
       "goal": "a tenant owner/developer experiences the usage/cost dashboard and the key & budget governance journeys as a polished, consistent, accessible, and responsive product \u2014 unified design system, clearer task flows, WCAG 2.2 AA, and tablet/mobile breakpoints \u2014 with NO change to the underlying data, BFF, or gateway contracts",
@@ -74,7 +15,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T10:29:26+00:00",
+  "updated": "2026-06-13T10:33:14+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -232,6 +173,19 @@
         "gemini-json-mode",
         "anthropic-json-mode",
         "json-mode-live-verify"
+      ],
+      "archived": "2026-06-13"
+    },
+    {
+      "slug": "v12",
+      "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt",
+      "tasks": 5,
+      "task_slugs": [
+        "gemini-embed-tokens",
+        "empty-key-boot-guard",
+        "nonchat-soft-budget-alert",
+        "test-db-isolation",
+        "v12-live-verify"
       ],
       "archived": "2026-06-13"
     }

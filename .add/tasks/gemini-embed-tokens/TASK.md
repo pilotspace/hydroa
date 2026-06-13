@@ -282,16 +282,16 @@ countTokens is unsupported → the exact-token mechanism may need a per-model ca
 a local tokenizer; the live verify (v12-live-verify) is the first real signal.
 
 ### Competency deltas
-- [SDD · open] a provider count with no inline usage is recovered via a SEPARATE provider
+- [SDD · folded] a provider count with no inline usage is recovered via a SEPARATE provider
   count endpoint (Gemini :countTokens) on the SAME adapter, made FAIL-SAFE (None → documented
   estimate fallback) so billing accuracy never becomes an availability gate — evidence:
   countTokens 5xx/timeout/missing-totalTokens all fall back green, embed 200 never failed.
-- [TDD · open] a billing-behavior CHANGE supersedes the prior estimate tests rather than
+- [TDD · folded] a billing-behavior CHANGE supersedes the prior estimate tests rather than
   weakening them — the v9 estimate tests were updated to the exact-count contract (handlers
   serve :countTokens) and documented as supersession at the freeze; green-by-design fallback
   tests (missing-totalTokens / timeout / no-count-on-embed-fail) passed pre-build — evidence:
   6 RED-for-right-reason + 3 green-by-design, 68/68 blast radius post-build.
-- [ADD · open] a fail-safe count leg must be excluded from the embed circuit breaker — a
+- [ADD · folded] a fail-safe count leg must be excluded from the embed circuit breaker — a
   best-effort billing call sharing the client must not open the breaker on the product path
   (evidence: `_count_gemini_tokens` returns None without touching the breaker; embed-fail test
   proves the count leg never runs before a successful embed).
