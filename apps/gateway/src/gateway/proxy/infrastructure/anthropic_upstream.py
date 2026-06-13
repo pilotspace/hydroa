@@ -29,12 +29,22 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.response_format_translation import (
+    build_json_coercion_tool,
+    extract_response_format,
+    is_coercion_tool_call,
+    unwrap_coerced_tool_input,
+)
 from gateway.proxy.domain.tool_translation import (
     build_tool_call_delta,
     dump_tool_arguments,
     load_tool_arguments,
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+
+# v11 JSON-mode: instruction appended to the system prompt for response_format
+# json_object (free-form JSON, no schema to force a tool with).
+_JSON_OBJECT_INSTRUCTION = "You must respond with a single valid JSON object and nothing else."
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -197,6 +207,32 @@ def _openai_to_anthropic_request(
     if tool_choice is not None:
         result["tool_choice"] = tool_choice
 
+    # response_format → Anthropic (v11). Anthropic has no native field:
+    #   json_schema  → append a synthetic forced "json_output" tool (input_schema = the
+    #                  requested schema) ALONGSIDE caller tools; force its tool_choice.
+    #   json_object  → append a JSON-only system instruction (no schema to force).
+    # extract returns None for absent / {type:"text"} (byte-identical v9/v10) and raises
+    # ERR_UNSUPPORTED_RESPONSE_FORMAT / ERR_INVALID_JSON_SCHEMA.
+    response_format = extract_response_format(payload)
+    if response_format is not None:
+        if response_format["type"] == "json_schema":
+            caller_names = [t.get("function", {}).get("name", "") for t in (tools or [])]
+            coercion_tool, coercion_choice = build_json_coercion_tool(
+                response_format, existing_tool_names=caller_names
+            )
+            coercion_entry: dict[str, Any] = dict(coercion_tool)
+            result["tools"] = result.get("tools", []) + _tools_to_anthropic([coercion_entry])
+            forced = _tool_choice_to_anthropic(coercion_choice)
+            if forced is not None:
+                result["tool_choice"] = forced
+        else:  # json_object
+            existing_system = result.get("system", "")
+            result["system"] = (
+                f"{existing_system}\n\n{_JSON_OBJECT_INSTRUCTION}".strip()
+                if existing_system
+                else _JSON_OBJECT_INSTRUCTION
+            )
+
     return result
 
 
@@ -229,31 +265,49 @@ def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
     content_blocks: list[dict[str, Any]] = body.get("content", [])
     text = "".join(b.get("text", "") for b in content_blocks if b.get("type") == "text")
 
+    # v11 JSON-mode: a tool_use block named like the coercion tool is UNWRAPPED — its
+    # input becomes message.content (a JSON string), NOT a tool_calls entry.
+    coerced_content: str | None = None
     tool_calls: list[dict[str, Any]] = []
     for block in content_blocks:
-        if block.get("type") == "tool_use":
-            tool_calls.append(
-                {
-                    "id": block.get("id", ""),
-                    "type": "function",
-                    "function": {
-                        "name": block.get("name", ""),
-                        "arguments": dump_tool_arguments(block.get("input", {})),
-                    },
-                }
-            )
+        if block.get("type") != "tool_use":
+            continue
+        if is_coercion_tool_call(block.get("name", "")):
+            coerced_content = unwrap_coerced_tool_input(block.get("input", {}))
+            continue
+        tool_calls.append(
+            {
+                "id": block.get("id", ""),
+                "type": "function",
+                "function": {
+                    "name": block.get("name", ""),
+                    "arguments": dump_tool_arguments(block.get("input", {})),
+                },
+            }
+        )
 
     usage_raw: dict[str, Any] = body.get("usage", {})
     prompt_tokens: int = usage_raw.get("input_tokens", 0)
     completion_tokens: int = usage_raw.get("output_tokens", 0)
 
-    # content is null when the assistant returned only tool calls (OpenAI convention)
-    message: dict[str, Any] = {
-        "role": "assistant",
-        "content": text if text else (None if tool_calls else ""),
-    }
+    # JSON-mode content wins; else text; else null when only (real) tool calls; else "".
+    if coerced_content is not None:
+        content: str | None = coerced_content
+    elif text:
+        content = text
+    else:
+        content = None if tool_calls else ""
+    message: dict[str, Any] = {"role": "assistant", "content": content}
     if tool_calls:
         message["tool_calls"] = tool_calls
+
+    # When the coercion tool was unwrapped and there are no REAL tool calls, the stop is a
+    # normal "stop" (the caller asked for JSON content, not a tool call).
+    finish_reason = (
+        "stop"
+        if coerced_content is not None and not tool_calls
+        else _map_finish_reason(body.get("stop_reason"))
+    )
 
     return {
         "id": body.get("id", ""),
@@ -264,7 +318,7 @@ def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
             {
                 "index": 0,
                 "message": message,
-                "finish_reason": _map_finish_reason(body.get("stop_reason")),
+                "finish_reason": finish_reason,
             }
         ],
         "usage": {
@@ -327,6 +381,11 @@ def _translate_anthropic_sse(
     # tool_calls index (counts only tool_use blocks, text blocks excluded).
     block_to_tc: dict[int, int] = {}
     tc_count: int = 0
+    # v11 JSON-mode: a streamed coercion ("json_output") tool_use block is unwrapped —
+    # its input_json_delta fragments stream as delta.content, not delta.tool_calls; the
+    # block is excluded from block_to_tc and the terminal finish_reason is "stop".
+    coercion_block_index: int | None = None
+    saw_coercion: bool = False
 
     def _make_chunk(delta: dict[str, Any], fr: str | None) -> dict[str, Any]:
         return {
@@ -358,14 +417,20 @@ def _translate_anthropic_sse(
             block = data.get("content_block", {})
             if block.get("type") == "tool_use":
                 block_index = data.get("index", 0)
-                tc_index = tc_count
-                block_to_tc[block_index] = tc_index
-                tc_count += 1
-                frag = build_tool_call_delta(
-                    tc_index, id=block.get("id", ""), name=block.get("name", "")
-                )
-                chunk = _make_chunk({"tool_calls": [frag]}, None)
-                yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+                if is_coercion_tool_call(block.get("name", "")):
+                    # JSON-mode coercion block: its input streams as content (below);
+                    # emit no tool_calls fragment and skip the tool index.
+                    coercion_block_index = block_index
+                    saw_coercion = True
+                else:
+                    tc_index = tc_count
+                    block_to_tc[block_index] = tc_index
+                    tc_count += 1
+                    frag = build_tool_call_delta(
+                        tc_index, id=block.get("id", ""), name=block.get("name", "")
+                    )
+                    chunk = _make_chunk({"tool_calls": [frag]}, None)
+                    yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
         elif event_name == "content_block_delta":
             delta = data.get("delta", {})
@@ -374,17 +439,26 @@ def _translate_anthropic_sse(
                 chunk = _make_chunk({"content": text}, None)
                 yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
             elif delta.get("type") == "input_json_delta":
-                tc_index = block_to_tc.get(data.get("index", 0))
-                if tc_index is not None:
-                    frag = build_tool_call_delta(
-                        tc_index, arguments_fragment=delta.get("partial_json", "")
-                    )
-                    chunk = _make_chunk({"tool_calls": [frag]}, None)
+                block_index = data.get("index", 0)
+                if coercion_block_index is not None and block_index == coercion_block_index:
+                    # coercion JSON streams as delta.content, not delta.tool_calls
+                    chunk = _make_chunk({"content": delta.get("partial_json", "")}, None)
                     yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+                else:
+                    tc_index = block_to_tc.get(block_index)
+                    if tc_index is not None:
+                        frag = build_tool_call_delta(
+                            tc_index, arguments_fragment=delta.get("partial_json", "")
+                        )
+                        chunk = _make_chunk({"tool_calls": [frag]}, None)
+                        yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
         elif event_name == "message_delta":
             delta = data.get("delta", {})
             finish_reason = _map_finish_reason(delta.get("stop_reason"))
+            # JSON-mode: when only the coercion tool was used, the stop is a normal "stop".
+            if saw_coercion and tc_count == 0:
+                finish_reason = "stop"
             usage = data.get("usage", {})
             completion_tokens = usage.get("output_tokens", completion_tokens)
 

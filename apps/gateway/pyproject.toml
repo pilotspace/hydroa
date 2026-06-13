@@ -121,6 +121,8 @@ exclude = [
     "tests/response_format_translation/test_response_format_translation.py",
     # gemini-json-mode: frozen test suite; format excluded per no-test-edit contract
     "tests/gemini_json_mode/test_gemini_json_mode.py",
+    # anthropic-json-mode: frozen test suite; format excluded per no-test-edit contract
+    "tests/anthropic_json_mode/test_anthropic_json_mode.py",
 ]
 
 [tool.ruff.lint]
