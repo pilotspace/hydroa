@@ -1,9 +1,35 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "design-system-extension",
   "active_milestone": "v15",
-  "tasks": {},
+  "tasks": {
+    "design-system-extension": {
+      "title": "Design System Extension",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v15",
+      "depends_on": [],
+      "created": "2026-06-14T01:16:12+00:00",
+      "updated": "2026-06-14T01:36:42+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "13cc86928035c288e75cbe321651d0b2",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/",
+          "apps/dashboard/tests/design-system/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/design-system-extension/"
+        ],
+        "snapshot_md5": "132b35a82f0e9e007a88951aa6051fb7"
+      }
+    }
+  },
   "milestones": {
     "v14": {
       "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
@@ -23,7 +49,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T01:10:37+00:00",
+  "updated": "2026-06-14T01:36:42+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
