@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "nav-role-filter",
+  "active_task": "oidc-callback-relay",
   "active_milestone": "v17",
   "tasks": {
     "bff-test-harness-strict-handlers": {
@@ -96,6 +96,32 @@
         ],
         "snapshot_md5": "01b65df9e6111df05a1c575aaddce61d"
       }
+    },
+    "oidc-callback-relay": {
+      "title": "Pre-auth OIDC callback BFF relay (code\u2192session cookie)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v17",
+      "depends_on": [],
+      "created": "2026-06-14T15:57:19+00:00",
+      "updated": "2026-06-14T16:13:36+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "44b696557cd59ce7656b31fb3249f0f8",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/auth/oidc/callback/route.ts",
+          "apps/dashboard/app/(auth)/login/page.tsx",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          "apps/dashboard/.next/",
+          ".add/tasks/oidc-callback-relay/"
+        ],
+        "snapshot_md5": "44cb613039d2b694981befc79da01f9d"
+      }
     }
   },
   "milestones": {
@@ -109,7 +135,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T15:41:29+00:00",
+  "updated": "2026-06-14T16:13:36+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
