@@ -2,11 +2,20 @@
   "project": "ai-proxy",
   "stage": "production",
   "active_task": null,
-  "active_milestone": null,
+  "active_milestone": "v17",
   "tasks": {},
-  "milestones": {},
+  "milestones": {
+    "v17": {
+      "title": "Hardening \u2014 clear carried follow-up debt (v13/v14/v15)",
+      "goal": "every carried follow-up from v13/v14/v15 is cleared with zero behavioral regression on the existing floor: tests-bff is tsc-clean with scoped msw handlers, the two react-hooks lint rules are restored to error with their violations fixed, role-based nav visibility + the pre-auth OIDC callback relay ship, the dev-toolchain advisories are cleared, and the real-browser a11y+viewport pass runs",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-14T08:35:24+00:00",
+      "updated": "2026-06-14T08:35:24+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T08:22:54+00:00",
+  "updated": "2026-06-14T08:35:24+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
