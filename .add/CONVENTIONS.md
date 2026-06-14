@@ -126,6 +126,28 @@ Testing: red/green TDD mandatory — tests red before build; pytest + pytest-asy
           needs volume, so it needs pacing — the two are coupled (evidence: C1's 40-request
           sample + C5's trip loop drained the bucket → 429 "local_rate_limited" on a
           following /admin/keys; 50 ms/req + a settle fixed it)
+        Folded from v13 (2026-06-14, frontend a11y/verify):
+        - axe-core in jsdom gates on `results.violations` FILTERED to impact ∈ {serious,
+          critical}, NOT `toHaveNoViolations()` — the latter fails on MODERATE best-practice
+          rules (region/landmark) that fire when a component is scanned in ISOLATION, masking
+          the real gate; the `color-contrast` rule MUST be disabled (`axe(c,{rules:{"color-
+          contrast":{enabled:false}}})` — jsdom has no canvas), and always scan a POPULATED
+          container (gate on findBy/waitFor first), never a skeleton (evidence: v13 12/12
+          earned green across 7 surfaces)
+        - run the COVERAGE gate (`vitest run --coverage`) before claiming "coverage held" —
+          `--no-coverage` HID a real 78.14%<80% regression that only the coverage run + the
+          adversarial earned-green subagent surfaced (evidence: v13 task1 components/ui untested)
+        - a VERIFY-ONLY task can be legitimately GREEN-on-first-run (no product code to write);
+          the honest red-first is FILE-ABSENCE, and integrity comes from a DISCRIMINATING
+          MUTATION check — inject a known-critical violation (e.g. `<img>`-no-alt) through the
+          SAME helper and confirm it is CAUGHT, then delete the scratch — never manufacture a
+          fake red (evidence: img-no-alt→`image-alt` caught; the verify suite's zero-violation
+          result is real, not a vacuous/crashed scan)
+        - two vitest projects (legacy `tests/` + bff `tests-bff/`) both resolve client fetches
+          to the same `http://localhost:3000` base (the `appBase()` Node fallback); the split
+          is only WHICH mocks/server has default handlers. Pure-props components are
+          deterministically STATE-testable without msw (render with isLoading/isError/data
+          props); fetching surfaces need the project whose server seeds their endpoint
 Dependencies: every package in `.add/dependencies.allowlist`; CI gate
         (`scripts/check_allowlist.py`) rejects unknown packages
         Folded from v1 (2026-06-10): the allowlist governs PYTHON packages only — node
@@ -319,6 +341,22 @@ Build/harness conventions folded from v1 (2026-06-10):
           DELTA, never an absolute or "recent-window" count — consecutive double-pass runs share
           the e2e Postgres, so a prior pass's legitimate rows false-positive a "no spurious rows"
           check (v12 C4b: switched "unknown key_ids in last 60s" → usage_records delta == 0).
+        Build/harness conventions folded from v13 (2026-06-14, frontend scope-lock + verify):
+        - the §5 scope-lock flags GITIGNORED build artifacts (`.next/`, `coverage/`,
+          `tsconfig.tsbuildinfo`) as scope violations — the engine `_SCOPE_EXCLUDE_DIRS` is only
+          .git/.add/__pycache__/node_modules — so a frontend task must DECLARE them in §5 Scope
+          (or clean them before the gate). The anchor's `declared` list is FROZEN at the tests→
+          build snapshot, so editing §5 alone does NOT clear a violation: RE-CROSS tests→build
+          (`add.py phase tests` then `advance`) to re-snapshot (evidence: v13 task2 tsbuildinfo)
+        - STRENGTHENING tests mid-build (e.g. after an adversarial review finds coverage gaps)
+          requires going BACK to the tests phase and RE-CROSSING tests→build to re-snapshot the
+          tripwire — editing tests while IN build trips `build_tampered`; adding assertions is
+          legitimate (strengthening, not weakening) but must follow the re-cross ritual
+          (evidence: v13 task4 added Shift+Tab + isolated axe scans, re-crossed clean)
+        - the adversarial earned-green refute-read (subagent, model sonnet) earns its keep on
+          VERIFY tasks too: it returned EARNED-WITH-GAPS and surfaced 3 real coverage gaps the
+          first green hid (Shift+Tab wrap untested on both dialogs; isolated state renders
+          un-scanned) — all closed, focus-trap branch coverage rose 73.91%→75% (evidence: v13 task4)
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config
