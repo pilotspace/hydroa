@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "bff-test-harness-strict-handlers",
+  "active_task": "react-hooks-strict-lint",
   "active_milestone": "v17",
   "tasks": {
     "bff-test-harness-strict-handlers": {
@@ -36,6 +36,17 @@
           }
         ]
       }
+    },
+    "react-hooks-strict-lint": {
+      "title": "Restore react-hooks lint rules to error + fix flagged patterns",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "v17",
+      "depends_on": [
+        "bff-test-harness-strict-handlers"
+      ],
+      "created": "2026-06-14T14:48:07+00:00",
+      "updated": "2026-06-14T14:48:07+00:00"
     }
   },
   "milestones": {
@@ -49,7 +60,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T14:46:11+00:00",
+  "updated": "2026-06-14T14:48:07+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
