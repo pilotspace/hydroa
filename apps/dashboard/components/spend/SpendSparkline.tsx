@@ -72,6 +72,12 @@ export function SpendSparkline({
         data={data}
         aria-hidden="true"
         role="presentation"
+        // Decorative chart: SpendPage renders the bucket list + totals as the
+        // accessible source. Recharts 3's accessibilityLayer (default on) adds
+        // tabindex=0 to the surface, which on an aria-hidden element is a serious
+        // axe violation (aria-hidden-focus). Disable it so the decorative chart
+        // stays out of the tab order.
+        accessibilityLayer={false}
       >
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
         <Line

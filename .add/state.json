@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "devtool-vitest4-upgrade",
+  "active_task": "realbrowser-a11y-pass",
   "active_milestone": "v17",
   "tasks": {
     "bff-test-harness-strict-handlers": {
@@ -151,6 +151,56 @@
         ],
         "snapshot_md5": "63cf7424f33f6685466d69a8d974439e"
       }
+    },
+    "realbrowser-a11y-pass": {
+      "title": "Real-browser (Playwright+viewport) axe pass over primary surfaces",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v17",
+      "depends_on": [],
+      "created": "2026-06-14T17:06:33+00:00",
+      "updated": "2026-06-14T17:26:56+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "48d2850f1d62e1deeb470b4f8f85d9cb",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/playwright.config.ts",
+          "apps/dashboard/e2e-a11y/",
+          "apps/dashboard/package.json",
+          "apps/dashboard/package-lock.json",
+          "apps/dashboard/tests/design-system/allowlist.json",
+          "apps/dashboard/app/globals.css",
+          "apps/dashboard/app/(dashboard)/usage/page.tsx",
+          "apps/dashboard/app/(dashboard)/spend/page.tsx",
+          "apps/dashboard/components/spend/SpendSparkline.tsx",
+          "apps/dashboard/.gitignore",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          "apps/dashboard/.next/",
+          "apps/dashboard/test-results/",
+          "apps/dashboard/playwright-report/",
+          ".add/tasks/realbrowser-a11y-pass/"
+        ],
+        "snapshot_md5": "95844eb8ec8e6245e98c40df8024fa11"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-14T17:22:08+00:00",
+            "reason": "scope_violation: task 'realbrowser-a11y-pass' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(dashboard)/spend/page.tsx \u00b7 apps/dashboard/app/(dashboard)/usage/page.tsx \u00b7 apps/dashboard/components/spend/SpendSparkline.tsx (3 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-14T17:24:02+00:00",
+            "reason": "scope_violation: task 'realbrowser-a11y-pass' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(dashboard)/spend/page.tsx \u00b7 apps/dashboard/app/(dashboard)/usage/page.tsx \u00b7 apps/dashboard/components/spend/SpendSparkline.tsx (3 total)",
+            "source": "scope"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -164,7 +214,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T16:35:23+00:00",
+  "updated": "2026-06-14T17:26:56+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
