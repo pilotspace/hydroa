@@ -1,9 +1,43 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "next16-upgrade",
   "active_milestone": null,
-  "tasks": {},
+  "tasks": {
+    "next16-upgrade": {
+      "title": "Next.js 16 upgrade + advisory remediation",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v14",
+      "depends_on": [],
+      "created": "2026-06-14T07:06:11+00:00",
+      "updated": "2026-06-14T08:06:48+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "343ade1ab4ce58eab5fbbb55b80eef15",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/package.json",
+          "apps/dashboard/package-lock.json",
+          "apps/dashboard/eslint.config.mjs",
+          "apps/dashboard/middleware.ts",
+          "apps/dashboard/proxy.ts",
+          "apps/dashboard/next.config.ts",
+          "apps/dashboard/tsconfig.json",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/app/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          "apps/dashboard/next-env.d.ts",
+          ".add/tasks/next16-upgrade/"
+        ],
+        "snapshot_md5": "ae3ba2f1f5c1220f8b7455aa8779b94d"
+      }
+    }
+  },
   "milestones": {
     "v14": {
       "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
@@ -15,7 +49,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T06:47:46+00:00",
+  "updated": "2026-06-14T08:06:48+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
