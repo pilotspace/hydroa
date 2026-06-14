@@ -2,7 +2,7 @@
   "project": "ai-proxy",
   "stage": "production",
   "active_task": null,
-  "active_milestone": null,
+  "active_milestone": "v15",
   "tasks": {},
   "milestones": {
     "v14": {
@@ -12,10 +12,18 @@
       "status": "planned",
       "created": "2026-06-13T14:45:24+00:00",
       "updated": "2026-06-13T14:45:24+00:00"
+    },
+    "v15": {
+      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
+      "goal": "a tenant owner/admin can manage every backend capability (model availability, teams & members, per-key rate/cache governance, spend breakdowns, routing health, response cache, guardrails, SSO/OIDC) through a consistent, accessible, responsive dashboard, with NO change to the gateway/BFF contracts",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-14T01:10:37+00:00",
+      "updated": "2026-06-14T01:10:37+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T00:52:33+00:00",
+  "updated": "2026-06-14T01:10:37+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
