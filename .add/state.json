@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "design-system-extension",
+  "active_task": "model-management-ui",
   "active_milestone": "v15",
   "tasks": {
     "design-system-extension": {
@@ -28,6 +28,33 @@
         ],
         "snapshot_md5": "132b35a82f0e9e007a88951aa6051fb7"
       }
+    },
+    "model-management-ui": {
+      "title": "Model Management UI",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v15",
+      "depends_on": [],
+      "created": "2026-06-14T01:38:03+00:00",
+      "updated": "2026-06-14T02:06:45+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8eff2b08c68faccb2a1cad63cf00d884",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/models/",
+          "apps/dashboard/app/(dashboard)/models/",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/model-management-ui/"
+        ],
+        "snapshot_md5": "630c8eb6a5790fa806155198efecaec3"
+      }
     }
   },
   "milestones": {
@@ -49,7 +76,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T01:36:42+00:00",
+  "updated": "2026-06-14T02:06:45+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
