@@ -18,7 +18,7 @@
  *   - inline 403 / 422 errors (no crash)
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { bffGet, BffError } from "@/lib/bff-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
@@ -126,15 +126,16 @@ export function SpendPage() {
 
   // Remember the last successfully-rendered response. keepPreviousData covers
   // the pending phase, but an ERRORED query has data===undefined — so on a
-  // transient 422/404 we fall back to this ref to keep the prior view intact.
-  // Written in an effect (not during render) so it is concurrent-safe.
-  const lastGoodRef = useRef<SpendWindowResponse | undefined>(undefined);
-  useEffect(() => {
-    if (!isError && data !== undefined) {
-      lastGoodRef.current = data;
-    }
-  }, [isError, data]);
-  const viewData = isError ? lastGoodRef.current : data;
+  // transient 422/404 we fall back to this last-good value to keep the prior view
+  // intact. Held in state and updated via React's "adjust state during render"
+  // guard (no ref read in render, no setState in an effect): the update fires only
+  // when a fresh successful response differs from what we last stored, so it
+  // converges in one extra render and never loops.
+  const [lastGood, setLastGood] = useState<SpendWindowResponse | undefined>(undefined);
+  if (!isError && data !== undefined && data !== lastGood) {
+    setLastGood(data);
+  }
+  const viewData = isError ? lastGood : data;
 
   const isZeroState =
     !isLoading && !isError && viewData !== undefined && viewData.totals.requests === 0;

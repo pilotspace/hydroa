@@ -39,14 +39,35 @@
     },
     "react-hooks-strict-lint": {
       "title": "Restore react-hooks lint rules to error + fix flagged patterns",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v17",
       "depends_on": [
         "bff-test-harness-strict-handlers"
       ],
       "created": "2026-06-14T14:48:07+00:00",
-      "updated": "2026-06-14T14:48:07+00:00"
+      "updated": "2026-06-14T15:20:15+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "acca89ef438dd8425f7450d3634712fc",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/spend/SpendPage.tsx",
+          "apps/dashboard/lib/use-focus-trap.ts",
+          "apps/dashboard/components/settings/CacheSettings.tsx",
+          "apps/dashboard/components/settings/GuardrailSettings.tsx",
+          "apps/dashboard/components/settings/OidcSettings.tsx",
+          "apps/dashboard/eslint.config.mjs",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          "apps/dashboard/.next/",
+          ".add/tasks/react-hooks-strict-lint/"
+        ],
+        "snapshot_md5": "f39b86926f502ca9f4c90e079cc6253f"
+      }
     }
   },
   "milestones": {
@@ -60,7 +81,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T14:48:07+00:00",
+  "updated": "2026-06-14T15:20:15+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

@@ -10,7 +10,7 @@
  * a member's PUT → 403 surfaces inline.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bffGet, bffPut, BffError } from "@/lib/bff-client";
 import { Switch, Button, Loading, ErrorState } from "@/components/ui";
@@ -40,13 +40,16 @@ export function CacheSettings() {
   const [semanticEnabled, setSemanticEnabled] = useState(false);
   const [mutError, setMutError] = useState<string | null>(null);
 
-  // Sync local state when query data arrives
-  useEffect(() => {
-    if (data) {
-      setEnabled(data.enabled);
-      setSemanticEnabled(data.semantic_enabled);
-    }
-  }, [data]);
+  // Seed/reseed local editable state from server data via React's "adjust state
+  // during render" guard (no setState in an effect): fires only when the query
+  // data reference changes (initial load + after a save reinstalls it via
+  // setQueryData), so it converges in one render and never loops.
+  const [seededData, setSeededData] = useState<CacheConfig | undefined>(undefined);
+  if (data && data !== seededData) {
+    setSeededData(data);
+    setEnabled(data.enabled);
+    setSemanticEnabled(data.semantic_enabled);
+  }
 
   const saveCache = useMutation({
     mutationFn: (body: CacheConfig) => bffPut<CacheConfig>("/admin/cache", body),
