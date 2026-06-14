@@ -43,6 +43,11 @@ Out: NEW gateway data/metrics/endpoints or any gateway/BFF contract change (this
      a NEW gateway "list users" endpoint for member-picking unless a task proves it necessary
      (prefer existing identity/JWT-sourced user ids; if required it is a contract CHANGE-REQUEST
      back to the gateway, surfaced at that task's freeze — not silently added here).
+     AMENDMENT (2026-06-14, Tin-approved CR): teams-governance-ui PROVED member-add needs a
+     backend change (no list-users endpoint; add-member takes only user_id; no email in responses).
+     Approved exception to "no gateway change": ADD-BY-EMAIL — POST /admin/teams/{id}/members
+     accepts an `email` (server resolves via the existing tenant-scoped get_user_by_email). This is
+     the ONLY sanctioned gateway change in v15; everything else stays presentation-only.
 
 ## Shared decisions & glossary deltas   (living — every task must honor these)
 - Behavior-preserving / data-identical is non-negotiable (foundation v3/v13): every surface
@@ -68,12 +73,20 @@ Out: NEW gateway data/metrics/endpoints or any gateway/BFF contract change (this
 - The **member-identity question** — teams reference `user_id`s but the gateway exposes no
   "list users" endpoint today; the teams task must resolve member-picking from existing identity
   WITHOUT a new endpoint, or raise an explicit contract CHANGE-REQUEST at its freeze → owning
-  task `teams-governance-ui`.
+  task `teams-governance-ui`. RESOLVED 2026-06-14: Tin approved the ADD-BY-EMAIL CR (see Out
+  amendment) — teams-governance-ui carries this gateway change behind its own frozen contract.
+- The **BFF PATCH passthrough bug** (discovered 2026-06-14 during teams grounding) — the catch-all
+  `app/api/gw/[...path]/route.ts` exports GET/POST/PUT/DELETE but NOT PATCH, yet v13's
+  KeyGovernanceEditor (`bffPatch /admin/keys/{id}`) AND v15 team-budget (`PATCH /admin/teams/{id}`)
+  need it; in production the PATCH 405s (v13 tests passed only because msw intercepts the client
+  fetch). Fix = additive `export async function PATCH` mirroring PUT → owning task
+  `bff-patch-passthrough` (prerequisite for teams-governance-ui; also fixes the v13 latent bug).
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] design-system-extension     depends-on: none                       — freeze the additive primitives the coverage surfaces need: Switch/toggle, Tabs, Textarea, Checkbox (+ tokens, labelled/keyboard-operable/focus-visible a11y, the four state patterns honored); prove they render + existing suites stay green. FREEZE FIRST.
-- [ ] model-management-ui         depends-on: design-system-extension     — `/models` page: list catalog models with a per-tenant enable/disable Switch (GET /admin/models, PUT /admin/models/{model_id:path}); owner/admin write, member read; state patterns + responsive.
-- [ ] teams-governance-ui         depends-on: design-system-extension     — `/teams` page: team list/create/delete, set team_budget_usd, team detail with member add/remove (all /admin/teams* + members*); resolve member-picking from identity WITHOUT a new endpoint (or raise a contract CR at freeze); owner/admin only.
+- [x] design-system-extension     depends-on: none                       — freeze the additive primitives the coverage surfaces need: Switch/toggle, Tabs, Textarea, Checkbox (+ tokens, labelled/keyboard-operable/focus-visible a11y, the four state patterns honored); prove they render + existing suites stay green. FREEZE FIRST. DONE (commit 4b13904, gate PASS).
+- [x] model-management-ui         depends-on: design-system-extension     — `/models` page: list catalog models with a per-tenant enable/disable Switch (GET /admin/models, PUT /admin/models/{model_id:path}); owner/admin-only (member GET 403s → ErrorState); state patterns + responsive. DONE (commit 0b473f8, gate PASS).
+- [ ] bff-patch-passthrough       depends-on: none                       — FIX the discovered v13 latent bug: add `export async function PATCH` to the BFF catch-all `app/api/gw/[...path]/route.ts` (mirrors PUT); route-handler test red→green. Unblocks team-budget PATCH + fixes key-governance PATCH (405 in prod). Prerequisite for teams.
+- [ ] teams-governance-ui         depends-on: design-system-extension, bff-patch-passthrough — `/teams` page: team list/create/delete, set team_budget_usd, team detail with member add (BY EMAIL — Tin-approved gateway CR) + remove (all /admin/teams* + members*); owner/admin only. Includes the additive gateway add-by-email change behind its frozen contract.
 - [ ] tenant-settings-ui          depends-on: design-system-extension     — `/settings` tabbed hub: Cache (GET/PUT /admin/cache toggles), Guardrails (GET/PUT /admin/guardrails — injection + PII + custom patterns), SSO/OIDC (GET/PUT /admin/oidc — client_secret WRITE-ONLY/redacted); owner-only SSO; accessible tabs + forms.
 - [ ] routing-health-ui           depends-on: design-system-extension     — `/routing` page (READ-ONLY): retry policy, cooldown config, model groups, per-candidate circuit state (open/closed/unknown) from GET /admin/routing; clear health hierarchy + state patterns; owner/admin.
 - [ ] governance-completion-ui    depends-on: design-system-extension, teams-governance-ui — DEPTH on v13 surfaces: key-governance editor gains rpm_limit/tpm_limit/team_id(dropdown from teams)/cache_enabled (PATCH already accepts); spend page gains group_by + key_id filter + breakdown[] table; login page gains a "Login with SSO" button (/auth/oidc/login). Data seam unchanged.
