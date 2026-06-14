@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class CreateTeamRequest(BaseModel):
@@ -71,10 +71,22 @@ class TeamDetailResponse(BaseModel):
 
 
 class AddMemberRequest(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=False)
+    """Add a member by user_id OR by email (exactly one) — the email is resolved
+    server-side to a tenant-scoped user_id (teams-add-by-email CR §3)."""
 
-    user_id: uuid.UUID
+    model_config = ConfigDict(frozen=True, strict=False, str_strip_whitespace=True)
+
+    user_id: uuid.UUID | None = None
+    email: str | None = None
     role: Literal["lead", "member"]
+
+    @model_validator(mode="after")
+    def _exactly_one_identifier(self) -> AddMemberRequest:
+        has_user_id = self.user_id is not None
+        has_email = self.email is not None and self.email != ""
+        if has_user_id == has_email:
+            raise ValueError("provide exactly one of 'user_id' or 'email'")
+        return self
 
 
 class AddMemberResponse(BaseModel):

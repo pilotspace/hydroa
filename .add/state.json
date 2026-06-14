@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "bff-patch-passthrough",
+  "active_task": "teams-add-by-email",
   "active_milestone": "v15",
   "tasks": {
     "design-system-extension": {
@@ -80,6 +80,44 @@
         ],
         "snapshot_md5": "de2c41318a8645bacbd9b58c898cc733"
       }
+    },
+    "teams-add-by-email": {
+      "title": "Teams add member by email (gateway CR)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v15",
+      "depends_on": [],
+      "created": "2026-06-14T02:34:31+00:00",
+      "updated": "2026-06-14T02:58:32+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a1fdb1652bf679ca08828316e57209ea",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/teams/api/schemas.py",
+          "apps/gateway/src/gateway/teams/api/router.py",
+          "apps/gateway/src/gateway/teams/application/use_cases.py",
+          "apps/gateway/src/gateway/teams/infrastructure/repository.py",
+          "apps/gateway/src/gateway/teams/domain/ports.py",
+          "apps/gateway/tests/teams/",
+          ".add/tasks/teams-add-by-email/",
+          "apps/gateway/.coverage",
+          "apps/gateway/.ruff_cache/"
+        ],
+        "snapshot_md5": "dd468368d16851f7ab8034be607f9cb4"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-14T02:56:22+00:00",
+            "reason": "scope_violation: task 'teams-add-by-email' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (2 total)",
+            "source": "scope"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -101,7 +139,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T02:27:33+00:00",
+  "updated": "2026-06-14T02:58:32+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

@@ -195,6 +195,7 @@ async def add_member(
             team_id=team_id,
             tenant_id=identity.tenant_id,
             user_id=body.user_id,
+            email=body.email,
             role=body.role,
         )
     except TeamNotFoundError:

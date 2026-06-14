@@ -191,10 +191,14 @@ class SqlAlchemyTeamRepository:
         *,
         team_id: uuid.UUID,
         tenant_id: uuid.UUID,
-        user_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
+        email: str | None = None,
         role: str,
     ) -> TeamMember:
-        """Add user to team atomically.
+        """Add user to team atomically, by user_id OR by email.
+
+        When user_id is None, resolves `email` (lowercased) to a user in THIS
+        tenant — an unknown or cross-tenant email raises UserNotFoundError.
 
         Raises TeamNotFoundError if team not in tenant.
         Raises UserNotFoundError if user not in tenant's users table.
@@ -203,6 +207,22 @@ class SqlAlchemyTeamRepository:
         from gateway.tenants.infrastructure.orm import UserRow
 
         async with self._session.begin():
+            # Resolve email -> user_id, tenant-scoped (cross-tenant email -> no row -> 404).
+            if user_id is None:
+                if email is None:
+                    raise UserNotFoundError
+                resolved = (
+                    await self._session.execute(
+                        select(UserRow).where(
+                            UserRow.email == email.lower(),
+                            UserRow.tenant_id == tenant_id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if resolved is None:
+                    raise UserNotFoundError
+                user_id = resolved.id
+
             # Verify team belongs to tenant
             team_row = (
                 await self._session.execute(
