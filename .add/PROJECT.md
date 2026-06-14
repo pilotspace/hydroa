@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-14 · foundation-version: 14
+slug: ai-proxy · stage: production · updated: 2026-06-14 · foundation-version: 15
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -118,6 +118,11 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     alert_event (shared `persist_soft_budget_alert` + `alert_events`, dedupe_key
     `soft_budget:{key_id}:{YYYYMM}`, fire-and-forget, idempotent) as chat. Advisory only — the
     HARD 402 path is byte-identical. Proven live (C2: one row, idempotent on repeat, 200).
+- Folded from v15 (2026-06-14) — dashboard feature-coverage:
+  - **additive identity-resolution** (email→user_id) belongs in the REPOSITORY, inside the
+    existing transaction, tenant-scoped, with defense-in-depth: the resolve filter AND the
+    team-membership check each enforce isolation independently, so a cross-tenant email
+    returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
 
@@ -259,6 +264,20 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     UI/UX surfaces (auth, model catalog, SSO/OIDC config, routing-admin, team-governance) are
     a separate UI/UX milestone mapping the dashboard to every backend feature
 
+- Folded from v15 (2026-06-14) — dashboard feature-coverage:
+  - a spec rule names the OBSERVABLE, not a mechanism — "consumes useCurrentUser" created a
+    phantom requirement (the member error state is produced by the server 403, not the hook);
+    state "member → role=alert error" and let the mechanism follow (else untestable dead code).
+  - hand-written per-endpoint serializers DRIFT from their schema (list_keys dropped
+    cache_enabled while patch_key forwarded it → list silently defaulted False); a shared
+    `from_domain(item)` builder makes every endpoint forward every field by construction.
+  - an "exactly-one-of" optional-identifier contract is cleanly a Pydantic
+    `@model_validator(mode="after")` + `str_strip_whitespace`, so whitespace-only collapses to
+    "absent" (evidence: add-member both/neither/whitespace → 422).
+  - a master-detail UI satisfies one "view + manage members" criterion with one route + one
+    suite — the in-page selection model is the lighter contract when deep-linking isn't required
+    (chosen at the §3 least-sure flag; all 22 teams tests in one file).
+
 ## Users (UDD) — UI/UX: design before code
 
 - Primary users & jobs: tenant **owner/admin** — provision org, issue/revoke keys,
@@ -296,6 +315,20 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     presentation refactors keep the data seam BYTE-IDENTICAL (same BFF route + hook + field
     names; `monthly_budget_usd` per-key ≠ `budget_usd_monthly` tenant) so the behavioral
     floor stays green (evidence: 122/122, zero data-seam diff across 3 surface redesigns)
+- Folded from v15 (2026-06-14):
+  - jsdom axe is a PROXY: it proves roles/labels/landmarks/focusability but NEVER color-contrast
+    or true viewport layout — the real-browser a11y pass (Playwright + viewport) is a STANDING
+    milestone residue, declared once and shared across v13/v15, not re-litigated per task.
+  - role-based NAV visibility is a cross-surface need (admin-only `/models`, owner-only SSO):
+    the static NAV shows links a `member` cannot use (they 403 on navigate — a UX gap, NOT a
+    security hole; the gateway enforces RBAC) → carried as the `nav-role-filter` follow-up.
+  - decorative icons paired with a visible text label MUST carry `aria-hidden` — one attribute
+    removes a redundant SR announcement across all 7 nav items (consistent with states.tsx).
+  - design accessible names so no control's name is a SUPERSTRING of another's; when they
+    collide, role-scoped queries (`getByRole("textbox",{name})`) are the disambiguator (the
+    budget input vs the "Save budget for X" button collided under getByLabelText substring-match).
+  - deterministic read errors (403/404) set `retry:false` on the query, else a settled error
+    retry-storms before the inline alert renders (parity fix across all settings queries).
 
 ## Architecture (settled at setup)
 
@@ -397,3 +430,14 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-14 | the design system is FROZEN FIRST as a 3-layer UDD token contract (primitive/semantic/component, fail-closed) + state-component + a11y-primitive inventory that every surface CONSUMES; Radix modality asserted as labelled+focus-trap (Tab+Shift+Tab+Escape) not aria-modal, via self-contained use-focus-trap (fold: UDD/v13) | prevents ad-hoc per-surface style drift; the Radix version exposes no aria-modal; focusables selector must not filter offsetParent in jsdom | folded v14 |
 | 2026-06-14 | the §5 scope-lock flags gitignored build artifacts (.next/, coverage/, tsconfig.tsbuildinfo) — declare them in §5 Scope; strengthening tests mid-build requires going BACK to phase tests and RE-CROSSING tests→build to re-snapshot the tripwire (fold: ADD/v13) | engine _SCOPE_EXCLUDE_DIRS = .git/.add/__pycache__/node_modules only; editing tests while in build trips build_tampered; the declared list is frozen at the tests→build snapshot | folded v14 |
 | 2026-06-14 | run the COVERAGE gate (vitest run --coverage) not --no-coverage before claiming "coverage held"; the adversarial earned-green refute-read (subagent) pays off on VERIFY tasks too (fold: TDD+ADD/v13) | --no-coverage HID a real 78.14%<80% regression (task1); the refute-read returned EARNED-WITH-GAPS and surfaced 3 real coverage gaps the green hid (task4, all closed) | folded v14 |
+| 2026-06-14 | additive identity-resolution (email→user_id) lives in the repository txn, tenant-scoped, defense-in-depth (resolve filter AND membership check each enforce isolation) (fold: DDD/teams-add-by-email) | cross-tenant email returns 404 even if either guard alone were removed; the only sanctioned v15 gateway change | folded v15 |
+| 2026-06-14 | a spec rule names the OBSERVABLE not a mechanism; "consumes useCurrentUser" was a phantom requirement (the member error comes from the server 403) (fold: SDD/model-management-ui) | naming the hook would have been untestable dead code; "member → role=alert error" lets the mechanism follow | folded v15 |
+| 2026-06-14 | hand-written per-endpoint serializers drift — a shared from_domain(item) builder forwards every field by construction (fold: SDD/key-cache-enabled-fidelity) | list_keys dropped cache_enabled while patch_key forwarded it → list silently defaulted False (RED test pinned it) | folded v15 |
+| 2026-06-14 | exactly-one-of optional identifier = Pydantic @model_validator(mode=after) + str_strip_whitespace; master-detail UI = one route + one suite when no deep-link (fold: SDD/teams-add-by-email+teams-governance-ui) | whitespace-only collapses to absent (both/neither/whitespace→422); in-page selection is the lighter contract (22 tests, one file) | folded v15 |
+| 2026-06-14 | jsdom axe is a PROXY (roles/labels/landmarks/focusability only) — the real-browser axe+viewport pass is a STANDING residue shared v13/v15, not re-litigated per task (fold: UDD/feature-coverage-verify) | color-contrast + true layout are unprovable without canvas/layout; declared once, carried | folded v15 |
+| 2026-06-14 | role-based NAV visibility is a cross-surface need → nav-role-filter follow-up; decorative label-paired icons carry aria-hidden; deterministic read errors (403/404) set retry:false (fold: UDD/model-management-ui+routing-health-ui+tenant-settings-ui) | a member sees admin links that 403 (UX gap not security hole — gateway enforces RBAC); a settled error retry-storms before the alert without retry:false | folded v15 |
+| 2026-06-14 | design accessible names so none is a SUPERSTRING of another; role-scoped getByRole({name}) disambiguates collisions (fold: UDD/teams-governance-ui) | budget input vs "Save budget for X" button collided under getByLabelText substring-match (3 tests failed "multiple elements") | folded v15 |
+| 2026-06-14 | every useMutation has an onError surfacing the BffError title AND every contracted error branch (404/409/422/403) has its own red→green test — STANDING rule (fold: TDD/model-management-ui+teams-governance-ui) | silent-mutation-failure DEFECT recurred (model toggle, then budget PATCH); a missing path with no red anchor makes a suite "look complete" | folded v15 |
+| 2026-06-14 | loading asserts must prove RESOLUTION (loading→data), skip-link tests query ALL focusable types, fidelity tests pin per-entity (A=true WITH B=false), no-leak asserts enumerate every block, enum fixtures per VALUE, write-only secrets get explicit negative DOM asserts (fold: TDD/feature-coverage-verify+key-cache-enabled-fidelity+routing-health-ui+tenant-settings-ui) | each vacuous variant passes a broken impl: permanent role=status, first-anchor-not-focusable, always-true cheat, empty-shell render, silently-skipped half_open, sentinel-in-DOM | folded v15 |
+| 2026-06-14 | scope shared msw fallbacks to needed paths — a /api/gw/:path* wildcard defeats onUnhandledRequest:error (fold: TDD/feature-coverage-verify) | a forgotten per-test handler returns wrong data not a loud failure; deferred to bff-test-harness-strict-handlers | folded v15 |
+| 2026-06-14 | a milestone-EXIT verify suite legitimately lands GREEN on first run (earned-green proven by adversarial refute-read, not first-run red); a build-time Protocol signature change is scope-correction not contract-change; GROUND records the response envelope per-endpoint (fold: ADD/feature-coverage-verify+teams-add-by-email+teams-governance-ui) | "RED for the right reason" = the consolidated bar newly codified + provably held; /admin/teams is a BARE array while /admin/models is {object,data} — a wrong unwrap is a silent footgun | folded v15 |

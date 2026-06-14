@@ -148,5 +148,5 @@ Spec delta for the next loop: a list serializer and its single-item/PATCH siblin
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence.
-- [SDD · open] Hand-written per-endpoint serializers drift from their schema — list_keys dropped cache_enabled while patch_key forwarded it, silently defaulting the list to False (evidence: test_list_keys_reports_true_cache_enabled was RED). A shared KeyInfoResponse.from_domain(item) builder would make every endpoint forward every field by construction.
-- [TDD · open] A fidelity test must distinguish "true value forwarded" from "constant returned" — asserting only A=true would pass an always-true cheat; pairing A=true with B=false pins the per-key semantics (evidence: the test asserts both).
+- [SDD · folded] Hand-written per-endpoint serializers drift from their schema — list_keys dropped cache_enabled while patch_key forwarded it, silently defaulting the list to False (evidence: test_list_keys_reports_true_cache_enabled was RED). A shared KeyInfoResponse.from_domain(item) builder would make every endpoint forward every field by construction.
+- [TDD · folded] A fidelity test must distinguish "true value forwarded" from "constant returned" — asserting only A=true would pass an always-true cheat; pairing A=true with B=false pins the per-key semantics (evidence: the test asserts both).

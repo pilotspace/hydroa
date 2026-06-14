@@ -1,324 +1,9 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "feature-coverage-verify",
-  "active_milestone": "v15",
-  "tasks": {
-    "design-system-extension": {
-      "title": "Design System Extension",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T01:16:12+00:00",
-      "updated": "2026-06-14T01:36:42+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "13cc86928035c288e75cbe321651d0b2",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/ui/",
-          "apps/dashboard/tests/design-system/",
-          "apps/dashboard/.next/",
-          "apps/dashboard/coverage/",
-          "apps/dashboard/tsconfig.tsbuildinfo",
-          ".add/tasks/design-system-extension/"
-        ],
-        "snapshot_md5": "132b35a82f0e9e007a88951aa6051fb7"
-      }
-    },
-    "model-management-ui": {
-      "title": "Model Management UI",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T01:38:03+00:00",
-      "updated": "2026-06-14T02:06:45+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "8eff2b08c68faccb2a1cad63cf00d884",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/models/",
-          "apps/dashboard/app/(dashboard)/models/",
-          "apps/dashboard/components/ui/app-shell.tsx",
-          "apps/dashboard/tests-bff/",
-          "apps/dashboard/.next/",
-          "apps/dashboard/coverage/",
-          "apps/dashboard/tsconfig.tsbuildinfo",
-          ".add/tasks/model-management-ui/"
-        ],
-        "snapshot_md5": "630c8eb6a5790fa806155198efecaec3"
-      }
-    },
-    "bff-patch-passthrough": {
-      "title": "BFF PATCH passthrough fix",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T02:22:20+00:00",
-      "updated": "2026-06-14T02:27:33+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "dcda610b58e37b568189925f4908bfd2",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/app/api/gw/",
-          "apps/dashboard/tests-bff/",
-          "apps/dashboard/.next/",
-          "apps/dashboard/coverage/",
-          "apps/dashboard/tsconfig.tsbuildinfo",
-          ".add/tasks/bff-patch-passthrough/"
-        ],
-        "snapshot_md5": "de2c41318a8645bacbd9b58c898cc733"
-      }
-    },
-    "teams-add-by-email": {
-      "title": "Teams add member by email (gateway CR)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T02:34:31+00:00",
-      "updated": "2026-06-14T02:58:32+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "a1fdb1652bf679ca08828316e57209ea",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/teams/api/schemas.py",
-          "apps/gateway/src/gateway/teams/api/router.py",
-          "apps/gateway/src/gateway/teams/application/use_cases.py",
-          "apps/gateway/src/gateway/teams/infrastructure/repository.py",
-          "apps/gateway/src/gateway/teams/domain/ports.py",
-          "apps/gateway/tests/teams/",
-          ".add/tasks/teams-add-by-email/",
-          "apps/gateway/.coverage",
-          "apps/gateway/.ruff_cache/"
-        ],
-        "snapshot_md5": "dd468368d16851f7ab8034be607f9cb4"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-14T02:56:22+00:00",
-            "reason": "scope_violation: task 'teams-add-by-email' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (2 total)",
-            "source": "scope"
-          }
-        ]
-      }
-    },
-    "teams-governance-ui": {
-      "title": "Teams governance UI (/teams surface)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T03:00:36+00:00",
-      "updated": "2026-06-14T03:31:51+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "a5b74cb92d671fffe009654fef70e0ae",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/teams/",
-          "apps/dashboard/app/(dashboard)/teams/",
-          "apps/dashboard/components/ui/app-shell.tsx",
-          "apps/dashboard/tests-bff/",
-          "apps/dashboard/.next/",
-          "apps/dashboard/coverage/",
-          "apps/dashboard/tsconfig.tsbuildinfo",
-          ".add/tasks/teams-governance-ui/"
-        ],
-        "snapshot_md5": "8f8c5181f58b9e6c4587c267458efc35"
-      }
-    },
-    "tenant-settings-ui": {
-      "title": "Tenant settings UI (/settings tabbed hub)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T03:32:51+00:00",
-      "updated": "2026-06-14T04:04:33+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "c8839a39eb1de998a79172dd80a9870f",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/settings/",
-          "apps/dashboard/app/(dashboard)/settings/",
-          "apps/dashboard/components/ui/app-shell.tsx",
-          "apps/dashboard/tests-bff/",
-          "apps/dashboard/.next/",
-          "apps/dashboard/coverage/",
-          "apps/dashboard/tsconfig.tsbuildinfo",
-          ".add/tasks/tenant-settings-ui/"
-        ],
-        "snapshot_md5": "2b7c061089931dbdd2fcd65a2c71204e"
-      }
-    },
-    "routing-health-ui": {
-      "title": "Routing health UI (/routing read-only)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T04:06:46+00:00",
-      "updated": "2026-06-14T04:22:00+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "e78e12d8681b80167098f601031a321e",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/routing/",
-          "apps/dashboard/app/(dashboard)/routing/",
-          "apps/dashboard/components/ui/app-shell.tsx",
-          "apps/dashboard/tests-bff/",
-          "apps/dashboard/.next/",
-          "apps/dashboard/coverage/",
-          "apps/dashboard/tsconfig.tsbuildinfo",
-          ".add/tasks/routing-health-ui/"
-        ],
-        "snapshot_md5": "7f89a72aa07f835455caf2234bc6dabd"
-      }
-    },
-    "governance-completion-ui": {
-      "title": "Governance completion UI (key depth + spend breakdown + SSO login)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T04:22:53+00:00",
-      "updated": "2026-06-14T05:58:19+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "6e9f749b31d1b5dd7f4463745c7c71d8",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/keys/KeyGovernanceEditor.tsx",
-          "apps/dashboard/components/keys/KeysPage.tsx",
-          "apps/dashboard/components/spend/SpendPage.tsx",
-          "apps/dashboard/tests-bff/",
-          "apps/dashboard/.next/",
-          "apps/dashboard/coverage/",
-          "apps/dashboard/tsconfig.tsbuildinfo",
-          ".add/tasks/governance-completion-ui/"
-        ],
-        "snapshot_md5": "e72e318c15dd222822db39b67532ec0b"
-      }
-    },
-    "key-cache-enabled-fidelity": {
-      "title": "Key list cache_enabled fidelity (gateway serializer fix)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T04:49:28+00:00",
-      "updated": "2026-06-14T04:57:03+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "c1cc9cc3b0914a1149e85db7bb802215",
-        "tests": {
-          "apps/gateway/tests/keys/test_api_keys.py": "47396d8f754528b64c30da26f410b12d"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/keys/api/router.py",
-          "apps/gateway/tests/keys/test_api_keys.py",
-          ".add/tasks/key-cache-enabled-fidelity/",
-          "apps/gateway/.coverage",
-          "apps/gateway/.ruff_cache/"
-        ],
-        "snapshot_md5": "f2cfde89fadb868ada9bb4966dd92ec4"
-      }
-    },
-    "oidc-login-relay": {
-      "title": "SSO login via pre-auth BFF relay",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T06:02:32+00:00",
-      "updated": "2026-06-14T06:16:59+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "30e79d07687efcfed4b7c36143b477a4",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/app/api/auth/oidc/login/route.ts",
-          "apps/dashboard/components/auth/LoginForm.tsx",
-          "apps/dashboard/tests-bff/",
-          "apps/dashboard/.next/",
-          "apps/dashboard/coverage/",
-          "apps/dashboard/tsconfig.tsbuildinfo",
-          ".add/tasks/oidc-login-relay/"
-        ],
-        "snapshot_md5": "c8dcad2b39dc61f1556e6ec6d8819c43"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-14T06:15:29+00:00",
-            "reason": "tamper_detected:contract_tampered",
-            "source": "tamper"
-          }
-        ]
-      }
-    },
-    "feature-coverage-verify": {
-      "title": "v15 milestone-exit verification (a11y/keyboard/state/responsive across new surfaces)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v15",
-      "depends_on": [],
-      "created": "2026-06-14T06:18:26+00:00",
-      "updated": "2026-06-14T06:34:45+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "964605e9d9bd58773a08f949f6a9109d",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/tests-bff/",
-          "apps/dashboard/components/ui/",
-          "apps/dashboard/components/models/",
-          "apps/dashboard/components/teams/",
-          "apps/dashboard/components/routing/",
-          "apps/dashboard/components/settings/",
-          "apps/dashboard/.next/",
-          "apps/dashboard/coverage/",
-          "apps/dashboard/tsconfig.tsbuildinfo",
-          ".add/tasks/feature-coverage-verify/"
-        ],
-        "snapshot_md5": "98718025a79a87f6aa20185195fedb6e"
-      }
-    }
-  },
+  "active_task": null,
+  "active_milestone": null,
+  "tasks": {},
   "milestones": {
     "v14": {
       "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
@@ -327,18 +12,10 @@
       "status": "planned",
       "created": "2026-06-13T14:45:24+00:00",
       "updated": "2026-06-13T14:45:24+00:00"
-    },
-    "v15": {
-      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
-      "goal": "a tenant owner/admin can manage every backend capability (model availability, teams & members, per-key rate/cache governance, spend breakdowns, routing health, response cache, guardrails, SSO/OIDC) through a consistent, accessible, responsive dashboard, with NO change to the gateway/BFF contracts",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-14T01:10:37+00:00",
-      "updated": "2026-06-14T06:36:24+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T06:36:24+00:00",
+  "updated": "2026-06-14T06:47:46+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -521,6 +198,25 @@
         "usage-cost-ui",
         "key-budget-governance-ui",
         "ui-ux-verify"
+      ],
+      "archived": "2026-06-14"
+    },
+    {
+      "slug": "v15",
+      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
+      "tasks": 11,
+      "task_slugs": [
+        "design-system-extension",
+        "model-management-ui",
+        "bff-patch-passthrough",
+        "teams-add-by-email",
+        "teams-governance-ui",
+        "tenant-settings-ui",
+        "routing-health-ui",
+        "governance-completion-ui",
+        "key-cache-enabled-fidelity",
+        "oidc-login-relay",
+        "feature-coverage-verify"
       ],
       "archived": "2026-06-14"
     }

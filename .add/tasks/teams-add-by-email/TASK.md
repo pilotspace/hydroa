@@ -249,6 +249,6 @@ Spec delta for the next loop: the add-by-email path is the contract the `/teams`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [DDD · open] additive identity-resolution (email→user_id) belongs in the repository inside the existing txn, tenant-scoped, with defense-in-depth (resolve filter + team-membership check both enforce isolation) — evidence: cross-tenant email returns 404 even if either guard alone were removed
-- [SDD · open] an "exactly-one-of" optional-identifier contract is cleanly expressed as a Pydantic `@model_validator(mode="after")` + `str_strip_whitespace`, so whitespace-only collapses to "absent" — evidence: test_add_member_whitespace_email_422, test_add_member_{both,neither}_422
-- [ADD · open] a build-time port (Protocol) signature change is a legitimate scope correction (not a contract change) when pyright forces it to reflect a new capability — evidence: TeamRepository.add_member gained `email` to clear reportCallIssue; §3 unchanged
+- [DDD · folded] additive identity-resolution (email→user_id) belongs in the repository inside the existing txn, tenant-scoped, with defense-in-depth (resolve filter + team-membership check both enforce isolation) — evidence: cross-tenant email returns 404 even if either guard alone were removed
+- [SDD · folded] an "exactly-one-of" optional-identifier contract is cleanly expressed as a Pydantic `@model_validator(mode="after")` + `str_strip_whitespace`, so whitespace-only collapses to "absent" — evidence: test_add_member_whitespace_email_422, test_add_member_{both,neither}_422
+- [ADD · folded] a build-time port (Protocol) signature change is a legitimate scope correction (not a contract change) when pyright forces it to reflect a new capability — evidence: TeamRepository.add_member gained `email` to clear reportCallIssue; §3 unchanged
