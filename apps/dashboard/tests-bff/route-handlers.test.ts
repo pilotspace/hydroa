@@ -335,7 +335,7 @@ describe("GET /api/gw/[...path]", () => {
 
     // Act: call the proxy handler directly
     // The catch-all route receives params: { path: ["admin", "keys"] }
-    const res = await proxyGet(req, { params: { path: ["admin", "keys"] } });
+    const res = await proxyGet(req, { params: Promise.resolve({ path: ["admin", "keys"] }) });
 
     // Assert: upstream received Bearer token
     expect(capturedAuthHeader).toBe(`Bearer ${VALID_SESSION_JWT}`);
@@ -368,7 +368,7 @@ describe("GET /api/gw/[...path]", () => {
     });
 
     // Act
-    const res = await proxyGet(req, { params: { path: ["admin", "keys"] } });
+    const res = await proxyGet(req, { params: Promise.resolve({ path: ["admin", "keys"] }) });
 
     // Assert
     expect(res.status).toBe(401);
@@ -401,7 +401,7 @@ describe("GET /api/gw/[...path]", () => {
     );
 
     // Act
-    const res = await proxyGet(req, { params: { path: ["admin", "keys"] } });
+    const res = await proxyGet(req, { params: Promise.resolve({ path: ["admin", "keys"] }) });
 
     // Assert: BFF returns 401 with ERR_AUTH_SESSION_EXPIRED
     expect(res.status).toBe(401);
@@ -438,7 +438,7 @@ describe("DELETE /api/gw/[...path]", () => {
     });
 
     // Act
-    const res = await proxyDelete(req, { params: { path: ["admin", "keys", "kid-1"] } });
+    const res = await proxyDelete(req, { params: Promise.resolve({ path: ["admin", "keys", "kid-1"] }) });
 
     // Assert
     expect(res.status).toBe(401);

@@ -13,7 +13,7 @@
  * against the un-extended editor (the file imports fine; behavior is wrong).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -26,6 +26,18 @@ import { KeyGovernanceEditor } from "@/components/keys/KeyGovernanceEditor";
 import { KeysPage } from "@/components/keys/KeysPage";
 
 const APP = "http://localhost:3000";
+
+// KeyGovernanceEditor's team-assignment selector fires useQuery(["admin-teams"]) →
+// GET /api/gw/admin/teams on every render. Register an EXPLICIT empty-list default
+// for all tests (the BARE-array shape) now that the broad gw wildcard is gone; the
+// few tests that exercise team assignment override it with their own server.use
+// (msw prepends runtime handlers, so a later server.use wins). Strict-harness
+// convention: scope shared fallbacks to the concrete paths a rendered component needs.
+beforeEach(() => {
+  server.use(
+    http.get(`${APP}/api/gw/admin/teams`, () => HttpResponse.json([]))
+  );
+});
 
 function makeQueryClient() {
   return new QueryClient({

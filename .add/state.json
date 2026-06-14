@@ -1,9 +1,43 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "bff-test-harness-strict-handlers",
   "active_milestone": "v17",
-  "tasks": {},
+  "tasks": {
+    "bff-test-harness-strict-handlers": {
+      "title": "Strict BFF test harness \u2014 tsc-clean tests-bff + scoped msw handlers",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v17",
+      "depends_on": [],
+      "created": "2026-06-14T08:36:56+00:00",
+      "updated": "2026-06-14T14:46:11+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "922f7905b9ca71851bf978dcad1cbd2a",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/bff-test-harness-strict-handlers/"
+        ],
+        "snapshot_md5": "6aeb34398bb83b171e2d8efef50fc324"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-14T14:45:15+00:00",
+            "reason": "scope_violation: task 'bff-test-harness-strict-handlers' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/coverage/lcov-report/components/auth/LoginForm.tsx.html \u00b7 apps/dashboard/coverage/lcov-report/components/auth/SignupForm.tsx.html \u00b7 apps/dashboard/coverage/lcov-report/components/auth/index.html \u00b7 apps/dashboard/coverage/lcov-report/components/keys/CreateKeyDialog.tsx.html \u00b7 apps/dashboard/coverage/lcov-report/components/keys/KeyGovernanceEditor.tsx.html (61 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    }
+  },
   "milestones": {
     "v17": {
       "title": "Hardening \u2014 clear carried follow-up debt (v13/v14/v15)",
@@ -15,7 +49,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T08:35:24+00:00",
+  "updated": "2026-06-14T14:46:11+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

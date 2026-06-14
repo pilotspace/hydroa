@@ -259,7 +259,7 @@ describe("XSS simulation — token inaccessible to page JavaScript", () => {
     expect(document.cookie).not.toContain(VALID_SESSION_JWT);
 
     // Belt-and-suspenders: confirm no token in window properties
-    expect((window as Record<string, unknown>)["ai_proxy_token"]).toBeUndefined();
+    expect((window as unknown as Record<string, unknown>)["ai_proxy_token"]).toBeUndefined();
   });
 });
 

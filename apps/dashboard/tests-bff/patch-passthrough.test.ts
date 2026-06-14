@@ -50,7 +50,7 @@ describe("PATCH /api/gw/[...path]", () => {
       { monthly_budget_usd: "5.00" },
     );
 
-    const res = await proxyPatch(req, { params: { path: ["admin", "keys", "kid-1"] } });
+    const res = await proxyPatch(req, { params: Promise.resolve({ path: ["admin", "keys", "kid-1"] }) });
 
     // upstream received the bearer + the EXACT body (no drop)
     expect(capturedAuth).toBe(`Bearer ${VALID_SESSION_JWT}`);
@@ -78,7 +78,7 @@ describe("PATCH /api/gw/[...path]", () => {
       body: JSON.stringify({ monthly_budget_usd: "5.00" }),
     });
 
-    const res = await proxyPatch(req, { params: { path: ["admin", "keys", "kid-1"] } });
+    const res = await proxyPatch(req, { params: Promise.resolve({ path: ["admin", "keys", "kid-1"] }) });
 
     expect(res.status).toBe(401);
     const body = (await res.json()) as Record<string, unknown>;

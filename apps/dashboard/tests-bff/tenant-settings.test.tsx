@@ -66,7 +66,8 @@ function problem(title: string, status: number, code: string) {
 }
 
 const cacheGet = (body: unknown = CACHE_ON) =>
-  http.get(`${APP}/api/gw/admin/cache`, () => HttpResponse.json(body));
+  http.get(`${APP}/api/gw/admin/cache`, () =>
+    HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
 
 // ── shell + tabs ──────────────────────────────────────────────────────────────
 describe("SettingsPage — tab shell", () => {
@@ -203,7 +204,7 @@ describe("SettingsPage — guardrails tab", () => {
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => expect(putBody).not.toBeNull());
-    const pii = (putBody as Record<string, unknown>).pii_mask as Record<string, unknown>;
+    const pii = (putBody as unknown as Record<string, unknown>).pii_mask as Record<string, unknown>;
     expect(pii.pii_custom_patterns).toEqual([{ name: "SSN", pattern: "\\d+" }]);
   });
 
@@ -307,8 +308,8 @@ describe("SettingsPage — SSO tab", () => {
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => expect(putBody).not.toBeNull());
-    expect((putBody as Record<string, unknown>).client_secret).toBe("freshsecret");
-    expect((putBody as Record<string, unknown>).issuer).toBe("https://idp.example.com");
+    expect((putBody as unknown as Record<string, unknown>).client_secret).toBe("freshsecret");
+    expect((putBody as unknown as Record<string, unknown>).issuer).toBe("https://idp.example.com");
     // SECURITY: after a successful save the secret input is cleared (write-only UX)
     // and the "<stored>" sentinel from the refetched GET never lands in any input.
     await waitFor(() => expect(screen.getByLabelText(/client secret/i)).toHaveValue(""));

@@ -85,7 +85,8 @@ function problem(title: string, status: number, code: string) {
 }
 
 const routingGet = (body: unknown = FULL) =>
-  http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(body));
+  http.get(`${APP}/api/gw/admin/routing`, () =>
+    HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
 
 // ── full render ─────────────────────────────────────────────────────────────────
 describe("RoutingPage — full config + candidates", () => {
