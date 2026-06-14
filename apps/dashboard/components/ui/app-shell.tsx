@@ -1,5 +1,5 @@
 import * as React from "react";
-import { BarChart3, Boxes, KeyRound, Receipt } from "lucide-react";
+import { BarChart3, Boxes, KeyRound, Receipt, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 /**
@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/spend", label: "Spend", icon: Receipt },
   { href: "/keys", label: "API Keys", icon: KeyRound },
   { href: "/models", label: "Models", icon: Boxes },
+  { href: "/teams", label: "Teams", icon: Users },
 ];
 
 export interface AppShellProps {

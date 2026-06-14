@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "teams-add-by-email",
+  "active_task": "teams-governance-ui",
   "active_milestone": "v15",
   "tasks": {
     "design-system-extension": {
@@ -118,6 +118,33 @@
           }
         ]
       }
+    },
+    "teams-governance-ui": {
+      "title": "Teams governance UI (/teams surface)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v15",
+      "depends_on": [],
+      "created": "2026-06-14T03:00:36+00:00",
+      "updated": "2026-06-14T03:31:51+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a5b74cb92d671fffe009654fef70e0ae",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/teams/",
+          "apps/dashboard/app/(dashboard)/teams/",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/teams-governance-ui/"
+        ],
+        "snapshot_md5": "8f8c5181f58b9e6c4587c267458efc35"
+      }
     }
   },
   "milestones": {
@@ -139,7 +166,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T02:58:32+00:00",
+  "updated": "2026-06-14T03:31:51+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
