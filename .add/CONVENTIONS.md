@@ -393,6 +393,29 @@ Build/harness conventions folded from v1 (2026-06-10):
         - GROUND records the response ENVELOPE per-endpoint, never assumes uniformity — `/admin/
           teams` returns a BARE array while `/admin/models` returns `{object,data}`; a wrong
           unwrap is a silent footgun (§0 must flag "BARE array, no {data} unwrap").
+        Test conventions folded from v14 (2026-06-14, Next.js 16 upgrade):
+        - adopting a framework's NEW lint rules that flag PRE-EXISTING code: downgrade error→warn
+          (VISIBLE in `eslint .` output — never `// eslint-disable`, which hides it) to hold the
+          0-error baseline, and TICKET the real fix as a follow-up; never break the baseline nor
+          silently suppress (evidence: eslint-config-next 16's react-hooks/refs + set-state-in-effect
+          flagged 60 pre-existing v13/v15 patterns → error→warn + `react-hooks-strict-lint`).
+        - the PRODUCTION type-gate for the dashboard is `next build` (it type-checks the app graph),
+          NOT a bare `tsc --noEmit`: `tests-bff/` is excluded from BOTH lint (eslint globalIgnores)
+          and the type-gate, so test-harness type drift (e.g. Next 16's async-params Promise<{path}>
+          typing) is tracked separately (`bff-test-harness-strict-handlers`), never blocking nor
+          conflated with a clean production surface (evidence: v14 prod build TS-clean while tests-bff
+          showed Promise<{path}> + msw-cast errors; the 236 tests pass at runtime via esbuild).
+        Build/harness conventions folded from v14 (2026-06-14, Next.js 16 upgrade):
+        - a risk:high major-dependency bump landing WITHOUT CI (Actions billing-blocked) must capture
+          PROD-SERVER smoke curl output VERBATIM as gate evidence — a green jsdom suite cannot prove
+          Turbopack-bundle / Edge→Node-runtime / prefetch-cache parity; `next build` + `next start` on
+          127.0.0.1 + curl of an authed + an unauthed route through the guard is the in-scope runtime-
+          parity proof, recorded in §6 (evidence: v14 5-curl proxy smoke byte-identical to the v13 guard).
+        - an npm-advisory security gate is scoped to the SHIPPED surface (`npm audit --omit=dev`),
+          NOT the full dev+prod audit: dev-toolchain advisories (vitest/vite/esbuild) are pre-existing,
+          never shipped, and triaged + ticketed separately (`devtool-vitest4-upgrade`) — conflating them
+          either blocks a clean production upgrade on dev debt or hides real shipped risk (evidence: v14
+          prod audit 0/0/0 vs full audit 7; the SDD §Spec principle codifies the why).
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config
