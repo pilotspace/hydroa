@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "react-hooks-strict-lint",
+  "active_task": "nav-role-filter",
   "active_milestone": "v17",
   "tasks": {
     "bff-test-harness-strict-handlers": {
@@ -68,6 +68,34 @@
         ],
         "snapshot_md5": "f39b86926f502ca9f4c90e079cc6253f"
       }
+    },
+    "nav-role-filter": {
+      "title": "Role-based nav visibility (member hides admin-only links)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v17",
+      "depends_on": [],
+      "created": "2026-06-14T15:28:19+00:00",
+      "updated": "2026-06-14T15:41:29+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "664685b9481ba6df841b79f776404107",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/components/dashboard-shell.tsx",
+          "apps/dashboard/components/ui/index.ts",
+          "apps/dashboard/app/(dashboard)/layout.tsx",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          "apps/dashboard/.next/",
+          ".add/tasks/nav-role-filter/"
+        ],
+        "snapshot_md5": "01b65df9e6111df05a1c575aaddce61d"
+      }
     }
   },
   "milestones": {
@@ -81,7 +109,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T15:20:15+00:00",
+  "updated": "2026-06-14T15:41:29+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

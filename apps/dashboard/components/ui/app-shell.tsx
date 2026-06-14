@@ -13,15 +13,23 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /**
+   * Minimum role that can use the page the link points to. `"admin"` means the
+   * page's GET 403s on a `member` (owner|admin only) — so the link is hidden from
+   * members. Omitted ⇒ any authenticated role may see the link. (SSO is NOT a nav
+   * link; it is a server-authoritative tab inside /settings, so /settings has no
+   * minRole.) The gateway remains the source of truth — this is UX-only.
+   */
+  minRole?: "admin";
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/spend", label: "Spend", icon: Receipt },
   { href: "/keys", label: "API Keys", icon: KeyRound },
-  { href: "/models", label: "Models", icon: Boxes },
-  { href: "/teams", label: "Teams", icon: Users },
-  { href: "/routing", label: "Routing", icon: Activity },
+  { href: "/models", label: "Models", icon: Boxes, minRole: "admin" },
+  { href: "/teams", label: "Teams", icon: Users, minRole: "admin" },
+  { href: "/routing", label: "Routing", icon: Activity, minRole: "admin" },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -29,9 +37,19 @@ export interface AppShellProps {
   children: React.ReactNode;
   /** The active route path, used to mark the current nav item. */
   activePath?: string;
+  /**
+   * The current user's role (owner|admin|member). When `"member"`, admin-only
+   * links are hidden. Any other value — including null/undefined while the
+   * identity is still loading or failed — FAILS OPEN (all links shown); the
+   * gateway still enforces RBAC on navigate, so no one is locked out of their nav.
+   */
+  role?: string | null;
 }
 
-export function AppShell({ children, activePath }: AppShellProps) {
+export function AppShell({ children, activePath, role }: AppShellProps) {
+  const navItems = NAV_ITEMS.filter(
+    (item) => !(item.minRole === "admin" && role === "member"),
+  );
   return (
     <div className="min-h-screen bg-background text-foreground">
       <a
@@ -49,7 +67,7 @@ export function AppShell({ children, activePath }: AppShellProps) {
           <div className="mb-2 hidden px-2 text-lg font-semibold tracking-tight text-foreground lg:block">
             Hydroa
           </div>
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const isActive = activePath === item.href;
             const Icon = item.icon;
             return (
