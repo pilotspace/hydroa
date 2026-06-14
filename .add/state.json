@@ -4,18 +4,9 @@
   "active_task": null,
   "active_milestone": null,
   "tasks": {},
-  "milestones": {
-    "v14": {
-      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
-      "goal": "the dashboard runs on a Next.js version with no open critical/high npm advisories, with all existing behavioral suites green after the breaking upgrade",
-      "stage": "production",
-      "status": "planned",
-      "created": "2026-06-13T14:45:24+00:00",
-      "updated": "2026-06-13T14:45:24+00:00"
-    }
-  },
+  "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T06:47:46+00:00",
+  "updated": "2026-06-14T08:22:54+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -217,6 +208,15 @@
         "key-cache-enabled-fidelity",
         "oidc-login-relay",
         "feature-coverage-verify"
+      ],
+      "archived": "2026-06-14"
+    },
+    {
+      "slug": "v14",
+      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
+      "tasks": 1,
+      "task_slugs": [
+        "next16-upgrade"
       ],
       "archived": "2026-06-14"
     }

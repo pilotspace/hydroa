@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-14 · foundation-version: 15
+slug: ai-proxy · stage: production · updated: 2026-06-14 · foundation-version: 16
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -329,6 +329,13 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     budget input vs the "Save budget for X" button collided under getByLabelText substring-match).
   - deterministic read errors (403/404) set `retry:false` on the query, else a settled error
     retry-storms before the inline alert renders (parity fix across all settings queries).
+- Folded from v14 (2026-06-14):
+  - the enterprise npm-advisory SECURITY gate is scoped to the SHIPPED/production surface
+    (`npm audit --omit=dev` = 0 critical/high), NOT the full dev+prod audit — dev-toolchain
+    advisories (vitest/vite/esbuild) are never shipped to the deployed app, so they are triaged +
+    ticketed (`devtool-vitest4-upgrade`) rather than blocking a clean production upgrade; conflating
+    the two either gates production on dev debt or masks real shipped risk (evidence: v14 Next 16
+    upgrade — prod surface 0/0/0 while the full audit retained 7 pre-existing dev-only advisories).
 
 ## Architecture (settled at setup)
 
@@ -441,3 +448,6 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-14 | loading asserts must prove RESOLUTION (loading→data), skip-link tests query ALL focusable types, fidelity tests pin per-entity (A=true WITH B=false), no-leak asserts enumerate every block, enum fixtures per VALUE, write-only secrets get explicit negative DOM asserts (fold: TDD/feature-coverage-verify+key-cache-enabled-fidelity+routing-health-ui+tenant-settings-ui) | each vacuous variant passes a broken impl: permanent role=status, first-anchor-not-focusable, always-true cheat, empty-shell render, silently-skipped half_open, sentinel-in-DOM | folded v15 |
 | 2026-06-14 | scope shared msw fallbacks to needed paths — a /api/gw/:path* wildcard defeats onUnhandledRequest:error (fold: TDD/feature-coverage-verify) | a forgotten per-test handler returns wrong data not a loud failure; deferred to bff-test-harness-strict-handlers | folded v15 |
 | 2026-06-14 | a milestone-EXIT verify suite legitimately lands GREEN on first run (earned-green proven by adversarial refute-read, not first-run red); a build-time Protocol signature change is scope-correction not contract-change; GROUND records the response envelope per-endpoint (fold: ADD/feature-coverage-verify+teams-add-by-email+teams-governance-ui) | "RED for the right reason" = the consolidated bar newly codified + provably held; /admin/teams is a BARE array while /admin/models is {object,data} — a wrong unwrap is a silent footgun | folded v15 |
+| 2026-06-14 | a risk:high major-dep bump landing WITHOUT CI must capture prod-server smoke curl output verbatim as gate evidence — `next build` + `next start` (127.0.0.1) + curl authed/unauthed guard (fold: ADD/next16-upgrade) | a green jsdom suite cannot prove Turbopack-bundle / Edge→Node-runtime / prefetch-cache parity; the 5-curl proxy smoke was byte-identical to the v13 guard | folded v16 |
+| 2026-06-14 | the enterprise npm-advisory security gate is scoped to the SHIPPED surface (`npm audit --omit=dev` 0 critical/high); dev-toolchain advisories are triaged + ticketed (devtool-vitest4-upgrade), never gate a clean prod upgrade (fold: SDD+TDD/next16-upgrade) | conflating dev+prod audit either blocks production on dev debt or masks shipped risk; v14 prod 0/0/0 vs full 7 (all dev-only, pre-existing) | folded v16 |
+| 2026-06-14 | a framework's NEW lint rules on pre-existing code → downgrade error→warn (visible, never eslint-disable) + ticket the fix, never break the 0-error baseline; the dashboard production type-gate is `next build` (not bare tsc), tests-bff drift tracked separately (fold: TDD/next16-upgrade) | eslint-config-next 16 flagged 60 v13/v15 patterns (react-hooks-strict-lint); Next 16 async-params Promise<{path}> typing drifts tests-bff while prod stays clean (bff-test-harness-strict-handlers) | folded v16 |
