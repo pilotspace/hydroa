@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "key-cache-enabled-fidelity",
+  "active_task": "governance-completion-ui",
   "active_milestone": "v15",
   "tasks": {
     "design-system-extension": {
@@ -202,12 +202,30 @@
     },
     "governance-completion-ui": {
       "title": "Governance completion UI (key depth + spend breakdown + SSO login)",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v15",
       "depends_on": [],
       "created": "2026-06-14T04:22:53+00:00",
-      "updated": "2026-06-14T04:22:53+00:00"
+      "updated": "2026-06-14T05:58:19+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6e9f749b31d1b5dd7f4463745c7c71d8",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/keys/KeyGovernanceEditor.tsx",
+          "apps/dashboard/components/keys/KeysPage.tsx",
+          "apps/dashboard/components/spend/SpendPage.tsx",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/governance-completion-ui/"
+        ],
+        "snapshot_md5": "e72e318c15dd222822db39b67532ec0b"
+      }
     },
     "key-cache-enabled-fidelity": {
       "title": "Key list cache_enabled fidelity (gateway serializer fix)",
@@ -255,7 +273,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T04:57:03+00:00",
+  "updated": "2026-06-14T05:58:19+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

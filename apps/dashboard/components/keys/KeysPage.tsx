@@ -52,6 +52,13 @@ interface ApiKey {
   soft_budget_usd?: string | null;
   expires_at?: string | null;
   model_allowlist?: string[] | null;
+  // Depth governance fields (v15 governance-completion-ui) — GET /admin/keys returns
+  // all four (keys/api/router.py:151-154). They MUST flow into the editor or a
+  // no-touch dense-PATCH save would silently clear the key's rpm/tpm/team & cache.
+  rpm_limit?: number | null;
+  tpm_limit?: number | null;
+  team_id?: string | null;
+  cache_enabled?: boolean;
 }
 
 interface CreateKeyResponse {
@@ -72,6 +79,12 @@ function toGovernanceKey(k: ApiKey): ApiKeyGovernance {
     soft_budget_usd: k.soft_budget_usd ?? null,
     expires_at: k.expires_at ?? null,
     model_allowlist: k.model_allowlist ?? null,
+    // Carry the depth fields through so the editor prefills the real values —
+    // without these the dense PATCH would clear them on a no-touch save.
+    rpm_limit: k.rpm_limit ?? null,
+    tpm_limit: k.tpm_limit ?? null,
+    team_id: k.team_id ?? null,
+    cache_enabled: k.cache_enabled ?? false,
   };
 }
 
