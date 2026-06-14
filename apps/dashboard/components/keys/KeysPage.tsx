@@ -24,6 +24,21 @@ import { KeyRow } from "./KeyRow";
 import { CreateKeyDialog } from "./CreateKeyDialog";
 import { PlaintextKeyBanner } from "./PlaintextKeyBanner";
 import { KeyGovernanceEditor, ApiKeyGovernance } from "./KeyGovernanceEditor";
+import {
+  Button,
+  Card,
+  CardContent,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  Loading,
+  ErrorState,
+  Empty,
+} from "@/components/ui";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 /** Extended ApiKey includes governance fields from key-governance §3 FROZEN contract */
 interface ApiKey {
@@ -144,22 +159,24 @@ export function KeysPage() {
     return "An error occurred";
   }
 
+  // Focus-trap + ESC for the revoke-confirm dialog (accessible-dialog contract)
+  const revokeTrapRef = useFocusTrap<HTMLDivElement>(!!revokeTargetId, handleCancelRevoke);
+
   return (
-    <div>
-      <header>
-        <h1>API Keys</h1>
-        <div>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          API Keys
+        </h1>
+        <div className="flex items-center gap-2">
           {!isCreateDialogOpen && (
-            <button
-              type="button"
-              onClick={() => setIsCreateDialogOpen(true)}
-            >
+            <Button type="button" onClick={() => setIsCreateDialogOpen(true)}>
               Create key
-            </button>
+            </Button>
           )}
-          <button type="button" onClick={handleLogout}>
+          <Button type="button" variant="outline" onClick={handleLogout}>
             Log out
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -173,84 +190,102 @@ export function KeysPage() {
 
       {/* Revoke confirmation dialog */}
       {revokeTargetId && (
-        <div role="dialog" aria-modal="true" aria-label="Confirm revocation">
-          <p>Are you sure you want to revoke this key? This cannot be undone.</p>
-          <button type="button" onClick={handleConfirmRevoke}>
-            Confirm
-          </button>
-          <button type="button" onClick={handleCancelRevoke}>
-            Cancel
-          </button>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4"
+          data-testid="revoke-overlay"
+        >
+          <div
+            ref={revokeTrapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm revocation"
+            className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg"
+          >
+            <p className="text-sm text-foreground">
+              Are you sure you want to revoke this key? This cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="destructive" onClick={handleConfirmRevoke}>
+                Confirm
+              </Button>
+              <Button type="button" variant="outline" onClick={handleCancelRevoke}>
+                Cancel
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Keys list */}
       {isLoading && (
-        <div
-          role="status"
-          aria-busy="true"
-          aria-label="Loading API keys"
+        <Loading
+          label="Loading API keys"
           data-testid="loading"
-        >
-          <span className="animate-pulse">Loading…</span>
-        </div>
+          className="animate-pulse"
+        />
       )}
 
-      {isError && !isLoading && (
-        <p role="alert">{getErrorTitle(error)}</p>
-      )}
+      {isError && !isLoading && <ErrorState title={getErrorTitle(error)} />}
 
       {!isLoading && !isError && keys !== undefined && keys.length === 0 && (
-        <p>No API keys yet. Create your first key to get started.</p>
+        <Empty
+          title="No API keys yet"
+          description="Create your first key to get started."
+        />
       )}
 
       {!isLoading && !isError && keys !== undefined && keys.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th>Key ID</th>
-              <th>Name</th>
-              <th>Prefix</th>
-              <th>Created</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((key) => (
-              <Fragment key={key.key_id}>
-                <KeyRow
-                  apiKey={key}
-                  onRevoke={handleRevoke}
-                  isPendingRevoke={revokeTargetId === key.key_id}
-                />
-                {/* Governance editor — its own sibling row (KeyRow renders a <tr>) */}
-                <tr>
-                  <td colSpan={6}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandedGovernance(
-                          expandedGovernance === key.key_id ? null : key.key_id
-                        )
-                      }
-                    >
-                      {expandedGovernance === key.key_id
-                        ? "Hide governance"
-                        : "Governance"}
-                    </button>
-                    {expandedGovernance === key.key_id && (
-                      <KeyGovernanceEditor
-                        apiKey={toGovernanceKey(key)}
-                        onUpdated={handleGovernanceUpdated}
-                      />
-                    )}
-                  </td>
-                </tr>
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Key ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Prefix</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {keys.map((key) => (
+                  <Fragment key={key.key_id}>
+                    <KeyRow
+                      apiKey={key}
+                      onRevoke={handleRevoke}
+                      isPendingRevoke={revokeTargetId === key.key_id}
+                    />
+                    {/* Governance editor — its own sibling row (KeyRow renders a <tr>) */}
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() =>
+                            setExpandedGovernance(
+                              expandedGovernance === key.key_id ? null : key.key_id
+                            )
+                          }
+                        >
+                          {expandedGovernance === key.key_id
+                            ? "Hide governance"
+                            : "Governance"}
+                        </Button>
+                        {expandedGovernance === key.key_id && (
+                          <KeyGovernanceEditor
+                            apiKey={toGovernanceKey(key)}
+                            onUpdated={handleGovernanceUpdated}
+                          />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  </Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       <CreateKeyDialog

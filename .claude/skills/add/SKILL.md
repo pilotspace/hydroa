@@ -20,7 +20,7 @@ You are the orchestrator. ADD keeps the AI fast *and* safe by fixing direction
 the result through passing evidence rather than a plausible-looking diff.
 
 **One file = one task.** Each feature lives in a single `.add/tasks/<slug>/TASK.md`
-with seven sections. You fill them top to bottom; the Python tool tracks where
+with a §0 ground preamble and seven step sections. You fill them top to bottom; the Python tool tracks where
 you are so context never rots across sessions.
 
 ## Always start here (orient — do not skip)
@@ -61,6 +61,7 @@ Load the phase guide **only for the phase you are in** (progressive disclosure):
 | Phase | Guide | Produces (TASK.md section) | Who leads |
 |-------|-------|----------------------------|-----------|
 | setup | `phases/0-setup.md` | `.add/` + living docs + first §1–§3 + `SETUP-REVIEW.md` | AI drafts → **human locks** (the baseline approval) |
+| ground | `phases/0-ground.md` | §0 GROUND map (real files · symbols · the anchors §3 cites) | **AI** (the §0 preamble — no new gate) |
 | specify | `phases/1-specify.md` | §1 rules + ranked lowest-confidence flag | AI drafts (co-specify)† |
 | scenarios | `phases/2-scenarios.md` | §2 Given/When/Then | AI drafts† |
 | contract | `phases/3-contract.md` | §3 frozen shape | AI drafts → **human approves once** (the decision point)† |
@@ -73,7 +74,7 @@ Load the phase guide **only for the phase you are in** (progressive disclosure):
 contract freeze** (the decision point), presented lowest-confidence-first. See `run.md`.
 ‡ **Verify auto-gate (v6–v7).** Under `autonomy: auto` (the default) a run may auto-PASS on
 complete evidence — recorded as *auto-resolved*, an explicit PASS, not a skip. **Security always
-escalates** (HARD-STOP); so do concurrency / architecture residue and `conservative` autonomy.
+escalates** (HARD-STOP); so do concurrency / architecture residue and a lowered autonomy level (`conservative` / `manual`).
 See `run.md`.
 
 Whenever you present a decision point to the human in chat (intake · bundle approval · gate ·
@@ -90,7 +91,7 @@ gathers confirmed deltas into a versioned foundation — read `fold.md`.
 ## Beyond the bundle — load on demand
 
 Once **§3 CONTRACT is FROZEN**, the build→verify half is a dynamic, auto-gated run
-(`autonomy: auto` default, lowered to `conservative` for a human gate) — read `run.md`. To
+(`autonomy: auto` default, lowered to `conservative` or `manual` for a human gate) — read `run.md`. To
 pipeline several ready tasks behind their own frozen contracts, read `streams.md`.
 
 When a milestone's tasks are all done but its **goal** (the `MILESTONE.md` exit criteria) is not

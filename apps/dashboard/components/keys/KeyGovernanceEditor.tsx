@@ -24,6 +24,8 @@
 import { useState } from "react";
 import { bffPatch, bffPost, BffError } from "@/lib/bff-client";
 import { PlaintextKeyBanner } from "./PlaintextKeyBanner";
+import { Button, Input } from "@/components/ui";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export interface ApiKeyGovernance {
   key_id: string;
@@ -210,8 +212,16 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  // Focus-trap + ESC for the rotate-confirm dialog (accessible-dialog contract)
+  const rotateTrapRef = useFocusTrap<HTMLDivElement>(showRotateConfirm, () =>
+    setShowRotateConfirm(false),
+  );
+
   return (
-    <div data-testid="key-governance-editor">
+    <div
+      data-testid="key-governance-editor"
+      className="mt-2 flex flex-col gap-4 rounded-lg border border-border bg-muted/30 p-4"
+    >
       {/* One-time rotation plaintext banner */}
       {newPlaintextKey && (
         <PlaintextKeyBanner
@@ -222,56 +232,80 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
 
       {/* Rotate confirm dialog */}
       {showRotateConfirm && (
-        <div role="dialog" aria-modal="true" aria-label="Confirm key rotation">
-          <p>
-            Rotating this key will supersede the current secret. The new secret
-            will be shown once. Continue?
-          </p>
-          <button
-            type="button"
-            onClick={() => void handleConfirmRotate()}
-            disabled={isRotating}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4"
+          data-testid="rotate-overlay"
+        >
+          <div
+            ref={rotateTrapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm key rotation"
+            className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg"
           >
-            Confirm
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowRotateConfirm(false)}
-            disabled={isRotating}
-          >
-            Cancel
-          </button>
+            <p className="text-sm text-foreground">
+              Rotating this key will supersede the current secret. The new secret
+              will be shown once. Continue?
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                onClick={() => void handleConfirmRotate()}
+                disabled={isRotating}
+              >
+                Confirm
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowRotateConfirm(false)}
+                disabled={isRotating}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
-      <h3>Governance — {apiKey.name}</h3>
-
-      {/* Rotate button */}
-      {!showRotateConfirm && (
-        <button
-          type="button"
-          onClick={() => {
-            setRotateError(null);
-            setShowRotateConfirm(true);
-          }}
-        >
-          Rotate
-        </button>
-      )}
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-foreground">
+          Governance — {apiKey.name}
+        </h3>
+        {/* Rotate button */}
+        {!showRotateConfirm && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setRotateError(null);
+              setShowRotateConfirm(true);
+            }}
+          >
+            Rotate
+          </Button>
+        )}
+      </div>
 
       {/* Rotate error surface */}
       {rotateError && (
-        <p role="alert">{rotateError}</p>
+        <p role="alert" className="text-sm text-destructive">
+          {rotateError}
+        </p>
       )}
 
       {/* Governance form */}
-      <form onSubmit={(e) => void handleSave(e)}>
+      <form onSubmit={(e) => void handleSave(e)} className="flex flex-col gap-3">
         {/* Monthly budget (per-key — field name MUST be monthly_budget_usd) */}
-        <div>
-          <label htmlFor={`monthly-budget-${apiKey.key_id}`}>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor={`monthly-budget-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
             Monthly Budget (USD)
           </label>
-          <input
+          <Input
             id={`monthly-budget-${apiKey.key_id}`}
             data-testid="monthly-budget-input"
             type="text"
@@ -284,11 +318,14 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
         </div>
 
         {/* Soft budget */}
-        <div>
-          <label htmlFor={`soft-budget-${apiKey.key_id}`}>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor={`soft-budget-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
             Soft Budget (USD)
           </label>
-          <input
+          <Input
             id={`soft-budget-${apiKey.key_id}`}
             data-testid="soft-budget-input"
             type="text"
@@ -301,11 +338,14 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
         </div>
 
         {/* Expires at */}
-        <div>
-          <label htmlFor={`expires-at-${apiKey.key_id}`}>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor={`expires-at-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
             Expires At
           </label>
-          <input
+          <Input
             id={`expires-at-${apiKey.key_id}`}
             data-testid="expires-at-input"
             type="text"
@@ -317,12 +357,15 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
         </div>
 
         {/* Model allowlist */}
-        <div>
-          <label htmlFor={`model-allowlist-${apiKey.key_id}`}>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor={`model-allowlist-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
             Model Allowlist
           </label>
-          <div>
-            <input
+          <div className="flex gap-2">
+            <Input
               id={`model-allowlist-${apiKey.key_id}`}
               data-testid="model-allowlist-input"
               type="text"
@@ -332,49 +375,62 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
               onChange={(e) => setAllowlistInput(e.target.value)}
               onKeyDown={handleAllowlistKeyDown}
             />
-            <button
+            <Button
               type="button"
+              variant="outline"
               data-testid="add-model-button"
               onClick={handleAddModel}
             >
               Add
-            </button>
+            </Button>
           </div>
           {/* Chips */}
-          <ul>
-            {allowlistItems.map((model, i) => (
-              <li key={`${model}-${i}`}>
-                <span>{model}</span>
-                <button
-                  type="button"
-                  aria-label={`Remove ${model}`}
-                  onClick={() => handleRemoveModel(i)}
+          {allowlistItems.length > 0 && (
+            <ul className="mt-1 flex flex-wrap gap-2">
+              {allowlistItems.map((model, i) => (
+                <li
+                  key={`${model}-${i}`}
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
                 >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <span>{model}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${model}`}
+                    onClick={() => handleRemoveModel(i)}
+                    className="rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Client-side validation error */}
         {validationError && (
-          <p role="alert">{validationError}</p>
+          <p role="alert" className="text-sm text-destructive">
+            {validationError}
+          </p>
         )}
 
         {/* API error (403 / 422 inline surface) */}
         {apiError && (
-          <p role="alert">{apiError}</p>
+          <p role="alert" className="text-sm text-destructive">
+            {apiError}
+          </p>
         )}
 
-        <button type="submit" disabled={isSubmitting}>
+        <Button type="submit" disabled={isSubmitting} className="self-start">
           Save
-        </button>
+        </Button>
       </form>
 
       {/* Show last-saved monthly_budget_usd as text so it is queryable by getByText */}
       {savedMonthlyBudget !== null && !apiError && (
-        <p data-testid="current-monthly-budget">{savedMonthlyBudget}</p>
+        <p data-testid="current-monthly-budget" className="text-sm text-muted-foreground">
+          {savedMonthlyBudget}
+        </p>
       )}
     </div>
   );

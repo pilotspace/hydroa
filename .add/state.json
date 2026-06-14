@@ -2,20 +2,28 @@
   "project": "ai-proxy",
   "stage": "production",
   "active_task": null,
-  "active_milestone": null,
+  "active_milestone": "v15",
   "tasks": {},
   "milestones": {
-    "v13": {
-      "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
-      "goal": "a tenant owner/developer experiences the usage/cost dashboard and the key & budget governance journeys as a polished, consistent, accessible, and responsive product \u2014 unified design system, clearer task flows, WCAG 2.2 AA, and tablet/mobile breakpoints \u2014 with NO change to the underlying data, BFF, or gateway contracts",
+    "v14": {
+      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
+      "goal": "the dashboard runs on a Next.js version with no open critical/high npm advisories, with all existing behavioral suites green after the breaking upgrade",
       "stage": "production",
       "status": "planned",
-      "created": "2026-06-13T07:53:45+00:00",
-      "updated": "2026-06-13T07:53:45+00:00"
+      "created": "2026-06-13T14:45:24+00:00",
+      "updated": "2026-06-13T14:45:24+00:00"
+    },
+    "v15": {
+      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
+      "goal": "a tenant owner/admin can manage every backend capability (model availability, teams & members, per-key rate/cache governance, spend breakdowns, routing health, response cache, guardrails, SSO/OIDC) through a consistent, accessible, responsive dashboard, with NO change to the gateway/BFF contracts",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-14T01:10:37+00:00",
+      "updated": "2026-06-14T01:10:37+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-13T10:33:14+00:00",
+  "updated": "2026-06-14T01:10:37+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -188,6 +196,18 @@
         "v12-live-verify"
       ],
       "archived": "2026-06-13"
+    },
+    {
+      "slug": "v13",
+      "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
+      "tasks": 4,
+      "task_slugs": [
+        "design-system-foundation",
+        "usage-cost-ui",
+        "key-budget-governance-ui",
+        "ui-ux-verify"
+      ],
+      "archived": "2026-06-14"
     }
   ]
 }

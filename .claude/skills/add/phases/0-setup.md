@@ -53,7 +53,9 @@ tag thin or inferred answers `guessed`.
 
 1. **Fill the living documentation** (it outlives all code): `.add/PROJECT.md` (the foundation — Domain · Spec/active
    milestone · UI/UX · Key Decisions, one screen), `CONVENTIONS.md`, `GLOSSARY.md`, `MODEL_REGISTRY.md`,
-   `dependencies.allowlist`. Brownfield: from the code. Greenfield: from the interview, gaps flagged `guessed`.
+   `dependencies.allowlist`, and — for a UI project — `DESIGN.md` (the design source of truth: identity ·
+   principles · screens · the named-set foundation pointers + render recipe; delete it if there's no UI).
+   Brownfield: from the code. Greenfield: from the interview, gaps flagged `guessed`.
 2. **Size the first milestone** (read `scope.md`) and draft its `MILESTONE.md` — goal · scope · exit criteria
    · breadth-first tasks.
 3. **Create the first task and draft its candidate specification bundle.** `new-task` is allowed pre-lock:

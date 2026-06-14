@@ -12,6 +12,8 @@ interface ApiKey {
   revoked_at: string | null;
 }
 
+import { TableRow, TableCell, Badge, Button } from "@/components/ui";
+
 interface KeyRowProps {
   apiKey: ApiKey;
   onRevoke: (keyId: string) => void;
@@ -23,30 +25,32 @@ export function KeyRow({ apiKey, onRevoke, isPendingRevoke }: KeyRowProps) {
   const isRevoked = apiKey.revoked_at !== null;
 
   return (
-    <tr role="row">
-      <td>{apiKey.key_id.slice(0, 8)}…</td>
-      <td>{apiKey.name}</td>
-      <td>{apiKey.prefix}</td>
-      <td>{new Date(apiKey.created_at).toLocaleDateString()}</td>
-      <td>
+    <TableRow role="row">
+      <TableCell className="font-mono text-xs">{apiKey.key_id.slice(0, 8)}…</TableCell>
+      <TableCell>{apiKey.name}</TableCell>
+      <TableCell className="font-mono text-xs">{apiKey.prefix}</TableCell>
+      <TableCell>{new Date(apiKey.created_at).toLocaleDateString()}</TableCell>
+      <TableCell>
         {isRevoked ? (
-          <span className="revoked-badge">
+          <Badge variant="destructive" className="revoked-badge">
             Revoked {apiKey.revoked_at}
-          </span>
+          </Badge>
         ) : (
-          <span>active</span>
+          <Badge variant="secondary">active</Badge>
         )}
-      </td>
-      <td>
+      </TableCell>
+      <TableCell>
         {!isRevoked && !isPendingRevoke && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => onRevoke(apiKey.key_id)}
           >
             Revoke
-          </button>
+          </Button>
         )}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }

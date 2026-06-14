@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-13 · foundation-version: 13
+slug: ai-proxy · stage: production · updated: 2026-06-14 · foundation-version: 14
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -248,6 +248,16 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     (incremental-SSE TTFB, exact Gemini-embed tokens, parallel-tool-call streaming,
     same-name Gemini disambiguation) plus the v7 non-chat soft-budget-alert + empty-key
     boot guard
+- Folded from v13 (2026-06-14):
+  - Settled: WCAG 2.2 AA a11y is verifiable in CI/jsdom only as STRUCTURAL axe (serious|
+    critical, color-contrast rule DISABLED — jsdom has no canvas for pixel sampling) plus
+    keyboard/state/responsive-utility PRESENCE; axe color-contrast RATIOS and true visual
+    breakpoint rendering are a NAMED browser-only residue (Playwright/agent-browser + a stub
+    gateway), declared under an `unverifiable_claim` reject and carried as a follow-up infra
+    task — never silently claimed as passed (evidence: v13 closed on the jsdom bar, 122/122)
+  - OPEN (carried): the browser-axe color-contrast + visual-breakpoint pass; the deferred
+    UI/UX surfaces (auth, model catalog, SSO/OIDC config, routing-admin, team-governance) are
+    a separate UI/UX milestone mapping the dashboard to every backend feature
 
 ## Users (UDD) — UI/UX: design before code
 
@@ -267,6 +277,25 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     element's text (dashboard-usage catalog-row divergence, caught only at manual review)
 - Design source of truth → `apps/dashboard/` (Next.js 15 + shadcn/ui + Tremor +
   TanStack Query, dark-mode-first, WCAG 2.2 AA); DESIGN.md per feature
+- Folded from v13 (2026-06-14):
+  - A shared design system is FROZEN FIRST as its own contract (UDD 3-layer token set:
+    primitive=literal · semantic→primitive · component→semantic, fail-closed, `add.py check`-
+    linted; + a component-variant inventory + the four state components Loading/Empty/
+    ErrorState/Success + a responsive breakpoint scale + a11y primitives). Every surface
+    redesign CONSUMES it; no surface hardcodes a value a token covers. The named-set
+    (tokens+catalog+prototype) is a good freeze-first shape (evidence: design set lints clean)
+  - Assert the SUBSTANTIVE a11y guarantee, not a version-specific attribute: this Radix
+    version signals dialog modality via labelled + focus-guards, NOT `aria-modal="true"` —
+    so dialogs are verified by "accessible name present + focus trapped (Tab AND Shift+Tab
+    wrap) + Escape closes + focus restores", via a self-contained `lib/use-focus-trap.ts`
+    (chosen over the Radix Dialog primitive, which needs polyfills absent from the shared
+    test setups). The focusables selector must NOT filter on `offsetParent` (jsdom has no
+    layout) (evidence: 3 dialogs keyboard-operable, focus-trap branch covered)
+  - The four state patterns + responsive intent are jsdom-verifiable as PRESENCE proxies
+    (role=status/alert, the Empty component, `sm:`/`lg:` breakpoint classes not fixed px);
+    presentation refactors keep the data seam BYTE-IDENTICAL (same BFF route + hook + field
+    names; `monthly_budget_usd` per-key ≠ `budget_usd_monthly` tenant) so the behavioral
+    floor stays green (evidence: 122/122, zero data-seam diff across 3 surface redesigns)
 
 ## Architecture (settled at setup)
 
@@ -363,3 +392,8 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-13 | Non-chat soft-budget alert reuses the chat seam via EXPLICIT reflection-free constructor DI (NonChatGovernance gains optional session_factory; fires the shared persist_soft_budget_alert); hard-402 byte-identical (fold: ADD/nonchat-soft-budget-alert) | one alert seam not a parallel re-impl; honors the no-hasattr/inspect rule (the chat getattr seam is the pattern NOT to copy); LIVE C2: 1 row idempotent, 200 | folded v12 |
 | 2026-06-13 | RESOLVED the FK-violation flake: a SURGICAL group-preserving per-test Redis clear (autouse XTRIM usage:events + DEL usage:spend:*, NEVER FLUSHDB which destroys the ledger-flusher consumer group); fixtures NEVER cancel tasks (kills the pytest-asyncio runner); `make test-fast` is the no-DB fast gate (fold: TDD+ADD/test-db-isolation) | 2 consecutive clean full runs (730 passed ×2) vs FLUSHDB's 5 failures + 3x slowdown; the contaminator was leaked undelivered usage:events consumed cross-suite | folded v12 |
 | 2026-06-13 | LIVE-VERIFY count assertions use a before/after DELTA, never absolute/recent-window counts — the e2e Postgres is shared across double-pass runs (fold: TDD/v12-live-verify) | v12 C4b false-positived on pass 2 against pass 1's legitimate rows; delta==0 isolates the bad-key request; double-pass 11/11 ×2 | folded v12 |
+| 2026-06-14 | a11y is gated in jsdom on axe impact serious\|critical with color-contrast DISABLED (no canvas); true contrast + visual breakpoints are a NAMED browser-only residue, never silently passed (fold: SDD+TDD+UDD/v13-ui-ux-verify) | toHaveNoViolations() fails on MODERATE region/landmark rules when a component is scanned in isolation, masking the real gate; v13 closed on the jsdom bar with the residue carried | folded v14 |
+| 2026-06-14 | a VERIFY-ONLY task may be legitimately green-on-first-run (no product code); honest red-first = file-absence, integrity proven by a DISCRIMINATING MUTATION check (inject a known-critical violation through the same helper, confirm caught, delete) (fold: TDD/v13-ui-ux-verify) | proves the zero-violation result is real not a vacuous/crashed scan; img-no-alt→image-alt caught, 12/12 green earned | folded v14 |
+| 2026-06-14 | the design system is FROZEN FIRST as a 3-layer UDD token contract (primitive/semantic/component, fail-closed) + state-component + a11y-primitive inventory that every surface CONSUMES; Radix modality asserted as labelled+focus-trap (Tab+Shift+Tab+Escape) not aria-modal, via self-contained use-focus-trap (fold: UDD/v13) | prevents ad-hoc per-surface style drift; the Radix version exposes no aria-modal; focusables selector must not filter offsetParent in jsdom | folded v14 |
+| 2026-06-14 | the §5 scope-lock flags gitignored build artifacts (.next/, coverage/, tsconfig.tsbuildinfo) — declare them in §5 Scope; strengthening tests mid-build requires going BACK to phase tests and RE-CROSSING tests→build to re-snapshot the tripwire (fold: ADD/v13) | engine _SCOPE_EXCLUDE_DIRS = .git/.add/__pycache__/node_modules only; editing tests while in build trips build_tampered; the declared list is frozen at the tests→build snapshot | folded v14 |
+| 2026-06-14 | run the COVERAGE gate (vitest run --coverage) not --no-coverage before claiming "coverage held"; the adversarial earned-green refute-read (subagent) pays off on VERIFY tasks too (fold: TDD+ADD/v13) | --no-coverage HID a real 78.14%<80% regression (task1); the refute-read returned EARNED-WITH-GAPS and surfaced 3 real coverage gaps the green hid (task4, all closed) | folded v14 |

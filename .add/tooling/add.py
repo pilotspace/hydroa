@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import hashlib
 import json
 import os
 import re
@@ -34,8 +35,14 @@ STAGES = ("prototype", "poc", "mvp", "production")
 # v22 stage-graduation: the read-only cue `status` shows when the MVP is covered.
 # Worded as the ACTION (never a file) so it stands before graduate.md exists.
 GRADUATION_CUE = "MVP covered → propose graduation"
-PHASES = ("specify", "scenarios", "contract", "tests", "build", "verify", "observe", "done")
+PHASES = ("ground", "specify", "scenarios", "contract", "tests", "build", "verify", "observe", "done")
 GATES = ("none", "PASS", "RISK-ACCEPTED", "HARD-STOP")
+# heal-then-escalate (verify-integrity): the bounded self-heal loop cap. A CONFIRMED cheat
+# (mechanical tripwire divergence, or an agent-reported semantic refute-read finding) returns
+# the task to BUILD for an honest redo; after HEAL_CAP such attempts the next confirmed cheat
+# forces a HARD-STOP escalation to the human. MONOTONIC — attempts never auto-resets (a gamed
+# green is never auto-passed; the loop is never unbounded).
+HEAL_CAP = 3
 
 
 def _phase_index(name: str) -> int:
@@ -45,6 +52,8 @@ def _phase_index(name: str) -> int:
 # `add.py guide` copy: per-phase (concrete next action, book chapter to read).
 # Keep the action wording aligned with each phase's EXIT line in the TASK template.
 PHASE_GUIDE = {
+    "ground":    ("gather the real codebase the task touches — files, symbols, signatures, conventions, and the anchor points the contract will cite; defer to PROJECT.md/CONVENTIONS.md and gather only the task delta",
+                  "02-the-flow.md"),
     "specify":   ("state every rule — Must / Reject (+ named code) / After; rank assumptions lowest-confidence first and flag the biggest risk",
                   "03-step-1-specify.md"),
     "scenarios": ("write one Given/When/Then per Must AND per Reject; every result observable",
@@ -67,10 +76,11 @@ PHASE_GUIDE = {
 # follows the book's who-does-what table (Verify is "human only"); `tests`/`build`/`observe`
 # are AI-led. A phase missing here is `unmapped_phase` (fail closed) — never defaulted.
 PHASE_OWNER = {
+    "ground": "ai",
     "specify": "human", "scenarios": "human", "contract": "seam",
     "tests": "ai", "build": "ai", "verify": "human", "observe": "ai", "done": "human",
 }
-SETUP_FILES = ("PROJECT.md", "CONVENTIONS.md", "GLOSSARY.md", "MODEL_REGISTRY.md", "dependencies.allowlist")
+SETUP_FILES = ("PROJECT.md", "CONVENTIONS.md", "GLOSSARY.md", "MODEL_REGISTRY.md", "dependencies.allowlist", "DESIGN.md")
 
 # Guideline-injection targets + version-stable markers. NEVER change these marker
 # strings: a re-run finds the old block by exact match, so changing them would
@@ -84,7 +94,13 @@ _GUIDE_END = "<!-- ADD:END -->"
 _FALLBACK_TASK = """# TASK: {title}
 
 slug: {slug} · created: {date} · stage: {stage}
-phase: specify
+autonomy: auto
+phase: ground
+
+## 0 · GROUND
+Touches (files · symbols · signatures):
+Honors (patterns / conventions):
+Anchors the contract cites:
 
 ## 1 · SPECIFY
 Feature:
@@ -431,12 +447,20 @@ def cmd_new_task(args: argparse.Namespace) -> None:
     (tdir / "tests").mkdir(parents=True, exist_ok=True)
     (tdir / "src").mkdir(parents=True, exist_ok=True)
     title = args.title or slug.replace("-", " ").replace("_", " ").title()
+    # inherit the project's DECLARED autonomy default (task init-auto-default) — fail-SAFE:
+    # absent -> auto, garbled -> conservative; the posture is project-scoped, not hardcoded.
+    autonomy = _project_autonomy(root)
     _atomic_write(task_md, _render_template(
-        "TASK.md", title=title, slug=slug, date=date.today().isoformat(), stage=state["stage"]))
+        "TASK.md", title=title, slug=slug, date=date.today().isoformat(),
+        stage=state["stage"], autonomy=autonomy))
+    if _project_autonomy_token(root) == "?":
+        print("warning: garbled_project_autonomy — PROJECT.md declares an unrecognized "
+              f"autonomy token; new task seeded fail-safe '{autonomy}' "
+              "(set autonomy: manual|conservative|auto in PROJECT.md)", file=sys.stderr)
 
     state["tasks"][slug] = {
         "title": title,
-        "phase": "specify",
+        "phase": "ground",
         "gate": "none",
         "milestone": milestone,
         "depends_on": depends_on,
@@ -454,7 +478,8 @@ def cmd_new_task(args: argparse.Namespace) -> None:
         # intake -> milestone flow. Speaks of STRUCTURE (not attached), never the act.
         print(f"note: '{slug}' is not attached to a milestone — size it via /add (intake), "
               "or pass --milestone <id>")
-    print("active task set. phase: specify. Fill section 1 (SPECIFY), then: add.py advance")
+    print("active task set. phase: ground. Gather the real codebase (section 0 GROUND).")
+    print(_next_footer(root, state))   # converges the old "then: add.py advance" hint
 
 
 def _parse_deps(raw: str | None) -> list[str]:
@@ -507,6 +532,7 @@ def cmd_phase(args: argparse.Namespace) -> None:
     _sync_task_marker(root, slug, args.phase)
     save_state(root, state)
     print(f"task '{slug}' phase -> {args.phase}")
+    print(_next_footer(root, state))
 
 
 def cmd_advance(args: argparse.Namespace) -> None:
@@ -536,21 +562,80 @@ def cmd_advance(args: argparse.Namespace) -> None:
                      "+ substantive content; bare 'none' only as 'none material — "
                      "biggest risk: X') before crossing into build")
             state["tasks"][slug]["flag_verified"] = True
+        # tamper tripwire (verify-integrity): snapshot the red test files + the frozen
+        # §3 md5s so the verify gate can prove the green was EARNED, not edited into
+        # place. UNCONDITIONAL overwrite — a legit change-request that re-crosses
+        # tests->build re-snapshots cleanly. Co-witnessed by flag_verified (above).
+        state["tasks"][slug]["tripwire"] = _tripwire_snapshot(root, slug, raw3)
+        # §5 scope gate (build-scope-lock): when the task declares its Scope, freeze
+        # the project tree into a sidecar (payload) + a state.json anchor (md5 of the
+        # sidecar bytes). Same UNCONDITIONAL-overwrite semantics as the tripwire.
+        # UNDECLARED (no Scope line) takes no snapshot — grandfathered, never retro-red
+        # — and CLEANS UP a previous declaration's leftovers (v3): a declared->
+        # undeclared re-cross pops the stale anchor + unlinks the stale sidecar, so
+        # "UNDECLARED is never refused" holds on every path.
+        declared = _declared_scope(root, slug)
+        side = root / "tasks" / slug / "scope-snapshot.json"
+        if declared is not None:
+            payload = json.dumps({"version": 1,
+                                  "files": _scope_walk(root.parent.resolve())},
+                                 sort_keys=True)
+            side.write_text(payload, encoding="utf-8")
+            state["tasks"][slug]["scope"] = {"declared": declared,
+                                             "snapshot_md5": _md5_text(payload)}
+        else:
+            state["tasks"][slug].pop("scope", None)
+            try:
+                side.unlink()
+            except OSError:
+                pass
     state["tasks"][slug]["phase"] = nxt
     state["tasks"][slug]["updated"] = _now()
     _sync_task_marker(root, slug, nxt)
     save_state(root, state)
     print(f"task '{slug}' phase {cur} -> {nxt}")
+    print(_next_footer(root, state))
 
 
-# The mechanized high-risk guard (run.md, v14): judging WHAT is high-risk stays
-# human — a scope declares `risk: high` in its TASK.md header at the freeze. The
-# engine then enforces the pure token contradiction: risk: high WITHOUT
-# autonomy: conservative is unguarded, and completion is refused. Tokens are
-# read from the header region (text before the first section heading) with HTML
-# comments stripped — a documentation comment is never a declaration.
-_RISK_HIGH_RE = re.compile(r"\brisk:\s*high\b")
-_AUTONOMY_CONSERVATIVE_RE = re.compile(r"\bautonomy:\s*conservative\b")
+# The mechanized high-risk guard (run.md, v14; widened by explicit-autonomy-dial):
+# judging WHAT is high-risk stays human — a scope declares `risk: high` in its TASK.md
+# header at the freeze. The engine then enforces the pure token contradiction: risk: high
+# WITHOUT a lowered autonomy rung (manual or conservative) is unguarded, and completion is
+# refused. Tokens are read from the header region (text before the first section heading)
+# with HTML comments stripped — a documentation comment is never a declaration. A token
+# counts ONLY at a DECLARATION position — line-start (optionally indented) or just after the
+# `·` slug-line separator — so a freeform H1 title or quoted prose that happens to contain
+# "risk: high" / "autonomy: <x>" is never mistaken for a declaration (a title substring must
+# not be able to fool the guard either way).
+_RISK_HIGH_RE = re.compile(r"(?:^|·)[ \t]*risk:[ \t]*high\b", re.MULTILINE)
+
+# the explicit 3-mode autonomy dial (task explicit-autonomy-dial): an ordered ladder
+# manual < conservative < auto, declared as a per-task `autonomy:` header token.
+_AUTONOMY_LEVELS = ("manual", "conservative", "auto")
+# anchored to a DECLARATION position — line-start `autonomy:` OR the inline slug-line form
+# `… · autonomy: conservative` (the `·`-preceded shape) — never a title/prose substring; the
+# value stops at space/`<`/`#`/`|` so an unfilled `<manual | … >` placeholder captures nothing
+# and reads as UNSET.
+_AUTONOMY_LINE_RE = re.compile(r"(?:^|·)[ \t]*autonomy:[ \t]*([^\s<#|]+)", re.MULTILINE)
+
+
+def _autonomy_level(hdr: str):
+    """The declared autonomy rung from a TASK.md header region (HTML comments
+    already stripped by _task_header). Returns a member of _AUTONOMY_LEVELS, or
+    None when no `autonomy:` line is present (UNSET — an unfilled `<…>` placeholder,
+    whose value the regex declines, counts as unset), or "?" when a REAL token outside
+    the set was written (unknown). PURE."""
+    m = _AUTONOMY_LINE_RE.search(hdr)
+    if not m:
+        return None
+    tok = m.group(1).strip().lower()
+    return tok if tok in _AUTONOMY_LEVELS else "?"
+
+
+def _autonomy_lowered(hdr: str) -> bool:
+    """True iff the declared rung is high-risk-safe (manual or conservative). A
+    high-risk scope must be lowered to one of these; `auto` and UNSET are not."""
+    return _autonomy_level(hdr) in ("manual", "conservative")
 
 
 def _task_header(root: Path, slug: str) -> str:
@@ -561,6 +646,37 @@ def _task_header(root: Path, slug: str) -> str:
     except OSError:
         return ""
     return re.sub(r"<!--.*?-->", "", text.split("\n## ", 1)[0], flags=re.S)
+
+
+def _effective_autonomy(root: Path, state: dict, slug: str) -> str:
+    """The autonomy rung that governs `slug` right now: the task's own declared rung,
+    falling back to the project default when the task line is UNSET (None) or an
+    unrecognized token ("?") — the same fail-safe chain cmd_new_task seeds from
+    (_project_autonomy: absent -> auto, garbled -> conservative). PURE. `state` is unused
+    today; it is kept in the signature beside _driver_stop for symmetry."""
+    lvl = _autonomy_level(_task_header(root, slug))
+    return lvl if lvl in _AUTONOMY_LEVELS else _project_autonomy(root)
+
+
+def _driver_stop(root: Path, state: dict, slug: str, phase: str) -> bool:
+    """True iff a HUMAN owns the next step for `phase` under the effective autonomy — the
+    SINGLE source the footer marker and the guide TEXT marker both render (task
+    gate-owner-marker). Refines _phase_owner with the autonomy level at exactly ONE phase,
+    verify:
+        verify -> the human gates UNLESS the run may auto-gate (effective autonomy == auto)
+        else   -> the structural owner stops (owner != "ai"), independent of the level
+    The frozen machine-state-json JSON `stop` keeps its own structural value (Option F);
+    this resolver feeds ONLY the human-facing footer + guide TEXT. _phase_owner still
+    _die("unmapped_phase") on a bad phase — the marker invents no default."""
+    if phase == "verify":
+        return _effective_autonomy(root, state, slug) != "auto"
+    return _phase_owner(phase) != "ai"
+
+
+def _driver_marker(stop: bool) -> str:
+    """Render _driver_stop as the reserved-slot word (one leading space each) — the exact
+    strings next-footer-engine reserved: ` [human gate]` (a human owns it) / ` [you drive]`."""
+    return " [human gate]" if stop else " [you drive]"
 
 
 def cmd_gate(args: argparse.Namespace) -> None:
@@ -588,10 +704,18 @@ def cmd_gate(args: argparse.Namespace) -> None:
         # COMPLETION (PASS / RISK-ACCEPTED) until the dial is lowered and a human
         # owns the gate. HARD-STOP is never blocked — stopping is always allowed.
         hdr = _task_header(root, slug)
-        if _RISK_HIGH_RE.search(hdr) and not _AUTONOMY_CONSERVATIVE_RE.search(hdr):
+        if _RISK_HIGH_RE.search(hdr) and not _autonomy_lowered(hdr):
             _die(f"unguarded_high_risk_auto: task '{slug}' declares risk: high "
-                 "without autonomy: conservative — lower the autonomy level in the TASK.md "
-                 "header; a human must own a high-risk gate (run.md guard)")
+                 "without a lowered autonomy level — set autonomy: manual or conservative in "
+                 "the TASK.md header; a human must own a high-risk gate (run.md guard)")
+        # tamper tripwire (verify-integrity): the method's first mechanical cheat
+        # block. A completing outcome is refused if the red suite or the frozen §3
+        # changed since the tests->build snapshot. Placed BEFORE the waiver write so
+        # a tamper finding is never launderable through RISK-ACCEPTED.
+        _tamper_guard(root, state, slug)
+        # §5 scope gate (build-scope-lock): touched ⊆ declared, or a named refusal —
+        # same placement discipline as the tripwire (before the waiver, never on HARD-STOP).
+        _scope_guard(root, state, slug)
     if args.outcome == "RISK-ACCEPTED":
         # A waiver must be SIGNED: owner, ticket, expiry (glossary). Stored in state
         # so a later `check` can read/expire it. Refuse a partial waiver outright.
@@ -609,8 +733,9 @@ def cmd_gate(args: argparse.Namespace) -> None:
     state["tasks"][slug]["updated"] = _now()
     save_state(root, state)
     print(f"task '{slug}' gate -> {args.outcome}")
-    if args.outcome == "HARD-STOP":
-        print("HARD-STOP recorded: return to BUILD; nothing ships on a failing/security gate.")
+    # the engine-sourced next step (next-footer-engine): a completing gate hands off to the
+    # state arm; HARD-STOP routes to "resolve HARD-STOP …" — converging the old bespoke line.
+    print(_next_footer(root, state))
 
 
 def cmd_reopen(args: argparse.Namespace) -> None:
@@ -636,8 +761,8 @@ def cmd_reopen(args: argparse.Namespace) -> None:
     if not reason:
         _die("reopen_reason_required: reopen records WHY — supply a non-empty --reason")
     target = args.to
-    if target not in PHASES[:7]:        # specify..observe; never "done", never an unknown name
-        _die(f"reopen_target_invalid: --to must be one of {', '.join(PHASES[:7])} (got {target!r})")
+    if target not in PHASES[:-1]:        # ground..observe; never "done", never an unknown name
+        _die(f"reopen_target_invalid: --to must be one of {', '.join(PHASES[:-1])} (got {target!r})")
     now = _now()
     entry = {"from": "done", "to": target, "reason": reason, "at": now,
              "prior_gate": t.get("gate", "none")}
@@ -650,6 +775,32 @@ def cmd_reopen(args: argparse.Namespace) -> None:
     _sync_task_marker(root, slug, target)
     save_state(root, state)
     print(f"task '{slug}' reopened: done -> {target} (reason recorded); gate reset to none")
+    print(_next_footer(root, state))
+
+
+def cmd_heal(args: argparse.Namespace) -> None:
+    """Report a CONFIRMED semantic cheat — an earned-green failure the adversarial refute-read
+    found — and enter the bounded self-heal loop (heal-then-escalate). The judgment rubric (the
+    specific cheats and how to spot them) lives in 6-verify.md, never the engine.
+
+    The engine cannot SEE a judgment cheat — this is the agent's honest report (honor-system,
+    necessary-not-sufficient; the human verify gate stays the real backstop, and the engine
+    never spawns the refute-read). It routes through the SAME _heal_or_escalate as the
+    mechanical tripwire: return-to-build for an honest redo (≤HEAL_CAP), then a HARD-STOP
+    escalation. The refute-read is a verify-gate activity, so the task must be at verify."""
+    root = _require_root()
+    state = load_state(root)
+    slug = _resolve_task(state, args.slug)
+    reason = (args.reason or "").strip()
+    if not reason:
+        _die("heal_reason_required: heal records the refute-read finding — supply a "
+             "non-empty --reason (never a silent loop)")
+    phase = state["tasks"][slug].get("phase")
+    if phase != "verify":
+        _die(f"heal_not_at_verify: task '{slug}' is at '{phase}', not verify — the "
+             "adversarial refute-read is a verify-gate activity; build then advance to "
+             "verify before reporting a cheat")
+    _heal_or_escalate(root, state, slug, reason="refute-read:" + reason, source="refute-read")
 
 
 def cmd_lock(args: argparse.Namespace) -> None:
@@ -680,6 +831,7 @@ def cmd_lock(args: argparse.Namespace) -> None:
             separators=(",", ":")))
     else:
         print(f"locked setup ({','.join(layers)}) by {who} @ {when}")
+        print(_next_footer(root, state))
 
 
 def _has_production_roadmap(state: dict) -> bool:
@@ -713,6 +865,7 @@ def cmd_stage(args: argparse.Namespace) -> None:
     print(f"project stage -> {args.stage}")
     if bypassing:
         print("(--force: bypassed roadmap check — no production milestone drafted)")
+    print(_next_footer(root, state))
 
 
 def cmd_status(args: argparse.Namespace) -> None:
@@ -744,6 +897,9 @@ def cmd_status(args: argparse.Namespace) -> None:
     # Reuses the canonical helper — do NOT write a parallel predicate.
     unlocked = not _setup_locked(state)
     print(f"project : {state.get('project', '(unknown)')}")
+    # project autonomy default (task init-auto-default): the posture new tasks INHERIT,
+    # read LIVE from PROJECT.md so the human sees the project-wide throttle every session.
+    print(f"project autonomy: {_project_autonomy(root)}   (default — new tasks inherit)")
     print(f"stage   : {state.get('stage', '(unknown)')}")
     # project GOAL + active-milestone goal (v20) — the loop's orientation anchor, read
     # LIVE from PROJECT.md / MILESTONE.md (never state.json). Additive: every existing
@@ -752,6 +908,13 @@ def cmd_status(args: argparse.Namespace) -> None:
     _active_ms = state.get("active_milestone")
     if _active_ms:
         print(f"m-goal  : {_milestone_doc(root, _active_ms)[1]}   (← {_active_ms})")
+        # goal-ready (task goal-auto-ready-gate): is the active milestone's goal AUTO-READY
+        # — every exit criterion citing a verifier `(verify: …)` so the engine can self-verify
+        # the result against it? Read LIVE from MILESTONE.md; surfaced every session so the
+        # human sees the goal-clarity gap. Additive — human-readable only, never the JSON surface.
+        _gr_cited, _gr_total = _exit_criteria_cited(root, _active_ms)
+        _gr_state = "auto-ready ✓" if _goal_auto_ready(root, _active_ms) else "NOT auto-ready"
+        print(f"goal-ready: {_gr_state}   ({_gr_cited}/{_gr_total} exit criteria cite a verifier)")
     # foundation pointer — read the cross-milestone context first (anti-rot)
     if (root / "PROJECT.md").exists():
         print("context : .add/PROJECT.md  (foundation: domain · spec · UI/UX — read first)")
@@ -791,6 +954,18 @@ def cmd_status(args: argparse.Namespace) -> None:
               f"({m_tasks} task{'s' if m_tasks != 1 else ''})")
 
     print(f"active  : {active or '(none)'}")
+    # surface the active task's autonomy level (task explicit-autonomy-dial) so the human
+    # reads the throttle every session; "unset" when no explicit `autonomy:` line is present.
+    if active and active in tasks:
+        print(f"autonomy: {_autonomy_level(_task_header(root, active)) or 'unset'}")
+        # grounded (task ground-bundle-wiring): does the active task's §0 GROUND map cite the
+        # anchors §3 names? measure-not-block, human-readable only (never the JSON surface). A
+        # pre-ground / legacy task (no §0) -> _task_grounded None -> NO line, so the surface is
+        # purely additive: an existing task's status output is byte-unchanged.
+        _g = _task_grounded(root, active)
+        if _g is not None:
+            print("grounded: " + ("grounded ✓ — §0 cites the anchors §3 names" if _g
+                                  else "not yet — fill the §0 GROUND anchors (add.py guide)"))
     if not tasks:
         # First-run panel: a brand-new project's status is the moment a user is most
         # lost. When the setup is unlocked, the only correct next move is review+lock —
@@ -840,6 +1015,7 @@ def cmd_status(args: argparse.Namespace) -> None:
 # routed there through the CLI alone. Never a dead pointer: the path is printed
 # only if the file exists; a missing tree gets an install hint instead.
 _PHASE_GUIDE_FILES = {
+    "ground": "0-ground.md",
     "specify": "1-specify.md", "scenarios": "2-scenarios.md",
     "contract": "3-contract.md", "tests": "4-tests.md",
     "build": "5-build.md", "verify": "6-verify.md", "observe": "7-observe.md",
@@ -897,9 +1073,13 @@ def cmd_guide(args: argparse.Namespace) -> None:
     if entry is None:           # corrupted/hand-edited state.json — fail clean, not KeyError
         _die(f"task '{slug}' has unknown phase '{phase}' (state.json corrupted?)")
     action, chapter = entry
+    # the guide names the driver too (task gate-owner-marker) — the SAME _driver_stop the
+    # footer renders, on the next-step line. Computed AFTER the unknown-phase guard above,
+    # so a bad phase fails clean and never reaches the marker (it invents no default).
+    marker = _driver_marker(_driver_stop(root, state, slug, phase))
     print(f"active : {slug}  (phase: {phase})")
     print(f"goal   : {_project_goal(root)}")   # v20 — the next-step surface still shows what the work is FOR
-    print(f"next   : {action}")
+    print(f"next   : {action}{marker}")
     print(f"read   : .add/docs/{chapter}")
     gp = _phase_guide_path(root.parent, phase)
     if gp is not None:
@@ -924,6 +1104,404 @@ def _read_task_phase(root: Path, slug: str) -> str | None:
             rest = line[len("phase:"):].strip()
             return rest.split()[0] if rest else None
     return None
+
+
+# --- UDD token-layer validator (udd-token-schema) -----------------------------
+# A pure, stdlib checker for the compact-DTCG 3-layer token dialect. Returns a
+# list of (code, path, detail) violations — [] means valid. NOT wired into
+# cmd_check here: udd-check-lint surfaces these as named reds + adds the catalog/
+# tree rules (the Fork-A boundary frozen in udd-token-schema §3). The dialect and
+# its NAMED divergences from DTCG 2025.10 live in templates/udd-tokens.md.
+_TOKEN_LAYERS = ("primitive", "semantic", "component")
+_TOKEN_LAYER_CITES = {"semantic": "primitive", "component": "semantic"}
+_TOKEN_TYPES = ("color", "dimension", "number", "fontFamily", "fontWeight", "duration")
+_TOKEN_HEX_RE = re.compile(r"^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$")
+_TOKEN_DIM_RE = re.compile(r"^-?\d+(?:\.\d+)?(?:px|rem|em|%|vh|vw)$")
+_TOKEN_DUR_RE = re.compile(r"^\d+(?:\.\d+)?(?:ms|s)$")
+
+
+def _token_value_form_ok(ttype: str, value: object) -> bool:
+    """True if a LITERAL value matches the compact form for its $type."""
+    if ttype == "color":
+        return isinstance(value, str) and bool(_TOKEN_HEX_RE.match(value))
+    if ttype == "dimension":
+        return isinstance(value, str) and bool(_TOKEN_DIM_RE.match(value))
+    if ttype == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if ttype == "fontWeight":
+        return isinstance(value, str) or (
+            isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 900)
+    if ttype == "duration":
+        return isinstance(value, str) and bool(_TOKEN_DUR_RE.match(value))
+    if ttype == "fontFamily":
+        return isinstance(value, str) or (
+            isinstance(value, list) and bool(value) and all(isinstance(x, str) for x in value))
+    return False
+
+
+def _token_layer_violations(tokens: dict) -> list[tuple[str, str, str]]:
+    """Validate a compact-DTCG token dict against the 3-layer citation rules.
+
+    Pure (never mutates `tokens`), stdlib-only, deterministic document order.
+    Returns [] when valid, else one (code, path, detail) per violation. The six
+    codes are the token-layer named reds udd-check-lint surfaces. A token's LAYER
+    is its top-level group name; value forms diverge from DTCG 2025.10 to compact
+    scalars (color "#hex", dimension "<n><unit>") — see templates/udd-tokens.md.
+    """
+    if not isinstance(tokens, dict):
+        return [("malformed_value", "", "root is not a JSON object")]
+
+    # index every token (object bearing $value) by dotted path — for alias resolution
+    index: dict[str, dict] = {}
+
+    def _index(node: object, path: list[str]) -> None:
+        if not isinstance(node, dict):
+            return
+        if "$value" in node:
+            index[".".join(path)] = node
+        for key, child in node.items():            # descend even past a token — never skip a subtree
+            if not key.startswith("$"):
+                _index(child, path + [key])
+
+    for top, node in tokens.items():
+        if top in _TOKEN_LAYERS:
+            _index(node, [top])
+
+    out: list[tuple[str, str, str]] = []
+
+    def _walk(node: object, path: list[str], layer: str, inherited: "str | None") -> None:
+        if not isinstance(node, dict):
+            return
+        if "$value" in node:                                       # a token
+            pathstr = ".".join(path)
+            ttype = node.get("$type", inherited)
+            value = node.get("$value")
+            if ttype not in _TOKEN_TYPES:
+                out.append(("unknown_type", pathstr, f"$type {ttype!r} not in {list(_TOKEN_TYPES)}"))
+            elif isinstance(value, str) and value.startswith("{") and value.endswith("}"):
+                target = value[1:-1]                               # an alias
+                if layer == "primitive":
+                    out.append(("primitive_has_alias", pathstr,
+                                f"a primitive token must hold a literal, not alias {value}"))
+                elif target not in index:
+                    out.append(("unresolved_alias", pathstr, f"{value} resolves to no token"))
+                else:
+                    target_layer = target.split(".", 1)[0]
+                    if target_layer != _TOKEN_LAYER_CITES[layer]:
+                        out.append(("cross_layer_citation", pathstr,
+                                    f"{layer} may alias only {_TOKEN_LAYER_CITES[layer]}, not {target_layer}"))
+            elif not _token_value_form_ok(ttype, value):           # a literal
+                out.append(("malformed_value", pathstr, f"{value!r} is not a valid {ttype}"))
+            # a token should be a leaf; if it carries non-$ children, validate them too rather
+            # than letting them pass silently (fail-closed — never skip a subtree).
+            for key, child in node.items():
+                if not key.startswith("$"):
+                    _walk(child, path + [key], layer, ttype)
+            return
+        gtype = node.get("$type", inherited)                       # a group
+        for key, child in node.items():
+            if not key.startswith("$"):
+                _walk(child, path + [key], layer, gtype)
+
+    for top, node in tokens.items():
+        if top not in _TOKEN_LAYERS:
+            out.append(("unknown_layer", top, f"top-level group {top!r} is not a layer"))
+            continue
+        _walk(node, [top], top, None)
+
+    return out
+
+
+# ---- udd-catalog-content-schema (task 2/4): component catalog + content-tree validator ----
+_PROPSPEC_LITERALS = ("string", "number", "boolean")
+
+
+def _propspec_malformed(spec: object) -> "str | None":
+    """Return a reason if a catalog PropSpec is malformed, else None.
+
+    A PropSpec is exactly one of: {type: string|number|boolean} ·
+    {type: enum, values: [str,…]} · {type: token, token: <$type>} (a task-1 $type).
+    """
+    if not isinstance(spec, dict):
+        return "PropSpec is not an object"
+    ptype = spec.get("type")
+    if ptype in _PROPSPEC_LITERALS:
+        return None
+    if ptype == "enum":
+        values = spec.get("values")
+        if not isinstance(values, list) or not values or not all(isinstance(x, str) for x in values):
+            return "enum PropSpec needs a non-empty list of string values"
+        return None
+    if ptype == "token":
+        ttype = spec.get("token")
+        if ttype not in _TOKEN_TYPES:
+            return f"token PropSpec names unknown $type {ttype!r}"
+        return None
+    return f"unknown PropSpec type {ptype!r}"
+
+
+def _prop_value_code(spec: dict, value: object) -> "str | None":
+    """Return a violation CODE if a tree prop value mismatches its well-formed PropSpec, else None.
+
+    token props are LAYER-only here (frozen §3 @ v2): the value must be a
+    `{semantic.*}` alias. A non-alias literal → prop_type_mismatch; a wrong-layer
+    alias → non_semantic_prop_token. Target existence + $type-match defer to
+    udd-check-lint (the composer that holds tokens.json).
+    """
+    ptype = spec.get("type")
+    if ptype == "string":
+        return None if isinstance(value, str) else "prop_type_mismatch"
+    if ptype == "number":
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+        return None if ok else "prop_type_mismatch"
+    if ptype == "boolean":
+        return None if isinstance(value, bool) else "prop_type_mismatch"
+    if ptype == "enum":
+        return None if value in spec.get("values", []) else "prop_type_mismatch"
+    if ptype == "token":
+        if not (isinstance(value, str) and value.startswith("{") and value.endswith("}")):
+            return "prop_type_mismatch"                 # a token prop must be an alias, not a literal
+        if value[1:-1].split(".", 1)[0] != "semantic":
+            return "non_semantic_prop_token"            # v2: the alias must target the semantic layer
+        return None
+    return None                                         # unreachable for well-formed specs
+
+
+def _catalog_tree_violations(catalog: dict, tree: dict) -> list[tuple[str, str, str]]:
+    """Validate a json-render content TREE against OUR component CATALOG.
+
+    Pure (never mutates `catalog`/`tree`), stdlib-only, deterministic order. Returns
+    [] when valid, else one (code, path, detail) per violation. The eight named reds:
+    tree_cites_uncataloged_component · unknown_prop · prop_type_mismatch ·
+    non_semantic_prop_token · dangling_child · children_not_allowed · missing_root ·
+    malformed_catalog. SEPARATE from _token_layer_violations; udd-check-lint composes
+    both. non_semantic_prop_token is LAYER-only (§3 @ v2) — token existence/$type-match
+    are udd-check-lint's job (it holds tokens.json). See templates/udd-catalog.md.
+    """
+    out: list[tuple[str, str, str]] = []
+
+    # 1. catalog PropSpecs (malformed_catalog) — and collect the well-formed specs
+    components = catalog.get("components") if isinstance(catalog, dict) else None
+    if not isinstance(components, dict):
+        out.append(("malformed_catalog", "components", "catalog has no 'components' object"))
+        components = {}
+    specs: dict[str, dict[str, dict]] = {}              # component -> {prop: well-formed spec}
+    declared_names: dict[str, set] = {}                 # component -> all declared prop names
+    for cname, comp in components.items():
+        if not isinstance(comp, dict):                  # v3: a component entry must be an object
+            out.append(("malformed_catalog", f"components.{cname}", "component entry is not an object"))
+            declared_names[cname] = set()
+            specs[cname] = {}
+            continue
+        cprops = comp.get("props", {})
+        cprops = cprops if isinstance(cprops, dict) else {}
+        declared_names[cname] = set(cprops.keys())
+        ok: dict[str, dict] = {}
+        for pname, spec in cprops.items():
+            reason = _propspec_malformed(spec)
+            if reason is not None:
+                out.append(("malformed_catalog", f"components.{cname}.props.{pname}", reason))
+            else:
+                ok[pname] = spec
+        specs[cname] = ok
+
+    # 2. root (missing_root) — checked before the elements walk
+    elements = tree.get("elements") if isinstance(tree, dict) else None
+    elements = elements if isinstance(elements, dict) else {}
+    root = tree.get("root") if isinstance(tree, dict) else None
+    if not isinstance(root, str) or root not in elements:
+        out.append(("missing_root", "root", f"root {root!r} is absent from elements"))
+
+    # 3. elements (document key order)
+    for eid, el in elements.items():
+        if not isinstance(el, dict):                    # v3: an element must be an object
+            out.append(("malformed_element", f"elements.{eid}", "element is not an object"))
+            continue
+        etype = el.get("type")
+        cataloged = isinstance(etype, str) and etype in components
+        if not cataloged:
+            out.append(("tree_cites_uncataloged_component", f"elements.{eid}.type",
+                        f"type {etype!r} not in catalog"))
+
+        props = el.get("props")
+        if "props" in el and not isinstance(props, dict):   # v3: props must be an object
+            out.append(("malformed_element", f"elements.{eid}.props", "props is not an object"))
+        elif cataloged and isinstance(props, dict):
+            for pname, value in props.items():
+                if pname not in declared_names.get(etype, set()):
+                    out.append(("unknown_prop", f"elements.{eid}.props.{pname}",
+                                f"{pname!r} not declared on {etype}"))
+                elif pname in specs.get(etype, {}):     # declared + well-formed spec → value-check
+                    code = _prop_value_code(specs[etype][pname], value)
+                    if code is not None:
+                        out.append((code, f"elements.{eid}.props.{pname}",
+                                    f"{value!r} does not satisfy {specs[etype][pname]}"))
+                # declared-but-malformed-spec prop: the catalog error is already logged; skip value-check
+
+        children = el.get("children")
+        if "children" in el and not isinstance(children, list):   # v3: children must be an array
+            out.append(("malformed_element", f"elements.{eid}.children", "children is not an array"))
+        elif isinstance(children, list) and children:             # empty list == absent (no violation)
+            comp_entry = components.get(etype)
+            has_children = (bool(comp_entry.get("hasChildren", False))
+                            if cataloged and isinstance(comp_entry, dict) else False)
+            if cataloged and not has_children:
+                out.append(("children_not_allowed", f"elements.{eid}.children",
+                            f"{etype} does not declare hasChildren"))
+            else:
+                for cid in children:
+                    if cid not in elements:
+                        out.append(("dangling_child", f"elements.{eid}.children.{cid}",
+                                    f"child id {cid!r} absent from elements"))
+
+    return out
+
+
+# ---- udd-check-lint (task 4/4): the composer + cross-file token resolution ----
+# The single holder of tokens + catalog + tree. _catalog_tree_violations checks a
+# token-prop alias LAYER-only (it must target `semantic`); here we close the deferral
+# task 2 left — resolve that alias against tokens.json for EXISTENCE + $type-match.
+
+def _semantic_token_index(tokens: dict) -> dict[str, "str | None"]:
+    """Map each semantic token's dotted path -> its effective $type.
+
+    A token is a node bearing $value; its $type is the nearest $type on its path
+    (DTCG group inheritance — $type sits on the GROUP, the leaf carries only $value).
+    Keys carry the layer prefix ("semantic.color.accent"), matching the alias body.
+    """
+    out: dict[str, "str | None"] = {}
+    sem = tokens.get("semantic") if isinstance(tokens, dict) else None
+    if not isinstance(sem, dict):
+        return out
+
+    def _walk(node: object, path: list[str], inherited: "str | None") -> None:
+        if not isinstance(node, dict):
+            return
+        ttype = node.get("$type", inherited)
+        if "$value" in node:                       # a token (a leaf bearing $value)
+            out[".".join(path)] = ttype
+        for key, child in node.items():            # descend even past a token — never skip a subtree
+            if not key.startswith("$"):
+                _walk(child, path + [key], ttype)
+
+    _walk(sem, ["semantic"], None)
+    return out
+
+
+def _prop_token_resolution_violations(tokens: dict, catalog: dict, tree: dict) -> list[tuple[str, str, str]]:
+    """Resolve a tree's semantic token-prop aliases against tokens.json.
+
+    Pure + TOTAL (never mutates inputs; stdlib only; never raises on dict inputs).
+    Deterministic document order; [] == every token-prop alias resolves to an
+    existing semantic token of the right $type. Acts ONLY on a prop that is BOTH a
+    catalog PropSpec {type:token, token:<$type>} AND a tree {semantic.*} alias (the
+    props _catalog_tree_violations passed LAYER-only); everything else is task 1/2's.
+    Two codes: unresolved_prop_token · prop_token_type_mismatch.
+    """
+    out: list[tuple[str, str, str]] = []
+    sem_index = _semantic_token_index(tokens)
+    components = catalog.get("components") if isinstance(catalog, dict) else None
+    components = components if isinstance(components, dict) else {}
+    elements = tree.get("elements") if isinstance(tree, dict) else None
+    elements = elements if isinstance(elements, dict) else {}
+
+    for eid, el in elements.items():
+        if not isinstance(el, dict):
+            continue                                    # malformed_element — _catalog_tree_violations' job
+        etype = el.get("type")
+        comp = components.get(etype) if isinstance(etype, str) else None
+        if not isinstance(comp, dict):
+            continue                                    # uncataloged / malformed — already flagged there
+        cprops = comp.get("props")
+        cprops = cprops if isinstance(cprops, dict) else {}
+        props = el.get("props")
+        if not isinstance(props, dict):
+            continue
+        for pname, value in props.items():
+            spec = cprops.get(pname)
+            if not isinstance(spec, dict) or spec.get("type") != "token":
+                continue                                # only catalog token-props
+            if not (isinstance(value, str) and value.startswith("{") and value.endswith("}")):
+                continue                                # non-alias literal → task-2's prop_type_mismatch
+            target = value[1:-1]
+            if target.split(".", 1)[0] != "semantic":
+                continue                                # non-semantic alias → task-2's non_semantic_prop_token
+            want = spec.get("token")                    # the declared $type
+            if want not in _TOKEN_TYPES:
+                continue                                # malformed token PropSpec → task-2's malformed_catalog owns it
+            path = f"elements.{eid}.props.{pname}"
+            if target not in sem_index:
+                out.append(("unresolved_prop_token", path, f"{value} resolves to no semantic token"))
+                continue
+            got = sem_index[target]                     # the resolved token's inherited $type
+            if got not in _TOKEN_TYPES:
+                continue                                # resolved token's $type malformed → task-1's unknown_type owns it
+            if got != want:
+                out.append(("prop_token_type_mismatch", path,
+                            f"{value} is {got!r}, but prop wants {want!r}"))
+    return out
+
+
+def _udd_named_set_checks(root: Path) -> list[tuple[bool, str, str]]:
+    """Lint a project's UDD named set under `.add/design/` (silent when absent).
+
+    Composes _token_layer_violations + _catalog_tree_violations +
+    _prop_token_resolution_violations into cmd_check's (ok, desc, reason) checks.
+    READ-ONLY; FAIL-CLOSED on malformed JSON (a named code, never a crash). Returns
+    [] when no named set exists — so a clean / non-UI project stays untouched.
+    """
+    design = root / "design"
+    tok_path, cat_path = design / "tokens.json", design / "catalog.json"
+    proto_dir = design / "prototypes"
+    trees = sorted(p for p in proto_dir.glob("*.json") if p.is_file()) if proto_dir.is_dir() else []
+    if not (tok_path.exists() or cat_path.exists() or trees):
+        return []                                       # silent-when-absent
+
+    def _load(p: Path) -> "tuple[object, str | None]":
+        try:
+            return json.loads(p.read_text(encoding="utf-8")), None
+        except (json.JSONDecodeError, OSError) as e:
+            return None, str(e)
+
+    out: list[tuple[bool, str, str]] = []
+
+    tokens = None
+    if tok_path.exists():
+        tokens, err = _load(tok_path)
+        if err is not None:
+            out.append((False, "tokens.json parses", f"malformed_tokens_json: {err}"))
+            tokens = None
+        else:
+            v = _token_layer_violations(tokens)
+            if not v:
+                out.append((True, "tokens.json layer-valid", ""))
+            else:
+                out += [(False, "tokens.json layer-valid", f"{c}: {p} — {d}") for c, p, d in v]
+
+    catalog = None
+    if cat_path.exists():
+        catalog, err = _load(cat_path)
+        if err is not None:
+            out.append((False, "catalog.json parses", f"malformed_catalog_json: {err}"))
+            catalog = None
+
+    for tp in trees:
+        name = tp.stem
+        tree, err = _load(tp)
+        if err is not None:
+            out.append((False, f"prototype '{name}' parses", f"malformed_prototype_json: {err}"))
+            continue
+        if catalog is None:
+            continue                                    # no catalog to validate a tree against — skip quietly
+        v = list(_catalog_tree_violations(catalog, tree))
+        if tokens is not None:
+            v += _prop_token_resolution_violations(tokens, catalog, tree)
+        if not v:
+            out.append((True, f"prototype '{name}' valid", ""))
+        else:
+            out += [(False, f"prototype '{name}' valid", f"{c}: {p} — {d}") for c, p, d in v]
+
+    return out
 
 
 def cmd_check(args: argparse.Namespace) -> None:
@@ -964,6 +1542,16 @@ def cmd_check(args: argparse.Namespace) -> None:
             # the intake flow — NOT a failure. Names structure, never the act of intake.
             warnings.append((f"task '{slug}'", "is outside a milestone — size it via the /add "
                                                "intake flow (or attach with --milestone)"))
+        # autonomy level (task explicit-autonomy-dial): a REAL out-of-set token is a hard
+        # unknown_autonomy_level; a LIVE task (phase before done/observe) with no `autonomy:`
+        # line is implicit_autonomy — a WARN, never red. Done/observe predecessors are SKIPPED
+        # (a fresh live-only predicate, NOT the audit open-front skip) so the board never floods.
+        _alvl = _autonomy_level(_task_header(root, slug))
+        checks.append((_alvl != "?", f"task '{slug}' autonomy level recognized",
+                       "unknown_autonomy_level (token outside manual|conservative|auto)"))
+        if _alvl is None and t.get("phase") not in ("done", "observe"):
+            warnings.append((f"task '{slug}'", "has no explicit autonomy level (implicit_autonomy) "
+                             "— set `autonomy: manual|conservative|auto` in the header"))
         for dep in t.get("depends_on") or []:
             checks.append((dep in tasks or dep in archived_slugs,
                            f"task '{slug}' dep '{dep}' resolves", "unknown task"))
@@ -985,6 +1573,31 @@ def cmd_check(args: argparse.Namespace) -> None:
         if lint_result is not None:
             ok, reason = lint_result
             checks.append((ok, f"task '{slug}' deltas well-formed", reason))
+        # tamper tripwire standing monitor (verify-integrity): a non-done task whose
+        # snapshot has diverged is surfaced EARLY — WARN, never red (the verify GATE
+        # is where it bites, HARD-STOP). Fail-closed via _tripwire_divergence.
+        if not _task_done(t):
+            _tw = t.get("tripwire")
+            if _tw and _tripwire_divergence(root, slug, _tw):
+                warnings.append((f"task '{slug}'", "tampered since its tests->build "
+                                 "snapshot (build_tampered) — a tracked test or the "
+                                 "frozen §3 changed; the verify gate will HARD-STOP it"))
+            # §5 scope standing monitor (build-scope-lock): a pending out-of-scope
+            # touch (or a tampered baseline) surfaces EARLY — WARN, never red; the
+            # verify gate is where it bites.
+            _sc = t.get("scope")
+            if isinstance(_sc, dict):
+                _tamper, _out = _scope_findings(root, slug, _sc)
+                if _tamper:
+                    warnings.append((f"task '{slug}'", "scope-snapshot.json is "
+                                     f"{_tamper} against its anchor "
+                                     "(scope_snapshot_tampered pending) — the verify "
+                                     "gate will refuse it"))
+                elif _out:
+                    warnings.append((f"task '{slug}'", "touched outside its declared "
+                                     f"§5 Scope: {' · '.join(_out[:3])} "
+                                     "(scope_violation pending) — the verify gate "
+                                     "will refuse it"))
 
     # drift: a done milestone must have no unfinished tasks
     for mslug, m in milestones.items():
@@ -994,10 +1607,68 @@ def cmd_check(args: argparse.Namespace) -> None:
             checks.append((not unfinished, f"done milestone '{mslug}' fully complete",
                            f"unfinished: {unfinished}"))
 
+    # goal-auto-ready (task goal-auto-ready-gate): nudge the ACTIVE milestone toward a
+    # machine-checkable goal — every exit criterion citing a verifier `(verify: …)` so the
+    # engine can self-verify the result against it. WARN, NEVER red (measurement, not a gate);
+    # fired IFF the goal HAS criteria but not all cite (total >= 1 AND cited < total) — a
+    # zero-criteria milestone is shaping's nudge, not this one's. LIVE-ONLY: the OPEN active
+    # milestone only — a done-but-not-yet-archived one (still the active pointer until
+    # archive clears it) and closed/archived predecessors are never retro-flagged (Must #4).
+    _active_ms = state.get("active_milestone")
+    if _active_ms in milestones and milestones[_active_ms].get("status") != "done":
+        _cited, _total = _exit_criteria_cited(root, _active_ms)
+        if _total >= 1 and _cited < _total:
+            warnings.append(("goal_not_auto_ready",
+                             f"milestone '{_active_ms}' goal not auto-ready "
+                             f"({_cited}/{_total} exit criteria cite a verifier) — add "
+                             "(verify: <test|command|metric>) to each bare criterion"))
+
+    # grounded (task ground-bundle-wiring): the freeze review checklist asks the human to
+    # confirm the contract is grounded; this is the standing monitor for the gap. WARN, NEVER
+    # red (measure-not-block, mirrors goal_not_auto_ready) — fires IFF the ACTIVE task's §3 is
+    # FROZEN AND its §0 GROUND map is ungrounded (the precise "froze without grounding" gap, so
+    # no nag during pre-freeze drafting). A pre-ground / legacy task (no §0 -> _grounded_state
+    # None) is EXEMPT, never retro-flagged. Rides the existing `warnings` array — no new key.
+    _at = state.get("active_task")
+    if _at in tasks:
+        _raw = _raw_phase_bodies(root, _at)
+        if _contract_frozen(_raw.get(3, "")) and _grounded_state(_raw) is False:
+            warnings.append(("task_not_grounded",
+                             f"task '{_at}' froze its contract without grounding — fill the "
+                             "§0 GROUND anchors the contract cites (add.py guide)"))
+
+    # wave-ledger fork-base (engine-merge-base-enforcement): the engine EXECUTES the
+    # streams.md rule — every roster echo must match `base:`. A FILLED mismatch is red at
+    # ANY status; a pending row is red at `status: merging` (merge-time strictness) but only
+    # a WARN at `status: live` (measure-not-block: step-0 echoes land mid-wave). An
+    # unparseable ledger is fail-closed (`wave_ledger_malformed`) — never a silent skip.
+    for _wp in _wave_ledgers(root):
+        _wm = _wp.parent.name
+        _w = _parse_wave_ledger(_wp)
+        if _w.get("error"):
+            checks.append((False, f"wave '{_wm}' ledger parses",
+                           f"wave_ledger_malformed: {_w['error']}"))
+            continue
+        _bad = [r["task"] for r in _w["rows"] if r["filled"] and not r["matched"]]
+        _pending = [r["task"] for r in _w["rows"] if not r["filled"]]
+        if _w["status"] == "merging":
+            _bad += _pending           # merge-time strictness: pending == unverified
+            _pending = []
+        checks.append((not _bad, f"wave '{_wm}' fork-base echoes match base",
+                       "unverified_fork_base: " + ", ".join(_bad)))
+        for _t in _pending:
+            warnings.append(("fork_base_pending",
+                             f"wave '{_wm}' roster row '{_t}' awaits its step-0 echo"))
+
     # dependency graph must be acyclic
     cycle = _find_cycle(tasks)
     checks.append((cycle is None, "task dependencies are acyclic",
                    f"cycle: {' -> '.join(cycle)}" if cycle else ""))
+
+    # UDD foundation (udd-check-lint): lint a project's named set under .add/design/ —
+    # composes the token + catalog/tree validators + the cross-file prop-token resolution.
+    # Silent when absent; read-only; fail-closed on malformed JSON.
+    checks.extend(_udd_named_set_checks(root))
 
     passed = sum(1 for ok, _, _ in checks if ok)
     failed = len(checks) - passed
@@ -1020,6 +1691,144 @@ def cmd_check(args: argparse.Namespace) -> None:
         print(summary)
     if failed:
         raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
+# wave-ledger fork-base enforcement (engine-merge-base-enforcement)
+#
+# streams.md states the rule; these helpers EXECUTE it (words-exist != method-works).
+# The ledger is the hand-written `.add/milestones/<m>/WAVE.md` per the streams.md
+# template: a `base: <sha>` line, a `status: live|merging` field on the header line,
+# and a `### Roster` table whose 3rd column holds the PASTED `rev-parse HEAD` echo.
+# Parsing is FAIL-CLOSED: anything off-grammar names the unparseable piece rather
+# than silently passing — a silent skip would un-guard the trust layer.
+
+_WAVE_SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+
+
+def _sha_match(a: str, b: str) -> bool:
+    """Exact or prefix match, both tokens >=7 hex chars (git short-sha tolerant)."""
+    if len(a) < 7 or len(b) < 7:
+        return False
+    return a == b or a.startswith(b) or b.startswith(a)
+
+
+def _wave_ledgers(root: Path) -> list:
+    """Every live wave ledger, stable order (the same glob as the status hint)."""
+    return sorted(p for p in (root / "milestones").glob("*/WAVE.md") if p.is_file())
+
+
+def _parse_wave_ledger(path: Path) -> dict:
+    """Parse a WAVE.md against the streams.md template grammar. Fail-closed: a dict
+    with an "error" key names exactly the piece that did not parse."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        return {"error": f"unreadable ({e.__class__.__name__})"}
+    # status is read ONLY from the FIRST `wave:` line — the header. Body text must
+    # never rescue a malformed/invalid header: not free prose (heal-1 FG-2, an
+    # unanchored search) and not a later wave:-prefixed line either (heal-2 FG-3 —
+    # `(?m)^wave:.*?status:` happily skipped a status-less header to a body line).
+    m_header = re.search(r"(?m)^wave:.*$", text)
+    if not m_header:
+        return {"error": "no 'wave:' header line"}
+    # the status value is the EXACT token after `status:`, terminated only by
+    # whitespace, the `·` separator, or end-of-line (v3): `\b` is not a token
+    # terminator on hand-written input — it fires at `|` and `-`, so the unfilled
+    # template placeholder `live|merging` (and drift like `live-ish`) parsed as
+    # its valid prefix and greened an unfilled ledger (5th refute pass). The
+    # `status:` label must itself START a field — start-of-line, whitespace, or
+    # `·` before it (v4): an embedded `substatus:` is not a status field
+    # (6th refute pass, N12).
+    m_status = re.search(r"(?:^|[\s·])status:[ \t]*([^\s·]*)", m_header.group(0))
+    if not m_status:
+        return {"error": "no 'status: live|merging' on the wave: header line"}
+    if m_status.group(1) not in ("live", "merging"):
+        return {"error": "status token "
+                f"{m_status.group(1)!r} is not exactly live or merging"}
+    # base is read ONLY from the FIRST `base:` line, token on THAT line (heal-3 Pex:
+    # `(?m)^base:\s*(\S+)` let \s cross the newline, so an EMPTY base: line parsed
+    # as filled with whatever token the next line started with).
+    m_base_line = re.search(r"(?m)^base:.*$", text)
+    base = ""
+    if m_base_line:
+        m_tok = re.search(r"base:[ \t]*(\S+)", m_base_line.group(0))
+        base = m_tok.group(1) if m_tok else ""
+    if not re.fullmatch(r"[0-9a-f]{7,40}", base):
+        return {"error": "no parseable 'base:' sha (7-40 hex)"}
+    rows, in_roster, echo_col = [], False, None
+    for line in text.splitlines():
+        if line.startswith("### "):
+            in_roster = line.lower().startswith("### roster")
+            echo_col = None
+            continue
+        if not in_roster or not line.lstrip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if echo_col is None:
+            # the column-header row MUST name the fork-base column, and the echo is
+            # read from WHEREVER that label sits (heal-3: a hardcoded cells[2] let an
+            # extra leading column hide the echo, and a headerless roster silently
+            # swallowed its first DATA row as the header — a silent skip, refused).
+            # EXACTLY one label may match (v2 ambiguity refusal): first-wins on a
+            # hand-written artifact is fail-open — a second matching label such as
+            # "fork-base-prev" would steal the echo and green a mismatched roster
+            # (4th refute pass, N1/N10).
+            matches = [i for i, c in enumerate(cells) if "fork-base" in c.lower()]
+            if not matches:
+                return {"error": "roster column-header row names no 'fork-base' column"}
+            if len(matches) > 1:
+                labels = ", ".join(cells[i] for i in matches)
+                return {"error": f"ambiguous fork-base columns: {labels}"}
+            echo_col = matches[0]
+            continue
+        if all(set(c) <= set("-: ") for c in cells):
+            continue                            # the |---| separator row
+        if len(cells) <= echo_col:
+            return {"error": f"roster row with no fork-base cell: {line.strip()!r}"}
+        shas = _WAVE_SHA_RE.findall(cells[echo_col])
+        # fail-closed cell semantics (heal-1 FG-1): the cell must BE the pasted echo,
+        # so EVERY sha token in it must match base — `any()` would green a drift note
+        # ("<alien-sha> synced-to <base-prefix>") that documents the very mismatch
+        # this gate exists to refuse. One alien token -> the row is NOT verified.
+        rows.append({"task": cells[0], "filled": bool(shas),
+                     "matched": bool(shas) and all(_sha_match(s, base) for s in shas)})
+    if not rows:
+        return {"error": "no roster row"}
+    return {"status": m_status.group(1), "base": base, "rows": rows}
+
+
+def cmd_wave_verify(args: argparse.Namespace) -> None:
+    """The explicit merge-time gate: strict at any status, read-only, judgment-free.
+    Exit 0 only when EVERY roster echo matches `base:` — run before the first
+    merge-back. Never mutates the ledger, its status field, or state.json."""
+    root = _require_root()
+    if args.milestone:
+        target = root / "milestones" / args.milestone / "WAVE.md"
+        if not target.is_file():
+            _die(f"wave_not_found: no WAVE.md for milestone '{args.milestone}'")
+    else:
+        ledgers = _wave_ledgers(root)
+        if not ledgers:
+            _die("wave_not_found: no WAVE.md under .add/milestones/ — nothing to verify")
+        if len(ledgers) > 1:
+            _die("wave_ambiguous: " + ", ".join(p.parent.name for p in ledgers)
+                 + " — name one: add.py wave-verify <milestone>")
+        target = ledgers[0]
+    w = _parse_wave_ledger(target)
+    if w.get("error"):
+        _die(f"wave_ledger_malformed: {w['error']} ({target.parent.name}/WAVE.md)")
+    bad = []
+    for r in w["rows"]:
+        verdict = "ok" if r["matched"] else ("MISMATCH" if r["filled"] else "PENDING")
+        print(f"  {r['task']}: {verdict}")
+        if not r["matched"]:
+            bad.append(r["task"])
+    if bad:
+        _die("unverified_fork_base: " + ", ".join(bad)
+             + f" — every roster echo must match base {w['base'][:12]} before merge-back")
+    print(f"wave '{target.parent.name}' verified — every fork-base echo matches base "
+          f"{w['base'][:12]}; merge-back may proceed (the ledger is untouched).")
 
 
 def cmd_new_milestone(args: argparse.Namespace) -> None:
@@ -1045,7 +1854,8 @@ def cmd_new_milestone(args: argparse.Namespace) -> None:
     state["active_milestone"] = slug
     save_state(root, state)
     print(f"created milestone '{slug}' -> {mfile}")
-    print(f"active milestone set. Decompose it into tasks: add.py new-task <slug> --depends-on ...")
+    print("active milestone set.")
+    print(_next_footer(root, state))   # converges the old "Decompose it into tasks: …" hint
 
 
 def cmd_ready(args: argparse.Namespace) -> None:
@@ -1134,13 +1944,14 @@ def cmd_milestone_done(args: argparse.Namespace) -> None:
     tail = f" ({len(waived)} via a signed RISK-ACCEPTED waiver)" if waived else ""
     print(f"milestone '{slug}' -> done ({len(members)} tasks complete{tail}).")
     print(f"wrote {retro_path.relative_to(root.parent)}  (milestone exit report)")
-    print("Confirm the MILESTONE.md exit criteria are checked, then archive/start the next.")
     # fold-pressure nudge: milestone close is the natural fold point for open deltas (v11)
     open_deltas = sum(len(v) for v in _collect_open_deltas(root).values())
     if open_deltas:
         noun = "delta" if open_deltas == 1 else "deltas"
         print(f"note: {open_deltas} open {noun} to consolidate into the foundation "
               f"— review with: add.py deltas")
+    # the engine-sourced next step (converges the old "Confirm … archive/start the next" hint)
+    print(_next_footer(root, state))
 
 
 def cmd_archive_milestone(args: argparse.Namespace) -> None:
@@ -1193,6 +2004,7 @@ def cmd_archive_milestone(args: argparse.Namespace) -> None:
     save_state(root, state)
     print(f"archived milestone '{slug}' ({len(members)} tasks) — removed from active state.")
     print("files on disk are untouched; see `add.py status` for the archived rollup.")
+    print(_next_footer(root, state))
 
 
 def cmd_compact(args: argparse.Namespace) -> None:
@@ -1257,6 +2069,7 @@ def cmd_compact(args: argparse.Namespace) -> None:
     for path, n in moved:
         print(f"  moved {path} ({n} files)")
     print("recovery: reverse the moves (mv the bundle's parts back) — state needs no edit.")
+    print(_next_footer(root, state))
 
 
 def cmd_set_milestone(args: argparse.Namespace) -> None:
@@ -1275,6 +2088,7 @@ def cmd_set_milestone(args: argparse.Namespace) -> None:
     state["tasks"][task]["updated"] = _now()
     save_state(root, state)
     print(f"task '{task}' -> milestone '{new}'" if new else f"task '{task}' -> milestone (none)")
+    print(_next_footer(root, state))
 
 
 def cmd_use(args: argparse.Namespace) -> None:
@@ -1289,6 +2103,7 @@ def cmd_use(args: argparse.Namespace) -> None:
     state["active_task"] = slug
     save_state(root, state)
     print(f"active task -> '{slug}' (phase={state['tasks'][slug]['phase']})")
+    print(_next_footer(root, state))
 
 
 def _find_cycle(tasks: dict) -> list[str] | None:
@@ -1370,7 +2185,7 @@ def _bar(num: int, den: int, cells: int, g: dict) -> str:
 
 
 def _phase_track(phase: str, g: dict) -> str:
-    """Compact 8-cell pipeline (no labels — a single legend explains it):
+    """Compact 9-cell pipeline (no labels — a single legend explains it):
     reached · current · pending. A done task -> all reached."""
     try:
         ci = PHASES.index(phase)
@@ -1434,6 +2249,27 @@ def _project_goal(root: Path) -> str:
     return GOAL_UNSET
 
 
+def _project_autonomy_token(root: Path):
+    """The RAW autonomy declaration in PROJECT.md — a recognized rung, None when no
+    declaration line is present, or "?" for a real-but-unrecognized token. Uses the
+    anchored _autonomy_level (a title/prose substring is never a declaration) with
+    HTML comments stripped. Unreadable foundation -> None. Read-only and PURE."""
+    try:
+        text = (root / "PROJECT.md").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return _autonomy_level(re.sub(r"<!--.*?-->", "", text, flags=re.S))
+
+
+def _project_autonomy(root: Path) -> str:
+    """The autonomy rung a new task INHERITS from the project default. Fail-SAFE:
+    no declaration -> "auto" (the method default; v7: absent = auto); an unrecognized
+    token -> "conservative" (NEVER silently "auto"); an unreadable foundation -> "auto".
+    Read-only and PURE — mirrors _project_goal; the seed source for cmd_new_task."""
+    tok = _project_autonomy_token(root)
+    return "auto" if tok is None else ("conservative" if tok == "?" else tok)
+
+
 def _milestone_doc(root: Path, mslug: str) -> tuple[str, str]:
     """(title, goal) from MILESTONE.md; ('(unknown)','(unknown)') if the doc is gone."""
     f = root / "milestones" / mslug / MILESTONE_FILE
@@ -1461,6 +2297,41 @@ def _exit_criteria(root: Path, mslug: str) -> tuple[int, int]:
     met = len(re.findall(r"- \[x\]", sec))
     total = met + len(re.findall(r"- \[ \]", sec))
     return met, total
+
+
+# A non-empty `(verify: <citation>)` on an exit-criterion line — at least one non-whitespace
+# char inside, so a bare `(verify:)`/`(verify: )` does NOT count (the mid-text substring trap).
+_VERIFY_CITE_RE = re.compile(r"\(verify:\s*\S.*?\)", re.I)
+
+
+def _exit_criteria_cited(root: Path, mslug: str) -> tuple[int, int]:
+    """(cited, total) over MILESTONE.md's 'Exit criteria' section. total = every
+    `- [ ]`/`- [x]` criterion line; cited = those carrying a NON-EMPTY
+    `(verify: <citation>)`. Read-only and PURE; missing file/section -> (0, 0).
+    Mirrors _exit_criteria (the checkbox tally) — an ADDITIVE classification beside
+    it; it never touches `milestone_goal_unmet`."""
+    f = root / "milestones" / mslug / MILESTONE_FILE
+    if not f.exists():
+        return 0, 0
+    m = re.search(r"## Exit criteria.*?(?=\n## |\Z)", f.read_text(encoding="utf-8"), re.S)
+    if not m:
+        return 0, 0
+    cited = total = 0
+    for ln in m.group(0).splitlines():
+        if re.match(r"\s*- \[[ x]\]", ln):
+            total += 1
+            if _VERIFY_CITE_RE.search(ln):
+                cited += 1
+    return cited, total
+
+
+def _goal_auto_ready(root: Path, mslug: str) -> bool:
+    """True iff the milestone goal is AUTO-READY: its Exit criteria has >= 1 criterion
+    AND every one cites a verifier (cited == total) — so the engine can self-verify the
+    result against the goal without human judgement. A zero-criteria goal is NOT
+    auto-ready (you cannot self-verify against nothing). PURE."""
+    cited, total = _exit_criteria_cited(root, mslug)
+    return total >= 1 and cited == total
 
 
 def _stage_criteria(root: Path) -> tuple[int, int]:
@@ -1507,11 +2378,17 @@ def _count_test_defs(f: Path) -> int:
         return 0
 
 
-def _tests_count(root: Path, slug: str) -> int:
+def _primary_test_files(root: Path, slug: str) -> list[Path]:
+    """The PRIMARY test set — *.py directly in the task's tests/ dir (the stable
+    path). A list so the tamper tripwire can hash exactly what the engine counts."""
     d = root / "tasks" / slug / "tests"
     if not d.is_dir():
-        return 0
-    return sum(_count_test_defs(f) for f in d.glob("*.py"))
+        return []
+    return sorted(d.glob("*.py"))
+
+
+def _tests_count(root: Path, slug: str) -> int:
+    return sum(_count_test_defs(f) for f in _primary_test_files(root, slug))
 
 
 def _confined(p: Path, rootp: Path) -> bool:
@@ -1523,18 +2400,18 @@ def _confined(p: Path, rootp: Path) -> bool:
         return False
 
 
-def _declared_tests_count(root: Path, slug: str) -> int:
-    """Count tests at the §4 'Tests live in:' declared path(s). PURE, fail-closed 0.
+def _declared_test_files(root: Path, slug: str) -> list[Path]:
+    """Resolve the §4 'Tests live in:' declared path(s) to a deduped file list. PURE.
     Tokens are the backticked spans on the FIRST declaring line of the raw §4 body.
     Resolution: './…' -> task dir · contains '/' -> project root (parent of .add) ·
     bare name -> sibling of the previous resolved token (else task dir). A directory
-    token counts the *.py files directly inside it; resolved files are deduped.
-    v2 confinement: every file read must resolve inside the project root — '..'
-    traversal, absolute tokens, and symlink escapes all contribute 0, fail-closed."""
+    token yields the *.py files directly inside it; resolved files are deduped.
+    v2 confinement: every path must resolve inside the project root — '..' traversal,
+    absolute tokens, and symlink escapes are all dropped, fail-closed."""
     body = _raw_phase_bodies(root, slug).get(4, "")
     m = re.search(r"^\s*Tests live in:.*$", body, re.M)
     if not m:
-        return 0
+        return []
     tdir = root / "tasks" / slug
     rootp = root.parent.resolve()
     files: list[Path] = []
@@ -1560,7 +2437,12 @@ def _declared_tests_count(root: Path, slug: str) -> int:
         except OSError:
             continue
         files.extend(f for f in cand if f not in files)
-    return sum(_count_test_defs(f) for f in files)
+    return files
+
+
+def _declared_tests_count(root: Path, slug: str) -> int:
+    """Count tests at the §4 'Tests live in:' declared path(s). PURE, fail-closed 0."""
+    return sum(_count_test_defs(f) for f in _declared_test_files(root, slug))
 
 
 def _tests_info(root: Path, slug: str) -> tuple[int, bool]:
@@ -1572,6 +2454,279 @@ def _tests_info(root: Path, slug: str) -> tuple[int, bool]:
         return primary, False
     declared = _declared_tests_count(root, slug)
     return (declared, True) if declared > 0 else (0, False)
+
+
+def _resolved_test_files(root: Path, slug: str) -> list[Path]:
+    """The file set the engine treats as this task's tests — the PRIMARY set wins
+    when it yields any test defs, else the §4-declared set (mirrors _tests_info's
+    selection). The tamper tripwire hashes exactly THIS set, never a fresh glob."""
+    primary = _primary_test_files(root, slug)
+    if sum(_count_test_defs(f) for f in primary) > 0:
+        return primary
+    return _declared_test_files(root, slug)
+
+
+def _md5_text(s: str) -> str:
+    return hashlib.md5(s.encode("utf-8")).hexdigest()
+
+
+def _md5_file(p: Path) -> str | None:
+    """md5 of a file's bytes; None on ANY read error (fail-closed — a tracked file
+    that cannot be read counts as DIVERGED at the gate, never a crash)."""
+    try:
+        return hashlib.md5(p.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _tripwire_snapshot(root: Path, slug: str, raw3: str) -> dict:
+    """Freeze the md5 of the resolved red test files + the frozen §3 contract — the
+    tamper baseline (verify-integrity). Keys are project-root-relative paths (stable
+    across the snapshot->gate window). Tool-agnostic: hashes bytes only, never runs
+    tests or measures coverage."""
+    rootp = root.parent.resolve()
+    tests: dict[str, str] = {}
+    for f in _resolved_test_files(root, slug):
+        h = _md5_file(f)
+        if h is None:
+            continue
+        try:
+            rel = str(f.resolve().relative_to(rootp))
+        except (ValueError, OSError):
+            rel = str(f)
+        tests[rel] = h
+    return {"contract_md5": _md5_text(raw3), "tests": tests}
+
+
+def _tripwire_divergence(root: Path, slug: str, tw: dict) -> list[str]:
+    """Tamper codes for a PRESENT snapshot; [] means clean. Re-reads each tracked
+    path directly (never re-globs), so a weakened, deleted, or unreadable test file
+    and an edited frozen §3 all surface. Fail-closed: an unreadable file -> diverged."""
+    diffs: list[str] = []
+    if _md5_text(_raw_phase_bodies(root, slug).get(3, "")) != tw.get("contract_md5"):
+        diffs.append("contract_tampered")
+    rootp = root.parent.resolve()
+    for rel, snap in (tw.get("tests") or {}).items():
+        if _md5_file(rootp / rel) != snap:
+            diffs.append(f"build_tampered:{rel}")
+    return diffs
+
+
+# ── §5 scope gate (build-scope-lock): touched ⊆ declared, from bytes alone ──────────
+# The walk's NAMED exclusion set — ONE constant; widening it is an additive
+# change-request, never silent. `.add` is engine domain (tripwire + audit guard it);
+# the rest is VCS/bytecode/OS junk with no build signal.
+_SCOPE_EXCLUDE_DIRS = (".git", ".add", "__pycache__", "node_modules")
+_SCOPE_EXCLUDE_FILES = (".DS_Store",)          # plus *.pyc by suffix
+
+
+def _declared_scope(root: Path, slug: str) -> list[str] | None:
+    """Resolve the §5 'Scope (may touch):' declaration to project-root-relative
+    strings (directory tokens keep a trailing '/'). The frozen scope-decl-template
+    grammar: the §4 token rules — backticked spans on the FIRST declaring line ·
+    './…' -> task dir · contains '/' -> project root · bare -> sibling of the
+    previous token's dir · v2 confinement drops everything outside the project
+    root, fail-closed — with ONE divergence: a directory token covers its WHOLE
+    subtree (containment, judged by _in_scope). None = no Scope line (UNDECLARED,
+    grandfathered — never retro-red); [] = a line whose every token was dropped
+    (a garbage declaration grants NO cover)."""
+    body = _raw_phase_bodies(root, slug).get(5, "")
+    m = re.search(r"^\s*Scope \(may touch\):.*$", body, re.M)
+    if not m:
+        return None
+    tdir = root / "tasks" / slug
+    rootp = root.parent.resolve()
+    out: list[str] = []
+    prev_dir = None
+    for tok in re.findall(r"`([^`]+)`", m.group(0)):
+        tok = tok.strip()
+        if tok.startswith("./"):
+            p = tdir / tok[2:]
+        elif "/" in tok:
+            p = root.parent / tok
+        else:
+            p = (prev_dir or tdir) / tok
+        try:
+            if not _confined(p, rootp):
+                continue
+            rp = p.resolve()
+            rel = str(rp.relative_to(rootp))
+            if tok.endswith("/") or rp.is_dir():
+                prev_dir, rel = p, rel.rstrip("/") + "/"
+            else:
+                prev_dir = p.parent
+        except OSError:
+            continue
+        if rel not in out:
+            out.append(rel)
+    return out
+
+
+def _in_scope(rel: str, declared: list[str]) -> bool:
+    """True when rel falls under any declared token — exact match for a file
+    token, whole-subtree prefix containment for a directory token ('…/')."""
+    for tok in declared:
+        if tok.endswith("/"):
+            if rel.startswith(tok) or rel == tok.rstrip("/"):
+                return True
+        elif rel == tok:
+            return True
+    return False
+
+
+def _scope_walk(rootp: Path) -> dict[str, str]:
+    """{project-root-relative path: md5} over the project tree, pruning
+    _SCOPE_EXCLUDE_DIRS at any depth and skipping bytecode/OS junk. A file
+    unreadable at SNAPSHOT time is skipped; at the GATE the resulting absence
+    reads as a touch (fail-closed at the biting end). Bytes only — no git."""
+    files: dict[str, str] = {}
+    for dirpath, dirnames, filenames in os.walk(rootp):
+        dirnames[:] = [d for d in dirnames if d not in _SCOPE_EXCLUDE_DIRS]
+        for name in filenames:
+            if name in _SCOPE_EXCLUDE_FILES or name.endswith(".pyc"):
+                continue
+            p = Path(dirpath) / name
+            h = _md5_file(p)
+            if h is None:
+                continue
+            try:
+                files[str(p.relative_to(rootp))] = h
+            except ValueError:
+                continue
+    return files
+
+
+def _scope_findings(root: Path, slug: str, anchor: dict) -> tuple[str | None, list[str]]:
+    """(tamper_reason, out_of_scope_touches) for a scope-anchored task. PURE read.
+    The sidecar is integrity-checked against the state.json anchor BEFORE it is
+    trusted; touched = modified ∪ added ∪ deleted vs the snapshot."""
+    side = root / "tasks" / slug / "scope-snapshot.json"
+    try:
+        raw = side.read_text(encoding="utf-8")
+    except OSError:
+        return "missing", []
+    if _md5_text(raw) != anchor.get("snapshot_md5"):
+        return "diverged", []
+    try:
+        snap = json.loads(raw).get("files", {})
+    except (ValueError, AttributeError):
+        return "unparseable", []
+    if not isinstance(snap, dict):
+        return "unparseable", []
+    now = _scope_walk(root.parent.resolve())
+    touched = sorted({k for k, v in snap.items() if now.get(k) != v}
+                     | {k for k in now if k not in snap})
+    declared = anchor.get("declared") or []
+    return None, [p for p in touched if not _in_scope(p, declared)]
+
+
+def _scope_guard(root: Path, state: dict, slug: str) -> None:
+    """Refuse a COMPLETING gate when the build touched outside its declared §5
+    Scope (build-scope-lock). The anchor (state.json) and the sidecar co-witness
+    each other — born in the same tests->build crossing, so EITHER single-file
+    erase is caught (v2, refute-driven): an anchor-less task whose sidecar still
+    EXISTS is scope_anchor_missing, never a silent skip. Both absent -> UNDECLARED
+    or legacy: silent, the grandfather rule (the simultaneous two-file erase is
+    the explicitly accepted floor — the tripwire shares it). Sits directly after
+    _tamper_guard, BEFORE the waiver write, so a violation is never launderable
+    through RISK-ACCEPTED; HARD-STOP never calls it (stopping is always allowed).
+
+    Routing (scope-violation-heal, build-scope-lock 3/3) — tripwire-parity: the
+    RECOVERABLE findings (an out-of-scope touch, a present-but-wrong sidecar) are
+    fixable from BUILD, so they enter the SAME bounded self-heal loop the tamper
+    tripwire uses (_heal_or_escalate, shared HEAL_CAP) — return to build for an
+    honest redo (exit 3), then HARD-STOP at the cap. The ERASED baselines stay
+    die-in-place (exit 1, no heal): a redo cannot recreate an erased anchor or a
+    deleted sidecar — that is tripwire_missing parity. Every heal reason CARRIES
+    its named code, so the existing refusal-token assertions still match."""
+    anchor = state["tasks"][slug].get("scope")
+    if not isinstance(anchor, dict):
+        if (root / "tasks" / slug / "scope-snapshot.json").exists():
+            _die(f"scope_anchor_missing: task '{slug}' carries a scope-snapshot.json "
+                 "but no state.json anchor — the touch baseline was erased from "
+                 "state; re-establish it (re-advance through tests->build) before "
+                 "completing")
+        return
+    tamper, out = _scope_findings(root, slug, anchor)
+    if tamper == "missing":
+        # erased baseline — a redo cannot recreate the evidence (tripwire_missing parity)
+        _die(f"scope_snapshot_tampered: task '{slug}' — scope-snapshot.json is "
+             "missing against its state.json anchor; the touch baseline is "
+             "evidence and must survive the build untouched")
+    if tamper:
+        # diverged | unparseable — present-but-wrong bytes are revertable from build
+        _heal_or_escalate(root, state, slug, source="scope-tamper",
+                          reason=(f"scope_snapshot_tampered: task '{slug}' — "
+                                  f"scope-snapshot.json is {tamper} against its "
+                                  "state.json anchor; revert it to the snapshot bytes"))
+    if out:
+        shown = " · ".join(out[:5])
+        _heal_or_escalate(root, state, slug, source="scope",
+                          reason=(f"scope_violation: task '{slug}' touched outside its "
+                                  f"declared §5 Scope — {shown} ({len(out)} total)"))
+
+
+def _heal_or_escalate(root: Path, state: dict, slug: str, *, reason: str, source: str) -> None:
+    """The bounded self-heal router (verify-integrity, heal-then-escalate). Called ONLY when
+    a cheat is CONFIRMED at this point — mechanical (tripwire divergence, source "tamper") or
+    semantic (an agent-reported refute-read finding, source "refute-read").
+
+    attempts < HEAL_CAP -> record the attempt, return the task to BUILD for an honest redo,
+    exit 3 (a redo signal, NOT a completing outcome). The phase is set DIRECTLY (never via
+    advance) so the tripwire baseline is not re-snapshotted mid-loop. The increment is saved
+    BEFORE the exit, so a re-run never grants a free attempt (atomic, fail-closed).
+
+    attempts >= HEAL_CAP -> the next confirmed cheat: record gate = HARD-STOP and escalate to
+    the human (_die). A gamed green is NEVER auto-passed; the loop is never unbounded. The
+    counter is MONOTONIC — it never auto-resets (cmd_phase is unguarded, so a reset would be a
+    zero-human cap bypass)."""
+    t = state["tasks"][slug]
+    heal = t.setdefault("heal", {"attempts": 0, "history": []})
+    entry = {"at": _now(), "reason": reason, "source": source}
+    if heal.get("attempts", 0) >= HEAL_CAP:
+        heal.setdefault("history", []).append(entry)
+        t["gate"] = "HARD-STOP"               # never a completing outcome; phase stays put
+        t["updated"] = _now()
+        save_state(root, state)               # the escalation verdict is durable
+        _die(f"heal_exhausted: task '{slug}' — a confirmed cheat ({reason}) persisted past "
+             f"{HEAL_CAP} honest re-build attempts. HARD-STOP escalated to the human: fix the "
+             "spec (change-request -> re-freeze) or abandon. A gamed green is never auto-passed.")
+    heal["attempts"] = heal.get("attempts", 0) + 1
+    heal.setdefault("history", []).append(entry)
+    t["phase"] = "build"                      # DIRECT — never via advance (no re-snapshot)
+    t["updated"] = _now()
+    _sync_task_marker(root, slug, "build")
+    save_state(root, state)                   # the increment is durable BEFORE the exit
+    print(f"return_to_build: task '{slug}' — cheat detected ({reason}); RETURN TO BUILD for an "
+          f"HONEST redo, attempt {heal['attempts']} of {HEAL_CAP}. Revert the tampered file or "
+          "rebuild src honestly, then advance back to verify.")
+    raise SystemExit(3)                       # redo signal (distinct from _die's 1, argparse's 2)
+
+
+def _tamper_guard(root: Path, state: dict, slug: str) -> None:
+    """HARD-STOP a COMPLETING gate when the tripwire shows tampering — the method's
+    first mechanical cheat block (verify-integrity). Tri-state, co-witnessed by
+    flag_verified: present+diverged -> stop; absent+flag_verified -> suspicious stop
+    (the snapshot was crossed-then-erased); absent+not-verified -> skip (a legacy task
+    or one that never crossed tests->build). A cheat is HARD-STOP-class — this runs
+    for RISK-ACCEPTED too, BEFORE the waiver is recorded, so it is never launderable."""
+    t = state["tasks"][slug]
+    tw = t.get("tripwire")
+    if tw is None:
+        if t.get("flag_verified"):
+            _die(f"tripwire_missing: task '{slug}' crossed tests->build "
+                 "(flag_verified) but carries no tamper snapshot — the evidence "
+                 "baseline was erased. Re-establish it (reopen -> re-advance through "
+                 "tests->build) before completing; a missing baseline is HARD-STOP.")
+        return  # legacy: predates the tripwire, or never crossed tests->build
+    diffs = _tripwire_divergence(root, slug, tw)
+    if diffs:
+        # heal-then-escalate (verify-integrity): a mechanical cheat no longer dies on sight —
+        # it enters the bounded self-heal loop (≤HEAL_CAP honest re-build attempts, then a
+        # HARD-STOP escalation). Still HARD-STOP-class: never auto-passed, never launderable
+        # (this runs BEFORE the waiver write). The router returns to build or escalates.
+        _heal_or_escalate(root, state, slug,
+                          reason="tamper_detected:" + ",".join(diffs), source="tamper")
 
 
 def _task_prose(root: Path, slug: str) -> tuple[str, list[str]]:
@@ -1730,7 +2885,7 @@ def _phase_spans(text: str) -> dict[int, str]:
         m = head.match(ln)
         if m:
             n = int(m.group(1))
-            if 1 <= n <= 7 and n not in starts:
+            if 0 <= n <= 7 and n not in starts:
                 starts[n] = idx
     out: dict[int, str] = {}
     for n, idx in starts.items():
@@ -1754,23 +2909,23 @@ def _raw_phase_bodies(root: Path, slug: str) -> dict[int, str]:
 
 
 def task_phases(root: Path, slug: str) -> list[dict]:
-    """The frozen per-task PHASE-DETAIL shape (v9-1): parse TASK.md §1–§7 into seven
-    blocks specify→observe. PURE — NO writes. Each entry is
-    { "phase": <name>, "n": <1..7>, "body": <cleaned text | "(empty)"> }.
+    """The frozen per-task PHASE-DETAIL shape (v9-1): parse TASK.md §0–§7 into eight
+    blocks ground→observe. PURE — NO writes. Each entry is
+    { "phase": <name>, "n": <0..7>, "body": <cleaned text | "(empty)"> }.
 
     The heading scan lives in _phase_spans (shared with the decide digest); this view
     CLEANS each body. Missing file / missing section / placeholder-only body ->
     "(empty)" (fail-closed)."""
-    names = PHASES[:7]  # specify..observe; "done" is a terminal STATE, not a section
+    names = PHASES[:-1]  # ground..observe; "done" is a terminal STATE, not a section
     f = root / "tasks" / slug / "TASK.md"
     try:
         text = f.read_text(encoding="utf-8")
     except OSError:   # missing OR unreadable -> every phase fail-closed to "(empty)"
-        return [{"phase": names[n - 1], "n": n, "body": "(empty)"} for n in range(1, 8)]
+        return [{"phase": names[n], "n": n, "body": "(empty)"} for n in range(0, 8)]
     spans = _phase_spans(text)
-    return [{"phase": names[n - 1], "n": n,
+    return [{"phase": names[n], "n": n,
              "body": _clean_phase_body(spans[n]) if n in spans else "(empty)"}
-            for n in range(1, 8)]
+            for n in range(0, 8)]
 
 
 def _task_title(root: Path, slug: str) -> str:
@@ -1846,7 +3001,7 @@ def render_task_detail(root: Path, state: dict, mslug: str, slug: str, *,
     L.append(f" PHASE {phase}    GATE {gate}")
     L.append(banner)
     for p in task_phases(root, slug):
-        i = p["n"] - 1
+        i = p["n"]   # n IS the PHASES index now (ground=0 .. observe=7)
         mk = (g["reached"] if (phase == "done" or i < ci)
               else g["current"] if i == ci else g["pending"])
         L.append("")
@@ -1981,6 +3136,36 @@ def _contract_frozen(raw3: str) -> bool:
     return any(re.match(r"\s*Status:\s*FROZEN", ln) for ln in raw3.splitlines())
 
 
+def _section0_anchors(raw0: str) -> str | None:
+    """The value of the §0 GROUND "Anchors the contract cites:" line, stripped.
+    None when the §0 body carries no such line (no §0, or a malformed map). PURE."""
+    for ln in raw0.splitlines():
+        m = re.match(r"\s*Anchors the contract cites:\s*(.*)$", ln)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def _grounded_state(raw: dict[int, str]) -> bool | None:
+    """Tri-state grounding measure over a task's RAW §bodies (measure-not-block):
+      True  — the §0 "Anchors the contract cites:" line is filled (real content)
+      False — the §0 section exists but its Anchors line is the "<…>" placeholder / empty
+      None  — no §0 section (a pre-ground / legacy task), OR a §0 with no Anchors line
+    PURE; fail-open (an unparseable §0 -> None, never a false False). The freeze review
+    checklist asks the human to confirm True; status/check surface it, never block on it."""
+    if 0 not in raw:
+        return None
+    anchors = _section0_anchors(raw[0])
+    if anchors is None:
+        return None
+    return bool(anchors) and not anchors.startswith("<")
+
+
+def _task_grounded(root: Path, slug: str) -> bool | None:
+    """`_grounded_state` for one task by slug (reads its RAW §bodies). Read-only."""
+    return _grounded_state(_raw_phase_bodies(root, slug))
+
+
 _FLAG_LABEL_RE = re.compile(r"Least-sure flag surfaced at freeze\s*:", re.I)
 _FLAG_PART_RE = re.compile(
     r"\[(?:spec|scenario|contract|test)(?:/(?:spec|scenario|contract|test))*\]")
@@ -2022,6 +3207,8 @@ def decide_data(root: Path, state: dict, mslug: str, slug: str) -> dict:
     gate = t.get("gate", "none")
     if gate != "none" or phase in ("observe", "done"):
         seam = "recorded"
+    elif phase == "ground":
+        seam = "ground"
     elif phase in _FRONT_PHASES:
         seam = "front"
     else:
@@ -2032,6 +3219,8 @@ def decide_data(root: Path, state: dict, mslug: str, slug: str) -> dict:
         judgment = _decision_markers(raw.get(6, ""), 6) + _decision_markers(raw.get(1, ""), 1)
     elif seam == "front" and not frozen:
         judgment = _decision_markers(raw.get(1, ""), 1) + _decision_markers(raw.get(3, ""), 3)
+    elif seam == "ground":
+        judgment = _decision_markers(raw.get(0, ""), 0)
     else:
         judgment = []
 
@@ -2051,6 +3240,9 @@ def decide_data(root: Path, state: dict, mslug: str, slug: str) -> dict:
     elif seam == "front":
         unlocks = "none"
         decide = "no decision pending — frozen; the run owns it. next decision point: verify gate"
+    elif seam == "ground":
+        unlocks = "gather the codebase -> advance to specify"
+        decide = "gather the real codebase (the section 0 GROUND map), then: add.py advance"
     else:
         unlocks = "none"
         decide = f"no decision pending — recorded gate: {gate}"
@@ -2069,7 +3261,7 @@ def render_decide(root: Path, state: dict, mslug: str, slug: str, *,
     g = _ASCII if ascii else _UNICODE
     banner = g["h"] * width
     seam_label = {"gate": "VERIFY GATE", "front": "CONTRACT APPROVAL",
-                  "recorded": "RECORDED"}[d["seam"]]
+                  "recorded": "RECORDED", "ground": "GROUND"}[d["seam"]]
     L = [banner, f" DECIDE · {mslug or '—'} · {slug} · decision point: {seam_label}", banner]
     if d["decide"].startswith("no decision pending"):
         L.append(f" {d['decide']}")
@@ -2134,14 +3326,22 @@ def _planned_hint(d: dict) -> str:
     return f" — {len(planned)} planned not yet scaffolded: " + " · ".join(planned)
 
 
-def _decide_next_base(state: dict, d: dict) -> str:
+def _decide_next_pair(state: dict, d: dict) -> tuple[str, bool]:
+    """(next-step text, human_stop) over the active-milestone rollup. `human_stop` is the
+    driver behind the step (task gate-owner-marker): True for every DECISION point a human
+    owns — decompose · resolve HARD-STOP · goal-not-met · consolidate/archive · approve
+    contract · gate — and False ONLY for the run-in-progress fallthrough, the one branch
+    where the AI just continues an in-flight run. Derived from the rollup `d`, never from
+    the rendered prose (the §5 safety rule). The bare string is `_decide_next_base` below."""
     ms = d["milestone"]["slug"]
     rows = d["tasks"]
     if not rows:
-        return "none — no tasks yet"
+        # command-first (next-footer-engine): an empty milestone's next step is to
+        # decompose it — name the command, not the dead-end "none — no tasks yet".
+        return f"decompose into tasks — add.py new-task {ms}", True
     stopped = [r for r in rows if r["gate"] == "HARD-STOP"]
     if stopped:
-        return f"resolve HARD-STOP on {stopped[0]['slug']}"
+        return f"resolve HARD-STOP on {stopped[0]['slug']}", True
     s = d["summary"]
     if s["tasks_done"] == s["tasks_total"]:
         # tasks complete — but the milestone holds while the goal (exit criteria) is
@@ -2151,8 +3351,8 @@ def _decide_next_base(state: dict, d: dict) -> str:
         met, total = ec.get("met", 0), ec.get("total", 0)
         if total > 0 and met < total:
             return (f"goal not met ({met}/{total} exit criteria) — propose next tasks "
-                    f"from open deltas / the unscaffolded plan (add.py deltas)")
-        return f"consolidate learnings + archive-milestone {ms}"
+                    f"from open deltas / the unscaffolded plan (add.py deltas)"), True
+        return f"consolidate learnings + archive-milestone {ms}", True
     active = state.get("active_task")
     order = sorted(rows, key=lambda r: 0 if r["slug"] == active else 1)  # stable
     for r in order:
@@ -2160,11 +3360,58 @@ def _decide_next_base(state: dict, d: dict) -> str:
             continue
         if r["phase"] in _FRONT_PHASES:
             return (f"approve the contract of {r['slug']} — "
-                    f"add.py report {ms} {r['slug']} --decide")
+                    f"add.py report {ms} {r['slug']} --decide"), True
         if r["phase"] == "verify" and r["gate"] == "none":
-            return f"gate {r['slug']} — add.py report {ms} {r['slug']} --decide"
+            return f"gate {r['slug']} — add.py report {ms} {r['slug']} --decide", True
     r = next(x for x in order if not x["done"])
-    return f"none — run in progress ({r['slug']} at {r['phase']})"
+    return f"none — run in progress ({r['slug']} at {r['phase']})", False
+
+
+def _decide_next_base(state: dict, d: dict) -> str:
+    """The next-step TEXT only — the thin str wrapper the report rollup/digest callers use.
+    The driver behind it (human_stop) is in _decide_next_pair, read by the footer Arm B."""
+    return _decide_next_pair(state, d)[0]
+
+
+def _next_footer(root: Path, state: dict) -> str:
+    """The single engine-sourced `next:` line a COMPLETING (exit-0) mutating verb prints
+    as its last stdout (task next-footer-engine). ONE resolver, two arms — reusing the
+    guide path, never a parallel next-step source:
+
+      Arm A — an active IN-FLIGHT task (gate == "none" AND phase != "done"): the phase's
+              own command (advance, or the gate verbs at verify) + its PHASE_GUIDE why.
+              The gate=="none" guard is precise — a HARD-STOPped task keeps gate=="HARD-STOP"
+              (never done) so it falls to Arm B and is never told to re-gate itself.
+      Arm B — otherwise: `_decide_next_base` over the active milestone's rollup — the SAME
+              precedence the report dashboard renders (HARD-STOP -> "resolve HARD-STOP …",
+              empty milestone -> "decompose … add.py new-task <ms>").
+
+    Fail-soft (design-for-failure): the footer is computed AFTER save_state, so a
+    resolution error — no active milestone, an unreadable doc, a corrupt rollup — must
+    NEVER turn a saved mutation into a crash; it degrades to one generic re-orient line.
+    Pure render: it writes nothing. The trailing MARKER slot (task gate-owner-marker) names
+    the driver — ` [you drive]` (the AI proceeds) / ` [human gate]` (a human owns it) — from
+    `_driver_stop`: Arm A by phase×autonomy, Arm B by the rollup's own decision (human_stop).
+    The fail-soft line carries NO marker — never assert a driver that could not be computed.
+    """
+    try:
+        slug = state.get("active_task")
+        t = (state.get("tasks") or {}).get(slug) if slug else None
+        if t and t.get("gate", "none") == "none" and t.get("phase") != "done":
+            phase = t.get("phase")
+            why = PHASE_GUIDE[phase][0].split(" — ")[0].strip()   # the short phase clause
+            command = ("add.py gate PASS | RISK-ACCEPTED | HARD-STOP"
+                       if phase == "verify" else "add.py advance")
+            marker = _driver_marker(_driver_stop(root, state, slug, phase))
+            return f"next: {command} — {why}{marker}"
+        mslug = state.get("active_milestone")
+        if mslug:
+            d = report_data(root, state, mslug)
+            text, human_stop = _decide_next_pair(state, d)
+            return "next: " + text + _driver_marker(human_stop)
+    except Exception:
+        pass   # a footer never aborts the verb that already saved its state
+    return "next: add.py status — re-orient"
 
 
 def render_decide_next(root: Path, state: dict, mslug: str, *,
@@ -2421,9 +3668,9 @@ def _audit_findings(root: Path, state: dict) -> tuple[int, list[dict]]:
         # catches post-gate header tampering and auto-resolved high-risk gates.
         hdr = _task_header(root, slug)
         if _RISK_HIGH_RE.search(hdr):
-            if not _AUTONOMY_CONSERVATIVE_RE.search(hdr):
+            if not _autonomy_lowered(hdr):
                 f(slug, "unguarded_high_risk_auto",
-                  "risk: high declared but autonomy is not 'conservative'")
+                  "risk: high declared but autonomy is not lowered (manual or conservative)")
             elif rev and "auto-gate" in rev.group(1):
                 f(slug, "unguarded_high_risk_auto",
                   "risk: high task whose GATE RECORD reviewer is the auto-gate")
@@ -2799,11 +4046,11 @@ def build_parser() -> argparse.ArgumentParser:
     pp = sub.add_parser("phase", help="set a task's phase explicitly")
     pp.add_argument("phase", choices=PHASES)
     pp.add_argument("slug", nargs="?", default=None)
-    pp.set_defaults(func=cmd_phase)
+    pp.set_defaults(func=cmd_phase, _opt_positionals=("slug",))
 
     pa = sub.add_parser("advance", help="move a task to the next phase")
     pa.add_argument("slug", nargs="?", default=None)
-    pa.set_defaults(func=cmd_advance)
+    pa.set_defaults(func=cmd_advance, _opt_positionals=("slug",))
 
     pg = sub.add_parser("gate", help="record a verify gate outcome")
     pg.add_argument("outcome", choices=GATES)
@@ -2811,15 +4058,22 @@ def build_parser() -> argparse.ArgumentParser:
     pg.add_argument("--owner", help="RISK-ACCEPTED waiver: accountable owner")
     pg.add_argument("--ticket", help="RISK-ACCEPTED waiver: tracking ticket/link")
     pg.add_argument("--expires", help="RISK-ACCEPTED waiver: expiry date")
-    pg.set_defaults(func=cmd_gate)
+    pg.set_defaults(func=cmd_gate, _opt_positionals=("slug",))
 
     pr = sub.add_parser("reopen", help="return a done task to an earlier phase with a recorded reason")
     pr.add_argument("slug", nargs="?", default=None)
     # --to / --reason are validated in-body (not argparse choices) so the named reject
     # codes fire (reopen_target_invalid / reopen_reason_required), not a bare exit-2.
-    pr.add_argument("--to", default=None, help="target phase (specify..observe)")
+    pr.add_argument("--to", default=None, help="target phase (ground..observe)")
     pr.add_argument("--reason", default="", help="why the task is reopened (required, non-empty)")
-    pr.set_defaults(func=cmd_reopen)
+    pr.set_defaults(func=cmd_reopen, _opt_positionals=("slug",))
+
+    ph = sub.add_parser("heal", help="report a confirmed cheat: bounded return-to-build, then escalate")
+    ph.add_argument("slug", nargs="?", default=None)
+    # --reason validated in-body so the named rejects fire (heal_reason_required /
+    # heal_not_at_verify), not a bare argparse usage-2.
+    ph.add_argument("--reason", default="", help="the refute-read finding (required, non-empty)")
+    ph.set_defaults(func=cmd_heal, _opt_positionals=("slug",))
 
     ps = sub.add_parser("stage", help="set the project stage")
     ps.add_argument("stage", choices=STAGES)
@@ -2835,6 +4089,13 @@ def build_parser() -> argparse.ArgumentParser:
     pck.add_argument("--json", action="store_true", help="machine-readable JSON output")
     pck.set_defaults(func=cmd_check)
 
+    pwv = sub.add_parser("wave-verify",
+                         help="read-only merge-time gate: every WAVE.md roster echo must match "
+                              "base (refuses unverified_fork_base) — run before the first merge-back")
+    pwv.add_argument("milestone", nargs="?", default=None,
+                     help="milestone whose WAVE.md to verify (default: the single live ledger)")
+    pwv.set_defaults(func=cmd_wave_verify, _opt_positionals=("milestone",))
+
     psg = sub.add_parser("sync-guidelines",
                          help="(re)write the ADD guideline block into AGENTS.md + CLAUDE.md")
     psg.set_defaults(func=cmd_sync_guidelines)
@@ -2842,7 +4103,7 @@ def build_parser() -> argparse.ArgumentParser:
     pgd = sub.add_parser("guide", help="print the one concrete next step for the active task")
     pgd.add_argument("slug", nargs="?", default=None, help="task slug (default: active task)")
     pgd.add_argument("--json", action="store_true", help="machine-readable JSON output")
-    pgd.set_defaults(func=cmd_guide)
+    pgd.set_defaults(func=cmd_guide, _opt_positionals=("slug",))
 
     prp = sub.add_parser("report",
                          help="capture/render a milestone's what-happened report (read-only)")
@@ -2862,7 +4123,7 @@ def build_parser() -> argparse.ArgumentParser:
                      help="decision-point digest: what needs the human's judgment NOW "
                           "(task -> decision digest; milestone -> DECIDE NEXT only; "
                           "bare -> the active task)")
-    prp.set_defaults(func=cmd_report)
+    prp.set_defaults(func=cmd_report, _opt_positionals=("milestone", "task"))
 
     pdt = sub.add_parser("deltas",
                          help="read-only report: open lessons learned grouped by competency")
@@ -2888,9 +4149,33 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _rebind_optional_positionals(parser: argparse.ArgumentParser,
+                                 args: argparse.Namespace,
+                                 extras: list[str]) -> argparse.Namespace:
+    """argv portability (py<=3.12): argparse cannot bind an optional positional that
+    trails value-taking flags once a REQUIRED positional was consumed in an earlier
+    block — `gate RISK-ACCEPTED --owner X --ticket Y --expires Z <slug>` dies
+    `unrecognized arguments: <slug>` on 3.10/3.11/3.12 (3.13+ parses it natively).
+    Fix at main(): parse_known_args leaves the stranded slug in `extras`; re-bind
+    non-flag extras into UNFILLED (still-default-None) optional positionals, in the
+    order each subparser declared via set_defaults(_opt_positionals=...).
+    Safety rule (frozen §3, engine-argv-portability): ANY flag-like extra refuses the
+    WHOLE re-bind, and leftover extras re-raise the stock exit-2 error — a typo'd
+    flag's value must never be mis-bound as a slug (that would gate the WRONG task)."""
+    slots = [name for name in getattr(args, "_opt_positionals", ())
+             if getattr(args, name, None) is None]
+    if any(tok.startswith("-") for tok in extras) or len(extras) > len(slots):
+        parser.error("unrecognized arguments: " + " ".join(extras))
+    for name, value in zip(slots, extras):
+        setattr(args, name, value)
+    return args
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args, extras = parser.parse_known_args(argv)
+    if extras:
+        args = _rebind_optional_positionals(parser, args, extras)
     args.func(args)
     return 0
 

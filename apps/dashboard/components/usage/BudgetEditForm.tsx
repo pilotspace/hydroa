@@ -11,6 +11,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { apiPut, ApiError } from "@/lib/api-client";
+import { Input, Button } from "@/components/ui";
 
 const BudgetEditSchema = z
   .string()
@@ -77,10 +78,15 @@ export function BudgetEditForm({ currentValue, onCancel }: BudgetEditFormProps) 
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div>
-        <label htmlFor="budget-input">Budget (USD/month)</label>
-        <input
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor="budget-input"
+          className="text-sm font-medium text-foreground"
+        >
+          Budget (USD/month)
+        </label>
+        <Input
           id="budget-input"
           type="text"
           value={value}
@@ -89,23 +95,23 @@ export function BudgetEditForm({ currentValue, onCancel }: BudgetEditFormProps) 
           aria-label="Budget"
         />
         {fieldError && (
-          <p role="alert" aria-live="assertive">
+          <p role="alert" aria-live="assertive" className="text-sm text-destructive">
             {fieldError}
           </p>
         )}
         {serverError && (
-          <p role="alert" aria-live="assertive">
+          <p role="alert" aria-live="assertive" className="text-sm text-destructive">
             {serverError}
           </p>
         )}
       </div>
-      <div>
-        <button type="submit" disabled={mutation.isPending}>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={mutation.isPending}>
           {mutation.isPending ? "Saving…" : "Save"}
-        </button>
-        <button type="button" onClick={onCancel}>
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
