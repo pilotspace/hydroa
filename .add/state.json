@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "governance-completion-ui",
+  "active_task": "oidc-login-relay",
   "active_milestone": "v15",
   "tasks": {
     "design-system-extension": {
@@ -252,6 +252,42 @@
         ],
         "snapshot_md5": "f2cfde89fadb868ada9bb4966dd92ec4"
       }
+    },
+    "oidc-login-relay": {
+      "title": "SSO login via pre-auth BFF relay",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v15",
+      "depends_on": [],
+      "created": "2026-06-14T06:02:32+00:00",
+      "updated": "2026-06-14T06:16:59+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "30e79d07687efcfed4b7c36143b477a4",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/api/auth/oidc/login/route.ts",
+          "apps/dashboard/components/auth/LoginForm.tsx",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/oidc-login-relay/"
+        ],
+        "snapshot_md5": "c8dcad2b39dc61f1556e6ec6d8819c43"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-14T06:15:29+00:00",
+            "reason": "tamper_detected:contract_tampered",
+            "source": "tamper"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -273,7 +309,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T05:58:19+00:00",
+  "updated": "2026-06-14T06:16:59+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

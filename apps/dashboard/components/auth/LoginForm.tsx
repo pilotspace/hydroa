@@ -119,6 +119,11 @@ export function LoginForm() {
       <button type="submit" disabled={isSubmitting}>
         {isSubmitting ? "Signing in…" : "Log in"}
       </button>
+
+      {/* SSO login — a full-page NAVIGATION to the pre-auth BFF relay (NOT a
+          fetch): the browser must follow the relay's 302 chain to the external
+          IdP, which a fetch cannot do. */}
+      <a href="/api/auth/oidc/login">Sign in with SSO</a>
     </form>
   );
 }
