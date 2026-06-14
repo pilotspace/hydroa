@@ -17,7 +17,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
-import { axe } from "vitest-axe";
+import { axe } from "@/test-support/axe";
 import { server } from "./mocks/server";
 import React from "react";
 

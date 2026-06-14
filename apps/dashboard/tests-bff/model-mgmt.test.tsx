@@ -21,7 +21,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse, delay } from "msw";
-import { axe } from "vitest-axe";
+import { axe } from "@/test-support/axe";
 import { server } from "./mocks/server";
 import React from "react";
 

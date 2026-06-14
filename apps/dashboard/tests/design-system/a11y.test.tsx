@@ -5,8 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
-import { axe } from "vitest-axe";
-import * as axeMatchers from "vitest-axe/matchers";
+import { axe, axeMatchers } from "@/test-support/axe";
 
 import { AppShell } from "@/components/ui/app-shell";
 

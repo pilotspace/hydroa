@@ -19,7 +19,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "./mocks/server";
-import { axe } from "vitest-axe";
+import { axe } from "@/test-support/axe";
 import React from "react";
 
 import { SpendPage } from "@/components/spend/SpendPage";
