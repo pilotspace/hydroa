@@ -1,5 +1,5 @@
 import * as React from "react";
-import { BarChart3, Boxes, KeyRound, Receipt, Settings, Users } from "lucide-react";
+import { Activity, BarChart3, Boxes, KeyRound, Receipt, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 /**
@@ -21,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/keys", label: "API Keys", icon: KeyRound },
   { href: "/models", label: "Models", icon: Boxes },
   { href: "/teams", label: "Teams", icon: Users },
+  { href: "/routing", label: "Routing", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -63,7 +64,7 @@ export function AppShell({ children, activePath }: AppShellProps) {
                     : "text-foreground hover:bg-accent hover:text-accent-foreground",
                 )}
               >
-                <Icon className="size-4" />
+                <Icon className="size-4" aria-hidden="true" />
                 {item.label}
               </a>
             );

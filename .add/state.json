@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "tenant-settings-ui",
+  "active_task": "routing-health-ui",
   "active_milestone": "v15",
   "tasks": {
     "design-system-extension": {
@@ -172,6 +172,33 @@
         ],
         "snapshot_md5": "2b7c061089931dbdd2fcd65a2c71204e"
       }
+    },
+    "routing-health-ui": {
+      "title": "Routing health UI (/routing read-only)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v15",
+      "depends_on": [],
+      "created": "2026-06-14T04:06:46+00:00",
+      "updated": "2026-06-14T04:22:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "e78e12d8681b80167098f601031a321e",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/routing/",
+          "apps/dashboard/app/(dashboard)/routing/",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/routing-health-ui/"
+        ],
+        "snapshot_md5": "7f89a72aa07f835455caf2234bc6dabd"
+      }
     }
   },
   "milestones": {
@@ -193,7 +220,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T04:04:33+00:00",
+  "updated": "2026-06-14T04:22:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
