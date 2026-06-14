@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "oidc-login-relay",
+  "active_task": "feature-coverage-verify",
   "active_milestone": "v15",
   "tasks": {
     "design-system-extension": {
@@ -288,6 +288,35 @@
           }
         ]
       }
+    },
+    "feature-coverage-verify": {
+      "title": "v15 milestone-exit verification (a11y/keyboard/state/responsive across new surfaces)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v15",
+      "depends_on": [],
+      "created": "2026-06-14T06:18:26+00:00",
+      "updated": "2026-06-14T06:34:45+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "964605e9d9bd58773a08f949f6a9109d",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/components/ui/",
+          "apps/dashboard/components/models/",
+          "apps/dashboard/components/teams/",
+          "apps/dashboard/components/routing/",
+          "apps/dashboard/components/settings/",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo",
+          ".add/tasks/feature-coverage-verify/"
+        ],
+        "snapshot_md5": "98718025a79a87f6aa20185195fedb6e"
+      }
     }
   },
   "milestones": {
@@ -303,13 +332,13 @@
       "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
       "goal": "a tenant owner/admin can manage every backend capability (model availability, teams & members, per-key rate/cache governance, spend breakdowns, routing health, response cache, guardrails, SSO/OIDC) through a consistent, accessible, responsive dashboard, with NO change to the gateway/BFF contracts",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-14T01:10:37+00:00",
-      "updated": "2026-06-14T01:10:37+00:00"
+      "updated": "2026-06-14T06:36:24+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T06:16:59+00:00",
+  "updated": "2026-06-14T06:36:24+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
