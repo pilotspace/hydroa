@@ -228,6 +228,40 @@ async def test_list_keys_returns_all_without_secrets(
         assert "secret" not in item
 
 
+async def test_list_keys_reports_true_cache_enabled(
+    client: httpx.AsyncClient,
+) -> None:
+    """GET /admin/keys must report each key's TRUE cache_enabled, not the default.
+
+    RED before the fix: list_keys drops cache_enabled from KeyInfoResponse, so the
+    field falls back to its schema default (False) for every key — a caching-ON key
+    is reported OFF. This is the footgun behind the v15 key-editor cache toggle.
+    """
+    token = await signup_and_login(client, tenant_name="CacheCo", email="cache@co.io")
+
+    # Key A: caching ON (set via PATCH — the path the editor uses)
+    a = (await client.post(ADMIN_KEYS, json={"name": "cache-on"}, headers=bearer(token))).json()
+    patch_resp = await client.patch(
+        f"{ADMIN_KEYS}/{a['key_id']}",
+        json={"cache_enabled": True},
+        headers=bearer(token),
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["cache_enabled"] is True
+
+    # Key B: default (caching OFF)
+    b = (await client.post(ADMIN_KEYS, json={"name": "cache-off"}, headers=bearer(token))).json()
+
+    list_resp = await client.get(ADMIN_KEYS, headers=bearer(token))
+    assert list_resp.status_code == 200
+    items: list[dict[str, Any]] = list_resp.json()
+    by_id = {item["key_id"]: item for item in items}
+
+    # The list must reflect each key's TRUE cache_enabled — not the always-false default
+    assert by_id[a["key_id"]]["cache_enabled"] is True
+    assert by_id[b["key_id"]]["cache_enabled"] is False
+
+
 # ---------------------------------------------------------------------------
 # Scenario 6: list keys is tenant-scoped
 # ---------------------------------------------------------------------------

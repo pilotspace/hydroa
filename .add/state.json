@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "routing-health-ui",
+  "active_task": "key-cache-enabled-fidelity",
   "active_milestone": "v15",
   "tasks": {
     "design-system-extension": {
@@ -199,6 +199,41 @@
         ],
         "snapshot_md5": "7f89a72aa07f835455caf2234bc6dabd"
       }
+    },
+    "governance-completion-ui": {
+      "title": "Governance completion UI (key depth + spend breakdown + SSO login)",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "v15",
+      "depends_on": [],
+      "created": "2026-06-14T04:22:53+00:00",
+      "updated": "2026-06-14T04:22:53+00:00"
+    },
+    "key-cache-enabled-fidelity": {
+      "title": "Key list cache_enabled fidelity (gateway serializer fix)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v15",
+      "depends_on": [],
+      "created": "2026-06-14T04:49:28+00:00",
+      "updated": "2026-06-14T04:57:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c1cc9cc3b0914a1149e85db7bb802215",
+        "tests": {
+          "apps/gateway/tests/keys/test_api_keys.py": "47396d8f754528b64c30da26f410b12d"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/keys/api/router.py",
+          "apps/gateway/tests/keys/test_api_keys.py",
+          ".add/tasks/key-cache-enabled-fidelity/",
+          "apps/gateway/.coverage",
+          "apps/gateway/.ruff_cache/"
+        ],
+        "snapshot_md5": "f2cfde89fadb868ada9bb4966dd92ec4"
+      }
     }
   },
   "milestones": {
@@ -220,7 +255,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-14T04:22:00+00:00",
+  "updated": "2026-06-14T04:57:03+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
