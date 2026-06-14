@@ -85,10 +85,11 @@ class AddMemberUseCase:
         *,
         team_id: uuid.UUID,
         tenant_id: uuid.UUID,
-        user_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
+        email: str | None = None,
         role: str,
     ) -> TeamMember:
-        """Add user to team.
+        """Add user to team by user_id OR email (resolved tenant-scoped in the repo).
 
         Raises TeamNotFoundError, UserNotFoundError, or MemberExistsError as appropriate.
         """
@@ -96,6 +97,7 @@ class AddMemberUseCase:
             team_id=team_id,
             tenant_id=tenant_id,
             user_id=user_id,
+            email=email,
             role=role,
         )
 

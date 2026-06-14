@@ -48,13 +48,16 @@ class TeamRepository(Protocol):
         *,
         team_id: uuid.UUID,
         tenant_id: uuid.UUID,
-        user_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
+        email: str | None = None,
         role: str,
     ) -> TeamMember:
-        """Add user to team.
+        """Add user to team by user_id OR email (exactly one).
+
+        When user_id is None, `email` is resolved tenant-scoped to a user_id.
 
         Raises TeamNotFoundError if team_id not found for tenant.
-        Raises UserNotFoundError if user_id not found in tenant.
+        Raises UserNotFoundError if user_id/email not found in tenant.
         Raises MemberExistsError if user is already a member.
         """
         ...

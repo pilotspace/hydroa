@@ -22,9 +22,10 @@
  */
 
 import { useState } from "react";
-import { bffPatch, bffPost, BffError } from "@/lib/bff-client";
+import { useQuery } from "@tanstack/react-query";
+import { bffGet, bffPatch, bffPost, BffError } from "@/lib/bff-client";
 import { PlaintextKeyBanner } from "./PlaintextKeyBanner";
-import { Button, Input } from "@/components/ui";
+import { Button, Input, Switch } from "@/components/ui";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export interface ApiKeyGovernance {
@@ -37,6 +38,15 @@ export interface ApiKeyGovernance {
   soft_budget_usd: string | null;
   expires_at: string | null;
   model_allowlist: string[] | null;
+  rpm_limit: number | null;
+  tpm_limit: number | null;
+  team_id: string | null;
+  cache_enabled: boolean;
+}
+
+interface Team {
+  id: string;
+  name: string;
 }
 
 interface RotateResponse {
@@ -70,6 +80,19 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
     apiKey.model_allowlist ?? []
   );
   const [allowlistInput, setAllowlistInput] = useState<string>("");
+
+  // Rate-limit / team / cache state
+  const [rpmLimit, setRpmLimit] = useState<string>(apiKey.rpm_limit?.toString() ?? "");
+  const [tpmLimit, setTpmLimit] = useState<string>(apiKey.tpm_limit?.toString() ?? "");
+  const [teamId, setTeamId] = useState<string>(apiKey.team_id ?? "");
+  const [cacheEnabled, setCacheEnabled] = useState<boolean>(apiKey.cache_enabled ?? false);
+
+  // Teams dropdown — tolerate loading/error (no crash)
+  const { data: teams } = useQuery<Team[]>({
+    queryKey: ["admin-teams"],
+    queryFn: () => bffGet<Team[]>("/admin/teams"),
+    retry: false,
+  });
 
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -120,6 +143,18 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
       return;
     }
 
+    // R4: rpm_limit / tpm_limit must be a positive integer if provided
+    const rpmTrimmed = rpmLimit.trim();
+    if (rpmTrimmed !== "" && (!/^\d+$/.test(rpmTrimmed) || parseInt(rpmTrimmed, 10) <= 0)) {
+      setValidationError("RPM limit must be a positive integer.");
+      return;
+    }
+    const tpmTrimmed = tpmLimit.trim();
+    if (tpmTrimmed !== "" && (!/^\d+$/.test(tpmTrimmed) || parseInt(tpmTrimmed, 10) <= 0)) {
+      setValidationError("TPM limit must be a positive integer.");
+      return;
+    }
+
     // Parse budget values
     const monthlyVal = monthlyBudget.trim() === "" ? null : monthlyBudget.trim();
     const softVal = softBudget.trim() === "" ? null : softBudget.trim();
@@ -147,11 +182,19 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
       soft_budget_usd: string | null;
       expires_at: string | null;
       model_allowlist: string[] | null;
+      rpm_limit: number | null;
+      tpm_limit: number | null;
+      team_id: string | null;
+      cache_enabled: boolean;
     } = {
       monthly_budget_usd: monthlyVal,
       soft_budget_usd: softVal,
       expires_at: expiresAt.trim() === "" ? null : expiresAt.trim(),
       model_allowlist: allowlistItems.length === 0 ? null : allowlistItems,
+      rpm_limit: rpmTrimmed === "" ? null : parseInt(rpmTrimmed, 10),
+      tpm_limit: tpmTrimmed === "" ? null : parseInt(tpmTrimmed, 10),
+      team_id: teamId === "" ? null : teamId,
+      cache_enabled: cacheEnabled,
     };
 
     setIsSubmitting(true);
@@ -166,6 +209,10 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
       setSoftBudget(updated.soft_budget_usd ?? "");
       setExpiresAt(updated.expires_at ?? "");
       setAllowlistItems(updated.model_allowlist ?? []);
+      setRpmLimit(updated.rpm_limit?.toString() ?? "");
+      setTpmLimit(updated.tpm_limit?.toString() ?? "");
+      setTeamId(updated.team_id ?? "");
+      setCacheEnabled(updated.cache_enabled ?? false);
       // Update displayed saved value so screen text reflects persisted state
       setSavedMonthlyBudget(updated.monthly_budget_usd);
     } catch (err) {
@@ -405,6 +452,84 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
               ))}
             </ul>
           )}
+        </div>
+
+        {/* RPM limit */}
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor={`rpm-limit-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
+            RPM Limit
+          </label>
+          <Input
+            id={`rpm-limit-${apiKey.key_id}`}
+            type="text"
+            inputMode="numeric"
+            aria-label="Requests per minute (RPM) limit"
+            placeholder="Requests per minute (leave empty for unlimited)"
+            value={rpmLimit}
+            onChange={(e) => setRpmLimit(e.target.value)}
+          />
+        </div>
+
+        {/* TPM limit */}
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor={`tpm-limit-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
+            TPM Limit
+          </label>
+          <Input
+            id={`tpm-limit-${apiKey.key_id}`}
+            type="text"
+            inputMode="numeric"
+            aria-label="Tokens per minute (TPM) limit"
+            placeholder="Tokens per minute (leave empty for unlimited)"
+            value={tpmLimit}
+            onChange={(e) => setTpmLimit(e.target.value)}
+          />
+        </div>
+
+        {/* Team dropdown */}
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor={`team-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
+            Team
+          </label>
+          <select
+            id={`team-${apiKey.key_id}`}
+            aria-label="Team"
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value)}
+            className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">No team</option>
+            {(teams ?? []).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Cache switch */}
+        <div className="flex items-center justify-between gap-4">
+          <label
+            htmlFor={`cache-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
+            Enable response cache
+          </label>
+          <Switch
+            id={`cache-${apiKey.key_id}`}
+            aria-label="Enable response cache"
+            checked={cacheEnabled}
+            onCheckedChange={setCacheEnabled}
+          />
         </div>
 
         {/* Client-side validation error */}

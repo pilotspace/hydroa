@@ -49,3 +49,16 @@ export {
   type SuccessProps,
 } from "./states";
 export { AppShell, type AppShellProps } from "./app-shell";
+export { Switch, type SwitchProps } from "./switch";
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  type TabsProps,
+  type TabsListProps,
+  type TabsTriggerProps,
+  type TabsContentProps,
+} from "./tabs";
+export { Textarea, type TextareaProps } from "./textarea";
+export { Checkbox, type CheckboxProps } from "./checkbox";

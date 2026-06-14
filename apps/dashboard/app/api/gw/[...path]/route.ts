@@ -121,6 +121,10 @@ export async function PUT(req: NextRequest, context: RouteContext): Promise<Next
   return proxyRequest(req, context);
 }
 
+export async function PATCH(req: NextRequest, context: RouteContext): Promise<NextResponse> {
+  return proxyRequest(req, context);
+}
+
 export async function DELETE(req: NextRequest, context: RouteContext): Promise<NextResponse> {
   return proxyRequest(req, context);
 }

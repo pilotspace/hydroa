@@ -151,6 +151,7 @@ async def list_keys(
             rpm_limit=item.rpm_limit,
             tpm_limit=item.tpm_limit,
             team_id=item.team_id,
+            cache_enabled=item.cache_enabled,
         )
         for item in items
     ]

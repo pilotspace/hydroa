@@ -82,6 +82,13 @@ const KEY_FIXTURE = {
   soft_budget_usd: null,
   expires_at: null,
   model_allowlist: null,
+  // v15 governance-completion-ui depth fields — a "no governance set" key.
+  // The component still tolerates undefined (?? defaults); these keep the
+  // shared fixture type-complete against the extended ApiKeyGovernance.
+  rpm_limit: null,
+  tpm_limit: null,
+  team_id: null,
+  cache_enabled: false,
 };
 
 /**
@@ -965,19 +972,20 @@ describe("SpendPage — windowed spend views via BFF", () => {
       expect(screen.getByText(/1\.23/)).toBeInTheDocument();
     });
 
-    // Find the window selector
+    // Find the window selector — by its stable testid, since the spend page now
+    // also renders Group-by / Filter-by-key comboboxes (v15 governance-completion-ui),
+    // so a bare queryByRole("combobox") would be ambiguous. Intent unchanged: drive
+    // the window selector and assert the query refetches with window=day.
     await waitFor(() => {
       const selector =
-        screen.queryByRole("combobox") ??
-        screen.queryByRole("listbox") ??
-        screen.queryByTestId("window-selector");
+        screen.queryByTestId("window-selector") ??
+        screen.queryByRole("listbox");
       expect(selector).toBeInTheDocument();
     });
 
     const selector =
-      screen.queryByRole("combobox") ??
-      screen.queryByRole("listbox") ??
-      (screen.queryByTestId("window-selector") as HTMLElement);
+      (screen.queryByTestId("window-selector") as HTMLElement) ??
+      screen.queryByRole("listbox");
 
     // Select "day"
     if (selector?.tagName === "SELECT") {
@@ -1059,14 +1067,14 @@ describe("SpendPage — windowed spend views via BFF", () => {
 
     await waitFor(() => {
       const selector =
-        screen.queryByRole("combobox") ??
-        screen.queryByTestId("window-selector");
+        screen.queryByTestId("window-selector") ??
+        screen.queryByRole("listbox");
       expect(selector).toBeInTheDocument();
     });
 
     const selector =
-      screen.queryByRole("combobox") ??
-      (screen.queryByTestId("window-selector") as HTMLElement);
+      (screen.queryByTestId("window-selector") as HTMLElement) ??
+      screen.queryByRole("listbox");
 
     if (selector?.tagName === "SELECT") {
       await user.selectOptions(selector as HTMLSelectElement, "week");

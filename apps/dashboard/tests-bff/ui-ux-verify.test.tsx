@@ -95,6 +95,12 @@ const KEY_GOV_FIXTURE: ApiKeyGovernance = {
   soft_budget_usd: "40.00",
   expires_at: null,
   model_allowlist: null,
+  // v15 governance-completion-ui depth fields (editor now self-fetches teams,
+  // so these renders must run inside the QueryClientProvider Wrapper)
+  rpm_limit: null,
+  tpm_limit: null,
+  team_id: null,
+  cache_enabled: false,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,6 +126,7 @@ describe("v13 verify · axe — key governance editor (no serious|critical)", ()
   it("test_governance_editor_passes_axe", async () => {
     const { container } = render(
       <KeyGovernanceEditor apiKey={KEY_GOV_FIXTURE} onUpdated={vi.fn()} />,
+      { wrapper: Wrapper },
     );
     expect(screen.getByTestId("key-governance-editor")).toBeInTheDocument();
     // controls reachable by accessible name
@@ -134,7 +141,9 @@ describe("v13 verify · rotate-confirm dialog keyboard-operable", () => {
   const user = userEvent.setup();
 
   it("test_rotate_confirm_keyboard_operable", async () => {
-    render(<KeyGovernanceEditor apiKey={KEY_GOV_FIXTURE} onUpdated={vi.fn()} />);
+    render(<KeyGovernanceEditor apiKey={KEY_GOV_FIXTURE} onUpdated={vi.fn()} />, {
+      wrapper: Wrapper,
+    });
 
     await user.click(screen.getByRole("button", { name: /^rotate$/i }));
     const dialog = await screen.findByRole("dialog", { name: /confirm key rotation/i });

@@ -357,6 +357,42 @@ Build/harness conventions folded from v1 (2026-06-10):
           VERIFY tasks too: it returned EARNED-WITH-GAPS and surfaced 3 real coverage gaps the
           first green hid (Shift+Tab wrap untested on both dialogs; isolated state renders
           un-scanned) — all closed, focus-trap branch coverage rose 73.91%→75% (evidence: v13 task4)
+        Test conventions folded from v15 (2026-06-14, dashboard feature-coverage):
+        - every `useMutation` carries an `onError` that surfaces the BffError title, AND every
+          contracted error branch (404/409/422/403) gets its OWN red→green test — never just the
+          happy path + the read-side rejection. A passing suite "looks complete" when a missing
+          path has no red anchor (silent-mutation-failure DEFECT recurred across model-mgmt then
+          teams budget PATCH → now a STANDING rule, evidence: test_budget_patch_server_error).
+        - a "loading shows role=status" assertion is VACUOUS unless it also proves the spinner
+          RESOLVES (assert the loading→data transition: `findByText` + `queryByRole("status")
+          .not...` after the T=0 assert) — a permanent role=status node would otherwise pass it.
+        - a "skip-link is first focusable" assertion must query ALL focusable types
+          (`a[href],button,input,select,textarea,[tabindex]:not([tabindex='-1'])`), not just the
+          first `<a>` — a preceding focusable button/input would slip through anchor-only checks.
+        - a fidelity test pins the PER-ENTITY value (pair A=true WITH B=false), never asserts a
+          single truthy case (an always-true cheat passes A=true alone); enumerate EVERY block on
+          a "no leak on 403" assertion (one-heading-absent passes empty shell rendering); cover a
+          fixture per ENUM VALUE not per error-class (half_open was silently skipped while cov
+          stayed high); a write-only-secret needs an EXPLICIT negative DOM assert (input=="" + the
+          "<stored>" sentinel absent everywhere + no secret field on the role-denied path).
+        - scope shared msw fallbacks to the paths that truly need them — a permissive
+          `/api/gw/:path*` wildcard silently defeats `onUnhandledRequest:"error"` (a forgotten
+          per-test handler returns wrong data, not a loud failure) (deferred: bff-test-harness-
+          strict-handlers); role-scoped queries (`getByRole("textbox",{name})`) disambiguate when
+          one control's accessible name is a superstring of another's (budget input vs "Save
+          budget for X" button collided under getByLabelText substring-match).
+        Build/harness conventions folded from v15 (2026-06-14, dashboard feature-coverage):
+        - a milestone-EXIT verification suite legitimately lands GREEN on first run (the behavior
+          already shipped + gate-PASSed per-surface); "RED for the right reason" maps to "the
+          consolidated bar is newly codified and provably held", with earned-green proven by an
+          adversarial refute-read rather than a first-run failure (evidence: feature-coverage-
+          verify 8/8 green then hardened D1/D2/G1/G4 after the audit, via the re-cross ritual).
+        - a build-time port (Protocol) signature change is a legitimate SCOPE CORRECTION, not a
+          contract change, when pyright forces it to reflect a new capability (TeamRepository
+          .add_member gained `email` to clear reportCallIssue; §3 untouched).
+        - GROUND records the response ENVELOPE per-endpoint, never assumes uniformity — `/admin/
+          teams` returns a BARE array while `/admin/models` returns `{object,data}`; a wrong
+          unwrap is a silent footgun (§0 must flag "BARE array, no {data} unwrap").
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config
