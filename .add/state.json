@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "error-aware-fallback",
+  "active_task": "cache-controls",
   "active_milestone": "v19",
   "tasks": {
     "retry-seam-unify": {
@@ -76,6 +76,59 @@
         ],
         "snapshot_md5": "2aa0f3000d84811f30eac0ee5ba8a320"
       }
+    },
+    "cache-controls": {
+      "title": "Cache controls: per-request TTL override + embedding-response cache (per-tenant, billed on miss only)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T04:56:57+00:00",
+      "updated": "2026-06-15T05:28:07+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "4e8927abe2e3d29c52ba706145c1c089",
+        "tests": {
+          "apps/gateway/tests/cache_controls/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/cache_controls/conftest.py": "233dcf850f5a3bdb6ca5109ba4f45420",
+          "apps/gateway/tests/cache_controls/test_embedding_cache.py": "c8681da459841bb6c98539cf89506034",
+          "apps/gateway/tests/cache_controls/test_embedding_cache_key.py": "92e9bc25b812b460cde3cfae2df807f2",
+          "apps/gateway/tests/cache_controls/test_resolve_cache_ttl.py": "6bf96a60245c64ad20c54cf744c76476"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/response_cache.py",
+          "apps/gateway/src/gateway/proxy/application/embeddings_use_case.py",
+          "apps/gateway/src/gateway/proxy/api/embeddings_deps.py",
+          "apps/gateway/src/gateway/proxy/api/embeddings_router.py",
+          "apps/gateway/src/gateway/proxy/api/router.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/cache_controls/"
+        ],
+        "snapshot_md5": "af607ee05f2d67557d0b17156e45e8a2"
+      },
+      "heal": {
+        "attempts": 3,
+        "history": [
+          {
+            "at": "2026-06-15T05:22:33+00:00",
+            "reason": "scope_violation: task 'cache-controls' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/15857191058005275921 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 \u00b7 apps/gateway/.ruff_cache/0.15.16/16576050670446413392 (4 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-15T05:23:02+00:00",
+            "reason": "scope_violation: task 'cache-controls' touched outside its declared \u00a75 Scope \u2014 .pytest_cache/.gitignore \u00b7 .pytest_cache/CACHEDIR.TAG \u00b7 .pytest_cache/README.md \u00b7 .pytest_cache/v/cache/nodeids \u00b7 .ruff_cache/.gitignore (11 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-15T05:25:06+00:00",
+            "reason": "scope_violation: task 'cache-controls' touched outside its declared \u00a75 Scope \u2014 .coverage \u00b7 .pytest_cache/.gitignore \u00b7 .pytest_cache/CACHEDIR.TAG \u00b7 .pytest_cache/README.md \u00b7 .pytest_cache/v/cache/nodeids (66 total)",
+            "source": "scope"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -89,7 +142,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-15T04:53:48+00:00",
+  "updated": "2026-06-15T05:28:07+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

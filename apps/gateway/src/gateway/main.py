@@ -528,8 +528,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     app.state.provider_registry = ProviderRegistry(_providers)
 
-    # Cache TTL — exposed on app.state so proxy router can read it per-request
+    # Cache TTL — exposed on app.state so proxy router can read it per-request.
+    # cache_max_ttl_seconds caps any per-request Cache-Control: max-age override.
     app.state.cache_ttl_seconds = settings.cache_ttl_seconds
+    app.state.cache_max_ttl_seconds = settings.cache_max_ttl_seconds
 
     # JWKS key cache — always created so tests can inject the seam regardless of
     # oidc_enabled (per-tenant DB config can be used even when oidc_enabled=False).

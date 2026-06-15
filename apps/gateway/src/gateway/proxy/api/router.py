@@ -22,6 +22,7 @@ from gateway.proxy.api.deps import (
 )
 from gateway.proxy.application.use_cases import CompletionUseCase
 from gateway.proxy.domain.ports import CompletionUpstream, UsageRecorder
+from gateway.proxy.infrastructure.response_cache import resolve_cache_ttl
 
 proxy_router = APIRouter(tags=["proxy"])
 
@@ -60,8 +61,11 @@ async def completions(
 
     # Extract request headers for Cache-Control: no-cache detection
     req_headers = {k.lower(): v for k, v in request.headers.items()}
-    # Resolve cache TTL and metrics registry from app state (fail-open defaults)
+    # Resolve cache TTL and metrics registry from app state (fail-open defaults).
+    # A per-request Cache-Control: max-age may lower/raise the TTL within the cap.
     cache_ttl = getattr(getattr(request.app, "state", None), "cache_ttl_seconds", 300)
+    cache_max_ttl = getattr(getattr(request.app, "state", None), "cache_max_ttl_seconds", 86400)
+    effective_ttl = resolve_cache_ttl(req_headers, cache_ttl, cache_max_ttl)
     metrics_registry = getattr(getattr(request.app, "state", None), "metrics_registry", None)
 
     status, response_body, x_cache = await use_case.complete(
@@ -69,7 +73,7 @@ async def completions(
         body=body,
         upstream=upstream,
         usage_recorder=usage_recorder,
-        cache_ttl_seconds=cache_ttl,
+        cache_ttl_seconds=effective_ttl,
         metrics_registry=metrics_registry,
         request_headers=req_headers,
         model_router=model_router,

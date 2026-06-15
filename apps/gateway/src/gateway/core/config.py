@@ -130,6 +130,8 @@ class Settings(BaseSettings):
 
     # ── Response cache (response-caching task) ────────────────────────────────
     cache_ttl_seconds: int = 300  # GATEWAY_CACHE_TTL_SECONDS
+    # Cap for a per-request Cache-Control: max-age override (cache-controls task)
+    cache_max_ttl_seconds: int = Field(default=86400)  # GATEWAY_CACHE_MAX_TTL_SECONDS
 
     # ── Alerting / health (health-alerting task) ──────────────────────────────
     alert_webhook_url: str = ""  # GATEWAY_ALERT_WEBHOOK_URL (empty = disabled)
