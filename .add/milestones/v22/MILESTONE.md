@@ -29,9 +29,11 @@ Out: Changing the exception TYPE or message (behavior-preserving only). Reworkin
 - The set of transport-error wrap sites + the `__cause__ is None` assertion shape -> owning task `provider-secret-chain-hardening`
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] provider-secret-chain-hardening  depends-on: none — sweep all 14 secret-bearing `from exc`/`from terminal_exc` transport-error wraps (upstream_retry.py ×3 + openrouter/openai ×3/anthropic/gemini ×2/bedrock/bedrock_embeddings/azure stream) → `from None`; per-adapter regression test asserts UpstreamUnavailableError raised + `__cause__ is None`; all existing provider suites stay green (behavior-preserving).
-- [ ] azure-ad-authority-config        depends-on: none — add GATEWAY_AZURE_AD_AUTHORITY Setting; resolve_azure_ad_config carries authority (falls back to DEFAULT_AUTHORITY); the live edge can then drive AAD. Tiny additive config change + a resolve test.
+- [x] provider-secret-chain-hardening  depends-on: none — swept all 13 secret-bearing `from exc`/`from terminal_exc` transport-error wraps (upstream_retry.py ×3 + openrouter/openai ×3/anthropic/gemini ×2/bedrock/bedrock_embeddings/azure stream) → `from None`; per-site regression test asserts UpstreamUnavailableError raised + `__cause__ is None`; all provider suites stay green (behavior-preserving). [gate PASS cb56ef1 — 13/13 earned-green + 477-test regression]
+- [x] azure-ad-authority-config        depends-on: none — added GATEWAY_AZURE_AD_AUTHORITY Setting; resolve_azure_ad_config carries authority (falls back to DEFAULT_AUTHORITY); the live edge can now drive AAD. Additive config + resolve/env tests. [gate PASS — 5/5 + 74-test azure regression]
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] Every provider adapter transport-error path raises UpstreamUnavailableError with `__cause__ is None` (no secret-bearing request reachable via the exception chain); all provider regression suites green.   (← provider-secret-chain-hardening)
-- [ ] resolve_azure_ad_config honors GATEWAY_AZURE_AD_AUTHORITY (env-overridable, defaults to login.microsoftonline.com).   (← azure-ad-authority-config)
+- [x] Every provider adapter transport-error path raises UpstreamUnavailableError with `__cause__ is None` (no secret-bearing request reachable via the exception chain); all provider regression suites green.   (← provider-secret-chain-hardening · verifier: tests/secret_chain_hardening 13/13 [shared seam ×3 + 10 adapters] + 477-test provider/transport/streaming/endpoint regression green + grep: zero `from exc`/`from terminal_exc` in infrastructure/)
+- [x] resolve_azure_ad_config honors GATEWAY_AZURE_AD_AUTHORITY (env-overridable, defaults to login.microsoftonline.com).   (← azure-ad-authority-config · verifier: tests/azure_ad_authority 5/5 [carries-from-settings, default-when-unset, token-URL end-to-end, gating-unchanged, env-binding] + azure_aad/azure_auth_routing regression green)
+
+## Status: CLOSED 2026-06-15 — both tasks gate PASS; both exit criteria met. Folded → foundation v22.
