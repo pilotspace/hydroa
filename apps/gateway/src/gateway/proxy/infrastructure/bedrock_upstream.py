@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.tool_translation import dump_tool_arguments, load_tool_arguments
 from gateway.proxy.infrastructure.bedrock_eventstream import decode_event_stream
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
@@ -46,6 +47,68 @@ _NON_STREAM_TIMEOUT = 120.0
 # ---------------------------------------------------------------------------
 # Pure translation helpers (module-level, no I/O — unit-tested directly)
 # ---------------------------------------------------------------------------
+
+
+def _tools_to_converse(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate OpenAI tools → Bedrock Converse toolConfig.tools (toolSpec shape).
+
+    Each {type:function, function:{name, description?, parameters?}} becomes:
+    {"toolSpec": {"name": fn["name"],
+                  "description": fn["description"],  (omitted when absent)
+                  "inputSchema": {"json": fn.get("parameters", {})}}}
+    """
+    out: list[dict[str, Any]] = []
+    for tool in tools:
+        fn = tool.get("function", {})
+        ts: dict[str, Any] = {"name": fn["name"]}
+        if "description" in fn:
+            ts["description"] = fn["description"]
+        ts["inputSchema"] = {"json": fn.get("parameters", {})}
+        out.append({"toolSpec": ts})
+    return out
+
+
+def _tool_choice_to_converse(choice: Any) -> dict[str, Any] | None:
+    """Translate OpenAI tool_choice → Bedrock Converse toolChoice.
+
+    "auto"      -> {"auto": {}}
+    "required"  -> {"any": {}}
+    {"type":"function","function":{"name":n}} -> {"tool": {"name": n}}
+    "none" / None / anything else -> None  (caller omits the toolChoice key)
+    """
+    if choice == "auto":
+        return {"auto": {}}
+    if choice == "required":
+        return {"any": {}}
+    if isinstance(choice, dict) and choice.get("type") == "function":
+        name = choice.get("function", {}).get("name", "")
+        return {"tool": {"name": name}}
+    return None
+
+
+def _assistant_tool_calls_to_content(msg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build a Bedrock Converse assistant content-block list from an OpenAI assistant message.
+
+    Any text ``content`` becomes a leading ``{"text": text}`` block; each entry in
+    ``tool_calls`` becomes a ``{"toolUse": {"toolUseId", "name", "input"}}`` block
+    (``arguments`` JSON string → ``input`` dict via load_tool_arguments).
+    """
+    blocks: list[dict[str, Any]] = []
+    text = msg.get("content")
+    if isinstance(text, str) and text:
+        blocks.append({"text": text})
+    for call in msg.get("tool_calls", []):
+        fn = call.get("function", {})
+        blocks.append(
+            {
+                "toolUse": {
+                    "toolUseId": call.get("id", ""),
+                    "name": fn.get("name", ""),
+                    "input": load_tool_arguments(fn.get("arguments", "")),
+                }
+            }
+        )
+    return blocks
 
 
 def _map_finish_reason(stop_reason: str | None) -> str:
@@ -94,18 +157,47 @@ def _openai_to_converse_request(
     system_blocks: list[dict[str, str]] = []
     converse_messages: list[dict[str, Any]] = []
 
+    # Buffer for consecutive role:"tool" messages — flushed into ONE user message.
+    pending_tool_results: list[dict[str, Any]] = []
+
+    def _flush_tool_results() -> None:
+        if pending_tool_results:
+            converse_messages.append({"role": "user", "content": list(pending_tool_results)})
+            pending_tool_results.clear()
+
     for msg in messages:
         role = msg.get("role")
         content = msg.get("content", "")
         if role == "system":
+            _flush_tool_results()
             system_blocks.append({"text": str(content)})
+        elif role == "tool":
+            # Accumulate into pending buffer; flush happens on next non-tool message.
+            pending_tool_results.append(
+                {
+                    "toolResult": {
+                        "toolUseId": msg.get("tool_call_id", ""),
+                        "content": [{"text": str(msg.get("content", ""))}],
+                        "status": "success",
+                    }
+                }
+            )
+        elif role == "assistant" and msg.get("tool_calls"):
+            _flush_tool_results()
+            converse_messages.append(
+                {"role": "assistant", "content": _assistant_tool_calls_to_content(msg)}
+            )
         else:
+            _flush_tool_results()
             converse_messages.append(
                 {
                     "role": role,
                     "content": [{"text": str(content)}],
                 }
             )
+
+    # Flush any trailing tool results that ended the message list.
+    _flush_tool_results()
 
     # inferenceConfig — required keys + optional pass-throughs
     inference_config: dict[str, Any] = {
@@ -129,6 +221,14 @@ def _openai_to_converse_request(
     if system_blocks:
         body["system"] = system_blocks
 
+    # toolConfig — only when payload carries tools; toolChoice omitted for "none"/None.
+    if payload.get("tools"):
+        tool_config: dict[str, Any] = {"tools": _tools_to_converse(payload["tools"])}
+        tc = _tool_choice_to_converse(payload.get("tool_choice"))
+        if tc is not None:
+            tool_config["toolChoice"] = tc
+        body["toolConfig"] = tool_config
+
     return model_id, body
 
 
@@ -140,11 +240,36 @@ def _converse_to_openai(resp_json: dict[str, Any], *, model_id: str) -> dict[str
            totalTokens→total_tokens (falls back to input+output when absent).
     Defensive: missing output/usage → empty content "" / zero usage, never raise.
     """
-    # Extract concatenated text content from output.message.content blocks
+    # Walk output.message.content[] once: accumulate text and toolUse blocks.
     output: dict[str, Any] = resp_json.get("output", {})
     msg: dict[str, Any] = output.get("message", {})
     content_blocks: list[dict[str, Any]] = msg.get("content", [])
-    content_text = "".join(b.get("text", "") for b in content_blocks)
+
+    text_parts: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+    for block in content_blocks:
+        if "text" in block:
+            text_parts.append(block["text"])
+        elif "toolUse" in block:
+            tu = block["toolUse"]
+            tool_calls.append(
+                {
+                    "id": tu.get("toolUseId", ""),
+                    "type": "function",
+                    "function": {
+                        "name": tu.get("name", ""),
+                        "arguments": dump_tool_arguments(tu.get("input", {})),
+                    },
+                }
+            )
+
+    content_text = "".join(text_parts)
+
+    # content: text string when present; None when only tool calls; "" otherwise.
+    content: str | None = content_text if content_text else (None if tool_calls else "")
+    message: dict[str, Any] = {"role": "assistant", "content": content}
+    if tool_calls:
+        message["tool_calls"] = tool_calls
 
     # Usage mapping
     usage_raw: dict[str, Any] = resp_json.get("usage", {})
@@ -165,10 +290,7 @@ def _converse_to_openai(resp_json: dict[str, Any], *, model_id: str) -> dict[str
         "choices": [
             {
                 "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": content_text,
-                },
+                "message": message,
                 "finish_reason": _map_finish_reason(resp_json.get("stopReason")),
             }
         ],
