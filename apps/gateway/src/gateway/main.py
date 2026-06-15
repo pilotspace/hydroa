@@ -45,6 +45,7 @@ from gateway.proxy.infrastructure.azure_ad import (
     resolve_azure_ad_config,
 )
 from gateway.proxy.infrastructure.azure_config import AzureConfig, resolve_azure_config
+from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
 from gateway.proxy.infrastructure.bedrock_sigv4 import resolve_aws_credentials
@@ -455,15 +456,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             api_version=settings.azure_api_version,
             deployment_map=settings.azure_deployment_map,
         )
+    # Bound unconditionally so the provider-registry block below can reuse the SAME
+    # token_provider instance (one AAD token cache shared across chat + embeddings).
+    _azure_token_provider: AzureADTokenProvider | None = None
     if _azure_cfg:
-        _azure_token_provider = (
-            AzureADTokenProvider(
+        if _azure_ad_cfg:
+            _azure_token_provider = AzureADTokenProvider(
                 config=_azure_ad_cfg,
                 metrics_registry=app.state.metrics_registry,
             )
-            if _azure_ad_cfg
-            else None
-        )
         _chat_adapters["azure"] = AzureCompletionUpstream(
             config=_azure_cfg,
             token_provider=_azure_token_provider,
@@ -592,6 +593,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             credentials=_aws_creds,
             region=settings.bedrock_region,
             endpoint_url=settings.bedrock_endpoint_url or None,
+            metrics_registry=app.state.metrics_registry,
+        )
+    # Azure OpenAI embeddings adapter — registered under the SAME guard as the Azure chat
+    # adapter (_azure_cfg present), reusing the shared _azure_token_provider (one AAD token
+    # cache across chat + embeddings). Opt-in; byte-identical when Azure is unconfigured.
+    if _azure_cfg:
+        _providers["azure"] = AzureEmbeddingsProvider(
+            config=_azure_cfg,
+            token_provider=_azure_token_provider,
             metrics_registry=app.state.metrics_registry,
         )
     app.state.provider_registry = ProviderRegistry(_providers)
