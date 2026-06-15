@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "semantic-cache",
+  "active_task": "reliability-verify",
   "active_milestone": "v19",
   "tasks": {
     "retry-seam-unify": {
@@ -182,6 +182,70 @@
         ],
         "snapshot_md5": "d3e0c313186e08c1cdeef564a11f4748"
       }
+    },
+    "reliability-verify": {
+      "title": "v19 reliability verification \u2014 live double-pass + retry/fallback/cache metric assertions + zero-regression floor",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T07:00:09+00:00",
+      "updated": "2026-06-15T07:32:20+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "708a6438c169b9462c7d53cd081a56f1",
+        "tests": {
+          "scripts/check_allowlist.py": "7edd8bbb7d60f3a1dc173a5c614006a8",
+          "scripts/check_node_deps.py": "4775dbe533fc2640a959b313da62504e",
+          "scripts/live_smoke.py": "b4e5b6956e2f1752bc41d85bf5a4de17",
+          "scripts/live_v10_verify.py": "454f017dbd1fd2b6997f246971fc0102",
+          "scripts/live_v11_verify.py": "33a5798d90bc94bf31cc35859715ee4e",
+          "scripts/live_v12_verify.py": "c5ce18a7cbfd5657bf7b6b74210b5433",
+          "scripts/live_v19_verify.py": "b9900c14ac840bf5817dbe6e67222a5e",
+          "scripts/live_v3_verify.py": "87f5146e8c04cdbce4eb49ee11d64f25",
+          "scripts/live_v4_verify.py": "0d892715683e73f9033765504bdcdef0",
+          "scripts/live_v5_verify.py": "c541001720b99e7333ac63889478951e",
+          "scripts/live_v6_verify.py": "b6c05c4d7f4f8f756ef1425ff0ed22ad",
+          "scripts/live_v7_verify.py": "7781aa79ddbb2994efacab030af2ebc5",
+          "scripts/live_v8_verify.py": "52849ddd18ac2ae107ec93305deb89e1",
+          "scripts/live_v9_verify.py": "2b643a3f24039ee009bb1e2955a2f8aa",
+          "scripts/v10_tool_stub.py": "c9443ec6e0258b0fc85f99bd6d87f859",
+          "scripts/v11_json_stub.py": "3e9ffe7bf2f8eb5472f795ee5e6bea53",
+          "scripts/v12_embed_stub.py": "42f45bdc73894f63ba5f3803d140ef51",
+          "scripts/v19_reliability_stub.py": "53e806a165db3600a672a06e920738c5",
+          "scripts/v6_fault_stub.py": "55fff87c97d1e7e95ac620d756a24a1b",
+          "scripts/v7_openai_stub.py": "47b40236c0fffad7a1c2b37575ab01b6",
+          "scripts/v8_router_stub.py": "4a718d2f2696f4bc4a4dce4e4a79714f",
+          "scripts/v9_provider_stub.py": "4f731c776e301ea65f4b4a277b3d4945",
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "4dbdca0cc70c971d0075d9ccff7f4e76",
+          "apps/gateway/tests/test_config.py": "f3a4e9643d4288c5a52b2ad36bb62774",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885"
+        }
+      },
+      "scope": {
+        "declared": [
+          "scripts/v19_reliability_stub.py",
+          "scripts/live_v19_verify.py",
+          "infra/docker-compose.e2e.v19.yml"
+        ],
+        "snapshot_md5": "b8ac6a9b1622e5a68cfeaa100ba747d8"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-15T07:27:43+00:00",
+            "reason": "scope_violation: task 'reliability-verify' touched outside its declared \u00a75 Scope \u2014 infra/docker-compose.e2e.v19.yml \u00b7 tmp/v19-verify-commit.txt (2 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-15T07:29:39+00:00",
+            "reason": "scope_violation: task 'reliability-verify' touched outside its declared \u00a75 Scope \u2014 infra/docker-compose.e2e.v19.yml (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -195,7 +259,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-15T06:57:54+00:00",
+  "updated": "2026-06-15T07:32:20+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
