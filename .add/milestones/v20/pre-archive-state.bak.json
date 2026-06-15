@@ -1,0 +1,178 @@
+{
+  "milestone": {
+    "title": "Enterprise provider: AWS Bedrock (SigV4 \u00b7 Converse chat/stream/tools \u00b7 Titan embeddings)",
+    "goal": "a tenant can call AWS Bedrock models through the proxy on the same OpenAI-compatible surface \u2014 chat, streaming, tool-use, embeddings \u2014 authenticated via SigV4, billed accurately, opt-in and byte-identical when disabled",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-15T07:46:51+00:00",
+    "updated": "2026-06-15T12:00:17+00:00"
+  },
+  "tasks": {
+    "bedrock-sigv4-auth": {
+      "title": "AWS SigV4 signer for bedrock-runtime + credential resolution (pure, total, secret-safe)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v20",
+      "depends_on": [],
+      "created": "2026-06-15T07:48:06+00:00",
+      "updated": "2026-06-15T08:14:37+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b78640a02c47420f5ca196d41d92bc0a",
+        "tests": {
+          "apps/gateway/tests/bedrock_sigv4/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/bedrock_sigv4/test_bedrock_sigv4.py": "64ba300c4b3de59e8e2f6ac5e687ad65"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_sigv4.py",
+          "apps/gateway/src/gateway/core/config.py"
+        ],
+        "snapshot_md5": "2e1c2350e1b996b6266fee01c7255715"
+      }
+    },
+    "bedrock-chat": {
+      "title": "Non-streaming Bedrock Converse chat <-> OpenAI surface + provider dispatch wiring + usage billing",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v20",
+      "depends_on": [],
+      "created": "2026-06-15T08:18:18+00:00",
+      "updated": "2026-06-15T08:48:13+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "28b0ab06506cc241cde87c59e09d841b",
+        "tests": {
+          "apps/gateway/tests/bedrock_provider/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/bedrock_provider/test_bedrock_provider.py": "65a2ad156cf81f52761d3a5dcd51bdf8"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "8b212ef362440d91f70927b10234e09c"
+      }
+    },
+    "bedrock-streaming": {
+      "title": "ConverseStream event-stream -> OpenAI SSE (reuse v19 pre-first-byte resilience)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v20",
+      "depends_on": [],
+      "created": "2026-06-15T08:49:58+00:00",
+      "updated": "2026-06-15T09:12:06+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "41ae8f169d03e4265ad9f676672d5b25",
+        "tests": {
+          "apps/gateway/tests/bedrock_streaming/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/bedrock_streaming/test_bedrock_streaming.py": "21b9d3064ca43dc0d08db87ca17f2dc7"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_eventstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py",
+          "apps/gateway/tests/bedrock_provider/test_bedrock_provider.py"
+        ],
+        "snapshot_md5": "922faf8e5d60cbba06091953591cade0"
+      }
+    },
+    "bedrock-tools": {
+      "title": "Converse toolConfig <-> v10 canonical tool seam (toolUse/toolResult <-> tool_calls)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v20",
+      "depends_on": [],
+      "created": "2026-06-15T09:13:15+00:00",
+      "updated": "2026-06-15T09:28:52+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "bbccabe1c52aaaebb5a56ee56bb1528f",
+        "tests": {
+          "apps/gateway/tests/bedrock_tool_use/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/bedrock_tool_use/test_bedrock_tool_use.py": "9550cc9adaa4c750a9074035f999cc62"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py"
+        ],
+        "snapshot_md5": "2a3a9c29355be4088305fbbcc7ac34ae"
+      }
+    },
+    "bedrock-embeddings": {
+      "title": "Amazon Titan embeddings via InvokeModel <-> OpenAI /v1/embeddings (exact token accounting)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v20",
+      "depends_on": [],
+      "created": "2026-06-15T09:29:47+00:00",
+      "updated": "2026-06-15T09:46:12+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6a821bb8ed29d84504ac7a0e81e21a74",
+        "tests": {
+          "apps/gateway/tests/bedrock_embeddings/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/bedrock_embeddings/test_bedrock_embeddings.py": "d97784b072eced6ef333823dabee9f64"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_embeddings.py",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "3b095153773efd4594e5081e6090f25e"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-15T09:45:40+00:00",
+            "reason": "scope_violation: task 'bedrock-embeddings' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/.gitignore \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/CACHEDIR.TAG (3 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "bedrock-verify": {
+      "title": "Bedrock live double-pass \u00d72 vs SigV4-verifying stub + retry/fallback/cache composition + zero-regression floor",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v20",
+      "depends_on": [],
+      "created": "2026-06-15T09:47:42+00:00",
+      "updated": "2026-06-15T11:53:05+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "605f1059ea8c4795c94ac94b68dbeacc",
+        "tests": {
+          "apps/gateway/tests/bedrock_verify/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/bedrock_verify/test_bedrock_verify.py": "061b9ca35546d0e218414c8163ac9bd0"
+        }
+      },
+      "scope": {
+        "declared": [
+          "scripts/v20_bedrock_stub.py",
+          "scripts/live_v20_verify.py",
+          "infra/docker-compose.e2e.v20.yml"
+        ],
+        "snapshot_md5": "206e22b12fdce4b5207ca3f7062717b9"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-15T11:47:06+00:00",
+            "reason": "scope_violation: task 'bedrock-verify' touched outside its declared \u00a75 Scope \u2014 Makefile \u00b7 apps/dashboard/test-results/.last-run.json (2 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    }
+  },
+  "archived_at": "2026-06-15T12:04:58+00:00"
+}
