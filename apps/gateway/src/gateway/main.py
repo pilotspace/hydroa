@@ -40,6 +40,8 @@ from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import UpstreamProvider
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
+from gateway.proxy.infrastructure.azure_config import resolve_azure_config
+from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
 from gateway.proxy.infrastructure.bedrock_sigv4 import resolve_aws_credentials
 from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
@@ -429,6 +431,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             region=settings.bedrock_region,
             endpoint_url=settings.bedrock_endpoint_url or None,
             default_max_tokens=settings.anthropic_default_max_tokens,
+            max_retries=settings.upstream_max_retries,
+            backoff_base=settings.upstream_retry_backoff_base_s,
+            retry_deadline_s=settings.upstream_retry_deadline_s,
+            metrics_registry=app.state.metrics_registry,
+        )
+
+    # Azure OpenAI adapter — registered only when api_key + endpoint are both set.
+    # OpenAI-shaped passthrough (api-key header, per-request deployment URL); opt-in,
+    # byte-identical to today when resolve_azure_config returns None.
+    _azure_cfg = resolve_azure_config(settings)
+    if _azure_cfg:
+        _chat_adapters["azure"] = AzureCompletionUpstream(
+            config=_azure_cfg,
             max_retries=settings.upstream_max_retries,
             backoff_base=settings.upstream_retry_backoff_base_s,
             retry_deadline_s=settings.upstream_retry_deadline_s,
