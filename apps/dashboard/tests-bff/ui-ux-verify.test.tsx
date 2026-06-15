@@ -13,13 +13,13 @@
  * a found-and-fixed a11y bug in the owning component, never a relaxed bar.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "./mocks/server";
-import { axe } from "vitest-axe";
+import { axe } from "@/test-support/axe";
 import React from "react";
 
 import { SpendPage } from "@/components/spend/SpendPage";
@@ -27,6 +27,17 @@ import {
   KeyGovernanceEditor,
   type ApiKeyGovernance,
 } from "@/components/keys/KeyGovernanceEditor";
+
+// KeyGovernanceEditor (rendered by the governance-axe + rotate-dialog tests below)
+// fires useQuery(["admin-teams"]) → GET /api/gw/admin/teams. None of these tests
+// assert on the team selector, so register an EXPLICIT empty-list default (the
+// BARE-array shape) now that the broad gw wildcard is gone — strict-harness
+// convention: scope shared fallbacks to the concrete paths a rendered component needs.
+beforeEach(() => {
+  server.use(
+    http.get("http://localhost:3000/api/gw/admin/teams", () => HttpResponse.json([]))
+  );
+});
 
 // ── axe helper: serious|critical only, color-contrast disabled (jsdom/no-canvas) ──
 async function axeSeriousCritical(container: HTMLElement) {

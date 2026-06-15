@@ -112,24 +112,19 @@ export const bffHandlers = [
       tenant_id: "00000000-0000-0000-0000-000000000099",
       email: "ada@acme.io",
       role: "owner",
-      exp: Math.floor(Date.now() / 1000) + 86400,
+      // exp:null mirrors the hardened relay route's stable shape (the gateway
+      // enforces expiry; no consumer reads exp) — no mock/contract drift.
+      exp: null,
     })
   ),
 
-  http.get(`${APP}/api/gw/:path*`, () =>
+  // NOTE: no broad gateway catch-all wildcard. The shared defaults must be CONCRETE per-path so a
+  // forgotten per-test gw handler hits `onUnhandledRequest:"error"` and fails LOUDLY (a broad
+  // wildcard returns wrong-but-silent data — the v15-folded convention). Tests that exercise a
+  // gw path register their own `server.use(...)`. The common read default (the keys list, used by
+  // the most surfaces) stays as a concrete handler below; everything else is per-test explicit.
+  http.get(`${APP}/api/gw/admin/keys`, () =>
     HttpResponse.json([{ key_id: "kid-default", name: "default-key" }])
-  ),
-
-  http.post(`${APP}/api/gw/:path*`, () =>
-    HttpResponse.json({ key_id: "kid-new", name: "new-key", key: "sk-new.SECRET" }, { status: 201 })
-  ),
-
-  http.put(`${APP}/api/gw/:path*`, () =>
-    HttpResponse.json({ budget_usd_monthly: "25.00" })
-  ),
-
-  http.delete(`${APP}/api/gw/:path*`, () =>
-    new HttpResponse(null, { status: 204 })
   ),
 ];
 

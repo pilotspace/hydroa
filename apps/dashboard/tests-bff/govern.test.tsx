@@ -27,7 +27,7 @@
  * MSW server: tests-bff/mocks/server.ts (gatewayHandlers + bffHandlers)
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -50,6 +50,19 @@ import { SpendPage } from "@/components/spend/SpendPage";
 // ─────────────────────────────────────────────────────────────────────────────
 // Test infrastructure
 // ─────────────────────────────────────────────────────────────────────────────
+
+// KeyGovernanceEditor renders a team-assignment selector backed by
+// useQuery(["admin-teams"]) → GET /api/gw/admin/teams. None of the tests below
+// assert on that selector's content, so register an EXPLICIT empty-list default
+// (the /admin/teams BARE-array shape) for every test — making the previously
+// IMPLICIT wildcard default explicit now that the broad gw catch-all is gone
+// (strict-harness convention: scope shared fallbacks to the concrete paths a
+// rendered component truly needs). A test that DOES exercise teams overrides this.
+beforeEach(() => {
+  server.use(
+    http.get("http://localhost:3000/api/gw/admin/teams", () => HttpResponse.json([]))
+  );
+});
 
 function makeQueryClient() {
   return new QueryClient({
@@ -488,7 +501,7 @@ describe("KeyGovernanceEditor — PATCH field names and BFF security", () => {
     // SECURITY: No Authorization header must appear in the client-side request.
     // The BFF catch-all injects it server-side — client never sees or sends a token.
     expect(
-      (capturedClientRequest as Request).headers.get("Authorization")
+      (capturedClientRequest as unknown as Request).headers.get("Authorization")
     ).toBeNull();
   });
 });

@@ -25,16 +25,17 @@ export default defineConfig([
   ]),
   ...nextCoreWebVitals,
   {
-    // eslint-config-next 16 NEWLY enables these React-Compiler-era rules, which flag
-    // pre-existing v13/v15 patterns (SpendPage's last-good-ref read in render — the v15 D1
-    // spend-recovery fix; the settings tabs' sync-server-state-in-effect; use-focus-trap's
-    // ref read). Fixing them properly is a behavior-sensitive state-model refactor, OUT of
-    // this behavior-preserving Next-16 upgrade's scope. Downgraded error→warn here (visible,
-    // not hidden) to preserve the v15 lint baseline (0 errors); adoption + fixes are the
-    // declared follow-up `react-hooks-strict-lint`.
+    // eslint-config-next 16 enables these React-Compiler-era rules. v14 (Next 16)
+    // temporarily downgraded them error→warn (a DECLARED + TICKETED transition) while the
+    // pre-existing v13/v15 patterns were fixed. v17 `react-hooks-strict-lint` discharged
+    // that ticket: SpendPage holds last-good-on-error in STATE (no ref read in render),
+    // use-focus-trap writes its callback ref in an effect, and the settings tabs seed form
+    // state via a guarded adjust-during-render (no setState-in-effect). The rules are now
+    // PINNED at "error" — the strict-gate ratchet (foundation v16): a later task may not
+    // silently re-loosen them (tests-bff/lint-rules-strict.test.ts guards this invariant).
     rules: {
-      "react-hooks/refs": "warn",
-      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/refs": "error",
+      "react-hooks/set-state-in-effect": "error",
     },
   },
 ]);

@@ -35,7 +35,8 @@
     "@vitest/coverage-v8",
     "eslint",
     "eslint-config-next",
-    "vitest-axe",
-    "axe-core"
+    "axe-core",
+    "@playwright/test",
+    "@axe-core/playwright"
   ]
 }

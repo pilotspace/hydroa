@@ -12,7 +12,7 @@
  * SECURITY: the "<stored>" sentinel never enters any input value or state.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bffGet, bffPut, BffError } from "@/lib/bff-client";
 import { Switch, Button, Input, Loading, ErrorState } from "@/components/ui";
@@ -88,19 +88,22 @@ export function OidcSettings() {
   const [secretError, setSecretError] = useState<string | null>(null);
   const [mutError, setMutError] = useState<string | null>(null);
 
-  // Populate form from GET data (except client_secret — never prefilled)
-  useEffect(() => {
-    if (data) {
-      setIssuer(data.issuer);
-      setClientId(data.client_id);
-      setAuthorizeUrl(data.authorize_url ?? "");
-      setTokenUrl(data.token_url);
-      setJwksUrl(data.jwks_url);
-      setEmailDomains(data.email_domains.join(", "));
-      setOidcEnabled(data.enabled);
-      // SECURITY: client_secret intentionally NOT set from data.client_secret
-    }
-  }, [data]);
+  // Populate form from GET data (except client_secret — never prefilled) via
+  // React's "adjust state during render" guard (no setState in an effect): fires
+  // only when the query data reference changes (initial load + after a save
+  // reinstalls it via setQueryData), so it converges in one render and never loops.
+  const [seededData, setSeededData] = useState<OidcConf | undefined>(undefined);
+  if (data && data !== seededData) {
+    setSeededData(data);
+    setIssuer(data.issuer);
+    setClientId(data.client_id);
+    setAuthorizeUrl(data.authorize_url ?? "");
+    setTokenUrl(data.token_url);
+    setJwksUrl(data.jwks_url);
+    setEmailDomains(data.email_domains.join(", "));
+    setOidcEnabled(data.enabled);
+    // SECURITY: client_secret intentionally NOT set from data.client_secret
+  }
 
   const saveOidc = useMutation({
     mutationFn: (body: OidcPut) => bffPut<OidcConf>("/admin/oidc", body),

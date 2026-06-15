@@ -41,7 +41,7 @@ describe("bff-client: bffGet", () => {
       configurable: true,
       get() {
         return {
-          href: capturedHref,
+          get href() { return capturedHref ?? ""; },
           set href(v: string) { capturedHref = v; },
         };
       },
@@ -94,7 +94,7 @@ describe("bff-client: bffGet", () => {
     // credentials: "include" means the browser sends cookies — in node/msw test
     // context we verify the header pattern or that no Authorization header was added
     expect(capturedRequest).not.toBeNull();
-    expect((capturedRequest as Request).headers.get("Authorization")).toBeNull();
+    expect((capturedRequest as unknown as Request).headers.get("Authorization")).toBeNull();
   });
 });
 
@@ -138,6 +138,6 @@ describe("bff-client: bffDelete", () => {
 
     expect(capturedRequest).not.toBeNull();
     // Must not include Authorization header — token is in the cookie, not the header
-    expect((capturedRequest as Request).headers.get("Authorization")).toBeNull();
+    expect((capturedRequest as unknown as Request).headers.get("Authorization")).toBeNull();
   });
 });

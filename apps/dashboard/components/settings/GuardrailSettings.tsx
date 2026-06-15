@@ -10,7 +10,7 @@
  * BffError title surfaced inline (anti-silent-failure standing rule).
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bffGet, bffPut, BffError } from "@/lib/bff-client";
 import { Switch, Button, Input, Loading, ErrorState } from "@/components/ui";
@@ -63,18 +63,22 @@ export function GuardrailSettings() {
 
   const [mutError, setMutError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (data) {
-      const pi = data.prompt_injection;
-      setPiEnabled(pi?.enabled ?? false);
-      setPiMode(pi?.mode ?? "block");
+  // Seed/reseed local editable state from server data via React's "adjust state
+  // during render" guard (no setState in an effect): fires only when the query
+  // data reference changes (initial load + after a save reinstalls it via
+  // setQueryData), so it converges in one render and never loops.
+  const [seededData, setSeededData] = useState<GuardrailConfig | undefined>(undefined);
+  if (data && data !== seededData) {
+    setSeededData(data);
+    const pi = data.prompt_injection;
+    setPiEnabled(pi?.enabled ?? false);
+    setPiMode(pi?.mode ?? "block");
 
-      const pii = data.pii_mask;
-      setPiiEnabled(pii?.enabled ?? false);
-      setPiiMode(pii?.mode ?? "mask");
-      setPatterns(pii?.pii_custom_patterns ?? []);
-    }
-  }, [data]);
+    const pii = data.pii_mask;
+    setPiiEnabled(pii?.enabled ?? false);
+    setPiiMode(pii?.mode ?? "mask");
+    setPatterns(pii?.pii_custom_patterns ?? []);
+  }
 
   const saveGuardrails = useMutation({
     mutationFn: (body: GuardrailConfig) =>

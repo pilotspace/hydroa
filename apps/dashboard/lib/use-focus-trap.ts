@@ -32,8 +32,12 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
 ) {
   const containerRef = useRef<T | null>(null);
   // Keep the latest onEscape without re-subscribing the listener each render.
+  // The ref write lives in an effect (never during render) so it satisfies
+  // react-hooks/refs; the keydown handler still reads `.current` for the latest.
   const onEscapeRef = useRef(onEscape);
-  onEscapeRef.current = onEscape;
+  useEffect(() => {
+    onEscapeRef.current = onEscape;
+  }, [onEscape]);
 
   useEffect(() => {
     if (!active) return;
