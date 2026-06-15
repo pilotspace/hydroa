@@ -37,6 +37,7 @@ from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
+    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
 
 _CONNECT_TIMEOUT = 10.0
 _NON_STREAM_TIMEOUT = 120.0
@@ -56,12 +57,14 @@ class AzureCompletionUpstream:
         self,
         *,
         config: AzureConfig,
+        token_provider: AzureADTokenProvider | None = None,
         max_retries: int = 0,
         backoff_base: float = 0.5,
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
         self._config = config
+        self._token_provider = token_provider
         self._breaker = CircuitBreaker()
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(
@@ -76,7 +79,12 @@ class AzureCompletionUpstream:
         self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
 
-    def _auth_headers(self) -> dict[str, str]:
+    async def _auth_headers(self) -> dict[str, str]:
+        # Azure AD bearer token takes precedence when configured; otherwise the api-key.
+        # The token is fetched (cached) from the provider — fail-closed (raises on token error).
+        if self._token_provider is not None:
+            token = await self._token_provider.get_token()
+            return {"Authorization": f"Bearer {token}"}
         # Azure uses the `api-key` header — NOT `Authorization: Bearer`.
         return {"api-key": self._config.api_key}
 
@@ -91,7 +99,7 @@ class AzureCompletionUpstream:
         model = str(payload.get("model", ""))
         deployment = self._config.resolve_deployment(model)
         url = self._config.build_url(deployment, "chat/completions")
-        headers = {**self._auth_headers(), "content-type": "application/json"}
+        headers = {**(await self._auth_headers()), "content-type": "application/json"}
 
         async def _do_request() -> httpx.Response:
             return await self._client.post(url, json=payload, headers=headers)
@@ -121,9 +129,11 @@ class AzureCompletionUpstream:
         model = str(payload.get("model", ""))
         deployment = self._config.resolve_deployment(model)
         url = self._config.build_url(deployment, "chat/completions")
-        headers = {**self._auth_headers(), "content-type": "application/json"}
 
         async def _gen() -> AsyncIterator[bytes]:
+            # auth headers are awaited INSIDE the generator (the token fetch is async;
+            # a token failure raises UpstreamUnavailableError before the first byte).
+            headers = {**(await self._auth_headers()), "content-type": "application/json"}
             try:
                 async with self._client.stream(
                     "POST",

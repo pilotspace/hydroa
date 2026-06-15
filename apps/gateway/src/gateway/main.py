@@ -40,7 +40,11 @@ from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import UpstreamProvider
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
-from gateway.proxy.infrastructure.azure_config import resolve_azure_config
+from gateway.proxy.infrastructure.azure_ad import (
+    AzureADTokenProvider,
+    resolve_azure_ad_config,
+)
+from gateway.proxy.infrastructure.azure_config import AzureConfig, resolve_azure_config
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
 from gateway.proxy.infrastructure.bedrock_sigv4 import resolve_aws_credentials
@@ -437,13 +441,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             metrics_registry=app.state.metrics_registry,
         )
 
-    # Azure OpenAI adapter — registered only when api_key + endpoint are both set.
-    # OpenAI-shaped passthrough (api-key header, per-request deployment URL); opt-in,
-    # byte-identical to today when resolve_azure_config returns None.
+    # Azure OpenAI adapter — opt-in, OpenAI-shaped passthrough. Auth is api-key by
+    # default; Azure AD (client-credentials) takes precedence when configured. The
+    # adapter is enabled when api-key config OR (AAD config AND an endpoint) is present,
+    # so AAD can authenticate without an api-key. Byte-identical when neither is set.
     _azure_cfg = resolve_azure_config(settings)
+    _azure_ad_cfg = resolve_azure_ad_config(settings)
+    if not _azure_cfg and _azure_ad_cfg and settings.azure_endpoint:
+        # AAD-only: build a config carrying the endpoint (api_key empty, unused under Bearer).
+        _azure_cfg = AzureConfig(
+            api_key=settings.azure_api_key,
+            endpoint=settings.azure_endpoint,
+            api_version=settings.azure_api_version,
+            deployment_map=settings.azure_deployment_map,
+        )
     if _azure_cfg:
+        _azure_token_provider = (
+            AzureADTokenProvider(
+                config=_azure_ad_cfg,
+                metrics_registry=app.state.metrics_registry,
+            )
+            if _azure_ad_cfg
+            else None
+        )
         _chat_adapters["azure"] = AzureCompletionUpstream(
             config=_azure_cfg,
+            token_provider=_azure_token_provider,
             max_retries=settings.upstream_max_retries,
             backoff_base=settings.upstream_retry_backoff_base_s,
             retry_deadline_s=settings.upstream_retry_deadline_s,

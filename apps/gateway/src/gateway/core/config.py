@@ -34,6 +34,7 @@ _UPSTREAM_KEY_ENV_VARS: Final[tuple[str, ...]] = (
     "GATEWAY_BEDROCK_ACCESS_KEY_ID",
     "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
     "GATEWAY_AZURE_API_KEY",
+    "GATEWAY_AZURE_CLIENT_SECRET",
 )
 
 
@@ -254,6 +255,15 @@ class Settings(BaseSettings):
     # GATEWAY_AZURE_DEPLOYMENT_MAP — JSON object mapping client model -> Azure
     # deployment name. Empty = identity routing (model name == deployment name).
     azure_deployment_map: dict[str, str] = Field(default_factory=dict)
+    # ── Azure AD (client-credentials) auth — alternative to the api-key ───────
+    # GATEWAY_AZURE_TENANT_ID / GATEWAY_AZURE_CLIENT_ID — AAD app registration.
+    azure_tenant_id: str = ""
+    azure_client_id: str = ""
+    # GATEWAY_AZURE_CLIENT_SECRET — AAD client secret (SECRET).
+    # NEVER logged, echoed, committed, or placed in metric labels/span attributes/URLs.
+    azure_client_secret: str = ""
+    # GATEWAY_AZURE_AD_SCOPE — OAuth2 scope override (empty = cognitive-services default).
+    azure_ad_scope: str = ""
 
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.
