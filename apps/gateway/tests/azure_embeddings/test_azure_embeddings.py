@@ -139,7 +139,10 @@ async def test_identity_deployment_for_unmapped_model() -> None:
         return httpx.Response(200, json={"object": "list", "data": [], "usage": {}})
 
     cfg = AzureConfig(
-        api_key="k", endpoint="https://r.openai.azure.com", api_version="2024-10-21", deployment_map={}
+        api_key="k",
+        endpoint="https://r.openai.azure.com",
+        api_version="2024-10-21",
+        deployment_map={},
     )
     adapter = AzureEmbeddingsProvider(config=cfg)
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
