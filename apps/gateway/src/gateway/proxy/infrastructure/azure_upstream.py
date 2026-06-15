@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
 
 _CONNECT_TIMEOUT = 10.0
 _NON_STREAM_TIMEOUT = 120.0
+_STREAM_READ_TIMEOUT = 300.0
 
 
 class AzureCompletionUpstream:
@@ -106,10 +108,48 @@ class AzureCompletionUpstream:
         )
 
     def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
-        """Streaming is implemented by azure-streaming-passthrough (task 3)."""
-        raise NotImplementedError(
-            "Azure streaming is not implemented yet (azure-streaming-passthrough)"
-        )
+        """Return an async generator that yields raw SSE byte chunks (byte-passthrough).
+
+        Mirrors OpenRouterCompletionUpstream.stream exactly, bar the per-request Azure
+        deployment URL + `api-key` header. The circuit breaker is checked before the
+        first byte; a 5xx open raises UpstreamUnavailableError BEFORE yielding any chunk
+        (v19 failover). Zero retry machinery. Billing is application-layer: the caller
+        drains these bytes and extract_usage_from_sse reads the terminal usage frame.
+        """
+        self._breaker.guard()
+
+        model = str(payload.get("model", ""))
+        deployment = self._config.resolve_deployment(model)
+        url = self._config.build_url(deployment, "chat/completions")
+        headers = {**self._auth_headers(), "content-type": "application/json"}
+
+        async def _gen() -> AsyncIterator[bytes]:
+            try:
+                async with self._client.stream(
+                    "POST",
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=httpx.Timeout(
+                        connect=_CONNECT_TIMEOUT,
+                        read=_STREAM_READ_TIMEOUT,
+                        write=_NON_STREAM_TIMEOUT,
+                        pool=_CONNECT_TIMEOUT,
+                    ),
+                ) as response:
+                    if response.status_code >= 500:
+                        self._breaker.on_upstream_error()
+                        raise UpstreamUnavailableError(
+                            f"Upstream returned {response.status_code} on stream"
+                        )
+                    self._breaker.record_success()
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                self._breaker.on_upstream_error()
+                raise UpstreamUnavailableError(str(exc)) from exc
+
+        return _gen()
 
 
 __all__ = ["AzureCompletionUpstream"]

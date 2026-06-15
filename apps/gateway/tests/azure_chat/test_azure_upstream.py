@@ -131,13 +131,9 @@ async def test_api_key_not_in_url() -> None:
     assert seen["api_key"] == "secret-az-key"
 
 
-async def test_stream_not_implemented() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={})
-
-    adapter = _make_adapter(handler)
-    with pytest.raises(NotImplementedError):
-        await _drain(adapter.stream(_PAYLOAD))
+# NOTE: test_stream_not_implemented (the task-2 stub guard) was retired by
+# azure-streaming-passthrough (task 3), which implements stream() — see
+# tests/azure_streaming/test_azure_streaming.py for the real streaming coverage.
 
 
 def test_wiring_registers_azure_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
