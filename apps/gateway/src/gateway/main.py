@@ -40,6 +40,16 @@ from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import UpstreamProvider
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
+from gateway.proxy.infrastructure.azure_ad import (
+    AzureADTokenProvider,
+    resolve_azure_ad_config,
+)
+from gateway.proxy.infrastructure.azure_config import AzureConfig, resolve_azure_config
+from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
+from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
+from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
+from gateway.proxy.infrastructure.bedrock_sigv4 import resolve_aws_credentials
+from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
 from gateway.proxy.infrastructure.catalog_provider_resolver import CatalogProviderResolver
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.gemini_upstream import (
@@ -358,6 +368,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         base_url=settings.openrouter_base_url,
         max_retries=settings.upstream_max_retries,
         backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
         metrics_registry=app.state.metrics_registry,
     )
     # Public seam for production-wiring regression tests: the RAW OpenRouter
@@ -394,6 +405,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             base_url=settings.anthropic_base_url,
             anthropic_version=settings.anthropic_version,
             default_max_tokens=settings.anthropic_default_max_tokens,
+            max_retries=settings.upstream_max_retries,
+            backoff_base=settings.upstream_retry_backoff_base_s,
+            retry_deadline_s=settings.upstream_retry_deadline_s,
             metrics_registry=app.state.metrics_registry,
         )
 
@@ -405,6 +419,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             api_key=settings.google_api_key,
             base_url=settings.google_base_url,
             default_max_tokens=settings.google_default_max_tokens,
+            max_retries=settings.upstream_max_retries,
+            backoff_base=settings.upstream_retry_backoff_base_s,
+            retry_deadline_s=settings.upstream_retry_deadline_s,
+            metrics_registry=app.state.metrics_registry,
+        )
+
+    # AWS Bedrock adapter — registered only when all three credential fields are set.
+    # resolve_aws_credentials returns None when any required field is falsy (empty string,
+    # absent attribute). NEVER constructs with partial or empty credentials
+    # (v7 empty-bearer lesson; SigV4 with blank keys produces SignatureDoesNotMatch).
+    _aws_creds = resolve_aws_credentials(settings)
+    if _aws_creds:
+        _chat_adapters["bedrock"] = BedrockCompletionUpstream(
+            credentials=_aws_creds,
+            region=settings.bedrock_region,
+            endpoint_url=settings.bedrock_endpoint_url or None,
+            default_max_tokens=settings.anthropic_default_max_tokens,
+            max_retries=settings.upstream_max_retries,
+            backoff_base=settings.upstream_retry_backoff_base_s,
+            retry_deadline_s=settings.upstream_retry_deadline_s,
+            metrics_registry=app.state.metrics_registry,
+        )
+
+    # Azure OpenAI adapter — opt-in, OpenAI-shaped passthrough. Auth is api-key by
+    # default; Azure AD (client-credentials) takes precedence when configured. The
+    # adapter is enabled when api-key config OR (AAD config AND an endpoint) is present,
+    # so AAD can authenticate without an api-key. Byte-identical when neither is set.
+    _azure_cfg = resolve_azure_config(settings)
+    _azure_ad_cfg = resolve_azure_ad_config(settings)
+    if not _azure_cfg and _azure_ad_cfg and settings.azure_endpoint:
+        # AAD-only: build a config carrying the endpoint (api_key empty, unused under Bearer).
+        _azure_cfg = AzureConfig(
+            api_key=settings.azure_api_key,
+            endpoint=settings.azure_endpoint,
+            api_version=settings.azure_api_version,
+            deployment_map=settings.azure_deployment_map,
+        )
+    # Bound unconditionally so the provider-registry block below can reuse the SAME
+    # token_provider instance (one AAD token cache shared across chat + embeddings).
+    _azure_token_provider: AzureADTokenProvider | None = None
+    if _azure_cfg:
+        if _azure_ad_cfg:
+            _azure_token_provider = AzureADTokenProvider(
+                config=_azure_ad_cfg,
+                metrics_registry=app.state.metrics_registry,
+            )
+        _chat_adapters["azure"] = AzureCompletionUpstream(
+            config=_azure_cfg,
+            token_provider=_azure_token_provider,
+            max_retries=settings.upstream_max_retries,
+            backoff_base=settings.upstream_retry_backoff_base_s,
+            retry_deadline_s=settings.upstream_retry_deadline_s,
             metrics_registry=app.state.metrics_registry,
         )
 
@@ -494,6 +560,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         strategy=build_strategy(settings.routing_strategy, _load_gate),
         load_gate=_load_gate,
         limit_gate=_limit_gate,
+        fallback_on_error=settings.upstream_fallback_on_error,
+        stream_resilience_enabled=settings.upstream_stream_resilience_enabled,
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).
@@ -518,10 +586,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             base_url=settings.google_base_url,
             metrics_registry=app.state.metrics_registry,
         )
+    # AWS Bedrock embeddings adapter — registered only when all three credential fields
+    # are set (same guard as the chat adapter above). Reuses the already-resolved creds.
+    if _aws_creds:
+        _providers["bedrock"] = BedrockEmbeddingsProvider(
+            credentials=_aws_creds,
+            region=settings.bedrock_region,
+            endpoint_url=settings.bedrock_endpoint_url or None,
+            metrics_registry=app.state.metrics_registry,
+        )
+    # Azure OpenAI embeddings adapter — registered under the SAME guard as the Azure chat
+    # adapter (_azure_cfg present), reusing the shared _azure_token_provider (one AAD token
+    # cache across chat + embeddings). Opt-in; byte-identical when Azure is unconfigured.
+    if _azure_cfg:
+        _providers["azure"] = AzureEmbeddingsProvider(
+            config=_azure_cfg,
+            token_provider=_azure_token_provider,
+            metrics_registry=app.state.metrics_registry,
+        )
     app.state.provider_registry = ProviderRegistry(_providers)
 
-    # Cache TTL — exposed on app.state so proxy router can read it per-request
+    # Cache TTL — exposed on app.state so proxy router can read it per-request.
+    # cache_max_ttl_seconds caps any per-request Cache-Control: max-age override.
     app.state.cache_ttl_seconds = settings.cache_ttl_seconds
+    app.state.cache_max_ttl_seconds = settings.cache_max_ttl_seconds
+    # Pre-first-byte streaming resilience flag — read by deps to wire CompletionUseCase.
+    app.state.stream_resilience_enabled = settings.upstream_stream_resilience_enabled
+    # Embedding-similarity "vector" cache knobs (semantic-cache v19) — read by deps to wire
+    # the RedisVectorCache + its embedding adapter. Default-off ⇒ deps wires None ⇒ byte-identical.
+    app.state.vector_cache_enabled = settings.vector_cache_enabled
+    app.state.vector_cache_threshold = settings.vector_cache_threshold
+    app.state.vector_cache_embed_model = settings.vector_cache_embed_model
+    app.state.vector_cache_max_candidates = settings.vector_cache_max_candidates
 
     # JWKS key cache — always created so tests can inject the seam regardless of
     # oidc_enabled (per-tenant DB config can be used even when oidc_enabled=False).

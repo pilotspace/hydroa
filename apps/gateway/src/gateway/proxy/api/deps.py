@@ -13,26 +13,68 @@ consecutive 5xx returns.
 
 from __future__ import annotations
 
-from typing import Annotated
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Any
 
 from fastapi import Depends, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.catalog.infrastructure.orm import ModelRow
 from gateway.core.db import get_session
 from gateway.keys.application.use_cases import AuthzUseCase
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.proxy.application.use_cases import CompletionUseCase
-from gateway.proxy.domain.ports import CompletionUpstream, UsageRecorder
+from gateway.proxy.domain.ports import CompletionUpstream, UsageRecorder, VectorCache
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.circuit_breaker_proxy import BoundCircuitBreakerUpstream
 from gateway.proxy.infrastructure.guardrail_evaluator import RegexGuardrailEvaluator
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
+from gateway.proxy.infrastructure.provider_registry import select_provider
 from gateway.proxy.infrastructure.response_cache import RedisResponseCache
+from gateway.proxy.infrastructure.vector_cache import RedisVectorCache
 
 # Singleton stateless hasher — safe to share
 _hasher = Sha256SecretHasher()
+
+
+def build_embedding_adapter(
+    *,
+    session_factory: Callable[[], Any],
+    registry: Any,
+    embed_model: str,
+) -> Callable[[str], Awaitable[list[float] | None]]:
+    """Build the embedder the vector cache uses to vectorize prompts (semantic-cache v19).
+
+    Routes the configured embed model through the gateway's own embedding upstream. Uses its OWN
+    short-lived session (via session_factory) — NOT the request session — so the fire-and-forget
+    store path (which runs AFTER the response, when the request session is closed) works reliably.
+    Returns None on any miss/empty-shape; exceptions propagate to RedisVectorCache's fail-safe wrap.
+    The embedding call is INTERNAL — never billed to the served request.
+    """
+
+    async def _embed(text: str) -> list[float] | None:
+        async with session_factory() as session:
+            stmt = select(ModelRow.modality, ModelRow.provider).where(
+                ModelRow.id == embed_model,
+                ModelRow.active.is_(True),
+            )
+            row = (await session.execute(stmt)).one_or_none()
+        if row is None:
+            return None
+        adapter = select_provider(row.modality, row.provider, registry)
+        status, resp = await adapter.post_json("/embeddings", {"model": embed_model, "input": text})
+        if status != 200:
+            return None
+        data = resp.get("data")
+        if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+            return None
+        emb = data[0].get("embedding")
+        return emb if isinstance(emb, list) else None
+
+    return _embed
 
 
 def get_completion_upstream(request: Request) -> CompletionUpstream:
@@ -91,6 +133,36 @@ def get_completion_use_case(
     _settings = getattr(request.app.state, "settings", None)
     _otel_enabled: bool = getattr(_settings, "otel_enabled", False) if _settings else False
     span_emitter = getattr(request.app.state, "span_emitter", None) if _otel_enabled else None
+    # Pre-first-byte streaming resilience flag (streaming-resilience v19) — default-off.
+    stream_resilience_enabled: bool = getattr(request.app.state, "stream_resilience_enabled", False)
+    # Embedding-similarity "vector" cache (semantic-cache v19) — default-off.
+    # Wired only when enabled AND redis AND a non-empty embed model AND a provider registry are
+    # present; otherwise None ⇒ the complete() path is byte-identical to today. The embedder routes
+    # the configured embed model through the gateway's own embedding upstream; its cost is internal
+    # (never billed). Any embedder/redis failure is contained by RedisVectorCache (→ MISS / no-op).
+    vector_cache: VectorCache | None = None
+    _vc_enabled: bool = getattr(_settings, "vector_cache_enabled", False) if _settings else False
+    _embed_model: str = getattr(_settings, "vector_cache_embed_model", "") if _settings else ""
+    _registry = getattr(request.app.state, "provider_registry", None)
+    _session_factory = getattr(request.app.state, "sessionmaker", None)
+    if (
+        _vc_enabled
+        and redis_client is not None
+        and _embed_model
+        and _registry is not None
+        and _session_factory is not None
+    ):
+        embedder = build_embedding_adapter(
+            session_factory=_session_factory,
+            registry=_registry,
+            embed_model=_embed_model,
+        )
+        vector_cache = RedisVectorCache(
+            redis_client,
+            embedder=embedder,
+            threshold=float(getattr(_settings, "vector_cache_threshold", 0.95)),
+            max_candidates=int(getattr(_settings, "vector_cache_max_candidates", 100)),
+        )
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -99,4 +171,6 @@ def get_completion_use_case(
         response_cache,
         guardrail_evaluator,
         span_emitter,
+        stream_resilience_enabled=stream_resilience_enabled,
+        vector_cache=vector_cache,
     )

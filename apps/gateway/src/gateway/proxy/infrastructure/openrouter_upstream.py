@@ -19,8 +19,6 @@ Wraps httpx.AsyncClient with:
 
 from __future__ import annotations
 
-import asyncio
-import random
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +27,7 @@ import structlog
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -38,56 +37,7 @@ _CONNECT_TIMEOUT = 10.0
 _NON_STREAM_TIMEOUT = 120.0
 _STREAM_READ_TIMEOUT = 300.0
 
-# Backoff constants (contract §3)
-_BACKOFF_CAP_S = 8.0
-_RETRY_AFTER_MAX_S = 60.0
-
 _log = structlog.get_logger(__name__)
-
-
-def _classify_reason(exc_or_status: Exception | int) -> str | None:
-    """Return the retry reason label for a failure, or None if not retryable.
-
-    Retryable:
-      httpx.ConnectError        -> "connect_error"
-      httpx.ConnectTimeout      -> "connect_error"
-      httpx.PoolTimeout         -> "pool_timeout"
-      HTTP 429                  -> "upstream_429"
-      HTTP 5xx (>= 500)         -> "upstream_5xx"
-
-    NOT retryable (returns None):
-      httpx.ReadTimeout, httpx.WriteTimeout, httpx.NetworkError (base), other 4xx
-    """
-    if isinstance(exc_or_status, int):
-        if exc_or_status == 429:
-            return "upstream_429"
-        if exc_or_status >= 500:
-            return "upstream_5xx"
-        return None  # 4xx passthrough, not retried
-
-    if isinstance(exc_or_status, httpx.PoolTimeout):
-        return "pool_timeout"
-    if isinstance(exc_or_status, (httpx.ConnectError, httpx.ConnectTimeout)):
-        return "connect_error"
-    # httpx.ReadTimeout, httpx.WriteTimeout, httpx.NetworkError (base) — NOT retried
-    return None
-
-
-def _parse_retry_after(header_value: str) -> float | None:
-    """Parse a Retry-After header value into a delay in seconds.
-
-    Returns a float if the value is a simple non-negative integer <= 60 s.
-    Returns None for HTTP-date values and any garbage — caller falls back to backoff.
-    Per contract: only simple integer seconds are honored; HTTP-date -> fallback.
-    """
-    stripped = header_value.strip()
-    try:
-        seconds = int(stripped)
-    except ValueError:
-        return None  # HTTP-date or garbage -> fall back to computed backoff
-    if 0 <= seconds <= _RETRY_AFTER_MAX_S:
-        return float(seconds)
-    return None  # out of range -> fall back to computed backoff
 
 
 class OpenRouterCompletionUpstream:
@@ -110,6 +60,7 @@ class OpenRouterCompletionUpstream:
         base_url: str = _BASE_URL,
         max_retries: int = 0,
         backoff_base: float = 0.5,
+        retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
         self._api_key = api_key
@@ -126,151 +77,43 @@ class OpenRouterCompletionUpstream:
         )
         self._max_retries = max_retries
         self._backoff_base = backoff_base
+        self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
 
     def _auth_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._api_key}"}
 
-    def _compute_backoff(self, attempt: int) -> float:
-        """Full-jitter backoff: random.uniform(0, min(cap, base * 2^attempt)).
-
-        attempt in {1, 2, ..., max_retries} where attempt=1 is the first retry.
-        """
-        window = min(_BACKOFF_CAP_S, self._backoff_base * (2**attempt))
-        return random.uniform(0, window)  # noqa: S311 — jitter, not cryptographic
-
-    def _increment_retry_counter(self, reason: str, outcome: str) -> None:
-        """Increment the gateway_upstream_retries_total counter if registry is wired."""
-        registry = getattr(self, "_metrics_registry", None)
-        if registry is not None:
-            registry.upstream_retries_total.labels(reason=reason, outcome=outcome).inc()
-
     async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        """Forward non-streaming request to OpenRouter with optional bounded retries.
+        """Forward non-streaming request to OpenRouter via the unified retry seam.
 
         Returns (status_code, json_body).
-        Upstream 4xx (!=429): pass-through after exactly 1 attempt.
-        Upstream 5xx / 429 / connect error / pool timeout: retried up to _max_retries times.
+        Upstream 4xx (!=429/408): pass-through after exactly 1 attempt.
+        Upstream 5xx / 429 / 408 / connect error / pool timeout: retried up to
+        _max_retries times with full-jitter backoff, bounded by _retry_deadline_s.
         Read/write timeout / network error: raise UpstreamUnavailableError (not retried).
         Circuit open: raise CircuitOpenError (re-raised from breaker.guard).
 
-        The 120 s timeout envelope applies per-attempt (httpx Timeout is per-request).
-        With max_retries=5 and base=0.5 s the worst-case backoff delay is ~18 s;
-        429 Retry-After (capped 60 s) can add up to 5x60 s=300 s of wait in a
-        429-storm — operator-opted via the retry knob. A cumulative-deadline guard
-        is a sensible future hardening; not a v6 blocker (see TASK.md §3 flags).
-
         With _max_retries=0 (default): exactly one attempt, no backoff, no sleep —
-        byte-identical to v5 behavior.
+        byte-identical to v5 behavior. The retry policy lives in upstream_retry.py.
         """
-        last_reason: str | None = None
-        for attempt in range(self._max_retries + 1):
-            # Circuit breaker guard before EVERY attempt (including retries).
-            # CircuitOpenError propagates immediately — no further attempts.
-            # When the breaker opens MID-LOOP (a retry burst tripped it), the
-            # aborted retry is counted with outcome="breaker_open" (§3 label set).
-            try:
-                self._breaker.guard()
-            except Exception:
-                if attempt > 0 and last_reason is not None:
-                    self._increment_retry_counter(last_reason, "breaker_open")
-                raise
 
-            try:
-                resp = await self._client.post(
-                    "/chat/completions",
-                    json=payload,
-                    headers=self._auth_headers(),
-                )
-            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
-                # Retryable transport errors — safe to retry (no bytes reached upstream)
-                self._breaker.on_upstream_error()
-                reason = _classify_reason(exc)
-                last_reason = reason
-                assert reason is not None  # guaranteed by the except clause above
+        async def _do_request() -> httpx.Response:
+            return await self._client.post(
+                "/chat/completions",
+                json=payload,
+                headers=self._auth_headers(),
+            )
 
-                is_last = attempt >= self._max_retries
-                outcome = "exhausted" if is_last else "retried"
-                self._increment_retry_counter(reason, outcome)
-
-                if is_last:
-                    raise UpstreamUnavailableError(str(exc)) from exc
-
-                delay = self._compute_backoff(attempt + 1)
-                _log.warning(
-                    "upstream_retry",
-                    attempt=attempt + 1,
-                    reason=reason,
-                    delay=round(delay, 3),
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.NetworkError) as exc:
-                # Non-retryable: read timeout risks double-billing; write timeout /
-                # network error state is unknown — conservative v6 position.
-                self._breaker.on_upstream_error()
-                raise UpstreamUnavailableError(str(exc)) from exc
-
-            # --- HTTP response received ---
-            status = resp.status_code
-
-            # 429 — retryable, honor Retry-After header if valid integer <= 60 s
-            if status == 429:
-                self._breaker.on_upstream_error()
-                reason = "upstream_429"
-                last_reason = reason
-
-                is_last = attempt >= self._max_retries
-                outcome = "exhausted" if is_last else "retried"
-                self._increment_retry_counter(reason, outcome)
-
-                if is_last:
-                    raise UpstreamUnavailableError(f"Upstream returned {status}")
-
-                # Prefer Retry-After header; fall back to computed backoff
-                retry_after_hdr = resp.headers.get("Retry-After", "")
-                parsed = _parse_retry_after(retry_after_hdr) if retry_after_hdr else None
-                delay = parsed if parsed is not None else self._compute_backoff(attempt + 1)
-
-                _log.warning(
-                    "upstream_retry",
-                    attempt=attempt + 1,
-                    reason=reason,
-                    delay=round(delay, 3),
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            # 5xx (>= 500, not 429) — retryable
-            if status >= 500:
-                self._breaker.on_upstream_error()
-                reason = "upstream_5xx"
-                last_reason = reason
-
-                is_last = attempt >= self._max_retries
-                outcome = "exhausted" if is_last else "retried"
-                self._increment_retry_counter(reason, outcome)
-
-                if is_last:
-                    raise UpstreamUnavailableError(f"Upstream returned {status}")
-
-                delay = self._compute_backoff(attempt + 1)
-                _log.warning(
-                    "upstream_retry",
-                    attempt=attempt + 1,
-                    reason=reason,
-                    delay=round(delay, 3),
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            # Success or 4xx passthrough — not retried
-            self._breaker.record_success()
-            return status, resp.json()
-
-        # Should be unreachable (loop always raises or returns), but satisfies mypy
-        raise UpstreamUnavailableError("Retry loop exhausted without result")
+        return await execute_with_retry(
+            _do_request,
+            lambda resp: (resp.status_code, resp.json()),
+            breaker=self._breaker,
+            provider="openrouter",
+            max_retries=self._max_retries,
+            backoff_base=self._backoff_base,
+            deadline_s=self._retry_deadline_s,
+            metrics_registry=self._metrics_registry,
+        )
 
     def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
         """Return an async generator that yields raw SSE byte chunks.
@@ -305,6 +148,6 @@ class OpenRouterCompletionUpstream:
                         yield chunk
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
-                raise UpstreamUnavailableError(str(exc)) from exc
+                raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()

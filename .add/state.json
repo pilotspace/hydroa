@@ -6,7 +6,7 @@
   "tasks": {},
   "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-15T02:52:41+00:00",
+  "updated": "2026-06-15T14:32:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -240,6 +240,58 @@
       "tasks": 1,
       "task_slugs": [
         "auth-me-session-verify"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v19",
+      "title": "Reliability \u2014 uniform retries, error-aware fallback, response & semantic caching",
+      "tasks": 6,
+      "task_slugs": [
+        "retry-seam-unify",
+        "error-aware-fallback",
+        "cache-controls",
+        "streaming-resilience",
+        "semantic-cache",
+        "reliability-verify"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v20",
+      "title": "Enterprise provider: AWS Bedrock (SigV4 \u00b7 Converse chat/stream/tools \u00b7 Titan embeddings)",
+      "tasks": 6,
+      "task_slugs": [
+        "bedrock-sigv4-auth",
+        "bedrock-chat",
+        "bedrock-streaming",
+        "bedrock-tools",
+        "bedrock-embeddings",
+        "bedrock-verify"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v21",
+      "title": "Enterprise provider: Azure OpenAI",
+      "tasks": 6,
+      "task_slugs": [
+        "azure-auth-routing",
+        "azure-chat",
+        "azure-streaming-passthrough",
+        "azure-aad-auth",
+        "azure-embeddings",
+        "azure-verify"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v22",
+      "title": "Provider security & config hardening",
+      "tasks": 2,
+      "task_slugs": [
+        "provider-secret-chain-hardening",
+        "azure-ad-authority-config"
       ],
       "archived": "2026-06-15"
     }

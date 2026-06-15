@@ -1,0 +1,72 @@
+# v21-azure overlay — additive on base + v4 + v5 + v6 overlays.
+#
+# Points the Azure OpenAI provider at the v21 auth/routing-verifying stub on the
+# host (:9921) and enables retry + error-aware fallback so the live double-pass can
+# exercise chat / streaming / embeddings + retry + content-filter→fallback + cache.
+#
+# Overlay chain:
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v21.yml \
+#     up --build -d --wait
+#
+# The stub binds 127.0.0.1 ONLY; TLS is still enforced by the Envoy edge (:8443).
+# http:// is intentional for the loopback stub. host.docker.internal resolves to the
+# Docker Desktop host IP where scripts/live_v21_verify.py runs the stub thread.
+#
+# Credentials are EXPLICITLY FAKE values that MUST equal the stub's EXPECTED_API_KEY
+# (the stub accepts the api-key only if it matches). NOT a real secret.
+#
+# AAD note: the AzureADTokenProvider authority is NOT env-configurable (it defaults to
+# login.microsoftonline.com), so the LIVE pass uses api-key auth; the AAD minted-token
+# path is proven end-to-end in the earned-green pytest layer (azure_verify AV3), where
+# AzureADConfig(authority=stub) is constructed directly. (Carried follow-up: make the
+# AAD authority configurable so live can exercise AAD too.)
+#
+# Double-pass close rule: run scripts/live_v21_verify.py twice; both must exit 0.
+# Source: azure-verify TASK.md §3 CONTRACT (FROZEN @ v1).
+
+services:
+  gateway:
+    environment:
+      # ── v21: Azure OpenAI provider → v21 auth/routing-verifying stub on :9921 ──
+      GATEWAY_AZURE_ENDPOINT: "http://host.docker.internal:9921"
+      GATEWAY_AZURE_API_VERSION: "2024-10-21"
+
+      # ── v21: Azure api-key — FAKE; MUST equal the stub's EXPECTED_API_KEY ──────
+      # Non-empty so the adapter is registered and the empty-key boot guard does not
+      # fire. NEVER a real secret.
+      GATEWAY_AZURE_API_KEY: "azure-stub-api-key-FAKE"
+
+      # ── v21: model → deployment routing (the deployment suffix keys behavior) ──
+      GATEWAY_AZURE_DEPLOYMENT_MAP: |
+        {"az-chat":"deploy-chat","az-stream":"deploy-stream","az-retry":"deploy-retry-once","az-cf":"deploy-content-filter","az-ok":"deploy-ok","az-embed":"deploy-embed"}
+
+      # ── OpenRouter API key — non-secret placeholder (boot-guard satisfier) ────
+      GATEWAY_OPENROUTER_API_KEY: "stub-v21-openrouter-placeholder"
+
+      # ── v21: Retry policy (retry-to-success) ─────────────────────────────────
+      # deploy-retry-once returns 503 on attempt 1, 200 thereafter.
+      GATEWAY_UPSTREAM_MAX_RETRIES: "2"
+      GATEWAY_UPSTREAM_RETRY_BACKOFF_BASE_S: "0.1"
+      GATEWAY_UPSTREAM_RETRY_DEADLINE_S: "30.0"
+
+      # ── v21: Error-aware fallback (content-filter → fallover) ─────────────────
+      # The azure-fb alias [az-cf, az-ok]: az-cf returns a content_filter 400,
+      # az-ok returns 200 → falls over.
+      GATEWAY_UPSTREAM_FALLBACK_ON_ERROR: "true"
+
+      # ── Response cache TTL (exact cache hit) ─────────────────────────────────
+      GATEWAY_CACHE_TTL_SECONDS: "300"
+
+      # ── v21: Model-group alias (content-filter error-aware fallback) ─────────
+      GATEWAY_MODEL_GROUPS: |
+        {"azure-fb":["az-cf","az-ok"]}
+
+      # ── Preserve v6 cooldown values (composing on v6 overlay) ────────────────
+      GATEWAY_COOLDOWN_FAILURE_THRESHOLD: "2"
+      GATEWAY_COOLDOWN_TTL_S: "5"
+      GATEWAY_COOLDOWN_WINDOW_S: "60"

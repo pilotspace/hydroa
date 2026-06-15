@@ -459,6 +459,127 @@ Build/harness conventions folded from v1 (2026-06-10):
           `process.env.*(secret|key|hmac|password|token)` + jwt-lib imports + verify-call names — it still
           catches a real secret read without tripping on prose (evidence: the test-precision fix during
           the auth-me-session-verify build; recurring "over-broad assert" smell from the v15/v17 folds).
+        Test conventions folded from v19 (2026-06-15, reliability):
+        - a pure classifier's pattern list must be tested in BOTH directions — true-positives (provider-real
+          messages) AND generic false-positives ("field too long", "blocked by firewall") — a too-broad
+          pattern fails DANGEROUS (spurious fallover), not safe (evidence: 5 guard tests added after the
+          refute-read on error-aware-fallback flagged bare "too long"/"safety"/"blocked by").
+        - for cumulative-deadline / retry-exhaustion logic, test the is_last × active-deadline CROSS-state
+          explicitly — the green suite missed an is_last/deadline mislabel the verify-gate refute-read
+          caught; boundary states on retry/timeout code earn the adversarial pass (evidence: retry-seam-unify
+          REAL-BUG finding → fixed).
+        Build/harness conventions folded from v19 (2026-06-15, reliability):
+        - at freeze, cross-check a broad §3 RANGE against §1's explicit REJECT enumeration — the freeze gate
+          did NOT catch §3 "status 400-499" silently contradicting §1 "429 already retry-handled"; the
+          refute-read did (evidence: error-aware-fallback classifier now excludes 408/429).
+        - a verify-time refinement that STRENGTHENS assertions and leaves §3 byte-identical is legitimate:
+          act on the refute-read in-loop, then re-cross tests→build to re-snapshot — no test weakened
+          (evidence: error-aware-fallback PASS after refine-and-re-cross).
+        - declare the TEST SURFACE in §5 when the build will lint/format newly-authored tests (ruff/eslint
+          on new test files diverges them from the tests→build snapshot → scope-gate trip), OR run the
+          formatter inside the tests phase BEFORE the snapshot (evidence: retry-seam-unify ruff-format on
+          3 new tests).
+        - post-freeze refinements go in §6/§7, NEVER §3 — the tamper tripwire md5s the WHOLE §3 body
+          (comments included), so even editing a §3 pseudocode COMMENT after the snapshot trips it
+          (evidence: retry-seam-unify reverted the comment edit to keep the tripwire green).
+        - the §5 "Scope (may touch):" declaration is parsed from a SINGLE physical line and FROZEN into the
+          state.json scope anchor at the tests→build snapshot — a wrapped continuation path is silently
+          dropped (scripts/* on line 1 recognized, infra/* on line 2 missed → scope_violation). Keep all
+          scope tokens on ONE line; if you correct §5 after the snapshot, re-snapshot (phase tests →
+          advance → advance) so the anchor re-resolves `declared` — editing §5 alone does nothing (the gate
+          reads anchor.declared, not the live file) (evidence: reliability-verify, this milestone's close).
+        Build/harness + testing conventions folded from v20 (2026-06-15, AWS Bedrock provider):
+        - [TDD] an external-protocol signer/encoder must be tested against the ACTUAL target service's
+          path/identifier shape, not just the canonical "happy" vector — all SigV4 fixtures used path "/",
+          which hid that the path is signed RAW; real Bedrock model IDs carry a ':' version suffix that AWS
+          canonicalizes to %3A, so raw-':' signing 403s every versioned-model call (evidence: SV8, a ':'-path
+          test the refute-read added, was RED against the green-but-incomplete impl).
+        - [TDD] for a vendor-protocol live verification, build an INDEPENDENT-ORACLE stub: re-implement the
+          vendor's auth from spec (NOT importing our own signer) and PIN it to the vendor's published
+          known-answer vector, so the stub ACCEPTS our real signed request only if it is genuinely correct
+          AND rejects a tampered one — a CI-able cryptographic cross-check stronger than MockTransport and not
+          gated on docker (evidence: bedrock_verify BV1 pins to AWS get-vanilla 5fa00fa3…, BV3 proves 403 on
+          tamper, BV2 proves the real %3A-path signature passes; all in the no-DB floor).
+        - [ADD] pin a security primitive's core math to an AUTHORITATIVE published vector via a small exposed
+          seam (e.g. _signature() pinned to AWS get-vanilla), so higher-level self-computed expectations ride
+          on a non-self-referential anchor — the green stays trustworthy when the public API shape has no
+          published known-answer (evidence: SV0 anchors SV1/SV2/SV8).
+        - [ADD] the §5 scope-token grammar CANNOT express a project-root-level file (a bare token = sibling
+          of the previous token's dir; only '/'-containing tokens resolve to the project root) — a Makefile /
+          top-level-file edit needs its own handling or an unconventional '../' token; prefer scoping the
+          change into a subdir-resident file, or land the root-file edit as a separate standalone change
+          (evidence: bedrock-verify's gate tripped scope_violation on a bare `Makefile` token that resolved to
+          `infra/Makefile`; the bedrock-suites-in-test-fast floor edit was deferred to a follow-up).
+        - [ADD] split a live-infra verify task into (a) a docker-free EARNED-GREEN core that fully proves the
+          logic (real adapters → real socket → independent oracle) and (b) operator scripts for the
+          edge/cache/billing pass — the gate never blocks on bringing up a heavy stack, the residue stays
+          honest, and the live ×2 still runs when the stack is available (evidence: bedrock-verify gated on the
+          pytest core, then the TLS-edge double-pass ×2 ran 10/10 once the e2e stack was up).
+        Provider + security + testing conventions folded from v21 (2026-06-15, Azure OpenAI provider):
+        - [SECURITY] when wrapping a transport exception whose request/response could carry a secret (api-key
+          header, client_secret body, bearer token), use `raise ... from None` — the chained httpx error exposes
+          `__cause__.request.headers/content` to any crash-reporter walking the chain; `str(exc)` (the clean
+          transport message) is what surfaces. This is a TESTABLE property: assert `exc.__cause__ is None`
+          (evidence: azure_ad + azure_embeddings regression tests). KNOWN GAP: the shared execute_with_retry seam
+          + openai/bedrock/gemini/anthropic adapters still use `from exc` — a `provider-secret-chain-hardening`
+          sweep is a carried follow-up (spans frozen contracts).
+        - [ADD] any auth/secret-handling task's verify gate MUST run an INDEPENDENT adversarial security subagent
+          (sonnet), not only the author's self refute-read — it caught a real api-key/client_secret chain-leak +
+          WEAK-test gaps on tasks that looked like thin passthrough (evidence: azure-aad-auth + azure-embeddings,
+          findings remediated via the change-request loop BEFORE the gate).
+        - [TDD] a resilience-seam test injects a CircuitBreaker SPY subclass that counts on_upstream_error /
+          record_success, so breaker transitions are ASSERTED not assumed — a 5xx test that only checks
+          `pytest.raises` would pass an impl that never trips the breaker (evidence: _SpyBreaker, azure_embeddings).
+        - [TDD] for a token-exchange provider (AAD client-credentials, and later managed-identity / GCP SA /
+          AWS STS), the live oracle MINTS the credential at its own token endpoint and accepts the model request
+          ONLY if the presented Bearer equals that minted token — an end-to-end auth proof (the token analogue of
+          v20's independent SigV4 re-impl), not a header-presence check (evidence: azure_verify AV3 + live C1).
+        - [SDD] an OpenAI-compatible provider is a THIN passthrough: chat/stream/tools/response_format/embeddings
+          need ZERO body/response translation; only deployment/URL routing + the auth seam are new, and
+          content-filter "mapping" is a no-op because the FROZEN classify_fallback_trigger already matches
+          "content_filter"/"content management" (evidence: azure-chat, zero new classifier code).
+        - [SDD] a token-exchange auth provider is instantiated ONCE and shared across every modality adapter
+          (chat + embeddings) so there is a single token cache — assert object identity (`is`) in a wiring test,
+          not just presence (evidence: azure-embeddings test_wiring_aad_only_shares_token_provider_instance).
+        - [ADD] scope-snapshot cache prophylaxis: run build-phase ruff with `RUFF_CACHE_DIR=/tmp/...` and pytest
+          with `-p no:cacheprovider --no-cov` so no `.ruff_cache`/`.pytest_cache` enters the tests→build
+          snapshot; a SUBAGENT's ruff can still pollute repo-root, so clean transient caches then re-snapshot
+          (phase tests → advance → advance) before gating — a root-level Makefile floor edit LANDED this way
+          (vs v20's defer) (evidence: azure-auth-routing + azure-verify gate bounces resolved by clean re-snapshot).
+        Security + testing + harness conventions folded from v22 (2026-06-15, provider security & config hardening):
+        - [SECURITY] the `from None` rule is now the PROJECT-WIDE floor, not just the Azure bar: EVERY provider
+          adapter's transport-error wrap (the shared execute_with_retry seam + openrouter/openai/anthropic/gemini/
+          bedrock/azure stream/post_json paths) uses `raise ... from None`. The v21 KNOWN GAP is CLOSED. A future
+          adapter MUST ship a `__cause__ is None` regression test in its own suite; the invariant is greppable —
+          `rg "from exc|from terminal_exc" infrastructure/` must return zero secret-bearing transport-error wraps
+          (a CI lint could enforce it) (evidence: provider-secret-chain-hardening, 13 sites, 13/13 earned-green +
+          477-test regression).
+        - [TDD] when generalizing a behavior-preserving fix across many call sites, write ONE covering test per
+          site (driving the REAL adapter / shared seam over a MockTransport raising the transport error), and run
+          ALL of them RED first — RED-for-the-right-reason here means `__cause__` is the live transport error, which
+          proves the test exercises the exact leak vector, not a stand-in (evidence: secret_chain_hardening).
+        - [TDD] in a single suite, keep the must-not-regress INVARIANT guards (default-fallback, gating-unchanged)
+          GREEN from the first run while only the NEW-behavior tests go RED — this cleanly separates "new capability"
+          from "behavior-preserving" without a confusing all-red start (evidence: azure-ad-authority-config 2-red/3-green).
+        - [DDD] a partially-wired seam can hide for a whole milestone: a config field consumed at one end
+          (AzureADConfig.authority → _token_url) but never SOURCED at the other (resolve ignored settings) looks
+          configurable but isn't. An END-TO-END test (settings → resolved config → minted URL) catches "looks wired,
+          isn't" that a unit test on either end alone misses (evidence: azure-ad-authority-config).
+        - [ADD] RE-CONFIRMED (v19 line + v22): ruff-format newly-authored test files BEFORE the tests→build snapshot
+          (or declare the test surface in §5); a cosmetic format DURING build diverges the file from the tripwire
+          md5 → `build_tampered`, whose blessed remediation is a clean tests→build re-cross, NOT editing the baseline
+          (evidence: provider-secret-chain-hardening hit it once via post-snapshot ruff format, cleared by re-cross;
+          azure-ad-authority-config pre-formatted and gated clean first try).
+        - [ADD] calibrate the §5 `risk:` level to ACTUAL reversibility/blast, not the topic: a behavior-preserving
+          SECURITY REMEDIATION (no new finding — verify CONFIRMS a fix, not discovers a problem) with full regression
+          is auto-gateable at `risk: medium`; `risk: high` + `autonomy: auto` trips the engine `unguarded_high_risk_auto`
+          guard (a high-risk gate must be human-owned). Over-flagging blocks the auto loop on a change that the
+          project bar (v21 azure-aad-auth/azure-embeddings, unlabelled) already auto-gated after remediation. Record
+          the calibration transparently in the header comment; the human may still override to conservative/manual
+          (evidence: provider-secret-chain-hardening — high+auto refused, re-calibrated to medium with a transparent note).
+        - [ADD] a systemic finding surfaced inside one task's verify that spans MULTIPLE frozen contracts becomes its
+          OWN milestone (a cross-cutting sweep), never a retro-edit of the originating task's frozen contract
+          (evidence: v21 azure-embeddings finding → v22 provider-secret-chain-hardening, 8 files).
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

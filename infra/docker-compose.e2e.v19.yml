@@ -1,0 +1,95 @@
+# v19-reliability overlay — additive on base + v4 + v5 + v6 overlays.
+#
+# Points the OpenRouter upstream at the v19 reliability stub on the host (:9930)
+# and enables all five v19 reliability flags with appropriate test values.
+#
+# Overlay chain:
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v19.yml \
+#     up --build -d --wait
+#
+# v19 features enabled here (all OPT-IN / default-off in the gateway):
+#   GATEWAY_UPSTREAM_MAX_RETRIES=2           C1: retry on 503 (up to 2 retries)
+#   GATEWAY_UPSTREAM_FALLBACK_ON_ERROR=true  C2: context-window/content-policy fallback
+#   GATEWAY_STREAM_RESILIENCE_ENABLED=true   C3: pre-first-byte streaming resilience
+#   GATEWAY_VECTOR_CACHE_ENABLED=true        C4: embedding-similarity vector cache
+#   GATEWAY_VECTOR_CACHE_EMBED_MODEL=v19/embed C4: embed model for vector layer
+#   GATEWAY_VECTOR_CACHE_THRESHOLD=0.95      C4: cosine threshold (same as default)
+#   GATEWAY_CACHE_TTL_SECONDS=300            C4: exact cache TTL for response cache
+#
+# Placeholder keys only — NEVER a real secret. The stub binds 127.0.0.1; TLS is still
+# enforced by the Envoy edge (:8443); http:// is intentional for the loopback stub.
+# host.docker.internal resolves to the Docker Desktop host IP.
+#
+# v19 alias groups (model groups for C2/C3):
+#   v19-fb:     [v19/fb-a, v19/fb-b]       C2 error-aware fallback
+#   v19-stream: [v19/stream-a, v19/stream-b] C3 streaming resilience
+#
+# Source: reliability-verify TASK.md §3 CONTRACT (FROZEN @ v1)
+# Double-pass close rule: run live_v19_verify.py twice; both must exit 0.
+
+services:
+  gateway:
+    environment:
+      # ── v19: OpenRouter upstream → v19 reliability stub on :9930 ─────────────
+      # The stub speaks the OpenRouter chat-completions surface.
+      # http:// is intentional (stub on loopback); TLS enforced by the Envoy edge (:8443).
+      # Overrides any v6 overlay :9920 value.
+      GATEWAY_OPENROUTER_BASE_URL: "http://host.docker.internal:9930/api/v1"
+
+      # ── v19: OpenRouter API key — non-secret placeholder ─────────────────────
+      # Must be non-empty so the boot guard (EmptyUpstreamKeyError) does NOT fire.
+      # The base compose defaults this to EMPTY; the stub ignores the bearer value.
+      # NEVER a real secret — this is a fake placeholder for the stub only.
+      GATEWAY_OPENROUTER_API_KEY: "stub-v19-openrouter-key"
+
+      # ── v19: Retry policy ─────────────────────────────────────────────────────
+      # C1 check: GATEWAY_UPSTREAM_MAX_RETRIES=2 enables up to 2 retry attempts.
+      # The v19/retry-a model returns 503 on attempt 1, 200 on attempt 2 → retry succeeds.
+      # Backoff base low so the test completes quickly (0.1s vs default 0.5s).
+      GATEWAY_UPSTREAM_MAX_RETRIES: "2"
+      GATEWAY_UPSTREAM_RETRY_BACKOFF_BASE_S: "0.1"
+      GATEWAY_UPSTREAM_RETRY_DEADLINE_S: "30.0"
+
+      # ── v19: Error-aware fallback ─────────────────────────────────────────────
+      # C2 check: enables context-window/content-policy 4xx → fallback to next candidate.
+      GATEWAY_UPSTREAM_FALLBACK_ON_ERROR: "true"
+
+      # ── v19: Pre-first-byte streaming resilience ──────────────────────────────
+      # C3 check: enables fallover to next candidate when first candidate fails before
+      # sending any SSE byte.
+      # Field: upstream_stream_resilience_enabled → env GATEWAY_UPSTREAM_STREAM_RESILIENCE_ENABLED
+      GATEWAY_UPSTREAM_STREAM_RESILIENCE_ENABLED: "true"
+
+      # ── v19: Embedding-similarity vector cache ────────────────────────────────
+      # C4 check: enables the third cache layer (after exact + normalization).
+      # v19/embed is seeded as an "openrouter" embedding model. The stub returns a
+      # deterministic unit vector for all inputs → cosine=1.0 ≥ 0.95 threshold.
+      GATEWAY_VECTOR_CACHE_ENABLED: "true"
+      GATEWAY_VECTOR_CACHE_EMBED_MODEL: "v19/embed"
+      GATEWAY_VECTOR_CACHE_THRESHOLD: "0.95"
+      GATEWAY_VECTOR_CACHE_MAX_CANDIDATES: "100"
+
+      # ── Response cache TTL (needed for exact cache hit in C4) ─────────────────
+      # 300 seconds is the default; set explicitly to ensure C4 exact-hit works.
+      GATEWAY_CACHE_TTL_SECONDS: "300"
+
+      # ── v19: Model-group aliases (C2 fallback + C3 streaming resilience) ──────
+      # v19-fb:     C2 error-aware fallback — fb-a returns context-window 400, fb-b returns 200
+      # v19-stream: C3 streaming resilience — stream-a 500 pre-first-byte, stream-b normal SSE
+      # v19-retry:  C1 retry — single-member alias (retry-a returns 503 then 200)
+      #             Using a single-member alias or plain model id for retry; plain model id used.
+      GATEWAY_MODEL_GROUPS: |
+        {"v19-fb":["v19/fb-a","v19/fb-b"],
+         "v19-stream":["v19/stream-a","v19/stream-b"]}
+
+      # ── Preserve v6 cooldown values (composing on v6 overlay) ────────────────
+      # v6 overlay sets these; we keep them here to make the v19-standalone stack
+      # work correctly when the v6 overlay IS in the chain.
+      GATEWAY_COOLDOWN_FAILURE_THRESHOLD: "2"
+      GATEWAY_COOLDOWN_TTL_S: "5"
+      GATEWAY_COOLDOWN_WINDOW_S: "60"
