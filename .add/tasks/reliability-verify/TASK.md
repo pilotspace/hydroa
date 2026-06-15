@@ -253,3 +253,5 @@ Spec delta for the next loop: <what production taught you>
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged (`DDD · SDD · UDD · TDD · ADD`), status `open`.
+
+- [ADD · folded] The §5 "Scope (may touch):" declaration is parsed from a SINGLE physical line and FROZEN into the state.json scope anchor at the tests→build snapshot; a wrapped continuation path is silently dropped (scripts/* on line 1 recognized, infra/* on line 2 missed → scope_violation at the completing gate). Evidence: this task's gate flagged infra twice until the §5 line was consolidated AND re-snapshotted. Lesson: keep all scope tokens on ONE physical line; the gate reads `anchor.declared` (frozen at snapshot), not the live §5, so correcting §5 after the snapshot requires a re-snapshot (`phase tests → advance → advance`) — editing §5 alone does nothing. Folded → CONVENTIONS.md (v19) + Key Decisions (v19).
