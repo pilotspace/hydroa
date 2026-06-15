@@ -40,6 +40,7 @@ from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import UpstreamProvider
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
+from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
 from gateway.proxy.infrastructure.bedrock_sigv4 import resolve_aws_credentials
 from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
 from gateway.proxy.infrastructure.catalog_provider_resolver import CatalogProviderResolver
@@ -544,6 +545,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _providers["google"] = GoogleEmbeddingsProvider(
             api_key=settings.google_api_key,
             base_url=settings.google_base_url,
+            metrics_registry=app.state.metrics_registry,
+        )
+    # AWS Bedrock embeddings adapter — registered only when all three credential fields
+    # are set (same guard as the chat adapter above). Reuses the already-resolved creds.
+    if _aws_creds:
+        _providers["bedrock"] = BedrockEmbeddingsProvider(
+            credentials=_aws_creds,
+            region=settings.bedrock_region,
+            endpoint_url=settings.bedrock_endpoint_url or None,
             metrics_registry=app.state.metrics_registry,
         )
     app.state.provider_registry = ProviderRegistry(_providers)
