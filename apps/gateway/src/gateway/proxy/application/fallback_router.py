@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from gateway.proxy.application.fallback_triggers import classify_fallback_trigger
 from gateway.proxy.application.routing_strategy import (
     AsyncRoutingStrategy,
     OrderedStrategy,
@@ -99,6 +100,7 @@ class FallbackModelRouter:
         strategy: RoutingStrategy | None = None,
         load_gate: DeploymentLoadGate | None = None,
         limit_gate: DeploymentLimitGate | None = None,
+        fallback_on_error: bool = False,
     ) -> None:
         # upstream and model_groups kept as positional-compatible; None only for
         # test convenience (tests always pass them explicitly).
@@ -118,6 +120,10 @@ class FallbackModelRouter:
         # Limit gate (deployment-limits v8). None ⇒ no saturation filter/recording;
         # byte-identical to v6/balance-strategies when None.
         self._limit_gate: DeploymentLimitGate | None = limit_gate
+        # Error-aware fallback (error-aware-fallback v19). False (default) ⇒ a 4xx is
+        # returned to the client after the first candidate (v6 byte-identical). True ⇒ a
+        # context-window / content-policy 4xx falls over to the next candidate.
+        self._fallback_on_error: bool = fallback_on_error
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -268,6 +274,10 @@ class FallbackModelRouter:
 
         order = await self._strategy_order_async(alias, candidates)
         last_fallen: str | None = None
+        # Last classifiable trigger-4xx (error-aware-fallback v19): if the loop ends with no
+        # served response but an earlier candidate produced a context-window/content-policy
+        # 4xx, this carries it so the client receives the REAL error, not a synthetic 502.
+        last_error: tuple[int, dict[str, Any], str] | None = None
 
         for i, candidate in enumerate(order):
             next_model = order[i + 1] if i + 1 < len(order) else "_exhausted"
@@ -320,6 +330,25 @@ class FallbackModelRouter:
                 if load_gate is not None:
                     await load_gate.release(candidate)
 
+            # Step 3.5 (error-aware-fallback v19): an enabled, classifiable trigger-4xx with
+            # a NEXT candidate falls over instead of returning the 4xx. The candidate
+            # ANSWERED → the model is alive (record_success, never record_failure — a
+            # context-window/content-policy rejection is request-specific, not a cooldown
+            # signal). Billing-safe: the discarded 4xx is never returned, so the use case
+            # never bills it. Latency is NOT recorded here (a fast rejection must not make a
+            # model look attractive to load-aware strategies).
+            if self._fallback_on_error and i + 1 < len(order):
+                trigger = classify_fallback_trigger(status, body)
+                if trigger is not None:
+                    if gate is not None:
+                        await gate.record_success(candidate)
+                    self._inc_counter(
+                        alias=alias, from_model=candidate, to_model=next_model, outcome=trigger
+                    )
+                    last_error = (status, body, candidate)
+                    last_fallen = candidate
+                    continue
+
             # Step 4: candidate answered (any status including 4xx passthrough).
             # record_latency AFTER a candidate answers (not on UpstreamUnavailableError).
             if load_gate is not None:
@@ -345,6 +374,12 @@ class FallbackModelRouter:
                     await limit_gate.record_tokens(candidate, _tokens)
 
             return status, body, candidate
+
+        # Loop ended without a served return. If an earlier candidate produced a
+        # classifiable trigger-4xx (error-aware-fallback v19), return that real error so the
+        # client sees the actual upstream 4xx (e.g. context-window) rather than a 502.
+        if last_error is not None:
+            return last_error
 
         # All candidates exhausted or gated (loop ended without return).
         self._inc_counter(

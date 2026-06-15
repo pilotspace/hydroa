@@ -501,6 +501,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         strategy=build_strategy(settings.routing_strategy, _load_gate),
         load_gate=_load_gate,
         limit_gate=_limit_gate,
+        fallback_on_error=settings.upstream_fallback_on_error,
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).

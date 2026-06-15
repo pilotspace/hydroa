@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "retry-seam-unify",
+  "active_task": "error-aware-fallback",
   "active_milestone": "v19",
   "tasks": {
     "retry-seam-unify": {
@@ -47,6 +47,35 @@
           }
         ]
       }
+    },
+    "error-aware-fallback": {
+      "title": "Error-aware model fallback: fail over on context-window-exceeded & content-policy block",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T04:24:16+00:00",
+      "updated": "2026-06-15T04:53:48+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c8bcea79dd7b6d7d339ca1b104816460",
+        "tests": {
+          "apps/gateway/tests/error_aware_fallback/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/error_aware_fallback/conftest.py": "d9d05975c024678f74e8c198af6b061e",
+          "apps/gateway/tests/error_aware_fallback/test_error_aware_fallback.py": "92eaefc8e32e804ea7e47fdfe9fc7c4e",
+          "apps/gateway/tests/error_aware_fallback/test_fallback_triggers.py": "f3f4c1f1d8b26b3bb7f6e53d39db046c"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/fallback_triggers.py",
+          "apps/gateway/src/gateway/proxy/application/fallback_router.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/error_aware_fallback/"
+        ],
+        "snapshot_md5": "2aa0f3000d84811f30eac0ee5ba8a320"
+      }
     }
   },
   "milestones": {
@@ -60,7 +89,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-15T04:02:28+00:00",
+  "updated": "2026-06-15T04:53:48+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

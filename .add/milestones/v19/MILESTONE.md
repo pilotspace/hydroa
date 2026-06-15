@@ -62,7 +62,7 @@ Out: MID-stream retry/fallback (a failure AFTER the first SSE byte — SSE can't
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
 - [x] retry-seam-unify       depends-on: none                          — extract retry/jitter helper, wire Anthropic+Gemini, per-error RetryPolicy + cumulative deadline
-- [ ] error-aware-fallback   depends-on: retry-seam-unify              — FallbackModelRouter fails over on context-window-exceeded & content-policy block (non-streaming)
+- [x] error-aware-fallback   depends-on: retry-seam-unify              — FallbackModelRouter fails over on context-window-exceeded & content-policy block (non-streaming)
 - [ ] streaming-resilience   depends-on: retry-seam-unify, error-aware-fallback  — HIGH-RISK: pre-first-byte streaming retry/fallback (no mid-stream replay)
 - [ ] cache-controls         depends-on: none                          — per-request cache TTL override + embedding-response cache (per-tenant, billed on miss only)
 - [ ] semantic-cache         depends-on: cache-controls                — HIGH-RISK: embedding-similarity cache (near-duplicate prompts hit above configurable threshold)
@@ -70,7 +70,7 @@ Out: MID-stream retry/fallback (a failure AFTER the first SSE byte — SSE can't
 
 ## Exit criteria (observable; map each to the task that delivers it)
 - [x] A transient 503/429/timeout from Anthropic OR Gemini (not just OpenRouter) is transparently retried, while a 400/401/422 is NOT retried, and retries stop at a cumulative deadline; at default settings behavior is byte-identical to today (← retry-seam-unify) (verify: per-provider retry tests + default-off byte-identical test) ✓ DONE 2026-06-15 — 62 retry tests green, 97% module cov, refute-read EARNED
-- [ ] A request that exceeds a model's context window OR is content-policy-blocked fails over to the next deployment in its model-group instead of hard-erroring (← error-aware-fallback) (verify: context-window + content-policy fallback tests)
+- [x] A request that exceeds a model's context window OR is content-policy-blocked fails over to the next deployment in its model-group instead of hard-erroring (← error-aware-fallback) (verify: context-window + content-policy fallback tests) ✓ DONE 2026-06-15 — 32 tests green (classifier 100% cov), refute-read EARNED-WITH-GAPS 0.87 → 2 gaps fixed in-loop (retry-domain 408/429 excluded, patterns narrowed); opt-in default-off byte-identical
 - [ ] A streaming request that fails BEFORE the first byte retries/falls-over transparently; a failure AFTER the first byte keeps today's behavior (no replay) (← streaming-resilience) (verify: pre-first-byte success test + post-first-byte commit test)
 - [ ] A repeated identical embeddings request serves from cache (per-tenant isolated, billed only on miss), and a caller can override the cache TTL per request (← cache-controls) (verify: embedding-cache hit/miss + per-request-TTL tests)
 - [ ] A near-duplicate prompt (semantic similarity above the configured threshold) serves a SEMANTIC cache hit — per-tenant isolated, default-off, threshold-configurable — and a below-threshold prompt misses (← semantic-cache) (verify: above/below-threshold tests + tenant-isolation test)

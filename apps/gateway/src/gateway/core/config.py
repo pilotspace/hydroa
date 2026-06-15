@@ -213,6 +213,12 @@ class Settings(BaseSettings):
     # attempts + backoff sleeps (v19 retry-seam-unify). 0 = disabled (no deadline; default,
     # byte-identical). When > 0, the loop stops before an attempt whose backoff would exceed it.
     upstream_retry_deadline_s: float = Field(default=0.0, ge=0)
+    # GATEWAY_UPSTREAM_FALLBACK_ON_ERROR — when True, an alias-routed request whose
+    # candidate returns a context-window-exceeded OR content-policy-blocked 4xx falls over
+    # to the next deployment in its model-group (v19 error-aware-fallback). Default False =
+    # opt-in (byte-identical to v6: a 4xx is returned to the client after the first candidate).
+    # The existing UpstreamUnavailableError (retry-exhausted) fallover is unaffected by this knob.
+    upstream_fallback_on_error: bool = Field(default=False)
 
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
