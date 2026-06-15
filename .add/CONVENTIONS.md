@@ -416,6 +416,32 @@ Build/harness conventions folded from v1 (2026-06-10):
           never shipped, and triaged + ticketed separately (`devtool-vitest4-upgrade`) — conflating them
           either blocks a clean production upgrade on dev debt or hides real shipped risk (evidence: v14
           prod audit 0/0/0 vs full audit 7; the SDD §Spec principle codifies the why).
+        Test conventions folded from v17 (2026-06-15, hardening / clear carried debt):
+        - msw `onUnhandledRequest:"error"` in Node/jsdom does NOT reject the fetch — the interceptor
+          RESOLVES a 500 Response — so a forgotten handler LOGS loudly but a test that doesn't assert
+          on that request still PASSES; "0 test failures" is NOT "0 leaks". The real monitor is the
+          stderr unhandled-request COUNT (evidence: the 13→2→0 reduction at constant green; bff-test-
+          harness-strict-handlers). Scope shared fallbacks to needed paths — never a `:path*` wildcard.
+        - reach a TRUE 0-leak by stubbing EVERY render of `useCurrentUser` (GET /api/auth/me): a shared
+          AppShell test-setup stub + per-test stubs in the usage suites — an unhandled auth/me render
+          leaks up to 7 logs under load. This couples with the `auth-me-session-verify` security task
+          (once /api/auth/me verifies signatures, tests must supply a properly-signed token stub anyway).
+        - tests-bff is now tsc-clean (18→0) → a standing test-tree `typecheck` gate is newly possible;
+          the v16 "tests-bff excluded from the type-gate" convention can TIGHTEN to include the harness
+          rather than tracking its drift separately (evidence: bff-test-harness-strict-handlers).
+        - run the vitest floor with a generous `--testTimeout` (20s) so a CPU-starved load flake never
+          reads as a regression — timing-sensitive tests (axe ≥5s, in-flight `toBeDisabled` windows)
+          throw false failures under load (3 fail loaded → 240/240 green isolated → green with the
+          timeout floor); pair with the existing `make test-fast` no-DB gate (react-hooks-strict-lint).
+        Build/harness conventions folded from v17 (2026-06-15, hardening / clear carried debt):
+        - an adversarial refute-read catches MIS-DIAGNOSIS, not just cheating: trace EVERY residual
+          leak to its SOURCE file — never hand-wave a "benign cross-file late-resolve". 2 leaks labeled
+          benign were in-file forgotten handlers in ui-ux-verify.test.tsx; the reviewer traced them →
+          fixed to 0 (evidence: the EARNED-WITH-GAPS review + the beforeEach fix; bff-test-harness).
+        - the v16 error→warn convention now has a worked DISCHARGE template: fix behavior-preservingly
+          (the green floor is the proof) → flip the lint rule back to error → PIN it with a config-text
+          ratchet-guard test (mirrors v17 strict-harness.test.ts). The ratchet test is config-text-only
+          by design; `eslint .` 0/0 stays the real gate (evidence: react-hooks-strict-lint).
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

@@ -260,16 +260,19 @@ encode the gateway's 403 surface as `minRole` tags + fail-open, and pin it with 
 never let the nav become the access-control boundary (the gateway is).
 
 ### Competency deltas
-- [UDD · open] role-based nav visibility shipped: member hides {models,teams,routing}; the established
+- [UDD · folded] (v17, 2026-06-15) role-based nav visibility shipped: member hides {models,teams,routing}; the established
   pattern is `minRole` tags on a presentational shell + a thin client wrapper feeding useCurrentUser().role,
   fail-open (evidence: nav-role-filter.test.tsx 5/5; the UsagePage canEdit precedent generalized).
-- [SDD · open] PRE-EXISTING (not this task): `GET /api/auth/me` decodes the session JWT WITHOUT signature
+- [SDD · folded → task] (v17, 2026-06-15) PRE-EXISTING (not this task): `GET /api/auth/me` decodes the session JWT WITHOUT signature
   verification (intentional — UX-only endpoint; the gateway verifies + enforces on every proxied request;
   the cookie is HttpOnly+SameSite=Strict so JS can't tamper). A spoofed role only changes nav chrome, never
   access. Fold candidate: add a one-line comment to app/api/auth/me/route.ts documenting the deliberate
   no-verify (adversarial review flagged the missing rationale, not a vulnerability). Owner: a future
   auth-hardening task — NOT in nav-role-filter's scope.
-- [TDD · open] still-open (carried from react-hooks-strict-lint): the 7 `/api/auth/me` unhandled-request
+  → ESCALATED by Tin (2026-06-15): RECLASSIFIED as a real defense-in-depth gap, NOT a settled tradeoff.
+  The BFF MUST verify the session JWT signature before trusting its claims → owned by the new security
+  task `auth-me-session-verify` (key-fetch designed for failure: timeout/cache/fallback per the IO rule).
+- [TDD · folded → task] (v17, 2026-06-15) still-open (carried from react-hooks-strict-lint): the 7 `/api/auth/me` unhandled-request
   leaks come from UsagePage tests rendering useCurrentUser without a per-test stub (NOT from this task —
   confirmed identical 7-count before & after). Per the strict-harness "no shared fallback" rule the fix is
   per-test stubs in the usage suites, a separate harness chore. Reach a true 0-leak there.

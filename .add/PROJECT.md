@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-14 · foundation-version: 16
+slug: ai-proxy · stage: production · updated: 2026-06-15 · foundation-version: 17
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -277,8 +277,16 @@ goal: a user can set up their tenant → log in → call any LLM model through t
   - a master-detail UI satisfies one "view + manage members" criterion with one route + one
     suite — the in-page selection model is the lighter contract when deep-linking isn't required
     (chosen at the §3 least-sure flag; all 22 teams tests in one file).
-
-## Users (UDD) — UI/UX: design before code
+- Folded from v17 (2026-06-15) — hardening / clear carried debt:
+  - SECURITY (escalated, Tin 2026-06-15): `GET /api/auth/me` currently DECODES the session JWT
+    WITHOUT signature verification. The original framing called this a settled UX-only tradeoff
+    (the gateway verifies+enforces on every proxied request; the cookie is HttpOnly+SameSite=
+    Strict so JS cannot tamper; a spoofed role only changes nav chrome, never access). Tin
+    RECLASSIFIED the missing BFF-side verification as a real defense-in-depth gap, NOT a settled
+    tradeoff → OPEN, owned by the `auth-me-session-verify` security task: the BFF must verify the
+    session JWT signature before trusting its claims (with a designed-for-failure key-fetch path —
+    timeout/cache/fallback — per the IO rule). The dashboard never weakens to the gateway being
+    the *sole* verifier.
 
 - Primary users & jobs: tenant **owner/admin** — provision org, issue/revoke keys,
   watch spend; tenant **developer** — call OpenAI-compatible API with a key;
@@ -336,6 +344,14 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     ticketed (`devtool-vitest4-upgrade`) rather than blocking a clean production upgrade; conflating
     the two either gates production on dev debt or masks real shipped risk (evidence: v14 Next 16
     upgrade — prod surface 0/0/0 while the full audit retained 7 pre-existing dev-only advisories).
+- Folded from v17 (2026-06-15):
+  - role-based NAV visibility shipped: the established pattern is `minRole` tags on the
+    presentational nav shell + a thin client wrapper feeding `useCurrentUser().role`, fail-open
+    (a missing/unknown role shows the base nav; the gateway stays the real RBAC enforcer). It
+    generalizes the v13 UsagePage `canEdit` precedent — render decisions read role from one hook,
+    never from scattered checks (evidence: nav-role-filter.test.tsx 5/5; member hides
+    {models,teams,routing}). NOTE: the role source (`useCurrentUser`) is exactly the claim the
+    `auth-me-session-verify` task hardens — nav trust tightens for free once /api/auth/me verifies.
 
 ## Architecture (settled at setup)
 
@@ -451,3 +467,11 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-14 | a risk:high major-dep bump landing WITHOUT CI must capture prod-server smoke curl output verbatim as gate evidence — `next build` + `next start` (127.0.0.1) + curl authed/unauthed guard (fold: ADD/next16-upgrade) | a green jsdom suite cannot prove Turbopack-bundle / Edge→Node-runtime / prefetch-cache parity; the 5-curl proxy smoke was byte-identical to the v13 guard | folded v16 |
 | 2026-06-14 | the enterprise npm-advisory security gate is scoped to the SHIPPED surface (`npm audit --omit=dev` 0 critical/high); dev-toolchain advisories are triaged + ticketed (devtool-vitest4-upgrade), never gate a clean prod upgrade (fold: SDD+TDD/next16-upgrade) | conflating dev+prod audit either blocks production on dev debt or masks shipped risk; v14 prod 0/0/0 vs full 7 (all dev-only, pre-existing) | folded v16 |
 | 2026-06-14 | a framework's NEW lint rules on pre-existing code → downgrade error→warn (visible, never eslint-disable) + ticket the fix, never break the 0-error baseline; the dashboard production type-gate is `next build` (not bare tsc), tests-bff drift tracked separately (fold: TDD/next16-upgrade) | eslint-config-next 16 flagged 60 v13/v15 patterns (react-hooks-strict-lint); Next 16 async-params Promise<{path}> typing drifts tests-bff while prod stays clean (bff-test-harness-strict-handlers) | folded v16 |
+| 2026-06-15 | ESCALATED to a security gap (Tin): `/api/auth/me` decodes the session JWT WITHOUT signature verification — the BFF must verify the signature (defense-in-depth), not lean on the gateway as the SOLE verifier (fold: SDD/nav-role-filter → task auth-me-session-verify) | a forged/replayed session cookie would spoof nav role/tenant in the UI even though the gateway blocks real access; HttpOnly+SameSite narrows but does not close the BFF-trust gap | folded v17 → task |
+| 2026-06-15 | role-based nav = `minRole` tags on a presentational shell + a thin client wrapper feeding `useCurrentUser().role`, fail-open (fold: UDD/nav-role-filter) | a member sees only usable links; the gateway stays the RBAC enforcer; generalizes the v13 UsagePage canEdit precedent (one hook, not scattered checks) | folded v17 |
+| 2026-06-15 | msw `onUnhandledRequest:"error"` does NOT reject the fetch (it resolves a 500) — the real leak monitor is the stderr unhandled-request COUNT, not test pass/fail (fold: TDD/bff-test-harness-strict-handlers) | "0 failures" is not "0 leaks"; a forgotten handler returns wrong data silently unless the count is watched (13→2→0 this milestone) | folded v17 |
+| 2026-06-15 | tests-bff is now tsc-clean → a standing test-tree typecheck gate is newly possible; the v16 "tests-bff excluded from the type-gate" delta can tighten to include the harness (fold: TDD/bff-test-harness-strict-handlers) | tests-bff drifted under Next 16 async-params; at 18→0 it can join the gate instead of being tracked separately | folded v17 |
+| 2026-06-15 | residual `/api/auth/me` unhandled-request leaks (UsagePage/AppShell render useCurrentUser with no per-test stub) → reach TRUE 0-leak via a shared AppShell stub + per-test stubs (fold: TDD/react-hooks-strict-lint+nav-role-filter → task) | the strict-harness "no shared fallback" rule needs every useCurrentUser render stubbed; couples with auth-me-session-verify (verified tokens need real stubs anyway) | folded v17 → task |
+| 2026-06-15 | run the vitest floor with a generous `--testTimeout` (20s) so a CPU-starved load flake (axe ≥5s, in-flight toBeDisabled windows) never reads as a regression (fold: TDD/react-hooks-strict-lint) | 3 false failures under load → 240/240 green isolated; the `make test-fast` no-DB gate plus a timeout floor is the convention | folded v17 |
+| 2026-06-15 | an adversarial refute-read catches MIS-DIAGNOSIS, not just cheating — trace every residual leak to its SOURCE file; never hand-wave a "benign late-resolve" (fold: ADD/bff-test-harness-strict-handlers) | 2 leaks labeled benign were in-file forgotten handlers in ui-ux-verify.test.tsx; the reviewer traced them → fixed to 0 | folded v17 |
+| 2026-06-15 | the v16 error→warn convention now has a worked DISCHARGE template: fix behavior-preservingly (the floor is the proof) → flip the rule to error → pin with a config-text ratchet-guard test (fold: ADD/react-hooks-strict-lint) | mirrors v17 strict-harness.test.ts; the ratchet test is config-text-only, `eslint .` 0/0 is the real gate | folded v17 |

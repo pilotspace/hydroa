@@ -289,16 +289,17 @@ AND seed-state-in-effect under the React-Compiler rule-set — `set-state-in-ren
 form (verified by probe + adversarial source-read). Prefer it over key-remount for data-seeding forms.
 
 ### Competency deltas
-- [TDD · open] CPU-starved `vitest run --coverage` flakes timing-sensitive tests (axe ≥5s, in-flight
+- [TDD · folded] (v17, 2026-06-15) CPU-starved `vitest run --coverage` flakes timing-sensitive tests (axe ≥5s, in-flight
   `toBeDisabled` windows): 3 false failures vanished on isolation + a 20s testTimeout (evidence: 3 fail
   under load → 37/37 green isolated in 2.15s → 240/240 green with --testTimeout=20000). Fold candidate:
   the verify convention should run the floor with a generous testTimeout (or bounded workers) so a load
   flake never reads as a regression — `make test-fast` no-DB gate already exists; add a timeout floor.
-- [ADD · open] the v16 "framework new-lint-rule error→warn is DECLARED+TICKETED, never permanent"
+- [ADD · folded] (v17, 2026-06-15) the v16 "framework new-lint-rule error→warn is DECLARED+TICKETED, never permanent"
   convention now has a worked DISCHARGE template: fix behavior-preservingly (floor is the proof) → flip
   to error → pin with a config-text ratchet guard test (evidence: this task; mirrors v17 task 1
   strict-harness.test.ts). The ratchet test is config-text-only by design; `eslint .` 0/0 is the real gate.
-- [TDD · open] pre-existing AppShell harness leak: tests that render AppShell fire `useCurrentUser`
+- [TDD · folded → task] (v17, 2026-06-15) pre-existing AppShell harness leak: tests that render AppShell fire `useCurrentUser`
   (GET /api/auth/me) with no msw handler → up to 7 unhandled-request logs under load (0 when unloaded;
   NOT from this task — diff confirms auth/me untouched). Belongs to `nav-role-filter` (which owns
   useCurrentUser-based nav): stub /api/auth/me in the shared AppShell test setup to reach a true 0-leak.
+  → owned by the `auth-me-session-verify` task (the 0-leak couples with verified-token stubs).
