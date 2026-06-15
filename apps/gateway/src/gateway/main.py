@@ -40,6 +40,8 @@ from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import UpstreamProvider
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
+from gateway.proxy.infrastructure.bedrock_sigv4 import resolve_aws_credentials
+from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
 from gateway.proxy.infrastructure.catalog_provider_resolver import CatalogProviderResolver
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.gemini_upstream import (
@@ -409,6 +411,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             api_key=settings.google_api_key,
             base_url=settings.google_base_url,
             default_max_tokens=settings.google_default_max_tokens,
+            max_retries=settings.upstream_max_retries,
+            backoff_base=settings.upstream_retry_backoff_base_s,
+            retry_deadline_s=settings.upstream_retry_deadline_s,
+            metrics_registry=app.state.metrics_registry,
+        )
+
+    # AWS Bedrock adapter — registered only when all three credential fields are set.
+    # resolve_aws_credentials returns None when any required field is falsy (empty string,
+    # absent attribute). NEVER constructs with partial or empty credentials
+    # (v7 empty-bearer lesson; SigV4 with blank keys produces SignatureDoesNotMatch).
+    _aws_creds = resolve_aws_credentials(settings)
+    if _aws_creds:
+        _chat_adapters["bedrock"] = BedrockCompletionUpstream(
+            credentials=_aws_creds,
+            region=settings.bedrock_region,
+            endpoint_url=settings.bedrock_endpoint_url or None,
+            default_max_tokens=settings.anthropic_default_max_tokens,
             max_retries=settings.upstream_max_retries,
             backoff_base=settings.upstream_retry_backoff_base_s,
             retry_deadline_s=settings.upstream_retry_deadline_s,
