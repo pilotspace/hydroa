@@ -41,6 +41,13 @@ services:
       GATEWAY_BEDROCK_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"
       GATEWAY_BEDROCK_REGION: "us-east-1"
 
+      # ── OpenRouter API key — non-secret placeholder (boot-guard satisfier) ────
+      # The base compose sets GATEWAY_OPENROUTER_API_KEY to "" (empty-present),
+      # which trips the empty-key boot guard (EmptyUpstreamKeyError). v20 does NOT
+      # use OpenRouter, but the key must be non-empty for the gateway to boot.
+      # NEVER a real secret — a fake placeholder only.
+      GATEWAY_OPENROUTER_API_KEY: "stub-v20-openrouter-placeholder"
+
       # ── v20: Retry policy (C5 retry-to-success) ──────────────────────────────
       # anthropic.claude-retry-once returns 503 on attempt 1, 200 thereafter.
       GATEWAY_UPSTREAM_MAX_RETRIES: "2"
