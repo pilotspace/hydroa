@@ -1,0 +1,65 @@
+# v20-bedrock overlay — additive on base + v4 + v5 + v6 overlays.
+#
+# Points the AWS Bedrock provider at the v20 SigV4-verifying stub on the host
+# (:9927) and enables retry + error-aware fallback so the live double-pass can
+# exercise chat / streaming / tools / embeddings + retry + fallback + cache.
+#
+# Overlay chain:
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v20.yml \
+#     up --build -d --wait
+#
+# The stub binds 127.0.0.1 ONLY; TLS is still enforced by the Envoy edge (:8443).
+# http:// is intentional for the loopback stub. host.docker.internal resolves to
+# the Docker Desktop host IP where scripts/live_v20_verify.py runs the stub thread.
+#
+# Credentials are the AWS-PUBLISHED get-vanilla TEST credentials — explicitly fake,
+# documented publicly by AWS, and already present in the repo's signer tests. They
+# are NOT a real secret. The stub recomputes the SigV4 signature with these exact
+# values, so the gateway adapter's signed requests verify (and a tampered one 403s).
+#
+# Double-pass close rule: run scripts/live_v20_verify.py twice; both must exit 0.
+# Source: bedrock-verify TASK.md §3 CONTRACT (FROZEN @ v1).
+
+services:
+  gateway:
+    environment:
+      # ── v20: AWS Bedrock provider → v20 SigV4-verifying stub on :9927 ─────────
+      # The stub speaks the Bedrock Converse / ConverseStream / InvokeModel surface.
+      GATEWAY_BEDROCK_ENDPOINT_URL: "http://host.docker.internal:9927"
+
+      # ── v20: AWS credentials — AWS-published PUBLIC test creds (fake) ─────────
+      # Both ACCESS_KEY_ID and SECRET_ACCESS_KEY must be non-empty so the Bedrock
+      # provider is registered and the boot guard (EmptyUpstreamKeyError) does NOT
+      # fire. The secret MUST match the stub's FAKE_SECRET_ACCESS_KEY so the
+      # independent verifier accepts the gateway's signatures. NEVER a real secret.
+      GATEWAY_BEDROCK_ACCESS_KEY_ID: "AKIDEXAMPLE"
+      GATEWAY_BEDROCK_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"
+      GATEWAY_BEDROCK_REGION: "us-east-1"
+
+      # ── v20: Retry policy (C5 retry-to-success) ──────────────────────────────
+      # anthropic.claude-retry-once returns 503 on attempt 1, 200 thereafter.
+      GATEWAY_UPSTREAM_MAX_RETRIES: "2"
+      GATEWAY_UPSTREAM_RETRY_BACKOFF_BASE_S: "0.1"
+      GATEWAY_UPSTREAM_RETRY_DEADLINE_S: "30.0"
+
+      # ── v20: Error-aware fallback (C6) ───────────────────────────────────────
+      # The bedrock-fb alias [claude-fb-fail, claude-fb-ok]: fb-fail returns a
+      # context-window 400, fb-ok returns 200 → falls over.
+      GATEWAY_UPSTREAM_FALLBACK_ON_ERROR: "true"
+
+      # ── Response cache TTL (C7 exact cache hit) ──────────────────────────────
+      GATEWAY_CACHE_TTL_SECONDS: "300"
+
+      # ── v20: Model-group alias (C6 error-aware fallback) ─────────────────────
+      GATEWAY_MODEL_GROUPS: |
+        {"bedrock-fb":["anthropic.claude-fb-fail","anthropic.claude-fb-ok"]}
+
+      # ── Preserve v6 cooldown values (composing on v6 overlay) ────────────────
+      GATEWAY_COOLDOWN_FAILURE_THRESHOLD: "2"
+      GATEWAY_COOLDOWN_TTL_S: "5"
+      GATEWAY_COOLDOWN_WINDOW_S: "60"
