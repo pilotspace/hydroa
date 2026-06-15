@@ -49,11 +49,13 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from gateway.proxy.application.fallback_triggers import classify_fallback_trigger
 from gateway.proxy.application.routing_strategy import (
     AsyncRoutingStrategy,
     OrderedStrategy,
     RoutingStrategy,
 )
+from gateway.proxy.application.streaming_resilience import open_resilient_stream
 from gateway.proxy.domain.errors import AllDeploymentsSaturatedError, UpstreamUnavailableError
 from gateway.proxy.domain.ports import (
     CompletionUpstream,
@@ -99,6 +101,8 @@ class FallbackModelRouter:
         strategy: RoutingStrategy | None = None,
         load_gate: DeploymentLoadGate | None = None,
         limit_gate: DeploymentLimitGate | None = None,
+        fallback_on_error: bool = False,
+        stream_resilience_enabled: bool = False,
     ) -> None:
         # upstream and model_groups kept as positional-compatible; None only for
         # test convenience (tests always pass them explicitly).
@@ -118,6 +122,14 @@ class FallbackModelRouter:
         # Limit gate (deployment-limits v8). None ⇒ no saturation filter/recording;
         # byte-identical to v6/balance-strategies when None.
         self._limit_gate: DeploymentLimitGate | None = limit_gate
+        # Error-aware fallback (error-aware-fallback v19). False (default) ⇒ a 4xx is
+        # returned to the client after the first candidate (v6 byte-identical). True ⇒ a
+        # context-window / content-policy 4xx falls over to the next candidate.
+        self._fallback_on_error: bool = fallback_on_error
+        # Pre-first-byte streaming resilience (streaming-resilience v19). False (default) ⇒
+        # the sync stream() path (first candidate only) is used. True ⇒ the use case calls
+        # stream_resilient() to fall over across candidates before the first SSE byte.
+        self._stream_resilience_enabled: bool = stream_resilience_enabled
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -268,6 +280,10 @@ class FallbackModelRouter:
 
         order = await self._strategy_order_async(alias, candidates)
         last_fallen: str | None = None
+        # Last classifiable trigger-4xx (error-aware-fallback v19): if the loop ends with no
+        # served response but an earlier candidate produced a context-window/content-policy
+        # 4xx, this carries it so the client receives the REAL error, not a synthetic 502.
+        last_error: tuple[int, dict[str, Any], str] | None = None
 
         for i, candidate in enumerate(order):
             next_model = order[i + 1] if i + 1 < len(order) else "_exhausted"
@@ -320,6 +336,25 @@ class FallbackModelRouter:
                 if load_gate is not None:
                     await load_gate.release(candidate)
 
+            # Step 3.5 (error-aware-fallback v19): an enabled, classifiable trigger-4xx with
+            # a NEXT candidate falls over instead of returning the 4xx. The candidate
+            # ANSWERED → the model is alive (record_success, never record_failure — a
+            # context-window/content-policy rejection is request-specific, not a cooldown
+            # signal). Billing-safe: the discarded 4xx is never returned, so the use case
+            # never bills it. Latency is NOT recorded here (a fast rejection must not make a
+            # model look attractive to load-aware strategies).
+            if self._fallback_on_error and i + 1 < len(order):
+                trigger = classify_fallback_trigger(status, body)
+                if trigger is not None:
+                    if gate is not None:
+                        await gate.record_success(candidate)
+                    self._inc_counter(
+                        alias=alias, from_model=candidate, to_model=next_model, outcome=trigger
+                    )
+                    last_error = (status, body, candidate)
+                    last_fallen = candidate
+                    continue
+
             # Step 4: candidate answered (any status including 4xx passthrough).
             # record_latency AFTER a candidate answers (not on UpstreamUnavailableError).
             if load_gate is not None:
@@ -345,6 +380,12 @@ class FallbackModelRouter:
                     await limit_gate.record_tokens(candidate, _tokens)
 
             return status, body, candidate
+
+        # Loop ended without a served return. If an earlier candidate produced a
+        # classifiable trigger-4xx (error-aware-fallback v19), return that real error so the
+        # client sees the actual upstream 4xx (e.g. context-window) rather than a 502.
+        if last_error is not None:
+            return last_error
 
         # All candidates exhausted or gated (loop ended without return).
         self._inc_counter(
@@ -382,3 +423,47 @@ class FallbackModelRouter:
         primary = self._strategy_order(model_id, candidates)[0]
         rewritten: dict[str, object] = {**payload, "model": primary}
         return _upstream.stream(rewritten)
+
+    async def stream_resilient(
+        self,
+        payload: dict[str, Any],
+        upstream: CompletionUpstream | None = None,
+    ) -> tuple[bytes | None, AsyncIterator[bytes]]:
+        """Pre-first-byte resilient streaming (streaming-resilience v19).
+
+        Returns (first_chunk, rest): the use case yields first_chunk (when not None) then
+        drains rest. Fallover happens ONLY before the first chunk reaches the client:
+
+          - Alias -> strategy_order(candidates): on a pre-first-byte transport failure
+            (UpstreamUnavailableError / CircuitOpenError) fall over to the next candidate.
+          - Plain model id -> a single attempt (no same-target streaming retry — the
+            documented boundary; the retry seam stays complete()-only).
+
+        The first candidate whose first chunk is obtained COMMITS the stream; a later
+        (mid-stream) error surfaces to the caller's drain loop and is never replayed. If
+        EVERY candidate fails pre-first-byte, UpstreamUnavailableError propagates (the use
+        case maps it to 502 BEFORE the response commits).
+
+        Only invoked by the use case when stream resilience is enabled; the sync stream()
+        above remains the byte-identical default path.
+        """
+        _upstream = self._resolve_upstream(upstream)
+        alias: str = payload.get("model", "")
+
+        candidates = self._model_groups.get(alias)
+        if candidates is None:
+            attempts = [alias]  # plain model id — single attempt, no retry
+        else:
+            attempts = self._strategy_order(alias, candidates)
+
+        def _open(model_id: str) -> AsyncIterator[bytes]:
+            return _upstream.stream({**payload, "model": model_id})
+
+        def _on_fallover(from_model: str, to_model: str) -> None:
+            self._inc_counter(
+                alias=alias, from_model=from_model, to_model=to_model, outcome="stream_fallover"
+            )
+
+        return await open_resilient_stream(
+            attempts=attempts, open_stream=_open, on_fallover=_on_fallover
+        )

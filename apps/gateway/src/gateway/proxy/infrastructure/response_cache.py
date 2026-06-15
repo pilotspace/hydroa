@@ -49,6 +49,68 @@ def build_cache_key(tenant_id: str, payload: dict[str, Any]) -> str:
     return f"resp-cache:{tenant_id}:{digest}"
 
 
+# Output-affecting fields for the embedding cache key (§3 CONTRACT — cache-controls).
+# Must capture EVERY param that changes the returned vector, else a stale hit is served.
+_EMBED_CACHE_KEY_FIELDS = frozenset(
+    [
+        "model",
+        "input",
+        "encoding_format",
+        "dimensions",
+        "user",
+    ]
+)
+
+
+def build_embedding_cache_key(tenant_id: str, payload: dict[str, Any]) -> str:
+    """Derive the Redis key for an embeddings payload (§3 CONTRACT — cache-controls).
+
+    Key format: embed-cache:{tenant_id}:{sha256(canonical_json)}
+    canonical_json: sorted-keys compact JSON over ONLY the present output-affecting fields
+    ({model, input, encoding_format, dimensions, user}). Absent fields are EXCLUDED
+    (not inserted as null) — strict exact-match semantics, per-tenant.
+
+    The prefix is DISTINCT from the chat exact cache (resp-cache:) and the semantic
+    cache (resp-cache-sem:) so the three namespaces never collide.
+    """
+    subset = {k: v for k, v in payload.items() if k in _EMBED_CACHE_KEY_FIELDS}
+    canonical = json.dumps(subset, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical.encode()).hexdigest()
+    return f"embed-cache:{tenant_id}:{digest}"
+
+
+def resolve_cache_ttl(headers: dict[str, str] | None, default_ttl: int, max_ttl: int) -> int:
+    """Resolve the effective cache TTL from a per-request Cache-Control: max-age (§3 CONTRACT).
+
+    PURE · TOTAL · never raises. Reads ONLY the "cache-control" header (case-insensitive key).
+    Parses a `max-age=<int>` directive (comma/space-separated, case-insensitive):
+      - if the int N is >= 1            -> min(N, max_ttl)
+      - else (absent / non-int / N < 1) -> default_ttl
+    Does NOT decide bypass (no-cache) — that stays in the use case / existing path.
+    """
+    if not isinstance(headers, dict):
+        return default_ttl
+    value: Any = None
+    for k, v in headers.items():
+        if str(k).lower() == "cache-control":  # str(k) keeps it total on odd key types
+            value = v
+            break
+    if not isinstance(value, str):
+        return default_ttl
+    # Directives are comma- and/or whitespace-separated; scan for a clean max-age=<int>.
+    for part in re.split(r"[,\s]+", value.strip()):
+        name, sep, raw = part.partition("=")
+        if not sep or name.strip().lower() != "max-age":
+            continue
+        raw = raw.strip()
+        if raw.isdigit():  # rejects "abc", "1.5", "-5", "" — only a clean non-negative int
+            n = int(raw)
+            if n >= 1:
+                return min(n, max_ttl)
+        # found max-age but invalid/<1 → fall through to the default
+    return default_ttl
+
+
 def _normalize_message_content(content: str, *, is_last_user: bool) -> str:
     """Normalize a single message content string per §3 CONTRACT normalization algorithm.
 

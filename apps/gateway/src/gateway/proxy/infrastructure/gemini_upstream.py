@@ -46,6 +46,7 @@ from gateway.proxy.domain.tool_translation import (
     synthesize_tool_call_id,
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -499,11 +500,17 @@ class GeminiCompletionUpstream:
         api_key: str,
         base_url: str = _DEFAULT_BASE_URL,
         default_max_tokens: int = 4096,
+        max_retries: int = 0,
+        backoff_base: float = 0.5,
+        retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
         # Stored privately — never exposed in logs/errors/metrics
         self._api_key = api_key
         self._default_max_tokens = default_max_tokens
+        self._max_retries = max_retries
+        self._backoff_base = backoff_base
+        self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
 
         self._breaker = CircuitBreaker()
@@ -529,47 +536,41 @@ class GeminiCompletionUpstream:
 
         Returns (status_code, openai_shaped_body).
         - 200  → translated OpenAI chat.completion
-        - 4xx  → OpenAI error body (no exception; gateway forwards the status)
-        - 5xx  → UpstreamUnavailableError
-        - transport error → UpstreamUnavailableError
-        """
-        self._breaker.guard()
+        - 4xx (non-408) → OpenAI error body (no exception; gateway forwards the status)
+        - 5xx / 429 / 408 / connect error / pool timeout → retried up to max_retries
+          (unified retry seam); exhausted → UpstreamUnavailableError
+        - read/write timeout / network error → UpstreamUnavailableError (not retried)
 
+        Request translation is pure and runs ONCE, outside the retry loop.
+        """
         model: str = payload["model"]
         gemini_body = _openai_to_gemini_request(
             payload,
             default_max_tokens=self._default_max_tokens,
         )
 
-        try:
-            resp = await self._client.post(
+        async def _do_request() -> httpx.Response:
+            return await self._client.post(
                 f"/models/{model}:generateContent",
                 json=gemini_body,
                 headers=self._auth_headers(),
             )
-        except (
-            httpx.ConnectError,
-            httpx.ConnectTimeout,
-            httpx.PoolTimeout,
-            httpx.ReadTimeout,
-            httpx.WriteTimeout,
-            httpx.NetworkError,
-        ) as exc:
-            self._breaker.on_upstream_error()
-            raise UpstreamUnavailableError(str(exc)) from exc
 
-        status = resp.status_code
+        def _render(resp: httpx.Response) -> tuple[int, dict[str, Any]]:
+            if resp.status_code >= 400:
+                return resp.status_code, _gemini_error_to_openai(resp.json())
+            return 200, _gemini_to_openai(resp.json(), model=model)
 
-        if status >= 500:
-            self._breaker.on_upstream_error()
-            raise UpstreamUnavailableError(f"Upstream returned {status}")
-
-        self._breaker.record_success()
-
-        if status >= 400:
-            return status, _gemini_error_to_openai(resp.json())
-
-        return 200, _gemini_to_openai(resp.json(), model=model)
+        return await execute_with_retry(
+            _do_request,
+            _render,
+            breaker=self._breaker,
+            provider="gemini",
+            max_retries=self._max_retries,
+            backoff_base=self._backoff_base,
+            deadline_s=self._retry_deadline_s,
+            metrics_registry=self._metrics_registry,
+        )
 
     def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
         """Return an async generator that yields OpenAI SSE chunk bytes.
@@ -625,7 +626,7 @@ class GeminiCompletionUpstream:
 
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
-                raise UpstreamUnavailableError(str(exc)) from exc
+                raise UpstreamUnavailableError(str(exc)) from None
 
             # Translate the buffered chunk sequence → OpenAI SSE chunk bytes
             for chunk_bytes in _translate_gemini_sse(chunks):
@@ -749,7 +750,7 @@ class GoogleEmbeddingsProvider:
             )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
             self._breaker.on_upstream_error()
-            raise UpstreamUnavailableError(str(exc)) from exc
+            raise UpstreamUnavailableError(str(exc)) from None
 
         status = resp.status_code
         if status >= 500:

@@ -18,8 +18,10 @@ from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.proxy.application.embeddings_use_case import EmbeddingsUseCase
 from gateway.proxy.application.governance import NonChatGovernance
+from gateway.proxy.domain.ports import ResponseCache
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
+from gateway.proxy.infrastructure.response_cache import RedisResponseCache
 
 # Singleton stateless hasher — safe to share across requests
 _hasher = Sha256SecretHasher()
@@ -29,6 +31,22 @@ def get_provider_registry(request: Request) -> ProviderRegistry:
     """Resolve ProviderRegistry from app.state — allows test injection."""
     registry: ProviderRegistry = request.app.state.provider_registry
     return registry
+
+
+def get_response_cache(request: Request) -> ResponseCache | None:
+    """Resolve the embeddings response cache from app.state (cache-controls task).
+
+    A RedisResponseCache over the same Redis the rest of the embeddings path uses
+    (app.state.redis_client, falling back to budget_guard._redis), or None when
+    Redis is unwired — None ⇒ byte-identical to the pre-cache embeddings flow.
+    """
+    budget_guard = getattr(request.app.state, "budget_guard", None)
+    redis_client = getattr(request.app.state, "redis_client", None) or getattr(
+        budget_guard, "_redis", None
+    )
+    if redis_client is None:
+        return None
+    return RedisResponseCache(redis_client)
 
 
 def get_embeddings_use_case(

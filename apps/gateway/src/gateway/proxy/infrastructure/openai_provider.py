@@ -94,7 +94,7 @@ class OpenAIDirectProvider:
             )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
             self._breaker.on_upstream_error()
-            raise UpstreamUnavailableError(str(exc)) from exc
+            raise UpstreamUnavailableError(str(exc)) from None
 
         status = resp.status_code
         if status >= 500:
@@ -125,7 +125,7 @@ class OpenAIDirectProvider:
             )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
             self._breaker.on_upstream_error()
-            raise UpstreamUnavailableError(str(exc)) from exc
+            raise UpstreamUnavailableError(str(exc)) from None
 
         status = resp.status_code
         if status >= 500:
@@ -172,7 +172,7 @@ class OpenAIDirectProvider:
                         yield chunk
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
-                raise UpstreamUnavailableError(str(exc)) from exc
+                raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()
 

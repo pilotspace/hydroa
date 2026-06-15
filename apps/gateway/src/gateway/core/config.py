@@ -31,6 +31,10 @@ _UPSTREAM_KEY_ENV_VARS: Final[tuple[str, ...]] = (
     "GATEWAY_OPENAI_API_KEY",
     "GATEWAY_ANTHROPIC_API_KEY",
     "GATEWAY_GOOGLE_API_KEY",
+    "GATEWAY_BEDROCK_ACCESS_KEY_ID",
+    "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
+    "GATEWAY_AZURE_API_KEY",
+    "GATEWAY_AZURE_CLIENT_SECRET",
 )
 
 
@@ -130,6 +134,26 @@ class Settings(BaseSettings):
 
     # ── Response cache (response-caching task) ────────────────────────────────
     cache_ttl_seconds: int = 300  # GATEWAY_CACHE_TTL_SECONDS
+    # Cap for a per-request Cache-Control: max-age override (cache-controls task)
+    cache_max_ttl_seconds: int = Field(default=86400)  # GATEWAY_CACHE_MAX_TTL_SECONDS
+
+    # ── Embedding-similarity "vector" cache (semantic-cache task, v19) ─────────
+    # The THIRD lookup layer (after exact + normalization): a near-duplicate prompt whose
+    # embedding is within GATEWAY_VECTOR_CACHE_THRESHOLD cosine of a cached prompt serves a
+    # cached response. Default-off ⇒ byte-identical. Per-tenant + per-model isolated.
+    # env: GATEWAY_VECTOR_CACHE_ENABLED
+    vector_cache_enabled: bool = Field(default=False)
+    # Cosine hit threshold (0..1). High default = conservative (near-identical only); a false
+    # hit serves a wrong-but-plausible answer, strictly worse than a miss. Operator-tunable.
+    # env: GATEWAY_VECTOR_CACHE_THRESHOLD
+    vector_cache_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
+    # Embedding model used to vectorize prompts (routed through the gateway's own embedding
+    # upstream). Required (non-empty) to activate; the embed call is internal, never billed.
+    # env: GATEWAY_VECTOR_CACHE_EMBED_MODEL
+    vector_cache_embed_model: str = ""
+    # Upper bound on candidate vectors scanned per (tenant, model) lookup — bounds latency.
+    # env: GATEWAY_VECTOR_CACHE_MAX_CANDIDATES
+    vector_cache_max_candidates: int = Field(default=100, ge=1, le=1000)
 
     # ── Alerting / health (health-alerting task) ──────────────────────────────
     alert_webhook_url: str = ""  # GATEWAY_ALERT_WEBHOOK_URL (empty = disabled)
@@ -200,6 +224,50 @@ class Settings(BaseSettings):
     # when the OpenAI caller omits max_tokens.
     google_default_max_tokens: int = 4096
 
+    # ── AWS Bedrock direct provider (bedrock-sigv4 task) ──────────────────────
+    # GATEWAY_BEDROCK_ACCESS_KEY_ID — AWS access key; empty = Bedrock provider absent.
+    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
+    # labels/span attributes.
+    bedrock_access_key_id: str = ""
+    # GATEWAY_BEDROCK_SECRET_ACCESS_KEY — AWS secret access key (secret).
+    # NEVER logged, echoed, committed, or placed in metric labels/span attributes.
+    bedrock_secret_access_key: str = ""
+    # GATEWAY_BEDROCK_REGION — AWS region for Bedrock calls.
+    bedrock_region: str = "us-east-1"
+    # GATEWAY_BEDROCK_SESSION_TOKEN — optional STS session token.
+    # Empty string = no session token (static long-term credentials).
+    bedrock_session_token: str = ""
+    # GATEWAY_BEDROCK_ENDPOINT_URL — override endpoint for tests/e2e overlays.
+    # Empty = use the default regional Bedrock endpoint.
+    bedrock_endpoint_url: str = ""
+
+    # ── Azure OpenAI direct provider (azure-auth-routing task) ────────────────
+    # GATEWAY_AZURE_API_KEY — Azure OpenAI api-key; empty = Azure provider absent.
+    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
+    # labels/span attributes/URLs/cache keys.
+    azure_api_key: str = ""
+    # GATEWAY_AZURE_ENDPOINT — resource endpoint, e.g. "https://r.openai.azure.com".
+    # Empty (with or without a key) = Azure provider cleanly disabled (opt-in).
+    azure_endpoint: str = ""
+    # GATEWAY_AZURE_API_VERSION — required api-version query param on every call.
+    # Defaults to a GA-stable version; operator-overridable per Azure resource.
+    azure_api_version: str = "2024-10-21"
+    # GATEWAY_AZURE_DEPLOYMENT_MAP — JSON object mapping client model -> Azure
+    # deployment name. Empty = identity routing (model name == deployment name).
+    azure_deployment_map: dict[str, str] = Field(default_factory=dict)
+    # ── Azure AD (client-credentials) auth — alternative to the api-key ───────
+    # GATEWAY_AZURE_TENANT_ID / GATEWAY_AZURE_CLIENT_ID — AAD app registration.
+    azure_tenant_id: str = ""
+    azure_client_id: str = ""
+    # GATEWAY_AZURE_CLIENT_SECRET — AAD client secret (SECRET).
+    # NEVER logged, echoed, committed, or placed in metric labels/span attributes/URLs.
+    azure_client_secret: str = ""
+    # GATEWAY_AZURE_AD_SCOPE — OAuth2 scope override (empty = cognitive-services default).
+    azure_ad_scope: str = ""
+    # GATEWAY_AZURE_AD_AUTHORITY — AAD authority host for sovereign/government clouds
+    # (e.g. https://login.microsoftonline.us). Empty = public-cloud DEFAULT_AUTHORITY.
+    azure_ad_authority: str = ""
+
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.
     # Default 0 = opt-in (byte-identical to v5 "NEVER retry" behavior at default settings).
@@ -209,6 +277,22 @@ class Settings(BaseSettings):
     upstream_max_retries: int = Field(default=0, ge=0, le=5)
     # GATEWAY_UPSTREAM_RETRY_BACKOFF_BASE_S — base for exponential backoff (seconds).
     upstream_retry_backoff_base_s: float = Field(default=0.5, gt=0)
+    # GATEWAY_UPSTREAM_RETRY_DEADLINE_S — cumulative wall-clock budget across all retry
+    # attempts + backoff sleeps (v19 retry-seam-unify). 0 = disabled (no deadline; default,
+    # byte-identical). When > 0, the loop stops before an attempt whose backoff would exceed it.
+    upstream_retry_deadline_s: float = Field(default=0.0, ge=0)
+    # GATEWAY_UPSTREAM_FALLBACK_ON_ERROR — when True, an alias-routed request whose
+    # candidate returns a context-window-exceeded OR content-policy-blocked 4xx falls over
+    # to the next deployment in its model-group (v19 error-aware-fallback). Default False =
+    # opt-in (byte-identical to v6: a 4xx is returned to the client after the first candidate).
+    # The existing UpstreamUnavailableError (retry-exhausted) fallover is unaffected by this knob.
+    upstream_fallback_on_error: bool = Field(default=False)
+    # GATEWAY_STREAM_RESILIENCE_ENABLED — when True, an alias-routed STREAMING request whose
+    # candidate fails BEFORE the first SSE byte (transport error / circuit-open) falls over to
+    # the next deployment in its model-group (v19 streaming-resilience). Default False = opt-in
+    # (byte-identical: the first candidate only, no stream fallover). Once a byte reaches the
+    # client the stream is committed — no replay. The retry seam stays complete()-only.
+    upstream_stream_resilience_enabled: bool = Field(default=False)
 
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip

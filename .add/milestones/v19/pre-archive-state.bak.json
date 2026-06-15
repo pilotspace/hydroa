@@ -1,0 +1,256 @@
+{
+  "milestone": {
+    "title": "Reliability \u2014 uniform retries, error-aware fallback, response & semantic caching",
+    "goal": "a tenant's LLM request survives transient upstream failures and model outages \u2014 uniform error-aware retries across every provider, smarter model fallback, pre-first-byte streaming resilience, and response + semantic cache reuse \u2014 with billing accuracy preserved and byte-identical behavior at default settings",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-15T03:16:30+00:00",
+    "updated": "2026-06-15T07:35:23+00:00"
+  },
+  "tasks": {
+    "retry-seam-unify": {
+      "title": "Unify upstream retries across all providers (shared helper + per-error RetryPolicy + cumulative deadline)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T03:17:26+00:00",
+      "updated": "2026-06-15T04:02:28+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c4855149f4f26a157441595bebeddb7b",
+        "tests": {
+          "apps/gateway/tests/retry_policy/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/retry_policy/conftest.py": "869fe9b4dd2e42f3e97067b7dc0ad344",
+          "apps/gateway/tests/retry_policy/test_anthropic_retry.py": "d350f9448245da6a63c38bb2a1dc8b4e",
+          "apps/gateway/tests/retry_policy/test_gemini_retry.py": "8720f3b580fd20c1c2cbe37e0bb72df4",
+          "apps/gateway/tests/retry_policy/test_retry_policy.py": "1a4c8cdc3df73703f08d98d0a0315837",
+          "apps/gateway/tests/retry_policy/test_upstream_retry.py": "822e92aac4e24d5643f56a74e696c7a0"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/upstream_retry.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/openrouter_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/observability/metrics.py",
+          "apps/gateway/tests/retry_policy/"
+        ],
+        "snapshot_md5": "8aac013667151a76f537d38c617eb930"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-15T04:01:13+00:00",
+            "reason": "scope_violation: task 'retry-seam-unify' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "error-aware-fallback": {
+      "title": "Error-aware model fallback: fail over on context-window-exceeded & content-policy block",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T04:24:16+00:00",
+      "updated": "2026-06-15T04:53:48+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c8bcea79dd7b6d7d339ca1b104816460",
+        "tests": {
+          "apps/gateway/tests/error_aware_fallback/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/error_aware_fallback/conftest.py": "d9d05975c024678f74e8c198af6b061e",
+          "apps/gateway/tests/error_aware_fallback/test_error_aware_fallback.py": "92eaefc8e32e804ea7e47fdfe9fc7c4e",
+          "apps/gateway/tests/error_aware_fallback/test_fallback_triggers.py": "f3f4c1f1d8b26b3bb7f6e53d39db046c"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/fallback_triggers.py",
+          "apps/gateway/src/gateway/proxy/application/fallback_router.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/error_aware_fallback/"
+        ],
+        "snapshot_md5": "2aa0f3000d84811f30eac0ee5ba8a320"
+      }
+    },
+    "cache-controls": {
+      "title": "Cache controls: per-request TTL override + embedding-response cache (per-tenant, billed on miss only)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T04:56:57+00:00",
+      "updated": "2026-06-15T05:28:07+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "4e8927abe2e3d29c52ba706145c1c089",
+        "tests": {
+          "apps/gateway/tests/cache_controls/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/cache_controls/conftest.py": "233dcf850f5a3bdb6ca5109ba4f45420",
+          "apps/gateway/tests/cache_controls/test_embedding_cache.py": "c8681da459841bb6c98539cf89506034",
+          "apps/gateway/tests/cache_controls/test_embedding_cache_key.py": "92e9bc25b812b460cde3cfae2df807f2",
+          "apps/gateway/tests/cache_controls/test_resolve_cache_ttl.py": "6bf96a60245c64ad20c54cf744c76476"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/response_cache.py",
+          "apps/gateway/src/gateway/proxy/application/embeddings_use_case.py",
+          "apps/gateway/src/gateway/proxy/api/embeddings_deps.py",
+          "apps/gateway/src/gateway/proxy/api/embeddings_router.py",
+          "apps/gateway/src/gateway/proxy/api/router.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/cache_controls/"
+        ],
+        "snapshot_md5": "af607ee05f2d67557d0b17156e45e8a2"
+      },
+      "heal": {
+        "attempts": 3,
+        "history": [
+          {
+            "at": "2026-06-15T05:22:33+00:00",
+            "reason": "scope_violation: task 'cache-controls' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/15857191058005275921 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 \u00b7 apps/gateway/.ruff_cache/0.15.16/16576050670446413392 (4 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-15T05:23:02+00:00",
+            "reason": "scope_violation: task 'cache-controls' touched outside its declared \u00a75 Scope \u2014 .pytest_cache/.gitignore \u00b7 .pytest_cache/CACHEDIR.TAG \u00b7 .pytest_cache/README.md \u00b7 .pytest_cache/v/cache/nodeids \u00b7 .ruff_cache/.gitignore (11 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-15T05:25:06+00:00",
+            "reason": "scope_violation: task 'cache-controls' touched outside its declared \u00a75 Scope \u2014 .coverage \u00b7 .pytest_cache/.gitignore \u00b7 .pytest_cache/CACHEDIR.TAG \u00b7 .pytest_cache/README.md \u00b7 .pytest_cache/v/cache/nodeids (66 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "streaming-resilience": {
+      "title": "Pre-first-byte streaming retry/fallback (no mid-stream replay)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T05:31:14+00:00",
+      "updated": "2026-06-15T06:10:51+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b3c497142a90f4b50904dcb0a9632c19",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/streaming_resilience.py",
+          "apps/gateway/src/gateway/proxy/application/fallback_router.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/api/deps.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/streaming_resilience/"
+        ],
+        "snapshot_md5": "15b677ee959df298c1e8394323d3b585"
+      }
+    },
+    "semantic-cache": {
+      "title": "Embedding-similarity vector cache \u2014 near-duplicate prompts hit above a cosine threshold (v19 task 5)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T06:20:48+00:00",
+      "updated": "2026-06-15T06:57:54+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c5a1023cf05b37329189837accfbee36",
+        "tests": {
+          "apps/gateway/tests/vector_cache/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/vector_cache/conftest.py": "e309c3680a12316d8498f882203e722b",
+          "apps/gateway/tests/vector_cache/test_cosine.py": "aa1a75b55475e7fb6972692e5acafa14",
+          "apps/gateway/tests/vector_cache/test_embedding_adapter.py": "33efdf3ba5597ddbe31a6e1dd3eb34f5",
+          "apps/gateway/tests/vector_cache/test_redis_vector_cache.py": "50efb6a5fb165c5d2c6f552bea064a81",
+          "apps/gateway/tests/vector_cache/test_use_case_wiring.py": "59f89eaa82390aca20da6f08dac532be"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/vector_cache.py"
+        ],
+        "snapshot_md5": "d3e0c313186e08c1cdeef564a11f4748"
+      }
+    },
+    "reliability-verify": {
+      "title": "v19 reliability verification \u2014 live double-pass + retry/fallback/cache metric assertions + zero-regression floor",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T07:00:09+00:00",
+      "updated": "2026-06-15T07:32:20+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "708a6438c169b9462c7d53cd081a56f1",
+        "tests": {
+          "scripts/check_allowlist.py": "7edd8bbb7d60f3a1dc173a5c614006a8",
+          "scripts/check_node_deps.py": "4775dbe533fc2640a959b313da62504e",
+          "scripts/live_smoke.py": "b4e5b6956e2f1752bc41d85bf5a4de17",
+          "scripts/live_v10_verify.py": "454f017dbd1fd2b6997f246971fc0102",
+          "scripts/live_v11_verify.py": "33a5798d90bc94bf31cc35859715ee4e",
+          "scripts/live_v12_verify.py": "c5ce18a7cbfd5657bf7b6b74210b5433",
+          "scripts/live_v19_verify.py": "b9900c14ac840bf5817dbe6e67222a5e",
+          "scripts/live_v3_verify.py": "87f5146e8c04cdbce4eb49ee11d64f25",
+          "scripts/live_v4_verify.py": "0d892715683e73f9033765504bdcdef0",
+          "scripts/live_v5_verify.py": "c541001720b99e7333ac63889478951e",
+          "scripts/live_v6_verify.py": "b6c05c4d7f4f8f756ef1425ff0ed22ad",
+          "scripts/live_v7_verify.py": "7781aa79ddbb2994efacab030af2ebc5",
+          "scripts/live_v8_verify.py": "52849ddd18ac2ae107ec93305deb89e1",
+          "scripts/live_v9_verify.py": "2b643a3f24039ee009bb1e2955a2f8aa",
+          "scripts/v10_tool_stub.py": "c9443ec6e0258b0fc85f99bd6d87f859",
+          "scripts/v11_json_stub.py": "3e9ffe7bf2f8eb5472f795ee5e6bea53",
+          "scripts/v12_embed_stub.py": "42f45bdc73894f63ba5f3803d140ef51",
+          "scripts/v19_reliability_stub.py": "53e806a165db3600a672a06e920738c5",
+          "scripts/v6_fault_stub.py": "55fff87c97d1e7e95ac620d756a24a1b",
+          "scripts/v7_openai_stub.py": "47b40236c0fffad7a1c2b37575ab01b6",
+          "scripts/v8_router_stub.py": "4a718d2f2696f4bc4a4dce4e4a79714f",
+          "scripts/v9_provider_stub.py": "4f731c776e301ea65f4b4a277b3d4945",
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "4dbdca0cc70c971d0075d9ccff7f4e76",
+          "apps/gateway/tests/test_config.py": "f3a4e9643d4288c5a52b2ad36bb62774",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885"
+        }
+      },
+      "scope": {
+        "declared": [
+          "scripts/v19_reliability_stub.py",
+          "scripts/live_v19_verify.py",
+          "infra/docker-compose.e2e.v19.yml"
+        ],
+        "snapshot_md5": "b8ac6a9b1622e5a68cfeaa100ba747d8"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-15T07:27:43+00:00",
+            "reason": "scope_violation: task 'reliability-verify' touched outside its declared \u00a75 Scope \u2014 infra/docker-compose.e2e.v19.yml \u00b7 tmp/v19-verify-commit.txt (2 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-15T07:29:39+00:00",
+            "reason": "scope_violation: task 'reliability-verify' touched outside its declared \u00a75 Scope \u2014 infra/docker-compose.e2e.v19.yml (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    }
+  },
+  "archived_at": "2026-06-15T07:41:53+00:00"
+}
