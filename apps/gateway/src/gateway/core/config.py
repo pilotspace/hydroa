@@ -31,6 +31,8 @@ _UPSTREAM_KEY_ENV_VARS: Final[tuple[str, ...]] = (
     "GATEWAY_OPENAI_API_KEY",
     "GATEWAY_ANTHROPIC_API_KEY",
     "GATEWAY_GOOGLE_API_KEY",
+    "GATEWAY_BEDROCK_ACCESS_KEY_ID",
+    "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
 )
 
 
@@ -219,6 +221,23 @@ class Settings(BaseSettings):
     # GATEWAY_GOOGLE_DEFAULT_MAX_TOKENS — default max_tokens for Gemini requests
     # when the OpenAI caller omits max_tokens.
     google_default_max_tokens: int = 4096
+
+    # ── AWS Bedrock direct provider (bedrock-sigv4 task) ──────────────────────
+    # GATEWAY_BEDROCK_ACCESS_KEY_ID — AWS access key; empty = Bedrock provider absent.
+    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
+    # labels/span attributes.
+    bedrock_access_key_id: str = ""
+    # GATEWAY_BEDROCK_SECRET_ACCESS_KEY — AWS secret access key (secret).
+    # NEVER logged, echoed, committed, or placed in metric labels/span attributes.
+    bedrock_secret_access_key: str = ""
+    # GATEWAY_BEDROCK_REGION — AWS region for Bedrock calls.
+    bedrock_region: str = "us-east-1"
+    # GATEWAY_BEDROCK_SESSION_TOKEN — optional STS session token.
+    # Empty string = no session token (static long-term credentials).
+    bedrock_session_token: str = ""
+    # GATEWAY_BEDROCK_ENDPOINT_URL — override endpoint for tests/e2e overlays.
+    # Empty = use the default regional Bedrock endpoint.
+    bedrock_endpoint_url: str = ""
 
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.
