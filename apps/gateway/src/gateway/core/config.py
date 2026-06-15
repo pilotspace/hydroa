@@ -209,6 +209,10 @@ class Settings(BaseSettings):
     upstream_max_retries: int = Field(default=0, ge=0, le=5)
     # GATEWAY_UPSTREAM_RETRY_BACKOFF_BASE_S — base for exponential backoff (seconds).
     upstream_retry_backoff_base_s: float = Field(default=0.5, gt=0)
+    # GATEWAY_UPSTREAM_RETRY_DEADLINE_S — cumulative wall-clock budget across all retry
+    # attempts + backoff sleeps (v19 retry-seam-unify). 0 = disabled (no deadline; default,
+    # byte-identical). When > 0, the loop stops before an attempt whose backoff would exceed it.
+    upstream_retry_deadline_s: float = Field(default=0.0, ge=0)
 
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip

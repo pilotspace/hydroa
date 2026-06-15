@@ -41,6 +41,7 @@ from gateway.proxy.domain.tool_translation import (
     load_tool_arguments,
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
 # v11 JSON-mode: instruction appended to the system prompt for response_format
 # json_object (free-form JSON, no schema to force a tool with).
@@ -513,12 +514,18 @@ class AnthropicCompletionUpstream:
         base_url: str = "https://api.anthropic.com/v1",
         anthropic_version: str = "2023-06-01",
         default_max_tokens: int = 4096,
+        max_retries: int = 0,
+        backoff_base: float = 0.5,
+        retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
         # Stored privately — never exposed in logs/errors/metrics
         self._api_key = api_key
         self._version = anthropic_version
         self._default_max_tokens = default_max_tokens
+        self._max_retries = max_retries
+        self._backoff_base = backoff_base
+        self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
 
         self._breaker = CircuitBreaker()
@@ -545,46 +552,40 @@ class AnthropicCompletionUpstream:
 
         Returns (status_code, openai_shaped_body).
         - 200  → translated OpenAI chat.completion
-        - 4xx  → OpenAI error body (no exception; gateway forwards the status)
-        - 5xx  → UpstreamUnavailableError
-        - transport error → UpstreamUnavailableError
-        """
-        self._breaker.guard()
+        - 4xx (non-408) → OpenAI error body (no exception; gateway forwards the status)
+        - 5xx / 429 / 408 / connect error / pool timeout → retried up to max_retries
+          (unified retry seam); exhausted → UpstreamUnavailableError
+        - read/write timeout / network error → UpstreamUnavailableError (not retried)
 
+        Request translation is pure and runs ONCE, outside the retry loop.
+        """
         anthropic_body = _openai_to_anthropic_request(
             payload,
             default_max_tokens=self._default_max_tokens,
         )
 
-        try:
-            resp = await self._client.post(
+        async def _do_request() -> httpx.Response:
+            return await self._client.post(
                 "/messages",
                 json=anthropic_body,
                 headers=self._auth_headers(),
             )
-        except (
-            httpx.ConnectError,
-            httpx.ConnectTimeout,
-            httpx.PoolTimeout,
-            httpx.ReadTimeout,
-            httpx.WriteTimeout,
-            httpx.NetworkError,
-        ) as exc:
-            self._breaker.on_upstream_error()
-            raise UpstreamUnavailableError(str(exc)) from exc
 
-        status = resp.status_code
+        def _render(resp: httpx.Response) -> tuple[int, dict[str, Any]]:
+            if resp.status_code >= 400:
+                return resp.status_code, _anthropic_error_to_openai(resp.json())
+            return 200, _anthropic_to_openai(resp.json())
 
-        if status >= 500:
-            self._breaker.on_upstream_error()
-            raise UpstreamUnavailableError(f"Upstream returned {status}")
-
-        self._breaker.record_success()
-
-        if status >= 400:
-            return status, _anthropic_error_to_openai(resp.json())
-
-        return 200, _anthropic_to_openai(resp.json())
+        return await execute_with_retry(
+            _do_request,
+            _render,
+            breaker=self._breaker,
+            provider="anthropic",
+            max_retries=self._max_retries,
+            backoff_base=self._backoff_base,
+            deadline_s=self._retry_deadline_s,
+            metrics_registry=self._metrics_registry,
+        )
 
     def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
         """Return an async generator that yields OpenAI SSE chunk bytes.

@@ -358,6 +358,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         base_url=settings.openrouter_base_url,
         max_retries=settings.upstream_max_retries,
         backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
         metrics_registry=app.state.metrics_registry,
     )
     # Public seam for production-wiring regression tests: the RAW OpenRouter
@@ -394,6 +395,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             base_url=settings.anthropic_base_url,
             anthropic_version=settings.anthropic_version,
             default_max_tokens=settings.anthropic_default_max_tokens,
+            max_retries=settings.upstream_max_retries,
+            backoff_base=settings.upstream_retry_backoff_base_s,
+            retry_deadline_s=settings.upstream_retry_deadline_s,
             metrics_registry=app.state.metrics_registry,
         )
 
@@ -405,6 +409,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             api_key=settings.google_api_key,
             base_url=settings.google_base_url,
             default_max_tokens=settings.google_default_max_tokens,
+            max_retries=settings.upstream_max_retries,
+            backoff_base=settings.upstream_retry_backoff_base_s,
+            retry_deadline_s=settings.upstream_retry_deadline_s,
             metrics_registry=app.state.metrics_registry,
         )
 
