@@ -381,6 +381,7 @@ class CompletionUseCase:
         response_cache: ResponseCache | None = None,
         guardrail_evaluator: GuardrailEvaluator | None = None,
         span_emitter: OtelSpanEmitter | None = None,
+        stream_resilience_enabled: bool = False,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -391,6 +392,11 @@ class CompletionUseCase:
         self._response_cache = response_cache
         self._guardrail_evaluator = guardrail_evaluator
         self._span_emitter = span_emitter
+        # Pre-first-byte streaming resilience (streaming-resilience v19). False (default) ⇒
+        # the old sync stream() path (byte-identical). True ⇒ peek the first chunk via
+        # model_router.stream_resilient so a pre-first-byte failure falls over to the next
+        # candidate before StreamingResponse commits.
+        self._stream_resilience_enabled = stream_resilience_enabled
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -1241,11 +1247,19 @@ class CompletionUseCase:
                         "to stream bodies (guardrails-core v4 documented limitation)"
                     )
 
+            # first_chunk is the peeked pre-first-byte chunk from the resilient path (when
+            # enabled); None on the old paths. _wrapped() prepends it before draining `gen`.
+            first_chunk: bytes | None = None
             try:
-                # Route stream through model_router when wired — resolves alias to first
-                # candidate only (§3 STREAMING BOUNDARY). No fallback on stream failure.
-                # When model_router is None, fall back to direct upstream.stream().
-                if model_router is not None:
+                # Route stream through model_router when wired. With stream resilience enabled
+                # (streaming-resilience v19), peek the first chunk via stream_resilient so a
+                # PRE-first-byte failure falls over to the next candidate; a total pre-byte
+                # failure raises here → the SAME except → 502 BEFORE StreamingResponse commits.
+                # Otherwise the byte-identical OLD path: resolve to the first candidate only
+                # (§3 STREAMING BOUNDARY); no fallback on stream failure.
+                if model_router is not None and self._stream_resilience_enabled:
+                    first_chunk, gen = await model_router.stream_resilient(body, upstream=upstream)
+                elif model_router is not None:
                     gen = model_router.stream(body, upstream=upstream)
                 else:
                     gen = upstream.stream(body)
@@ -1271,6 +1285,11 @@ class CompletionUseCase:
             async def _wrapped() -> AsyncIterator[bytes]:
                 collected: list[bytes] = []
                 try:
+                    # Resilient path: the peeked first chunk was obtained pre-first-byte and
+                    # COMMITS the stream — yield it before draining the rest (no replay after).
+                    if first_chunk is not None:
+                        collected.append(first_chunk)
+                        yield first_chunk
                     async for chunk in gen:
                         collected.append(chunk)
                         yield chunk

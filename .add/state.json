@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "cache-controls",
+  "active_task": "streaming-resilience",
   "active_milestone": "v19",
   "tasks": {
     "retry-seam-unify": {
@@ -129,6 +129,32 @@
           }
         ]
       }
+    },
+    "streaming-resilience": {
+      "title": "Pre-first-byte streaming retry/fallback (no mid-stream replay)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T05:31:14+00:00",
+      "updated": "2026-06-15T06:10:51+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b3c497142a90f4b50904dcb0a9632c19",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/streaming_resilience.py",
+          "apps/gateway/src/gateway/proxy/application/fallback_router.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/api/deps.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/streaming_resilience/"
+        ],
+        "snapshot_md5": "15b677ee959df298c1e8394323d3b585"
+      }
     }
   },
   "milestones": {
@@ -142,7 +168,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-15T05:28:07+00:00",
+  "updated": "2026-06-15T06:10:51+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

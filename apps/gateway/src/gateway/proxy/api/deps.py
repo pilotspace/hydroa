@@ -91,6 +91,8 @@ def get_completion_use_case(
     _settings = getattr(request.app.state, "settings", None)
     _otel_enabled: bool = getattr(_settings, "otel_enabled", False) if _settings else False
     span_emitter = getattr(request.app.state, "span_emitter", None) if _otel_enabled else None
+    # Pre-first-byte streaming resilience flag (streaming-resilience v19) — default-off.
+    stream_resilience_enabled: bool = getattr(request.app.state, "stream_resilience_enabled", False)
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -99,4 +101,5 @@ def get_completion_use_case(
         response_cache,
         guardrail_evaluator,
         span_emitter,
+        stream_resilience_enabled=stream_resilience_enabled,
     )

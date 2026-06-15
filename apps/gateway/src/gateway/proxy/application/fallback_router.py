@@ -55,6 +55,7 @@ from gateway.proxy.application.routing_strategy import (
     OrderedStrategy,
     RoutingStrategy,
 )
+from gateway.proxy.application.streaming_resilience import open_resilient_stream
 from gateway.proxy.domain.errors import AllDeploymentsSaturatedError, UpstreamUnavailableError
 from gateway.proxy.domain.ports import (
     CompletionUpstream,
@@ -101,6 +102,7 @@ class FallbackModelRouter:
         load_gate: DeploymentLoadGate | None = None,
         limit_gate: DeploymentLimitGate | None = None,
         fallback_on_error: bool = False,
+        stream_resilience_enabled: bool = False,
     ) -> None:
         # upstream and model_groups kept as positional-compatible; None only for
         # test convenience (tests always pass them explicitly).
@@ -124,6 +126,10 @@ class FallbackModelRouter:
         # returned to the client after the first candidate (v6 byte-identical). True ⇒ a
         # context-window / content-policy 4xx falls over to the next candidate.
         self._fallback_on_error: bool = fallback_on_error
+        # Pre-first-byte streaming resilience (streaming-resilience v19). False (default) ⇒
+        # the sync stream() path (first candidate only) is used. True ⇒ the use case calls
+        # stream_resilient() to fall over across candidates before the first SSE byte.
+        self._stream_resilience_enabled: bool = stream_resilience_enabled
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -417,3 +423,47 @@ class FallbackModelRouter:
         primary = self._strategy_order(model_id, candidates)[0]
         rewritten: dict[str, object] = {**payload, "model": primary}
         return _upstream.stream(rewritten)
+
+    async def stream_resilient(
+        self,
+        payload: dict[str, Any],
+        upstream: CompletionUpstream | None = None,
+    ) -> tuple[bytes | None, AsyncIterator[bytes]]:
+        """Pre-first-byte resilient streaming (streaming-resilience v19).
+
+        Returns (first_chunk, rest): the use case yields first_chunk (when not None) then
+        drains rest. Fallover happens ONLY before the first chunk reaches the client:
+
+          - Alias -> strategy_order(candidates): on a pre-first-byte transport failure
+            (UpstreamUnavailableError / CircuitOpenError) fall over to the next candidate.
+          - Plain model id -> a single attempt (no same-target streaming retry — the
+            documented boundary; the retry seam stays complete()-only).
+
+        The first candidate whose first chunk is obtained COMMITS the stream; a later
+        (mid-stream) error surfaces to the caller's drain loop and is never replayed. If
+        EVERY candidate fails pre-first-byte, UpstreamUnavailableError propagates (the use
+        case maps it to 502 BEFORE the response commits).
+
+        Only invoked by the use case when stream resilience is enabled; the sync stream()
+        above remains the byte-identical default path.
+        """
+        _upstream = self._resolve_upstream(upstream)
+        alias: str = payload.get("model", "")
+
+        candidates = self._model_groups.get(alias)
+        if candidates is None:
+            attempts = [alias]  # plain model id — single attempt, no retry
+        else:
+            attempts = self._strategy_order(alias, candidates)
+
+        def _open(model_id: str) -> AsyncIterator[bytes]:
+            return _upstream.stream({**payload, "model": model_id})
+
+        def _on_fallover(from_model: str, to_model: str) -> None:
+            self._inc_counter(
+                alias=alias, from_model=from_model, to_model=to_model, outcome="stream_fallover"
+            )
+
+        return await open_resilient_stream(
+            attempts=attempts, open_stream=_open, on_fallover=_on_fallover
+        )

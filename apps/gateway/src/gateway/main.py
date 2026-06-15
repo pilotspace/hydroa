@@ -502,6 +502,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         load_gate=_load_gate,
         limit_gate=_limit_gate,
         fallback_on_error=settings.upstream_fallback_on_error,
+        stream_resilience_enabled=settings.upstream_stream_resilience_enabled,
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).
@@ -532,6 +533,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # cache_max_ttl_seconds caps any per-request Cache-Control: max-age override.
     app.state.cache_ttl_seconds = settings.cache_ttl_seconds
     app.state.cache_max_ttl_seconds = settings.cache_max_ttl_seconds
+    # Pre-first-byte streaming resilience flag — read by deps to wire CompletionUseCase.
+    app.state.stream_resilience_enabled = settings.upstream_stream_resilience_enabled
 
     # JWKS key cache — always created so tests can inject the seam regardless of
     # oidc_enabled (per-tenant DB config can be used even when oidc_enabled=False).

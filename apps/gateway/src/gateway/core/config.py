@@ -221,6 +221,12 @@ class Settings(BaseSettings):
     # opt-in (byte-identical to v6: a 4xx is returned to the client after the first candidate).
     # The existing UpstreamUnavailableError (retry-exhausted) fallover is unaffected by this knob.
     upstream_fallback_on_error: bool = Field(default=False)
+    # GATEWAY_STREAM_RESILIENCE_ENABLED — when True, an alias-routed STREAMING request whose
+    # candidate fails BEFORE the first SSE byte (transport error / circuit-open) falls over to
+    # the next deployment in its model-group (v19 streaming-resilience). Default False = opt-in
+    # (byte-identical: the first candidate only, no stream fallover). Once a byte reaches the
+    # client the stream is committed — no replay. The retry seam stays complete()-only.
+    upstream_stream_resilience_enabled: bool = Field(default=False)
 
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
