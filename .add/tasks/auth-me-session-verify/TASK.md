@@ -328,23 +328,23 @@ the client UI. Every such surface must verify (or delegate verification) before 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [SDD · open] a "UX-only" BFF endpoint that returns identity claims is a TRUST BOUNDARY: it must VERIFY
+- [SDD · folded] (v18, 2026-06-15) a "UX-only" BFF endpoint that returns identity claims is a TRUST BOUNDARY: it must VERIFY
   the session token's signature (not base64-decode an unverified payload), even when the gateway enforces
   RBAC on proxied requests — the dashboard nav/role still derives from these claims (evidence: the
   escalated /api/auth/me gap; forged-token test now 401s fail-closed).
-- [SDD · open] BFF-relay-to-the-authoritative-verifier beats local secret verification: forward the
+- [SDD · folded] (v18, 2026-06-15) BFF-relay-to-the-authoritative-verifier beats local secret verification: forward the
   cookie as `Authorization: Bearer` to the gateway's existing `GET /admin/auth/me` (HS256+iss+exp) — no
   secret sprawl into the dashboard, ONE verifier that can't drift. Reusable for any BFF-trusts-a-token
   surface (evidence: route is a relay holding no signing secret; reuses the login/oidc relay shape).
-- [TDD · open] an msw default handler must be an INITIAL handler passed to `setupServer(...)`, NEVER a
+- [TDD · folded] (v18, 2026-06-15) an msw default handler must be an INITIAL handler passed to `setupServer(...)`, NEVER a
   runtime `server.use()` in a setupFile — `afterEach(resetHandlers())` wipes runtime handlers after test
   #1, so the default vanishes and later renders leak (load-dependent "0 unloaded / N loaded"). This was
   the ROOT CAUSE of the carried v17 /api/auth/me 0-leak (evidence: moved the legacy default to initial
   handlers → 0 unhandled across the full suite, run twice).
-- [ADD · open] a server-side fetch RELAY must set `redirect: "manual"` + treat every non-200 as
+- [ADD · folded] (v18, 2026-06-15) a server-side fetch RELAY must set `redirect: "manual"` + treat every non-200 as
   fail-closed: a followed 3xx can chain to a trusted 200 from another origin (a fail-OPEN identity
   bypass) — caught by the adversarial refute-read, fixed in-scope (evidence: redirect→503 test).
-- [ADD · open] a structural source-grep guard must be PRECISE, not a bare keyword: `/SECRET/i`
+- [ADD · folded] (v18, 2026-06-15) a structural source-grep guard must be PRECISE, not a bare keyword: `/SECRET/i`
   false-positived on a comment that EXPLAINS the absence of a secret; the precise form matches
   `process.env.*(secret|key|hmac|…)` + jwt-lib imports + verify-call names (evidence: the test-precision
   fix during build; recurring "over-broad assert" smell from the v15/v17 TDD folds).

@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-15 · foundation-version: 17
+slug: ai-proxy · stage: production · updated: 2026-06-15 · foundation-version: 18
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -287,6 +287,19 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     session JWT signature before trusting its claims (with a designed-for-failure key-fetch path —
     timeout/cache/fallback — per the IO rule). The dashboard never weakens to the gateway being
     the *sole* verifier.
+- Folded from v18 (2026-06-15) — auth session hardening (DISCHARGES the v17 escalation above):
+  - SETTLED: a same-origin BFF endpoint that returns identity claims is itself a TRUST BOUNDARY — it
+    MUST verify (or delegate verification of) the session token before trusting it; "the gateway
+    enforces RBAC on proxied requests" does NOT cover a BFF endpoint that hands claims to the client UI
+    (the nav/role derives from them). `GET /api/auth/me` no longer base64-decodes an unverified payload
+    (evidence: forged-token test 401s fail-closed; v18 auth-me-session-verify).
+  - SETTLED: the verification pattern is a BFF RELAY to the authoritative verifier — forward the
+    session cookie as `Authorization: Bearer` to the gateway's existing `GET /admin/auth/me`
+    (HS256 + iss + required-claims + exp), trust ONLY a gateway 200, FAIL-CLOSED on every other path
+    (401→ERR_AUTH_INVALID_SESSION, unreachable/timeout/5xx/3xx→503 ERR_AUTH_UPSTREAM, zero claims).
+    The dashboard holds NO signing secret (no sprawl); reusable for any BFF-trusts-a-token surface.
+
+## Users (UDD) — UI/UX: design before code
 
 - Primary users & jobs: tenant **owner/admin** — provision org, issue/revoke keys,
   watch spend; tenant **developer** — call OpenAI-compatible API with a key;
@@ -475,3 +488,8 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-15 | run the vitest floor with a generous `--testTimeout` (20s) so a CPU-starved load flake (axe ≥5s, in-flight toBeDisabled windows) never reads as a regression (fold: TDD/react-hooks-strict-lint) | 3 false failures under load → 240/240 green isolated; the `make test-fast` no-DB gate plus a timeout floor is the convention | folded v17 |
 | 2026-06-15 | an adversarial refute-read catches MIS-DIAGNOSIS, not just cheating — trace every residual leak to its SOURCE file; never hand-wave a "benign late-resolve" (fold: ADD/bff-test-harness-strict-handlers) | 2 leaks labeled benign were in-file forgotten handlers in ui-ux-verify.test.tsx; the reviewer traced them → fixed to 0 | folded v17 |
 | 2026-06-15 | the v16 error→warn convention now has a worked DISCHARGE template: fix behavior-preservingly (the floor is the proof) → flip the rule to error → pin with a config-text ratchet-guard test (fold: ADD/react-hooks-strict-lint) | mirrors v17 strict-harness.test.ts; the ratchet test is config-text-only, `eslint .` 0/0 is the real gate | folded v17 |
+| 2026-06-15 | DISCHARGED the v17 escalation: a same-origin BFF endpoint returning identity claims is a TRUST BOUNDARY — it must verify (or delegate verification of) the session token, NOT base64-decode an unverified payload (fold: SDD/auth-me-session-verify) | the dashboard nav/role derives from /api/auth/me claims; a forged cookie could spoof identity in the UI even though the gateway blocks proxied access | folded v18 |
+| 2026-06-15 | the BFF verification pattern is a RELAY to the authoritative verifier: forward the cookie as `Authorization: Bearer` to the gateway's existing `GET /admin/auth/me`, trust ONLY a 200, fail-CLOSED otherwise; the dashboard holds NO signing secret (fold: SDD/auth-me-session-verify) | one verifier that can't drift + no secret sprawl; reusable for any BFF-trusts-a-token surface (HS256+iss+exp stays the gateway's job) | folded v18 |
+| 2026-06-15 | an msw default handler must be an INITIAL handler (`setupServer(...)`), NEVER a runtime `server.use()` in a setupFile — `afterEach(resetHandlers())` wipes runtime handlers after test #1 (fold: TDD/auth-me-session-verify) | this was the ROOT CAUSE of the carried v17 /api/auth/me 0-leak ("0 unloaded / N loaded"); moving it to initial handlers → 0 unhandled ×2 | folded v18 |
+| 2026-06-15 | a server-side fetch RELAY must set `redirect:"manual"` + treat every non-200 as fail-closed — a followed 3xx can chain to a trusted 200 from another origin (fail-OPEN identity bypass) (fold: ADD/auth-me-session-verify) | caught by the adversarial refute-read; fixed in-scope with a redirect→503 test; pairs with AbortSignal.timeout + fail-fast no-retry | folded v18 |
+| 2026-06-15 | a STRUCTURAL source-grep guard must be PRECISE, not a bare keyword: `/SECRET/i` false-positived on a comment EXPLAINING the absence of a secret (fold: ADD/auth-me-session-verify) | the precise form (`process.env.*(secret\|key\|hmac\|…)` + jwt-lib imports + verify-call names) still catches a real secret read without tripping on prose; recurring over-broad-assert smell | folded v18 |

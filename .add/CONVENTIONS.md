@@ -442,6 +442,23 @@ Build/harness conventions folded from v1 (2026-06-10):
           (the green floor is the proof) → flip the lint rule back to error → PIN it with a config-text
           ratchet-guard test (mirrors v17 strict-harness.test.ts). The ratchet test is config-text-only
           by design; `eslint .` 0/0 stays the real gate (evidence: react-hooks-strict-lint).
+        Test conventions folded from v18 (2026-06-15, auth session hardening):
+        - an msw default handler must be an INITIAL handler passed to `setupServer(...)`, NEVER a runtime
+          `server.use()` registered from a setupFile — `afterEach(server.resetHandlers())` wipes runtime
+          handlers after test #1, so the "default" silently vanishes and later renders leak (load-dependent
+          "0 unloaded / N loaded"). Per-test overrides via server.use STILL win (LIFO) and are restored on
+          reset. This was the ROOT CAUSE of the carried v17 /api/auth/me 0-leak (evidence: moving the legacy
+          default into tests/mocks/handlers.ts initial handlers → 0 unhandled across the full suite ×2).
+        Build/harness conventions folded from v18 (2026-06-15, auth session hardening):
+        - a server-side fetch RELAY must set `redirect: "manual"` AND treat every non-200 as fail-closed:
+          a followed 3xx can chain to a trusted 200 from an unexpected origin (a fail-OPEN identity bypass).
+          Pair it with an `AbortSignal.timeout` bound + fail-fast no-retry on an auth hot path (evidence:
+          the adversarial refute-read on auth-me-session-verify; redirect→503 test).
+        - a STRUCTURAL source-grep guard must be PRECISE, not a bare keyword: `/SECRET/i` false-positived
+          on a comment that EXPLAINED the absence of a secret. The precise form matches
+          `process.env.*(secret|key|hmac|password|token)` + jwt-lib imports + verify-call names — it still
+          catches a real secret read without tripping on prose (evidence: the test-precision fix during
+          the auth-me-session-verify build; recurring "over-broad assert" smell from the v15/v17 folds).
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config
