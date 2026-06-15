@@ -264,6 +264,9 @@ class Settings(BaseSettings):
     azure_client_secret: str = ""
     # GATEWAY_AZURE_AD_SCOPE — OAuth2 scope override (empty = cognitive-services default).
     azure_ad_scope: str = ""
+    # GATEWAY_AZURE_AD_AUTHORITY — AAD authority host for sovereign/government clouds
+    # (e.g. https://login.microsoftonline.us). Empty = public-cloud DEFAULT_AUTHORITY.
+    azure_ad_authority: str = ""
 
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.

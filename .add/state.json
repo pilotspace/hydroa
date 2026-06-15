@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "provider-secret-chain-hardening",
+  "active_task": "azure-ad-authority-config",
   "active_milestone": "v22",
   "tasks": {
     "provider-secret-chain-hardening": {
@@ -33,6 +33,28 @@
         ],
         "snapshot_md5": "f9d47935116c19ed3be32c2f1ae4fae0"
       }
+    },
+    "azure-ad-authority-config": {
+      "title": "GATEWAY_AZURE_AD_AUTHORITY env-configurable (resolve_azure_ad_config carries authority)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v22",
+      "depends_on": [],
+      "created": "2026-06-15T14:21:23+00:00",
+      "updated": "2026-06-15T14:25:28+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "37919f48231eaa5484ab9b6d0c356f65",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/azure_ad.py",
+          "apps/gateway/tests/azure_ad_authority/"
+        ],
+        "snapshot_md5": "2f92b6bb9598f27f5ed8df1aee077854"
+      }
     }
   },
   "milestones": {
@@ -46,7 +68,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-15T14:18:47+00:00",
+  "updated": "2026-06-15T14:25:28+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

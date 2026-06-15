@@ -68,11 +68,13 @@ def resolve_azure_ad_config(settings: object) -> AzureADConfig | None:
     if not (tenant and client and secret):
         return None
     scope: str = getattr(settings, "azure_ad_scope", "") or DEFAULT_SCOPE
+    authority: str = getattr(settings, "azure_ad_authority", "") or DEFAULT_AUTHORITY
     return AzureADConfig(
         tenant_id=tenant,
         client_id=client,
         client_secret=secret,
         scope=scope,
+        authority=authority,
     )
 
 
