@@ -156,7 +156,7 @@ async def execute_with_retry(
         except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.NetworkError) as exc:
             # Terminal transport — read/write may have partially executed; never retry.
             breaker.on_upstream_error()
-            raise UpstreamUnavailableError(str(exc)) from exc
+            raise UpstreamUnavailableError(str(exc)) from None
         else:
             status = resp.status_code
             reason = policy.classify_status(status)
@@ -180,7 +180,7 @@ async def execute_with_retry(
         if attempt >= max_retries:
             _count(reason, "exhausted")
             if terminal_exc is not None:
-                raise UpstreamUnavailableError(str(terminal_exc)) from terminal_exc
+                raise UpstreamUnavailableError(str(terminal_exc)) from None
             raise UpstreamUnavailableError(f"Upstream returned {status}")
 
         # A retry will follow — compute its backoff and check it against the deadline.
@@ -193,7 +193,7 @@ async def execute_with_retry(
         if deadline_s > 0 and (time.monotonic() - start) + delay > deadline_s:
             _count(reason, "deadline_exceeded")
             if terminal_exc is not None:
-                raise UpstreamUnavailableError(str(terminal_exc)) from terminal_exc
+                raise UpstreamUnavailableError(str(terminal_exc)) from None
             raise UpstreamUnavailableError(f"Upstream retry deadline exceeded after {reason}")
 
         _count(reason, "retried")

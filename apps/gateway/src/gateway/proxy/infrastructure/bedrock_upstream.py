@@ -571,7 +571,7 @@ class BedrockCompletionUpstream:
 
             except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
-                raise UpstreamUnavailableError(str(exc)) from exc
+                raise UpstreamUnavailableError(str(exc)) from None
 
             events = [
                 (h.get(":event-type", ""), json.loads(p)) for h, p in decode_event_stream(buf)

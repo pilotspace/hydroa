@@ -190,7 +190,7 @@ class BedrockEmbeddingsProvider:
                 )
             except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
-                raise UpstreamUnavailableError(str(exc)) from exc
+                raise UpstreamUnavailableError(str(exc)) from None
 
             if resp.status_code >= 400:
                 # Fail-fast: return immediately on the first non-2xx invoke call.

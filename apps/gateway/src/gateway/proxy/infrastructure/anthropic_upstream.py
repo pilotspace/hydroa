@@ -655,7 +655,7 @@ class AnthropicCompletionUpstream:
 
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
-                raise UpstreamUnavailableError(str(exc)) from exc
+                raise UpstreamUnavailableError(str(exc)) from None
 
             # Translate the buffered event sequence → OpenAI SSE chunk bytes
             for chunk in _translate_anthropic_sse(events):

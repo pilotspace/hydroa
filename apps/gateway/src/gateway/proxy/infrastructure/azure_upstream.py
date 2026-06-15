@@ -157,7 +157,7 @@ class AzureCompletionUpstream:
                         yield chunk
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
-                raise UpstreamUnavailableError(str(exc)) from exc
+                raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()
 
