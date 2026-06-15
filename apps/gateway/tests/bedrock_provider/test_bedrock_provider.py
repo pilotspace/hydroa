@@ -436,7 +436,11 @@ async def test_session_token_signed() -> None:
 
 async def test_protocol_and_stream_stub() -> None:
     """isinstance(adapter, CompletionUpstream) must be True.
-    Calling adapter.stream({...}) or iterating it must raise NotImplementedError."""
+
+    The NotImplementedError stub was superseded by v20 task 3 which implements
+    stream() for real.  This test retains only the Protocol structural check;
+    the full streaming contract lives in tests/bedrock_streaming/.
+    """
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_CONVERSE_200)
@@ -447,15 +451,6 @@ async def test_protocol_and_stream_stub() -> None:
     assert isinstance(adapter, CompletionUpstream), (
         "BedrockCompletionUpstream must satisfy the CompletionUpstream Protocol"
     )
-
-    # stream() must raise NotImplementedError (v20 task 3 implements it)
-    with pytest.raises(NotImplementedError):
-        # stream() may raise immediately or when iterated
-        result = adapter.stream(
-            {"model": _MODEL_ID, "messages": [{"role": "user", "content": "x"}]}
-        )
-        # If it returned an async-generator, iterate it
-        await _drain(result)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

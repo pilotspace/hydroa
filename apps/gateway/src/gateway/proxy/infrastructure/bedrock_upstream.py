@@ -24,12 +24,14 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.infrastructure.bedrock_eventstream import decode_event_stream
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
@@ -178,6 +180,90 @@ def _converse_to_openai(resp_json: dict[str, Any], *, model_id: str) -> dict[str
     }
 
 
+def _converse_stream_to_openai_sse(
+    events: list[tuple[str, dict[str, Any]]],
+    *,
+    model_id: str,
+) -> Iterator[bytes]:
+    """Translate a list of (event_type, payload_dict) ConverseStream events → OpenAI SSE bytes.
+
+    Yields ``b"data: " + json_chunk + b"\\n\\n"`` for each meaningful event.
+    After the loop, ALWAYS emits the terminal frame (finish_reason + usage) then
+    ``b"data: [DONE]\\n\\n"``.
+
+    Args:
+        events:   [(event_type, payload_dict)] in upstream wire order.
+        model_id: The Bedrock model ID to embed in each chunk's "model" field.
+
+    Yields:
+        OpenAI SSE byte frames, one per meaningful event, then the terminal frame,
+        then the [DONE] sentinel.
+    """
+    stop_reason: str | None = None
+    usage: dict[str, Any] = {}
+    created = int(time.time())
+
+    base: dict[str, Any] = {
+        "id": "",
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model_id,
+    }
+
+    for event_type, payload in events:
+        if event_type == "messageStart":
+            chunk = {
+                **base,
+                "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+            }
+            yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+
+        elif event_type == "contentBlockDelta":
+            text = payload.get("delta", {}).get("text")
+            if text is not None:
+                chunk = {
+                    **base,
+                    "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
+                }
+                yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+
+        elif event_type == "contentBlockStop":
+            # Skip — no frame emitted
+            pass
+
+        elif event_type == "messageStop":
+            stop_reason = payload.get("stopReason")
+
+        elif event_type == "metadata":
+            usage = payload.get("usage", {})
+
+    # Terminal frame — always emitted, even when the event list is empty
+    input_tokens: int = usage.get("inputTokens", 0)
+    output_tokens: int = usage.get("outputTokens", 0)
+    total_tokens_raw = usage.get("totalTokens")
+    total_tokens: int = (
+        int(total_tokens_raw) if total_tokens_raw is not None else input_tokens + output_tokens
+    )
+
+    terminal: dict[str, Any] = {
+        **base,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {},
+                "finish_reason": _map_finish_reason(stop_reason),
+            }
+        ],
+        "usage": {
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": total_tokens,
+        },
+    }
+    yield b"data: " + json.dumps(terminal).encode() + b"\n\n"
+    yield b"data: [DONE]\n\n"
+
+
 def _bedrock_error_to_openai(resp_json: dict[str, Any], status: int) -> dict[str, Any]:
     """Translate a Bedrock error body → OpenAI error envelope.
 
@@ -310,8 +396,65 @@ class BedrockCompletionUpstream:
         )
 
     def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
-        """Bedrock streaming arrives in v20 task 3.
+        """Return an async generator that yields OpenAI SSE chunk bytes.
 
-        Raises NotImplementedError immediately — do NOT iterate the result.
+        The circuit breaker is checked before the stream opens.  The full
+        ConverseStream response body is buffered once (AWS binary EventStream
+        over a single HTTP response), then decoded and translated to OpenAI SSE.
+
+        The status check + body buffering happen BEFORE the first ``yield``,
+        so a 5xx raises UpstreamUnavailableError with zero chunks emitted (BS7).
+
+        Uses ``content=body_bytes`` (raw bytes) so the signed x-amz-content-sha256
+        matches the wire body exactly — httpx must NOT re-encode the body.
+
+        SECURITY: the AWS secret_access_key is NEVER logged or echoed.
         """
-        raise NotImplementedError("Bedrock streaming arrives in v20 task 3")
+        self._breaker.guard()
+
+        async def _gen() -> AsyncIterator[bytes]:
+            model_id, converse_body = _openai_to_converse_request(
+                payload, default_max_tokens=self._default_max_tokens
+            )
+            # Raw model_id in the path — same URL handed to sign_request AND
+            # client.stream so the signed canonical URI and the wire target
+            # stay in lock-step (v20 task-2 %3A rule: no double-encode).
+            url = f"{self._endpoint}/model/{model_id}/converse-stream"
+            body_bytes = json.dumps(converse_body, separators=(",", ":")).encode("utf-8")
+
+            try:
+                sig = sign_request(
+                    method="POST",
+                    url=url,
+                    body=body_bytes,
+                    service="bedrock",
+                    region=self._region,
+                    credentials=self._credentials,
+                    timestamp=datetime.now(UTC),
+                )
+                headers = {**sig, "content-type": "application/json"}
+
+                async with self._client.stream(
+                    "POST", url, content=body_bytes, headers=headers
+                ) as resp:
+                    if resp.status_code >= 400:
+                        self._breaker.on_upstream_error()
+                        raise UpstreamUnavailableError(
+                            f"Upstream returned {resp.status_code} on stream"
+                        )
+                    # Buffer the full binary EventStream body before decoding
+                    buf = b"".join([c async for c in resp.aiter_bytes()])
+
+                self._breaker.record_success()
+
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
+                self._breaker.on_upstream_error()
+                raise UpstreamUnavailableError(str(exc)) from exc
+
+            events = [
+                (h.get(":event-type", ""), json.loads(p)) for h, p in decode_event_stream(buf)
+            ]
+            for frame in _converse_stream_to_openai_sse(events, model_id=model_id):
+                yield frame
+
+        return _gen()
