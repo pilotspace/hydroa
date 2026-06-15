@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "streaming-resilience",
+  "active_task": "semantic-cache",
   "active_milestone": "v19",
   "tasks": {
     "retry-seam-unify": {
@@ -155,6 +155,33 @@
         ],
         "snapshot_md5": "15b677ee959df298c1e8394323d3b585"
       }
+    },
+    "semantic-cache": {
+      "title": "Embedding-similarity vector cache \u2014 near-duplicate prompts hit above a cosine threshold (v19 task 5)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v19",
+      "depends_on": [],
+      "created": "2026-06-15T06:20:48+00:00",
+      "updated": "2026-06-15T06:57:54+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c5a1023cf05b37329189837accfbee36",
+        "tests": {
+          "apps/gateway/tests/vector_cache/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/vector_cache/conftest.py": "e309c3680a12316d8498f882203e722b",
+          "apps/gateway/tests/vector_cache/test_cosine.py": "aa1a75b55475e7fb6972692e5acafa14",
+          "apps/gateway/tests/vector_cache/test_embedding_adapter.py": "33efdf3ba5597ddbe31a6e1dd3eb34f5",
+          "apps/gateway/tests/vector_cache/test_redis_vector_cache.py": "50efb6a5fb165c5d2c6f552bea064a81",
+          "apps/gateway/tests/vector_cache/test_use_case_wiring.py": "59f89eaa82390aca20da6f08dac532be"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/vector_cache.py"
+        ],
+        "snapshot_md5": "d3e0c313186e08c1cdeef564a11f4748"
+      }
     }
   },
   "milestones": {
@@ -168,7 +195,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-15T06:10:51+00:00",
+  "updated": "2026-06-15T06:57:54+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

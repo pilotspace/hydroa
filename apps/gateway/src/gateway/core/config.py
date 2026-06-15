@@ -133,6 +133,24 @@ class Settings(BaseSettings):
     # Cap for a per-request Cache-Control: max-age override (cache-controls task)
     cache_max_ttl_seconds: int = Field(default=86400)  # GATEWAY_CACHE_MAX_TTL_SECONDS
 
+    # ── Embedding-similarity "vector" cache (semantic-cache task, v19) ─────────
+    # The THIRD lookup layer (after exact + normalization): a near-duplicate prompt whose
+    # embedding is within GATEWAY_VECTOR_CACHE_THRESHOLD cosine of a cached prompt serves a
+    # cached response. Default-off ⇒ byte-identical. Per-tenant + per-model isolated.
+    # env: GATEWAY_VECTOR_CACHE_ENABLED
+    vector_cache_enabled: bool = Field(default=False)
+    # Cosine hit threshold (0..1). High default = conservative (near-identical only); a false
+    # hit serves a wrong-but-plausible answer, strictly worse than a miss. Operator-tunable.
+    # env: GATEWAY_VECTOR_CACHE_THRESHOLD
+    vector_cache_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
+    # Embedding model used to vectorize prompts (routed through the gateway's own embedding
+    # upstream). Required (non-empty) to activate; the embed call is internal, never billed.
+    # env: GATEWAY_VECTOR_CACHE_EMBED_MODEL
+    vector_cache_embed_model: str = ""
+    # Upper bound on candidate vectors scanned per (tenant, model) lookup — bounds latency.
+    # env: GATEWAY_VECTOR_CACHE_MAX_CANDIDATES
+    vector_cache_max_candidates: int = Field(default=100, ge=1, le=1000)
+
     # ── Alerting / health (health-alerting task) ──────────────────────────────
     alert_webhook_url: str = ""  # GATEWAY_ALERT_WEBHOOK_URL (empty = disabled)
     alert_retry_max: int = 3  # GATEWAY_ALERT_RETRY_MAX

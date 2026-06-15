@@ -61,6 +61,7 @@ from gateway.proxy.domain.ports import (
     ResponseCache,
     UsageRecorder,
     UsageRecordExtras,
+    VectorCache,
 )
 from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
 from gateway.rate_limits.domain.errors import RateLimitExceededError
@@ -382,6 +383,7 @@ class CompletionUseCase:
         guardrail_evaluator: GuardrailEvaluator | None = None,
         span_emitter: OtelSpanEmitter | None = None,
         stream_resilience_enabled: bool = False,
+        vector_cache: VectorCache | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -397,6 +399,9 @@ class CompletionUseCase:
         # model_router.stream_resilient so a pre-first-byte failure falls over to the next
         # candidate before StreamingResponse commits.
         self._stream_resilience_enabled = stream_resilience_enabled
+        # Embedding-similarity "vector" cache (semantic-cache v19) — the THIRD lookup layer.
+        # None (default) ⇒ feature OFF ⇒ complete() is byte-identical (no vector lookup, no embed).
+        self._vector_cache = vector_cache
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -943,7 +948,58 @@ class CompletionUseCase:
                                         "treating as MISS",
                                         extra={"sem_key": sem_key, "exact_key": exact_key_str},
                                     )
-                        # MISS (exact miss + semantic miss/disabled)
+                        # Step 4.5c: exact + normalization miss — try the embedding-similarity
+                        # (vector) layer when wired. A hit takes the SAME billing/metric/PII/TPM
+                        # path as the exact/semantic hit. The internal embed call is NEVER billed.
+                        if self._vector_cache is not None:
+                            vec_body = await self._vector_cache.lookup(
+                                tenant_id=str(authz.tenant_id), model=model_id, body=body
+                            )
+                            if vec_body is not None:
+                                x_cache = "vector_hit"
+                                _cached = True
+                                if metrics_registry is not None:
+                                    try:
+                                        metrics_registry.cache_events_total.labels(
+                                            result="vector_hit"
+                                        ).inc()
+                                    except Exception:  # noqa: S110
+                                        pass
+                                if guardrail_evaluator is not None and guardrail_configs:
+                                    if hasattr(guardrail_evaluator, "evaluate_post"):
+                                        try:
+                                            vec_body = await guardrail_evaluator.evaluate_post(
+                                                vec_body, guardrail_configs
+                                            )
+                                        except Exception as _exc:
+                                            _log.warning(
+                                                "guardrail evaluate_post raised on"
+                                                " vector HIT (fail-OPEN)",
+                                                exc_info=_exc,
+                                            )
+                                vec_usage_raw = vec_body.get("usage")
+                                vec_usage: dict[str, Any] | None = (
+                                    vec_usage_raw if isinstance(vec_usage_raw, dict) else None
+                                )
+                                _fire_record_cached(
+                                    usage_recorder,
+                                    tenant_id=authz.tenant_id,
+                                    key_id=authz.key_id,
+                                    model=model_id,
+                                    usage=vec_usage,
+                                    team_id=authz.team_id,
+                                )
+                                if authz.tpm_limit is not None and vec_usage is not None:
+                                    total_tokens = vec_usage.get("total_tokens")
+                                    if isinstance(total_tokens, int) and total_tokens > 0:
+                                        _fire_record_tpm(
+                                            self._rate_limiter,
+                                            key_id=authz.key_id,
+                                            tokens=total_tokens,
+                                        )
+                                _status_code = 200
+                                return 200, vec_body, x_cache
+                        # MISS (exact miss + semantic miss/disabled + vector miss/off)
                         x_cache = "miss"
                         if metrics_registry is not None:
                             try:
@@ -1069,6 +1125,22 @@ class CompletionUseCase:
                         )
                     )
                     _rtask.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+                # Vector (embedding-similarity) layer store on a non-bypass MISS (semantic-cache):
+                # register the served prompt's embedding pointing at the exact key just stored.
+                # Fire-and-forget; store() is fail-safe (swallows all errors → no-op). The embed
+                # call inside store() is internal — never billed to the served request.
+                if self._vector_cache is not None and not _is_bypass:
+                    _vtask = asyncio.ensure_future(
+                        self._vector_cache.store(
+                            tenant_id=str(authz.tenant_id),
+                            model=model_id,
+                            body=body,
+                            response_body=response_body,
+                            ttl=cache_ttl_seconds,
+                        )
+                    )
+                    _vtask.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             # Step 5.5: Post-call guardrails (non-streaming only, on 200 response body).
             # Applied AFTER cache store so the cached body remains unmasked.

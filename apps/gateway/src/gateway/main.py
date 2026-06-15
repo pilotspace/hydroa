@@ -535,6 +535,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.cache_max_ttl_seconds = settings.cache_max_ttl_seconds
     # Pre-first-byte streaming resilience flag — read by deps to wire CompletionUseCase.
     app.state.stream_resilience_enabled = settings.upstream_stream_resilience_enabled
+    # Embedding-similarity "vector" cache knobs (semantic-cache v19) — read by deps to wire
+    # the RedisVectorCache + its embedding adapter. Default-off ⇒ deps wires None ⇒ byte-identical.
+    app.state.vector_cache_enabled = settings.vector_cache_enabled
+    app.state.vector_cache_threshold = settings.vector_cache_threshold
+    app.state.vector_cache_embed_model = settings.vector_cache_embed_model
+    app.state.vector_cache_max_candidates = settings.vector_cache_max_candidates
 
     # JWKS key cache — always created so tests can inject the seam regardless of
     # oidc_enabled (per-tenant DB config can be used even when oidc_enabled=False).

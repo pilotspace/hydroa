@@ -157,6 +157,35 @@ class ResponseCache(Protocol):
 
 
 @runtime_checkable
+class VectorCache(Protocol):
+    """Domain port for the embedding-similarity ("vector") response cache (semantic-cache task §3).
+
+    The third lookup layer (after exact + normalization). lookup() returns a cached body when a
+    near-duplicate prompt's embedding is within the configured cosine threshold; store() registers
+    a served response's prompt embedding. Both are fail-safe: lookup → None and store → no-op on
+    any failure (the layer can never fail the served request).
+    """
+
+    async def lookup(
+        self, *, tenant_id: str, model: str, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Return the cached body for a near-duplicate prompt, or None on miss/failure."""
+        ...
+
+    async def store(
+        self,
+        *,
+        tenant_id: str,
+        model: str,
+        body: dict[str, Any],
+        response_body: dict[str, Any],
+        ttl: int,
+    ) -> None:
+        """Register the served prompt's embedding pointing at the exact body. No-op on failure."""
+        ...
+
+
+@runtime_checkable
 class GuardrailEvaluator(Protocol):
     """Evaluate guardrails on a request (pre-call) and response (post-call).
 
@@ -385,4 +414,5 @@ __all__ = [
     "UpstreamProvider",
     "UsageRecordExtras",
     "UsageRecorder",
+    "VectorCache",
 ]
