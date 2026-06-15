@@ -33,6 +33,7 @@ _UPSTREAM_KEY_ENV_VARS: Final[tuple[str, ...]] = (
     "GATEWAY_GOOGLE_API_KEY",
     "GATEWAY_BEDROCK_ACCESS_KEY_ID",
     "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
+    "GATEWAY_AZURE_API_KEY",
 )
 
 
@@ -238,6 +239,21 @@ class Settings(BaseSettings):
     # GATEWAY_BEDROCK_ENDPOINT_URL — override endpoint for tests/e2e overlays.
     # Empty = use the default regional Bedrock endpoint.
     bedrock_endpoint_url: str = ""
+
+    # ── Azure OpenAI direct provider (azure-auth-routing task) ────────────────
+    # GATEWAY_AZURE_API_KEY — Azure OpenAI api-key; empty = Azure provider absent.
+    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
+    # labels/span attributes/URLs/cache keys.
+    azure_api_key: str = ""
+    # GATEWAY_AZURE_ENDPOINT — resource endpoint, e.g. "https://r.openai.azure.com".
+    # Empty (with or without a key) = Azure provider cleanly disabled (opt-in).
+    azure_endpoint: str = ""
+    # GATEWAY_AZURE_API_VERSION — required api-version query param on every call.
+    # Defaults to a GA-stable version; operator-overridable per Azure resource.
+    azure_api_version: str = "2024-10-21"
+    # GATEWAY_AZURE_DEPLOYMENT_MAP — JSON object mapping client model -> Azure
+    # deployment name. Empty = identity routing (model name == deployment name).
+    azure_deployment_map: dict[str, str] = Field(default_factory=dict)
 
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.
