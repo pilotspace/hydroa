@@ -15,9 +15,7 @@
  *   test_bff_login_gateway_401_no_cookie
  *   test_bff_signup_happy_sets_cookie_redirects
  *   test_bff_logout_clears_cookie
- *   test_bff_me_returns_decoded_claims
- *   test_bff_me_absent_cookie_401
- *   test_bff_me_malformed_jwt_401
+ *   (GET /api/auth/me cases moved to auth-me-verify.test.ts — v18 relay verifier)
  *   test_bff_proxy_forwards_bearer_returns_upstream
  *   test_bff_proxy_absent_cookie_401
  *   test_bff_proxy_upstream_401_clears_cookie
@@ -37,7 +35,6 @@ import { VALID_SESSION_JWT } from "./mocks/handlers";
 import { POST as loginHandler } from "@/app/api/auth/login/route";
 import { POST as signupHandler } from "@/app/api/auth/signup/route";
 import { POST as logoutHandler } from "@/app/api/auth/logout/route";
-import { GET as meHandler } from "@/app/api/auth/me/route";
 import { GET as proxyGet, DELETE as proxyDelete } from "@/app/api/gw/[...path]/route";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -241,72 +238,10 @@ describe("POST /api/auth/logout", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-
-describe("GET /api/auth/me", () => {
-  /**
-   * TEST 5 — test_bff_me_returns_decoded_claims
-   * Scenario: /api/auth/me — returns decoded claims, no token
-   */
-  it("test_bff_me_returns_decoded_claims", async () => {
-    // Arrange: request with valid session cookie
-    const req = requestWithCookie(
-      "http://localhost:3000/api/auth/me",
-      "GET",
-      VALID_SESSION_JWT
-    );
-
-    // Act
-    const res = await meHandler(req);
-
-    // Assert
-    expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
-    expect(body.role).toBe("owner");
-    expect(body.email).toBe("ada@acme.io");
-    expect(typeof body.exp).toBe("number");
-
-    // Raw JWT must NOT appear in the response body
-    expect(JSON.stringify(body)).not.toContain(VALID_SESSION_JWT);
-  });
-
-  /**
-   * TEST 6 — test_bff_me_absent_cookie_401
-   * Scenario: /api/auth/me — absent cookie returns 401
-   */
-  it("test_bff_me_absent_cookie_401", async () => {
-    // Arrange: request with NO cookie
-    const req = new NextRequest("http://localhost:3000/api/auth/me", { method: "GET" });
-
-    // Act
-    const res = await meHandler(req);
-
-    // Assert
-    expect(res.status).toBe(401);
-    const body = await res.json() as Record<string, unknown>;
-    expect(body.code).toBe("ERR_AUTH_NO_SESSION");
-  });
-
-  /**
-   * TEST 7 — test_bff_me_malformed_jwt_401
-   * Scenario: /api/auth/me — malformed JWT payload returns 401
-   */
-  it("test_bff_me_malformed_jwt_401", async () => {
-    // Arrange: cookie with a structurally wrong JWT (cannot base64-decode payload)
-    const req = requestWithCookie(
-      "http://localhost:3000/api/auth/me",
-      "GET",
-      "not.a.validjwt!!!"
-    );
-
-    // Act
-    const res = await meHandler(req);
-
-    // Assert
-    expect(res.status).toBe(401);
-    const body = await res.json() as Record<string, unknown>;
-    expect(body.code).toBe("ERR_AUTH_NO_SESSION");
-  });
-});
+// GET /api/auth/me coverage moved to tests-bff/auth-me-verify.test.ts (v18):
+// the route is now a gateway-relay VERIFIER (forwards Bearer → GET /admin/auth/me,
+// fail-closed 401/503, exp:null), not a local base64-decoder. The old decode-only
+// cases here tested REMOVED behavior, so they are superseded by the relay suite.
 
 // ─────────────────────────────────────────────────────────────────────────────
 

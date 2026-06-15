@@ -8,6 +8,7 @@
 import { http, HttpResponse } from "msw";
 
 const BASE = "http://gateway.test";
+const APP = "http://localhost:3000";
 
 /** A minimal but structurally valid JWT.
  *  header.payload.signature where payload = { sub: "u1", exp: far-future }
@@ -29,6 +30,22 @@ export const VALID_JWT = [
 
 export const defaultHandlers = [
   // ── auth ──────────────────────────────────────────────────────────────────
+
+  // Same-origin BFF identity default (v18). MUST be an INITIAL handler (not a
+  // runtime server.use) so afterEach resetHandlers() PRESERVES it — otherwise it
+  // is wiped after test #1 and later useCurrentUser renders leak an unhandled
+  // /api/auth/me (the carried v17 0-leak, load-dependent). Defaults to role
+  // "member"; tests needing "owner" override via server.use (LIFO precedence).
+  // exp:null mirrors the hardened relay route's stable shape (no consumer reads it).
+  http.get(`${APP}/api/auth/me`, () =>
+    HttpResponse.json({
+      user_id: "00000000-0000-0000-0000-000000000001",
+      tenant_id: "00000000-0000-0000-0000-000000000099",
+      email: "ada@acme.io",
+      role: "member",
+      exp: null,
+    })
+  ),
 
   http.post(`${BASE}/admin/auth/signup`, () =>
     HttpResponse.json(

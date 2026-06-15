@@ -112,7 +112,9 @@ export const bffHandlers = [
       tenant_id: "00000000-0000-0000-0000-000000000099",
       email: "ada@acme.io",
       role: "owner",
-      exp: Math.floor(Date.now() / 1000) + 86400,
+      // exp:null mirrors the hardened relay route's stable shape (the gateway
+      // enforces expiry; no consumer reads exp) — no mock/contract drift.
+      exp: null,
     })
   ),
 

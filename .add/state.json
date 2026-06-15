@@ -1,12 +1,47 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
-  "tasks": {},
-  "milestones": {},
+  "active_task": "auth-me-session-verify",
+  "active_milestone": "v18",
+  "tasks": {
+    "auth-me-session-verify": {
+      "title": "BFF verifies session JWT via gateway relay + true 0-leak harness",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v18",
+      "depends_on": [],
+      "created": "2026-06-15T01:50:14+00:00",
+      "updated": "2026-06-15T02:22:36+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f1d0fbed6b6988eaceb1cedce0924a19",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/api/auth/me/route.ts",
+          "apps/dashboard/tests-bff/auth-me-verify.test.ts",
+          "apps/dashboard/tests-bff/route-handlers.test.ts",
+          "apps/dashboard/tests-bff/mocks/handlers.ts",
+          "apps/dashboard/tests/mocks/handlers.ts",
+          "apps/dashboard/test-support/legacy-bff-compat.ts"
+        ],
+        "snapshot_md5": "ea562f15c2cb8b1030ed5b1d20b66122"
+      }
+    }
+  },
+  "milestones": {
+    "v18": {
+      "title": "Auth session hardening",
+      "goal": "the dashboard BFF verifies the session JWT before trusting any identity claim \u2014 delegating to the gateway's authoritative GET /admin/auth/me (no secret sprawl) \u2014 and the test harness reaches a true 0 unhandled-request leak, closing the carried v17 auth/me follow-ups with zero behavioral regression",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-15T01:50:10+00:00",
+      "updated": "2026-06-15T01:50:10+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-15T01:44:49+00:00",
+  "updated": "2026-06-15T02:22:36+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
