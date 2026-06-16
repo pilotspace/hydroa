@@ -70,7 +70,7 @@ from gateway.proxy.domain.ports import (
     VectorCache,
 )
 from gateway.proxy.domain.provider_credentials import (
-    BYOK_BEARER_PROVIDERS,
+    BYOK_PROVIDERS,
     ProviderKeyMissing,
 )
 from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
@@ -393,15 +393,15 @@ async def resolve_provider_credential(
     caller MUST call ``reset_provider_credential(token)`` in a ``finally`` — or ``None``
     when resolution is SKIPPED (no resolver wired, or a still-env-bound provider).
 
-    STAGED gate: resolves ONLY for ``BYOK_BEARER_PROVIDERS`` (the providers converted in
-    task 2). Bedrock/Azure are skipped (return None) so their env-bound adapters keep
-    authenticating until task 3 — never a 402 for a still-env-bound provider.
+    Resolves for ALL six providers in ``BYOK_PROVIDERS`` (task-3 dynamic-auth-byok
+    extends the task-2 Bearer-only set to include bedrock and azure). Returns ``None``
+    only when the resolver is not wired (no credential seam configured).
 
     Raises:
         ProblemError(402, ERR_PROVIDER_KEY_MISSING): the tenant has no enabled credential
-            for a CONVERTED provider (absent/disabled/None/resolver-timeout). Fail-closed.
+            for the requested provider (absent/disabled/None/resolver-timeout). Fail-closed.
     """
-    if resolver is None or provider not in BYOK_BEARER_PROVIDERS:
+    if resolver is None or provider not in BYOK_PROVIDERS:
         return None
     try:
         cred = await resolver.resolve(tenant_id, provider)

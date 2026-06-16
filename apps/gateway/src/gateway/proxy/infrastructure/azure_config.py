@@ -58,28 +58,4 @@ class AzureConfig:
         return f"{base}/openai/deployments/{quoted}/{op}?api-version={self.api_version}"
 
 
-def resolve_azure_config(settings: object) -> AzureConfig | None:
-    """Return an AzureConfig iff both ``azure_api_key`` and ``azure_endpoint`` are truthy.
-
-    Returns None otherwise (opt-in; partial config silently disables Azure — byte-identical
-    to pre-Azure behavior, mirroring resolve_aws_credentials). ``api_version`` falls back to
-    DEFAULT_API_VERSION; ``deployment_map`` defaults to {} (identity routing).
-    """
-    api_key: str = getattr(settings, "azure_api_key", "") or ""
-    endpoint: str = getattr(settings, "azure_endpoint", "") or ""
-    if not (api_key and endpoint):
-        return None
-
-    api_version: str = getattr(settings, "azure_api_version", "") or DEFAULT_API_VERSION
-    raw_map = getattr(settings, "azure_deployment_map", None) or {}
-    deployment_map: dict[str, str] = dict(raw_map)
-
-    return AzureConfig(
-        api_key=api_key,
-        endpoint=endpoint,
-        api_version=api_version,
-        deployment_map=deployment_map,
-    )
-
-
-__all__ = ["DEFAULT_API_VERSION", "AzureConfig", "resolve_azure_config"]
+__all__ = ["DEFAULT_API_VERSION", "AzureConfig"]

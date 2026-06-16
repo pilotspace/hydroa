@@ -176,7 +176,12 @@ def min_settings() -> Any:
 
 @pytest.fixture
 def bedrock_settings() -> Any:
-    """Settings with Bedrock env credentials configured (Bedrock env path stays for task 3)."""
+    """Minimal Settings for bedrock wiring tests.
+
+    v25 task-3: bedrock_access_key_id / bedrock_secret_access_key fields are DELETED
+    from Settings (§6 env-secret removal). The fixture no longer passes those fields —
+    bedrock is now registered unconditionally without env creds.
+    """
     from gateway.core.config import Settings
 
     return Settings(
@@ -184,8 +189,7 @@ def bedrock_settings() -> Any:
         jwt_secret="test-secret-not-for-production-0123456789",
         redis_url="redis://localhost:6380/9",
         environment="test",
-        bedrock_access_key_id="AKIAEXAMPLE123",
-        bedrock_secret_access_key="bedrock-secret-key-value",  # noqa: S106
+        # No bedrock_access_key_id / bedrock_secret_access_key — fields removed in task-3.
         bedrock_region="us-east-1",
     )
 

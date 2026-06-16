@@ -508,65 +508,122 @@ def test_bearer_env_removed_boots_clean(app_no_db: Any) -> None:
 
 
 # ===========================================================================
-# §2 Scenario 7 / §4 test 9
-# test_bedrock_azure_unchanged_staged
+# §2 Scenario 7 / §4 test 9 — INVERTED by task-3 §3 contract (supersedes task-2 staged-skip)
+# test_bedrock_azure_resolve (was: test_bedrock_azure_unchanged_staged)
 # ===========================================================================
 
 
-def test_bedrock_azure_unchanged_staged(bedrock_settings: Any) -> None:
-    """Bedrock/Azure remain on the env path in task 2 (staged; task 3 converts them).
+def test_bedrock_azure_resolve() -> None:
+    """Task-3 §3 contract supersedes task-2 staged-skip: bedrock and azure NOW resolve.
 
-    Asserts:
-    - With bedrock env credentials configured, the Bedrock adapter is registered in
-      app.state.chat_adapters under the "bedrock" key.
-    - A request dispatched to a bedrock model is NOT misrouted to the openrouter default
-      adapter (the ProviderAwareCompletionUpstream's fail-safe fall-through).
-    - The Bedrock adapter still uses env-bound SigV4 auth (self._credentials), not the
-      per-tenant contextvar.
+    Asserts (post-task-3 BUILD):
+    - create_app() with NO env creds still registers both bedrock and azure adapters
+      in app.state.chat_adapters (unconditional wiring — no env guard).
+    - resolve_provider_credential is CONSULTED for 'bedrock' and 'azure'
+      (BYOK_PROVIDERS now includes both; the resolver is called, not skipped).
+    - The contextvar is set after a successful resolve (adapter sees the credential).
 
-    RIGHT-REASON RED: The test imports CachedTenantCredentialResolver to assert it is NOT
-    used by the Bedrock adapter; that import fails with ImportError since the module doesn't
-    exist. Once built, the assertion that Bedrock is in chat_adapters passes only if Bedrock
-    env registration was not accidentally removed by the BUILD.
+    RIGHT-REASON RED: BYOK_BEARER_PROVIDERS still excludes bedrock/azure; the
+    wiring is still env-gated so create_app() without creds leaves both absent.
+
+    Docstring note: task-3 frozen contract (dynamic-auth-byok, v25) supersedes the
+    task-2 staged-skip assertion. The resolver IS now consulted for bedrock and azure.
     """
-    # Import the resolver to assert Bedrock bypasses it (this is the red trigger
-    # BEFORE build, and becomes a correct-wiring assertion after build).
-    from gateway.proxy.infrastructure.cached_tenant_credential_resolver import (  # type: ignore[import]
-        CachedTenantCredentialResolver,
-    )
-    from gateway.main import create_app
+    import uuid
+
+    from gateway.proxy.application.use_cases import resolve_provider_credential
+    from gateway.proxy.domain.provider_credentials import BedrockCredential, AzureCredential
     from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
+    from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
+    from gateway.main import create_app
+    from gateway.core.config import Settings
 
-    app = create_app(bedrock_settings)
+    # Part A: unconditional wiring (no env creds)
+    settings = Settings(
+        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        jwt_secret="test-secret-not-for-production-0123456789",
+        redis_url="redis://localhost:6380/9",
+        environment="test",
+    )  # type: ignore[call-arg]
 
+    app = create_app(settings)
     chat_adapters: dict[str, Any] = app.state.chat_adapters
 
-    # Bedrock must still be present — env-auth path unchanged by task 2
     assert "bedrock" in chat_adapters, (
-        "Bedrock must be registered in app.state.chat_adapters when env credentials "
-        "are configured. It is absent — either the env path was broken by task 2 or "
-        "the Bedrock env credentials were not recognised."
+        "After task-3 BUILD, 'bedrock' must be in app.state.chat_adapters "
+        "UNCONDITIONALLY (no env guard). It is absent — pre-BUILD state."
+    )
+    assert isinstance(chat_adapters["bedrock"], BedrockCompletionUpstream), (
+        f"chat_adapters['bedrock'] must be BedrockCompletionUpstream, "
+        f"got {type(chat_adapters['bedrock'])!r}"
     )
 
-    bedrock_adapter = chat_adapters["bedrock"]
-    assert isinstance(bedrock_adapter, BedrockCompletionUpstream), (
-        f"Expected BedrockCompletionUpstream, got {type(bedrock_adapter)!r}"
+    assert "azure" in chat_adapters, (
+        "After task-3 BUILD, 'azure' must be in app.state.chat_adapters "
+        "UNCONDITIONALLY. It is absent — pre-BUILD state."
+    )
+    assert isinstance(chat_adapters["azure"], AzureCompletionUpstream), (
+        f"chat_adapters['azure'] must be AzureCompletionUpstream, "
+        f"got {type(chat_adapters['azure'])!r}"
     )
 
-    # Bedrock adapter must NOT be a CachedTenantCredentialResolver-backed adapter —
-    # task 2 does NOT convert Bedrock; it stays env-bound until task 3.
-    assert not isinstance(bedrock_adapter, CachedTenantCredentialResolver), (
-        "Bedrock adapter must NOT be wrapped by CachedTenantCredentialResolver in task 2 — "
-        "Bedrock is staged for task 3."
+    # Part B: resolver IS consulted for bedrock + azure (not skipped)
+    bedrock_cred = BedrockCredential(
+        access_key_id="AKIDTEST000",
+        secret_access_key="fakekey000000000000000000000000000000000",
+        region="us-east-1",
     )
+    azure_cred = AzureCredential(mode="api_key", endpoint="https://r.openai.azure.com", api_key="k")
 
-    # The default provider in the dispatch wrapper is "openrouter"; a bedrock model
-    # must resolve to the "bedrock" adapter, NOT fall through to openrouter.
-    # We assert this structurally: the adapter in the map is a Bedrock instance.
-    assert isinstance(chat_adapters.get("bedrock"), BedrockCompletionUpstream), (
-        "Bedrock model dispatch must resolve to BedrockCompletionUpstream, "
-        "not misrouted to the openrouter default."
-    )
+    class _RecordingResolver:
+        def __init__(self) -> None:
+            self.calls: list[tuple[Any, str]] = []
+
+        async def resolve(self, tenant_id: Any, provider: str) -> Any:
+            self.calls.append((tenant_id, provider))
+            if provider == "bedrock":
+                return bedrock_cred
+            return azure_cred
+
+    import asyncio
+
+    async def _run_resolve_checks() -> None:
+        from gateway.proxy.domain.credential_context import (
+            get_provider_credential,
+            reset_provider_credential,
+        )
+
+        resolver = _RecordingResolver()
+        tenant_id = uuid.uuid4()
+
+        tok_b = await resolve_provider_credential(resolver, tenant_id, "bedrock")
+        assert tok_b is not None, (
+            "resolve_provider_credential must return a token for 'bedrock' "
+            "(resolver consulted, not skipped). Got None — still SKIPPED (pre-BUILD)."
+        )
+        try:
+            assert get_provider_credential() is bedrock_cred
+        finally:
+            reset_provider_credential(tok_b)  # type: ignore[arg-type]
+
+        tok_a = await resolve_provider_credential(resolver, tenant_id, "azure")
+        assert tok_a is not None, (
+            "resolve_provider_credential must return a token for 'azure' "
+            "(resolver consulted, not skipped). Got None — still SKIPPED (pre-BUILD)."
+        )
+        try:
+            assert get_provider_credential() is azure_cred
+        finally:
+            reset_provider_credential(tok_a)  # type: ignore[arg-type]
+
+        assert ("bedrock" in [c[1] for c in resolver.calls]), (
+            "resolver.resolve must have been called with 'bedrock'"
+        )
+        assert ("azure" in [c[1] for c in resolver.calls]), (
+            "resolver.resolve must have been called with 'azure'"
+        )
+
+    asyncio.get_event_loop().run_until_complete(_run_resolve_checks())
 
 
 # ===========================================================================

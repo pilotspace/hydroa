@@ -30,7 +30,7 @@ import pytest
 
 from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
-from gateway.proxy.domain.provider_credentials import BearerCredential
+from gateway.proxy.domain.provider_credentials import BedrockCredential, BearerCredential, AzureCredential
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
 from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
@@ -286,31 +286,50 @@ _AWS_CREDS = AwsCredentials(
 )
 _BEDROCK_ENDPOINT = "https://bedrock-runtime.us-east-1.amazonaws.com"
 
+# v25 task-3: BedrockCredential travels via contextvar, not ctor args.
+_BEDROCK_CRED = BedrockCredential(
+    access_key_id="AKIDTEST000000000000",
+    secret_access_key="bedrock-secret-access-key-FAKE",
+    region="us-east-1",
+)
+
 
 async def test_bedrock_stream_no_cause() -> None:
-    adapter = BedrockCompletionUpstream(
-        credentials=_AWS_CREDS, region="us-east-1", endpoint_url=_BEDROCK_ENDPOINT
+    # v25 task-3: no ctor credentials=/region=; credential via contextvar.
+    # RIGHT-REASON RED: existing ctor still requires them → TypeError until BUILD.
+    adapter = BedrockCompletionUpstream(  # type: ignore[call-arg]
+        endpoint_url=_BEDROCK_ENDPOINT
     )
     adapter._client = _mock_client()  # type: ignore[attr-defined]
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await _drain_stream(
-            adapter.stream(_chat_payload("anthropic.claude-3-5-sonnet-20241022-v2:0"))
-        )
+    tok = set_provider_credential(_BEDROCK_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await _drain_stream(
+                adapter.stream(_chat_payload("anthropic.claude-3-5-sonnet-20241022-v2:0"))
+            )
+    finally:
+        reset_provider_credential(tok)
     assert exc.value.__cause__ is None
-    assert _AWS_CREDS.secret_access_key not in str(exc.value)
+    assert _BEDROCK_CRED.secret_access_key.get_secret_value() not in str(exc.value)
 
 
 async def test_bedrock_embeddings_no_cause() -> None:
-    adapter = BedrockEmbeddingsProvider(
-        credentials=_AWS_CREDS, region="us-east-1", endpoint_url=_BEDROCK_ENDPOINT
+    # v25 task-3: no ctor credentials=/region=; credential via contextvar.
+    # RIGHT-REASON RED: existing ctor still requires them → TypeError until BUILD.
+    adapter = BedrockEmbeddingsProvider(  # type: ignore[call-arg]
+        endpoint_url=_BEDROCK_ENDPOINT
     )
     adapter._client = _mock_client()  # type: ignore[attr-defined]
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await adapter.post_json(
-            "/embeddings", {"model": "amazon.titan-embed-text-v2:0", "input": "x"}
-        )
+    tok = set_provider_credential(_BEDROCK_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await adapter.post_json(
+                "/embeddings", {"model": "amazon.titan-embed-text-v2:0", "input": "x"}
+            )
+    finally:
+        reset_provider_credential(tok)
     assert exc.value.__cause__ is None
-    assert _AWS_CREDS.secret_access_key not in str(exc.value)
+    assert _BEDROCK_CRED.secret_access_key.get_secret_value() not in str(exc.value)
 
 
 # ===========================================================================
@@ -320,15 +339,24 @@ async def test_bedrock_embeddings_no_cause() -> None:
 
 async def test_azure_stream_no_cause() -> None:
     secret = "azure-stream-secret-FAKE"
-    cfg = AzureConfig(
-        api_key=secret,
+    # v25 task-3: AzureCompletionUpstream drops config= ctor arg; credentials via contextvar.
+    # RIGHT-REASON RED: existing ctor still requires config= → TypeError until BUILD.
+    adapter = AzureCompletionUpstream(  # type: ignore[call-arg]
+        token_provider_cache=None,
+    )
+    adapter._client = _mock_client()  # type: ignore[attr-defined]
+    cred = AzureCredential(
+        mode="api_key",
         endpoint="https://r.openai.azure.com",
         api_version="2024-10-21",
         deployment_map={"gpt-4o": "prod-chat"},
+        api_key=secret,
     )
-    adapter = AzureCompletionUpstream(config=cfg)
-    adapter._client = _mock_client()  # type: ignore[attr-defined]
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await _drain_stream(adapter.stream(_chat_payload("gpt-4o")))
+    tok = set_provider_credential(cred)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await _drain_stream(adapter.stream(_chat_payload("gpt-4o")))
+    finally:
+        reset_provider_credential(tok)
     assert exc.value.__cause__ is None
     assert secret not in str(exc.value)

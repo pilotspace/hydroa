@@ -15,6 +15,10 @@ Contract: FROZEN @ v20 task 3.
 
 Async tests are marked via the module-level pytestmark.
 Pure decode tests (BS1–BS3) are sync plain `def`.
+
+v25 task-3 amendment: _make_adapter drops credentials=/region= ctor args.
+Credentials travel via BedrockCredential in the contextvar. Each stream() call
+is wrapped with set_provider_credential / reset_provider_credential.
 """
 
 from __future__ import annotations
@@ -30,8 +34,13 @@ import httpx
 import pytest
 
 # ── Stable existing imports ─────────────────────────────────────────────────
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.ports import CompletionUpstream
+from gateway.proxy.domain.provider_credentials import BedrockCredential
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials
 from gateway.usage.domain.extractor import extract_usage_from_sse
 
@@ -52,6 +61,13 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 
 _DUMMY_CREDS = AwsCredentials(
+    access_key_id="AKIDTEST000000000000",
+    secret_access_key="fakesecretkey0000000000000000000000000000",
+    region="us-east-1",
+)
+
+# v25 task-3: BedrockCredential travels via contextvar, not ctor args.
+_DUMMY_CRED = BedrockCredential(
     access_key_id="AKIDTEST000000000000",
     secret_access_key="fakesecretkey0000000000000000000000000000",
     region="us-east-1",
@@ -136,15 +152,19 @@ _FULL_STREAM_MAX_TOKENS = _es_stream(
 def _make_adapter(
     handler: object,
     *,
-    creds: AwsCredentials = _DUMMY_CREDS,
-    region: str = "us-east-1",
     endpoint_url: str = "https://bedrock-runtime.us-east-1.amazonaws.com",
     max_retries: int = 0,
 ) -> BedrockCompletionUpstream:
-    """Construct the adapter, then swap its _client for a MockTransport-backed one."""
-    adapter = BedrockCompletionUpstream(
-        credentials=creds,
-        region=region,
+    """Construct the adapter (no ctor creds/region — task-3), swap _client.
+
+    v25 task-3: credentials travel via BedrockCredential in the contextvar,
+    NOT as ctor arguments. The caller must set/reset the contextvar around
+    adapter.stream() / adapter.complete() calls.
+
+    RIGHT-REASON RED: existing ctor still requires credentials= and region=
+    → TypeError until BUILD removes those args.
+    """
+    adapter = BedrockCompletionUpstream(  # type: ignore[call-arg]
         endpoint_url=endpoint_url,
         default_max_tokens=4096,
         max_retries=max_retries,
@@ -286,14 +306,18 @@ async def test_stream_translation_end_to_end() -> None:
         )
 
     adapter = _make_adapter(handler)
-    chunks = await _drain(
-        adapter.stream(
-            {
-                "model": _MODEL_ID,
-                "messages": [{"role": "user", "content": "hi"}],
-            }
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        chunks = await _drain(
+            adapter.stream(
+                {
+                    "model": _MODEL_ID,
+                    "messages": [{"role": "user", "content": "hi"}],
+                }
+            )
         )
-    )
+    finally:
+        reset_provider_credential(tok)
 
     # Must have produced at least role + 2 content + terminal + [DONE]
     assert len(chunks) >= 4, f"Expected ≥4 chunks, got {len(chunks)}: {chunks!r}"
@@ -366,14 +390,18 @@ async def test_stream_usage_extractable() -> None:
         )
 
     adapter = _make_adapter(handler)
-    chunks = await _drain(
-        adapter.stream(
-            {
-                "model": _MODEL_ID,
-                "messages": [{"role": "user", "content": "hi"}],
-            }
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        chunks = await _drain(
+            adapter.stream(
+                {
+                    "model": _MODEL_ID,
+                    "messages": [{"role": "user", "content": "hi"}],
+                }
+            )
         )
-    )
+    finally:
+        reset_provider_credential(tok)
 
     usage = extract_usage_from_sse(chunks)
     assert usage == {
@@ -401,14 +429,18 @@ async def test_stream_finish_reason_length() -> None:
         )
 
     adapter = _make_adapter(handler)
-    chunks = await _drain(
-        adapter.stream(
-            {
-                "model": _MODEL_ID,
-                "messages": [{"role": "user", "content": "hi"}],
-            }
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        chunks = await _drain(
+            adapter.stream(
+                {
+                    "model": _MODEL_ID,
+                    "messages": [{"role": "user", "content": "hi"}],
+                }
+            )
         )
-    )
+    finally:
+        reset_provider_credential(tok)
 
     assert chunks[-1] == b"data: [DONE]\n\n"
 
@@ -442,11 +474,15 @@ async def test_stream_5xx_pre_first_byte_raises() -> None:
     adapter = _make_adapter(handler)
 
     collected: list[bytes] = []
-    with pytest.raises(UpstreamUnavailableError):
-        async for chunk in adapter.stream(
-            {"model": _MODEL_ID, "messages": [{"role": "user", "content": "x"}]}
-        ):
-            collected.append(chunk)
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            async for chunk in adapter.stream(
+                {"model": _MODEL_ID, "messages": [{"role": "user", "content": "x"}]}
+            ):
+                collected.append(chunk)
+    finally:
+        reset_provider_credential(tok)
 
     assert collected == [], (
         f"Zero chunks must be yielded before UpstreamUnavailableError, got {collected!r}"
@@ -477,9 +513,13 @@ async def test_stream_signs_converse_stream_path() -> None:
         )
 
     adapter = _make_adapter(handler)
-    await _drain(
-        adapter.stream({"model": _MODEL_ID, "messages": [{"role": "user", "content": "hi"}]})
-    )
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        await _drain(
+            adapter.stream({"model": _MODEL_ID, "messages": [{"role": "user", "content": "hi"}]})
+        )
+    finally:
+        reset_provider_credential(tok)
 
     req = captured["req"]
     wire = req.url.raw_path.decode()

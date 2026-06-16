@@ -1,5 +1,9 @@
 """Red suite for bedrock-tool-use (v20 task 4/4) — frozen contract.
 
+v25 task-3 amendment: _make_adapter drops credentials=/region= ctor args.
+Credentials travel via BedrockCredential in the contextvar. BT7 (the async
+end-to-end test) wraps the complete() call with set/reset_provider_credential.
+
 Asserts the Bedrock Converse tool-use translation seam: OpenAI tools/tool_choice/
 tool_calls/role:"tool" map to/from the Bedrock Converse toolConfig / toolUse /
 toolResult shapes (request, response, end-to-end) — using the FROZEN contract
@@ -41,6 +45,11 @@ import httpx
 import pytest
 
 # ── Stable imports (already implemented) ─────────────────────────────────────
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
+from gateway.proxy.domain.provider_credentials import BedrockCredential
 from gateway.proxy.domain.tool_translation import dump_tool_arguments, load_tool_arguments
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials
 
@@ -62,6 +71,13 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 
 _DUMMY_CREDS = AwsCredentials(
+    access_key_id="AKIDTEST000000000000",
+    secret_access_key="fakesecretkey0000000000000000000000000000",
+    region="us-east-1",
+)
+
+# v25 task-3: BedrockCredential travels via contextvar, not ctor args.
+_DUMMY_CRED = BedrockCredential(
     access_key_id="AKIDTEST000000000000",
     secret_access_key="fakesecretkey0000000000000000000000000000",
     region="us-east-1",
@@ -148,19 +164,22 @@ _TOOL_MESSAGES_TWO: list[dict[str, Any]] = [
 def _make_adapter(
     handler: object,
     *,
-    creds: AwsCredentials = _DUMMY_CREDS,
-    region: str = "us-east-1",
     endpoint_url: str = "https://bedrock-runtime.us-east-1.amazonaws.com",
     max_retries: int = 0,
 ) -> BedrockCompletionUpstream:
-    """Construct the adapter, then swap its _client for a MockTransport-backed one.
+    """Construct the adapter (no ctor creds/region — task-3), swap _client.
+
+    v25 task-3: credentials travel via BedrockCredential in the contextvar,
+    NOT as ctor arguments. The caller must set/reset the contextvar around
+    adapter.complete() / adapter.stream() calls.
+
+    RIGHT-REASON RED: existing ctor still requires credentials= and region=
+    → TypeError until BUILD removes those args.
 
     Mirrors the helper from tests/bedrock_provider/test_bedrock_provider.py exactly
     so the BT7 end-to-end test uses the same pattern.
     """
-    adapter = BedrockCompletionUpstream(
-        credentials=creds,
-        region=region,
+    adapter = BedrockCompletionUpstream(  # type: ignore[call-arg]
         endpoint_url=endpoint_url,
         default_max_tokens=4096,
         max_retries=max_retries,
@@ -551,14 +570,18 @@ async def test_complete_tool_roundtrip() -> None:
         return httpx.Response(200, json=_converse_tool_200)
 
     adapter = _make_adapter(handler)
-    status, body = await adapter.complete(
-        {
-            "model": _MODEL_ID,
-            "messages": [{"role": "user", "content": "weather in Berlin?"}],
-            "tools": _TOOLS,
-            "tool_choice": "auto",
-        }
-    )
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        status, body = await adapter.complete(
+            {
+                "model": _MODEL_ID,
+                "messages": [{"role": "user", "content": "weather in Berlin?"}],
+                "tools": _TOOLS,
+                "tool_choice": "auto",
+            }
+        )
+    finally:
+        reset_provider_credential(tok)
 
     assert status == 200, f"Expected 200, got {status}: {body}"
 

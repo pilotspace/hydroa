@@ -40,15 +40,13 @@ PROVIDER_VALUE_SET: frozenset[str] = frozenset(
     {"openrouter", "openai", "anthropic", "google", "bedrock", "azure"}
 )
 
-#: Providers whose per-request auth is resolved from the credential contextvar in
-#: THIS milestone stage (credential-resolution-seam task 2). The use-case resolves a
-#: tenant credential ONLY for these providers; Bedrock/Azure are STAGED on the env
-#: path until task 3 converts them — a request for a non-listed provider must SKIP
-#: resolution (return no token) so its env-bound adapter still authenticates. Task 3
-#: extends this set to the full PROVIDER_VALUE_SET. Gating here keeps each milestone
-#: step behavior-correct (no Bedrock/Azure 402 while they remain env-bound).
-BYOK_BEARER_PROVIDERS: frozenset[str] = frozenset(
-    {"openrouter", "openai", "anthropic", "google"}
+#: All providers whose per-request auth is resolved from the credential contextvar.
+#: Task 3 (dynamic-auth-byok) extends the task-2 Bearer-only set to ALL SIX providers:
+#: bedrock and azure now resolve per-request via the contextvar seam, removing the
+#: staged env-bound skip. The use-case raises ERR_PROVIDER_KEY_MISSING (402) for any
+#: provider in this set when the tenant has no enabled credential.
+BYOK_PROVIDERS: frozenset[str] = frozenset(
+    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure"}
 )
 
 
@@ -226,6 +224,12 @@ class AzureCredential(BaseModel):
 
         Only valid when ``mode="aad"``; the validator guarantees the required
         fields are present when this method is reachable.
+
+        ``authority`` is the AAD token-minting host (the client_secret is POSTed
+        there) and defaults to ``DEFAULT_AUTHORITY``
+        (``https://login.microsoftonline.com``) — it is NEVER derived from the
+        resource ``endpoint``. Tests that mint against a local stub set
+        ``authority`` to the stub's base URL explicitly.
         """
         return AzureADConfig(
             tenant_id=self.tenant_id or "",

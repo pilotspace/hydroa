@@ -13,6 +13,11 @@ harness.
 
 RED until BUILD creates ``scripts/v21_azure_stub.py`` (importlib load raises FileNotFoundError)
 and the live script + overlay (AV9 existence asserts).
+
+v25 task-3 amendment: _chat_upstream() drops config= and token_provider= ctor args; gains
+token_provider_cache=. Credentials travel via AzureCredential in the contextvar. Each adapter
+call is wrapped with set_provider_credential / reset_provider_credential.
+AzureEmbeddingsProvider likewise drops config= ctor arg.
 """
 
 from __future__ import annotations
@@ -27,6 +32,11 @@ import httpx
 import pytest
 
 from gateway.proxy.application.fallback_router import FallbackModelRouter
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
+from gateway.proxy.domain.provider_credentials import AzureCredential
 from gateway.proxy.infrastructure.azure_ad import AzureADConfig, AzureADTokenProvider
 from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
@@ -85,6 +95,36 @@ def _az_cfg(base_url: str) -> AzureConfig:
     )
 
 
+def _az_cred(base_url: str) -> AzureCredential:
+    """v25 task-3: AzureCredential (api_key mode) for contextvar-based tests."""
+    return AzureCredential(
+        mode="api_key",
+        endpoint=base_url,
+        api_version=_API_VERSION,
+        deployment_map=dict(_DEPLOY_MAP),
+        api_key=_API_KEY,
+    )
+
+
+def _az_aad_cred(base_url: str) -> AzureCredential:
+    """v25 task-3: AzureCredential (aad mode) for contextvar-based AAD tests.
+
+    ``authority`` is pinned to the stub's base URL so the AAD token mint hits the
+    local stub (production defaults to ``https://login.microsoftonline.com``; the
+    credential never derives the authority from the resource endpoint).
+    """
+    return AzureCredential(
+        mode="aad",
+        endpoint=base_url,
+        api_version=_API_VERSION,
+        deployment_map=dict(_DEPLOY_MAP),
+        tenant_id=_TENANT,
+        client_id="c",
+        client_secret=_CLIENT_SECRET,
+        authority=base_url,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Stub server fixture — session-scoped on an ephemeral 127.0.0.1 port; reset
 # (counters) before each test for double-pass-style idempotency.
@@ -110,11 +150,14 @@ def _reset_stub(stub_server: dict[str, Any]) -> None:
 
 
 def _chat_upstream(
-    base_url: str, *, max_retries: int = 0, token_provider: object | None = None
+    base_url: str, *, max_retries: int = 0
 ) -> AzureCompletionUpstream:
-    return AzureCompletionUpstream(
-        config=_az_cfg(base_url),
-        token_provider=token_provider,  # type: ignore[arg-type]
+    """v25 task-3: no ctor config= or token_provider=; credentials travel via contextvar.
+
+    RIGHT-REASON RED: existing ctor still requires config= → TypeError until BUILD.
+    """
+    return AzureCompletionUpstream(  # type: ignore[call-arg]
+        token_provider_cache=None,
         max_retries=max_retries,
         backoff_base=0.0,  # no real sleep between retries — fast test
         retry_deadline_s=0.0,
@@ -165,9 +208,13 @@ async def test_AV2_real_api_key_chat_accepted_routed_by_deployment(
     stub_server: dict[str, Any],
 ) -> None:
     upstream = _chat_upstream(stub_server["base_url"])
-    status, body = await upstream.complete(
-        {"model": "az-chat", "messages": [{"role": "user", "content": "hi"}]}
-    )
+    tok = set_provider_credential(_az_cred(stub_server["base_url"]))
+    try:
+        status, body = await upstream.complete(
+            {"model": "az-chat", "messages": [{"role": "user", "content": "hi"}]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 200, body  # api-key ACCEPTED + api-version present (stub 400s without it)
     assert body["object"] == "chat.completion"
     usage = body["usage"]
@@ -188,17 +235,18 @@ async def test_AV2_real_api_key_chat_accepted_routed_by_deployment(
 
 async def test_AV3_aad_minted_token_accepted_end_to_end(stub_server: dict[str, Any]) -> None:
     base = stub_server["base_url"]
-    ad_cfg = AzureADConfig(
-        tenant_id=_TENANT,
-        client_id="c",
-        client_secret=_CLIENT_SECRET,
-        authority=base,  # the AAD token endpoint is the stub itself
-    )
-    provider = AzureADTokenProvider(config=ad_cfg)
-    upstream = _chat_upstream(base, token_provider=provider)
-    status, body = await upstream.complete(
-        {"model": "az-chat", "messages": [{"role": "user", "content": "hi"}]}
-    )
+    # v25 task-3: adapter reads AzureCredential (aad mode) from contextvar; it calls
+    # token_provider_cache.get_or_create(cred.to_azure_ad_config()) to get the provider.
+    # For the verify test we pass token_provider_cache=None (no real cache needed for the
+    # oracle — the AzureADTokenProvider is exercised via the real contextvar path).
+    upstream = _chat_upstream(base)
+    tok = set_provider_credential(_az_aad_cred(base))
+    try:
+        status, body = await upstream.complete(
+            {"model": "az-chat", "messages": [{"role": "user", "content": "hi"}]}
+        )
+    finally:
+        reset_provider_credential(tok)
     # 200 proves: the adapter fetched the stub-minted token and presented it as Bearer,
     # and the stub ACCEPTED Bearer == its own minted token. End-to-end AAD oracle.
     assert status == 200, body
@@ -213,10 +261,14 @@ async def test_AV3_aad_minted_token_accepted_end_to_end(stub_server: dict[str, A
 async def test_AV4_real_streaming_accepted_with_usage(stub_server: dict[str, Any]) -> None:
     upstream = _chat_upstream(stub_server["base_url"])
     chunks: list[bytes] = []
-    async for chunk in upstream.stream(
-        {"model": "az-stream", "messages": [{"role": "user", "content": "hi"}], "stream": True}
-    ):
-        chunks.append(chunk)
+    tok = set_provider_credential(_az_cred(stub_server["base_url"]))
+    try:
+        async for chunk in upstream.stream(
+            {"model": "az-stream", "messages": [{"role": "user", "content": "hi"}], "stream": True}
+        ):
+            chunks.append(chunk)
+    finally:
+        reset_provider_credential(tok)
     text = b"".join(chunks).decode("utf-8")
     assert "chat.completion.chunk" in text  # stub ACCEPTED + emitted real OpenAI SSE
     assert "[DONE]" in text
@@ -231,10 +283,18 @@ async def test_AV4_real_streaming_accepted_with_usage(stub_server: dict[str, Any
 
 
 async def test_AV5_real_embeddings_exact_tokens(stub_server: dict[str, Any]) -> None:
-    provider = AzureEmbeddingsProvider(config=_az_cfg(stub_server["base_url"]))
-    status, body = await provider.post_json(
-        "/embeddings", {"model": "az-embed", "input": ["a", "bb"]}
+    # v25 task-3: AzureEmbeddingsProvider drops config= ctor arg; credentials via contextvar.
+    # RIGHT-REASON RED: existing ctor still requires config= → TypeError until BUILD.
+    provider = AzureEmbeddingsProvider(  # type: ignore[call-arg]
+        token_provider_cache=None,
     )
+    tok = set_provider_credential(_az_cred(stub_server["base_url"]))
+    try:
+        status, body = await provider.post_json(
+            "/embeddings", {"model": "az-embed", "input": ["a", "bb"]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 200, body
     assert body["object"] == "list"
     assert [d["index"] for d in body["data"]] == [0, 1]
@@ -251,9 +311,13 @@ async def test_AV5_real_embeddings_exact_tokens(stub_server: dict[str, Any]) -> 
 
 async def test_AV6_retry_to_success_composes(stub_server: dict[str, Any]) -> None:
     upstream = _chat_upstream(stub_server["base_url"], max_retries=2)
-    status, body = await upstream.complete(
-        {"model": "az-retry", "messages": [{"role": "user", "content": "hi"}]}
-    )
+    tok = set_provider_credential(_az_cred(stub_server["base_url"]))
+    try:
+        status, body = await upstream.complete(
+            {"model": "az-retry", "messages": [{"role": "user", "content": "hi"}]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 200, body  # transparently served after the retry
     async with httpx.AsyncClient(timeout=10) as client:
         counters = (await client.get(f"{stub_server['base_url']}/__counters")).json()
@@ -272,9 +336,13 @@ async def test_AV7_content_filter_fallback_composes(stub_server: dict[str, Any])
         model_groups={"az-group": ["az-cf", "az-ok"]},
         fallback_on_error=True,
     )
-    status, body, served = await router.complete(
-        {"model": "az-group", "messages": [{"role": "user", "content": "hi"}]}
-    )
+    tok = set_provider_credential(_az_cred(stub_server["base_url"]))
+    try:
+        status, body, served = await router.complete(
+            {"model": "az-group", "messages": [{"role": "user", "content": "hi"}]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 200, body  # fell over from the content_filter 400 to the healthy deployment
     assert served == "az-ok"
 

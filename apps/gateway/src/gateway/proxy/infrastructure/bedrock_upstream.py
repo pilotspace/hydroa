@@ -30,7 +30,9 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import BedrockCredential, ProviderKeyMissing
 from gateway.proxy.domain.tool_translation import dump_tool_arguments, load_tool_arguments
 from gateway.proxy.infrastructure.bedrock_eventstream import decode_event_stream
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
@@ -424,8 +426,6 @@ class BedrockCompletionUpstream:
     def __init__(
         self,
         *,
-        credentials: AwsCredentials,
-        region: str,
         endpoint_url: str | None = None,
         default_max_tokens: int = 4096,
         max_retries: int = 0,
@@ -433,12 +433,8 @@ class BedrockCompletionUpstream:
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
-        # Credentials stored privately — never exposed in logs/errors/metrics
-        self._credentials = credentials
-        self._region = region
-        self._endpoint = (endpoint_url or f"https://bedrock-runtime.{region}.amazonaws.com").rstrip(
-            "/"
-        )
+        # No boot credentials — resolved per-request from the contextvar (task-3 BYOK).
+        self._endpoint_url_override = endpoint_url  # None = derive from credential region
         self._default_max_tokens = default_max_tokens
         self._max_retries = max_retries
         self._backoff_base = backoff_base
@@ -457,6 +453,24 @@ class BedrockCompletionUpstream:
             )
         )
 
+    def _get_credentials(self) -> AwsCredentials:
+        """Read BedrockCredential from the request contextvar and convert to AwsCredentials.
+
+        Fail-CLOSED: raises ProviderKeyMissing("bedrock") if the contextvar is unset or
+        holds a wrong-type credential — NEVER produces an unsigned upstream request.
+        """
+        cred = get_provider_credential()
+        if not isinstance(cred, BedrockCredential):
+            raise ProviderKeyMissing("bedrock")
+        return cred.to_aws_credentials()
+
+    def _build_endpoint(self, aws: AwsCredentials) -> str:
+        """Derive the Bedrock endpoint from the credential's region (or ctor override)."""
+        return (
+            self._endpoint_url_override
+            or f"https://bedrock-runtime.{aws.region}.amazonaws.com"
+        ).rstrip("/")
+
     async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """Forward a non-streaming chat request to the Bedrock Converse API.
 
@@ -466,10 +480,17 @@ class BedrockCompletionUpstream:
         - 5xx / 429 / 408 / connect error / pool timeout → retried up to max_retries;
           exhausted → UpstreamUnavailableError
 
+        Credential is read from the request contextvar (BedrockCredential); raises
+        ProviderKeyMissing("bedrock") before any HTTP if unset or wrong type (fail-closed).
+
         Request translation is pure and runs ONCE, outside the retry loop.
         The body is serialized ONCE to bytes; the SigV4 x-amz-content-sha256 is
         computed from those same bytes — NEVER re-encoded by httpx (content= not json=).
         """
+        # Fail-closed: read & validate credential BEFORE any network activity.
+        aws = self._get_credentials()
+        endpoint = self._build_endpoint(aws)
+
         model_id, converse_body = _openai_to_converse_request(
             payload, default_max_tokens=self._default_max_tokens
         )
@@ -482,7 +503,7 @@ class BedrockCompletionUpstream:
         # signed canonical URI and the wire target stay in lock-step. Verified against
         # botocore SigV4Auth: canonical '/model/...v2%3A0/converse', wire '/model/...v2:0/...'.
         # (Double-encoding would route to a non-existent model '...v2%3A0' and break signing.)
-        url = f"{self._endpoint}/model/{model_id}/converse"
+        url = f"{endpoint}/model/{model_id}/converse"
 
         body_bytes = json.dumps(converse_body, separators=(",", ":")).encode("utf-8")
 
@@ -492,8 +513,8 @@ class BedrockCompletionUpstream:
                 url=url,
                 body=body_bytes,
                 service="bedrock",
-                region=self._region,
-                credentials=self._credentials,
+                region=aws.region,
+                credentials=aws,
                 timestamp=datetime.now(UTC),
             )
             headers = {**sig_headers, "content-type": "application/json"}
@@ -532,6 +553,11 @@ class BedrockCompletionUpstream:
 
         SECURITY: the AWS secret_access_key is NEVER logged or echoed.
         """
+        # Fail-closed: read & validate credential BEFORE yielding the generator object.
+        # This raises ProviderKeyMissing("bedrock") synchronously if unset/wrong-type,
+        # before the circuit-breaker guard and before the first byte.
+        aws = self._get_credentials()
+        endpoint = self._build_endpoint(aws)
         self._breaker.guard()
 
         async def _gen() -> AsyncIterator[bytes]:
@@ -541,7 +567,7 @@ class BedrockCompletionUpstream:
             # Raw model_id in the path — same URL handed to sign_request AND
             # client.stream so the signed canonical URI and the wire target
             # stay in lock-step (v20 task-2 %3A rule: no double-encode).
-            url = f"{self._endpoint}/model/{model_id}/converse-stream"
+            url = f"{endpoint}/model/{model_id}/converse-stream"
             body_bytes = json.dumps(converse_body, separators=(",", ":")).encode("utf-8")
 
             try:
@@ -550,8 +576,8 @@ class BedrockCompletionUpstream:
                     url=url,
                     body=body_bytes,
                     service="bedrock",
-                    region=self._region,
-                    credentials=self._credentials,
+                    region=aws.region,
+                    credentials=aws,
                     timestamp=datetime.now(UTC),
                 )
                 headers = {**sig, "content-type": "application/json"}

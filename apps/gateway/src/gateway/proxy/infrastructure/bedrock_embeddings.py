@@ -35,7 +35,9 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import BedrockCredential, ProviderKeyMissing
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
 from gateway.proxy.infrastructure.bedrock_upstream import (
     _bedrock_error_to_openai,  # pyright: ignore[reportPrivateUsage]
@@ -91,8 +93,10 @@ class BedrockEmbeddingsProvider:
     Implements the UpstreamProvider Protocol (post_json / post_multipart / stream_bytes).
     Translates OpenAI /v1/embeddings ⇄ Titan InvokeModel API.
 
-    A single instance is created per create_app() call when all three Bedrock
-    credential fields (access_key_id, secret_access_key, region) are set.
+    A single instance is registered UNCONDITIONALLY per create_app() call; the AWS
+    credentials are resolved per-request from the BedrockCredential contextvar
+    (task-3 dynamic-auth-byok) — a missing/wrong-type credential fails closed with
+    ProviderKeyMissing("bedrock") before any signing.
 
     SECURITY: the AWS secret_access_key is NEVER logged, echoed, or placed in any
     metric label / span attribute / exception message.
@@ -102,17 +106,11 @@ class BedrockEmbeddingsProvider:
     def __init__(
         self,
         *,
-        credentials: AwsCredentials,
-        region: str,
         endpoint_url: str | None = None,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
-        # Credentials stored privately — never exposed in logs/errors/metrics
-        self._credentials = credentials
-        self._region = region
-        self._endpoint = (endpoint_url or f"https://bedrock-runtime.{region}.amazonaws.com").rstrip(
-            "/"
-        )
+        # No boot credentials — resolved per-request from the contextvar (task-3 BYOK).
+        self._endpoint_url_override = endpoint_url  # None = derive from credential region
         self._metrics_registry = metrics_registry
 
         self._breaker = CircuitBreaker()
@@ -127,6 +125,24 @@ class BedrockEmbeddingsProvider:
             )
         )
 
+    def _get_credentials(self) -> AwsCredentials:
+        """Read BedrockCredential from the request contextvar and convert to AwsCredentials.
+
+        Fail-CLOSED: raises ProviderKeyMissing("bedrock") if the contextvar is unset or
+        holds a wrong-type credential — NEVER produces an unsigned upstream request.
+        """
+        cred = get_provider_credential()
+        if not isinstance(cred, BedrockCredential):
+            raise ProviderKeyMissing("bedrock")
+        return cred.to_aws_credentials()
+
+    def _build_endpoint(self, aws: AwsCredentials) -> str:
+        """Derive the Bedrock endpoint from the credential's region (or ctor override)."""
+        return (
+            self._endpoint_url_override
+            or f"https://bedrock-runtime.{aws.region}.amazonaws.com"
+        ).rstrip("/")
+
     async def post_json(
         self,
         path: str,
@@ -139,6 +155,9 @@ class BedrockEmbeddingsProvider:
             payload: OpenAI embeddings request with keys "model", "input",
                      and optionally "dimensions".
 
+        Credential is read from the request contextvar (BedrockCredential); raises
+        ProviderKeyMissing("bedrock") before any HTTP if unset or wrong type (fail-closed).
+
         Raises:
             UpstreamUnavailableError: on ConnectError, TimeoutException, or NetworkError.
 
@@ -146,6 +165,10 @@ class BedrockEmbeddingsProvider:
             (200, OpenAI-list-shape) on all-success, or
             (4xx, error_body) on the FIRST failed invoke call (fail-fast).
         """
+        # Fail-closed: read & validate credential BEFORE any network activity.
+        aws = self._get_credentials()
+        endpoint = self._build_endpoint(aws)
+
         model_id: str = payload["model"]
         inp: str | list[str] = payload["input"]
         texts: list[str] = [inp] if isinstance(inp, str) else list(inp)
@@ -157,7 +180,7 @@ class BedrockEmbeddingsProvider:
         # suffix, e.g. ...-v2:0). The IDENTICAL url string is passed to BOTH
         # sign_request AND client.post so the signed canonical URI and the wire
         # target stay in lock-step (v20 task-2 %3A rule: no double-encode).
-        url = f"{self._endpoint}/model/{model_id}/invoke"
+        url = f"{endpoint}/model/{model_id}/invoke"
 
         for text in texts:
             body: dict[str, Any] = {"inputText": text}
@@ -173,8 +196,8 @@ class BedrockEmbeddingsProvider:
                     url=url,
                     body=body_bytes,
                     service="bedrock",
-                    region=self._region,
-                    credentials=self._credentials,
+                    region=aws.region,
+                    credentials=aws,
                     timestamp=datetime.now(UTC),
                 )
                 # Use content=body_bytes (raw bytes) so the signed x-amz-content-sha256

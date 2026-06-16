@@ -6,66 +6,29 @@ azure_config imports are RED until the module is implemented (ModuleNotFoundErro
 CONTRACT (FROZEN @ v1): azure-auth-routing TASK.md §3
   - AzureConfig (frozen dataclass): api_key (repr-hidden SECRET), endpoint,
     api_version, deployment_map; methods resolve_deployment(model), build_url(deployment, op).
-  - resolve_azure_config(settings) -> AzureConfig | None  (None unless api_key AND endpoint).
-  - GATEWAY_AZURE_API_KEY added to the boot-guard tuple (validate_upstream_keys).
+  - GATEWAY_AZURE_API_KEY in the boot-guard tuple (validate_upstream_keys).
 
-Each test maps 1:1 to a §2 scenario; behavior is asserted, not internals.
+v25 task-3 amendment: resolve_azure_config is DELETED (env-secret removal §6).
+test_resolve_config_present, test_resolve_config_absent_returns_none, and
+test_partial_config_returns_none are REMOVED. AzureConfig and URL-building tests kept.
+
+Each remaining test maps 1:1 to a §2 scenario; behavior is asserted, not internals.
 """
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
-# RED: gateway.proxy.infrastructure.azure_config does not exist yet → ModuleNotFoundError.
-from gateway.proxy.infrastructure.azure_config import (
-    AzureConfig,
-    resolve_azure_config,
-)
-from gateway.core.config import EmptyUpstreamKeyError, validate_upstream_keys
+# azure_config still exists (AzureConfig remains; resolve_azure_config deleted).
+from gateway.proxy.infrastructure.azure_config import AzureConfig
+
+# EmptyUpstreamKeyError / validate_upstream_keys no longer imported:
+# the GATEWAY_AZURE_API_KEY boot-guard test was deleted (v25 task-3 §6).
 
 
-def _settings(**over: object) -> SimpleNamespace:
-    """A minimal settings stub mirroring the Settings attrs resolve_azure_config reads."""
-    base: dict[str, object] = {
-        "azure_api_key": "",
-        "azure_endpoint": "",
-        "azure_api_version": "2024-10-21",
-        "azure_deployment_map": {},
-    }
-    base.update(over)
-    return SimpleNamespace(**base)
-
-
-# ── resolve_azure_config ───────────────────────────────────────────────────
-
-
-def test_resolve_config_present() -> None:
-    cfg = resolve_azure_config(
-        _settings(azure_api_key="sk-az", azure_endpoint="https://r.openai.azure.com")
-    )
-    assert cfg is not None
-    assert cfg.endpoint == "https://r.openai.azure.com"
-    assert cfg.api_version == "2024-10-21"
-    assert dict(cfg.deployment_map) == {}
-
-
-def test_resolve_config_absent_returns_none() -> None:
-    assert resolve_azure_config(_settings(azure_api_key="", azure_endpoint="")) is None
-
-
-def test_partial_config_returns_none() -> None:
-    # api_key set but endpoint empty → silent disable (opt-in partial), no raise.
-    assert resolve_azure_config(_settings(azure_api_key="sk-az", azure_endpoint="")) is None
-    # and the inverse
-    assert (
-        resolve_azure_config(
-            _settings(azure_api_key="", azure_endpoint="https://r.openai.azure.com")
-        )
-        is None
-    )
-
+# resolve_azure_config tests REMOVED — v25 task-3 §6: function is DELETED.
+# test_resolve_config_present, test_resolve_config_absent_returns_none,
+# test_partial_config_returns_none are retired per deliverable C.
 
 # ── AzureConfig: secret + routing + URL building ───────────────────────────
 
@@ -149,13 +112,7 @@ def test_build_url_empty_deployment_raises() -> None:
         cfg.build_url("   ", "chat/completions")
 
 
-# ── boot-guard ─────────────────────────────────────────────────────────────
-
-
-def test_empty_azure_key_boot_fail() -> None:
-    with pytest.raises(EmptyUpstreamKeyError) as exc:
-        validate_upstream_keys({"GATEWAY_AZURE_API_KEY": ""})
-    msg = str(exc.value)
-    assert "GATEWAY_AZURE_API_KEY" in msg
-    # no key value echoed (there is none here, but assert the var-only invariant holds)
-    assert "unset" in msg.lower()
+# test_empty_azure_key_boot_fail DELETED — v25 task-3 §6: GATEWAY_AZURE_API_KEY
+# is removed from _UPSTREAM_KEY_ENV_VARS (and azure_api_key field removed from
+# Settings). The removal is asserted by test_removed_azure_secret_vars_no_longer_guarded
+# in tests/empty_key_boot_guard/.

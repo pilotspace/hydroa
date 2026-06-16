@@ -85,19 +85,44 @@ async def test_bearer_provider_resolves_and_sets_contextvar(
 
 
 @pytest.mark.parametrize("provider", ["bedrock", "azure"])
-async def test_staged_provider_skips_resolution(
+async def test_bedrock_azure_resolve(
     tenant_id: uuid.UUID, provider: str
 ) -> None:
-    """Bedrock/Azure are env-bound until task 3 — resolution is SKIPPED, NEVER consulted.
+    """Task-3 §3 contract supersedes task-2 staged-skip: bedrock and azure NOW resolve.
 
-    Regression guard: the v1 build resolved every provider unconditionally, which would
-    have raised ProviderKeyMissing → 402 for a Bedrock/Azure request that has no BYOK row.
+    After task-3 BUILD, BYOK_PROVIDERS (renamed from BYOK_BEARER_PROVIDERS) includes
+    'bedrock' and 'azure'. resolve_provider_credential MUST consult the resolver for
+    both providers and set the contextvar with the resolved credential.
+
+    Docstring note: task-3 frozen contract (dynamic-auth-byok, v25) supersedes the
+    task-2 staged-skip. The resolver IS consulted; no skip for bedrock or azure.
+
+    RIGHT-REASON RED: BYOK_BEARER_PROVIDERS still excludes bedrock/azure → function
+    returns None (skips resolution) → assertion that token is not None fails.
     """
     resolver = _RecordingResolver()
     token = await resolve_provider_credential(resolver, tenant_id, provider)
-    assert token is None, f"{provider} must SKIP resolution (staged, env-bound)"
-    assert resolver.calls == [], f"resolver must NOT be consulted for staged provider {provider}"
-    assert get_provider_credential() is None
+    assert token is not None, (
+        f"{provider} must be RESOLVED (resolver consulted) after task-3 BUILD. "
+        f"Got None — {provider} is still SKIPPED (BYOK_BEARER_PROVIDERS not yet "
+        "renamed/expanded to BYOK_PROVIDERS)."
+    )
+    try:
+        assert resolver.calls == [(tenant_id, provider)], (
+            f"resolver.resolve must be called with (tenant_id, '{provider}'), "
+            f"got calls: {resolver.calls!r}"
+        )
+        cred = get_provider_credential()
+        assert isinstance(cred, BearerCredential), (
+            f"contextvar must hold a BearerCredential after resolving '{provider}', "
+            f"got {type(cred)!r}"
+        )
+        assert cred.secret.get_secret_value() == f"secret-for-{provider}", (
+            f"contextvar credential secret must match the resolver's return value"
+        )
+    finally:
+        reset_provider_credential(token)  # type: ignore[arg-type]
+    assert get_provider_credential() is None, "contextvar must reset cleanly after reset"
 
 
 async def test_missing_bearer_key_maps_to_402(tenant_id: uuid.UUID) -> None:

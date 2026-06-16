@@ -15,6 +15,10 @@ artifact is also the test harness.
 
 RED until BUILD creates ``scripts/v20_bedrock_stub.py`` (importlib load raises
 FileNotFoundError) and the live script + overlay (BV9 existence asserts).
+
+v25 task-3 amendment: _chat_upstream() drops credentials=/region= ctor args.
+A BedrockCredential is set in the contextvar around each adapter call.
+BedrockEmbeddingsProvider likewise drops credentials=/region= ctor args.
 """
 
 from __future__ import annotations
@@ -31,6 +35,11 @@ import httpx
 import pytest
 
 from gateway.proxy.application.fallback_router import FallbackModelRouter
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
+from gateway.proxy.domain.provider_credentials import BedrockCredential
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials
 from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
@@ -73,6 +82,13 @@ _CREDS = AwsCredentials(
     region=_REGION,
 )
 
+# v25 task-3: BedrockCredential travels via contextvar (not ctor args).
+_BEDROCK_CRED = BedrockCredential(
+    access_key_id=_FAKE_AKID,
+    secret_access_key=_FAKE_SECRET,
+    region=_REGION,
+)
+
 # Model ids the stub keys behavior on (a ':' in the chat model proves the %3A
 # canonical-URI round-trip end-to-end against the independent verifier — the SV8 bug).
 _M_CHAT = "anthropic.claude-3-5-sonnet-v2:0"
@@ -110,9 +126,12 @@ def _reset_stub(stub_server: dict[str, Any]) -> None:
 
 
 def _chat_upstream(base_url: str, *, max_retries: int = 0) -> BedrockCompletionUpstream:
-    return BedrockCompletionUpstream(
-        credentials=_CREDS,
-        region=_REGION,
+    """v25 task-3: no ctor creds/region; credentials travel via contextvar.
+
+    RIGHT-REASON RED: existing ctor still requires credentials= and region=
+    → TypeError until BUILD removes those args.
+    """
+    return BedrockCompletionUpstream(  # type: ignore[call-arg]
         endpoint_url=base_url,
         max_retries=max_retries,
         backoff_base=0.0,  # no real sleep between retries — fast test
@@ -149,9 +168,13 @@ def test_BV1_stub_verifier_matches_aws_get_vanilla_vector() -> None:
 
 async def test_BV2_real_chat_request_accepted_with_billing(stub_server: dict[str, Any]) -> None:
     upstream = _chat_upstream(stub_server["base_url"])
-    status, body = await upstream.complete(
-        {"model": _M_CHAT, "messages": [{"role": "user", "content": "hi"}]}
-    )
+    tok = set_provider_credential(_BEDROCK_CRED)
+    try:
+        status, body = await upstream.complete(
+            {"model": _M_CHAT, "messages": [{"role": "user", "content": "hi"}]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 200, body  # stub ACCEPTED the SigV4 signature (incl. the %3A model path)
     assert body["object"] == "chat.completion"
     usage = body["usage"]
@@ -214,10 +237,14 @@ async def test_BV3_tampered_and_missing_signature_rejected(stub_server: dict[str
 async def test_BV4_real_streaming_accepted_with_usage(stub_server: dict[str, Any]) -> None:
     upstream = _chat_upstream(stub_server["base_url"])
     chunks: list[bytes] = []
-    async for chunk in upstream.stream(
-        {"model": _M_STREAM, "messages": [{"role": "user", "content": "hi"}], "stream": True}
-    ):
-        chunks.append(chunk)
+    tok = set_provider_credential(_BEDROCK_CRED)
+    try:
+        async for chunk in upstream.stream(
+            {"model": _M_STREAM, "messages": [{"role": "user", "content": "hi"}], "stream": True}
+        ):
+            chunks.append(chunk)
+    finally:
+        reset_provider_credential(tok)
     text = b"".join(chunks).decode("utf-8")
     assert "chat.completion.chunk" in text  # stub ACCEPTED the signature, real SSE emitted
     assert "[DONE]" in text
@@ -234,26 +261,30 @@ async def test_BV4_real_streaming_accepted_with_usage(stub_server: dict[str, Any
 
 async def test_BV5_real_tool_round_trip(stub_server: dict[str, Any]) -> None:
     upstream = _chat_upstream(stub_server["base_url"])
-    status, body = await upstream.complete(
-        {
-            "model": _M_TOOL,
-            "messages": [{"role": "user", "content": "weather?"}],
-            "tools": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_weather",
-                        "description": "Get weather",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {"city": {"type": "string"}},
+    tok = set_provider_credential(_BEDROCK_CRED)
+    try:
+        status, body = await upstream.complete(
+            {
+                "model": _M_TOOL,
+                "messages": [{"role": "user", "content": "weather?"}],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "description": "Get weather",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {"city": {"type": "string"}},
+                            },
                         },
-                    },
-                }
-            ],
-            "tool_choice": "auto",
-        }
-    )
+                    }
+                ],
+                "tool_choice": "auto",
+            }
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 200, body
     tool_calls = body["choices"][0]["message"]["tool_calls"]
     assert tool_calls[0]["function"]["name"] == "get_weather"
@@ -267,13 +298,19 @@ async def test_BV5_real_tool_round_trip(stub_server: dict[str, Any]) -> None:
 
 
 async def test_BV6_real_embeddings_exact_tokens(stub_server: dict[str, Any]) -> None:
-    provider = BedrockEmbeddingsProvider(
-        credentials=_CREDS, region=_REGION, endpoint_url=stub_server["base_url"]
+    # v25 task-3: BedrockEmbeddingsProvider drops credentials=/region= ctor args.
+    # RIGHT-REASON RED: existing ctor still requires them → TypeError until BUILD.
+    provider = BedrockEmbeddingsProvider(  # type: ignore[call-arg]
+        endpoint_url=stub_server["base_url"]
     )
     # The stub returns inputTextTokenCount == len(inputText), so the exact sum is verifiable.
-    status, body = await provider.post_json(
-        "/embeddings", {"model": _M_EMBED, "input": ["hello", "hi"]}
-    )
+    tok = set_provider_credential(_BEDROCK_CRED)
+    try:
+        status, body = await provider.post_json(
+            "/embeddings", {"model": _M_EMBED, "input": ["hello", "hi"]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 200, body
     assert body["object"] == "list"
     assert [d["index"] for d in body["data"]] == [0, 1]
@@ -290,9 +327,13 @@ async def test_BV6_real_embeddings_exact_tokens(stub_server: dict[str, Any]) -> 
 
 async def test_BV7_retry_to_success_composes(stub_server: dict[str, Any]) -> None:
     upstream = _chat_upstream(stub_server["base_url"], max_retries=2)
-    status, body = await upstream.complete(
-        {"model": _M_RETRY, "messages": [{"role": "user", "content": "hi"}]}
-    )
+    tok = set_provider_credential(_BEDROCK_CRED)
+    try:
+        status, body = await upstream.complete(
+            {"model": _M_RETRY, "messages": [{"role": "user", "content": "hi"}]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 200, body  # transparently served after the retry
     async with httpx.AsyncClient(timeout=10) as client:
         counters = (await client.get(f"{stub_server['base_url']}/__counters")).json()
@@ -311,9 +352,13 @@ async def test_BV8_error_aware_fallback_composes(stub_server: dict[str, Any]) ->
         model_groups={"bedrock-fb": [_M_FB_FAIL, _M_FB_OK]},
         fallback_on_error=True,
     )
-    status, body, served = await router.complete(
-        {"model": "bedrock-fb", "messages": [{"role": "user", "content": "hi"}]}
-    )
+    tok = set_provider_credential(_BEDROCK_CRED)
+    try:
+        status, body, served = await router.complete(
+            {"model": "bedrock-fb", "messages": [{"role": "user", "content": "hi"}]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 200, body
     assert served == _M_FB_OK  # fell over from the context-window 400 to the healthy candidate
 

@@ -5,7 +5,6 @@ stdlib ONLY — no boto3 / botocore / awscrt dependency.
 Public surface (frozen contract):
   - AwsCredentials      dataclass (frozen); secret_access_key excluded from repr
   - SERVICE             = "bedrock"  (default service name for real Bedrock calls)
-  - resolve_aws_credentials(settings) -> AwsCredentials | None
   - sign_request(*, method, url, body, service, region, credentials, timestamp)
       -> dict[str, str]
 
@@ -51,38 +50,6 @@ class AwsCredentials:
     secret_access_key: str = field(repr=False)
     region: str
     session_token: str | None = None
-
-
-# ---------------------------------------------------------------------------
-# resolve_aws_credentials
-# ---------------------------------------------------------------------------
-
-
-def resolve_aws_credentials(settings: object) -> AwsCredentials | None:
-    """Return AwsCredentials iff all three required fields are truthy.
-
-    Reads ``bedrock_access_key_id``, ``bedrock_secret_access_key``, and
-    ``bedrock_region`` from *settings*. Returns ``None`` when any is
-    falsy (empty string, absent attribute, etc.).
-
-    ``bedrock_session_token`` empty string is treated as ``None``.
-    """
-    akid: str = getattr(settings, "bedrock_access_key_id", "") or ""
-    secret: str = getattr(settings, "bedrock_secret_access_key", "") or ""
-    region: str = getattr(settings, "bedrock_region", "") or ""
-
-    if not (akid and secret and region):
-        return None
-
-    raw_token: str = getattr(settings, "bedrock_session_token", "") or ""
-    session_token: str | None = raw_token if raw_token else None
-
-    return AwsCredentials(
-        access_key_id=akid,
-        secret_access_key=secret,
-        region=region,
-        session_token=session_token,
-    )
 
 
 # ---------------------------------------------------------------------------

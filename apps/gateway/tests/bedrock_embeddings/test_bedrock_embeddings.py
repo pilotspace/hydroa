@@ -18,7 +18,10 @@ Contract: frozen at v20 task 5 (bedrock-embeddings).
     "code": status}}); list input stops after first error (fail fast).
   - ConnectError → raises UpstreamUnavailableError.
   - payload "dimensions" key → forwarded to invoke body.
-  - Wired in create_app() iff bedrock_access_key_id + secret + region all set.
+  - Wired in create_app() UNCONDITIONALLY (task-3: no env-cred guard).
+
+v25 task-3 amendment: _make_provider now sets credential via contextvar;
+BE7 wiring test updated to assert unconditional presence.
 """
 
 from __future__ import annotations
@@ -29,8 +32,12 @@ from urllib.parse import quote, unquote
 import httpx
 import pytest
 
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
-from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials
+from gateway.proxy.domain.provider_credentials import BedrockCredential
 
 # RED until BUILD creates the module/class.
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider  # noqa: E402
@@ -41,7 +48,8 @@ pytestmark = pytest.mark.asyncio
 # Constants / fixtures
 # ---------------------------------------------------------------------------
 
-_DUMMY_CREDS = AwsCredentials(
+# v25 task-3: credentials travel via BedrockCredential in the contextvar.
+_DUMMY_CRED = BedrockCredential(
     access_key_id="AKIDTEST000000000000",
     secret_access_key="fakesecretkey0000000000000000000000000000",
     region="us-east-1",
@@ -57,14 +65,14 @@ _TITAN_200 = {"embedding": [0.1, 0.2, 0.3], "inputTextTokenCount": 8}
 def _make_provider(
     handler: object,
     *,
-    creds: AwsCredentials = _DUMMY_CREDS,
-    region: str = "us-east-1",
     endpoint_url: str = "https://bedrock-runtime.us-east-1.amazonaws.com",
 ) -> BedrockEmbeddingsProvider:
-    """Construct provider then swap its _client for a MockTransport-backed one."""
-    provider = BedrockEmbeddingsProvider(
-        credentials=creds,
-        region=region,
+    """Construct provider (no ctor creds/region — task-3) then swap its _client.
+
+    v25 task-3: credentials travel via BedrockCredential in the contextvar.
+    Callers must set/reset the contextvar around post_json() calls.
+    """
+    provider = BedrockEmbeddingsProvider(  # type: ignore[call-arg]
         endpoint_url=endpoint_url,
     )
     provider._client = httpx.AsyncClient(  # type: ignore[attr-defined]
@@ -102,6 +110,8 @@ async def test_single_string_invoke() -> None:
     - x-amz-date and x-amz-content-sha256 headers present.
     - Returns (200, OpenAI list shape) with correct usage and data fields.
     - model echoed back in response body.
+
+    v25 task-3: credential supplied via contextvar.
     """
     call_count = 0
     captured: dict[str, httpx.Request] = {}
@@ -113,7 +123,11 @@ async def test_single_string_invoke() -> None:
         return httpx.Response(200, json=_TITAN_200)
 
     provider = _make_provider(handler)
-    status, body = await provider.post_json("/embeddings", {"model": _MODEL_ID, "input": "hello"})
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        status, body = await provider.post_json("/embeddings", {"model": _MODEL_ID, "input": "hello"})
+    finally:
+        reset_provider_credential(tok)
 
     assert call_count == 1, f"Expected exactly 1 call, got {call_count}"
     assert status == 200, f"Expected 200, got {status}: {body}"
@@ -162,6 +176,8 @@ async def test_list_n_calls_summed() -> None:
     - call_count == len(input) (each item gets its own request).
     - data entries indexed 0, 1, 2 in order.
     - usage.total_tokens == sum of each call's inputTextTokenCount.
+
+    v25 task-3: credential supplied via contextvar.
     """
     call_count = 0
     per_call_response = {"embedding": [0.5], "inputTextTokenCount": 3}
@@ -172,9 +188,13 @@ async def test_list_n_calls_summed() -> None:
         return httpx.Response(200, json=per_call_response)
 
     provider = _make_provider(handler)
-    status, body = await provider.post_json(
-        "/embeddings", {"model": _MODEL_ID, "input": ["a", "b", "c"]}
-    )
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        status, body = await provider.post_json(
+            "/embeddings", {"model": _MODEL_ID, "input": ["a", "b", "c"]}
+        )
+    finally:
+        reset_provider_credential(tok)
 
     assert call_count == 3, f"Expected 3 calls for 3 inputs, got {call_count}"
     assert status == 200, f"Expected 200, got {status}: {body}"
@@ -207,6 +227,8 @@ async def test_sigv4_service_bedrock() -> None:
     - quote(unquote(raw_path), safe="/~") contains "%3A" and NOT "%253A".
     - Authorization contains "/bedrock/aws4_request" (service is "bedrock",
       NOT "bedrock-runtime").
+
+    v25 task-3: credential supplied via contextvar.
     """
     captured: dict[str, httpx.Request] = {}
 
@@ -215,7 +237,11 @@ async def test_sigv4_service_bedrock() -> None:
         return httpx.Response(200, json=_TITAN_200)
 
     provider = _make_provider(handler)
-    await provider.post_json("/embeddings", {"model": _MODEL_ID_V2, "input": "hi"})
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        await provider.post_json("/embeddings", {"model": _MODEL_ID_V2, "input": "hi"})
+    finally:
+        reset_provider_credential(tok)
 
     req = captured["req"]
     raw_path = req.url.raw_path.decode()
@@ -252,6 +278,8 @@ async def test_invoke_4xx_envelope() -> None:
     - Returns (400, error_body) with error_body["error"]["type"] == "bedrock_error".
     - error_body["error"]["code"] == 400.
     - call_count == 1 (fail fast — no second call after first error).
+
+    v25 task-3: credential supplied via contextvar.
     """
     call_count = 0
 
@@ -261,9 +289,13 @@ async def test_invoke_4xx_envelope() -> None:
         return httpx.Response(400, json={"message": "bad request", "__type": "ValidationException"})
 
     provider = _make_provider(handler)
-    status, body = await provider.post_json(
-        "/embeddings", {"model": _MODEL_ID, "input": ["first", "second"]}
-    )
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        status, body = await provider.post_json(
+            "/embeddings", {"model": _MODEL_ID, "input": ["first", "second"]}
+        )
+    finally:
+        reset_provider_credential(tok)
 
     assert call_count == 1, f"Fail-fast: expected 1 call on first 4xx, got {call_count}"
     assert status == 400, f"Expected status 400, got {status}"
@@ -285,14 +317,21 @@ async def test_invoke_4xx_envelope() -> None:
 
 
 async def test_connect_error_raises() -> None:
-    """Handler raises httpx.ConnectError → post_json raises UpstreamUnavailableError."""
+    """Handler raises httpx.ConnectError → post_json raises UpstreamUnavailableError.
+
+    v25 task-3: credential supplied via contextvar.
+    """
 
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("boom", request=request)
 
     provider = _make_provider(handler)
-    with pytest.raises(UpstreamUnavailableError):
-        await provider.post_json("/embeddings", {"model": _MODEL_ID, "input": "hello"})
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await provider.post_json("/embeddings", {"model": _MODEL_ID, "input": "hello"})
+    finally:
+        reset_provider_credential(tok)
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +344,8 @@ async def test_dimensions_passthrough() -> None:
 
     Asserts that the captured invoke body is exactly
     {"inputText": "x", "dimensions": 256}.
+
+    v25 task-3: credential supplied via contextvar.
     """
     captured: dict[str, bytes] = {}
 
@@ -313,7 +354,11 @@ async def test_dimensions_passthrough() -> None:
         return httpx.Response(200, json=_TITAN_200)
 
     provider = _make_provider(handler)
-    await provider.post_json("/embeddings", {"model": _MODEL_ID, "input": "x", "dimensions": 256})
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        await provider.post_json("/embeddings", {"model": _MODEL_ID, "input": "x", "dimensions": 256})
+    finally:
+        reset_provider_credential(tok)
 
     assert "body" in captured, "Handler was not called"
     invoke_body = json.loads(captured["body"])
@@ -323,36 +368,31 @@ async def test_dimensions_passthrough() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BE7 — Wiring: create_app with/without bedrock creds
+# BE7 — Wiring: create_app registers bedrock embeddings UNCONDITIONALLY
+# ---------------------------------------------------------------------------
+# v25 task-3 amendment: bedrock is wired unconditionally — no env-cred guard.
 # ---------------------------------------------------------------------------
 
 
-def test_wiring_present_and_absent() -> None:
-    """create_app with full bedrock creds → provider_registry.get('bedrock') is a
-    BedrockEmbeddingsProvider instance.
+def test_wiring_present_unconditionally() -> None:
+    """create_app() with NO bedrock env creds → provider_registry.get('bedrock') is
+    still a BedrockEmbeddingsProvider instance.
 
-    create_app with no bedrock creds → provider_registry.get('bedrock') is None.
+    v25 task-3: bedrock is registered unconditionally (env-guard removed).
+
+    RIGHT-REASON RED: current wiring gates 'bedrock' embeddings on
+    resolve_aws_credentials(settings) being truthy — absent without env creds.
 
     BE7 is sync (create_app is sync) — no asyncio mark.
     """
     from gateway.main import create_app
 
-    # ── Present: all three credential fields set ──
-    settings_with_creds = _make_settings(
-        bedrock_access_key_id="AKIDTEST000000000000",
-        bedrock_secret_access_key="fakesecretkey0000000000000000000000000000",
-        bedrock_region="us-east-1",
-    )
-    app_with = create_app(settings_with_creds)  # type: ignore[arg-type]
-    bedrock_provider = app_with.state.provider_registry.get("bedrock")
+    # No bedrock env creds at all
+    settings_no_creds = _make_settings()
+    app = create_app(settings_no_creds)  # type: ignore[arg-type]
+    bedrock_provider = app.state.provider_registry.get("bedrock")
     assert isinstance(bedrock_provider, BedrockEmbeddingsProvider), (
         f"provider_registry.get('bedrock') must be a BedrockEmbeddingsProvider "
-        f"when all bedrock creds are set; got {type(bedrock_provider)}"
-    )
-
-    # ── Absent: no credentials set ──
-    settings_no_creds = _make_settings()  # bedrock_access_key_id defaults to ""
-    app_without = create_app(settings_no_creds)  # type: ignore[arg-type]
-    assert app_without.state.provider_registry.get("bedrock") is None, (
-        "provider_registry.get('bedrock') must be None when credentials are unset"
+        f"UNCONDITIONALLY after task-3 BUILD (no env-cred guard). "
+        f"Got {type(bedrock_provider)!r} — pre-BUILD state (still env-gated)."
     )
