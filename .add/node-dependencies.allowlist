@@ -23,6 +23,9 @@ tailwind-merge
 recharts
 tw-animate-css
 
+# --- enterprise UI overhaul (v23) ---
+@tanstack/react-table
+
 # --- devDependencies (apps/dashboard) ---
 typescript
 @types/react
@@ -43,3 +46,7 @@ eslint
 eslint-config-next
 vitest-axe
 axe-core
+
+# --- real-browser a11y (v15 feature-coverage, Playwright e2e-a11y) ---
+@playwright/test
+@axe-core/playwright
