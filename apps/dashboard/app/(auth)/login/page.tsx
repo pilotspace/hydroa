@@ -1,5 +1,5 @@
 import { LoginForm } from "@/components/auth/LoginForm";
-import { ErrorState } from "@/components/ui";
+import { AuthShell, ErrorState } from "@/components/ui";
 
 export const metadata = { title: "Hydroa" };
 
@@ -17,14 +17,16 @@ export default async function LoginPage({
   const ssoFailed = sso_error !== undefined;
 
   return (
-    <main>
-      <h1>Sign in to your account</h1>
+    <AuthShell>
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        Sign in to your account
+      </h1>
       {ssoFailed ? (
         <ErrorState
           title="Single sign-on failed. Please try again or contact your administrator."
         />
       ) : null}
       <LoginForm />
-    </main>
+    </AuthShell>
   );
 }

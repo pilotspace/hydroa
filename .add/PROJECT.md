@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-15 · foundation-version: 22
+slug: ai-proxy · stage: production · updated: 2026-06-16 · foundation-version: 23
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -365,6 +365,24 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     never from scattered checks (evidence: nav-role-filter.test.tsx 5/5; member hides
     {models,teams,routing}). NOTE: the role source (`useCurrentUser`) is exactly the claim the
     `auth-me-session-verify` task hardens — nav trust tightens for free once /api/auth/me verifies.
+- Folded from v23 (2026-06-16, enterprise UI overhaul):
+  - A shared **shell component is the seam for page chrome**: `AuthShell` (split-screen auth) OWNS the
+    single `<main>` landmark so each page keeps exactly one main + one form, and its decorative brand panel
+    is `aria-hidden="true"` + heading-free + focusable-free — which satisfies BOTH jsdom (no CSS engine, so
+    `hidden lg:flex` does NOT hide it from the a11y tree) AND real-Chromium axe (which skips aria-hidden
+    subtrees incl. color-contrast). Same pattern as the v13 AppShell (evidence: auth-pages-redesign,
+    test_auth_shell_brand_panel_decorative + jsdom-axe green).
+  - `Button asChild` (Radix Slot) is the canonical way to style a real NAVIGATION `<a>` as a button without
+    turning it into a `<button>`: the link keeps href + role=link + accessible name while gaining
+    `buttonVariants` classes (the SSO-link pattern; evidence: SSO `<a>` tagName==="A" + href + `inline-flex`).
+  - A shadcn block (TanStack `DataTable`) can host fully INTERACTIVE rows — Switch toggle, name-button,
+    inline stateful form, destructive action — via in-component `columnDef.cell` closures with
+    `enableSorting:false`; keying rows by `row.id` preserves in-cell form state across data updates. Adoption
+    is NOT limited to display-only tables (evidence: admin-surfaces-redesign teams/models/routing).
+  - Not every surface fits every block: force-fitting where the data model diverges (Keys' interleaved
+    governance expand-row vs TanStack's flat column model) would break a frozen flow — adopt the block where
+    it fits, KEEP composed primitives where it doesn't, and say which at §1 (evidence: console-surfaces-redesign,
+    Keys stays on composed Card+Table).
 
 ## Architecture (settled at setup)
 
@@ -518,3 +536,6 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-15 | `from None` is now the PROJECT-WIDE secret-chain floor: ALL 13 secret-bearing transport-error wraps (shared execute_with_retry seam ×3 + openrouter/openai/anthropic/gemini/bedrock/azure stream+post_json) raise `from None`, generalizing the v21 Azure bar; greppable invariant (`rg "from exc\|from terminal_exc" infrastructure/` → zero) + one `__cause__ is None` test per site (fold: SECURITY+TDD/provider-secret-chain-hardening, RESOLVES the v21 follow-up) | the chained httpx error's `.request` carried the api-key/SigV4/client_secret to any crash-reporter walking `__cause__`; behavior-preserving (same type+message), 13/13 earned-green + 477-test regression | folded v22 |
 | 2026-06-15 | Azure AD authority is env-configurable (GATEWAY_AZURE_AD_AUTHORITY → Settings → resolve_azure_ad_config carries it → AzureADConfig.authority → minted-token URL); unset = public-cloud DEFAULT_AUTHORITY, byte-identical (fold: SDD+DDD/azure-ad-authority-config, RESOLVES the v21 follow-up) | sovereign/gov clouds (login.microsoftonline.us/.cn) could not be reached; a partially-wired seam (authority consumed but never sourced) looked configurable but wasn't — an END-TO-END test (settings→URL) exposed the gap | folded v22 |
 | 2026-06-15 | calibrate the §5 `risk:` level to ACTUAL reversibility/blast, not the topic — a behavior-preserving security REMEDIATION (verify CONFIRMS a fix, not discovers a finding) with full regression is auto-gateable at `risk: medium`; `risk: high`+`autonomy: auto` trips the `unguarded_high_risk_auto` guard (human-owned gate). Record calibration transparently; human may override (fold: ADD/provider-secret-chain-hardening) | over-flagging blocks the auto loop on a change the project bar (v21 azure-aad-auth/azure-embeddings, unlabelled) already auto-gated after remediation; a security FINDING (run.md) is a discovered problem, which this was not | folded v22 |
+| 2026-06-16 | A presentation-only restyle freezes the COMPONENT SHAPE + DOM/a11y markers (not a network contract); the NEW red→green suite asserts ONLY the adoption via a stable `data-slot` marker, while the dense FROZEN behavioral suites stay the regression net — every restyle confirmed by an adversarial refute-read returning EARNED (fold: TDD+UDD/console+admin+auth-redesign) | data-slot is non-brittle + genuinely discriminating (beats CSS-class asserts; survives interactive cells); zero data-seam diff across all 7 surfaces + auth, 329/329 green | folded v23 |
+| 2026-06-16 | A shared shell component OWNS page chrome + the single `<main>` landmark; a decorative panel is made a11y-invisible by `aria-hidden="true"` + heading-free + focusable-free (works in BOTH jsdom — no CSS engine — and real-Chromium axe, which skips aria-hidden subtrees incl. color-contrast); `Button asChild` (Radix Slot) styles a nav `<a>` without making it a `<button>` (fold: UDD/auth-pages-redesign) | split-screen AuthShell answered "login too simple" while keeping every POST route/validation/redirect byte-identical; SSO link keeps href+role=link+name | folded v23 |
+| 2026-06-16 | The §5 scope baseline walks the working tree (excludes only .git/.add/__pycache__/node_modules), so a gitignored BUILD ARTIFACT present at the tests→build snapshot pollutes it: `apps/dashboard/coverage/` (a `--coverage` run) or `tsconfig.tsbuildinfo` (any `tsc --noEmit`) between snapshot and gate trips `scope_violation`. Workaround: delete artifact + re-snapshot (phase tests→advance) + run ONLY `npm test` for the gate (fold: ADD/console+admin+auth-redesign) | THREE recurrences across v23 (coverage ×1, tsbuildinfo ×2) ⇒ ship the engine fix: extend the scope-walk exclusion to gitignored build artifacts (`coverage/`, `*.tsbuildinfo`) | folded v23 |

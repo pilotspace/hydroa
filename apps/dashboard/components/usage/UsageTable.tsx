@@ -1,21 +1,24 @@
 "use client";
 
 /**
- * UsageTable — records table ≤50 rows
- * States: loading (no rows), empty ("No usage records yet"), error (no rows), success (table)
- * Uses real <table>/<tr> — only rendered on success so error/loading states have 0 role="row" elements.
+ * UsageTable — records table ≤50 rows, rendered via the shared sortable DataTable block.
+ * States: loading (no rows), empty ("No usage records yet"), error (no rows), success (table).
+ * The loading/error null-guard is kept ABOVE the DataTable render so those states still emit
+ * 0 role="row" elements (frozen usage suite). Cell text is byte-identical to the prior table.
  */
 
-import { UsageData } from "./UsageStatsCards";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-  Empty,
-} from "@/components/ui";
+import type { ColumnDef } from "@tanstack/react-table";
+import { UsageRecord, UsageData } from "./UsageStatsCards";
+import { DataTable } from "@/components/ui";
+
+const COLUMNS: ColumnDef<UsageRecord>[] = [
+  { accessorKey: "model_id", header: "Model" },
+  { accessorKey: "prompt_tokens", header: "Prompt Tokens" },
+  { accessorKey: "completion_tokens", header: "Completion Tokens" },
+  { accessorKey: "cost_usd", header: "Cost (USD)" },
+  { accessorKey: "status", header: "Status" },
+  { accessorKey: "created_at", header: "Date" },
+];
 
 interface UsageTableProps {
   isLoading: boolean;
@@ -29,34 +32,5 @@ export function UsageTable({ isLoading, isError, data }: UsageTableProps) {
 
   if (!data) return null;
 
-  if (data.records.length === 0) {
-    return <Empty title="No usage records yet" />;
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Model</TableHead>
-          <TableHead>Prompt Tokens</TableHead>
-          <TableHead>Completion Tokens</TableHead>
-          <TableHead>Cost (USD)</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Date</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {data.records.map((rec) => (
-          <TableRow key={rec.id}>
-            <TableCell>{rec.model_id}</TableCell>
-            <TableCell>{rec.prompt_tokens}</TableCell>
-            <TableCell>{rec.completion_tokens}</TableCell>
-            <TableCell>{rec.cost_usd}</TableCell>
-            <TableCell>{rec.status}</TableCell>
-            <TableCell>{rec.created_at}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
+  return <DataTable columns={COLUMNS} data={data.records} emptyMessage="No usage records yet" />;
 }

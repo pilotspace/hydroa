@@ -17,16 +17,12 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet, bffPut, BffError } from "@/lib/bff-client";
 import {
   Card,
   CardContent,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
+  DataTable,
   Switch,
   Loading,
   ErrorState,
@@ -79,6 +75,47 @@ export function ModelsPage() {
 
   const models = data?.data ?? [];
 
+  // Columns defined in-component so the Enabled cell closes over the toggle mutation +
+  // pendingId. Non-sortable (enableSorting:false) — behavior-preserving vs the prior <Table>.
+  const columns: ColumnDef<AdminModelItem>[] = [
+    {
+      accessorKey: "name",
+      header: "Model",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <>
+          <div className="font-medium text-foreground">{row.original.name}</div>
+          <div className="text-xs text-muted-foreground">{row.original.id}</div>
+        </>
+      ),
+    },
+    {
+      accessorKey: "context_length",
+      header: "Context length",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {row.original.context_length !== null
+            ? row.original.context_length.toLocaleString()
+            : "—"}
+        </span>
+      ),
+    },
+    {
+      id: "enabled",
+      header: "Enabled",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <Switch
+          checked={row.original.enabled}
+          aria-label={`Enable ${row.original.name}`}
+          disabled={toggleModel.isPending && pendingId === row.original.id}
+          onCheckedChange={(next) => handleToggle(row.original.id, next)}
+        />
+      ),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <header>
@@ -108,38 +145,7 @@ export function ModelsPage() {
       {!isLoading && !isError && models.length > 0 && (
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Context length</TableHead>
-                  <TableHead>Enabled</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {models.map((model) => (
-                  <TableRow key={model.id}>
-                    <TableCell>
-                      <div className="font-medium text-foreground">{model.name}</div>
-                      <div className="text-xs text-muted-foreground">{model.id}</div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {model.context_length !== null
-                        ? model.context_length.toLocaleString()
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={model.enabled}
-                        aria-label={`Enable ${model.name}`}
-                        disabled={toggleModel.isPending && pendingId === model.id}
-                        onCheckedChange={(next) => handleToggle(model.id, next)}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable columns={columns} data={models} />
           </CardContent>
         </Card>
       )}

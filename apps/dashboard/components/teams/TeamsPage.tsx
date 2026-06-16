@@ -13,16 +13,12 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet, bffPost, bffDelete, BffError } from "@/lib/bff-client";
 import {
   Card,
   CardContent,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
+  DataTable,
   Button,
   Loading,
   ErrorState,
@@ -68,6 +64,62 @@ export function TeamsPage() {
 
   const teams = data ?? [];
 
+  // Columns defined in-component so the Team/Actions cells close over selectedId +
+  // setSelectedId/setDeleteTarget. Non-sortable (behavior-preserving vs the prior <Table>);
+  // the inline TeamBudgetForm and dynamic aria-labels render byte-identically per cell.
+  const columns: ColumnDef<TeamResponse>[] = [
+    {
+      accessorKey: "name",
+      header: "Team",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          onClick={() => setSelectedId(row.original.id)}
+          aria-current={row.original.id === selectedId ? "true" : undefined}
+          className="rounded font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[current]:underline"
+        >
+          {row.original.name}
+        </button>
+      ),
+    },
+    {
+      accessorKey: "member_count",
+      header: "Members",
+      enableSorting: false,
+      cell: ({ row }) => <span className="text-muted-foreground">{row.original.member_count}</span>,
+    },
+    {
+      accessorKey: "key_count",
+      header: "Keys",
+      enableSorting: false,
+      cell: ({ row }) => <span className="text-muted-foreground">{row.original.key_count}</span>,
+    },
+    {
+      id: "budget",
+      header: "Monthly budget (USD)",
+      enableSorting: false,
+      cell: ({ row }) => <TeamBudgetForm team={row.original} />,
+    },
+    {
+      id: "actions",
+      header: () => <span className="sr-only">Actions</span>,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <div className="text-right">
+          <Button
+            variant="destructive"
+            size="sm"
+            aria-label={`Delete team ${row.original.name}`}
+            onClick={() => setDeleteTarget(row.original)}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-start justify-between gap-4">
@@ -94,50 +146,7 @@ export function TeamsPage() {
       {!isLoading && !isError && teams.length > 0 && (
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Team</TableHead>
-                  <TableHead>Members</TableHead>
-                  <TableHead>Keys</TableHead>
-                  <TableHead>Monthly budget (USD)</TableHead>
-                  <TableHead>
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {teams.map((team) => (
-                  <TableRow key={team.id}>
-                    <TableCell>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedId(team.id)}
-                        aria-current={team.id === selectedId ? "true" : undefined}
-                        className="rounded font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[current]:underline"
-                      >
-                        {team.name}
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{team.member_count}</TableCell>
-                    <TableCell className="text-muted-foreground">{team.key_count}</TableCell>
-                    <TableCell>
-                      <TeamBudgetForm team={team} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        aria-label={`Delete team ${team.name}`}
-                        onClick={() => setDeleteTarget(team)}
-                      >
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable columns={columns} data={teams} />
           </CardContent>
         </Card>
       )}

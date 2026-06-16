@@ -15,6 +15,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { ApiError } from "@/lib/api-client";
+import { Button, Card, CardContent, Input } from "@/components/ui";
 
 const SignupSchema = z.object({
   tenant_name: z.string().min(1, "Tenant name is required").max(120, "Tenant name must be at most 120 characters"),
@@ -91,55 +92,73 @@ export function SignupForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate aria-label="Sign up">
-      <div>
-        <label htmlFor="tenant_name">Tenant Name</label>
-        <input
-          id="tenant_name"
-          type="text"
-          value={tenantName}
-          onChange={(e) => setTenantName(e.target.value)}
-          autoComplete="organization"
-        />
-        {fieldErrors.tenant_name && (
-          <p role="alert" aria-live="polite">{fieldErrors.tenant_name}</p>
-        )}
-      </div>
+      <Card data-slot="auth-card">
+        <CardContent className="flex flex-col gap-4 p-6">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tenant_name" className="text-sm font-medium text-foreground">
+              Tenant Name
+            </label>
+            <Input
+              id="tenant_name"
+              type="text"
+              value={tenantName}
+              onChange={(e) => setTenantName(e.target.value)}
+              autoComplete="organization"
+            />
+            {fieldErrors.tenant_name && (
+              <p role="alert" aria-live="polite" className="text-sm text-destructive">
+                {fieldErrors.tenant_name}
+              </p>
+            )}
+          </div>
 
-      <div>
-        <label htmlFor="signup_email">Email</label>
-        <input
-          id="signup_email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-        />
-        {fieldErrors.email && (
-          <p role="alert" aria-live="polite">{fieldErrors.email}</p>
-        )}
-      </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="signup_email" className="text-sm font-medium text-foreground">
+              Email
+            </label>
+            <Input
+              id="signup_email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+            {fieldErrors.email && (
+              <p role="alert" aria-live="polite" className="text-sm text-destructive">
+                {fieldErrors.email}
+              </p>
+            )}
+          </div>
 
-      <div>
-        <label htmlFor="signup_password">Password</label>
-        <input
-          id="signup_password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="new-password"
-        />
-        {fieldErrors.password && (
-          <p role="alert" aria-live="polite">{fieldErrors.password}</p>
-        )}
-      </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="signup_password" className="text-sm font-medium text-foreground">
+              Password
+            </label>
+            <Input
+              id="signup_password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            {fieldErrors.password && (
+              <p role="alert" aria-live="polite" className="text-sm text-destructive">
+                {fieldErrors.password}
+              </p>
+            )}
+          </div>
 
-      {globalError && (
-        <p role="alert" aria-live="polite">{globalError}</p>
-      )}
+          {globalError && (
+            <p role="alert" aria-live="polite" className="text-sm text-destructive">
+              {globalError}
+            </p>
+          )}
 
-      <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? "Signing up…" : "Sign up"}
-      </button>
+          <Button type="submit" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? "Signing up…" : "Sign up"}
+          </Button>
+        </CardContent>
+      </Card>
     </form>
   );
 }

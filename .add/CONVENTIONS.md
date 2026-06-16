@@ -580,6 +580,22 @@ Build/harness conventions folded from v1 (2026-06-10):
         - [ADD] a systemic finding surfaced inside one task's verify that spans MULTIPLE frozen contracts becomes its
           OWN milestone (a cross-cutting sweep), never a retro-edit of the originating task's frozen contract
           (evidence: v21 azure-embeddings finding → v22 provider-secret-chain-hardening, 8 files).
+        Frontend / testing / harness conventions folded from v23 (2026-06-16, enterprise UI overhaul):
+        - [TDD] For a PRESENTATION-ONLY restyle, the dense FROZEN behavioral suites ARE the regression net; the NEW
+          red→green suite asserts ONLY the *adoption* — a stable `data-slot` marker (e.g. `auth-card`, `stat-card`,
+          `data-table`) is a non-brittle, genuinely-discriminating hook that beats asserting CSS classes and survives
+          fully interactive cells. Each restyle is confirmed by an adversarial refute-read (a sonnet subagent) before
+          the gate; an EARNED verdict + zero data-seam diff is the evidence (evidence: v23 console/admin/auth — reds
+          landed exactly on missing data-slot/ariaLabel/sortable-header/ChartContainer; 3 refute-reads all EARNED).
+        - [ADD] The §5 scope baseline walks the WORKING TREE (excludes only .git/.add/__pycache__/node_modules), so a
+          gitignored BUILD ARTIFACT present at the tests→build snapshot pollutes the baseline: `apps/dashboard/coverage/`
+          (a `vitest run --coverage`) or `apps/dashboard/tsconfig.tsbuildinfo` (any `tsc --noEmit`) regenerated between
+          the snapshot and the gate trips `scope_violation` on a file the task never meant to touch. BLESSED WORKAROUND:
+          delete the artifact + re-snapshot (`add.py phase tests` → `add.py advance`, content-identical = a no-op for the
+          tamper tripwire) + run ONLY `npm test` (no `--coverage`, no `tsc`) for the gate command. THREE recurrences in
+          v23 (coverage ×1, tsbuildinfo ×2) ⇒ the engine fix should ship: extend the scope-walk exclusion to gitignored
+          build artifacts (`coverage/`, `*.tsbuildinfo`) (evidence: console-surfaces-redesign + admin-surfaces-redesign
+          + auth-pages-redesign, each cleared by re-snapshot, `add.py check` returned to 0 failed).
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

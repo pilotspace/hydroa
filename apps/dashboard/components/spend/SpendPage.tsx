@@ -20,18 +20,10 @@
 
 import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet, BffError } from "@/lib/bff-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
-import { Loading, ErrorState, Empty } from "@/components/ui";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-  TableCaption,
-} from "@/components/ui";
+import { Loading, ErrorState, Empty, StatCard, DataTable } from "@/components/ui";
 import { SpendSparkline } from "./SpendSparkline";
 
 type SpendWindow = "day" | "week" | "month";
@@ -84,6 +76,23 @@ interface SpendWindowResponse {
   buckets: SpendBucket[];
   breakdown: SpendBreakdownItem[] | TeamSpendBreakdownItem[] | null;
 }
+
+const KEY_BREAKDOWN_COLUMNS: ColumnDef<SpendBreakdownItem>[] = [
+  { accessorKey: "key_id", header: "Key" },
+  { accessorKey: "requests", header: "Requests" },
+  { accessorKey: "prompt_tokens", header: "Prompt" },
+  { accessorKey: "completion_tokens", header: "Completion" },
+  { accessorKey: "cost_usd", header: "Cost (USD)" },
+];
+
+const TEAM_BREAKDOWN_COLUMNS: ColumnDef<TeamSpendBreakdownItem>[] = [
+  { id: "team", header: "Team", accessorFn: (r) => r.team_name ?? "(no team)" },
+  { accessorKey: "requests", header: "Requests" },
+  { accessorKey: "prompt_tokens", header: "Prompt" },
+  { accessorKey: "completion_tokens", header: "Completion" },
+  { accessorKey: "cost_usd", header: "Cost (USD)" },
+  { accessorKey: "ledger_cost_usd", header: "Ledger cost (USD)" },
+];
 
 export function SpendPage() {
   const [spendWindow, setSpendWindow] = useState<SpendWindow>("month");
@@ -251,54 +260,36 @@ export function SpendPage() {
           {/* Spend-over-time chart (additive, decorative; data fallback below) */}
           <SpendSparkline buckets={viewData.buckets} />
 
-          {/* Totals */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Totals ({viewData.window})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div>
-                  <dt className="text-sm text-muted-foreground">Cost (USD)</dt>
-                  <dd
-                    data-testid="totals-cost"
-                    className="text-2xl font-semibold text-foreground"
-                  >
-                    {viewData.totals.cost_usd}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-muted-foreground">Requests</dt>
-                  <dd
-                    data-testid="totals-requests"
-                    className="text-2xl font-semibold text-foreground"
-                  >
-                    {viewData.totals.requests}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-muted-foreground">Prompt tokens</dt>
-                  <dd
-                    data-testid="totals-prompt"
-                    className="text-2xl font-semibold text-foreground"
-                  >
-                    {viewData.totals.prompt_tokens}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-muted-foreground">
-                    Completion tokens
-                  </dt>
-                  <dd
-                    data-testid="totals-completion"
-                    className="text-2xl font-semibold text-foreground"
-                  >
-                    {viewData.totals.completion_tokens}
-                  </dd>
-                </div>
-              </dl>
-            </CardContent>
-          </Card>
+          {/* Totals — rendered via the shared StatCard block. The "Totals ({window})"
+              heading and the sm:grid-cols-4 grid hook are preserved; each tile keeps its
+              frozen totals-* data-testid via StatCard's valueTestId. */}
+          <section className="flex flex-col gap-3">
+            <h2 className="text-lg font-medium text-foreground">
+              Totals ({viewData.window})
+            </h2>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <StatCard
+                label="Cost (USD)"
+                value={viewData.totals.cost_usd}
+                valueTestId="totals-cost"
+              />
+              <StatCard
+                label="Requests"
+                value={viewData.totals.requests}
+                valueTestId="totals-requests"
+              />
+              <StatCard
+                label="Prompt tokens"
+                value={viewData.totals.prompt_tokens}
+                valueTestId="totals-prompt"
+              />
+              <StatCard
+                label="Completion tokens"
+                value={viewData.totals.completion_tokens}
+                valueTestId="totals-completion"
+              />
+            </div>
+          </section>
 
           {/* Buckets — accessible data fallback for the chart */}
           {viewData.buckets.length > 0 && (
@@ -325,58 +316,24 @@ export function SpendPage() {
           {/* Breakdown table — rendered only when breakdown is non-null AND the
               query is not in error (its shape is coupled to the current
               group_by; a kept-previous error response may be the other shape). */}
+          {/* Breakdown tables — rendered via the shared sortable DataTable block. ariaLabel
+              forwards to the <table> (keeps getByRole("table",{name:/spend by .../i}) green). */}
           {!isError && viewData.breakdown != null && groupBy === "key_id" && (
-            <Table aria-label="Spend by key">
-              <TableCaption>Spend by key</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Key</TableHead>
-                  <TableHead>Requests</TableHead>
-                  <TableHead>Prompt</TableHead>
-                  <TableHead>Completion</TableHead>
-                  <TableHead>Cost (USD)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(viewData.breakdown as SpendBreakdownItem[]).map((item) => (
-                  <TableRow key={item.key_id}>
-                    <TableCell>{item.key_id}</TableCell>
-                    <TableCell>{item.requests}</TableCell>
-                    <TableCell>{item.prompt_tokens}</TableCell>
-                    <TableCell>{item.completion_tokens}</TableCell>
-                    <TableCell>{item.cost_usd}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              ariaLabel="Spend by key"
+              caption="Spend by key"
+              columns={KEY_BREAKDOWN_COLUMNS}
+              data={viewData.breakdown as SpendBreakdownItem[]}
+            />
           )}
 
           {!isError && viewData.breakdown != null && groupBy === "team_id" && (
-            <Table aria-label="Spend by team">
-              <TableCaption>Spend by team</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Team</TableHead>
-                  <TableHead>Requests</TableHead>
-                  <TableHead>Prompt</TableHead>
-                  <TableHead>Completion</TableHead>
-                  <TableHead>Cost (USD)</TableHead>
-                  <TableHead>Ledger cost (USD)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(viewData.breakdown as TeamSpendBreakdownItem[]).map((item, idx) => (
-                  <TableRow key={item.team_id ?? `no-team-${idx}`}>
-                    <TableCell>{item.team_name ?? "(no team)"}</TableCell>
-                    <TableCell>{item.requests}</TableCell>
-                    <TableCell>{item.prompt_tokens}</TableCell>
-                    <TableCell>{item.completion_tokens}</TableCell>
-                    <TableCell>{item.cost_usd}</TableCell>
-                    <TableCell>{item.ledger_cost_usd}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              ariaLabel="Spend by team"
+              caption="Spend by team"
+              columns={TEAM_BREAKDOWN_COLUMNS}
+              data={viewData.breakdown as TeamSpendBreakdownItem[]}
+            />
           )}
         </div>
       )}

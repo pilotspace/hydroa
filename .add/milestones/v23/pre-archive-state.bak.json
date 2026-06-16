@@ -1,0 +1,170 @@
+{
+  "milestone": {
+    "title": "Enterprise UI Overhaul",
+    "goal": "A user navigates an enterprise-grade dashboard \u2014 branded collapsible sidebar, an at-a-glance Overview home, a light/dark theme toggle, and consistently restyled surfaces + auth pages matching the shadcn reference \u2014 with every existing data seam byte-identical.",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-15T16:46:59+00:00",
+    "updated": "2026-06-15T19:40:22+00:00"
+  },
+  "tasks": {
+    "design-system-enterprise-ext": {
+      "title": "Extend v13 tokens + dark-mode toggle + shared-component inventory",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v23",
+      "depends_on": [],
+      "created": "2026-06-15T16:47:49+00:00",
+      "updated": "2026-06-15T17:27:04+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6f02590ed85add7969ad7fbf50c27ffa",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/globals.css",
+          "apps/dashboard/app/layout.tsx",
+          "apps/dashboard/components/ui/",
+          ".add/design/tokens.json",
+          ".add/design/catalog.json",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo"
+        ],
+        "snapshot_md5": "36b74c5d04b73efd78a00b85a9384b0a"
+      }
+    },
+    "app-shell-sidebar": {
+      "title": "Branded collapsible sidebar shell + responsive mobile sheet",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v23",
+      "depends_on": [
+        "design-system-enterprise-ext"
+      ],
+      "created": "2026-06-15T16:47:49+00:00",
+      "updated": "2026-06-15T17:53:57+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "e6819ec67c595e940122262d4f04fd31",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/components/dashboard-shell.tsx",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo"
+        ],
+        "snapshot_md5": "6caaaabf1cc1417b28ed2fcf83475506"
+      }
+    },
+    "overview-home": {
+      "title": "Overview home: KPI cards + usage chart + recent-activity table",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v23",
+      "depends_on": [
+        "design-system-enterprise-ext",
+        "app-shell-sidebar"
+      ],
+      "created": "2026-06-15T16:47:49+00:00",
+      "updated": "2026-06-15T18:18:17+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "764633d827ca8e21462f54d773bc3151",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/overview/",
+          "apps/dashboard/app/page.tsx",
+          "apps/dashboard/.next/",
+          "apps/dashboard/coverage/",
+          "apps/dashboard/tsconfig.tsbuildinfo"
+        ],
+        "snapshot_md5": "4ffcdadb1213abc980b4e1481c4560d6"
+      }
+    },
+    "console-surfaces-redesign": {
+      "title": "Restyle Usage/Spend/Keys to shared shadcn blocks",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v23",
+      "depends_on": [
+        "design-system-enterprise-ext"
+      ],
+      "created": "2026-06-15T16:47:49+00:00",
+      "updated": "2026-06-15T18:51:53+00:00",
+      "tripwire": {
+        "contract_md5": "c4bb07d892658da04838eb5d88c91459",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/stat-card.tsx",
+          "apps/dashboard/components/ui/data-table.tsx",
+          "apps/dashboard/components/usage/UsageStatsCards.tsx",
+          "apps/dashboard/components/usage/UsageTable.tsx",
+          "apps/dashboard/components/usage/BudgetWidget.tsx",
+          "apps/dashboard/components/spend/SpendPage.tsx",
+          "apps/dashboard/components/spend/SpendSparkline.tsx"
+        ],
+        "snapshot_md5": "9d20fd0ca66c3293191de3f745a489ee"
+      }
+    },
+    "admin-surfaces-redesign": {
+      "title": "Restyle Models/Teams/Routing/Settings to shared shadcn blocks",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v23",
+      "depends_on": [
+        "design-system-enterprise-ext"
+      ],
+      "created": "2026-06-15T16:47:49+00:00",
+      "updated": "2026-06-15T19:15:26+00:00",
+      "tripwire": {
+        "contract_md5": "f0f5410b7490c8515d88baf9d2f13aee",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/models/ModelsPage.tsx",
+          "apps/dashboard/components/teams/TeamsPage.tsx",
+          "apps/dashboard/components/routing/RoutingPage.tsx"
+        ],
+        "snapshot_md5": "cac694f4a69607de675ef9a15843fdb5"
+      }
+    },
+    "auth-pages-redesign": {
+      "title": "Enterprise login + signup (split-screen, token-styled, styled SSO)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v23",
+      "depends_on": [
+        "design-system-enterprise-ext"
+      ],
+      "created": "2026-06-15T16:47:50+00:00",
+      "updated": "2026-06-15T19:39:11+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "442bfccdd114464ffb8e159f0d7f9152",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/auth-shell.tsx",
+          "apps/dashboard/components/ui/index.ts",
+          "apps/dashboard/components/auth/LoginForm.tsx",
+          "apps/dashboard/components/auth/SignupForm.tsx",
+          "apps/dashboard/app/(auth)/login/page.tsx",
+          "apps/dashboard/app/(auth)/signup/page.tsx"
+        ],
+        "snapshot_md5": "ec7f2df38dab4bf2a67672d8d7e4679a"
+      }
+    }
+  },
+  "archived_at": "2026-06-16T02:03:04+00:00"
+}

@@ -16,6 +16,7 @@
 
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet, BffError } from "@/lib/bff-client";
 import {
   Badge,
@@ -24,13 +25,7 @@ import {
   CardHeader,
   CardTitle,
   CardContent,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-  TableCaption,
+  DataTable,
   Loading,
   Empty,
   ErrorState,
@@ -76,6 +71,29 @@ const STATE_VARIANT: Record<CircuitState, NonNullable<BadgeProps["variant"]>> = 
   open: "destructive",
   unknown: "secondary",
 };
+
+/** Candidate circuit-state columns — pure display, non-sortable (behavior-preserving vs the
+    prior <Table>). State renders as a labelled Badge (text is the a11y contract, color reinforces). */
+const CANDIDATE_COLUMNS: ColumnDef<Candidate>[] = [
+  {
+    accessorKey: "alias",
+    header: "Alias",
+    enableSorting: false,
+    cell: ({ row }) => <span className="font-medium text-foreground">{row.original.alias}</span>,
+  },
+  {
+    accessorKey: "model_id",
+    header: "Model",
+    enableSorting: false,
+    cell: ({ row }) => <span className="text-foreground">{row.original.model_id}</span>,
+  },
+  {
+    id: "state",
+    header: "State",
+    enableSorting: false,
+    cell: ({ row }) => <Badge variant={STATE_VARIANT[row.original.state]}>{row.original.state}</Badge>,
+  },
+];
 
 /** A labelled metric row: a term + its read-only value. */
 function Metric({ label, value }: { label: string; value: ReactNode }) {
@@ -185,27 +203,12 @@ export function RoutingPage() {
               description="No model candidates are configured to display circuit state for."
             />
           ) : (
-            <Table>
-              <TableCaption>Routing candidates and their circuit state</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Alias</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>State</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {candidates.map((c) => (
-                  <TableRow key={`${c.alias}:${c.model_id}`}>
-                    <TableCell className="font-medium text-foreground">{c.alias}</TableCell>
-                    <TableCell className="text-foreground">{c.model_id}</TableCell>
-                    <TableCell>
-                      <Badge variant={STATE_VARIANT[c.state]}>{c.state}</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              ariaLabel="Routing candidates and their circuit state"
+              caption="Routing candidates and their circuit state"
+              columns={CANDIDATE_COLUMNS}
+              data={candidates}
+            />
           )}
         </CardContent>
       </Card>

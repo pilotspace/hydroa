@@ -6,7 +6,7 @@
  */
 
 import { ApiError } from "@/lib/api-client";
-import { Card, CardContent, Loading, ErrorState } from "@/components/ui";
+import { Loading, ErrorState, StatCard } from "@/components/ui";
 
 export interface UsageRecord {
   id: string;
@@ -71,12 +71,7 @@ export function UsageStatsCards({
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
       {cards.map((card) => (
-        <Card key={card.label}>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">{card.label}</p>
-            <p className="text-2xl font-semibold text-foreground">{card.value}</p>
-          </CardContent>
-        </Card>
+        <StatCard key={card.label} label={card.label} value={card.value} />
       ))}
     </div>
   );

@@ -49,6 +49,7 @@ export {
   type SuccessProps,
 } from "./states";
 export { AppShell, type AppShellProps } from "./app-shell";
+export { AuthShell, type AuthShellProps } from "./auth-shell";
 export { Switch, type SwitchProps } from "./switch";
 export {
   Tabs,
@@ -62,3 +63,36 @@ export {
 } from "./tabs";
 export { Textarea, type TextareaProps } from "./textarea";
 export { Checkbox, type CheckboxProps } from "./checkbox";
+export {
+  ThemeProvider,
+  useTheme,
+  themeScript,
+  type Theme,
+  type ThemeProviderProps,
+} from "./theme-provider";
+export { ThemeToggle } from "./theme-toggle";
+export { StatCard, type StatCardProps, type StatDelta } from "./stat-card";
+export {
+  ChartCard,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+  type ChartCardProps,
+  type ChartContainerProps,
+} from "./chart";
+export { DataTable, type DataTableProps } from "./data-table";
+export {
+  Sidebar,
+  SidebarHeader,
+  SidebarBrand,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarItem,
+  SidebarFooter,
+  SidebarTrigger,
+  type SidebarProps,
+  type SidebarItemProps,
+  type SidebarTriggerProps,
+} from "./sidebar";
