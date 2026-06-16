@@ -46,6 +46,21 @@
     --input: #e2e8f0;               /* slate-200 */
     --ring: #6366f1;                /* indigo-500 — focus ring */
 
+    /* chart palette (data-viz series — v23 enterprise extension) */
+    --chart-1: #4f46e5;             /* indigo-600 */
+    --chart-2: #10b981;             /* emerald-500 */
+    --chart-3: #f59e0b;             /* amber-500 */
+    --chart-4: #0ea5e9;             /* sky-500 */
+    --chart-5: #f43f5e;             /* rose-500 */
+
+    /* sidebar surface (raised navigation panel — v23 enterprise extension) */
+    --sidebar: #ffffff;
+    --sidebar-foreground: #334155;          /* slate-700 */
+    --sidebar-accent: #f1f5f9;              /* slate-100 — hover/active */
+    --sidebar-accent-foreground: #0f172a;   /* slate-900 */
+    --sidebar-border: #e2e8f0;             /* slate-200 */
+    --sidebar-ring: #6366f1;               /* indigo-500 */
+
     /* radius (control = md 8px; card = lg 12px) */
     --radius: 0.5rem;
 
@@ -77,6 +92,21 @@
     --border: #1e293b;
     --input: #1e293b;
     --ring: #818cf8;
+
+    /* chart palette — lighter series for dark surfaces */
+    --chart-1: #818cf8;             /* indigo-400 */
+    --chart-2: #34d399;             /* emerald-400 */
+    --chart-3: #fbbf24;             /* amber-400 */
+    --chart-4: #38bdf8;             /* sky-400 */
+    --chart-5: #fb7185;             /* rose-400 */
+
+    /* sidebar surface — dark */
+    --sidebar: #0f172a;             /* slate-900 */
+    --sidebar-foreground: #cbd5e1;          /* slate-300 */
+    --sidebar-accent: #1e293b;              /* slate-800 — hover/active */
+    --sidebar-accent-foreground: #f8fafc;   /* slate-50 */
+    --sidebar-border: #1e293b;             /* slate-800 */
+    --sidebar-ring: #818cf8;               /* indigo-400 */
   }
 
   * {
@@ -117,6 +147,17 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 4px);

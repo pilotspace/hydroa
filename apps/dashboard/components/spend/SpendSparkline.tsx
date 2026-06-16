@@ -21,6 +21,11 @@
 
 import { useEffect } from "react";
 import { LineChart, Line, CartesianGrid } from "recharts";
+import { ChartContainer, type ChartConfig } from "@/components/ui";
+
+const CHART_CONFIG: ChartConfig = {
+  cost: { label: "Cost", color: "var(--color-chart-1)" },
+};
 
 interface SpendBucketPoint {
   bucket_start: string;
@@ -66,29 +71,34 @@ export function SpendSparkline({
       <figcaption className="mb-2 text-sm font-medium text-foreground">
         Spend over time
       </figcaption>
-      <LineChart
-        width={width}
-        height={height}
-        data={data}
-        aria-hidden="true"
-        role="presentation"
-        // Decorative chart: SpendPage renders the bucket list + totals as the
-        // accessible source. Recharts 3's accessibilityLayer (default on) adds
-        // tabindex=0 to the surface, which on an aria-hidden element is a serious
-        // axe violation (aria-hidden-focus). Disable it so the decorative chart
-        // stays out of the tab order.
-        accessibilityLayer={false}
-      >
-        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-        <Line
-          type="monotone"
-          dataKey="cost"
-          stroke="var(--color-primary)"
-          strokeWidth={2}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </LineChart>
+      {/* Wrapped in the shared ChartContainer (v23): publishes --color-cost from CHART_CONFIG
+          and carries data-slot="chart". aspect-auto neutralises the container's default
+          aspect-video so the fixed-dim sparkline keeps its size. */}
+      <ChartContainer config={CHART_CONFIG} className="aspect-auto">
+        <LineChart
+          width={width}
+          height={height}
+          data={data}
+          aria-hidden="true"
+          role="presentation"
+          // Decorative chart: SpendPage renders the bucket list + totals as the
+          // accessible source. Recharts 3's accessibilityLayer (default on) adds
+          // tabindex=0 to the surface, which on an aria-hidden element is a serious
+          // axe violation (aria-hidden-focus). Disable it so the decorative chart
+          // stays out of the tab order.
+          accessibilityLayer={false}
+        >
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          <Line
+            type="monotone"
+            dataKey="cost"
+            stroke="var(--color-cost)"
+            strokeWidth={2}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ChartContainer>
     </figure>
   );
 }

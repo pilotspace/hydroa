@@ -14,6 +14,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { ApiError } from "@/lib/api-client";
+import { Button, Card, CardContent, Input } from "@/components/ui";
 
 const LoginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -84,46 +85,62 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate aria-label="Log in">
-      <div>
-        <label htmlFor="login_email">Email</label>
-        <input
-          id="login_email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-        />
-        {fieldErrors.email && (
-          <p role="alert" aria-live="polite">{fieldErrors.email}</p>
-        )}
-      </div>
+      <Card data-slot="auth-card">
+        <CardContent className="flex flex-col gap-4 p-6">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="login_email" className="text-sm font-medium text-foreground">
+              Email
+            </label>
+            <Input
+              id="login_email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+            {fieldErrors.email && (
+              <p role="alert" aria-live="polite" className="text-sm text-destructive">
+                {fieldErrors.email}
+              </p>
+            )}
+          </div>
 
-      <div>
-        <label htmlFor="login_password">Password</label>
-        <input
-          id="login_password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-        />
-        {fieldErrors.password && (
-          <p role="alert" aria-live="polite">{fieldErrors.password}</p>
-        )}
-      </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="login_password" className="text-sm font-medium text-foreground">
+              Password
+            </label>
+            <Input
+              id="login_password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            {fieldErrors.password && (
+              <p role="alert" aria-live="polite" className="text-sm text-destructive">
+                {fieldErrors.password}
+              </p>
+            )}
+          </div>
 
-      {globalError && (
-        <p role="alert" aria-live="polite">{globalError}</p>
-      )}
+          {globalError && (
+            <p role="alert" aria-live="polite" className="text-sm text-destructive">
+              {globalError}
+            </p>
+          )}
 
-      <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? "Signing in…" : "Log in"}
-      </button>
+          <Button type="submit" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? "Signing in…" : "Log in"}
+          </Button>
 
-      {/* SSO login — a full-page NAVIGATION to the pre-auth BFF relay (NOT a
-          fetch): the browser must follow the relay's 302 chain to the external
-          IdP, which a fetch cannot do. */}
-      <a href="/api/auth/oidc/login">Sign in with SSO</a>
+          {/* SSO login — a full-page NAVIGATION to the pre-auth BFF relay (NOT a
+              fetch): the browser must follow the relay's 302 chain to the external
+              IdP, which a fetch cannot do. Styled via Button asChild — stays an <a>. */}
+          <Button asChild variant="outline" className="w-full">
+            <a href="/api/auth/oidc/login">Sign in with SSO</a>
+          </Button>
+        </CardContent>
+      </Card>
     </form>
   );
 }
