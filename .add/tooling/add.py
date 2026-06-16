@@ -2759,9 +2759,13 @@ def _tripwire_divergence(root: Path, slug: str, tw: dict) -> list[str]:
 # A regenerated artifact is NOT a source touch — counting one produced repeated false
 # `scope_violation`s across v23–v24 (`.next/`, `coverage/`, `tsconfig.tsbuildinfo`,
 # whose `incremental` rewrite even races a clean re-snapshot), so they are pruned here.
+# v25 (Python side): the same papercut from per-run TOOL CACHES the gate's own
+# evidence run regenerates — ruff/pytest/mypy caches, the serena symbol cache, and
+# coverage's `.coverage` data file — none of which carry source signal; pruned too.
 _SCOPE_EXCLUDE_DIRS = (".git", ".add", "__pycache__", "node_modules",
-                       ".next", "coverage", "test-results")
-_SCOPE_EXCLUDE_FILES = (".DS_Store",)                  # plus *.pyc / *.tsbuildinfo by suffix
+                       ".next", "coverage", "test-results",
+                       ".ruff_cache", ".pytest_cache", ".mypy_cache", ".serena")
+_SCOPE_EXCLUDE_FILES = (".DS_Store", ".coverage")      # plus *.pyc / *.tsbuildinfo by suffix
 _SCOPE_EXCLUDE_SUFFIXES = (".pyc", ".tsbuildinfo")
 
 
