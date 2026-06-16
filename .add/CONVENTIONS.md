@@ -596,6 +596,30 @@ Build/harness conventions folded from v1 (2026-06-10):
           v23 (coverage ×1, tsbuildinfo ×2) ⇒ the engine fix should ship: extend the scope-walk exclusion to gitignored
           build artifacts (`coverage/`, `*.tsbuildinfo`) (evidence: console-surfaces-redesign + admin-surfaces-redesign
           + auth-pages-redesign, each cleared by re-snapshot, `add.py check` returned to 0 failed).
+        Frontend / testing / harness conventions folded from v24 (2026-06-16, UI polish & a11y follow-ups):
+        - [UDD] Heading-order is an a11y CONTRACT asserted by ROLE+LEVEL, never by CSS: `getByRole("heading",{level:2})`
+          + a "no level jumps >1" outline scan over `getAllByRole("heading")` (evidence: overview-heading-a11y-fix). DS
+          title primitives provide the lever — `CardTitle asChild` (Radix Slot, default `<h3>`) + `ChartCard headingLevel?`
+          (default 3) — so a surface fixes its outline at the shared block; the default branch keeps all other consumers
+          byte-identical and is covered by a GREEN-BY-DESIGN preservation test.
+        - [UDD] The no-flash theme `<script>` MUST render from a Server Component: `themeScript` lives in a non-`"use client"`
+          module (a function exported from a client module is an uncallable client *reference* in server render); the client
+          context (ThemeProvider + QueryClientProvider) goes in a `"use client"` `app/providers.tsx`; `app/layout.tsx` stays
+          a plain Server Component. Verify with a static fs test (no `"use client"` in layout, providers/theme-script present)
+          + `next build` clean (evidence: theme-script-server.test.ts 5/5, build 18 routes).
+        - [TDD] A pure-dedup/refactor with NO behavioral delta has no honest red→green — label it GREEN-BY-DESIGN and assert
+          PRESERVATION (the accessible name survives) + lean on the refute-read; never fabricate a red. Icon-only DS controls
+          keep a default accessible name as a safety net; the consumer dedup removes the duplicate, not the name (evidence:
+          test_sidebartrigger_name_from_ds_default passes before and after).
+        - [ADD] §5 scope-walk papercut, 4th recurrence + ACUTE form: a background `tsc` (`incremental:true`) regenerates
+          `tsconfig.tsbuildinfo` AFTER a clean re-snapshot, so delete-then-gate RACES and the gate trips on an artifact it
+          cannot prevent. In-task fix when an artifact regenerates unbidden: DECLARE it as an in-scope token on the §5
+          `Scope (may touch):` line (truthful — `tsc` produces it during this task's build), then re-snapshot so the anchor
+          captures it. The engine fix is now overdue: add `.next` to `_SCOPE_EXCLUDE_DIRS` and `tsconfig.tsbuildinfo`/`*.tsbuildinfo`
+          to `_SCOPE_EXCLUDE_FILES` in add.py (evidence: overview-heading-a11y-fix, gate passed only after declaring the token).
+        - [ADD] The `security_reminder_hook` substring-matches PROSE, not just code: writing the token for React's raw-HTML
+          injection prop in a §6/§7 note (even to say "we DON'T use it") blocks the Edit. Phrase verify/observe notes as
+          "no raw-HTML injection API" (evidence: the first §6 write was rejected by the PreToolUse hook).
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config

@@ -215,7 +215,12 @@ export function OverviewPage() {
         />
       </section>
 
-      <ChartCard title="Usage over time" description={`Requests per ${range}`} config={CHART_CONFIG}>
+      <ChartCard
+        title="Usage over time"
+        description={`Requests per ${range}`}
+        config={CHART_CONFIG}
+        headingLevel={2}
+      >
         <ChartContainer config={CHART_CONFIG}>
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
@@ -238,7 +243,9 @@ export function OverviewPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent activity</CardTitle>
+          <CardTitle asChild>
+            <h2>Recent activity</h2>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <DataTable

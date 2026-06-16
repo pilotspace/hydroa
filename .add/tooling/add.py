@@ -19,7 +19,8 @@ import os
 import re
 import sys
 import tempfile
-from datetime import date, datetime, timezone
+import urllib.request
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 # --- constants ---------------------------------------------------------------
@@ -80,7 +81,23 @@ PHASE_OWNER = {
     "specify": "human", "scenarios": "human", "contract": "seam",
     "tests": "ai", "build": "ai", "verify": "human", "observe": "ai", "done": "human",
 }
-SETUP_FILES = ("PROJECT.md", "CONVENTIONS.md", "GLOSSARY.md", "MODEL_REGISTRY.md", "dependencies.allowlist", "DESIGN.md")
+SETUP_FILES = ("PROJECT.md", "CONVENTIONS.md", "GLOSSARY.md", "MODEL_REGISTRY.md", "dependencies.allowlist", "DESIGN.md", "SOUL.md")
+
+# Scaffolded into .add/.gitignore at init so the engine's transient LOCAL artifacts
+# never reach git. Bare-filename patterns match at any depth under .add/ (tasks/,
+# milestones/, archive/). These are working state, not records: scope-snapshot.json
+# is the tests->build touch baseline the verify scope-gate reads from disk (the
+# durable scope declaration is the state.json anchor); pre-archive-state.bak.json is
+# archive-milestone's pre-delete recovery net — needed on disk, never in history;
+# .update-cache.json is the update-nudge's once-a-day registry throttle. All stay on
+# disk; git-ignoring them is hygiene, never deletion.
+_GITIGNORE_BODY = """\
+# ADD engine transient artifacts — local working state, never committed.
+# (Scaffolded by `add.py init`; edit freely — init never clobbers an existing copy.)
+scope-snapshot.json
+pre-archive-state.bak.json
+.update-cache.json
+"""
 
 # Guideline-injection targets + version-stable markers. NEVER change these marker
 # strings: a re-run finds the old block by exact match, so changing them would
@@ -370,6 +387,13 @@ def cmd_init(args: argparse.Namespace) -> None:
         _die(f"already initialised at {root} (use --force to reset state)")
 
     (root / "tasks").mkdir(parents=True, exist_ok=True)
+    # Keep the engine's transient local artifacts out of git. Never-clobber: a
+    # human may have customised .add/.gitignore, so an existing one is left as-is
+    # (mirrors the SETUP_FILES skip-not-clobber idiom). Writes ONLY this file — no
+    # scope-snapshot.json or .bak is created, deleted, or modified.
+    gitignore = root / ".gitignore"
+    if not gitignore.exists():
+        _atomic_write(gitignore, _GITIGNORE_BODY)
     today = date.today().isoformat()
     proj_name = args.name or base.name
 
@@ -456,7 +480,7 @@ def cmd_new_task(args: argparse.Namespace) -> None:
     if _project_autonomy_token(root) == "?":
         print("warning: garbled_project_autonomy — PROJECT.md declares an unrecognized "
               f"autonomy token; new task seeded fail-safe '{autonomy}' "
-              "(set autonomy: manual|conservative|auto in PROJECT.md)", file=sys.stderr)
+              "(fix it with `add.py autonomy set <level> --project`)", file=sys.stderr)
 
     state["tasks"][slug] = {
         "title": title,
@@ -706,8 +730,8 @@ def cmd_gate(args: argparse.Namespace) -> None:
         hdr = _task_header(root, slug)
         if _RISK_HIGH_RE.search(hdr) and not _autonomy_lowered(hdr):
             _die(f"unguarded_high_risk_auto: task '{slug}' declares risk: high "
-                 "without a lowered autonomy level — set autonomy: manual or conservative in "
-                 "the TASK.md header; a human must own a high-risk gate (run.md guard)")
+                 "without a lowered autonomy level — run `add.py autonomy set conservative` "
+                 "(or manual); a human must own a high-risk gate (run.md guard)")
         # tamper tripwire (verify-integrity): the method's first mechanical cheat
         # block. A completing outcome is refused if the red suite or the frozen §3
         # changed since the tests->build snapshot. Placed BEFORE the waiver write so
@@ -736,6 +760,80 @@ def cmd_gate(args: argparse.Namespace) -> None:
     # the engine-sourced next step (next-footer-engine): a completing gate hands off to the
     # state arm; HARD-STOP routes to "resolve HARD-STOP …" — converging the old bespoke line.
     print(_next_footer(root, state))
+
+
+# the autonomy level as a first-class verb (task autonomy-command): autonomy was the ONLY mutable,
+# security-relevant task/project token WITHOUT a CLI verb — so an agent under `auto`, applying the
+# correct "first-class state has a command" model, hallucinated `add.py autonomy` and derailed.
+# `show` reads the resolved level; `set` is the FIRST writer of the header token — idempotent (one
+# declaration line, trailing comment preserved, NEVER appended), with the raise + risk:high guards
+# enforced BEFORE the write. state.json is untouched — autonomy stays a header token.
+_AUTONOMY_ORDER = {lvl: i for i, lvl in enumerate(_AUTONOMY_LEVELS)}   # manual(0) < conservative(1) < auto(2)
+
+
+def _autonomy_decl_line(text: str, level: str) -> str:
+    """Rewrite the SINGLE `autonomy:` declaration line to `level`, PRESERVING its trailing comment,
+    idempotently (replace in place, count=1 — never a second line). If absent, insert it: after the
+    `slug:` line for a task header, else after a leading `#` heading (PROJECT.md), else prepend. PURE
+    on the text; the caller does the atomic write."""
+    pat = re.compile(r"(?m)^(autonomy:[ \t]*)[^\s<#|]+(.*)$")
+    if pat.search(text):
+        return pat.sub(lambda m: f"{m.group(1)}{level}{m.group(2)}", text, count=1)
+    if re.search(r"(?m)^slug:", text):
+        return re.sub(r"(?m)^(slug:.*)$", r"\1\nautonomy: " + level, text, count=1)
+    lines = text.splitlines(keepends=True)
+    if lines and lines[0].lstrip().startswith("#"):
+        return lines[0] + f"autonomy: {level}\n" + "".join(lines[1:])
+    return f"autonomy: {level}\n" + text
+
+
+def _guard_autonomy_raise(current: str, target: str, yes: bool) -> None:
+    """RAISING the level toward `auto` is a human-owned trust escalation (run.md: the AI may LOWER
+    freely — RECOMMEND-only — but RAISING needs a human). Refuse a raise unless --yes confirms it."""
+    if _AUTONOMY_ORDER.get(target, -1) > _AUTONOMY_ORDER.get(current, -1) and not yes:
+        _die(f"autonomy_raise_unconfirmed: raising autonomy {current} -> {target} is a human-owned "
+             "trust escalation (the AI may LOWER freely; RAISING needs a human) — pass --yes to confirm")
+
+
+def _print_autonomy(root: Path, state: dict, slug: str) -> None:
+    """The read-only level view: declared · effective (fallback-resolved) · project default · the
+    verify-gate owner under it (the SAME _driver_stop the footer/guide render). Writes nothing."""
+    declared = _autonomy_level(_task_header(root, slug))
+    stop = _driver_stop(root, state, slug, "verify")
+    print(f"task        : {slug}")
+    print(f"declared    : {declared if declared in _AUTONOMY_LEVELS else 'unset'}")
+    print(f"effective   : {_effective_autonomy(root, state, slug)}")
+    print(f"project     : {_project_autonomy(root)}")
+    print(f"verify gate : {'human gate' if stop else 'you drive'}")
+
+
+def cmd_autonomy(args: argparse.Namespace) -> None:
+    """show / set the autonomy level — the verify-gate owner (task autonomy-command)."""
+    root = _require_root()                                   # reused -> "no .add/ project found …"
+    state = load_state(root)
+    if (getattr(args, "action", None) or "show") == "show":
+        _print_autonomy(root, state, _resolve_task(state, args.a1))   # reused -> "unknown task '<slug>'"
+        return
+    # action == "set"
+    level = args.a1
+    if level not in _AUTONOMY_LEVELS:
+        _die("autonomy_level_invalid: level must be one of "
+             f"{', '.join(_AUTONOMY_LEVELS)} (got {level!r})")
+    if getattr(args, "project", False):
+        target = root / "PROJECT.md"
+        _guard_autonomy_raise(_project_autonomy(root), level, getattr(args, "yes", False))
+        _atomic_write(target, _autonomy_decl_line(target.read_text(encoding="utf-8"), level))
+        print(f"project autonomy -> {level}")
+        return
+    slug = _resolve_task(state, args.a2)                     # reused -> "unknown task '<slug>'"
+    task_md = root / "tasks" / slug / "TASK.md"
+    if _RISK_HIGH_RE.search(_task_header(root, slug)) and level not in ("manual", "conservative"):
+        _die(f"unguarded_high_risk_auto: task '{slug}' declares risk: high — autonomy must stay "
+             f"lowered (manual|conservative); refusing '{level}' (a human must own a high-risk gate)")
+    _guard_autonomy_raise(_effective_autonomy(root, state, slug), level, getattr(args, "yes", False))
+    _atomic_write(task_md, _autonomy_decl_line(task_md.read_text(encoding="utf-8"), level))
+    print(f"task '{slug}' autonomy -> {level}")
+    _print_autonomy(root, state, slug)
 
 
 def cmd_reopen(args: argparse.Namespace) -> None:
@@ -918,6 +1016,10 @@ def cmd_status(args: argparse.Namespace) -> None:
     # foundation pointer — read the cross-milestone context first (anti-rot)
     if (root / "PROJECT.md").exists():
         print("context : .add/PROJECT.md  (foundation: domain · spec · UI/UX — read first)")
+    # voice pointer — the AI's SOUL (tone · style · trust); read each session, edit freely.
+    # Existence-only: no open/parse, so the pointer adds no IO failure path (a non-file is no voice).
+    if (root / "SOUL.md").exists():
+        print("voice   : .add/SOUL.md  (how I sound & what keeps your trust — read each session)")
     # wave resume hint — a live ledger outranks memory (streams.md "Wave ledger").
     # Existence-only: no open/read/parse, so the hint adds no IO failure path; a
     # non-file at the path is not a ledger. One line PER live ledger — more than
@@ -1551,7 +1653,7 @@ def cmd_check(args: argparse.Namespace) -> None:
                        "unknown_autonomy_level (token outside manual|conservative|auto)"))
         if _alvl is None and t.get("phase") not in ("done", "observe"):
             warnings.append((f"task '{slug}'", "has no explicit autonomy level (implicit_autonomy) "
-                             "— set `autonomy: manual|conservative|auto` in the header"))
+                             "— run `add.py autonomy set <level>` to set it"))
         for dep in t.get("depends_on") or []:
             checks.append((dep in tasks or dep in archived_slugs,
                            f"task '{slug}' dep '{dep}' resolves", "unknown task"))
@@ -1901,6 +2003,144 @@ def cmd_ready(args: argparse.Namespace) -> None:
         deps = tasks[slug].get("depends_on") or []
         suffix = f"  (after {', '.join(deps)})" if deps else ""
         print(f"  {slug}{suffix}")
+
+
+def _wave_schedule(state: dict, mslug: str) -> dict:
+    """Pure, total: derive the DAG schedule for milestone `mslug` from state — never
+    mutates, never raises on dict input. Returns one of:
+      {"cycle": [slug, ...]}                                       — unschedulable cycle
+      {"waves", "critical_path", "critical_path_len", "tiers", "blocked"}  — a schedule
+
+    A dep is SATISFIED (does not block) if it is archived or `_task_done` — the SAME
+    predicate cmd_ready uses. A not-done dep that is an OPEN MEMBER of this milestone
+    forces a later wave. A not-done dep that is NOT an open member (external/unknown)
+    is UNSATISFIABLE here -> the task is `blocked`, never scheduled. Critical path is the
+    longest chain (most tasks) through the scheduled sub-DAG; ties break by sorted slug.
+    Tier is advisory: `top` on the critical path, `mid` elsewhere (scheduled tasks only)."""
+    tasks = state.get("tasks") or {}
+    archived = _archived_task_slugs(state)
+
+    def _ok(d: str) -> bool:                       # satisfied externally / already done
+        return d in archived or (d in tasks and _task_done(tasks[d]))
+
+    open_members = {s: t for s, t in tasks.items()
+                    if t.get("milestone") == mslug and not _task_done(t)}
+
+    # partition open members into blocked vs schedulable — to a FIXED POINT, so blocking
+    # propagates transitively: a task is blocked if any dep is unsatisfiable here, where
+    # unsatisfiable = not _ok AND not a STILL-schedulable member. A dep on an already-blocked
+    # member is itself unsatisfiable, so the dependent blocks too (it would otherwise be
+    # mis-reported as wave-1-ready while its only dep can never complete).
+    blocked: dict[str, list[str]] = {}
+    changed = True
+    while changed:
+        changed = False
+        for s, t in open_members.items():
+            if s in blocked:
+                continue
+            bad = [d for d in (t.get("depends_on") or [])
+                   if not _ok(d) and not (d in open_members and d not in blocked)]
+            if bad:
+                blocked[s] = sorted(set(bad))
+                changed = True
+    schedulable = {s for s in open_members if s not in blocked}
+    blocked_sorted = {k: blocked[k] for k in sorted(blocked)}
+    if not schedulable:
+        # nothing to schedule (all-done, empty, or every open task externally blocked)
+        return {"waves": [], "critical_path": [], "critical_path_len": 0,
+                "tiers": {}, "blocked": blocked_sorted}
+
+    def _member_deps(s: str) -> set[str]:          # deps that are open members forcing order
+        return {d for d in (open_members[s].get("depends_on") or []) if d in schedulable}
+
+    # Kahn waves over the schedulable sub-DAG
+    waves: list[list[str]] = []
+    placed: set[str] = set()
+    remaining = set(schedulable)
+    while remaining:
+        wave = sorted(s for s in remaining if _member_deps(s) <= placed)
+        if not wave:                               # no progress => a cycle among the remaining
+            sub = {s: tasks[s] for s in remaining}
+            cyc = _find_cycle(sub) or sorted(remaining)
+            return {"cycle": cyc}
+        waves.append(wave)
+        placed.update(wave)
+        remaining -= set(wave)
+
+    # critical path = longest chain by memoized depth over member-deps
+    depth: dict[str, int] = {}
+    pick: dict[str, str | None] = {}
+
+    def _depth(s: str) -> int:
+        if s in depth:
+            return depth[s]
+        best_d, best_dep = 0, None
+        for d in sorted(_member_deps(s)):
+            dd = _depth(d)
+            if dd > best_d or (dd == best_d and (best_dep is None or d < best_dep)):
+                best_d, best_dep = dd, d
+        depth[s] = 1 + best_d
+        pick[s] = best_dep
+        return depth[s]
+
+    leaf = min(schedulable, key=lambda s: (-_depth(s), s))  # deepest, tie -> smallest slug
+    chain: list[str] = []
+    cur: str | None = leaf
+    while cur is not None:
+        chain.append(cur)
+        cur = pick.get(cur)
+    critical = list(reversed(chain))               # root -> leaf order
+    crit_set = set(critical)
+    tiers = {s: ("top" if s in crit_set else "mid") for s in sorted(schedulable)}
+    return {"waves": waves, "critical_path": critical, "critical_path_len": len(critical),
+            "tiers": tiers, "blocked": blocked_sorted}
+
+
+def cmd_waves(args: argparse.Namespace) -> None:
+    """READ-ONLY DAG scheduler: print the active milestone's topological waves, critical
+    path, advisory tier hint, and blocked set. Writes nothing; emits no `next:` footer."""
+    is_json = getattr(args, "json", False)
+    if is_json:
+        _, state = _load_state_for_json()
+    else:
+        state = load_state(_require_root())
+    mslug = getattr(args, "milestone", None) or state.get("active_milestone")
+    if not mslug:
+        _die("no_active_milestone: no active milestone and no --milestone given")
+    if mslug not in (state.get("milestones") or {}):
+        _die(f"unknown_milestone: '{mslug}' is not a milestone in this project")
+    sched = _wave_schedule(state, mslug)
+    if "cycle" in sched:
+        _die(f"dependency_cycle: not-done deps form a cycle "
+             f"({' -> '.join(sched['cycle'])}) — no valid schedule")
+
+    if is_json:
+        print(json.dumps({"milestone": mslug, **sched}))
+        return
+
+    print(f"milestone: {mslug}")
+    if not sched["waves"]:
+        if sched["blocked"]:
+            for s in sched["blocked"]:
+                print(f"blocked: {s} (waiting on {', '.join(sched['blocked'][s])})")
+        else:
+            print("all tasks done — nothing to schedule")
+        return
+    scheduled_set = {x for w in sched["waves"] for x in w}
+    for i, wave in enumerate(sched["waves"], start=1):
+        parts = []
+        for s in wave:
+            md = sorted(d for d in (state["tasks"][s].get("depends_on") or [])
+                        if d in scheduled_set)
+            parts.append(f"{s} (deps: {', '.join(md)})" if md else s)
+        print(f"wave {i}: {', '.join(parts)}")
+    crit = sched["critical_path"]
+    print(f"critical path: {' → '.join(crit)}  ({sched['critical_path_len']} tasks)")
+    tops = [s for s, tier in sched["tiers"].items() if tier == "top"]
+    mids = [s for s, tier in sched["tiers"].items() if tier == "mid"]
+    print(f"tier hint: top → {', '.join(tops)}; mid → {', '.join(mids) or '(none)'}")
+    for s in sched["blocked"]:
+        print(f"blocked: {s} (waiting on {', '.join(sched['blocked'][s])})")
 
 
 def cmd_milestone_done(args: argparse.Namespace) -> None:
@@ -4019,6 +4259,13 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--json", action="store_true", help="machine-readable JSON output")
     pr.set_defaults(func=cmd_ready)
 
+    pwa = sub.add_parser("waves", help="read-only DAG schedule of a milestone: topological "
+                                       "waves + critical path + advisory tier hint")
+    pwa.add_argument("--milestone", default=None,
+                     help="milestone slug to schedule (default: the active milestone)")
+    pwa.add_argument("--json", action="store_true", help="machine-readable JSON output")
+    pwa.set_defaults(func=cmd_waves)
+
     pmd = sub.add_parser("milestone-done", help="exit-gate a milestone (all tasks must PASS)")
     pmd.add_argument("slug")
     pmd.set_defaults(func=cmd_milestone_done)
@@ -4059,6 +4306,16 @@ def build_parser() -> argparse.ArgumentParser:
     pg.add_argument("--ticket", help="RISK-ACCEPTED waiver: tracking ticket/link")
     pg.add_argument("--expires", help="RISK-ACCEPTED waiver: expiry date")
     pg.set_defaults(func=cmd_gate, _opt_positionals=("slug",))
+
+    pan = sub.add_parser("autonomy", help="show or set the autonomy level (the verify-gate owner)")
+    pan.add_argument("action", nargs="?", choices=("show", "set"), default="show")
+    pan.add_argument("a1", nargs="?", default=None, help="set: <level>; show: [slug]")
+    pan.add_argument("a2", nargs="?", default=None, help="set: [slug]")
+    pan.add_argument("--project", action="store_true",
+                     help="set the PROJECT.md default instead of a task header")
+    pan.add_argument("--yes", action="store_true",
+                     help="confirm a RAISE toward auto (a human-owned trust escalation)")
+    pan.set_defaults(func=cmd_autonomy, _opt_positionals=("a1", "a2"))
 
     pr = sub.add_parser("reopen", help="return a done task to an earlier phase with a recorded reason")
     pr.add_argument("slug", nargs="?", default=None)
@@ -4171,11 +4428,120 @@ def _rebind_optional_positionals(parser: argparse.ArgumentParser,
     return args
 
 
+# --- agent-agnostic update nudge --------------------------------------------
+# ADD is agent-agnostic: ANY agent (Claude Code · Gemini CLI · Codex) is told by the
+# guideline block to run `add.py status`/`guide` FIRST, every session. That is the one
+# universal chokepoint to tell a stale install to refresh — a plain line on STDERR the
+# agent reads and acts on. Bounded + fail-open by design (see _maybe_nudge_update).
+#
+# This is the engine's ONE deliberate, isolated network touch. It is justified narrowly:
+# an agent that is offline cannot run at all, so when the network is unreachable this
+# silently does nothing and nothing is lost. It NEVER changes a command's stdout or exit.
+_UPDATE_CACHE = ".update-cache.json"
+_UPDATE_TTL = timedelta(hours=24)          # hit the registry at most once / day
+_REGISTRY_LATEST = "https://registry.npmjs.org/@pilotspace/add/latest"
+
+
+def _read_json_safe(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _write_json_safe(path: Path, obj) -> None:
+    try:
+        path.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _version_gt(a: str, b: str) -> bool:
+    """True if version a is newer than b (dotted numeric; prerelease suffix dropped)."""
+    def key(v: str):
+        out = []
+        for part in str(v).split("."):
+            part = part.split("-", 1)[0]
+            out.append((0, int(part)) if part.isdigit() else (1, part))
+        return out
+    try:
+        return key(a) > key(b)
+    except Exception:
+        return False
+
+
+def _fetch_latest_version(timeout: float = 1.5):
+    """GET the registry's latest version. Returns a string, or None on ANY failure
+    (offline, timeout, bad payload) — the caller treats None as 'unknown, skip'."""
+    try:
+        req = urllib.request.Request(_REGISTRY_LATEST, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        v = data.get("version")
+        return v if isinstance(v, str) and v else None
+    except Exception:
+        return None
+
+
+def _cached_latest(add_dir: Path):
+    """The registry's latest version, throttled: served from .update-cache.json within
+    the TTL, else refreshed over the network (fail-open). None when unknown."""
+    cache = _read_json_safe(add_dir / _UPDATE_CACHE)
+    if cache and cache.get("latest") and cache.get("checked_at"):
+        try:
+            ts = datetime.fromisoformat(cache["checked_at"])
+            if datetime.now(timezone.utc) - ts < _UPDATE_TTL:
+                return cache["latest"]                     # fresh -> no network
+        except ValueError:
+            pass
+    latest = _fetch_latest_version()
+    if latest:
+        _write_json_safe(add_dir / _UPDATE_CACHE, {
+            "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "latest": latest,
+        })
+        return latest
+    return cache.get("latest") if cache else None          # stale beats nothing
+
+
+def _maybe_nudge_update(args: argparse.Namespace) -> None:
+    """If the tooling is stale, print an ACTION-REQUIRED line to STDERR so the agent
+    updates before the user's task. Fully bounded + fail-open — never raises, never
+    touches stdout or the exit code."""
+    try:
+        if os.environ.get("ADD_NO_UPDATE_CHECK"):
+            return
+        fn = getattr(args, "func", None)
+        # orientation reads only — never a mid-run mutating verb (gate/advance/...)
+        if getattr(fn, "__name__", "") not in ("cmd_status", "cmd_guide"):
+            return
+        add_dir = find_root()
+        if add_dir is None:
+            return
+        stamp = _read_json_safe(add_dir / ".add-version")
+        current = (stamp or {}).get("version")
+        if not current:
+            return            # no launcher stamp -> inert (engine-only/test projects)
+        latest = _cached_latest(add_dir)
+        if not latest or not _version_gt(latest, current):
+            return
+        cmd = ("pipx run pilotspace-add update"
+               if (stamp or {}).get("channel") == "pip"
+               else "npx @pilotspace/add@latest update")
+        sys.stderr.write(
+            f"\n⚠ ADD is out of date: this project is on {current}, latest is {latest}.\n"
+            f"  ACTION REQUIRED before the user's task: run `{cmd}`, then re-read the "
+            f"guide from disk, then continue.\n\n")
+    except Exception:
+        return                # a nudge must NEVER break a command (design-for-failure)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
         args = _rebind_optional_positionals(parser, args, extras)
+    _maybe_nudge_update(args)        # advisory preamble; stderr-only, fail-open
     args.func(args)
     return 0
 

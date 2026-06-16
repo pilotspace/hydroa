@@ -121,6 +121,9 @@ export function SidebarTrigger({ className, ...props }: SidebarTriggerProps) {
   return (
     <button
       type="button"
+      // Single source of truth for this icon-only control's accessible name (it renders only a
+      // <PanelLeft> glyph). Placed BEFORE {...props} on purpose: it is the default, but a consumer
+      // MAY override it with an explicit aria-label when context needs a more specific name.
       aria-label="Toggle sidebar"
       title="Toggle sidebar"
       className={cn(

@@ -145,7 +145,6 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
             <SidebarHeader className={collapsed ? "justify-center" : undefined}>
               {collapsed ? null : <SidebarBrand title={BRAND} icon={brandIcon} />}
               <SidebarTrigger
-                aria-label="Toggle sidebar"
                 aria-expanded={!collapsed}
                 onClick={() => setCollapsed((c) => !c)}
               />

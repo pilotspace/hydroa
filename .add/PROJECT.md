@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-16 · foundation-version: 23
+slug: ai-proxy · stage: production · updated: 2026-06-16 · foundation-version: 24
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -383,6 +383,23 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     governance expand-row vs TanStack's flat column model) would break a frozen flow — adopt the block where
     it fits, KEEP composed primitives where it doesn't, and say which at §1 (evidence: console-surfaces-redesign,
     Keys stays on composed Card+Table).
+- Folded from v24 (2026-06-16, UI polish & a11y follow-ups):
+  - A DS title primitive needs an explicit **heading-level escape hatch**, not a hardcoded tag: `CardTitle`
+    gained `asChild` (Radix Slot) and `ChartCard` a `headingLevel?: 2|3` (default 3 = byte-identical). A card
+    sitting directly under a page `<h1>` opts its title to `<h2>` so the outline never skips a level — fixing
+    the defect at the shared block instead of inlining a bespoke heading per surface (evidence: v23 shipped an
+    h1→h3 skip on `/`; v24 test_overview_outline_has_no_level_skip green + real-Chromium axe heading-order clean).
+  - The no-flash theme `<script>` must render from a **Server Component**: a function exported from a
+    `"use client"` module becomes a client *reference* and cannot be called during server render, so `themeScript`
+    lives in its own non-client module (`components/ui/theme-script.ts`), the client context (ThemeProvider +
+    QueryClientProvider) moves to a `"use client"` `app/providers.tsx`, and `app/layout.tsx` is a plain Server
+    Component. Removes the React 19 client-`<head>` dev warning; `next build` stays clean (evidence: theme-script-
+    server.test.ts 5/5 + build 18 routes). RESIDUAL: the inline script has no CSP nonce/hash — wire one if a CSP
+    layer lands at Envoy/Vercel (unchanged from prior code; carried to backlog).
+  - A pure-dedup refactor with **no behavioral delta** (removing the redundant consumer `aria-label` while the DS
+    default stays the single source of truth) has no honest red→green — label it GREEN-BY-DESIGN and lean on a
+    preservation assertion + the refute-read, never invent a fake red (evidence: test_sidebartrigger_name_from_ds_default
+    passes before and after; icon-only controls keep a default name as a safety net).
 
 ## Architecture (settled at setup)
 
@@ -539,3 +556,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-16 | A presentation-only restyle freezes the COMPONENT SHAPE + DOM/a11y markers (not a network contract); the NEW red→green suite asserts ONLY the adoption via a stable `data-slot` marker, while the dense FROZEN behavioral suites stay the regression net — every restyle confirmed by an adversarial refute-read returning EARNED (fold: TDD+UDD/console+admin+auth-redesign) | data-slot is non-brittle + genuinely discriminating (beats CSS-class asserts; survives interactive cells); zero data-seam diff across all 7 surfaces + auth, 329/329 green | folded v23 |
 | 2026-06-16 | A shared shell component OWNS page chrome + the single `<main>` landmark; a decorative panel is made a11y-invisible by `aria-hidden="true"` + heading-free + focusable-free (works in BOTH jsdom — no CSS engine — and real-Chromium axe, which skips aria-hidden subtrees incl. color-contrast); `Button asChild` (Radix Slot) styles a nav `<a>` without making it a `<button>` (fold: UDD/auth-pages-redesign) | split-screen AuthShell answered "login too simple" while keeping every POST route/validation/redirect byte-identical; SSO link keeps href+role=link+name | folded v23 |
 | 2026-06-16 | The §5 scope baseline walks the working tree (excludes only .git/.add/__pycache__/node_modules), so a gitignored BUILD ARTIFACT present at the tests→build snapshot pollutes it: `apps/dashboard/coverage/` (a `--coverage` run) or `tsconfig.tsbuildinfo` (any `tsc --noEmit`) between snapshot and gate trips `scope_violation`. Workaround: delete artifact + re-snapshot (phase tests→advance) + run ONLY `npm test` for the gate (fold: ADD/console+admin+auth-redesign) | THREE recurrences across v23 (coverage ×1, tsbuildinfo ×2) ⇒ ship the engine fix: extend the scope-walk exclusion to gitignored build artifacts (`coverage/`, `*.tsbuildinfo`) | folded v23 |
+| 2026-06-16 | DS title primitives carry an explicit heading-level ESCAPE HATCH, not a hardcoded tag: `CardTitle asChild` (Radix Slot) + `ChartCard headingLevel?: 2\|3` (default 3 = byte-identical) let a card under a page `<h1>` opt its title to `<h2>` — the outline is fixed at the SHARED block, never by inlining a bespoke heading per surface (fold: UDD/overview-heading-a11y-fix) | v23 shipped an h1→h3 skip on `/` because CardTitle was a fixed `<h3>`; assert via getByRole heading-level + real-Chromium axe heading-order, not CSS | folded v24 |
+| 2026-06-16 | The no-flash theme `<script>` renders from a SERVER COMPONENT: a function exported from a `"use client"` module is a client *reference* (uncallable in server render), so `themeScript` lives in a non-client module, the client context moves to `app/providers.tsx`, and `app/layout.tsx` is a plain Server Component (fold: UDD+SDD/overview-heading-a11y-fix) | removes the React 19 client-`<head>` dev warning + is idiomatic App Router; `next build` clean (18 routes); RESIDUAL backlog: inline script has no CSP nonce/hash — wire one if a CSP layer lands | folded v24 |
+| 2026-06-16 | §5 scope-walk papercut RECURRED a 4th time, now acute — a background `tsc` (`incremental:true`) regenerates `tsconfig.tsbuildinfo` AFTER a clean re-snapshot, so delete-then-gate races and the gate trips on an artifact it cannot prevent; in-task fix = DECLARE the artifact as an in-scope token on the §5 Scope line (truthful: tsc produces it) (fold: ADD/overview-heading-a11y-fix) | FOUR recurrences ⇒ the engine fix is now overdue: extend `_SCOPE_EXCLUDE_DIRS`(+`.next`) and `_SCOPE_EXCLUDE_FILES`(+`tsconfig.tsbuildinfo`, `*.tsbuildinfo` suffix) in add.py | folded v24 |
+| 2026-06-16 | A pure-dedup/refactor with NO behavioral delta gets a GREEN-BY-DESIGN preservation assertion + the refute-read, never a fabricated red→green; icon-only controls keep a DS default accessible name as a safety net (the consumer dedup removes the duplicate, not the name) (fold: TDD/overview-heading-a11y-fix) | test_sidebartrigger_name_from_ds_default passes before and after — inventing a fake red would be the dishonest move the method forbids | folded v24 |

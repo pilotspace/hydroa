@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/cn";
 
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
@@ -22,15 +23,22 @@ const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
 );
 CardHeader.displayName = "CardHeader";
 
-const CardTitle = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => (
-    <h3
+const CardTitle = React.forwardRef<
+  HTMLHeadingElement,
+  React.HTMLAttributes<HTMLHeadingElement> & { asChild?: boolean }
+>(({ className, asChild = false, ...props }, ref) => {
+  // asChild (Radix Slot) lets a consumer supply the heading element — e.g. <h2> — so a card can
+  // keep a correct document outline (no level skip) while inheriting the CardTitle styling.
+  // Default stays <h3>: byte-identical to every existing consumer.
+  const Comp = asChild ? Slot : "h3";
+  return (
+    <Comp
       ref={ref}
       className={cn("text-lg font-semibold leading-none tracking-tight", className)}
       {...props}
     />
-  ),
-);
+  );
+});
 CardTitle.displayName = "CardTitle";
 
 const CardDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLParagraphElement>>(

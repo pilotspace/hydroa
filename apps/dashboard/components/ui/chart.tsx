@@ -70,14 +70,31 @@ export interface ChartCardProps {
   description?: string;
   config: ChartConfig;
   className?: string;
+  /**
+   * Heading level for the card title — default 3 (<h3>). Pass 2 when the card sits directly under
+   * the page <h1> with no intervening section heading, so the document outline has no level skip.
+   */
+  headingLevel?: 2 | 3;
   children: React.ReactNode;
 }
 
-export function ChartCard({ title, description, className, children }: ChartCardProps) {
+export function ChartCard({
+  title,
+  description,
+  className,
+  headingLevel = 3,
+  children,
+}: ChartCardProps) {
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        {headingLevel === 2 ? (
+          <CardTitle asChild>
+            <h2>{title}</h2>
+          </CardTitle>
+        ) : (
+          <CardTitle>{title}</CardTitle>
+        )}
         {description ? <CardDescription>{description}</CardDescription> : null}
       </CardHeader>
       <CardContent>{children}</CardContent>
