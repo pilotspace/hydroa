@@ -1,0 +1,53 @@
+{
+  "milestone": {
+    "title": "UI polish & a11y follow-ups",
+    "goal": "Resolve the three v23 review nits \u2014 Overview heading hierarchy (no h1\u2192h3 skip), redundant SidebarTrigger aria-label default, and theme-script placement \u2014 so the dashboard's a11y and code hygiene match the rest of the surfaces, with every data seam byte-identical.",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-16T03:03:14+00:00",
+    "updated": "2026-06-16T03:43:30+00:00"
+  },
+  "tasks": {
+    "overview-heading-a11y-fix": {
+      "title": "Fix Overview heading hierarchy + SidebarTrigger aria-label + theme-script placement (v23 review nits)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v24",
+      "depends_on": [],
+      "created": "2026-06-16T03:03:20+00:00",
+      "updated": "2026-06-16T03:42:43+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "74527f0fbb64e3bfd79d27862a8854e1",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/card.tsx",
+          "apps/dashboard/components/ui/chart.tsx",
+          "apps/dashboard/components/overview/OverviewPage.tsx",
+          "apps/dashboard/components/ui/sidebar.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/components/ui/theme-script.ts",
+          "apps/dashboard/components/ui/theme-provider.tsx",
+          "apps/dashboard/components/ui/index.ts",
+          "apps/dashboard/app/providers.tsx",
+          "apps/dashboard/app/layout.tsx",
+          "apps/dashboard/tsconfig.tsbuildinfo"
+        ],
+        "snapshot_md5": "7cdebddafe914ce3970a2cfb5f7b9fd4"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-16T03:38:54+00:00",
+            "reason": "scope_violation: task 'overview-heading-a11y-fix' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tsconfig.tsbuildinfo (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    }
+  },
+  "archived_at": "2026-06-16T03:46:07+00:00"
+}

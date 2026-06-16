@@ -100,6 +100,14 @@
 
 **Verification capacity / review throughput** — the rate at which a team can confirm AI output is correct; the real ceiling on safe speed.
 
+**Foundation compaction** — the retrospective shrink: collapse a foundation spec's stable, shipped, zero-residue tail into one rolled-up settled line; the AI proposes and the human confirms; summarize and point, never delete; a SEPARATE step from the retrospective consolidation; distinct from the engine `add.py compact` (which archives finished-milestone files). See **Rolled-up settled line**, **Per-spec shape**.
+
+**Rolled-up settled line** — the single line a compaction leaves in place of a collapsed run of records: lossy on prose, lossless on traceability (it carries a `see git` pointer).
+
+**Per-spec shape** — each foundation spec's own tailored rolled-line format (PROJECT §Spec bullets · §Key-Decisions rows · CONVENTIONS learnings · GLOSSARY definition · MODEL_REGISTRY rows), all sharing one eligibility rule: shipped + zero open residues.
+
+**Newest-first append-only** — every append-only foundation sequence prepends the newest record at the top; the rolled-up settled line anchors at the bottom (the oldest end), so compaction collapses upward.
+
 ---
 
 ## Optional mapping to formal phase names

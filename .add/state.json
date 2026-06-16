@@ -6,7 +6,7 @@
   "tasks": {},
   "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-16T02:03:04+00:00",
+  "updated": "2026-06-16T03:46:07+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -306,6 +306,15 @@
         "console-surfaces-redesign",
         "admin-surfaces-redesign",
         "auth-pages-redesign"
+      ],
+      "archived": "2026-06-16"
+    },
+    {
+      "slug": "v24",
+      "title": "UI polish & a11y follow-ups",
+      "tasks": 1,
+      "task_slugs": [
+        "overview-heading-a11y-fix"
       ],
       "archived": "2026-06-16"
     }
