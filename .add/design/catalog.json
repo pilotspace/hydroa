@@ -71,6 +71,41 @@
         "border": { "type": "token", "token": "color" },
         "ring": { "type": "token", "token": "color" }
       }
+    },
+    "AppSidebar": {
+      "description": "Collapsible navigation rail — brand header, grouped items, user footer.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "fg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "accent": { "type": "token", "token": "color" }
+      }
+    },
+    "DataTable": {
+      "description": "A sortable, paginated tabular data view built on the Table primitive.",
+      "hasChildren": true,
+      "props": {
+        "headerBg": { "type": "token", "token": "color" },
+        "text": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" }
+      }
+    },
+    "ChartCard": {
+      "description": "A Card-wrapped data-visualization surface with token-driven series colors.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "series": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" }
+      }
+    },
+    "ThemeToggle": {
+      "description": "A control that switches the active theme (light/dark/system).",
+      "props": {
+        "fg": { "type": "token", "token": "color" },
+        "ring": { "type": "token", "token": "color" }
+      }
     }
   }
 }
