@@ -184,6 +184,12 @@ class Settings(BaseSettings):
     # GATEWAY_OIDC_ALLOW_HTTP_URLS — dev/test only; never True in production
     oidc_allow_http_urls: bool = False
 
+    # ── Per-tenant provider credentials (provider-credential-store task) ─────
+    # GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY — Fernet key (base64url); required for upsert/get.
+    # Kept separate from GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY for blast-radius isolation:
+    # a compromised OIDC key does not expose upstream provider secrets, and vice versa.
+    provider_key_encryption_key: str = ""
+
     # ── OpenRouter upstream base URL (v6-live-verify task) ──────────────────────
     # GATEWAY_OPENROUTER_BASE_URL — base URL for OpenRouterCompletionUpstream.
     # Default is byte-identical to the prior module constant (_BASE_URL).

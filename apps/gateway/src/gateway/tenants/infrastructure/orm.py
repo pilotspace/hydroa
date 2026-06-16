@@ -42,6 +42,10 @@ class TenantRow(Base):
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # updated_at — NOT in the baseline (ad14442336db created tenants with created_at only);
+    # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without
+    # onupdate so `alembic check` sees no diff (server_default only), matching the migration DDL.
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class UserRow(Base):

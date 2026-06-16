@@ -1320,6 +1320,10 @@ async def test_guardrails_core_migration_column_exists(
     # oidc-tenant-config freeze sanctioned adding the contracted oidc_provider_configs
     # table to both manifests (teams-core precedent). The guardrails-core assertion's
     # intent — guardrails added no tables of its own — is unchanged.
+    # DISPOSITION EDIT (provider-credential-store §3, 2026-06-16): added the contracted
+    # tenant_provider_keys table to this manifest too (same oidc/teams precedent) — it is
+    # registered on Base.metadata via main.py's side-effect ORM import, so it now appears
+    # under create_all. Guardrails still adds no tables of its own; intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1327,7 +1331,8 @@ async def test_guardrails_core_migration_column_exists(
                 " AND tablename NOT IN "
                 "('tenants','users','api_keys','models','pricing_snapshots',"
                 " 'usage_records','alert_events','tenant_model_overrides',"
-                " 'teams','team_members','oidc_provider_configs','alembic_version')"
+                " 'teams','team_members','oidc_provider_configs',"
+                " 'tenant_provider_keys','alembic_version')"
             )
         )
     ).fetchall()

@@ -1,12 +1,67 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
-  "tasks": {},
-  "milestones": {},
+  "active_task": "provider-credential-store",
+  "active_milestone": "v25",
+  "tasks": {
+    "provider-credential-store": {
+      "title": "Tenant provider-credential store (encrypted-at-rest schema + value-objects)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v25",
+      "depends_on": [],
+      "created": "2026-06-16T05:15:33+00:00",
+      "updated": "2026-06-16T07:27:13+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "35f6215627cea9d30beacf6eb73be584",
+        "tests": {
+          "apps/gateway/tests/provider_credential_store/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/provider_credential_store/conftest.py": "81674a5861872a74cbe78536eb7a4096",
+          "apps/gateway/tests/provider_credential_store/test_provider_credentials.py": "129d347122efa89f434c7e43c010763f",
+          "apps/gateway/tests/provider_credential_store/test_tenant_provider_key_store_db.py": "31505e6f862f06b06ce2b9f7f13105a1"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/domain/provider_credentials.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/orm.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/tenant_provider_key_store.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/env.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
+          "apps/gateway/tests/migrations/test_migrations.py",
+          "apps/gateway/tests/guardrails/test_guardrails_core.py",
+          "apps/gateway/tests/provider_credential_store/test_tenant_provider_key_store_db.py"
+        ],
+        "snapshot_md5": "22c628530fe345b89321046f944b5664"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-16T07:23:46+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/provider_credential_store/test_tenant_provider_key_store_db.py",
+            "source": "tamper"
+          }
+        ]
+      }
+    }
+  },
+  "milestones": {
+    "v25": {
+      "title": "Tenant-managed provider credentials (BYOK)",
+      "goal": "a tenant configures its own provider API keys in tenant settings, and every upstream LLM call authenticates with that tenant's keys \u2014 resolved per request, encrypted at rest \u2014 fully replacing the platform's system-env provider keys",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-16T05:13:26+00:00",
+      "updated": "2026-06-16T05:13:26+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-16T03:46:07+00:00",
+  "updated": "2026-06-16T07:27:13+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
