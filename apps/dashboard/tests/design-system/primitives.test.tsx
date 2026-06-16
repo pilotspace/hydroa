@@ -34,6 +34,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import { ChartCard, type ChartConfig } from "@/components/ui/chart";
 
 describe("Card — composes header/title/description/content/footer", () => {
   it("renders all parts with their content", () => {
@@ -51,6 +52,55 @@ describe("Card — composes header/title/description/content/footer", () => {
     expect(screen.getByText("This month")).toBeInTheDocument();
     expect(screen.getByText("1,284 requests")).toBeInTheDocument();
     expect(screen.getByText("Footer note")).toBeInTheDocument();
+  });
+});
+
+// v24 — CardTitle gains an asChild (Radix Slot) escape hatch so a consumer can choose the heading
+// level (keeping a correct document outline) without forking the CardTitle styling.
+describe("CardTitle — asChild renders the caller's heading element", () => {
+  it("test_cardtitle_aschild_renders_caller_heading", () => {
+    render(
+      <CardHeader>
+        <CardTitle asChild>
+          <h2>Sectioned title</h2>
+        </CardTitle>
+      </CardHeader>,
+    );
+    const h2 = screen.getByRole("heading", { level: 2, name: "Sectioned title" });
+    expect(h2.tagName).toBe("H2");
+    // CardTitle styling is merged onto the caller element (Slot), not lost
+    expect(h2).toHaveClass("font-semibold");
+  });
+
+  it("test_cardtitle_default_is_h3", () => {
+    render(<CardTitle>Plain title</CardTitle>);
+    // default (no asChild) is byte-identical to today: an <h3>
+    expect(screen.getByRole("heading", { level: 3, name: "Plain title" })).toBeInTheDocument();
+  });
+});
+
+// v24 — ChartCard gains headingLevel?: 2 | 3 (default 3) so a card sitting directly under the page
+// <h1> can opt its title up to <h2> and keep the outline skip-free.
+describe("ChartCard — headingLevel opt-in", () => {
+  const config: ChartConfig = { requests: { label: "Requests", color: "var(--color-chart-1)" } };
+
+  it("test_chartcard_headinglevel_2", () => {
+    render(
+      <ChartCard title="Usage over time" config={config} headingLevel={2}>
+        <div data-testid="body" />
+      </ChartCard>,
+    );
+    expect(screen.getByRole("heading", { level: 2, name: "Usage over time" })).toBeInTheDocument();
+  });
+
+  it("test_chartcard_default_headinglevel_is_3", () => {
+    render(
+      <ChartCard title="Defaulted" config={config}>
+        <div data-testid="body" />
+      </ChartCard>,
+    );
+    // default is byte-identical to today: <h3>
+    expect(screen.getByRole("heading", { level: 3, name: "Defaulted" })).toBeInTheDocument();
   });
 });
 

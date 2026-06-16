@@ -279,3 +279,42 @@ describe("Overview — accessibility + data seam", () => {
     }
   });
 });
+
+// ── HEADING HIERARCHY (v24) ─────────────────────────────────────────────────────
+// The v23 review flagged an h1→h3 skip: the chart + recent-activity CardTitles render <h3>
+// directly under the page <h1> with no intervening <h2> (WCAG 1.3.1 / axe heading-order).
+// RED today (both are <h3>); GREEN once ChartCard headingLevel={2} + CardTitle asChild land.
+function headingLevel(el: HTMLElement): number {
+  const aria = el.getAttribute("aria-level");
+  return aria ? Number(aria) : Number(el.tagName.slice(1));
+}
+describe("Overview — heading hierarchy (no level skip)", () => {
+  it("test_overview_section_headings_are_level_2", async () => {
+    mockMetrics();
+    render(<OverviewPage />, { wrapper: Wrapper });
+    await screen.findByText("Total Requests");
+    // exactly one h1, and it is "Overview"
+    const h1s = screen.getAllByRole("heading", { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveAccessibleName(/overview/i);
+    // the two section titles are level 2, not level 3
+    expect(screen.getByRole("heading", { level: 2, name: /usage over time/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: /recent activity/i })).toBeInTheDocument();
+  });
+
+  it("test_overview_outline_has_no_level_skip", async () => {
+    mockMetrics();
+    render(<OverviewPage />, { wrapper: Wrapper });
+    await screen.findByText("Total Requests");
+    const levels = screen.getAllByRole("heading").map((h) => headingLevel(h as HTMLElement));
+    // no heading may sit more than one level below the deepest heading seen so far
+    let maxSoFar = 0;
+    for (const lvl of levels) {
+      if (maxSoFar > 0) expect(lvl).toBeLessThanOrEqual(maxSoFar + 1);
+      maxSoFar = Math.max(maxSoFar, lvl);
+    }
+    // and there is no h3 sitting directly under the h1 (the specific v23 defect)
+    expect(screen.queryByRole("heading", { level: 3, name: /usage over time/i })).toBeNull();
+    expect(screen.queryByRole("heading", { level: 3, name: /recent activity/i })).toBeNull();
+  });
+});

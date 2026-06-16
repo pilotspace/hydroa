@@ -20,6 +20,7 @@ import React from "react";
 
 import { AppShell } from "@/components/ui/app-shell";
 import { ThemeProvider } from "@/components/ui";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { usePathname } from "next/navigation";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
@@ -283,6 +284,24 @@ describe("AppShell — user identity footer", () => {
       </AppShell>,
     );
     expect(screen.queryByText("ada@hydroa.io")).toBeNull();
+  });
+});
+
+// ── SIDEBAR TRIGGER NAME (v24, single source of truth) ────────────────────────
+describe("SidebarTrigger — accessible name from the DS default", () => {
+  // GREEN-BY-DESIGN: the v24 nit fix is a pure dedup — the DS default aria-label is the single
+  // source of truth, and the redundant identical aria-label on the app-shell consumer is removed.
+  // No behavioral delta; these assert the name is PRESERVED (the icon-only button is never unnamed).
+  it("test_sidebartrigger_name_from_ds_default", () => {
+    render(<SidebarTrigger />);
+    expect(screen.getByRole("button", { name: /toggle sidebar/i })).toBeInTheDocument();
+  });
+
+  it("test_sidebartrigger_consumer_can_still_override_name", () => {
+    // {...props} still wins over the default — the documented intentional override
+    render(<SidebarTrigger aria-label="Collapse menu" />);
+    expect(screen.getByRole("button", { name: /collapse menu/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /toggle sidebar/i })).toBeNull();
   });
 });
 

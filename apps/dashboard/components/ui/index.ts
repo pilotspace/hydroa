@@ -66,10 +66,11 @@ export { Checkbox, type CheckboxProps } from "./checkbox";
 export {
   ThemeProvider,
   useTheme,
-  themeScript,
   type Theme,
   type ThemeProviderProps,
 } from "./theme-provider";
+// themeScript is a non-"use client" module so a Server Component (app/layout.tsx) can call it.
+export { themeScript } from "./theme-script";
 export { ThemeToggle } from "./theme-toggle";
 export { StatCard, type StatCardProps, type StatDelta } from "./stat-card";
 export {

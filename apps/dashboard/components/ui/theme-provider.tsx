@@ -114,28 +114,6 @@ export function useTheme(): ThemeContextValue {
   return React.useContext(ThemeContext);
 }
 
-/**
- * The pre-hydration no-flash script (string) for the document head. Reads the stored
- * theme (defaulting to system) and toggles `class="dark"` before first paint.
- *
- * Two safety properties:
- *  - The body uses no `<`, `>`, or `&`, so it renders verbatim as the text child of a plain
- *    <script> element (no raw-HTML injection API, no HTML-escaping hazard).
- *  - `storageKey` is embedded via JSON.stringify, so even a crafted key cannot break out of
- *    the JS string literal (defense-in-depth — the key is developer-supplied, not user input).
- */
-export function themeScript(storageKey = "theme"): string {
-  const key = JSON.stringify(storageKey);
-  return (
-    "(function(){try{" +
-    "var t=localStorage.getItem(" +
-    key +
-    ");if(!t){t='system';}" +
-    "var d=false;" +
-    "if(t==='dark'){d=true;}" +
-    "if(t==='system'){if(window.matchMedia('(prefers-color-scheme: dark)').matches){d=true;}}" +
-    "var c=document.documentElement.classList;" +
-    "if(d){c.add('dark');}else{c.remove('dark');}" +
-    "}catch(e){}})();"
-  );
-}
+// The pre-hydration no-flash script now lives in the non-"use client" module ./theme-script so a
+// Server Component (app/layout.tsx) can render it. Re-exported here for backward-compatible imports.
+export { themeScript } from "./theme-script";
