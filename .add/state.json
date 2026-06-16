@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "dynamic-auth-byok",
+  "active_task": "provider-config-admin-api",
   "active_milestone": "v25",
   "tasks": {
     "provider-credential-store": {
@@ -151,6 +151,41 @@
           }
         ]
       }
+    },
+    "provider-config-admin-api": {
+      "title": "Provider config admin API \u2014 BYOK write path (tenant CRUD into the credential store)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v25",
+      "depends_on": [],
+      "created": "2026-06-16T15:29:07+00:00",
+      "updated": "2026-06-16T17:19:23+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "71281dc9309e640f9d5324e86f6a26ad",
+        "tests": {
+          "apps/gateway/tests/provider_config_admin_api/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/provider_config_admin_api/test_provider_config_admin_api.py": "01605d2a4b6ec489f79fb7eb89b248d7"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/api/provider_keys_admin_router.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/error_catalog.py"
+        ],
+        "snapshot_md5": "3146865c9ba0374ce5610a97f24a026b"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-16T17:18:31+00:00",
+            "reason": "tamper_detected:contract_tampered",
+            "source": "tamper"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -164,7 +199,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-16T14:41:47+00:00",
+  "updated": "2026-06-16T17:19:23+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

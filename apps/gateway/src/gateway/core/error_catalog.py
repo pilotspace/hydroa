@@ -317,6 +317,30 @@ RATE_LIMITED = ErrorSpec(429, "ERR_RATE_LIMITED", "Rate limit exceeded")
 GUARDRAIL_BLOCKED = ErrorSpec(400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy")
 
 # ---------------------------------------------------------------------------
+# Provider credentials (BYOK admin API — provider-config-admin-api §3 CONTRACT)
+# ---------------------------------------------------------------------------
+
+#: No stored credential for this tenant + provider (admin GET-status / DELETE).
+PROVIDER_KEY_NOT_FOUND = ErrorSpec(
+    404, "ERR_PROVIDER_KEY_NOT_FOUND", "No provider credential found for this tenant"
+)
+
+#: Path provider is not one of the supported BYOK providers.
+PROVIDER_UNKNOWN = ErrorSpec(422, "ERR_PROVIDER_UNKNOWN", "Unknown or unsupported provider")
+
+#: Credential body is missing required fields for the provider (and mode).
+PROVIDER_CREDENTIAL_INCOMPLETE = ErrorSpec(
+    422, "ERR_PROVIDER_CREDENTIAL_INCOMPLETE", "Incomplete or invalid credential for this provider"
+)
+
+#: Encryption key not set — cannot store provider credentials (mirrors OIDC's 409).
+PROVIDER_KEY_ENCRYPTION_UNAVAILABLE = ErrorSpec(
+    409,
+    "ERR_PROVIDER_KEY_ENCRYPTION_UNAVAILABLE",
+    "GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY must be set to store provider credentials",
+)
+
+# ---------------------------------------------------------------------------
 # Upstream / catalog service errors
 # ---------------------------------------------------------------------------
 

@@ -34,6 +34,7 @@ from gateway.observability.middleware import RequestIdMiddleware
 from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
+from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
@@ -626,6 +627,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(oidc_router)
     app.include_router(oidc_admin_router)
+    app.include_router(provider_keys_admin_router)
     app.include_router(health_router)
     app.include_router(internal_router)
     app.include_router(internal_catalog_router)
