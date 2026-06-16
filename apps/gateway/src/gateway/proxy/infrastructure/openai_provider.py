@@ -22,7 +22,9 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 
 if TYPE_CHECKING:
@@ -50,13 +52,10 @@ class OpenAIDirectProvider:
 
     def __init__(
         self,
-        api_key: str,
         *,
         base_url: str = _DEFAULT_BASE_URL,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
-        # Secret — never stored under a public/observable attribute name.
-        self._api_key = api_key
         self._breaker = CircuitBreaker()
         self._client = httpx.AsyncClient(
             base_url=base_url,
@@ -72,7 +71,14 @@ class OpenAIDirectProvider:
         self._metrics_registry = metrics_registry
 
     def _auth_headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._api_key}"}
+        """Build OpenAI auth headers from the request-scoped credential contextvar.
+
+        Raises ProviderKeyMissing when the contextvar is unset or non-Bearer.
+        """
+        cred = get_provider_credential()
+        if not isinstance(cred, BearerCredential):
+            raise ProviderKeyMissing("openai")
+        return {"Authorization": f"Bearer {cred.secret.get_secret_value()}"}
 
     async def post_json(
         self,

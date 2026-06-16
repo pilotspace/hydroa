@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "provider-credential-store",
+  "active_task": "credential-resolution-seam",
   "active_milestone": "v25",
   "tasks": {
     "provider-credential-store": {
@@ -48,6 +48,63 @@
           }
         ]
       }
+    },
+    "credential-resolution-seam": {
+      "title": "Credential Resolution Seam",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v25",
+      "depends_on": [],
+      "created": "2026-06-16T07:32:07+00:00",
+      "updated": "2026-06-16T10:13:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "432af02a4bad083af9296e6e72ae1a1d",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/domain/ports.py",
+          "apps/gateway/src/gateway/proxy/domain/credential_context.py",
+          "apps/gateway/src/gateway/proxy/domain/provider_credentials.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/cached_tenant_credential_resolver.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/openrouter_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/openai_provider.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/provider_aware_upstream.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/anthropic_provider/",
+          "apps/gateway/tests/gemini_provider/",
+          "apps/gateway/tests/gemini_embed_tokens/",
+          "apps/gateway/tests/secret_chain_hardening/",
+          "apps/gateway/tests/upstream_base_url/",
+          "apps/gateway/tests/provider_seam/",
+          "apps/gateway/tests/routing_admin/",
+          "apps/gateway/tests/empty_key_boot_guard/",
+          "apps/gateway/tests/azure_chat/",
+          "apps/gateway/tests/azure_auth_routing/",
+          "apps/gateway/tests/azure_aad/",
+          "apps/gateway/tests/azure_embeddings/",
+          "apps/gateway/src/gateway/proxy/application/embeddings_use_case.py",
+          "apps/gateway/src/gateway/proxy/application/images_use_case.py",
+          "apps/gateway/src/gateway/proxy/application/audio_use_case.py",
+          "apps/gateway/src/gateway/proxy/api/",
+          "apps/gateway/src/gateway/keys/domain/services.py",
+          "apps/gateway/tests/conftest.py",
+          "apps/gateway/tests/retry_policy/",
+          "apps/gateway/tests/credential_resolution_nonchat/",
+          "apps/gateway/tests/credential_stub.py",
+          "apps/gateway/tests/guardrails/",
+          "apps/gateway/tests/obs_callbacks/",
+          "apps/gateway/tests/pii_v2/",
+          "apps/gateway/tests/response_caching/",
+          "apps/gateway/tests/semantic_cache/"
+        ],
+        "snapshot_md5": "b318433b21e20665dd17738ebcab0a04"
+      }
     }
   },
   "milestones": {
@@ -61,7 +118,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-16T07:27:13+00:00",
+  "updated": "2026-06-16T10:13:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

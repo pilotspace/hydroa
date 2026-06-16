@@ -22,8 +22,10 @@ import httpx
 import pytest
 
 # RED until BUILD creates the module/symbols.
+from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.ports import CompletionUpstream
+from gateway.proxy.domain.provider_credentials import BearerCredential
 from gateway.proxy.infrastructure.anthropic_upstream import (
     AnthropicCompletionUpstream,
     _anthropic_error_to_openai,
@@ -33,6 +35,10 @@ from gateway.proxy.infrastructure.anthropic_upstream import (
     _translate_anthropic_sse,
 )
 from gateway.usage.domain.extractor import extract_usage_from_sse
+
+# Shared test credential injected via contextvar (credential-resolution-seam BUILD conversion).
+_TEST_ANTHROPIC_SECRET = "sk-ant-test"
+_TEST_BEARER_CRED = BearerCredential(secret=_TEST_ANTHROPIC_SECRET)
 
 pytestmark = pytest.mark.asyncio
 
@@ -73,9 +79,13 @@ _ANTHROPIC_SSE = (
 
 
 def _make_adapter_with_handler(handler: object) -> AnthropicCompletionUpstream:
-    """Construct the adapter, then swap its client for a MockTransport-backed one."""
+    """Construct the adapter, then swap its client for a MockTransport-backed one.
+
+    Credential-resolution-seam BUILD: api_key removed from __init__; the credential
+    is now supplied via the request-scoped contextvar (set_provider_credential /
+    reset_provider_credential) before any call that exercises _auth_headers().
+    """
     adapter = AnthropicCompletionUpstream(
-        api_key="sk-ant-test",
         base_url="https://api.anthropic.com/v1",
         anthropic_version="2023-06-01",
         default_max_tokens=4096,
@@ -200,8 +210,13 @@ async def test_auth_headers_x_api_key_no_bearer() -> None:
         return httpx.Response(200, json=_ANTHROPIC_200)
 
     adapter = _make_adapter_with_handler(handler)
-    await adapter.complete({"model": "claude-x", "messages": [{"role": "user", "content": "hi"}]})
-    assert seen.get("x-api-key") == "sk-ant-test"
+    # Credential-resolution-seam BUILD: set credential via contextvar before calling.
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        await adapter.complete({"model": "claude-x", "messages": [{"role": "user", "content": "hi"}]})
+    finally:
+        reset_provider_credential(token)
+    assert seen.get("x-api-key") == _TEST_ANTHROPIC_SECRET
     assert seen.get("anthropic-version") == "2023-06-01"
     assert "authorization" not in seen
 
@@ -215,16 +230,20 @@ async def test_complete_200_translates_to_openai() -> None:
         return httpx.Response(200, json=_ANTHROPIC_200)
 
     adapter = _make_adapter_with_handler(handler)
-    status, body = await adapter.complete(
-        {
-            "model": "claude-x",
-            "messages": [
-                {"role": "system", "content": "S"},
-                {"role": "user", "content": "Hi"},
-            ],
-            "max_tokens": 50,
-        }
-    )
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await adapter.complete(
+            {
+                "model": "claude-x",
+                "messages": [
+                    {"role": "system", "content": "S"},
+                    {"role": "user", "content": "Hi"},
+                ],
+                "max_tokens": 50,
+            }
+        )
+    finally:
+        reset_provider_credential(token)
     assert status == 200
     assert body["choices"][0]["message"]["content"] == "Hello world"
     assert body["usage"]["total_tokens"] == 15
@@ -235,8 +254,12 @@ async def test_5xx_raises_upstream_unavailable() -> None:
         return httpx.Response(503, json={"type": "error", "error": {"type": "overloaded_error", "message": "busy"}})
 
     adapter = _make_adapter_with_handler(handler)
-    with pytest.raises(UpstreamUnavailableError):
-        await adapter.complete({"model": "c", "messages": [{"role": "user", "content": "x"}]})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await adapter.complete({"model": "c", "messages": [{"role": "user", "content": "x"}]})
+    finally:
+        reset_provider_credential(token)
 
 
 async def test_4xx_error_envelope_passthrough() -> None:
@@ -244,7 +267,11 @@ async def test_4xx_error_envelope_passthrough() -> None:
         return httpx.Response(400, json={"type": "error", "error": {"type": "invalid_request_error", "message": "bad"}})
 
     adapter = _make_adapter_with_handler(handler)
-    status, body = await adapter.complete({"model": "c", "messages": [{"role": "user", "content": "x"}]})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await adapter.complete({"model": "c", "messages": [{"role": "user", "content": "x"}]})
+    finally:
+        reset_provider_credential(token)
     assert status == 400
     assert body == {"error": {"message": "bad", "type": "invalid_request_error", "code": "invalid_request_error"}}
 
@@ -256,7 +283,11 @@ async def test_stream_translation_end_to_end() -> None:
         return httpx.Response(200, content=_ANTHROPIC_SSE, headers={"content-type": "text/event-stream"})
 
     adapter = _make_adapter_with_handler(handler)
-    chunks = await _drain(adapter.stream({"model": "claude-x", "messages": [{"role": "user", "content": "hi"}]}))
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        chunks = await _drain(adapter.stream({"model": "claude-x", "messages": [{"role": "user", "content": "hi"}]}))
+    finally:
+        reset_provider_credential(token)
     joined = b"".join(chunks)
     assert b'"role": "assistant"' in joined or b'"role":"assistant"' in joined
     assert b"Hello" in joined and b" world" in joined
@@ -292,20 +323,26 @@ def _make_settings(**kwargs: object):  # type: ignore[no-untyped-def]
 
 
 def test_wiring_anthropic_present_when_key_set() -> None:
+    # Credential-resolution-seam BUILD: anthropic adapter is now UNCONDITIONAL —
+    # no api_key needed at boot; Settings no longer has anthropic_api_key field.
     from gateway.main import create_app
 
-    app = create_app(_make_settings(anthropic_api_key="sk-ant-live"))
+    app = create_app(_make_settings())
     adapters = app.state.chat_adapters
     assert "anthropic" in adapters
     assert isinstance(adapters["anthropic"], AnthropicCompletionUpstream)
 
 
 def test_wiring_anthropic_absent_when_key_empty() -> None:
+    # Credential-resolution-seam BUILD: registration is UNCONDITIONAL; the adapter
+    # is always in chat_adapters regardless of env keys (per-tenant key gating at
+    # resolve time). This test is converted: assert it IS present (not absent).
     from gateway.main import create_app
 
-    app = create_app(_make_settings())  # anthropic_api_key defaults to ""
-    assert "anthropic" not in app.state.chat_adapters
-    # the openrouter adapter is always present (dispatch-fallback target)
+    app = create_app(_make_settings())
+    assert "anthropic" in app.state.chat_adapters, (
+        "anthropic adapter must be registered unconditionally after credential-resolution-seam BUILD"
+    )
     assert "openrouter" in app.state.chat_adapters
 
 
@@ -351,9 +388,13 @@ async def test_stream_realistic_recorded_reconstruction() -> None:
         )
 
     adapter = _make_adapter_with_handler(handler)
-    chunks = await _drain(
-        adapter.stream({"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "q"}]})
-    )
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        chunks = await _drain(
+            adapter.stream({"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "q"}]})
+        )
+    finally:
+        reset_provider_credential(token)
 
     # Reconstruct the assistant text from the OpenAI content deltas, in order.
     reconstructed = ""

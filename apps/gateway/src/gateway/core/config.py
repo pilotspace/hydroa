@@ -25,12 +25,11 @@ class EmptyUpstreamKeyError(ValueError):
     """
 
 
-#: Upstream API key env vars guarded at boot. A new provider MUST add its var here.
+#: Upstream API key env vars guarded at boot. Bearer provider keys (openrouter /
+#: openai / anthropic / google) are REMOVED here — they are no longer boot-bound;
+#: per-tenant credentials are resolved at request time (credential-resolution-seam §3).
+#: Bedrock and Azure env paths remain until task 3 converts them.
 _UPSTREAM_KEY_ENV_VARS: Final[tuple[str, ...]] = (
-    "GATEWAY_OPENROUTER_API_KEY",
-    "GATEWAY_OPENAI_API_KEY",
-    "GATEWAY_ANTHROPIC_API_KEY",
-    "GATEWAY_GOOGLE_API_KEY",
     "GATEWAY_BEDROCK_ACCESS_KEY_ID",
     "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
     "GATEWAY_AZURE_API_KEY",
@@ -128,7 +127,6 @@ class Settings(BaseSettings):
     jwt_secret: str = _DEV_JWT_SECRET
     jwt_ttl_seconds: int = 86400
     jwt_issuer: str = "ai-proxy"
-    openrouter_api_key: str = ""  # Required in production; empty default for dev/test
     redis_url: str = "redis://localhost:6380/0"
     shutdown_drain_timeout_seconds: int = 10  # env: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
 
@@ -190,6 +188,15 @@ class Settings(BaseSettings):
     # a compromised OIDC key does not expose upstream provider secrets, and vice versa.
     provider_key_encryption_key: str = ""
 
+    # ── Per-tenant credential resolution (credential-resolution-seam task) ───────
+    # GATEWAY_PROVIDER_CREDENTIAL_CACHE_TTL_S — TTL in seconds for the in-memory
+    # positive-result credential cache. Default 60 s. Only positive hits are cached
+    # (miss NOT cached so a freshly-configured key takes effect immediately).
+    provider_credential_cache_ttl_s: float = 60.0
+    # GATEWAY_PROVIDER_CREDENTIAL_RESOLVE_TIMEOUT_S — bounded asyncio timeout on the
+    # cold store.get() DB fetch. Timeout fails CLOSED: raises ProviderKeyMissing.
+    provider_credential_resolve_timeout_s: float = 2.0
+
     # ── OpenRouter upstream base URL (v6-live-verify task) ──────────────────────
     # GATEWAY_OPENROUTER_BASE_URL — base URL for OpenRouterCompletionUpstream.
     # Default is byte-identical to the prior module constant (_BASE_URL).
@@ -198,19 +205,11 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # ── OpenAI direct provider (provider-seam task) ───────────────────────────
-    # GATEWAY_OPENAI_API_KEY — secret; empty = OpenAI provider absent from registry.
-    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
-    # labels/span attributes.  Follows the same handling as openrouter_api_key.
-    openai_api_key: str = ""
     # GATEWAY_OPENAI_BASE_URL — Override in e2e overlays to point at a stub.
     # NEVER set to a non-https URL in production deployments.
     openai_base_url: str = "https://api.openai.com/v1"
 
     # ── Anthropic direct provider (provider-chat-dispatch task) ──────────────
-    # GATEWAY_ANTHROPIC_API_KEY — secret; empty = Anthropic provider absent.
-    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
-    # labels/span attributes.
-    anthropic_api_key: str = ""
     # GATEWAY_ANTHROPIC_BASE_URL — Override in e2e overlays to point at a stub.
     anthropic_base_url: str = "https://api.anthropic.com/v1"
     # GATEWAY_ANTHROPIC_VERSION — Anthropic-Version header value.
@@ -220,10 +219,6 @@ class Settings(BaseSettings):
     anthropic_default_max_tokens: int = 4096
 
     # ── Google direct provider (provider-chat-dispatch task) ──────────────────
-    # GATEWAY_GOOGLE_API_KEY — secret; empty = Google provider absent.
-    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
-    # labels/span attributes.
-    google_api_key: str = ""
     # GATEWAY_GOOGLE_BASE_URL — Override in e2e overlays to point at a stub.
     google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     # GATEWAY_GOOGLE_DEFAULT_MAX_TOKENS — default max_tokens for Gemini requests

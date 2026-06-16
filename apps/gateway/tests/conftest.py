@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
+from tests.credential_stub import install_stub_resolver
 
 TEST_DATABASE_URL = os.environ.get(
     "GATEWAY_TEST_DATABASE_URL",
@@ -88,6 +89,10 @@ def settings() -> Settings:
 @pytest.fixture
 async def app(settings: Settings) -> AsyncIterator[object]:
     application = create_app(settings)
+    # credential-resolution-seam §3: override the real DbTenantProviderKeyStore-backed
+    # resolver (which would need a Fernet key + a seeded per-tenant key) with a stub, so
+    # these feature suites' completions resolve a credential without per-test key seeding.
+    install_stub_resolver(application)
     engine = application.state.engine
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

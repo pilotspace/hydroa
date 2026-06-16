@@ -61,7 +61,15 @@ def get_transcription_use_case(
         redis_client=redis_client,
         session_factory=request.app.state.sessionmaker,
     )
-    return TranscriptionUseCase(governance=governance, session=session)
+    # credential-resolution-seam §3: per-tenant provider key resolver from app.state.
+    tenant_credential_resolver = getattr(
+        request.app.state, "tenant_credential_resolver", None
+    )
+    return TranscriptionUseCase(
+        governance=governance,
+        session=session,
+        tenant_credential_resolver=tenant_credential_resolver,
+    )
 
 
 def get_speech_use_case(
@@ -90,4 +98,12 @@ def get_speech_use_case(
         redis_client=redis_client,
         session_factory=request.app.state.sessionmaker,
     )
-    return SpeechUseCase(governance=governance, session=session)
+    # credential-resolution-seam §3: per-tenant provider key resolver from app.state.
+    tenant_credential_resolver = getattr(
+        request.app.state, "tenant_credential_resolver", None
+    )
+    return SpeechUseCase(
+        governance=governance,
+        session=session,
+        tenant_credential_resolver=tenant_credential_resolver,
+    )

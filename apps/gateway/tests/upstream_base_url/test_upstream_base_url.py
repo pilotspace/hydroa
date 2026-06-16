@@ -97,15 +97,12 @@ def test_bu2_settings_env_override() -> None:
 
 
 def test_bu3_upstream_constructor_stores_base_url() -> None:
-    """OpenRouterCompletionUpstream(api_key=..., base_url=...) must store _base_url.
+    """OpenRouterCompletionUpstream(base_url=...) must store _base_url.
 
-    RED reason: __init__ has no base_url parameter → TypeError:
-      unexpected keyword argument 'base_url'
-    The test MUST fail with TypeError (or AttributeError if the param is silently
-    accepted but not stored). Neither outcome is a skip.
+    Credential-resolution-seam BUILD: api_key removed from __init__; credential
+    is now supplied via the request-scoped contextvar at call time.
     """
     upstream = OpenRouterCompletionUpstream(
-        api_key="test-key-bu3",
         base_url=_STUB_BASE_URL,
     )
     # _base_url must be stored as an instance attribute
@@ -120,10 +117,9 @@ def test_bu3_upstream_constructor_stores_base_url() -> None:
 def test_bu3b_upstream_default_base_url() -> None:
     """OpenRouterCompletionUpstream with no base_url must default to the production URL.
 
-    RED reason: __init__ has no base_url parameter → TypeError on construction,
-    OR _base_url attribute is absent → AttributeError.
+    Credential-resolution-seam BUILD: api_key removed from __init__.
     """
-    upstream = OpenRouterCompletionUpstream(api_key="test-key-bu3b")
+    upstream = OpenRouterCompletionUpstream()
     assert hasattr(upstream, "_base_url"), (
         "OpenRouterCompletionUpstream must expose _base_url even with default"
     )

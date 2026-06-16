@@ -28,7 +28,9 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
 from gateway.proxy.domain.response_format_translation import (
     build_json_coercion_tool,
     extract_response_format,
@@ -510,7 +512,6 @@ class AnthropicCompletionUpstream:
     def __init__(
         self,
         *,
-        api_key: str,
         base_url: str = "https://api.anthropic.com/v1",
         anthropic_version: str = "2023-06-01",
         default_max_tokens: int = 4096,
@@ -519,8 +520,6 @@ class AnthropicCompletionUpstream:
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
-        # Stored privately — never exposed in logs/errors/metrics
-        self._api_key = api_key
         self._version = anthropic_version
         self._default_max_tokens = default_max_tokens
         self._max_retries = max_retries
@@ -540,9 +539,16 @@ class AnthropicCompletionUpstream:
         )
 
     def _auth_headers(self) -> dict[str, str]:
-        """Build Anthropic auth headers. NEVER includes Authorization Bearer."""
+        """Build Anthropic auth headers from the request-scoped credential contextvar.
+
+        NEVER includes Authorization Bearer (Anthropic uses x-api-key).
+        Raises ProviderKeyMissing when the contextvar is unset or non-Bearer.
+        """
+        cred = get_provider_credential()
+        if not isinstance(cred, BearerCredential):
+            raise ProviderKeyMissing("anthropic")
         return {
-            "x-api-key": self._api_key,
+            "x-api-key": cred.secret.get_secret_value(),
             "anthropic-version": self._version,
             "content-type": "application/json",
         }

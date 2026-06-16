@@ -47,10 +47,34 @@ from gateway.proxy.application.governance import NonChatGovernance
 # recorder fn — hence the targeted reportPrivateUsage suppression.
 from gateway.proxy.application.use_cases import (
     _fire_record_with_raw,  # pyright: ignore[reportPrivateUsage]
+    resolve_provider_credential,
 )
+from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
-from gateway.proxy.domain.ports import UsageRecorder
+from gateway.proxy.domain.ports import TenantCredentialResolver, UsageRecorder
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
+
+
+async def _stream_resetting_credential(
+    inner: AsyncIterator[bytes], token: object
+) -> AsyncIterator[bytes]:
+    """Yield from ``inner`` then reset the credential contextvar (credential-resolution-seam §3).
+
+    The TTS adapter fires ``_auth_headers()`` lazily on the FIRST iteration of the byte
+    stream — which happens in the router's StreamingResponse AFTER ``execute()`` returns —
+    so the credential set in ``execute()`` must stay live across the return boundary and be
+    reset only once the stream is consumed (or closed early via GeneratorExit). Tolerate a
+    cross-context reset (Starlette may drain the response in a copied context); the original
+    request-task context is discarded at task end, so the credential never leaks.
+    """
+    try:
+        async for chunk in inner:
+            yield chunk
+    finally:
+        try:
+            reset_provider_credential(token)  # type: ignore[arg-type]
+        except ValueError:
+            pass
 
 # Media type map for TTS response_format → Content-Type (§3 FROZEN)
 _RESPONSE_FORMAT_MEDIA_TYPES: dict[str, str] = {
@@ -74,9 +98,12 @@ class TranscriptionUseCase:
         *,
         governance: NonChatGovernance,
         session: AsyncSession,
+        tenant_credential_resolver: TenantCredentialResolver | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
+        # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
+        self._tenant_credential_resolver = tenant_credential_resolver
 
     async def execute(
         self,
@@ -140,6 +167,12 @@ class TranscriptionUseCase:
             if value is not None:
                 data[field_name] = value
 
+        # Resolve per-tenant provider credential into the contextvar (credential-resolution-seam
+        # §3). Gated to converted providers; Bedrock/Azure skip. ProviderKeyMissing → 402.
+        _cred_token = await resolve_provider_credential(
+            self._tenant_credential_resolver, authz.tenant_id, row.provider
+        )
+
         # Call upstream STT endpoint
         try:
             status, resp_body = await provider_adapter.post_multipart(
@@ -147,6 +180,9 @@ class TranscriptionUseCase:
             )
         except (UpstreamUnavailableError, CircuitOpenError):
             raise UPSTREAM_UNAVAILABLE.exc() from None
+        finally:
+            if _cred_token is not None:
+                reset_provider_credential(_cred_token)  # type: ignore[arg-type]
 
         # Step 7: Extract duration; absent → 0.0 (cost $0 + WARN; NEVER raises)
         duration_s = float(resp_body.get("duration") or 0.0)
@@ -181,9 +217,12 @@ class SpeechUseCase:
         *,
         governance: NonChatGovernance,
         session: AsyncSession,
+        tenant_credential_resolver: TenantCredentialResolver | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
+        # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
+        self._tenant_credential_resolver = tenant_credential_resolver
 
     async def execute(
         self,
@@ -240,6 +279,15 @@ class SpeechUseCase:
         # Step 6: Resolve provider adapter (503 PRE-stream if absent)
         provider_adapter = select_provider(row.modality, row.provider, registry)
 
+        # Step 6.5: Resolve the per-tenant credential into the contextvar PRE-stream
+        # (credential-resolution-seam §3) — BEFORE billing so a ProviderKeyMissing → 402
+        # prevents a bill (single-bill invariant). Gated to converted providers; Bedrock/
+        # Azure skip. The contextvar stays set across the return boundary and is reset by
+        # the generator wrapper after the byte stream is consumed.
+        _cred_token = await resolve_provider_credential(
+            self._tenant_credential_resolver, authz.tenant_id, row.provider
+        )
+
         # Step 7: Fire-and-forget usage record BEFORE constructing the stream.
         # quantity=Decimal(len(input_text)): char count known from request body pre-stream.
         # status=200: committed immediately after governance+provider-select succeed.
@@ -264,6 +312,11 @@ class SpeechUseCase:
         # Step 9: stream_bytes is a SYNC method returning AsyncIterator[bytes] (NO await).
         # Verified: OpenAIDirectProvider.stream_bytes(path, payload) -> AsyncIterator[bytes]
         gen = provider_adapter.stream_bytes("/audio/speech", body)
+
+        # Step 9.5: when a credential was resolved, wrap the stream so the contextvar is
+        # reset after the bytes are consumed (the adapter reads it lazily on first iteration).
+        if _cred_token is not None:
+            gen = _stream_resetting_credential(gen, _cred_token)
 
         # Step 10: Return generator + media_type (StreamingResponse constructed by the router)
         return gen, media_type

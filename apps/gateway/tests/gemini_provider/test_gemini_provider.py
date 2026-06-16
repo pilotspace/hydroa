@@ -22,8 +22,10 @@ import httpx
 import pytest
 
 # RED until BUILD creates the module/symbols.
+from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.ports import CompletionUpstream, UpstreamProvider
+from gateway.proxy.domain.provider_credentials import BearerCredential
 from gateway.proxy.infrastructure.gemini_upstream import (
     GeminiCompletionUpstream,
     GoogleEmbeddingsProvider,
@@ -37,6 +39,10 @@ from gateway.usage.domain.extractor import extract_usage_from_sse
 pytestmark = pytest.mark.asyncio
 
 _BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+# Shared test credential — credential-resolution-seam BUILD conversion.
+_TEST_GOOGLE_SECRET = "g-key"
+_TEST_BEARER_CRED = BearerCredential(secret=_TEST_GOOGLE_SECRET)
 
 _GEMINI_CHAT_200 = {
     "candidates": [
@@ -62,13 +68,15 @@ _GEMINI_SSE = (
 
 
 def _chat_adapter(handler: object) -> GeminiCompletionUpstream:
-    adapter = GeminiCompletionUpstream(api_key="g-key", base_url=_BASE, default_max_tokens=4096)
+    # Credential-resolution-seam BUILD: api_key removed; credential via contextvar.
+    adapter = GeminiCompletionUpstream(base_url=_BASE, default_max_tokens=4096)
     adapter._client = httpx.AsyncClient(base_url=_BASE, transport=httpx.MockTransport(handler))  # type: ignore[attr-defined,arg-type]
     return adapter
 
 
 def _embed_provider(handler: object) -> GoogleEmbeddingsProvider:
-    provider = GoogleEmbeddingsProvider(api_key="g-key", base_url=_BASE)
+    # Credential-resolution-seam BUILD: api_key removed; credential via contextvar.
+    provider = GoogleEmbeddingsProvider(base_url=_BASE)
     provider._client = httpx.AsyncClient(base_url=_BASE, transport=httpx.MockTransport(handler))  # type: ignore[attr-defined,arg-type]
     return provider
 
@@ -145,10 +153,14 @@ async def test_auth_header_x_goog_api_key_no_query() -> None:
         return httpx.Response(200, json=_GEMINI_CHAT_200)
 
     adapter = _chat_adapter(handler)
-    await adapter.complete({"model": "gemini-1.5-flash", "messages": [{"role": "user", "content": "hi"}]})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        await adapter.complete({"model": "gemini-1.5-flash", "messages": [{"role": "user", "content": "hi"}]})
+    finally:
+        reset_provider_credential(token)
     headers = seen["headers"]
     assert isinstance(headers, dict)
-    assert headers.get("x-goog-api-key") == "g-key"
+    assert headers.get("x-goog-api-key") == _TEST_GOOGLE_SECRET
     assert "key=" not in str(seen["url"])
 
 
@@ -160,13 +172,17 @@ async def test_chat_complete_translates() -> None:
         return httpx.Response(200, json=_GEMINI_CHAT_200)
 
     adapter = _chat_adapter(handler)
-    status, body = await adapter.complete(
-        {
-            "model": "gemini-1.5-flash",
-            "messages": [{"role": "system", "content": "S"}, {"role": "user", "content": "Hi"}],
-            "max_tokens": 64,
-        }
-    )
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await adapter.complete(
+            {
+                "model": "gemini-1.5-flash",
+                "messages": [{"role": "system", "content": "S"}, {"role": "user", "content": "Hi"}],
+                "max_tokens": 64,
+            }
+        )
+    finally:
+        reset_provider_credential(token)
     assert status == 200
     assert body["choices"][0]["message"]["content"] == "Hello world"
     assert body["usage"]["total_tokens"] == 12
@@ -179,7 +195,11 @@ async def test_chat_stream_translation() -> None:
         return httpx.Response(200, content=_GEMINI_SSE, headers={"content-type": "text/event-stream"})
 
     adapter = _chat_adapter(handler)
-    chunks = await _drain(adapter.stream({"model": "gemini-1.5-flash", "messages": [{"role": "user", "content": "hi"}]}))
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        chunks = await _drain(adapter.stream({"model": "gemini-1.5-flash", "messages": [{"role": "user", "content": "hi"}]}))
+    finally:
+        reset_provider_credential(token)
     joined = b"".join(chunks)
     assert b'"role": "assistant"' in joined or b'"role":"assistant"' in joined
     assert b"Hello" in joined and b" world" in joined
@@ -193,15 +213,23 @@ async def test_chat_stream_translation() -> None:
 
 async def test_chat_5xx_raises() -> None:
     adapter = _chat_adapter(lambda req: httpx.Response(503, json={"error": {"code": 503, "message": "x", "status": "UNAVAILABLE"}}))
-    with pytest.raises(UpstreamUnavailableError):
-        await adapter.complete({"model": "g", "messages": [{"role": "user", "content": "x"}]})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await adapter.complete({"model": "g", "messages": [{"role": "user", "content": "x"}]})
+    finally:
+        reset_provider_credential(token)
 
 
 async def test_chat_4xx_error_passthrough() -> None:
     adapter = _chat_adapter(
         lambda req: httpx.Response(400, json={"error": {"code": 400, "message": "bad", "status": "INVALID_ARGUMENT"}})
     )
-    status, body = await adapter.complete({"model": "g", "messages": [{"role": "user", "content": "x"}]})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await adapter.complete({"model": "g", "messages": [{"role": "user", "content": "x"}]})
+    finally:
+        reset_provider_credential(token)
     assert status == 400
     assert body == {"error": {"message": "bad", "type": "invalid_argument", "code": "invalid_argument"}}
 
@@ -224,11 +252,15 @@ async def test_embeddings_single_embedcontent() -> None:
         assert request.url.path.endswith(":embedContent")
         sent = json.loads(request.content)
         assert sent == {"content": {"parts": [{"text": "hello"}]}}
-        assert request.headers.get("x-goog-api-key") == "g-key"
+        assert request.headers.get("x-goog-api-key") == _TEST_GOOGLE_SECRET
         return httpx.Response(200, json={"embedding": {"values": [0.1, 0.2]}})
 
     provider = _embed_provider(handler)
-    status, body = await provider.post_json("/embeddings", {"model": "text-embedding-004", "input": "hello"})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await provider.post_json("/embeddings", {"model": "text-embedding-004", "input": "hello"})
+    finally:
+        reset_provider_credential(token)
     assert status == 200
     assert body["object"] == "list"
     assert body["model"] == "text-embedding-004"
@@ -248,7 +280,11 @@ async def test_embeddings_batch_preserves_order() -> None:
         return httpx.Response(200, json={"embeddings": [{"values": [1.0]}, {"values": [2.0]}]})
 
     provider = _embed_provider(handler)
-    status, body = await provider.post_json("/embeddings", {"model": "text-embedding-004", "input": ["a", "bb"]})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await provider.post_json("/embeddings", {"model": "text-embedding-004", "input": ["a", "bb"]})
+    finally:
+        reset_provider_credential(token)
     assert status == 200
     assert body["data"] == [
         {"object": "embedding", "index": 0, "embedding": [1.0]},
@@ -265,25 +301,37 @@ def test_embeddings_usage_estimate_helper() -> None:
 
 async def test_embeddings_5xx_raises() -> None:
     provider = _embed_provider(lambda req: httpx.Response(503, json={"error": {"code": 503, "message": "x", "status": "UNAVAILABLE"}}))
-    with pytest.raises(UpstreamUnavailableError):
-        await provider.post_json("/embeddings", {"model": "m", "input": "x"})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await provider.post_json("/embeddings", {"model": "m", "input": "x"})
+    finally:
+        reset_provider_credential(token)
 
 
 async def test_embeddings_4xx_error_passthrough() -> None:
     provider = _embed_provider(
         lambda req: httpx.Response(403, json={"error": {"code": 403, "message": "no", "status": "PERMISSION_DENIED"}})
     )
-    status, body = await provider.post_json("/embeddings", {"model": "m", "input": "x"})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await provider.post_json("/embeddings", {"model": "m", "input": "x"})
+    finally:
+        reset_provider_credential(token)
     assert status == 403
     assert body == {"error": {"message": "no", "type": "permission_denied", "code": "permission_denied"}}
 
 
 async def test_embeddings_unsupported_modalities_raise() -> None:
     provider = _embed_provider(lambda req: httpx.Response(200, json={}))
-    with pytest.raises(UpstreamUnavailableError):
-        await provider.post_multipart("/audio/transcriptions", {}, {})
-    with pytest.raises(UpstreamUnavailableError):
-        await _drain(provider.stream_bytes("/audio/speech", {}))
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await provider.post_multipart("/audio/transcriptions", {}, {})
+        with pytest.raises(UpstreamUnavailableError):
+            await _drain(provider.stream_bytes("/audio/speech", {}))
+    finally:
+        reset_provider_credential(token)
 
 
 async def test_embeddings_provider_satisfies_protocol() -> None:
@@ -310,16 +358,25 @@ def _make_settings(**kwargs: object):  # type: ignore[no-untyped-def]
 
 
 def test_wiring_google_present_when_key_set() -> None:
+    # Credential-resolution-seam BUILD: google adapter is UNCONDITIONAL —
+    # no api_key at boot; Settings no longer has google_api_key field.
     from gateway.main import create_app
 
-    app = create_app(_make_settings(google_api_key="g-live"))
+    app = create_app(_make_settings())
     assert isinstance(app.state.chat_adapters["google"], GeminiCompletionUpstream)
     assert isinstance(app.state.provider_registry.get("google"), GoogleEmbeddingsProvider)
 
 
 def test_wiring_google_absent_when_key_empty() -> None:
+    # Credential-resolution-seam BUILD: registration is UNCONDITIONAL; adapters are
+    # always present regardless of env keys (per-tenant key gating at resolve time).
+    # Converted: assert both ARE present (not absent).
     from gateway.main import create_app
 
-    app = create_app(_make_settings())  # google_api_key defaults to ""
-    assert "google" not in app.state.chat_adapters
-    assert app.state.provider_registry.get("google") is None
+    app = create_app(_make_settings())
+    assert "google" in app.state.chat_adapters, (
+        "google chat adapter must be registered unconditionally after credential-resolution-seam BUILD"
+    )
+    assert app.state.provider_registry.get("google") is not None, (
+        "google embeddings provider must be registered unconditionally after credential-resolution-seam BUILD"
+    )

@@ -23,6 +23,7 @@ from typing import Any, Protocol, TypedDict, runtime_checkable
 
 from gateway.keys.domain.entities import AuthzResult
 from gateway.proxy.domain.entities import GuardrailResult
+from gateway.proxy.domain.provider_credentials import ProviderCredential
 
 
 class UsageRecordExtras(TypedDict, total=False):
@@ -399,6 +400,35 @@ class DeploymentLimitGate(Protocol):
         ...
 
 
+@runtime_checkable
+class TenantCredentialResolver(Protocol):
+    """Resolve the per-tenant, per-provider credential for an upstream call.
+
+    Additive extension @ credential-resolution-seam TASK.md §3 (FROZEN @ v1).
+
+    Implementations wrap ``TenantProviderKeyStore.get`` with an in-memory TTL
+    cache (warm path = zero DB calls within TTL) and a bounded ``asyncio``
+    timeout on the cold DB fetch.
+
+    Contract:
+      - resolve ALWAYS raises ``ProviderKeyMissing`` on absent / disabled / None
+        / timeout — NEVER returns a fallback or empty credential.
+      - Only positive (hit) results are cached; a miss is NOT cached so a
+        freshly-configured key takes effect immediately.
+    """
+
+    async def resolve(self, tenant_id: uuid.UUID, provider: str) -> ProviderCredential:
+        """Return the enabled credential for ``(tenant_id, provider)``.
+
+        Raises:
+            ProviderKeyMissing: when the store returns None (absent or
+                disabled row), when the DB fetch exceeds the bounded timeout,
+                or when a decrypt error propagates from the store.
+                NEVER returns a platform key as a fallback.
+        """
+        ...
+
+
 __all__ = [
     "AuthzResult",
     "CompletionUpstream",
@@ -409,8 +439,10 @@ __all__ = [
     "ModelAccess",
     "ModelChecker",
     "ModelHealthGate",
+    "ProviderCredential",
     "ProviderResolver",
     "ResponseCache",
+    "TenantCredentialResolver",
     "UpstreamProvider",
     "UsageRecordExtras",
     "UsageRecorder",

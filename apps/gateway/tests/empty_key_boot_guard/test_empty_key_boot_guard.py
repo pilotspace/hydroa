@@ -18,15 +18,18 @@ from gateway.core.config import (
 
 
 def test_present_empty_key_raises() -> None:
+    # Credential-resolution-seam BUILD: Bearer vars removed from guard list.
+    # Guard now covers Bedrock/Azure env-path vars (staged to task 3).
     with pytest.raises(EmptyUpstreamKeyError) as exc:
-        validate_upstream_keys({"GATEWAY_OPENROUTER_API_KEY": ""})
-    assert "GATEWAY_OPENROUTER_API_KEY" in str(exc.value)
+        validate_upstream_keys({"GATEWAY_BEDROCK_ACCESS_KEY_ID": ""})
+    assert "GATEWAY_BEDROCK_ACCESS_KEY_ID" in str(exc.value)
 
 
 def test_whitespace_only_key_raises() -> None:
+    # Credential-resolution-seam BUILD: use a still-guarded Bedrock var.
     with pytest.raises(EmptyUpstreamKeyError) as exc:
-        validate_upstream_keys({"GATEWAY_GOOGLE_API_KEY": "   "})
-    assert "GATEWAY_GOOGLE_API_KEY" in str(exc.value)
+        validate_upstream_keys({"GATEWAY_BEDROCK_SECRET_ACCESS_KEY": "   "})
+    assert "GATEWAY_BEDROCK_SECRET_ACCESS_KEY" in str(exc.value)
 
 
 def test_absent_key_is_allowed() -> None:
@@ -35,25 +38,29 @@ def test_absent_key_is_allowed() -> None:
 
 
 def test_nonempty_keys_pass() -> None:
+    # Credential-resolution-seam BUILD: use still-guarded Bedrock/Azure vars.
     env = {
-        "GATEWAY_OPENROUTER_API_KEY": "or-key",
-        "GATEWAY_GOOGLE_API_KEY": "g-key",
+        "GATEWAY_BEDROCK_ACCESS_KEY_ID": "AKIDTEST",
+        "GATEWAY_AZURE_API_KEY": "az-key",
     }
     assert validate_upstream_keys(env) is None
 
 
 def test_error_message_has_fix_hint_and_no_value() -> None:
+    # Credential-resolution-seam BUILD: use a still-guarded Azure var.
     with pytest.raises(EmptyUpstreamKeyError) as exc:
-        validate_upstream_keys({"GATEWAY_ANTHROPIC_API_KEY": "  "})
+        validate_upstream_keys({"GATEWAY_AZURE_CLIENT_SECRET": "  "})
     msg = str(exc.value)
-    assert "GATEWAY_ANTHROPIC_API_KEY" in msg
+    assert "GATEWAY_AZURE_CLIENT_SECRET" in msg
     assert "unset" in msg.lower()
     # the whitespace value must not be echoed beyond the var name + hint
-    assert "  " not in msg.replace("GATEWAY_ANTHROPIC_API_KEY", "")
+    assert "  " not in msg.replace("GATEWAY_AZURE_CLIENT_SECRET", "")
 
 
 def test_create_app_fails_fast_on_empty_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GATEWAY_OPENROUTER_API_KEY", "")
+    # Credential-resolution-seam BUILD: GATEWAY_OPENROUTER_API_KEY is no longer
+    # guarded (Bearer vars removed). Use a still-guarded Bedrock var instead.
+    monkeypatch.setenv("GATEWAY_BEDROCK_ACCESS_KEY_ID", "")
     from gateway.core.config import Settings
     from gateway.main import create_app
 
@@ -68,12 +75,13 @@ def test_create_app_fails_fast_on_empty_key(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_create_app_ok_when_keys_absent(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Ensure none of the upstream key vars are present → create_app builds normally.
+    # Ensure none of the remaining guarded upstream key vars are present.
+    # Bearer vars (openrouter/openai/anthropic/google) removed from guard list by BUILD.
     for name in (
-        "GATEWAY_OPENROUTER_API_KEY",
-        "GATEWAY_OPENAI_API_KEY",
-        "GATEWAY_ANTHROPIC_API_KEY",
-        "GATEWAY_GOOGLE_API_KEY",
+        "GATEWAY_BEDROCK_ACCESS_KEY_ID",
+        "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
+        "GATEWAY_AZURE_API_KEY",
+        "GATEWAY_AZURE_CLIENT_SECRET",
     ):
         monkeypatch.delenv(name, raising=False)
     from gateway.core.config import Settings

@@ -28,7 +28,9 @@ from typing import Any
 import httpx
 import pytest
 
+from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import BearerCredential
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
 from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
@@ -141,11 +143,17 @@ async def test_retry_seam_deadline_exceeded_no_cause() -> None:
 
 
 async def test_openrouter_stream_no_cause() -> None:
+    # Credential-resolution-seam BUILD: secret supplied via contextvar, not constructor.
     secret = "sk-or-secret-FAKE"
-    adapter = OpenRouterCompletionUpstream(secret)
+    cred = BearerCredential(secret=secret)
+    adapter = OpenRouterCompletionUpstream()
     adapter._client = _mock_client()  # type: ignore[attr-defined]
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await _drain_stream(adapter.stream(_chat_payload("openai/gpt-4o")))
+    token = set_provider_credential(cred)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await _drain_stream(adapter.stream(_chat_payload("openai/gpt-4o")))
+    finally:
+        reset_provider_credential(token)
     assert exc.value.__cause__ is None
     assert secret not in str(exc.value)
 
@@ -156,39 +164,55 @@ async def test_openrouter_stream_no_cause() -> None:
 # ===========================================================================
 
 
-def _openai_adapter(secret: str) -> OpenAIDirectProvider:
-    adapter = OpenAIDirectProvider(secret)
+def _openai_adapter() -> OpenAIDirectProvider:
+    # Credential-resolution-seam BUILD: api_key removed from __init__.
+    adapter = OpenAIDirectProvider()
     adapter._client = _mock_client()  # type: ignore[attr-defined]
     return adapter
 
 
 async def test_openai_post_json_no_cause() -> None:
     secret = "sk-openai-postjson-FAKE"
-    adapter = _openai_adapter(secret)
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+    cred = BearerCredential(secret=secret)
+    adapter = _openai_adapter()
+    token = set_provider_credential(cred)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+    finally:
+        reset_provider_credential(token)
     assert exc.value.__cause__ is None
     assert secret not in str(exc.value)
 
 
 async def test_openai_post_multipart_no_cause() -> None:
     secret = "sk-openai-multipart-FAKE"
-    adapter = _openai_adapter(secret)
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await adapter.post_multipart(
-            "/audio/transcriptions",
-            {"file": ("a.mp3", b"bytes", "audio/mpeg")},
-            {"model": "whisper-1"},
-        )
+    cred = BearerCredential(secret=secret)
+    adapter = _openai_adapter()
+    token = set_provider_credential(cred)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await adapter.post_multipart(
+                "/audio/transcriptions",
+                {"file": ("a.mp3", b"bytes", "audio/mpeg")},
+                {"model": "whisper-1"},
+            )
+    finally:
+        reset_provider_credential(token)
     assert exc.value.__cause__ is None
     assert secret not in str(exc.value)
 
 
 async def test_openai_stream_bytes_no_cause() -> None:
     secret = "sk-openai-streambytes-FAKE"
-    adapter = _openai_adapter(secret)
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await _drain_stream(adapter.stream_bytes("/audio/speech", {"model": "tts-1", "input": "x"}))
+    cred = BearerCredential(secret=secret)
+    adapter = _openai_adapter()
+    token = set_provider_credential(cred)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await _drain_stream(adapter.stream_bytes("/audio/speech", {"model": "tts-1", "input": "x"}))
+    finally:
+        reset_provider_credential(token)
     assert exc.value.__cause__ is None
     assert secret not in str(exc.value)
 
@@ -199,11 +223,17 @@ async def test_openai_stream_bytes_no_cause() -> None:
 
 
 async def test_anthropic_stream_no_cause() -> None:
+    # Credential-resolution-seam BUILD: api_key removed; secret via contextvar.
     secret = "sk-ant-secret-FAKE"
-    adapter = AnthropicCompletionUpstream(api_key=secret)
+    cred = BearerCredential(secret=secret)
+    adapter = AnthropicCompletionUpstream()
     adapter._client = _mock_client()  # type: ignore[attr-defined]
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await _drain_stream(adapter.stream(_chat_payload("claude-3-5-sonnet-20241022")))
+    token = set_provider_credential(cred)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await _drain_stream(adapter.stream(_chat_payload("claude-3-5-sonnet-20241022")))
+    finally:
+        reset_provider_credential(token)
     assert exc.value.__cause__ is None
     assert secret not in str(exc.value)
 
@@ -214,21 +244,33 @@ async def test_anthropic_stream_no_cause() -> None:
 
 
 async def test_gemini_stream_no_cause() -> None:
+    # Credential-resolution-seam BUILD: api_key removed; secret via contextvar.
     secret = "gemini-stream-secret-FAKE"
-    adapter = GeminiCompletionUpstream(api_key=secret)
+    cred = BearerCredential(secret=secret)
+    adapter = GeminiCompletionUpstream()
     adapter._client = _mock_client()  # type: ignore[attr-defined]
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await _drain_stream(adapter.stream(_chat_payload("gemini-1.5-flash")))
+    token = set_provider_credential(cred)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await _drain_stream(adapter.stream(_chat_payload("gemini-1.5-flash")))
+    finally:
+        reset_provider_credential(token)
     assert exc.value.__cause__ is None
     assert secret not in str(exc.value)
 
 
 async def test_gemini_embeddings_no_cause() -> None:
+    # Credential-resolution-seam BUILD: api_key removed; secret via contextvar.
     secret = "gemini-embed-secret-FAKE"
-    adapter = GoogleEmbeddingsProvider(api_key=secret)
+    cred = BearerCredential(secret=secret)
+    adapter = GoogleEmbeddingsProvider()
     adapter._client = _mock_client()  # type: ignore[attr-defined]
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await adapter.post_json("/embeddings", {"model": "text-embedding-004", "input": "x"})
+    token = set_provider_credential(cred)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await adapter.post_json("/embeddings", {"model": "text-embedding-004", "input": "x"})
+    finally:
+        reset_provider_credential(token)
     assert exc.value.__cause__ is None
     assert secret not in str(exc.value)
 

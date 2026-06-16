@@ -40,6 +40,17 @@ PROVIDER_VALUE_SET: frozenset[str] = frozenset(
     {"openrouter", "openai", "anthropic", "google", "bedrock", "azure"}
 )
 
+#: Providers whose per-request auth is resolved from the credential contextvar in
+#: THIS milestone stage (credential-resolution-seam task 2). The use-case resolves a
+#: tenant credential ONLY for these providers; Bedrock/Azure are STAGED on the env
+#: path until task 3 converts them — a request for a non-listed provider must SKIP
+#: resolution (return no token) so its env-bound adapter still authenticates. Task 3
+#: extends this set to the full PROVIDER_VALUE_SET. Gating here keeps each milestone
+#: step behavior-correct (no Bedrock/Azure 402 while they remain env-bound).
+BYOK_BEARER_PROVIDERS: frozenset[str] = frozenset(
+    {"openrouter", "openai", "anthropic", "google"}
+)
+
 
 # ---------------------------------------------------------------------------
 # Domain error
@@ -56,6 +67,25 @@ class ProviderCredentialError(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code: str = code
+
+
+class ProviderKeyMissing(Exception):
+    """Raised when a tenant has no enabled credential for the requested provider.
+
+    §3 CONTRACT (credential-resolution-seam TASK.md) — FROZEN @ v1.
+
+    Carries the provider name ONLY — NEVER a secret, ciphertext, or tenant key.
+    The class-level ``.code`` attribute is stable for error catalog mapping.
+    HTTP 402 Payment Required: frames BYOK as a provisioning/payment gate.
+    """
+
+    code: str = "ERR_PROVIDER_KEY_MISSING"
+
+    def __init__(self, provider: str) -> None:
+        super().__init__(f"No enabled credential for provider: {provider}")
+        # Instance attribute mirrors the class attribute so callers can inspect
+        # either err.code or type(err).code uniformly.
+        self.code = "ERR_PROVIDER_KEY_MISSING"
 
 
 # ---------------------------------------------------------------------------

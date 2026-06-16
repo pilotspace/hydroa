@@ -128,6 +128,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
+from tests.credential_stub import install_stub_resolver
 from gateway.usage.application.flusher import UsageLedgerFlusher
 
 # ---------------------------------------------------------------------------
@@ -335,6 +336,9 @@ async def app(settings: Settings) -> AsyncIterator[object]:
     import asyncio
 
     application = create_app(settings)
+    # credential-resolution-seam §3: stub the per-tenant credential resolver so this
+    # suite's faked-upstream completions resolve a credential without seeding a real key.
+    install_stub_resolver(application)
     engine = application.state.engine
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
