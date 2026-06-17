@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "provider-config-admin-api",
+  "active_task": "provider-config-ui",
   "active_milestone": "v25",
   "tasks": {
     "provider-credential-store": {
@@ -186,6 +186,38 @@
           }
         ]
       }
+    },
+    "provider-config-ui": {
+      "title": "Provider Config Ui",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v25",
+      "depends_on": [],
+      "created": "2026-06-16T17:23:41+00:00",
+      "updated": "2026-06-17T02:19:17+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "3f2fc42d7a72bc32b10393f69da47db0",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/settings/ProviderKeysSettings.tsx",
+          "apps/dashboard/components/settings/ConfigureProviderDialog.tsx",
+          "apps/dashboard/components/settings/SettingsPage.tsx"
+        ],
+        "snapshot_md5": "c30d16f6d629ae886c266825aba24676"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-17T02:17:53+00:00",
+            "reason": "scope_violation: task 'provider-config-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/components/settings/ConfigureProviderDialog.tsx (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -199,7 +231,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-16T17:19:23+00:00",
+  "updated": "2026-06-17T02:19:17+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

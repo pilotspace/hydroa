@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * SettingsPage — /settings tabbed hub (Cache · Guardrails · SSO).
+ * SettingsPage — /settings tabbed hub (Cache · Guardrails · SSO · Provider Keys).
  *
  * Default tab = "cache" (works for every role; non-owners don't land on a 403 SSO tab).
  * TabsContent returns null when inactive so each sub-component's useQuery only fires
@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui";
 import { CacheSettings } from "./CacheSettings";
 import { GuardrailSettings } from "./GuardrailSettings";
 import { OidcSettings } from "./OidcSettings";
+import { ProviderKeysSettings } from "./ProviderKeysSettings";
 
 export function SettingsPage() {
   return (
@@ -19,7 +20,7 @@ export function SettingsPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage cache, guardrails, and SSO configuration for your tenant.
+          Manage cache, guardrails, SSO, and provider keys for your tenant.
         </p>
       </header>
 
@@ -28,6 +29,7 @@ export function SettingsPage() {
           <TabsTrigger value="cache">Cache</TabsTrigger>
           <TabsTrigger value="guardrails">Guardrails</TabsTrigger>
           <TabsTrigger value="sso">SSO</TabsTrigger>
+          <TabsTrigger value="provider-keys">Provider Keys</TabsTrigger>
         </TabsList>
 
         <TabsContent value="cache">
@@ -40,6 +42,10 @@ export function SettingsPage() {
 
         <TabsContent value="sso">
           <OidcSettings />
+        </TabsContent>
+
+        <TabsContent value="provider-keys">
+          <ProviderKeysSettings />
         </TabsContent>
       </Tabs>
     </div>
