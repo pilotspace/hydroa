@@ -356,20 +356,17 @@ def test_secret_never_leaks() -> None:
 # resolve_aws_credentials is DELETED (env-secret removal). The pure SigV4
 # oracle tests (SV0–SV5, SV8) and the boot-guard test below are kept.
 # ---------------------------------------------------------------------------
-# Config boot guard — bedrock key env vars in _UPSTREAM_KEY_ENV_VARS
+# Config — bedrock secret env vars have no Settings field (BYOK)
 # ---------------------------------------------------------------------------
 
 
-def test_config_boot_guard_excludes_bedrock_keys() -> None:
-    """GATEWAY_BEDROCK_ACCESS_KEY_ID and GATEWAY_BEDROCK_SECRET_ACCESS_KEY must NOT be
-    in gateway.core.config._UPSTREAM_KEY_ENV_VARS — v25 task-3 §6 retired all provider
-    secret env vars from the boot guard (credentials are now BYOK per-tenant at request time).
+def test_config_has_no_bedrock_secret_fields() -> None:
+    """No bedrock secret field exists on Settings — v25 task-3 §6 retired all provider secret
+    env vars (credentials are now BYOK per-tenant at request time), and the vestigial empty-key
+    boot guard / _UPSTREAM_KEY_ENV_VARS constant has since been removed entirely.
     """
-    from gateway.core.config import _UPSTREAM_KEY_ENV_VARS
+    from gateway.core.config import Settings
 
-    assert "GATEWAY_BEDROCK_ACCESS_KEY_ID" not in _UPSTREAM_KEY_ENV_VARS, (
-        "GATEWAY_BEDROCK_ACCESS_KEY_ID must NOT be in _UPSTREAM_KEY_ENV_VARS (retired §6)"
-    )
-    assert "GATEWAY_BEDROCK_SECRET_ACCESS_KEY" not in _UPSTREAM_KEY_ENV_VARS, (
-        "GATEWAY_BEDROCK_SECRET_ACCESS_KEY must NOT be in _UPSTREAM_KEY_ENV_VARS (retired §6)"
-    )
+    bedrock_secret_fields = {"bedrock_access_key_id", "bedrock_secret_access_key"}
+    present = bedrock_secret_fields & set(Settings.model_fields.keys())
+    assert not present, f"Bedrock secret Settings fields must not exist (BYOK): {present!r}"

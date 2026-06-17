@@ -136,6 +136,7 @@ async def test_bearer_resolves_per_tenant_key(
         )
         # The env var must NOT have been used — the adapter never reads os.environ
         import os
+
         assert "GATEWAY_OPENROUTER_API_KEY" not in os.environ or (
             os.environ.get("GATEWAY_OPENROUTER_API_KEY", "") != openrouter_secret
         ), "Adapter must not source the secret from the env var"
@@ -425,9 +426,7 @@ def test_missing_contextvar_raises() -> None:
     # Ensure the contextvar is unset for this test by resetting to a fresh token
     # (no set_provider_credential called — the contextvar default is None)
     current = get_provider_credential()
-    assert current is None, (
-        "Pre-condition: contextvar must be None (not set) before this test"
-    )
+    assert current is None, "Pre-condition: contextvar must be None (not set) before this test"
 
     # Build adapter WITHOUT an api_key (post-BUILD: no api_key in __init__)
     adapter = OpenRouterCompletionUpstream()
@@ -455,36 +454,17 @@ def test_missing_contextvar_raises() -> None:
 
 
 def test_bearer_env_removed_boots_clean(app_no_db: Any) -> None:
-    """Gateway boots with zero Bearer env vars; validate_upstream_keys ignores the 4 Bearer vars.
+    """Gateway boots with zero Bearer env vars; the env-key path is fully gone (BYOK).
 
-    After BUILD:
-    - Settings no longer has openrouter_api_key / openai_api_key / anthropic_api_key /
-      google_api_key fields.
-    - validate_upstream_keys no longer includes those 4 vars in _UPSTREAM_KEY_ENV_VARS.
+    Invariants (already satisfied post-BYOK; re-pinned against a live surface after the
+    vestigial empty-key boot guard + its _UPSTREAM_KEY_ENV_VARS constant were retired):
+    - Settings has no openrouter_api_key / openai_api_key / anthropic_api_key / google_api_key field.
     - The 4 Bearer adapters (openrouter / openai / anthropic / google) are present in
       app.state.chat_adapters regardless of env keys — registration is UNCONDITIONAL.
-
-    RIGHT-REASON RED: The BUILD has not happened yet. Settings still has the Bearer secret
-    fields; validate_upstream_keys still guards them; and registration of anthropic/google
-    adapters is still gated on the api_key being set. The assertion that all 4 are
-    registered unconditionally will fail because anthropic and google are absent without keys.
     """
-    from gateway.core.config import _UPSTREAM_KEY_ENV_VARS, Settings
+    from gateway.core.config import Settings
 
-    # After BUILD: the 4 Bearer vars must NOT be in the guard list
-    bearer_env_vars = {
-        "GATEWAY_OPENROUTER_API_KEY",
-        "GATEWAY_OPENAI_API_KEY",
-        "GATEWAY_ANTHROPIC_API_KEY",
-        "GATEWAY_GOOGLE_API_KEY",
-    }
-    still_guarded = bearer_env_vars & set(_UPSTREAM_KEY_ENV_VARS)
-    assert not still_guarded, (
-        f"After BUILD, these Bearer vars must be removed from _UPSTREAM_KEY_ENV_VARS: "
-        f"{still_guarded!r}. They are still present — BUILD has not run yet."
-    )
-
-    # After BUILD: Settings must not have the Bearer API key fields
+    # Settings must not have the Bearer API key fields
     settings_fields = set(Settings.model_fields.keys())
     bearer_settings_fields = {
         "openrouter_api_key",
@@ -616,10 +596,10 @@ def test_bedrock_azure_resolve() -> None:
         finally:
             reset_provider_credential(tok_a)  # type: ignore[arg-type]
 
-        assert ("bedrock" in [c[1] for c in resolver.calls]), (
+        assert "bedrock" in [c[1] for c in resolver.calls], (
             "resolver.resolve must have been called with 'bedrock'"
         )
-        assert ("azure" in [c[1] for c in resolver.calls]), (
+        assert "azure" in [c[1] for c in resolver.calls], (
             "resolver.resolve must have been called with 'azure'"
         )
 
@@ -786,6 +766,7 @@ async def test_error_maps_to_402(
     resp_obj = problem_response(402, missing.code, "Provider key not configured")
     body = resp_obj.body  # JSONResponse stores body as bytes
     import json
+
     body_dict = json.loads(body)
     assert body_dict["status"] == 402, f"Expected status 402 in body, got: {body_dict}"
     assert body_dict["code"] == "ERR_PROVIDER_KEY_MISSING", (

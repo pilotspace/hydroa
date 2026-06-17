@@ -149,9 +149,7 @@ def _reset_stub(stub_server: dict[str, Any]) -> None:
     httpx.post(f"{stub_server['base_url']}/__reset", timeout=5)
 
 
-def _chat_upstream(
-    base_url: str, *, max_retries: int = 0
-) -> AzureCompletionUpstream:
+def _chat_upstream(base_url: str, *, max_retries: int = 0) -> AzureCompletionUpstream:
     """v25 task-3: no ctor config= or token_provider=; credentials travel via contextvar.
 
     RIGHT-REASON RED: existing ctor still requires config= → TypeError until BUILD.

@@ -72,9 +72,7 @@ class CachedTenantCredentialResolver:
         if cache_ttl_s is not None:
             self._cache_ttl_s = float(cache_ttl_s)
         elif settings is not None:
-            self._cache_ttl_s = float(
-                getattr(settings, "provider_credential_cache_ttl_s", 60.0)
-            )
+            self._cache_ttl_s = float(getattr(settings, "provider_credential_cache_ttl_s", 60.0))
         else:
             self._cache_ttl_s = 60.0
 

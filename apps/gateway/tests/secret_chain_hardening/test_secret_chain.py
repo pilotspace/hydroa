@@ -28,9 +28,16 @@ from typing import Any
 import httpx
 import pytest
 
-from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
-from gateway.proxy.domain.provider_credentials import BedrockCredential, BearerCredential, AzureCredential
+from gateway.proxy.domain.provider_credentials import (
+    BedrockCredential,
+    BearerCredential,
+    AzureCredential,
+)
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
 from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
@@ -178,7 +185,9 @@ async def test_openai_post_json_no_cause() -> None:
     token = set_provider_credential(cred)
     try:
         with pytest.raises(UpstreamUnavailableError) as exc:
-            await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+            await adapter.post_json(
+                "/embeddings", {"model": "text-embedding-3-small", "input": "x"}
+            )
     finally:
         reset_provider_credential(token)
     assert exc.value.__cause__ is None
@@ -210,7 +219,9 @@ async def test_openai_stream_bytes_no_cause() -> None:
     token = set_provider_credential(cred)
     try:
         with pytest.raises(UpstreamUnavailableError) as exc:
-            await _drain_stream(adapter.stream_bytes("/audio/speech", {"model": "tts-1", "input": "x"}))
+            await _drain_stream(
+                adapter.stream_bytes("/audio/speech", {"model": "tts-1", "input": "x"})
+            )
     finally:
         reset_provider_credential(token)
     assert exc.value.__cause__ is None

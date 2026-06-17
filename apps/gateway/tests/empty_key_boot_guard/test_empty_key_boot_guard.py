@@ -1,66 +1,46 @@
-"""Red suite for empty-key-boot-guard (v12): fail fast on a configured-yet-empty key.
+"""Retirement + BYOK env-secret-absence invariants (retire-empty-key-guard TASK.md).
 
-A configured-yet-EMPTY upstream key env var must fail boot with a clear, secret-free
-error; an ABSENT var leaves the provider cleanly disabled. The distinction is only
-observable at the raw-environment level (Settings collapses unset and set-empty to "").
+The empty-upstream-key boot guard (EmptyUpstreamKeyError / _UPSTREAM_KEY_ENV_VARS /
+validate_upstream_keys) became a no-op once v25 task-3 emptied the guard tuple — every
+provider credential is now resolved per-tenant at request time (BYOK). This task retires
+the dead guard.
 
-Contract: empty-key-boot-guard TASK.md §3 (FROZEN @ v1).
+What remains here are the invariants the old guard's assertions weakly approximated, now
+pinned against a live surface (Settings.model_fields) rather than the deleted constant:
+  - no provider api_key/secret field exists on Settings, and
+  - create_app boots cleanly with no provider env secrets.
 
-v25 task-3 amendment: §6 env-secret removal drops these Settings fields:
-  bedrock_access_key_id, bedrock_secret_access_key, bedrock_session_token,
-  azure_api_key, azure_client_secret.
-Their 5 entries leave _UPSTREAM_KEY_ENV_VARS. Tests that ONLY tested these removed
-vars are dropped. The remaining guard tests (for vars that survive task-3) are kept.
-
-Remaining guarded vars after task-3:
-  GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY (or whichever non-secret vars remain guarded).
-  The boot-guard for azure_api_key and bedrock vars is REMOVED — those fields are gone.
-
-RIGHT-REASON RED for new assertions: the 5 removed vars are still in
-_UPSTREAM_KEY_ENV_VARS (pre-BUILD) → validate_upstream_keys still raises for them
-→ the assertions that they do NOT raise (or that the fields are absent from Settings)
-fail. Tests that asserted they DO raise are simply retired.
+test_boot_guard_symbols_retired runs RED until BUILD deletes the three symbols + the main.py call.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from gateway.core.config import (
-    EmptyUpstreamKeyError,
-    validate_upstream_keys,
-)
+from gateway.core.config import Settings
 
 
-def test_absent_key_is_allowed() -> None:
-    """No upstream key vars present → no raise (provider disabled cleanly)."""
-    assert validate_upstream_keys({"SOME_OTHER_VAR": "x"}) is None
+def test_boot_guard_symbols_retired() -> None:
+    """The dead boot-guard symbols are gone from config, and main.py no longer calls the guard."""
+    import gateway.core.config as config_module
 
+    for name in ("validate_upstream_keys", "_UPSTREAM_KEY_ENV_VARS", "EmptyUpstreamKeyError"):
+        assert not hasattr(config_module, name), (
+            f"gateway.core.config.{name} must be retired — it is a no-op dead-code remnant of the "
+            "pre-BYOK env-key boot guard (pre-BUILD state: still present)."
+        )
 
-def test_removed_bedrock_secret_vars_no_longer_guarded() -> None:
-    """v25 task-3 §6: bedrock secret vars removed from _UPSTREAM_KEY_ENV_VARS.
-
-    After BUILD, an empty GATEWAY_BEDROCK_ACCESS_KEY_ID or
-    GATEWAY_BEDROCK_SECRET_ACCESS_KEY must NOT trigger EmptyUpstreamKeyError —
-    those fields are gone from Settings and the guard list.
-
-    RIGHT-REASON RED: these vars are still in _UPSTREAM_KEY_ENV_VARS (pre-BUILD)
-    → validate_upstream_keys still raises → assertion fails.
-    """
-    from gateway.core.config import _UPSTREAM_KEY_ENV_VARS, Settings
-
-    bedrock_secret_vars = {
-        "GATEWAY_BEDROCK_ACCESS_KEY_ID",
-        "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
-        "GATEWAY_BEDROCK_SESSION_TOKEN",
-    }
-    still_guarded = bedrock_secret_vars & set(_UPSTREAM_KEY_ENV_VARS)
-    assert not still_guarded, (
-        f"After task-3 BUILD, bedrock secret vars must be removed from "
-        f"_UPSTREAM_KEY_ENV_VARS: {still_guarded!r} still present (pre-BUILD state)."
+    main_src = Path(__file__).resolve().parents[2] / "src" / "gateway" / "main.py"
+    text = main_src.read_text()
+    assert "validate_upstream_keys" not in text, (
+        "main.py must neither import nor call validate_upstream_keys (pre-BUILD: still present)."
     )
 
-    # These fields must be absent from Settings.model_fields
+
+def test_bedrock_secret_fields_absent_from_settings() -> None:
+    """BYOK invariant: bedrock secret fields are gone from Settings (no env-secret path)."""
     settings_fields = set(Settings.model_fields.keys())
     bedrock_settings_fields = {
         "bedrock_access_key_id",
@@ -69,43 +49,22 @@ def test_removed_bedrock_secret_vars_no_longer_guarded() -> None:
     }
     still_present = bedrock_settings_fields & settings_fields
     assert not still_present, (
-        f"After task-3 BUILD, these Settings fields must be removed: {still_present!r} "
-        "(pre-BUILD state — fields still exist)."
+        f"These bedrock secret Settings fields must not exist (BYOK): {still_present!r}."
     )
 
 
-def test_removed_azure_secret_vars_no_longer_guarded() -> None:
-    """v25 task-3 §6: azure secret vars removed from _UPSTREAM_KEY_ENV_VARS.
-
-    After BUILD, an empty GATEWAY_AZURE_API_KEY or GATEWAY_AZURE_CLIENT_SECRET
-    must NOT trigger EmptyUpstreamKeyError — those fields are gone from Settings.
-
-    RIGHT-REASON RED: these vars are still in _UPSTREAM_KEY_ENV_VARS (pre-BUILD).
-    """
-    from gateway.core.config import _UPSTREAM_KEY_ENV_VARS, Settings
-
-    azure_secret_vars = {
-        "GATEWAY_AZURE_API_KEY",
-        "GATEWAY_AZURE_CLIENT_SECRET",
-    }
-    still_guarded = azure_secret_vars & set(_UPSTREAM_KEY_ENV_VARS)
-    assert not still_guarded, (
-        f"After task-3 BUILD, azure secret vars must be removed from "
-        f"_UPSTREAM_KEY_ENV_VARS: {still_guarded!r} still present (pre-BUILD state)."
-    )
-
+def test_azure_secret_fields_absent_from_settings() -> None:
+    """BYOK invariant: azure secret fields are gone from Settings (no env-secret path)."""
     settings_fields = set(Settings.model_fields.keys())
     azure_settings_fields = {"azure_api_key", "azure_client_secret"}
     still_present = azure_settings_fields & settings_fields
     assert not still_present, (
-        f"After task-3 BUILD, these Settings fields must be removed: {still_present!r} "
-        "(pre-BUILD state — fields still exist)."
+        f"These azure secret Settings fields must not exist (BYOK): {still_present!r}."
     )
 
 
 def test_create_app_ok_when_secret_keys_absent(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Gateway boots cleanly when the removed secret vars are absent from the environment."""
-    # Remove the vars that are being deleted in task-3
+    """Gateway boots cleanly when the provider secret env vars are absent from the environment."""
     for name in (
         "GATEWAY_BEDROCK_ACCESS_KEY_ID",
         "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
@@ -114,7 +73,6 @@ def test_create_app_ok_when_secret_keys_absent(monkeypatch: pytest.MonkeyPatch) 
         "GATEWAY_AZURE_CLIENT_SECRET",
     ):
         monkeypatch.delenv(name, raising=False)
-    from gateway.core.config import Settings
     from gateway.main import create_app
 
     settings = Settings(

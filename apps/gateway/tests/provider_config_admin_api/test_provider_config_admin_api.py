@@ -226,9 +226,7 @@ async def test_M1_owner_creates_bearer() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="M1", email="owner-m1@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="M1", email="owner-m1@byok.io")
         resp = await client.put(
             f"{PROVIDER_KEYS}/openrouter", headers=auth(token), json=bearer_body()
         )
@@ -261,9 +259,7 @@ async def test_M2_owner_creates_bedrock_with_session_token() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="M2", email="owner-m2@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="M2", email="owner-m2@byok.io")
         resp = await client.put(
             f"{PROVIDER_KEYS}/bedrock", headers=auth(token), json=bedrock_body()
         )
@@ -301,9 +297,7 @@ async def test_M3_owner_creates_azure_aad() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="M3", email="owner-m3@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="M3", email="owner-m3@byok.io")
         resp = await client.put(
             f"{PROVIDER_KEYS}/azure", headers=auth(token), json=azure_aad_body()
         )
@@ -338,9 +332,7 @@ async def test_M4_owner_creates_azure_api_key() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="M4", email="owner-m4@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="M4", email="owner-m4@byok.io")
         resp = await client.put(
             f"{PROVIDER_KEYS}/azure", headers=auth(token), json=azure_api_key_body()
         )
@@ -373,9 +365,7 @@ async def test_M5_list_no_secrets() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, _tenant_id = await signup_tenant(
-            client, tenant_name="M5", email="owner-m5@byok.io"
-        )
+        token, _tenant_id = await signup_tenant(client, tenant_name="M5", email="owner-m5@byok.io")
         await client.put(f"{PROVIDER_KEYS}/openrouter", headers=auth(token), json=bearer_body())
         await client.put(f"{PROVIDER_KEYS}/bedrock", headers=auth(token), json=bedrock_body())
 
@@ -404,9 +394,7 @@ async def test_M6_get_one_status() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, _tenant_id = await signup_tenant(
-            client, tenant_name="M6", email="owner-m6@byok.io"
-        )
+        token, _tenant_id = await signup_tenant(client, tenant_name="M6", email="owner-m6@byok.io")
         await client.put(f"{PROVIDER_KEYS}/azure", headers=auth(token), json=azure_aad_body())
 
         resp = await client.get(f"{PROVIDER_KEYS}/azure", headers=auth(token))
@@ -434,9 +422,7 @@ async def test_M7_delete_closes_loop() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="M7", email="owner-m7@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="M7", email="owner-m7@byok.io")
         await client.put(f"{PROVIDER_KEYS}/openrouter", headers=auth(token), json=bearer_body())
 
         resp = await client.delete(f"{PROVIDER_KEYS}/openrouter", headers=auth(token))
@@ -464,9 +450,7 @@ async def test_M8_disable_via_enabled_false() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="M8", email="owner-m8@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="M8", email="owner-m8@byok.io")
         resp = await client.put(
             f"{PROVIDER_KEYS}/openrouter",
             headers=auth(token),
@@ -500,9 +484,7 @@ async def test_M9_reput_rotates() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="M9", email="owner-m9@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="M9", email="owner-m9@byok.io")
         await client.put(
             f"{PROVIDER_KEYS}/openrouter", headers=auth(token), json=bearer_body(secret="sk-or-old")
         )
@@ -517,7 +499,9 @@ async def test_M9_reput_rotates() -> None:
         # Upsert, not insert: exactly one openrouter row for the tenant.
         statuses = await store_of(app).list(uuid.UUID(tenant_id))
         openrouter_rows = [s for s in statuses if s.provider == "openrouter"]
-        assert len(openrouter_rows) == 1, f"M9: expected exactly 1 openrouter row, got {len(openrouter_rows)}"
+        assert len(openrouter_rows) == 1, (
+            f"M9: expected exactly 1 openrouter row, got {len(openrouter_rows)}"
+        )
 
     await engine.dispose()
 
@@ -534,9 +518,7 @@ async def test_R1_unknown_provider_422() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="R1", email="owner-r1@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="R1", email="owner-r1@byok.io")
         resp = await client.put(
             f"{PROVIDER_KEYS}/notaprovider", headers=auth(token), json=bearer_body()
         )
@@ -560,9 +542,7 @@ async def test_R2_incomplete_azure_aad_422() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="R2", email="owner-r2@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="R2", email="owner-r2@byok.io")
         # aad mode missing client_secret → value-object validator raises
         # ERR_PROVIDER_CREDENTIAL_INCOMPLETE → 422 (NOT FastAPI's own 422).
         incomplete = {
@@ -647,9 +627,7 @@ async def test_R5_absent_provider_404() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, _tenant_id = await signup_tenant(
-            client, tenant_name="R5", email="owner-r5@byok.io"
-        )
+        token, _tenant_id = await signup_tenant(client, tenant_name="R5", email="owner-r5@byok.io")
         get_resp = await client.get(f"{PROVIDER_KEYS}/azure", headers=auth(token))
         assert_problem(get_resp, 404, "ERR_PROVIDER_KEY_NOT_FOUND")
 
@@ -677,9 +655,7 @@ async def test_R6_missing_encryption_key_clean_error() -> None:
     app = await make_app(settings, engine, sessionmaker)
 
     async with client_for(app) as client:
-        token, tenant_id = await signup_tenant(
-            client, tenant_name="R6", email="owner-r6@byok.io"
-        )
+        token, tenant_id = await signup_tenant(client, tenant_name="R6", email="owner-r6@byok.io")
         resp = await client.put(
             f"{PROVIDER_KEYS}/openrouter", headers=auth(token), json=bearer_body()
         )

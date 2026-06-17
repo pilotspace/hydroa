@@ -116,6 +116,7 @@ class AzureEmbeddingsProvider:
                 tp = self._token_provider_cache.get_or_create(ad_cfg)
             else:
                 from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
+
                 tp = AzureADTokenProvider(config=ad_cfg)
             token = await tp.get_token()
             return {"Authorization": f"Bearer {token}"}

@@ -139,8 +139,7 @@ class BedrockEmbeddingsProvider:
     def _build_endpoint(self, aws: AwsCredentials) -> str:
         """Derive the Bedrock endpoint from the credential's region (or ctor override)."""
         return (
-            self._endpoint_url_override
-            or f"https://bedrock-runtime.{aws.region}.amazonaws.com"
+            self._endpoint_url_override or f"https://bedrock-runtime.{aws.region}.amazonaws.com"
         ).rstrip("/")
 
     async def post_json(
