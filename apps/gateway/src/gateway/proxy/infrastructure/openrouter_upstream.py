@@ -59,6 +59,11 @@ class OpenRouterCompletionUpstream:
       exponential backoff. Retries only on the complete() path; stream() is unchanged.
     """
 
+    # Class-level default so instances built via __new__ (test doubles that don't set
+    # every attribute) still resolve the usage-accounting knob to OFF — keeps the
+    # outbound request byte-identical. The __init__ below overrides it per-instance.
+    _usage_accounting: bool = False
+
     def __init__(
         self,
         *,
@@ -67,6 +72,7 @@ class OpenRouterCompletionUpstream:
         backoff_base: float = 0.5,
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
+        usage_accounting: bool = False,
     ) -> None:
         self._base_url = base_url
         self._breaker = CircuitBreaker()
@@ -83,6 +89,21 @@ class OpenRouterCompletionUpstream:
         self._backoff_base = backoff_base
         self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
+        # provider-cost-reconciliation: opt-in (default OFF). When True the outbound
+        # payload asks OpenRouter to report its own cost so the recorder can bill on it.
+        self._usage_accounting = usage_accounting
+
+    def _maybe_inject_usage_accounting(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Opt-in usage accounting (provider-cost-reconciliation §3).
+
+        When the knob is OFF, returns the payload object UNCHANGED — byte-identical
+        to the pre-task request. When ON, returns a shallow copy with
+        `usage={"include": true}` added so OpenRouter returns its reported cost.
+        Non-destructive: a caller-supplied `usage` key is preserved, never overwritten.
+        """
+        if not self._usage_accounting or "usage" in payload:
+            return payload
+        return {**payload, "usage": {"include": True}}
 
     def _auth_headers(self) -> dict[str, str]:
         """Build OpenRouter auth headers from the request-scoped credential contextvar.
@@ -109,10 +130,12 @@ class OpenRouterCompletionUpstream:
         byte-identical to v5 behavior. The retry policy lives in upstream_retry.py.
         """
 
+        outbound = self._maybe_inject_usage_accounting(payload)
+
         async def _do_request() -> httpx.Response:
             return await self._client.post(
                 "/chat/completions",
-                json=payload,
+                json=outbound,
                 headers=self._auth_headers(),
             )
 
@@ -135,13 +158,14 @@ class OpenRouterCompletionUpstream:
         Zero retry machinery — stream() is unchanged by the retry-policy task.
         """
         self._breaker.guard()
+        outbound = self._maybe_inject_usage_accounting(payload)
 
         async def _gen() -> AsyncIterator[bytes]:
             try:
                 async with self._client.stream(
                     "POST",
                     "/chat/completions",
-                    json=payload,
+                    json=outbound,
                     headers=self._auth_headers(),
                     timeout=httpx.Timeout(
                         connect=_CONNECT_TIMEOUT,

@@ -370,6 +370,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         backoff_base=settings.upstream_retry_backoff_base_s,
         retry_deadline_s=settings.upstream_retry_deadline_s,
         metrics_registry=app.state.metrics_registry,
+        usage_accounting=settings.openrouter_usage_accounting,
     )
     # Public seam for production-wiring regression tests: the RAW OpenRouter
     # upstream is the live adapter that Settings (max_retries / backoff_base /

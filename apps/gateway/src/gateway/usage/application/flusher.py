@@ -135,6 +135,10 @@ class UsageLedgerFlusher:
         # tiered-token-billing: per-tier counts (missing field on old events → 0).
         cached_tokens = int(_field("cached_tokens") or "0")
         reasoning_tokens = int(_field("reasoning_tokens") or "0")
+        # provider-cost-reconciliation: basis + raw upstream cost (old events → catalog/NULL).
+        cost_basis = _field("cost_basis") or "catalog"
+        provider_cost_str = _field("provider_cost")
+        provider_cost: Decimal | None = Decimal(provider_cost_str) if provider_cost_str else None
 
         try:
             tenant_id = uuid.UUID(tenant_id_str)
@@ -166,12 +170,14 @@ class UsageLedgerFlusher:
                         "INSERT INTO usage_records"
                         " (id, tenant_id, key_id, model_id, prompt_tokens, completion_tokens,"
                         "  cost_usd, status, pricing_snapshot_id, raw, team_id,"
-                        "  pricing_unit, quantity, cached_tokens, reasoning_tokens)"
+                        "  pricing_unit, quantity, cached_tokens, reasoning_tokens,"
+                        "  cost_basis, provider_cost)"
                         " VALUES"
                         " (:id, :tenant_id, :key_id, :model_id, :prompt_tokens,"
                         "  :completion_tokens, :cost_usd, :status, :pricing_snapshot_id,"
                         "  :raw, :team_id, :pricing_unit, :quantity,"
-                        "  :cached_tokens, :reasoning_tokens)"
+                        "  :cached_tokens, :reasoning_tokens,"
+                        "  :cost_basis, :provider_cost)"
                         " ON CONFLICT (id) DO NOTHING"
                     ),
                     {
@@ -190,6 +196,8 @@ class UsageLedgerFlusher:
                         "quantity": quantity,
                         "cached_tokens": cached_tokens,
                         "reasoning_tokens": reasoning_tokens,
+                        "cost_basis": cost_basis,
+                        "provider_cost": provider_cost,
                     },
                 )
 

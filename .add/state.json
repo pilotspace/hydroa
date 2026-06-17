@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "tiered-token-billing",
+  "active_task": "provider-cost-reconciliation",
   "active_milestone": "v27",
   "tasks": {
     "tiered-token-billing": {
@@ -41,6 +41,36 @@
           }
         ]
       }
+    },
+    "provider-cost-reconciliation": {
+      "title": "Prefer the upstream-reported cost when present; stamp cost_basis for audit",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v27",
+      "depends_on": [],
+      "created": "2026-06-17T08:38:19+00:00",
+      "updated": "2026-06-17T09:32:35+00:00",
+      "tripwire": {
+        "contract_md5": "f5c694d71f129f5a990e1d2aaa8d91be",
+        "tests": {
+          "apps/gateway/tests/provider_cost_reconciliation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/provider_cost_reconciliation/conftest.py": "5c6dd88ae919c63e508786834e30ded4",
+          "apps/gateway/tests/provider_cost_reconciliation/test_provider_cost_reconciliation.py": "e6aeb3550abec2976c644bbc14028a71"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/application/flusher.py",
+          "apps/gateway/src/gateway/usage/infrastructure/orm.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/src/gateway/proxy/infrastructure/openrouter_upstream.py",
+          "apps/gateway/src/gateway/config/settings.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/provider_cost_reconciliation/"
+        ],
+        "snapshot_md5": "e05d436c4730414bc7e2639e1c04c084"
+      }
     }
   },
   "milestones": {
@@ -54,7 +84,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-17T08:33:11+00:00",
+  "updated": "2026-06-17T09:32:35+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

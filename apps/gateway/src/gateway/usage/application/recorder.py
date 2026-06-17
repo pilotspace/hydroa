@@ -142,6 +142,10 @@ class RecordingUsageRecorder:
         pricing_snapshot_id: str = ""
         resolved_pricing_unit = "per_token"
         resolved_quantity: Decimal | None = None
+        # provider-cost-reconciliation: default catalog basis; provider_cost stays NULL
+        # unless an upstream cost is consumed below.
+        cost_basis = "catalog"
+        provider_cost: Decimal | None = None
 
         if not cached:
             # Only fetch pricing for non-cached records; cached hits always cost 0
@@ -181,18 +185,27 @@ class RecordingUsageRecorder:
                         reasoning_tokens = _safe_tier(
                             usage, "completion_tokens_details", "reasoning_tokens"
                         )
-                    cost_usd = compute_per_token_cost_usd(
-                        prompt_tokens=prompt_tokens,
-                        completion_tokens=completion_tokens,
-                        cached_tokens=cached_tokens,
-                        reasoning_tokens=reasoning_tokens,
-                        prompt_price=prompt_price,
-                        completion_price=completion_price,
-                        cached_price=cached_input_price,
-                        reasoning_price=reasoning_price,
-                        markup_pct=markup_pct,
-                        model=model,
-                    )
+                    # provider-cost-reconciliation: PREFER the upstream-reported cost when
+                    # present; otherwise the UNCHANGED catalog path (byte-identical floor).
+                    provider_cost = _safe_provider_cost(usage)
+                    if provider_cost is not None:
+                        cost_usd = provider_cost * (
+                            Decimal("1") + Decimal(str(markup_pct)) / Decimal("100")
+                        )
+                        cost_basis = "provider"
+                    else:
+                        cost_usd = compute_per_token_cost_usd(
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            cached_tokens=cached_tokens,
+                            reasoning_tokens=reasoning_tokens,
+                            prompt_price=prompt_price,
+                            completion_price=completion_price,
+                            cached_price=cached_input_price,
+                            reasoning_price=reasoning_price,
+                            markup_pct=markup_pct,
+                            model=model,
+                        )
                 else:
                     # Non-token path: per_image / per_second / per_character
                     prompt_tokens = 0
@@ -283,6 +296,10 @@ class RecordingUsageRecorder:
             # tiered-token-billing: per-tier token counts (TASK.md §3)
             "cached_tokens": str(cached_tokens),
             "reasoning_tokens": str(reasoning_tokens),
+            # provider-cost-reconciliation: billed basis + raw upstream cost (TASK.md §3)
+            # provider_cost "" encodes NULL (catalog rows carry no upstream cost).
+            "cost_basis": cost_basis,
+            "provider_cost": str(provider_cost) if provider_cost is not None else "",
         }
 
         # Push to Redis Stream — must not drop the event even on cost-0
@@ -327,6 +344,30 @@ def _safe_tier(usage: dict[str, Any] | None, outer: str, inner: str) -> int:
     if isinstance(val, bool) or not isinstance(val, int):
         return 0
     return max(0, val)
+
+
+def _safe_provider_cost(usage: dict[str, Any] | None) -> Decimal | None:
+    """Extract an upstream-reported cost (USD) from a usage dict, fail-safe.
+
+    Returns Decimal(cost) for a valid NON-NEGATIVE number (provider-cost-reconciliation
+    TASK.md §3) — 0 IS valid (a free model that genuinely cost the upstream nothing is
+    authoritative, not absent). Returns None for any other shape so the caller falls back
+    to catalog math:
+      - missing / non-dict usage / None / str / non-numeric -> None
+      - bool (int subclass) -> None (a flag is not a cost)
+      - negative -> None + WARNING "provider_cost_rejected" (never trust a negative cost)
+    Never raises — accuracy degrades to catalog, the request always ships.
+    """
+    if not isinstance(usage, dict):
+        return None
+    val = usage.get("cost")
+    # bool is an int subclass — exclude it explicitly before the numeric check.
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        return None
+    if val < 0:
+        _log.warning("provider_cost_rejected", extra={"cost": val})
+        return None
+    return Decimal(str(val))
 
 
 def compute_per_token_cost_usd(
