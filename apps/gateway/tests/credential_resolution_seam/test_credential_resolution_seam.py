@@ -136,6 +136,7 @@ async def test_bearer_resolves_per_tenant_key(
         )
         # The env var must NOT have been used — the adapter never reads os.environ
         import os
+
         assert "GATEWAY_OPENROUTER_API_KEY" not in os.environ or (
             os.environ.get("GATEWAY_OPENROUTER_API_KEY", "") != openrouter_secret
         ), "Adapter must not source the secret from the env var"
@@ -425,9 +426,7 @@ def test_missing_contextvar_raises() -> None:
     # Ensure the contextvar is unset for this test by resetting to a fresh token
     # (no set_provider_credential called — the contextvar default is None)
     current = get_provider_credential()
-    assert current is None, (
-        "Pre-condition: contextvar must be None (not set) before this test"
-    )
+    assert current is None, "Pre-condition: contextvar must be None (not set) before this test"
 
     # Build adapter WITHOUT an api_key (post-BUILD: no api_key in __init__)
     adapter = OpenRouterCompletionUpstream()
@@ -597,10 +596,10 @@ def test_bedrock_azure_resolve() -> None:
         finally:
             reset_provider_credential(tok_a)  # type: ignore[arg-type]
 
-        assert ("bedrock" in [c[1] for c in resolver.calls]), (
+        assert "bedrock" in [c[1] for c in resolver.calls], (
             "resolver.resolve must have been called with 'bedrock'"
         )
-        assert ("azure" in [c[1] for c in resolver.calls]), (
+        assert "azure" in [c[1] for c in resolver.calls], (
             "resolver.resolve must have been called with 'azure'"
         )
 
@@ -767,6 +766,7 @@ async def test_error_maps_to_402(
     resp_obj = problem_response(402, missing.code, "Provider key not configured")
     body = resp_obj.body  # JSONResponse stores body as bytes
     import json
+
     body_dict = json.loads(body)
     assert body_dict["status"] == 402, f"Expected status 402 in body, got: {body_dict}"
     assert body_dict["code"] == "ERR_PROVIDER_KEY_MISSING", (

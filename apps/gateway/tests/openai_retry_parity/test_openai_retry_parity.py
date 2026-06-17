@@ -63,9 +63,7 @@ async def test_openai_retries_503_then_200() -> None:
     )
     breaker = CountingCircuitBreaker()
     reg = _metrics()
-    upstream = make_openai_upstream(
-        transport, breaker=breaker, max_retries=1, metrics_registry=reg
-    )
+    upstream = make_openai_upstream(transport, breaker=breaker, max_retries=1, metrics_registry=reg)
     with patch("asyncio.sleep", new_callable=AsyncMock):
         status, body = await upstream.complete(PAYLOAD)
     assert status == 200

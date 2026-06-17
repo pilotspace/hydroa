@@ -369,6 +369,4 @@ def test_config_has_no_bedrock_secret_fields() -> None:
 
     bedrock_secret_fields = {"bedrock_access_key_id", "bedrock_secret_access_key"}
     present = bedrock_secret_fields & set(Settings.model_fields.keys())
-    assert not present, (
-        f"Bedrock secret Settings fields must not exist (BYOK): {present!r}"
-    )
+    assert not present, f"Bedrock secret Settings fields must not exist (BYOK): {present!r}"
