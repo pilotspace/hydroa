@@ -6,7 +6,8 @@ azure_config imports are RED until the module is implemented (ModuleNotFoundErro
 CONTRACT (FROZEN @ v1): azure-auth-routing TASK.md §3
   - AzureConfig (frozen dataclass): api_key (repr-hidden SECRET), endpoint,
     api_version, deployment_map; methods resolve_deployment(model), build_url(deployment, op).
-  - GATEWAY_AZURE_API_KEY in the boot-guard tuple (validate_upstream_keys).
+  - (historical) GATEWAY_AZURE_API_KEY was once boot-guarded; that guard is fully retired
+    (BYOK per-tenant resolution — see retire-empty-key-guard).
 
 v25 task-3 amendment: resolve_azure_config is DELETED (env-secret removal §6).
 test_resolve_config_present, test_resolve_config_absent_returns_none, and

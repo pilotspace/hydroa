@@ -455,36 +455,17 @@ def test_missing_contextvar_raises() -> None:
 
 
 def test_bearer_env_removed_boots_clean(app_no_db: Any) -> None:
-    """Gateway boots with zero Bearer env vars; validate_upstream_keys ignores the 4 Bearer vars.
+    """Gateway boots with zero Bearer env vars; the env-key path is fully gone (BYOK).
 
-    After BUILD:
-    - Settings no longer has openrouter_api_key / openai_api_key / anthropic_api_key /
-      google_api_key fields.
-    - validate_upstream_keys no longer includes those 4 vars in _UPSTREAM_KEY_ENV_VARS.
+    Invariants (already satisfied post-BYOK; re-pinned against a live surface after the
+    vestigial empty-key boot guard + its _UPSTREAM_KEY_ENV_VARS constant were retired):
+    - Settings has no openrouter_api_key / openai_api_key / anthropic_api_key / google_api_key field.
     - The 4 Bearer adapters (openrouter / openai / anthropic / google) are present in
       app.state.chat_adapters regardless of env keys — registration is UNCONDITIONAL.
-
-    RIGHT-REASON RED: The BUILD has not happened yet. Settings still has the Bearer secret
-    fields; validate_upstream_keys still guards them; and registration of anthropic/google
-    adapters is still gated on the api_key being set. The assertion that all 4 are
-    registered unconditionally will fail because anthropic and google are absent without keys.
     """
-    from gateway.core.config import _UPSTREAM_KEY_ENV_VARS, Settings
+    from gateway.core.config import Settings
 
-    # After BUILD: the 4 Bearer vars must NOT be in the guard list
-    bearer_env_vars = {
-        "GATEWAY_OPENROUTER_API_KEY",
-        "GATEWAY_OPENAI_API_KEY",
-        "GATEWAY_ANTHROPIC_API_KEY",
-        "GATEWAY_GOOGLE_API_KEY",
-    }
-    still_guarded = bearer_env_vars & set(_UPSTREAM_KEY_ENV_VARS)
-    assert not still_guarded, (
-        f"After BUILD, these Bearer vars must be removed from _UPSTREAM_KEY_ENV_VARS: "
-        f"{still_guarded!r}. They are still present — BUILD has not run yet."
-    )
-
-    # After BUILD: Settings must not have the Bearer API key fields
+    # Settings must not have the Bearer API key fields
     settings_fields = set(Settings.model_fields.keys())
     bearer_settings_fields = {
         "openrouter_api_key",
