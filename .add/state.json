@@ -1,12 +1,60 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
-  "tasks": {},
-  "milestones": {},
+  "active_task": "tiered-token-billing",
+  "active_milestone": "v27",
+  "tasks": {
+    "tiered-token-billing": {
+      "title": "Bill cached-input and reasoning tokens at their own rates",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v27",
+      "depends_on": [],
+      "created": "2026-06-17T07:53:56+00:00",
+      "updated": "2026-06-17T08:33:11+00:00",
+      "tripwire": {
+        "contract_md5": "5672d7b6683d47f7bd10d5841c4ce187",
+        "tests": {
+          "apps/gateway/tests/tiered_token_billing/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/tiered_token_billing/conftest.py": "da71d0ae4bcaeb808605b4a9347b14db",
+          "apps/gateway/tests/tiered_token_billing/test_tiered_token_billing.py": "62462ebed38373949626028acf00da95"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/application/flusher.py",
+          "apps/gateway/src/gateway/usage/infrastructure/orm.py",
+          "apps/gateway/src/gateway/catalog/infrastructure/orm.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/tiered_token_billing/"
+        ],
+        "snapshot_md5": "b079cf63ecefe5f523a09c1dc353998f"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-17T08:31:08+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/tiered_token_billing/test_tiered_token_billing.py",
+            "source": "tamper"
+          }
+        ]
+      }
+    }
+  },
+  "milestones": {
+    "v27": {
+      "title": "Billing precision \u2014 true per-tier cost on every call",
+      "goal": "every proxied call is billed at the provider's true, per-tier cost: cached and reasoning tokens priced distinctly, provider-reported cost preferred when present, audio and streaming calls never silently under-billed",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-17T07:51:52+00:00",
+      "updated": "2026-06-17T07:51:52+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-17T07:00:31+00:00",
+  "updated": "2026-06-17T08:33:11+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

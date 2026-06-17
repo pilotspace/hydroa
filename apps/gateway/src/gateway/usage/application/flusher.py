@@ -132,6 +132,9 @@ class UsageLedgerFlusher:
         pricing_unit_str = _field("pricing_unit") or "per_token"
         quantity_str = _field("quantity")
         quantity: Decimal | None = Decimal(quantity_str) if quantity_str else None
+        # tiered-token-billing: per-tier counts (missing field on old events → 0).
+        cached_tokens = int(_field("cached_tokens") or "0")
+        reasoning_tokens = int(_field("reasoning_tokens") or "0")
 
         try:
             tenant_id = uuid.UUID(tenant_id_str)
@@ -163,11 +166,12 @@ class UsageLedgerFlusher:
                         "INSERT INTO usage_records"
                         " (id, tenant_id, key_id, model_id, prompt_tokens, completion_tokens,"
                         "  cost_usd, status, pricing_snapshot_id, raw, team_id,"
-                        "  pricing_unit, quantity)"
+                        "  pricing_unit, quantity, cached_tokens, reasoning_tokens)"
                         " VALUES"
                         " (:id, :tenant_id, :key_id, :model_id, :prompt_tokens,"
                         "  :completion_tokens, :cost_usd, :status, :pricing_snapshot_id,"
-                        "  :raw, :team_id, :pricing_unit, :quantity)"
+                        "  :raw, :team_id, :pricing_unit, :quantity,"
+                        "  :cached_tokens, :reasoning_tokens)"
                         " ON CONFLICT (id) DO NOTHING"
                     ),
                     {
@@ -184,6 +188,8 @@ class UsageLedgerFlusher:
                         "team_id": team_id,
                         "pricing_unit": pricing_unit_str,
                         "quantity": quantity,
+                        "cached_tokens": cached_tokens,
+                        "reasoning_tokens": reasoning_tokens,
                     },
                 )
 

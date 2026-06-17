@@ -1,40 +1,58 @@
-# MILESTONE: UI↔BE coverage — close the dashboard gaps   ⟦ROADMAP STUB — NOT YET OPENED⟧
+# MILESTONE: Billing precision — true per-tier cost on every call
 
-goal: every implemented backend control-plane capability has a dashboard surface — close the 6 UI↔BE gaps the v25 intake audit surfaced.
+goal: every proxied call is billed at the provider's true, per-tier cost: cached and reasoning tokens priced distinctly, provider-reported cost preferred when present, audio and streaming calls never silently under-billed
+rationale: new-major (Tin, 2026-06-17). A coherent billing-fidelity theme that no active milestone covered (none was active); it serves the standing production goal's "accurate, billable cost tracking" half. The Decimal arithmetic is already exact (v12) — this milestone closes the four remaining *count/price-source* gaps that flat per-token billing still misses. Took the v27 slot ahead of the UI↔BE coverage program (renumbered to v28).
+stage: production · status: active · created: 2026-06-17
 
-rationale: new-major follow-on (v27; project-lead/auto, 2026-06-16, Tin confirmed "full coverage program" at v25 intake). This is a **roadmap stub written to disk for visibility only** — it is intentionally NOT registered as an active engine milestone (a milestone is only ever active or archived; a not-yet-opened one is a planning doc). **Open it with `add.py new-milestone v27 --force`** once the v26 config-cleanup follow-ups land, then re-fill from this sketch through the normal scope-drafting loop (co-specify + human confirm). The provider-config gap is delivered by v25, so it is excluded here. (Renumbered v26→v27 on 2026-06-17: v26 now holds the v25 BE config-cleanup follow-ups — retry-parity + guard retirement — which Tin chose to land first.)
+> SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
+> exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,
+> written just-in-time. Update this doc whenever a task reveals a milestone gap.
 
-stage: production · status: PLANNED (stub) · drafted: 2026-06-16
+## Scope
+In:  bill cached-input and reasoning tokens at their own rates (not flat prompt/completion price);
+     capture upstream-reported cost and PREFER it as the billed basis when present, falling back to
+     catalog math when absent; derive STT audio duration server-side so per_second billing is accurate
+     without `verbose_json`; guarantee exactly one billed usage record per stream even when the
+     terminal usage frame is missing/partial.
+Out: NO change to the exact Decimal arithmetic or the `numeric(14,8)` cost column (already exact, v12);
+     NO new provider or modality; NO dashboard surface for the new cost/tier fields (that is the v28
+     UI↔BE program) — backend ledger + raw payload only; NO retroactive re-billing of historical rows;
+     NO change to the pre-flight TPM/budget *estimate* gating (`estimated_tokens` stays as-is — this is
+     billing-only, not enforcement); NO model-side token re-counting when a provider already reports usage.
 
-> This is a SKETCH, not a frozen milestone. Task slugs, dependencies, and exit
-> criteria below are a starting point — re-validate them at open time.
+## Shared decisions & glossary deltas   (living — every task must honor these)
+- **Cost basis = prefer-provider-fallback-catalog** (Tin, 2026-06-17 intake): when the upstream usage
+  payload carries its own cost, the billed `cost_usd` is `provider_reported_cost × (1 + markup)`; when it
+  does not, fall back to catalog math (price × tiered-tokens × markup). To keep the mixed-basis **auditable**,
+  every ledger row records which basis produced it via a new `cost_basis` field (`provider` | `catalog`).
+- **Byte-identical floor (v6/v9/v10/v11 invariant, preserved):** a usage payload WITHOUT token-tier
+  details (`prompt_tokens_details` / `completion_tokens_details`) and WITHOUT a provider-reported cost
+  bills exactly as it does today — same operand order, no new intermediate rounding. Tiering and
+  provider-cost are additive branches gated on the presence of the new fields.
+- **Billing keys on the SERVED model id** (v6, preserved): tiering, provider-cost, and duration all key
+  on the served deployment's catalog id; nothing reads `response_body["model"]`.
+- **Accuracy is never an availability gate** (v12, preserved): a missing tier price, an undecodable
+  audio header, or an absent stream usage frame DEGRADES to a documented, logged fallback — it never
+  fails the request or trips a circuit breaker. The product (the completion/embedding/transcription)
+  ships; the bill is best-effort-exact with a recorded fallback marker.
+- Glossary deltas (new terms): **cached-input token** · **reasoning token** · **provider-reported cost**
+  · **cost basis** · **derived duration**.
 
-## Source — the v25 intake UI↔BE gap audit (file-cited)
-Backend capabilities that had NO dashboard surface as of 2026-06-16 (provider-config → delivered by v25):
+## Shared / risky contracts (freeze these first)
+- **Extended pricing-snapshot + usage-ledger shape** (token-tier prices + `cost_basis`/`provider_cost`
+  columns + the richer `usage` dict the recorder consumes) -> owning task `tiered-token-billing`.
+  This is the seam `provider-cost-reconciliation` and `stream-usage-completeness` both build on, so it
+  freezes first and they depend on it (serializes the migration + recorder changes, no parallel conflict).
 
-| Gap | Backend today | UI today |
-|---|---|---|
-| Alert events viewer | `alert_events` table + webhook dispatcher; NO `/admin/alerts` endpoint | ✗ |
-| Routing config **write** | `/admin/routing` is read-only; model-groups/strategy/limits are env/startup only | ✗ |
-| Catalog sync trigger | `POST /internal/catalog/sync` exists | ✗ (no button) |
-| SSO login button | full OIDC flow wired (`/auth/oidc/login` + callback) | ✗ (`/login` is email+password only) |
-| Upstream health view | `UpstreamHealthChecker` writes events; NO read endpoint | ✗ |
-| Rate-limit counter visibility | per-key rpm/tpm enforced in Redis | ~ editable, not observable |
+## Tasks (breadth-first decomposition; detail lives in each TASK.md)
+- [x] tiered-token-billing        depends-on: none                  — extend the pricing snapshot with cached-input + reasoning prices; bill `prompt_tokens_details.cached_tokens` at the cached rate and `completion_tokens_details.reasoning_tokens` at the reasoning rate; non-tiered usage stays byte-identical. Owns the ledger/recorder schema seam.  ✅ DONE 2026-06-17 (gate PASS; full suite 1134 green; migration f3c8d1a6b9e4).
+- [ ] provider-cost-reconciliation depends-on: tiered-token-billing — capture upstream-reported cost (OpenRouter `usage.cost`, Bedrock, …); bill `provider_cost × (1+markup)` when present, else catalog math; stamp `cost_basis` on every row for audit.
+- [ ] stt-duration-derivation     depends-on: none                  — derive audio duration server-side (decode the uploaded file header; no heavy dependency) so `per_second` STT billing is accurate even when the caller omits `verbose_json`; closes the silent-$0 leak.
+- [ ] stream-usage-completeness   depends-on: tiered-token-billing  — guarantee exactly one billed usage record per stream even when the upstream omits/partials the terminal usage frame (documented fallback count + a flagged record); the richer tiered usage survives the SSE extractor.
 
-## Tasks (breadth-first SKETCH — re-validate at open)
-- [ ] alerts-events-viewer       depends-on: none — new `GET /admin/alerts` (read `alert_events`, tenant-scoped, paginated) + dashboard Alerts page (history, type, dedupe_key, delivery status).
-- [ ] sso-login-button           depends-on: none — `/login` "Sign in with SSO" entry (domain field → `/auth/oidc/login`); BE flow already exists (UI-only, lightest slice — likely the first one to land).
-- [ ] catalog-sync-trigger       depends-on: none — expose catalog re-sync to owners: `POST /admin/catalog/sync` (tenant-safe wrapper over the internal sync) + a dashboard button on `/models` with last-sync timestamp.
-- [ ] upstream-health-view       depends-on: alerts-events-viewer — `GET /admin/health/upstreams` (last ping per provider/up-down) + a health panel (compose with the alerts viewer).
-- [ ] ratelimit-counter-view     depends-on: none — `GET /admin/ratelimits` (current Redis rpm/tpm consumption per key) + a read-only panel on `/keys` or `/usage`.
-- [ ] routing-config-write       depends-on: none — the largest slice: write endpoints for model-groups / routing strategy / per-deployment rpm-tpm limits + circuit/retry thresholds (today env-only), and a `/routing` editor. May warrant its own sub-milestone — re-size at open.
-
-## Exit criteria (SKETCH; each maps to a task)
-- [ ] An owner browses alert history (soft-budget, circuit-open, health) in the dashboard.   (← alerts-events-viewer)
-- [ ] A tenant with SSO configured logs in from the `/login` page without a manual URL.   (← sso-login-button)
-- [ ] An owner forces a catalog re-sync from the dashboard and sees the new last-sync time.   (← catalog-sync-trigger)
-- [ ] An owner sees per-provider upstream up/down status in the dashboard.   (← upstream-health-view)
-- [ ] An owner sees current rpm/tpm consumption per key.   (← ratelimit-counter-view)
-- [ ] An owner edits model-groups / routing strategy / deployment limits from the dashboard.   (← routing-config-write)
-
-## Status: PLANNED (roadmap stub) — open after the v26 config-cleanup follow-ups land via `add.py new-milestone v27 --force`.
+## Exit criteria (observable; map each to the task that delivers it)
+- [x] A prompt-cached request is billed strictly less than the identical request with no cache hit, because `cached_tokens` are priced below fresh input.   (verify: pytest apps/gateway/tests/tiered_token_billing)   (← tiered-token-billing)
+- [x] A reasoning-model response bills `reasoning_tokens` at the configured reasoning rate, visible on the usage ledger row.   (verify: pytest apps/gateway/tests/tiered_token_billing)   (← tiered-token-billing)
+- [ ] When an upstream returns its own cost, the ledger row's `cost_usd` is `provider_cost × (1+markup)` and `cost_basis = provider`; when it does not, `cost_basis = catalog` and the catalog math is used.   (verify: pytest apps/gateway/tests/provider_cost_reconciliation)   (← provider-cost-reconciliation)
+- [ ] An STT transcription submitted WITHOUT `verbose_json` produces a non-zero `per_second` cost matching the audio's true duration (no more silent $0).   (verify: pytest apps/gateway/tests/stt_duration_derivation)   (← stt-duration-derivation)
+- [ ] A chat stream whose upstream omits the terminal usage frame still produces exactly one billed usage record with a recorded fallback marker (never a silent $0).   (verify: pytest apps/gateway/tests/stream_usage_completeness)   (← stream-usage-completeness)

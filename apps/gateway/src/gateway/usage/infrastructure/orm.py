@@ -69,3 +69,6 @@ class UsageRecordRow(Base):
     # pricing-units (pricing-units TASK.md §3): discriminator + billed quantity
     pricing_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default="per_token")
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    # tiered-token-billing (TASK.md §3): per-tier token counts, queryable on the row.
+    cached_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

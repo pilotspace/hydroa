@@ -60,6 +60,12 @@ class PricingSnapshotRow(Base):
     captured_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
     pricing_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default="per_token")
     unit_usd_per_unit: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    # tiered-token-billing (TASK.md §3): per-tier prices; NULL → fall back to the base
+    # prompt/completion price (the flat path), so existing snapshots bill byte-identically.
+    cached_input_usd_per_token: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
+    reasoning_usd_per_token: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
 
 
 class TenantModelOverrideRow(Base):
