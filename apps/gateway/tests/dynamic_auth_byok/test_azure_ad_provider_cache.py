@@ -179,12 +179,9 @@ async def test_cache_distinct_identities() -> None:
     p_b = cache.get_or_create(cfg_b)
 
     assert len(constructed) == 2, (
-        f"Two distinct identities must produce 2 provider constructions, "
-        f"got {len(constructed)}"
+        f"Two distinct identities must produce 2 provider constructions, got {len(constructed)}"
     )
-    assert p_a is not p_b, (
-        "Different identities must yield different provider instances"
-    )
+    assert p_a is not p_b, "Different identities must yield different provider instances"
 
 
 # ---------------------------------------------------------------------------
@@ -275,9 +272,7 @@ def test_cache_key_excludes_client_secret() -> None:
         f"got {len(constructed)} constructions. "
         "The cache key must exclude client_secret (non-secret identity tuple only)."
     )
-    assert p1 is p2, (
-        "Both get_or_create calls must return the SAME provider (key excludes secret)"
-    )
+    assert p1 is p2, "Both get_or_create calls must return the SAME provider (key excludes secret)"
 
 
 # ---------------------------------------------------------------------------

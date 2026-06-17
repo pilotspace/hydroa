@@ -121,7 +121,9 @@ def azure_server() -> Any:
 
 
 @pytest.fixture(autouse=True)
-def _reset_counters(bearer_server: dict[str, Any], bedrock_server: dict[str, Any], azure_server: dict[str, Any]) -> None:
+def _reset_counters(
+    bearer_server: dict[str, Any], bedrock_server: dict[str, Any], azure_server: dict[str, Any]
+) -> None:
     for s in (bearer_server, bedrock_server, azure_server):
         try:
             httpx.post(f"{s['base_url']}/__reset", timeout=5)
@@ -150,13 +152,19 @@ async def test_BV1_bearer_oracle_rejects_wrong_and_missing(bearer_server: dict[s
     async with httpx.AsyncClient(timeout=10) as client:
         for path, header, wrong in surfaces:
             r_wrong = await client.post(
-                f"{base}{path}", content=body, headers={header: wrong, "content-type": "application/json"}
+                f"{base}{path}",
+                content=body,
+                headers={header: wrong, "content-type": "application/json"},
             )
-            assert r_wrong.status_code == 401, f"{path} wrong-cred expected 401, got {r_wrong.status_code}"
+            assert r_wrong.status_code == 401, (
+                f"{path} wrong-cred expected 401, got {r_wrong.status_code}"
+            )
             r_missing = await client.post(
                 f"{base}{path}", content=body, headers={"content-type": "application/json"}
             )
-            assert r_missing.status_code == 401, f"{path} no-cred expected 401, got {r_missing.status_code}"
+            assert r_missing.status_code == 401, (
+                f"{path} no-cred expected 401, got {r_missing.status_code}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +193,8 @@ async def test_BV3_openai_contextvar_auth_accepted(bearer_server: dict[str, Any]
     tok = set_provider_credential(BearerCredential(secret=_OAI))
     try:
         status, body = await provider.post_json(
-            "/chat/completions", {"model": "oai-chat", "messages": [{"role": "user", "content": "hi"}]}
+            "/chat/completions",
+            {"model": "oai-chat", "messages": [{"role": "user", "content": "hi"}]},
         )
     finally:
         reset_provider_credential(tok)
@@ -239,7 +248,10 @@ async def test_BV6_bedrock_contextvar_sigv4_accepted(bedrock_server: dict[str, A
     tok = set_provider_credential(cred)
     try:
         status, body = await upstream.complete(
-            {"model": "anthropic.claude-3-haiku-20240307-v1:0", "messages": [{"role": "user", "content": "hi"}]}
+            {
+                "model": "anthropic.claude-3-haiku-20240307-v1:0",
+                "messages": [{"role": "user", "content": "hi"}],
+            }
         )
     finally:
         reset_provider_credential(tok)

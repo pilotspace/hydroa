@@ -76,6 +76,7 @@ async def _stream_resetting_credential(
         except ValueError:
             pass
 
+
 # Media type map for TTS response_format → Content-Type (§3 FROZEN)
 _RESPONSE_FORMAT_MEDIA_TYPES: dict[str, str] = {
     "mp3": "audio/mpeg",

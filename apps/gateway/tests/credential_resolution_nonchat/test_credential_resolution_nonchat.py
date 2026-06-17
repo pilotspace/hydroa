@@ -85,9 +85,7 @@ async def test_bearer_provider_resolves_and_sets_contextvar(
 
 
 @pytest.mark.parametrize("provider", ["bedrock", "azure"])
-async def test_bedrock_azure_resolve(
-    tenant_id: uuid.UUID, provider: str
-) -> None:
+async def test_bedrock_azure_resolve(tenant_id: uuid.UUID, provider: str) -> None:
     """Task-3 §3 contract supersedes task-2 staged-skip: bedrock and azure NOW resolve.
 
     After task-3 BUILD, BYOK_PROVIDERS (renamed from BYOK_BEARER_PROVIDERS) includes

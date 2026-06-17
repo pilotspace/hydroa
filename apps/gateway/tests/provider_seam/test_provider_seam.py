@@ -387,7 +387,10 @@ async def test_ps8_openai_provider_post_json_calls_correct_url(
         OpenAIDirectProvider,
     )
 
-    from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
+    from gateway.proxy.domain.credential_context import (
+        reset_provider_credential,
+        set_provider_credential,
+    )
     from gateway.proxy.domain.provider_credentials import BearerCredential
     from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 
@@ -609,9 +612,7 @@ def test_ps10b_openai_absent_when_key_empty() -> None:
     )
 
     openrouter_entry = app.state.provider_registry.get("openrouter")
-    assert openrouter_entry is not None, (
-        "provider_registry must always contain 'openrouter' entry"
-    )
+    assert openrouter_entry is not None, "provider_registry must always contain 'openrouter' entry"
 
 
 # ===========================================================================

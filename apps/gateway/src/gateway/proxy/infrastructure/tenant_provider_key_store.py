@@ -113,11 +113,7 @@ def _credential_to_parts(
     if credential.mode == "api_key":
         primary = credential.api_key.get_secret_value() if credential.api_key else ""
     else:
-        primary = (
-            credential.client_secret.get_secret_value()
-            if credential.client_secret
-            else ""
-        )
+        primary = credential.client_secret.get_secret_value() if credential.client_secret else ""
 
     extra_dict = {
         "endpoint": credential.endpoint,

@@ -407,9 +407,7 @@ async def resolve_provider_credential(
         cred = await resolver.resolve(tenant_id, provider)
     except ProviderKeyMissing as pkm:
         # §3 CONTRACT: ERR_PROVIDER_KEY_MISSING → HTTP 402 (no secret in the chain).
-        raise ProblemError(
-            402, pkm.code, "Provider key not configured for this tenant"
-        ) from None
+        raise ProblemError(402, pkm.code, "Provider key not configured for this tenant") from None
     return set_provider_credential(cred)
 
 

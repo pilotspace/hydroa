@@ -108,6 +108,7 @@ class AzureCompletionUpstream:
             else:
                 # No cache supplied (e.g. verify tests) — instantiate directly per-call.
                 from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
+
                 tp = AzureADTokenProvider(config=ad_cfg)
             token = await tp.get_token()
             return {"Authorization": f"Bearer {token}"}

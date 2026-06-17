@@ -125,7 +125,9 @@ async def test_single_string_invoke() -> None:
     provider = _make_provider(handler)
     tok = set_provider_credential(_DUMMY_CRED)
     try:
-        status, body = await provider.post_json("/embeddings", {"model": _MODEL_ID, "input": "hello"})
+        status, body = await provider.post_json(
+            "/embeddings", {"model": _MODEL_ID, "input": "hello"}
+        )
     finally:
         reset_provider_credential(tok)
 
@@ -356,7 +358,9 @@ async def test_dimensions_passthrough() -> None:
     provider = _make_provider(handler)
     tok = set_provider_credential(_DUMMY_CRED)
     try:
-        await provider.post_json("/embeddings", {"model": _MODEL_ID, "input": "x", "dimensions": 256})
+        await provider.post_json(
+            "/embeddings", {"model": _MODEL_ID, "input": "x", "dimensions": 256}
+        )
     finally:
         reset_provider_credential(tok)
 

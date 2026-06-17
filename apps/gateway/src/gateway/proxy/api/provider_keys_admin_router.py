@@ -49,9 +49,7 @@ from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
 from gateway.tenants.domain.entities import Role
 
-provider_keys_admin_router = APIRouter(
-    prefix="/admin/provider-keys", tags=["provider-keys-admin"]
-)
+provider_keys_admin_router = APIRouter(prefix="/admin/provider-keys", tags=["provider-keys-admin"])
 
 #: Bearer-auth providers — a single shared secret each.
 _BEARER_PROVIDERS: frozenset[str] = frozenset({"openrouter", "openai", "anthropic", "google"})

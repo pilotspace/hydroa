@@ -115,7 +115,9 @@ _CONVERSE_200 = {
 _AZURE_200 = {
     "id": "chatcmpl-test",
     "object": "chat.completion",
-    "choices": [{"index": 0, "message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}],
+    "choices": [
+        {"index": 0, "message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}
+    ],
     "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
 }
 
@@ -666,8 +668,7 @@ async def test_resolve_provider_credential_resolves_azure() -> None:
         "after task-3 BUILD. Got None — 'azure' is still being SKIPPED."
     )
     assert resolver.calls == [(tenant_id, "azure")], (
-        f"resolver.resolve must be called with (tenant_id, 'azure'), "
-        f"got calls: {resolver.calls!r}"
+        f"resolver.resolve must be called with (tenant_id, 'azure'), got calls: {resolver.calls!r}"
     )
 
     try:

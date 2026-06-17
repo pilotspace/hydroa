@@ -86,9 +86,7 @@ class StaticResolver:
         return self._provider
 
 
-def _make_provider(
-    transport: SequencedMockTransport, breaker: SpyBreaker
-) -> OpenAIDirectProvider:
+def _make_provider(transport: SequencedMockTransport, breaker: SpyBreaker) -> OpenAIDirectProvider:
     """Build an OpenAIDirectProvider wired to a MockTransport (PS8 __new__ pattern)."""
     provider = OpenAIDirectProvider.__new__(OpenAIDirectProvider)
     provider._client = httpx.AsyncClient(  # type: ignore[attr-defined]
@@ -187,7 +185,7 @@ async def test_oc3_complete_5xx_raises_upstream_unavailable() -> None:
 
 
 async def test_oc4_stream_yields_sse_bytes_with_bearer() -> None:
-    sse = b"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n"
+    sse = b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n'
     transport = SequencedMockTransport([_sse_response(200, sse)])
     breaker = SpyBreaker()
     provider = _make_provider(transport, breaker)

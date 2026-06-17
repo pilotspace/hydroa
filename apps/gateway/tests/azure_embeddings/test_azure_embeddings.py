@@ -148,7 +148,9 @@ async def test_aad_sends_bearer_token() -> None:
     try:
         tok = set_provider_credential(_AZ_AAD_CRED)
         try:
-            await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": ["a", "b"]})
+            await adapter.post_json(
+                "/embeddings", {"model": "text-embedding-3-small", "input": ["a", "b"]}
+            )
         finally:
             reset_provider_credential(tok)
     finally:
@@ -196,7 +198,9 @@ async def test_upstream_500_fails_closed() -> None:
     tok = set_provider_credential(_AZ_CRED)
     try:
         with pytest.raises(UpstreamUnavailableError):
-            await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+            await adapter.post_json(
+                "/embeddings", {"model": "text-embedding-3-small", "input": "x"}
+            )
     finally:
         reset_provider_credential(tok)
     # 5xx is an upstream outage → the breaker must record the failure (resilience seam).
@@ -214,7 +218,9 @@ async def test_4xx_content_filter_passes_through() -> None:
     adapter = _make_adapter(handler, breaker=spy)
     tok = set_provider_credential(_AZ_CRED)
     try:
-        status, body = await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+        status, body = await adapter.post_json(
+            "/embeddings", {"model": "text-embedding-3-small", "input": "x"}
+        )
     finally:
         reset_provider_credential(tok)
     assert status == 400
@@ -237,7 +243,9 @@ async def test_network_error_fails_closed_no_secret_in_chain() -> None:
     tok = set_provider_credential(_AZ_CRED)
     try:
         with pytest.raises(UpstreamUnavailableError) as exc:
-            await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+            await adapter.post_json(
+                "/embeddings", {"model": "text-embedding-3-small", "input": "x"}
+            )
     finally:
         reset_provider_credential(tok)
     assert exc.value.__cause__ is None
@@ -254,7 +262,9 @@ async def test_success_records_breaker_success() -> None:
     adapter = _make_adapter(handler, breaker=spy)
     tok = set_provider_credential(_AZ_CRED)
     try:
-        status, _ = await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+        status, _ = await adapter.post_json(
+            "/embeddings", {"model": "text-embedding-3-small", "input": "x"}
+        )
     finally:
         reset_provider_credential(tok)
     assert status == 200
@@ -283,7 +293,9 @@ async def test_token_failure_fails_closed_no_post() -> None:
         tok = set_provider_credential(_AZ_AAD_CRED)
         try:
             with pytest.raises(UpstreamUnavailableError):
-                await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+                await adapter.post_json(
+                    "/embeddings", {"model": "text-embedding-3-small", "input": "x"}
+                )
         finally:
             reset_provider_credential(tok)
     finally:
@@ -334,7 +346,9 @@ def test_wiring_registers_azure_provider_unconditionally(monkeypatch: pytest.Mon
     )
 
 
-def test_wiring_azure_cache_shared_across_chat_and_embeddings(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_wiring_azure_cache_shared_across_chat_and_embeddings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """v25 task-3: AzureADTokenProviderCache is shared (same instance) across chat + embeddings.
 
     The cache on app.state is wired into both AzureCompletionUpstream and

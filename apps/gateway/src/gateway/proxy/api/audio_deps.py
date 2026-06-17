@@ -62,9 +62,7 @@ def get_transcription_use_case(
         session_factory=request.app.state.sessionmaker,
     )
     # credential-resolution-seam §3: per-tenant provider key resolver from app.state.
-    tenant_credential_resolver = getattr(
-        request.app.state, "tenant_credential_resolver", None
-    )
+    tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
     return TranscriptionUseCase(
         governance=governance,
         session=session,
@@ -99,9 +97,7 @@ def get_speech_use_case(
         session_factory=request.app.state.sessionmaker,
     )
     # credential-resolution-seam §3: per-tenant provider key resolver from app.state.
-    tenant_credential_resolver = getattr(
-        request.app.state, "tenant_credential_resolver", None
-    )
+    tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
     return SpeechUseCase(
         governance=governance,
         session=session,

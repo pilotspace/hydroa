@@ -468,7 +468,9 @@ async def test_session_token_signed() -> None:
     adapter = _make_adapter(handler)
     tok = set_provider_credential(cred_with_token)
     try:
-        await adapter.complete({"model": _MODEL_ID, "messages": [{"role": "user", "content": "hi"}]})
+        await adapter.complete(
+            {"model": _MODEL_ID, "messages": [{"role": "user", "content": "hi"}]}
+        )
     finally:
         reset_provider_credential(tok)
 

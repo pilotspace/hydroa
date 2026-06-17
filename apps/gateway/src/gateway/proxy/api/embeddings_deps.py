@@ -81,9 +81,7 @@ def get_embeddings_use_case(
     )
     # credential-resolution-seam §3: resolve per-tenant provider key from app.state
     # (tests override app.state.tenant_credential_resolver with a fake). None ⇒ unwired.
-    tenant_credential_resolver = getattr(
-        request.app.state, "tenant_credential_resolver", None
-    )
+    tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
     return EmbeddingsUseCase(
         governance=governance,
         session=session,
