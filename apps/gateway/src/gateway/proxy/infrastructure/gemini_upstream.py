@@ -37,7 +37,9 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
 from gateway.proxy.domain.response_format_translation import extract_response_format
 from gateway.proxy.domain.tool_translation import (
     build_tool_call_delta,
@@ -497,7 +499,6 @@ class GeminiCompletionUpstream:
     def __init__(
         self,
         *,
-        api_key: str,
         base_url: str = _DEFAULT_BASE_URL,
         default_max_tokens: int = 4096,
         max_retries: int = 0,
@@ -505,8 +506,6 @@ class GeminiCompletionUpstream:
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
-        # Stored privately — never exposed in logs/errors/metrics
-        self._api_key = api_key
         self._default_max_tokens = default_max_tokens
         self._max_retries = max_retries
         self._backoff_base = backoff_base
@@ -525,9 +524,16 @@ class GeminiCompletionUpstream:
         )
 
     def _auth_headers(self) -> dict[str, str]:
-        """Build Gemini auth headers. NEVER includes a ?key= query param."""
+        """Build Gemini auth headers from the request-scoped credential contextvar.
+
+        NEVER includes a ?key= query param — keeps the secret out of URLs/access logs.
+        Raises ProviderKeyMissing when the contextvar is unset or non-Bearer.
+        """
+        cred = get_provider_credential()
+        if not isinstance(cred, BearerCredential):
+            raise ProviderKeyMissing("google")
         return {
-            "x-goog-api-key": self._api_key,
+            "x-goog-api-key": cred.secret.get_secret_value(),
             "content-type": "application/json",
         }
 
@@ -656,12 +662,9 @@ class GoogleEmbeddingsProvider:
     def __init__(
         self,
         *,
-        api_key: str,
         base_url: str = _DEFAULT_BASE_URL,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
-        # Stored privately — never exposed in logs/errors/metrics
-        self._api_key = api_key
         self._metrics_registry = metrics_registry
 
         self._breaker = CircuitBreaker()
@@ -676,9 +679,16 @@ class GoogleEmbeddingsProvider:
         )
 
     def _auth_headers(self) -> dict[str, str]:
-        """Build Gemini auth headers. NEVER includes a ?key= query param."""
+        """Build Gemini auth headers from the request-scoped credential contextvar.
+
+        NEVER includes a ?key= query param — keeps the secret out of URLs/access logs.
+        Raises ProviderKeyMissing when the contextvar is unset or non-Bearer.
+        """
+        cred = get_provider_credential()
+        if not isinstance(cred, BearerCredential):
+            raise ProviderKeyMissing("google")
         return {
-            "x-goog-api-key": self._api_key,
+            "x-goog-api-key": cred.secret.get_secret_value(),
             "content-type": "application/json",
         }
 

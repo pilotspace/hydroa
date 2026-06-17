@@ -5,11 +5,15 @@ OpenAI-shaped passthrough chat adapter with two Azure deltas — `api-key` heade
 httpx.MockTransport (no network), mirroring tests/bedrock_provider.
 
 CONTRACT (FROZEN @ v1): azure-chat TASK.md §3
-  - AzureCompletionUpstream(*, config, max_retries=0, backoff_base=0.5,
+  - AzureCompletionUpstream(*, token_provider_cache=None, max_retries=0, backoff_base=0.5,
     retry_deadline_s=0.0, metrics_registry=None) impl CompletionUpstream.
   - complete: 200/4xx → (status, body) verbatim; 5xx/timeout → UpstreamUnavailableError.
   - stream: NotImplementedError (task 3 implements).
-  - main.py registers _chat_adapters["azure"] iff resolve_azure_config(settings).
+  - main.py registers _chat_adapters["azure"] unconditionally (v25 task-3 BYOK).
+
+v25 task-3 amendment: ctor drops config=/token_provider=; credentials travel via
+AzureCredential in the contextvar. Each complete()/stream() call is wrapped with
+set_provider_credential / reset_provider_credential.
 """
 
 from __future__ import annotations
@@ -20,17 +24,23 @@ import httpx
 import pytest
 
 from gateway.proxy.application.fallback_triggers import classify_fallback_trigger
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import AzureCredential
 
 # RED: azure_upstream does not exist yet → ModuleNotFoundError.
-from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
 
-_CFG = AzureConfig(
-    api_key="secret-az-key",
+# v25 task-3: AzureCredential (api_key mode) mirrors the old _CFG.
+_AZ_CRED = AzureCredential(
+    mode="api_key",
     endpoint="https://r.openai.azure.com",
     api_version="2024-10-21",
     deployment_map={"gpt-4o": "prod-4o"},
+    api_key="secret-az-key",
 )
 
 _PAYLOAD: dict[str, object] = {
@@ -40,9 +50,9 @@ _PAYLOAD: dict[str, object] = {
 
 
 def _make_adapter(handler: object, *, max_retries: int = 0) -> AzureCompletionUpstream:
-    """Construct the adapter, then swap its _client for a MockTransport-backed one."""
+    """Construct the adapter (no ctor config — task-3), swap _client for MockTransport."""
     adapter = AzureCompletionUpstream(
-        config=_CFG,
+        token_provider_cache=None,
         max_retries=max_retries,
         backoff_base=0.0,
         retry_deadline_s=0.0,
@@ -67,7 +77,11 @@ async def test_routes_to_deployment_url_with_api_key() -> None:
         return httpx.Response(200, json={"id": "x", "usage": {}})
 
     adapter = _make_adapter(handler)
-    await adapter.complete(_PAYLOAD)
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        await adapter.complete(_PAYLOAD)
+    finally:
+        reset_provider_credential(tok)
     assert seen["url"] == (
         "https://r.openai.azure.com/openai/deployments/prod-4o/chat/completions"
         "?api-version=2024-10-21"
@@ -85,7 +99,11 @@ async def test_200_passthrough_exact_usage() -> None:
         )
 
     adapter = _make_adapter(handler)
-    status, body = await adapter.complete(_PAYLOAD)
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        status, body = await adapter.complete(_PAYLOAD)
+    finally:
+        reset_provider_credential(tok)
     assert status == 200
     assert body["usage"] == usage
 
@@ -102,7 +120,11 @@ async def test_content_filter_400_passthrough_and_classifies() -> None:
         return httpx.Response(400, json=err_body)
 
     adapter = _make_adapter(handler)
-    status, body = await adapter.complete(_PAYLOAD)
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        status, body = await adapter.complete(_PAYLOAD)
+    finally:
+        reset_provider_credential(tok)
     assert status == 400
     assert body == err_body
     assert classify_fallback_trigger(status, body) == "content_policy"
@@ -113,8 +135,12 @@ async def test_5xx_raises_upstream_unavailable() -> None:
         return httpx.Response(503, json={"error": {"message": "overloaded"}})
 
     adapter = _make_adapter(handler)
-    with pytest.raises(UpstreamUnavailableError):
-        await adapter.complete(_PAYLOAD)
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await adapter.complete(_PAYLOAD)
+    finally:
+        reset_provider_credential(tok)
 
 
 async def test_api_key_not_in_url() -> None:
@@ -126,7 +152,11 @@ async def test_api_key_not_in_url() -> None:
         return httpx.Response(200, json={"id": "x", "usage": {}})
 
     adapter = _make_adapter(handler)
-    await adapter.complete(_PAYLOAD)
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        await adapter.complete(_PAYLOAD)
+    finally:
+        reset_provider_credential(tok)
     assert "secret-az-key" not in str(seen["url"])
     assert seen["api_key"] == "secret-az-key"
 
@@ -136,16 +166,18 @@ async def test_api_key_not_in_url() -> None:
 # tests/azure_streaming/test_azure_streaming.py for the real streaming coverage.
 
 
-def test_wiring_registers_azure_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_wiring_registers_azure_unconditionally(monkeypatch: pytest.MonkeyPatch) -> None:
+    """v25 task-3: azure is registered unconditionally — no env-cred guard.
+
+    RIGHT-REASON RED: current wiring gates 'azure' on resolve_azure_config(settings)
+    being truthy → absent without env creds → assertion fails.
+    """
     from gateway.core.config import Settings
     from gateway.main import create_app
 
     for name in (
-        "GATEWAY_OPENROUTER_API_KEY",
-        "GATEWAY_OPENAI_API_KEY",
-        "GATEWAY_ANTHROPIC_API_KEY",
-        "GATEWAY_GOOGLE_API_KEY",
         "GATEWAY_AZURE_API_KEY",
+        "GATEWAY_AZURE_CLIENT_SECRET",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -159,10 +191,9 @@ def test_wiring_registers_azure_when_configured(monkeypatch: pytest.MonkeyPatch)
         base.update(over)
         return Settings(**base)  # type: ignore[arg-type]
 
-    app_on = create_app(
-        _settings(azure_api_key="sk-az", azure_endpoint="https://r.openai.azure.com")
+    # With NO azure env creds — must still be present after task-3 BUILD
+    app = create_app(_settings())
+    assert "azure" in app.state.chat_adapters, (
+        "'azure' must be in chat_adapters UNCONDITIONALLY after task-3 BUILD. "
+        "It is absent — env-guard still in place (pre-BUILD state)."
     )
-    assert "azure" in app_on.state.chat_adapters
-
-    app_off = create_app(_settings())
-    assert "azure" not in app_off.state.chat_adapters

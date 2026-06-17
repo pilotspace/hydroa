@@ -79,4 +79,13 @@ def get_embeddings_use_case(
         redis_client=redis_client,
         session_factory=request.app.state.sessionmaker,
     )
-    return EmbeddingsUseCase(governance=governance, session=session)
+    # credential-resolution-seam §3: resolve per-tenant provider key from app.state
+    # (tests override app.state.tenant_credential_resolver with a fake). None ⇒ unwired.
+    tenant_credential_resolver = getattr(
+        request.app.state, "tenant_credential_resolver", None
+    )
+    return EmbeddingsUseCase(
+        governance=governance,
+        session=session,
+        tenant_credential_resolver=tenant_credential_resolver,
+    )

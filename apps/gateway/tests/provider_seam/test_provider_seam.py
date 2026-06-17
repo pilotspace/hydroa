@@ -112,11 +112,11 @@ def test_ps2_chat_model_returns_openrouter_facade(
 
 
 def test_ps3_settings_gains_openai_fields_wiring() -> None:
-    """create_app(settings) wires OpenAIDirectProvider when openai_api_key is set.
+    """create_app(settings) always wires OpenAIDirectProvider (UNCONDITIONAL).
 
-    RED reason:
-      - Settings lacks openai_api_key field → pydantic ValidationError on unknown field
-        (or the field exists but OpenAIDirectProvider is absent → ImportError in wiring)
+    Credential-resolution-seam BUILD: openai_api_key removed from Settings;
+    OpenAI provider is registered unconditionally (per-tenant key gating at resolve time).
+    openai_base_url field remains (describes the upstream endpoint, not the secret).
     """
     from gateway.core.config import Settings  # always importable — checking new fields
     from gateway.main import create_app
@@ -124,12 +124,11 @@ def test_ps3_settings_gains_openai_fields_wiring() -> None:
         OpenAIDirectProvider,
     )
 
-    settings = Settings(  # type: ignore[call-arg]
+    settings = Settings(
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret="test-secret-not-for-production-0123456789",
         redis_url="redis://localhost:6380/9",
         environment="test",
-        openai_api_key=FAKE_API_KEY,
         openai_base_url=FAKE_OPENAI_BASE_URL,
     )
     app = create_app(settings)
@@ -139,7 +138,7 @@ def test_ps3_settings_gains_openai_fields_wiring() -> None:
     )
     openai_provider = app.state.provider_registry.get("openai")
     assert openai_provider is not None, (
-        "provider_registry must contain 'openai' when openai_api_key is set"
+        "provider_registry must contain 'openai' unconditionally after credential-resolution-seam BUILD"
     )
     assert isinstance(openai_provider, OpenAIDirectProvider), (
         f"Expected OpenAIDirectProvider, got {type(openai_provider)}"
@@ -388,19 +387,26 @@ async def test_ps8_openai_provider_post_json_calls_correct_url(
         OpenAIDirectProvider,
     )
 
+    from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
+    from gateway.proxy.domain.provider_credentials import BearerCredential
+    from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+
     provider = OpenAIDirectProvider.__new__(OpenAIDirectProvider)  # type: ignore[attr-defined]
-    # Manually wire the transport so we don't need a live OpenAI API
-    provider._api_key = FAKE_API_KEY
+    # Credential-resolution-seam BUILD: api_key removed; credential via contextvar.
     provider._client = httpx.AsyncClient(
         base_url=FAKE_OPENAI_BASE_URL,
         transport=mock_transport_200_embedding,
         timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0),
     )
-    from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
-
     provider._breaker = CircuitBreaker()
+    provider._metrics_registry = None
 
-    status, body = await provider.post_json("/embeddings", EMBEDDING_PAYLOAD)
+    # Set the credential in the contextvar before calling _auth_headers via post_json.
+    cred_token = set_provider_credential(BearerCredential(secret=FAKE_API_KEY))
+    try:
+        status, body = await provider.post_json("/embeddings", EMBEDDING_PAYLOAD)
+    finally:
+        reset_provider_credential(cred_token)
 
     # Verify the HTTP call
     assert mock_transport_200_embedding.call_count == 1, (
@@ -434,10 +440,10 @@ async def test_ps8_openai_provider_method_surface_complete() -> None:
     from gateway.proxy.domain.ports import UpstreamProvider  # type: ignore[import]
 
     # Verify runtime isinstance check (Protocol is runtime_checkable)
+    # Credential-resolution-seam BUILD: api_key removed from __init__.
     transport = SequencedMockTransport([])
     try:
         provider = OpenAIDirectProvider(  # type: ignore[call-arg]
-            api_key="sk-test",
             base_url=FAKE_OPENAI_BASE_URL,
         )
     except Exception:
@@ -521,10 +527,11 @@ async def test_ps9_chat_path_not_consulting_provider_registry(
 
 
 def test_ps10_production_wiring_registry_has_openrouter_and_openai() -> None:
-    """create_app() with both keys set wires ProviderRegistry with openrouter + openai.
+    """create_app() wires ProviderRegistry with openrouter + openai (UNCONDITIONAL).
 
-    RED reason: ProviderRegistry / OpenAIDirectProvider absent → ImportError
-                OR Settings.openai_api_key absent → ValidationError.
+    Credential-resolution-seam BUILD: openrouter_api_key / openai_api_key removed
+    from Settings; both adapters are registered unconditionally (per-tenant key gating
+    at resolve time). Settings no longer accepts those fields.
     """
     from gateway.core.config import Settings
     from gateway.main import create_app
@@ -533,13 +540,11 @@ def test_ps10_production_wiring_registry_has_openrouter_and_openai() -> None:
     )
     from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 
-    settings = Settings(  # type: ignore[call-arg]
+    settings = Settings(
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret="test-secret-not-for-production-0123456789",
         redis_url="redis://localhost:6380/9",
         environment="test",
-        openrouter_api_key="or-test-key",
-        openai_api_key=FAKE_API_KEY,
         openai_base_url=FAKE_OPENAI_BASE_URL,
     )
     app = create_app(settings)
@@ -577,35 +582,35 @@ def test_ps10_production_wiring_registry_has_openrouter_and_openai() -> None:
 
 
 def test_ps10b_openai_absent_when_key_empty() -> None:
-    """create_app() with empty openai_api_key: provider_registry has no 'openai' entry.
+    """create_app() always registers 'openai' in provider_registry (UNCONDITIONAL).
 
-    RED reason: same as PS10 — Settings.openai_api_key absent → ValidationError,
-                OR ProviderRegistry absent → ImportError.
+    Credential-resolution-seam BUILD: openai_api_key removed from Settings; the
+    openai provider is registered unconditionally (per-tenant key gating at resolve
+    time). Converted: assert openai IS present regardless of env.
     """
     from gateway.core.config import Settings
     from gateway.main import create_app
 
-    settings = Settings(  # type: ignore[call-arg]
+    settings = Settings(
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret="test-secret-not-for-production-0123456789",
         redis_url="redis://localhost:6380/9",
         environment="test",
-        openai_api_key="",  # empty = provider absent
     )
     app = create_app(settings)
 
     assert hasattr(app.state, "provider_registry"), (
-        "app.state.provider_registry must be set by create_app() even when openai_api_key=''"
+        "app.state.provider_registry must be set by create_app()"
     )
 
     openai_entry = app.state.provider_registry.get("openai")
-    assert openai_entry is None, (
-        f"provider_registry must NOT contain 'openai' when openai_api_key=''; got {openai_entry!r}"
+    assert openai_entry is not None, (
+        "provider_registry must contain 'openai' unconditionally after credential-resolution-seam BUILD"
     )
 
     openrouter_entry = app.state.provider_registry.get("openrouter")
     assert openrouter_entry is not None, (
-        "provider_registry must always contain 'openrouter' entry regardless of openai_api_key"
+        "provider_registry must always contain 'openrouter' entry"
     )
 
 

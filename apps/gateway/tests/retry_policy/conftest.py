@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
+from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
+from gateway.proxy.domain.provider_credentials import BearerCredential
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.gemini_upstream import GeminiCompletionUpstream
@@ -23,6 +25,20 @@ FAKE_API_KEY = "sk-test-retry-policy"
 FAKE_ANTHROPIC_KEY = "sk-ant-test-retry"
 FAKE_GEMINI_KEY = "gm-test-retry"
 COMPLETION_PATH = "/chat/completions"
+
+
+@pytest.fixture(autouse=True)
+def _inject_test_credential() -> AsyncIterator[None]:
+    """Credential-resolution-seam BUILD: inject a Bearer credential via contextvar
+    for the duration of every retry_policy test so adapter._auth_headers() succeeds.
+
+    Uses a single Bearer credential that works for all 3 adapter types (openrouter /
+    anthropic / gemini) — all three read the contextvar in _auth_headers() and only
+    check isinstance(cred, BearerCredential), not the specific secret value.
+    """
+    token = set_provider_credential(BearerCredential(secret=FAKE_API_KEY))
+    yield  # type: ignore[misc]
+    reset_provider_credential(token)
 
 SUCCESS_BODY = {
     "id": "gen-retry-1",
@@ -141,19 +157,18 @@ def make_upstream(
 ) -> OpenRouterCompletionUpstream:
     """Build an OpenRouterCompletionUpstream wired with a custom transport.
 
-    Sets every attribute complete() reads — including the v19 retry-seam additions
-    (retry_deadline_s, metrics_registry) so this helper stays valid after BUILD
-    threads them into the unified executor.
+    Credential-resolution-seam BUILD: api_key removed from __init__; credential is
+    supplied via the autouse _inject_test_credential fixture (contextvar).
+    Sets every attribute complete() reads — including the v19 retry-seam additions.
     """
     upstream = OpenRouterCompletionUpstream.__new__(OpenRouterCompletionUpstream)
-    upstream._api_key = FAKE_API_KEY
     upstream._breaker = breaker if breaker is not None else CountingCircuitBreaker()
     upstream._client = httpx.AsyncClient(
         base_url="https://openrouter.ai/api/v1",
         transport=transport,
         timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0),
     )
-    # Retry knobs — read by the unified executor (set as attributes for now)
+    # Retry knobs — read by the unified executor
     upstream._max_retries = max_retries
     upstream._backoff_base = backoff_base
     upstream._retry_deadline_s = retry_deadline_s
@@ -171,12 +186,10 @@ def make_anthropic_upstream(
 ) -> AnthropicCompletionUpstream:
     """Build an AnthropicCompletionUpstream wired with a custom transport.
 
-    Constructed via the real ctor (works pre- and post-BUILD), then the client is
-    swapped and the retry knobs are set as attributes. The retry knobs are inert
-    until BUILD wires complete() onto the unified executor — that is the red signal.
+    Credential-resolution-seam BUILD: api_key removed from __init__; credential
+    supplied via the autouse _inject_test_credential fixture (contextvar).
     """
     upstream = AnthropicCompletionUpstream(
-        api_key=FAKE_ANTHROPIC_KEY,
         base_url="https://api.anthropic.com/v1",
         metrics_registry=metrics_registry,
     )
@@ -201,9 +214,12 @@ def make_gemini_upstream(
     retry_deadline_s: float = 0.0,
     metrics_registry: Any | None = None,
 ) -> GeminiCompletionUpstream:
-    """Build a GeminiCompletionUpstream wired with a custom transport (see make_anthropic_upstream)."""
+    """Build a GeminiCompletionUpstream wired with a custom transport.
+
+    Credential-resolution-seam BUILD: api_key removed from __init__; credential
+    supplied via the autouse _inject_test_credential fixture (contextvar).
+    """
     upstream = GeminiCompletionUpstream(
-        api_key=FAKE_GEMINI_KEY,
         base_url="https://generativelanguage.googleapis.com/v1beta",
         metrics_registry=metrics_registry,
     )

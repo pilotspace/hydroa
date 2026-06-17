@@ -33,13 +33,15 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import AzureCredential, ProviderKeyMissing
+from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
-    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
-    from gateway.proxy.infrastructure.azure_config import AzureConfig
+    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
 
 _CONNECT_TIMEOUT = 10.0
 _NON_STREAM_TIMEOUT = 120.0
@@ -49,22 +51,24 @@ class AzureEmbeddingsProvider:
     """Direct HTTP adapter for Azure OpenAI embedding deployments.
 
     Implements the UpstreamProvider Protocol (post_json / post_multipart / stream_bytes).
-    A single instance is created per create_app() call when Azure config is present and
-    stored in app.state.provider_registry under the key "azure".
+    A single instance is created per create_app() call and stored in
+    app.state.provider_registry under the key "azure".
 
     SECURITY: the api-key and any AAD bearer token are NEVER logged, echoed, or placed in
     any metric label / span attribute / exception message / URL.
+
+    Credentials are resolved per-request from the AzureCredential contextvar (task-3 BYOK).
+    No boot-time config or token_provider is accepted; fail-closed when contextvar is unset.
     """
 
     def __init__(
         self,
         *,
-        config: AzureConfig,
-        token_provider: AzureADTokenProvider | None = None,
+        token_provider_cache: AzureADTokenProviderCache | None = None,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
-        self._config = config
-        self._token_provider = token_provider
+        # Credentials resolved per-request from the contextvar (task-3 BYOK).
+        self._token_provider_cache = token_provider_cache
         self._metrics_registry = metrics_registry
         self._breaker = CircuitBreaker()
         # No base_url — build_url emits an absolute deployment-routed URL per call.
@@ -77,17 +81,46 @@ class AzureEmbeddingsProvider:
             ),
         )
 
-    async def _auth_headers(self) -> dict[str, str]:
-        """Bearer when an AAD provider is injected, static api-key otherwise.
+    def _get_credential(self) -> AzureCredential:
+        """Read AzureCredential from the request contextvar (fail-closed).
 
-        Token acquisition fails CLOSED — get_token() raises UpstreamUnavailableError on any
-        IDP failure, which propagates out of post_json before the breaker guard / POST so we
-        never send a blank/absent Authorization header.
+        Raises ProviderKeyMissing("azure") when the contextvar is unset OR holds a
+        wrong-type value — NEVER produces an unauthenticated upstream request.
         """
-        if self._token_provider is not None:
-            token = await self._token_provider.get_token()
+        cred = get_provider_credential()
+        if cred is None or not isinstance(cred, AzureCredential):
+            raise ProviderKeyMissing("azure")
+        return cred
+
+    def _resolve_config_and_cred(self) -> tuple[AzureConfig, AzureCredential]:
+        """Resolve the AzureConfig and AzureCredential from the request contextvar.
+
+        Raises ProviderKeyMissing("azure") when the contextvar is unset or holds a
+        wrong-type value (fail-closed — no unauthenticated request, ever).
+        """
+        cred = self._get_credential()
+        return cred.to_azure_config(), cred
+
+    async def _auth_headers_for_credential(self, cred: AzureCredential) -> dict[str, str]:
+        """Build auth headers from a resolved AzureCredential (contextvar path).
+
+        api_key mode  → ``api-key: <key>`` header.
+        aad mode      → Bearer token minted via the per-tenant cache (or a direct
+                         AzureADTokenProvider when cache is None — verify / test path).
+        Token acquisition fails CLOSED — get_token() raises UpstreamUnavailableError on any
+        IDP failure, propagating before the breaker guard / POST so we never send a blank header.
+        """
+        if cred.mode == "aad":
+            ad_cfg = cred.to_azure_ad_config()
+            if self._token_provider_cache is not None:
+                tp = self._token_provider_cache.get_or_create(ad_cfg)
+            else:
+                from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
+                tp = AzureADTokenProvider(config=ad_cfg)
+            token = await tp.get_token()
             return {"Authorization": f"Bearer {token}"}
-        return {"api-key": self._config.api_key}
+        cfg: AzureConfig = cred.to_azure_config()
+        return {"api-key": cfg.api_key}
 
     async def post_json(
         self,
@@ -103,6 +136,9 @@ class AzureEmbeddingsProvider:
             payload: OpenAI embeddings request (keys "model", "input", optional "dimensions").
                      Forwarded UNCHANGED (Azure is OpenAI-compatible).
 
+        Credential is read from the request contextvar (AzureCredential); raises
+        ProviderKeyMissing("azure") before any HTTP if unset or wrong type (fail-closed).
+
         Raises:
             UpstreamUnavailableError: on 5xx, ConnectError/Timeout/Network, or AAD token failure.
 
@@ -110,11 +146,15 @@ class AzureEmbeddingsProvider:
             (200, OpenAI-shaped body) on success, or (4xx, error_body) passed through
             unchanged (incl. Azure content_filter, which is OpenAI-shaped).
         """
-        deployment = self._config.resolve_deployment(payload["model"])
-        url = self._config.build_url(deployment, "embeddings")
+        # Fail-closed: read & validate credential BEFORE any network activity.
+        cfg, cred = self._resolve_config_and_cred()
+
+        deployment = cfg.resolve_deployment(payload["model"])
+        url = cfg.build_url(deployment, "embeddings")
 
         # Auth headers FIRST — a token failure fails closed before the breaker/POST.
-        headers = {**(await self._auth_headers()), "content-type": "application/json"}
+        auth = await self._auth_headers_for_credential(cred)
+        headers = {**auth, "content-type": "application/json"}
 
         self._breaker.guard()
         try:

@@ -52,6 +52,9 @@ import gateway.teams.infrastructure.orm  # noqa: F401 — registers TeamRow/Team
 # oidc-tenant-config TASK.md §3: registers OidcProviderConfigRow on Base.metadata.
 import gateway.auth.infrastructure.orm  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
 
+# provider-credential-store TASK.md §3: registers TenantProviderKeyRow on Base.metadata.
+import gateway.proxy.infrastructure.orm  # noqa: F401 — registers TenantProviderKeyRow on Base.metadata
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------

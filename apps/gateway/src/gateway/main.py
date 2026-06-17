@@ -34,22 +34,21 @@ from gateway.observability.middleware import RequestIdMiddleware
 from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
+from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.routing_strategy import build_strategy
-from gateway.proxy.domain.ports import UpstreamProvider
+from gateway.proxy.domain.ports import CompletionUpstream, UpstreamProvider
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
-from gateway.proxy.infrastructure.azure_ad import (
-    AzureADTokenProvider,
-    resolve_azure_ad_config,
-)
-from gateway.proxy.infrastructure.azure_config import AzureConfig, resolve_azure_config
+from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
 from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
-from gateway.proxy.infrastructure.bedrock_sigv4 import resolve_aws_credentials
 from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
+from gateway.proxy.infrastructure.cached_tenant_credential_resolver import (
+    CachedTenantCredentialResolver,
+)
 from gateway.proxy.infrastructure.catalog_provider_resolver import CatalogProviderResolver
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.gemini_upstream import (
@@ -59,11 +58,15 @@ from gateway.proxy.infrastructure.gemini_upstream import (
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
+from gateway.proxy.infrastructure.orm import (
+    TenantProviderKeyRow as _TenantProviderKeyRow,  # noqa: F401 — registers TenantProviderKeyRow on Base.metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.proxy.infrastructure.provider_aware_upstream import ProviderAwareCompletionUpstream
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate
 from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
+from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
@@ -363,8 +366,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.circuit_breaker = CircuitBreaker()
     # Raw OpenRouter upstream — used directly by the provider adapter map and the
     # OpenRouterUpstreamFacade (embeddings/images). NOT the dispatch wrapper.
+    # No api_key= argument: auth is resolved per-request from the contextvar
+    # set by the use-case (credential-resolution-seam §3).
     _openrouter_upstream = OpenRouterCompletionUpstream(
-        api_key=settings.openrouter_api_key,
         base_url=settings.openrouter_base_url,
         max_retries=settings.upstream_max_retries,
         backoff_base=settings.upstream_retry_backoff_base_s,
@@ -391,88 +395,75 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.provider_resolver = CatalogProviderResolver(loader=_load_provider_map)
 
-    # Chat adapter map — "openrouter" is always present; additional providers are
-    # added by later tasks (anthropic-provider, gemini-provider) when their key is set.
-    _chat_adapters: dict[str, object] = {"openrouter": _openrouter_upstream}
+    # Chat adapter map — ALL providers (openrouter / anthropic / google / openai /
+    # bedrock / azure) are registered UNCONDITIONALLY. Per-tenant key gating moved to
+    # resolve time (credential-resolution-seam §3 + dynamic-auth-byok §3):
+    # ProviderKeyMissing is raised at request dispatch, not at boot. Bedrock/Azure now
+    # resolve their credentials per-request from the contextvar (task-3 dynamic-auth-byok).
+    _chat_adapters: dict[str, CompletionUpstream] = {"openrouter": _openrouter_upstream}
 
-    # Anthropic adapter — registered only when the api key is non-empty.
-    # Empty key → adapter absent → models with provider="anthropic" dispatch-fallback
-    # to openrouter (the frozen fail-safe). NEVER constructs with an empty key
-    # (would send x-api-key:"" to Anthropic — v7 empty-bearer lesson).
-    if settings.anthropic_api_key:
-        _chat_adapters["anthropic"] = AnthropicCompletionUpstream(
-            api_key=settings.anthropic_api_key,
-            base_url=settings.anthropic_base_url,
-            anthropic_version=settings.anthropic_version,
-            default_max_tokens=settings.anthropic_default_max_tokens,
-            max_retries=settings.upstream_max_retries,
-            backoff_base=settings.upstream_retry_backoff_base_s,
-            retry_deadline_s=settings.upstream_retry_deadline_s,
-            metrics_registry=app.state.metrics_registry,
-        )
+    # Anthropic adapter — UNCONDITIONAL (credential resolved per-request from contextvar).
+    _chat_adapters["anthropic"] = AnthropicCompletionUpstream(
+        base_url=settings.anthropic_base_url,
+        anthropic_version=settings.anthropic_version,
+        default_max_tokens=settings.anthropic_default_max_tokens,
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
+        metrics_registry=app.state.metrics_registry,
+    )
 
-    # Google (Gemini) adapter — registered only when the api key is non-empty.
-    # Empty key → adapter absent → models with provider="google" dispatch-fallback
-    # to openrouter. NEVER constructs with an empty key (v7 empty-bearer lesson).
-    if settings.google_api_key:
-        _chat_adapters["google"] = GeminiCompletionUpstream(
-            api_key=settings.google_api_key,
-            base_url=settings.google_base_url,
-            default_max_tokens=settings.google_default_max_tokens,
-            max_retries=settings.upstream_max_retries,
-            backoff_base=settings.upstream_retry_backoff_base_s,
-            retry_deadline_s=settings.upstream_retry_deadline_s,
-            metrics_registry=app.state.metrics_registry,
-        )
+    # Google (Gemini) adapter — UNCONDITIONAL (credential resolved per-request from contextvar).
+    _chat_adapters["google"] = GeminiCompletionUpstream(
+        base_url=settings.google_base_url,
+        default_max_tokens=settings.google_default_max_tokens,
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
+        metrics_registry=app.state.metrics_registry,
+    )
 
-    # AWS Bedrock adapter — registered only when all three credential fields are set.
-    # resolve_aws_credentials returns None when any required field is falsy (empty string,
-    # absent attribute). NEVER constructs with partial or empty credentials
-    # (v7 empty-bearer lesson; SigV4 with blank keys produces SignatureDoesNotMatch).
-    _aws_creds = resolve_aws_credentials(settings)
-    if _aws_creds:
-        _chat_adapters["bedrock"] = BedrockCompletionUpstream(
-            credentials=_aws_creds,
-            region=settings.bedrock_region,
-            endpoint_url=settings.bedrock_endpoint_url or None,
-            default_max_tokens=settings.anthropic_default_max_tokens,
-            max_retries=settings.upstream_max_retries,
-            backoff_base=settings.upstream_retry_backoff_base_s,
-            retry_deadline_s=settings.upstream_retry_deadline_s,
-            metrics_registry=app.state.metrics_registry,
-        )
+    # OpenAI direct adapter — UNCONDITIONAL (credential resolved per-request from contextvar).
+    # Registered in both _chat_adapters (for chat dispatch) and _providers (for non-chat
+    # modalities: embeddings/images/audio). The same instance is reused in _providers below.
+    _openai_direct = OpenAIDirectProvider(
+        base_url=settings.openai_base_url,
+        metrics_registry=app.state.metrics_registry,
+    )
+    _chat_adapters["openai"] = _openai_direct
 
-    # Azure OpenAI adapter — opt-in, OpenAI-shaped passthrough. Auth is api-key by
-    # default; Azure AD (client-credentials) takes precedence when configured. The
-    # adapter is enabled when api-key config OR (AAD config AND an endpoint) is present,
-    # so AAD can authenticate without an api-key. Byte-identical when neither is set.
-    _azure_cfg = resolve_azure_config(settings)
-    _azure_ad_cfg = resolve_azure_ad_config(settings)
-    if not _azure_cfg and _azure_ad_cfg and settings.azure_endpoint:
-        # AAD-only: build a config carrying the endpoint (api_key empty, unused under Bearer).
-        _azure_cfg = AzureConfig(
-            api_key=settings.azure_api_key,
-            endpoint=settings.azure_endpoint,
-            api_version=settings.azure_api_version,
-            deployment_map=settings.azure_deployment_map,
-        )
-    # Bound unconditionally so the provider-registry block below can reuse the SAME
-    # token_provider instance (one AAD token cache shared across chat + embeddings).
-    _azure_token_provider: AzureADTokenProvider | None = None
-    if _azure_cfg:
-        if _azure_ad_cfg:
-            _azure_token_provider = AzureADTokenProvider(
-                config=_azure_ad_cfg,
-                metrics_registry=app.state.metrics_registry,
-            )
-        _chat_adapters["azure"] = AzureCompletionUpstream(
-            config=_azure_cfg,
-            token_provider=_azure_token_provider,
-            max_retries=settings.upstream_max_retries,
-            backoff_base=settings.upstream_retry_backoff_base_s,
-            retry_deadline_s=settings.upstream_retry_deadline_s,
-            metrics_registry=app.state.metrics_registry,
-        )
+    # AWS Bedrock adapter — registered UNCONDITIONALLY (task-3 dynamic-auth-byok).
+    # Credentials are resolved per-request from the tenant contextvar; no boot-env
+    # credential check. A request with no tenant Bedrock key → 402 at resolve time.
+    _chat_adapters["bedrock"] = BedrockCompletionUpstream(
+        endpoint_url=settings.bedrock_endpoint_url or None,
+        default_max_tokens=settings.anthropic_default_max_tokens,
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
+        metrics_registry=app.state.metrics_registry,
+    )
+
+    # Per-tenant Azure AD token provider cache — one shared instance on app.state,
+    # injected into both Azure adapters (chat + embeddings). Keyed by the NON-SECRET
+    # AzureADConfig identity (tenant_id, client_id, authority, scope).
+    _azure_ad_token_provider_cache = AzureADTokenProviderCache(
+        ttl_s=settings.azure_ad_provider_cache_ttl_s,
+        max_size=settings.azure_ad_provider_cache_max,
+        metrics_registry=app.state.metrics_registry,
+    )
+    app.state.azure_ad_token_provider_cache = _azure_ad_token_provider_cache
+
+    # Azure OpenAI adapter — registered UNCONDITIONALLY (task-3 dynamic-auth-byok).
+    # Credentials (endpoint, api_key / AAD config) are resolved per-request from the
+    # tenant contextvar. A request with no tenant Azure key → 402 at resolve time.
+    _chat_adapters["azure"] = AzureCompletionUpstream(
+        token_provider_cache=_azure_ad_token_provider_cache,
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
+        metrics_registry=app.state.metrics_registry,
+    )
 
     # Public seam for wiring tests: exposes the adapter map so tests can assert
     # which adapters are registered (mirrors the openrouter_completion_upstream seam).
@@ -480,7 +471,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Dispatch wrapper — implements CompletionUpstream; selection only.
     app.state.completion_upstream = ProviderAwareCompletionUpstream(
-        adapters=_chat_adapters,  # type: ignore[arg-type]
+        adapters=_chat_adapters,
         resolver=app.state.provider_resolver,
     )
 
@@ -573,38 +564,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # The dispatch wrapper is for chat only; the facade is for non-chat modalities
     # (embeddings/images/audio) and must not add provider-dispatch overhead.
     _openrouter_facade = OpenRouterUpstreamFacade(upstream=_openrouter_upstream)
-    _providers: dict[str, UpstreamProvider] = {"openrouter": _openrouter_facade}
-    if settings.openai_api_key:
-        _providers["openai"] = OpenAIDirectProvider(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            metrics_registry=app.state.metrics_registry,
-        )
-    if settings.google_api_key:
-        _providers["google"] = GoogleEmbeddingsProvider(
-            api_key=settings.google_api_key,
+    # Bearer provider registry entries — UNCONDITIONAL (credential resolved per-request).
+    # openai and google are always wired; per-tenant key gating moved to resolve time.
+    _providers: dict[str, UpstreamProvider] = {
+        "openrouter": _openrouter_facade,
+        "openai": _openai_direct,  # reuse the instance already in _chat_adapters
+        "google": GoogleEmbeddingsProvider(
             base_url=settings.google_base_url,
             metrics_registry=app.state.metrics_registry,
-        )
-    # AWS Bedrock embeddings adapter — registered only when all three credential fields
-    # are set (same guard as the chat adapter above). Reuses the already-resolved creds.
-    if _aws_creds:
-        _providers["bedrock"] = BedrockEmbeddingsProvider(
-            credentials=_aws_creds,
-            region=settings.bedrock_region,
-            endpoint_url=settings.bedrock_endpoint_url or None,
-            metrics_registry=app.state.metrics_registry,
-        )
-    # Azure OpenAI embeddings adapter — registered under the SAME guard as the Azure chat
-    # adapter (_azure_cfg present), reusing the shared _azure_token_provider (one AAD token
-    # cache across chat + embeddings). Opt-in; byte-identical when Azure is unconfigured.
-    if _azure_cfg:
-        _providers["azure"] = AzureEmbeddingsProvider(
-            config=_azure_cfg,
-            token_provider=_azure_token_provider,
-            metrics_registry=app.state.metrics_registry,
-        )
+        ),
+    }
+    # AWS Bedrock embeddings adapter — registered UNCONDITIONALLY (task-3 dynamic-auth-byok).
+    _providers["bedrock"] = BedrockEmbeddingsProvider(
+        endpoint_url=settings.bedrock_endpoint_url or None,
+        metrics_registry=app.state.metrics_registry,
+    )
+    # Azure OpenAI embeddings adapter — registered UNCONDITIONALLY (task-3 dynamic-auth-byok).
+    # Shares the same AzureADTokenProviderCache as the chat adapter (one cache, no double minting).
+    _providers["azure"] = AzureEmbeddingsProvider(
+        token_provider_cache=_azure_ad_token_provider_cache,
+        metrics_registry=app.state.metrics_registry,
+    )
     app.state.provider_registry = ProviderRegistry(_providers)
+
+    # Tenant provider key store + resolver (credential-resolution-seam §3).
+    # Wire on app.state so tests can override via app.state.tenant_credential_resolver.
+    app.state.tenant_provider_key_store = DbTenantProviderKeyStore(
+        sessionmaker=app.state.sessionmaker,
+        settings=settings,
+    )
+    app.state.tenant_credential_resolver = CachedTenantCredentialResolver(
+        store=app.state.tenant_provider_key_store,
+        settings=settings,
+    )
 
     # Cache TTL — exposed on app.state so proxy router can read it per-request.
     # cache_max_ttl_seconds caps any per-request Cache-Control: max-age override.
@@ -635,6 +627,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(oidc_router)
     app.include_router(oidc_admin_router)
+    app.include_router(provider_keys_admin_router)
     app.include_router(health_router)
     app.include_router(internal_router)
     app.include_router(internal_catalog_router)

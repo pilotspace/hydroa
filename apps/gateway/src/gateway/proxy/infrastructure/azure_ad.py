@@ -1,9 +1,11 @@
-"""Azure AD client-credentials token auth (azure-aad-auth §3 FROZEN @ v1).
+"""Azure AD client-credentials token auth + per-tenant provider cache.
 
-The one genuinely-new auth sub-system for Azure OpenAI: acquire an OAuth2
-client-credentials bearer token from Azure AD and cache it, as an alternative to the
-static api-key. Used by AzureCompletionUpstream (and the embeddings provider) when AAD
-is configured.
+Provides:
+  - AzureADTokenProvider: Acquire + cache + refresh an OAuth2 client-credentials
+    bearer token from Azure AD. Fail-closed on any IDP error.
+  - AzureADTokenProviderCache: Per-tenant TTL+size-capped cache of AzureADTokenProvider
+    instances, keyed by the NON-SECRET AzureADConfig identity (tenant_id, client_id,
+    authority, scope). Task-3 dynamic-auth-byok §3 contract point 4.
 
 Design-for-failure (CLAUDE.md):
   - timeouts on the token POST;
@@ -14,9 +16,8 @@ Design-for-failure (CLAUDE.md):
   - refresh-before-expiry skew so a token is renewed slightly early.
 
 Security: client_secret (config) and the acquired token are SECRETS — client_secret is
-field(repr=False); neither ever appears in a log, metric label, span attribute, URL, or
-exception message (the token enters only the Authorization header; errors carry only a
-status code, never a response body).
+field(repr=False); neither ever appears in a log, metric label, span attribute, URL,
+exception message, or cache key (the cache is keyed by the NON-SECRET identity only).
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ import asyncio
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -55,35 +56,13 @@ class AzureADConfig:
     authority: str = DEFAULT_AUTHORITY
 
 
-def resolve_azure_ad_config(settings: object) -> AzureADConfig | None:
-    """Return an AzureADConfig iff tenant_id, client_id, and client_secret are all truthy.
-
-    Returns None otherwise (opt-in; partial AAD config disables AAD — the adapter then
-    falls back to api-key auth if that is configured). ``scope`` falls back to
-    DEFAULT_SCOPE.
-    """
-    tenant: str = getattr(settings, "azure_tenant_id", "") or ""
-    client: str = getattr(settings, "azure_client_id", "") or ""
-    secret: str = getattr(settings, "azure_client_secret", "") or ""
-    if not (tenant and client and secret):
-        return None
-    scope: str = getattr(settings, "azure_ad_scope", "") or DEFAULT_SCOPE
-    authority: str = getattr(settings, "azure_ad_authority", "") or DEFAULT_AUTHORITY
-    return AzureADConfig(
-        tenant_id=tenant,
-        client_id=client,
-        client_secret=secret,
-        scope=scope,
-        authority=authority,
-    )
-
-
 class AzureADTokenProvider:
     """Acquire + cache + refresh an Azure AD client-credentials bearer token.
 
-    A single instance is shared for the app lifetime. ``get_token()`` is safe under
-    concurrency: a single-flight asyncio.Lock + a post-lock cache re-check means a
-    stampede of expired-token requests makes exactly one IDP call.
+    A single instance is shared per AAD identity within the app lifetime (via
+    AzureADTokenProviderCache). ``get_token()`` is safe under concurrency: a single-flight
+    asyncio.Lock + a post-lock cache re-check means a stampede of expired-token requests
+    makes exactly one IDP call.
     """
 
     def __init__(
@@ -132,6 +111,10 @@ class AzureADTokenProvider:
                 return cached
             return await self._acquire()
 
+    async def aclose(self) -> None:
+        """Close the underlying httpx client (fire-and-forget safe)."""
+        await self._client.aclose()
+
     async def _acquire(self) -> str:
         """Acquire a fresh token from the IDP and cache it. Fail-closed on any error."""
         form = {
@@ -167,10 +150,126 @@ class AzureADTokenProvider:
         return token
 
 
+# ---------------------------------------------------------------------------
+# _ProviderEntry — internal cache entry (non-secret key + provider + created time)
+# ---------------------------------------------------------------------------
+
+_CacheKey = tuple[str, str, str, str]  # (tenant_id, client_id, authority, scope)
+
+
+@dataclass
+class _ProviderEntry:
+    provider: Any  # AzureADTokenProvider (or test fake)
+    created: float  # monotonic timestamp when the provider was created
+
+
+def _make_cache_key(config: AzureADConfig) -> _CacheKey:
+    """Build the NON-SECRET cache key from an AzureADConfig.
+
+    Deliberately excludes ``client_secret`` — the key must never contain a secret
+    (memory hygiene; rotation is handled as bounded staleness <= TTL).
+    """
+    return (config.tenant_id, config.client_id, config.authority, config.scope)
+
+
+def _default_provider_factory(config: AzureADConfig) -> AzureADTokenProvider:
+    """Default factory: construct a real AzureADTokenProvider from config."""
+    return AzureADTokenProvider(config=config)
+
+
+class AzureADTokenProviderCache:
+    """Per-tenant TTL+size-capped cache of AzureADTokenProvider instances.
+
+    §3 CONTRACT (dynamic-auth-byok TASK.md) — FROZEN @ v1.
+
+    Key = NON-SECRET AzureADConfig identity (tenant_id, client_id, authority, scope).
+    ``client_secret`` is NEVER in the key — a rotated secret takes effect within TTL.
+
+    ``get_or_create`` is SYNCHRONOUS (provider construction is non-IO; the AAD mint
+    happens lazily in ``AzureADTokenProvider.get_token()``).
+
+    Eviction policy:
+    - Per-entry TTL: reuse iff (now - created) < ttl_s; else build a fresh provider
+      and close the old one's httpx client fire-and-forget (asyncio.create_task).
+    - Soft size cap: when len > max_size, evict + close the oldest-created entry.
+
+    Security:
+    - ``client_secret`` never enters the cache key, any log, span, or error chain.
+    - Each tenant's token provider is isolated: distinct (tenant_id, client_id) pairs
+      map to distinct entries → tokens are NEVER crossed between tenants.
+    """
+
+    def __init__(
+        self,
+        *,
+        ttl_s: float,
+        max_size: int,
+        now_fn: Callable[[], float] = time.monotonic,
+        provider_factory: Callable[[AzureADConfig], Any] = _default_provider_factory,
+        metrics_registry: MetricsRegistry | None = None,
+    ) -> None:
+        self._ttl_s = ttl_s
+        self._max_size = max_size
+        self._now_fn = now_fn
+        self._factory = provider_factory
+        self._metrics_registry = metrics_registry
+        # Ordered dict preserves insertion order for oldest-first eviction.
+        self._cache: dict[_CacheKey, _ProviderEntry] = {}
+
+    def _close_provider_fire_and_forget(self, provider: Any) -> None:
+        """Schedule provider.aclose() as a background task (fire-and-forget).
+
+        Falls back to a best-effort synchronous noop if there is no running loop
+        (e.g. in sync tests that never enter an event loop).
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop — nothing to schedule; provider will be GC'd.
+            return
+        _task = loop.create_task(provider.aclose())  # noqa: RUF006 — fire-and-forget close
+
+    def get_or_create(self, config: AzureADConfig) -> Any:
+        """Return the cached provider for ``config``'s identity, constructing one if needed.
+
+        SYNCHRONOUS — never awaited; provider construction is non-IO.
+
+        Args:
+            config: AzureADConfig whose non-secret fields form the cache key.
+
+        Returns:
+            An AzureADTokenProvider (or factory-supplied fake) for the config identity.
+        """
+        key = _make_cache_key(config)
+        now = self._now_fn()
+
+        entry = self._cache.get(key)
+        if entry is not None and (now - entry.created) < self._ttl_s:
+            # Within TTL — reuse the existing provider.
+            return entry.provider
+
+        # TTL expired or not present — build a fresh provider.
+        if entry is not None:
+            # Close the old provider's httpx client fire-and-forget.
+            self._close_provider_fire_and_forget(entry.provider)
+            del self._cache[key]
+
+        new_provider = self._factory(config)
+        self._cache[key] = _ProviderEntry(provider=new_provider, created=now)
+
+        # Enforce soft size cap — evict the oldest-created entry when exceeded.
+        if len(self._cache) > self._max_size:
+            oldest_key = next(iter(self._cache))
+            oldest_entry = self._cache.pop(oldest_key)
+            self._close_provider_fire_and_forget(oldest_entry.provider)
+
+        return new_provider
+
+
 __all__ = [
     "DEFAULT_AUTHORITY",
     "DEFAULT_SCOPE",
     "AzureADConfig",
     "AzureADTokenProvider",
-    "resolve_azure_ad_config",
+    "AzureADTokenProviderCache",
 ]

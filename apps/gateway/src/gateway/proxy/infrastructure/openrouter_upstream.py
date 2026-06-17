@@ -1,7 +1,8 @@
 """Infrastructure adapter: OpenRouterCompletionUpstream.
 
 Wraps httpx.AsyncClient with:
-- Platform API key injection (GATEWAY_OPENROUTER_API_KEY)
+- Per-request tenant credential injection via request-scoped contextvar
+  (credential-resolution-seam TASK.md §3 — removed the platform API key path)
 - Connect timeout 10 s, non-stream total 120 s, stream read 300 s
 - Circuit breaker (5 consecutive failures -> 30 s open -> half-open)
 - Opt-in bounded retries (default GATEWAY_UPSTREAM_MAX_RETRIES=0 = NEVER retry,
@@ -25,7 +26,9 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import structlog
 
+from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
@@ -47,6 +50,9 @@ class OpenRouterCompletionUpstream:
     (wired in main.py onto app.state.completion_upstream).
     The circuit breaker state is per-instance (per-replica).
 
+    Auth is read per-request from the request-scoped contextvar set by the
+    use-case (credential-resolution-seam §3). No api_key constructor argument.
+
     Retry policy (opt-in):
       _max_retries=0 (default): exactly one attempt — byte-identical to v5.
       _max_retries>0: up to _max_retries additional attempts with full-jitter
@@ -55,7 +61,6 @@ class OpenRouterCompletionUpstream:
 
     def __init__(
         self,
-        api_key: str,
         *,
         base_url: str = _BASE_URL,
         max_retries: int = 0,
@@ -63,7 +68,6 @@ class OpenRouterCompletionUpstream:
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
-        self._api_key = api_key
         self._base_url = base_url
         self._breaker = CircuitBreaker()
         self._client = httpx.AsyncClient(
@@ -81,7 +85,15 @@ class OpenRouterCompletionUpstream:
         self._metrics_registry = metrics_registry
 
     def _auth_headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._api_key}"}
+        """Build OpenRouter auth headers from the request-scoped credential contextvar.
+
+        Raises ProviderKeyMissing when the contextvar is unset (None) or carries
+        a non-Bearer credential — never emits an unauthenticated or empty request.
+        """
+        cred = get_provider_credential()
+        if not isinstance(cred, BearerCredential):
+            raise ProviderKeyMissing("openrouter")
+        return {"Authorization": f"Bearer {cred.secret.get_secret_value()}"}
 
     async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """Forward non-streaming request to OpenRouter via the unified retry seam.

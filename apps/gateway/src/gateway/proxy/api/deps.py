@@ -163,6 +163,11 @@ def get_completion_use_case(
             threshold=float(getattr(_settings, "vector_cache_threshold", 0.95)),
             max_candidates=int(getattr(_settings, "vector_cache_max_candidates", 100)),
         )
+    # Credential resolution seam (credential-resolution-seam §3).
+    # Resolve per-tenant provider credential from app.state — tests override via
+    # app.state.tenant_credential_resolver = FakeResolver().
+    tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
+    provider_resolver = getattr(request.app.state, "provider_resolver", None)
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -173,4 +178,6 @@ def get_completion_use_case(
         span_emitter,
         stream_resilience_enabled=stream_resilience_enabled,
         vector_cache=vector_cache,
+        tenant_credential_resolver=tenant_credential_resolver,
+        provider_resolver=provider_resolver,
     )

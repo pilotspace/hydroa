@@ -16,11 +16,17 @@ from typing import Any
 import httpx
 import pytest
 
+from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import BearerCredential
 from gateway.proxy.infrastructure.gemini_upstream import (
     GoogleEmbeddingsProvider,
     _gemini_embed_to_openai,
 )
+
+# Shared test credential — credential-resolution-seam BUILD conversion.
+_TEST_GOOGLE_SECRET = "g-key"
+_TEST_BEARER_CRED = BearerCredential(secret=_TEST_GOOGLE_SECRET)
 
 pytestmark = pytest.mark.anyio
 
@@ -34,7 +40,8 @@ def anyio_backend() -> str:
 
 
 def _embed_provider(handler: Any) -> GoogleEmbeddingsProvider:
-    provider = GoogleEmbeddingsProvider(api_key="g-key", base_url=_BASE)
+    # Credential-resolution-seam BUILD: api_key removed; credential via contextvar.
+    provider = GoogleEmbeddingsProvider(base_url=_BASE)
     provider._client = httpx.AsyncClient(base_url=_BASE, transport=httpx.MockTransport(handler))  # type: ignore[attr-defined,arg-type]
     return provider
 
@@ -76,7 +83,11 @@ async def test_single_input_exact_count() -> None:
         return httpx.Response(200, json={"embedding": {"values": [0.1, 0.2]}})
 
     provider = _embed_provider(handler)
-    status, body = await provider.post_json("/embeddings", {"model": "text-embedding-004", "input": "hello"})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await provider.post_json("/embeddings", {"model": "text-embedding-004", "input": "hello"})
+    finally:
+        reset_provider_credential(token)
     assert status == 200
     # exact count 3, NOT ceil(len("hello")/4) == 2
     assert body["usage"] == {"prompt_tokens": 3, "total_tokens": 3}
@@ -96,7 +107,11 @@ async def test_batch_input_exact_count_aggregate() -> None:
         return httpx.Response(200, json={"embeddings": [{"values": [1.0]}, {"values": [2.0]}]})
 
     provider = _embed_provider(handler)
-    status, body = await provider.post_json("/embeddings", {"model": "text-embedding-004", "input": ["a", "bb"]})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await provider.post_json("/embeddings", {"model": "text-embedding-004", "input": ["a", "bb"]})
+    finally:
+        reset_provider_credential(token)
     assert status == 200
     assert body["usage"]["prompt_tokens"] == 7
     assert body["data"] == [
@@ -119,8 +134,12 @@ async def test_counttokens_5xx_falls_back_to_estimate(caplog: pytest.LogCaptureF
         return httpx.Response(200, json={"embedding": {"values": [0.1]}})
 
     provider = _embed_provider(handler)
-    with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
-        status, body = await provider.post_json("/embeddings", {"model": "m", "input": "hello"})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
+            status, body = await provider.post_json("/embeddings", {"model": "m", "input": "hello"})
+    finally:
+        reset_provider_credential(token)
     assert status == 200
     # fall back to estimate ceil(5/4) == 2; request NOT failed
     assert body["usage"] == {"prompt_tokens": max(1, math.ceil(len("hello") / 4)), "total_tokens": max(1, math.ceil(len("hello") / 4))}
@@ -134,7 +153,11 @@ async def test_counttokens_missing_totaltokens_falls_back() -> None:
         return httpx.Response(200, json={"embedding": {"values": [0.1]}})
 
     provider = _embed_provider(handler)
-    status, body = await provider.post_json("/embeddings", {"model": "m", "input": "hello"})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await provider.post_json("/embeddings", {"model": "m", "input": "hello"})
+    finally:
+        reset_provider_credential(token)
     assert status == 200
     assert body["usage"]["prompt_tokens"] == max(1, math.ceil(len("hello") / 4))
 
@@ -146,7 +169,11 @@ async def test_counttokens_timeout_falls_back() -> None:
         return httpx.Response(200, json={"embedding": {"values": [0.1]}})
 
     provider = _embed_provider(handler)
-    status, body = await provider.post_json("/embeddings", {"model": "m", "input": "hi"})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        status, body = await provider.post_json("/embeddings", {"model": "m", "input": "hi"})
+    finally:
+        reset_provider_credential(token)
     assert status == 200
     assert body["usage"]["prompt_tokens"] == max(1, math.ceil(len("hi") / 4))
 
@@ -167,10 +194,14 @@ async def test_counttokens_uses_x_goog_api_key_no_query() -> None:
         return httpx.Response(200, json={"embedding": {"values": [0.1]}})
 
     provider = _embed_provider(handler)
-    await provider.post_json("/embeddings", {"model": "m", "input": "x"})
-    assert seen["headers"].get("x-goog-api-key") == "g-key"
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        await provider.post_json("/embeddings", {"model": "m", "input": "x"})
+    finally:
+        reset_provider_credential(token)
+    assert seen["headers"].get("x-goog-api-key") == _TEST_GOOGLE_SECRET
     assert "key=" not in seen["url"]
-    assert "g-key" not in seen["url"]
+    assert _TEST_GOOGLE_SECRET not in seen["url"]
 
 
 async def test_embed_5xx_raises_and_skips_count_leg() -> None:
@@ -184,7 +215,11 @@ async def test_embed_5xx_raises_and_skips_count_leg() -> None:
         return httpx.Response(503, json={"error": {"code": 503, "message": "x", "status": "UNAVAILABLE"}})
 
     provider = _embed_provider(handler)
-    with pytest.raises(UpstreamUnavailableError):
-        await provider.post_json("/embeddings", {"model": "m", "input": "x"})
+    token = set_provider_credential(_TEST_BEARER_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await provider.post_json("/embeddings", {"model": "m", "input": "x"})
+    finally:
+        reset_provider_credential(token)
     # count leg runs ONLY after a successful embed
     assert count_calls == 0

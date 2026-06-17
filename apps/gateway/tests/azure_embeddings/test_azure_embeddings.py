@@ -8,8 +8,12 @@ CONTRACT (FROZEN @ v1): azure-embeddings TASK.md §3
   - AzureEmbeddingsProvider implements UpstreamProvider (post_json/post_multipart/stream_bytes).
   - post_json: resolve_deployment → build_url(dep, "embeddings") → POST payload unchanged →
     (status, resp.json()) unchanged; 5xx/Timeout/Network → UpstreamUnavailableError; 4xx pass-through.
-  - _auth_headers: Bearer when token_provider set, api-key otherwise (shared AAD seam).
-  - create_app registers _providers["azure"] iff Azure config present.
+  - _auth_headers: Bearer when aad mode, api-key otherwise (shared AAD seam via contextvar).
+  - create_app registers _providers["azure"] unconditionally (v25 task-3 BYOK).
+
+v25 task-3 amendment: ctor drops config=/token_provider=; credentials travel via
+AzureCredential in the contextvar. Each post_json() call is wrapped with
+set_provider_credential / reset_provider_credential.
 """
 
 from __future__ import annotations
@@ -17,36 +21,36 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
-from gateway.proxy.infrastructure.azure_config import AzureConfig
+from gateway.proxy.domain.provider_credentials import AzureCredential
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 
 # RED: azure_embeddings does not exist yet → ModuleNotFoundError.
 from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
 
-_AZ_CFG = AzureConfig(
-    api_key="api-key-secret",
+# v25 task-3: AzureCredential (api_key mode) mirrors the old _AZ_CFG.
+_AZ_CRED = AzureCredential(
+    mode="api_key",
     endpoint="https://r.openai.azure.com",
     api_version="2024-10-21",
     deployment_map={"text-embedding-3-small": "prod-embed"},
+    api_key="api-key-secret",
 )
 
-
-class _FakeProvider:
-    def __init__(self, token: str) -> None:
-        self._token = token
-
-    async def get_token(self) -> str:
-        return self._token
-
-
-class _RaisingProvider:
-    def __init__(self) -> None:
-        self.calls = 0
-
-    async def get_token(self) -> str:
-        self.calls += 1
-        raise UpstreamUnavailableError("Azure AD token request failed")
+# v25 task-3: AzureCredential (aad mode) mirrors the old token_provider path.
+_AZ_AAD_CRED = AzureCredential(
+    mode="aad",
+    endpoint="https://r.openai.azure.com",
+    api_version="2024-10-21",
+    deployment_map={"text-embedding-3-small": "prod-embed"},
+    tenant_id="tenant-1",
+    client_id="client-1",
+    client_secret="top-secret",
+)
 
 
 class _SpyBreaker(CircuitBreaker):
@@ -67,12 +71,9 @@ class _SpyBreaker(CircuitBreaker):
 
 
 def _make_adapter(
-    handler: object, *, token_provider: object | None = None, breaker: CircuitBreaker | None = None
+    handler: object, *, breaker: CircuitBreaker | None = None
 ) -> AzureEmbeddingsProvider:
-    adapter = AzureEmbeddingsProvider(
-        config=_AZ_CFG,
-        token_provider=token_provider,  # type: ignore[arg-type]
-    )
+    adapter = AzureEmbeddingsProvider(token_provider_cache=None)
     if breaker is not None:
         adapter._breaker = breaker  # type: ignore[attr-defined]
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
@@ -99,9 +100,13 @@ async def test_api_key_routes_to_deployment_url() -> None:
         )
 
     adapter = _make_adapter(handler)
-    status, body = await adapter.post_json(
-        "/embeddings", {"model": "text-embedding-3-small", "input": "hello"}
-    )
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        status, body = await adapter.post_json(
+            "/embeddings", {"model": "text-embedding-3-small", "input": "hello"}
+        )
+    finally:
+        reset_provider_credential(tok)
 
     assert status == 200
     assert (
@@ -116,6 +121,12 @@ async def test_api_key_routes_to_deployment_url() -> None:
 
 
 async def test_aad_sends_bearer_token() -> None:
+    """AAD mode: AzureCredential with mode='aad' produces a Bearer token header.
+
+    token_provider_cache=None causes the adapter to instantiate AzureADTokenProvider
+    directly per-call. We patch the provider's _client to return a token so no real
+    IDP call is made.
+    """
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -123,8 +134,25 @@ async def test_aad_sends_bearer_token() -> None:
         seen["api_key"] = request.headers.get("api-key")
         return httpx.Response(200, json={"object": "list", "data": [], "usage": {}})
 
-    adapter = _make_adapter(handler, token_provider=_FakeProvider("tok-xyz"))
-    await adapter.post_json("/embeddings", {"model": "m", "input": ["a", "b"]})
+    adapter = _make_adapter(handler)
+
+    # Patch the AzureADTokenProvider to return a fake token without hitting IDP.
+    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
+
+    original_get_token = AzureADTokenProvider.get_token
+
+    async def _fake_get_token(self: AzureADTokenProvider) -> str:
+        return "tok-xyz"
+
+    AzureADTokenProvider.get_token = _fake_get_token  # type: ignore[method-assign]
+    try:
+        tok = set_provider_credential(_AZ_AAD_CRED)
+        try:
+            await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": ["a", "b"]})
+        finally:
+            reset_provider_credential(tok)
+    finally:
+        AzureADTokenProvider.get_token = original_get_token  # type: ignore[method-assign]
 
     assert seen["authorization"] == "Bearer tok-xyz"
     assert seen["api_key"] is None
@@ -138,17 +166,22 @@ async def test_identity_deployment_for_unmapped_model() -> None:
         seen["body"] = request.content.decode()
         return httpx.Response(200, json={"object": "list", "data": [], "usage": {}})
 
-    cfg = AzureConfig(
-        api_key="k",
+    cred = AzureCredential(
+        mode="api_key",
         endpoint="https://r.openai.azure.com",
         api_version="2024-10-21",
         deployment_map={},
+        api_key="k",
     )
-    adapter = AzureEmbeddingsProvider(config=cfg)
+    adapter = AzureEmbeddingsProvider(token_provider_cache=None)
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
         transport=httpx.MockTransport(handler),  # type: ignore[arg-type]
     )
-    await adapter.post_json("/embeddings", {"model": "my-embed", "input": "x"})
+    tok = set_provider_credential(cred)
+    try:
+        await adapter.post_json("/embeddings", {"model": "my-embed", "input": "x"})
+    finally:
+        reset_provider_credential(tok)
 
     assert "/openai/deployments/my-embed/embeddings?api-version=2024-10-21" in str(seen["url"])
     assert '"model":"my-embed"' in str(seen["body"]).replace(" ", "")
@@ -160,8 +193,12 @@ async def test_upstream_500_fails_closed() -> None:
 
     spy = _SpyBreaker()
     adapter = _make_adapter(handler, breaker=spy)
-    with pytest.raises(UpstreamUnavailableError):
-        await adapter.post_json("/embeddings", {"model": "m", "input": "x"})
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+    finally:
+        reset_provider_credential(tok)
     # 5xx is an upstream outage → the breaker must record the failure (resilience seam).
     assert spy.errors == 1
     assert spy.successes == 0
@@ -175,7 +212,11 @@ async def test_4xx_content_filter_passes_through() -> None:
 
     spy = _SpyBreaker()
     adapter = _make_adapter(handler, breaker=spy)
-    status, body = await adapter.post_json("/embeddings", {"model": "m", "input": "x"})
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        status, body = await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+    finally:
+        reset_provider_credential(tok)
     assert status == 400
     assert body == err
     # 4xx is NOT an outage (the upstream responded) → record success, not error.
@@ -193,8 +234,12 @@ async def test_network_error_fails_closed_no_secret_in_chain() -> None:
 
     spy = _SpyBreaker()
     adapter = _make_adapter(handler, breaker=spy)
-    with pytest.raises(UpstreamUnavailableError) as exc:
-        await adapter.post_json("/embeddings", {"model": "m", "input": "x"})
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError) as exc:
+            await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+    finally:
+        reset_provider_credential(tok)
     assert exc.value.__cause__ is None
     assert "api-key-secret" not in str(exc.value)
     assert spy.errors == 1
@@ -207,24 +252,43 @@ async def test_success_records_breaker_success() -> None:
 
     spy = _SpyBreaker()
     adapter = _make_adapter(handler, breaker=spy)
-    status, _ = await adapter.post_json("/embeddings", {"model": "m", "input": "x"})
+    tok = set_provider_credential(_AZ_CRED)
+    try:
+        status, _ = await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+    finally:
+        reset_provider_credential(tok)
     assert status == 200
     assert spy.successes == 1
     assert spy.errors == 0
 
 
 async def test_token_failure_fails_closed_no_post() -> None:
+    """AAD token failure raises before any POST — no blank-auth upstream request."""
     hits = [0]
 
     def handler(request: httpx.Request) -> httpx.Response:
         hits[0] += 1
         return httpx.Response(200, json={"object": "list", "data": [], "usage": {}})
 
-    raiser = _RaisingProvider()
-    adapter = _make_adapter(handler, token_provider=raiser)
-    with pytest.raises(UpstreamUnavailableError):
-        await adapter.post_json("/embeddings", {"model": "m", "input": "x"})
-    assert raiser.calls == 1
+    adapter = _make_adapter(handler)
+
+    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
+
+    async def _raising_get_token(self: AzureADTokenProvider) -> str:
+        raise UpstreamUnavailableError("Azure AD token request failed")
+
+    original_get_token = AzureADTokenProvider.get_token
+    AzureADTokenProvider.get_token = _raising_get_token  # type: ignore[method-assign]
+    try:
+        tok = set_provider_credential(_AZ_AAD_CRED)
+        try:
+            with pytest.raises(UpstreamUnavailableError):
+                await adapter.post_json("/embeddings", {"model": "text-embedding-3-small", "input": "x"})
+        finally:
+            reset_provider_credential(tok)
+    finally:
+        AzureADTokenProvider.get_token = original_get_token  # type: ignore[method-assign]
+
     assert hits[0] == 0  # never POSTed with blank/absent auth
 
 
@@ -241,66 +305,16 @@ async def test_stream_bytes_unsupported() -> None:
             pass
 
 
-def test_wiring_registers_azure_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_wiring_registers_azure_provider_unconditionally(monkeypatch: pytest.MonkeyPatch) -> None:
+    """v25 task-3: azure embeddings provider registered unconditionally — no env-cred guard.
+
+    RIGHT-REASON RED: current wiring gates 'azure' on resolve_azure_config(settings)
+    being truthy → absent without env creds → assertion fails.
+    """
     from gateway.core.config import Settings
     from gateway.main import create_app
 
     for name in (
-        "GATEWAY_OPENROUTER_API_KEY",
-        "GATEWAY_OPENAI_API_KEY",
-        "GATEWAY_ANTHROPIC_API_KEY",
-        "GATEWAY_GOOGLE_API_KEY",
-        "GATEWAY_AZURE_API_KEY",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
-        jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
-        environment="test",
-        azure_endpoint="https://r.openai.azure.com",
-        azure_api_key="azure-key",
-    )  # type: ignore[arg-type]
-    app = create_app(settings)
-    assert isinstance(app.state.provider_registry.get("azure"), AzureEmbeddingsProvider)
-
-
-def test_wiring_absent_when_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
-    from gateway.core.config import Settings
-    from gateway.main import create_app
-
-    for name in (
-        "GATEWAY_OPENROUTER_API_KEY",
-        "GATEWAY_OPENAI_API_KEY",
-        "GATEWAY_ANTHROPIC_API_KEY",
-        "GATEWAY_GOOGLE_API_KEY",
-        "GATEWAY_AZURE_API_KEY",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
-        jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
-        environment="test",
-    )  # type: ignore[arg-type]
-    app = create_app(settings)
-    assert app.state.provider_registry.get("azure") is None
-
-
-def test_wiring_aad_only_shares_token_provider_instance(monkeypatch: pytest.MonkeyPatch) -> None:
-    # FINDING 4/5: under AAD-only config (no api-key) the embeddings provider must be
-    # registered AND must reuse the SAME AzureADTokenProvider instance as the chat adapter
-    # (one token cache — no double IDP calls / divergent refresh locks).
-    from gateway.core.config import Settings
-    from gateway.main import create_app
-
-    for name in (
-        "GATEWAY_OPENROUTER_API_KEY",
-        "GATEWAY_OPENAI_API_KEY",
-        "GATEWAY_ANTHROPIC_API_KEY",
-        "GATEWAY_GOOGLE_API_KEY",
         "GATEWAY_AZURE_API_KEY",
         "GATEWAY_AZURE_CLIENT_SECRET",
     ):
@@ -311,16 +325,56 @@ def test_wiring_aad_only_shares_token_provider_instance(monkeypatch: pytest.Monk
         jwt_secret="test-secret-not-for-production-0123456789",
         redis_url="redis://localhost:6380/9",
         environment="test",
-        azure_endpoint="https://r.openai.azure.com",
-        azure_tenant_id="t",
-        azure_client_id="c",
-        azure_client_secret="s",
+        # No azure_api_key, no azure_client_secret, no azure_endpoint
+    )  # type: ignore[arg-type]
+    app = create_app(settings)
+    assert isinstance(app.state.provider_registry.get("azure"), AzureEmbeddingsProvider), (
+        "provider_registry.get('azure') must be AzureEmbeddingsProvider UNCONDITIONALLY "
+        "after task-3 BUILD. Got None — env-guard still in place (pre-BUILD state)."
+    )
+
+
+def test_wiring_azure_cache_shared_across_chat_and_embeddings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """v25 task-3: AzureADTokenProviderCache is shared (same instance) across chat + embeddings.
+
+    The cache on app.state is wired into both AzureCompletionUpstream and
+    AzureEmbeddingsProvider — one token cache, no double IDP calls.
+
+    RIGHT-REASON RED: AzureADTokenProviderCache does not exist yet (ImportError on import),
+    and the current wiring uses a per-adapter singleton AzureADTokenProvider instead.
+    """
+    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache  # type: ignore[attr-defined]
+    from gateway.core.config import Settings
+    from gateway.main import create_app
+
+    for name in (
+        "GATEWAY_AZURE_API_KEY",
+        "GATEWAY_AZURE_CLIENT_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(
+        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        jwt_secret="test-secret-not-for-production-0123456789",
+        redis_url="redis://localhost:6380/9",
+        environment="test",
     )  # type: ignore[arg-type]
     app = create_app(settings)
 
+    # Both adapters must share the SAME AzureADTokenProviderCache from app.state
+    cache = getattr(app.state, "azure_ad_token_provider_cache", None)
+    assert isinstance(cache, AzureADTokenProviderCache), (
+        "app.state.azure_ad_token_provider_cache must be AzureADTokenProviderCache "
+        "after task-3 BUILD."
+    )
+
     embed = app.state.provider_registry.get("azure")
-    chat = app.state.chat_adapters["azure"]
+    chat = app.state.chat_adapters.get("azure")
     assert isinstance(embed, AzureEmbeddingsProvider)
-    # SAME shared instance — identity, not just equality.
-    assert embed._token_provider is chat._token_provider
-    assert embed._token_provider is not None
+    # Both adapters must reference the same cache instance
+    assert getattr(embed, "_token_provider_cache", None) is cache, (
+        "AzureEmbeddingsProvider must reference app.state.azure_ad_token_provider_cache"
+    )
+    assert getattr(chat, "_token_provider_cache", None) is cache, (
+        "AzureCompletionUpstream must reference app.state.azure_ad_token_provider_cache"
+    )

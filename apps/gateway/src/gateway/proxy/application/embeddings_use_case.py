@@ -35,9 +35,11 @@ from gateway.proxy.application.use_cases import (
     _fire_cache_set,  # pyright: ignore[reportPrivateUsage]
     _fire_record_cached,  # pyright: ignore[reportPrivateUsage]
     _fire_record_with_raw,  # pyright: ignore[reportPrivateUsage]
+    resolve_provider_credential,
 )
+from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
-from gateway.proxy.domain.ports import ResponseCache, UsageRecorder
+from gateway.proxy.domain.ports import ResponseCache, TenantCredentialResolver, UsageRecorder
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
 from gateway.proxy.infrastructure.response_cache import build_embedding_cache_key
 
@@ -50,9 +52,13 @@ class EmbeddingsUseCase:
         *,
         governance: NonChatGovernance,
         session: AsyncSession,
+        tenant_credential_resolver: TenantCredentialResolver | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
+        # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test) ⇒
+        # no per-request credential set (env-bound adapters unaffected).
+        self._tenant_credential_resolver = tenant_credential_resolver
 
     async def execute(
         self,
@@ -131,11 +137,22 @@ class EmbeddingsUseCase:
         # Step 5: Resolve provider adapter
         provider_adapter = select_provider(row.modality, row.provider, registry)
 
+        # Step 5.5: Resolve the per-tenant provider credential into the request contextvar
+        # (credential-resolution-seam §3) so the Bearer non-chat adapter authenticates with
+        # THIS tenant's key. Gated to converted providers; Bedrock/Azure skip (env-bound,
+        # task 3). ProviderKeyMissing → ProblemError(402). Reset in finally — never leaks.
+        _cred_token = await resolve_provider_credential(
+            self._tenant_credential_resolver, authz.tenant_id, row.provider
+        )
+
         # Step 6: Call upstream
         try:
             status, resp_body = await provider_adapter.post_json("/embeddings", body)
         except (UpstreamUnavailableError, CircuitOpenError):
             raise UPSTREAM_UNAVAILABLE.exc() from None
+        finally:
+            if _cred_token is not None:
+                reset_provider_credential(_cred_token)  # type: ignore[arg-type]
 
         # Step 7: Fire-and-forget usage record (single-bill invariant)
         _fire_record_with_raw(

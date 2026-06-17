@@ -25,17 +25,10 @@ class EmptyUpstreamKeyError(ValueError):
     """
 
 
-#: Upstream API key env vars guarded at boot. A new provider MUST add its var here.
-_UPSTREAM_KEY_ENV_VARS: Final[tuple[str, ...]] = (
-    "GATEWAY_OPENROUTER_API_KEY",
-    "GATEWAY_OPENAI_API_KEY",
-    "GATEWAY_ANTHROPIC_API_KEY",
-    "GATEWAY_GOOGLE_API_KEY",
-    "GATEWAY_BEDROCK_ACCESS_KEY_ID",
-    "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
-    "GATEWAY_AZURE_API_KEY",
-    "GATEWAY_AZURE_CLIENT_SECRET",
-)
+#: Upstream API key env vars guarded at boot. All provider keys are now resolved
+#: per-tenant at request time (credential-resolution-seam §3 + dynamic-auth-byok §3).
+#: Bedrock and Azure secret env paths retired in task 3 — removed from this guard.
+_UPSTREAM_KEY_ENV_VARS: Final[tuple[str, ...]] = ()
 
 
 def validate_upstream_keys(env: Mapping[str, str] | None = None) -> None:
@@ -128,7 +121,6 @@ class Settings(BaseSettings):
     jwt_secret: str = _DEV_JWT_SECRET
     jwt_ttl_seconds: int = 86400
     jwt_issuer: str = "ai-proxy"
-    openrouter_api_key: str = ""  # Required in production; empty default for dev/test
     redis_url: str = "redis://localhost:6380/0"
     shutdown_drain_timeout_seconds: int = 10  # env: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
 
@@ -184,6 +176,21 @@ class Settings(BaseSettings):
     # GATEWAY_OIDC_ALLOW_HTTP_URLS — dev/test only; never True in production
     oidc_allow_http_urls: bool = False
 
+    # ── Per-tenant provider credentials (provider-credential-store task) ─────
+    # GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY — Fernet key (base64url); required for upsert/get.
+    # Kept separate from GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY for blast-radius isolation:
+    # a compromised OIDC key does not expose upstream provider secrets, and vice versa.
+    provider_key_encryption_key: str = ""
+
+    # ── Per-tenant credential resolution (credential-resolution-seam task) ───────
+    # GATEWAY_PROVIDER_CREDENTIAL_CACHE_TTL_S — TTL in seconds for the in-memory
+    # positive-result credential cache. Default 60 s. Only positive hits are cached
+    # (miss NOT cached so a freshly-configured key takes effect immediately).
+    provider_credential_cache_ttl_s: float = 60.0
+    # GATEWAY_PROVIDER_CREDENTIAL_RESOLVE_TIMEOUT_S — bounded asyncio timeout on the
+    # cold store.get() DB fetch. Timeout fails CLOSED: raises ProviderKeyMissing.
+    provider_credential_resolve_timeout_s: float = 2.0
+
     # ── OpenRouter upstream base URL (v6-live-verify task) ──────────────────────
     # GATEWAY_OPENROUTER_BASE_URL — base URL for OpenRouterCompletionUpstream.
     # Default is byte-identical to the prior module constant (_BASE_URL).
@@ -192,19 +199,11 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # ── OpenAI direct provider (provider-seam task) ───────────────────────────
-    # GATEWAY_OPENAI_API_KEY — secret; empty = OpenAI provider absent from registry.
-    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
-    # labels/span attributes.  Follows the same handling as openrouter_api_key.
-    openai_api_key: str = ""
     # GATEWAY_OPENAI_BASE_URL — Override in e2e overlays to point at a stub.
     # NEVER set to a non-https URL in production deployments.
     openai_base_url: str = "https://api.openai.com/v1"
 
     # ── Anthropic direct provider (provider-chat-dispatch task) ──────────────
-    # GATEWAY_ANTHROPIC_API_KEY — secret; empty = Anthropic provider absent.
-    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
-    # labels/span attributes.
-    anthropic_api_key: str = ""
     # GATEWAY_ANTHROPIC_BASE_URL — Override in e2e overlays to point at a stub.
     anthropic_base_url: str = "https://api.anthropic.com/v1"
     # GATEWAY_ANTHROPIC_VERSION — Anthropic-Version header value.
@@ -214,10 +213,6 @@ class Settings(BaseSettings):
     anthropic_default_max_tokens: int = 4096
 
     # ── Google direct provider (provider-chat-dispatch task) ──────────────────
-    # GATEWAY_GOOGLE_API_KEY — secret; empty = Google provider absent.
-    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
-    # labels/span attributes.
-    google_api_key: str = ""
     # GATEWAY_GOOGLE_BASE_URL — Override in e2e overlays to point at a stub.
     google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     # GATEWAY_GOOGLE_DEFAULT_MAX_TOKENS — default max_tokens for Gemini requests
@@ -225,48 +220,42 @@ class Settings(BaseSettings):
     google_default_max_tokens: int = 4096
 
     # ── AWS Bedrock direct provider (bedrock-sigv4 task) ──────────────────────
-    # GATEWAY_BEDROCK_ACCESS_KEY_ID — AWS access key; empty = Bedrock provider absent.
-    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
-    # labels/span attributes.
-    bedrock_access_key_id: str = ""
-    # GATEWAY_BEDROCK_SECRET_ACCESS_KEY — AWS secret access key (secret).
-    # NEVER logged, echoed, committed, or placed in metric labels/span attributes.
-    bedrock_secret_access_key: str = ""
-    # GATEWAY_BEDROCK_REGION — AWS region for Bedrock calls.
+    # Secret fields (bedrock_access_key_id, bedrock_secret_access_key,
+    # bedrock_session_token) REMOVED in task-3 (dynamic-auth-byok): credentials
+    # are now resolved per-tenant at request time via the contextvar seam.
+    # GATEWAY_BEDROCK_REGION — kept as a harmless boot default / test override;
+    # the per-tenant BedrockCredential.region takes precedence at request time.
     bedrock_region: str = "us-east-1"
-    # GATEWAY_BEDROCK_SESSION_TOKEN — optional STS session token.
-    # Empty string = no session token (static long-term credentials).
-    bedrock_session_token: str = ""
     # GATEWAY_BEDROCK_ENDPOINT_URL — override endpoint for tests/e2e overlays.
-    # Empty = use the default regional Bedrock endpoint.
+    # Empty = derive from credential region at request time.
     bedrock_endpoint_url: str = ""
 
     # ── Azure OpenAI direct provider (azure-auth-routing task) ────────────────
-    # GATEWAY_AZURE_API_KEY — Azure OpenAI api-key; empty = Azure provider absent.
-    # Treated as a secret: NEVER logged, echoed, committed, or placed in metric
-    # labels/span attributes/URLs/cache keys.
-    azure_api_key: str = ""
+    # Secret fields (azure_api_key, azure_client_secret) REMOVED in task-3
+    # (dynamic-auth-byok): credentials are now resolved per-tenant via the seam.
+    # Descriptive fields kept as harmless boot defaults / test overrides.
     # GATEWAY_AZURE_ENDPOINT — resource endpoint, e.g. "https://r.openai.azure.com".
-    # Empty (with or without a key) = Azure provider cleanly disabled (opt-in).
     azure_endpoint: str = ""
     # GATEWAY_AZURE_API_VERSION — required api-version query param on every call.
-    # Defaults to a GA-stable version; operator-overridable per Azure resource.
     azure_api_version: str = "2024-10-21"
     # GATEWAY_AZURE_DEPLOYMENT_MAP — JSON object mapping client model -> Azure
     # deployment name. Empty = identity routing (model name == deployment name).
     azure_deployment_map: dict[str, str] = Field(default_factory=dict)
-    # ── Azure AD (client-credentials) auth — alternative to the api-key ───────
-    # GATEWAY_AZURE_TENANT_ID / GATEWAY_AZURE_CLIENT_ID — AAD app registration.
+    # ── Azure AD (client-credentials) auth — descriptive knobs ────────────────
+    # GATEWAY_AZURE_TENANT_ID / GATEWAY_AZURE_CLIENT_ID — kept as boot defaults.
     azure_tenant_id: str = ""
     azure_client_id: str = ""
-    # GATEWAY_AZURE_CLIENT_SECRET — AAD client secret (SECRET).
-    # NEVER logged, echoed, committed, or placed in metric labels/span attributes/URLs.
-    azure_client_secret: str = ""
     # GATEWAY_AZURE_AD_SCOPE — OAuth2 scope override (empty = cognitive-services default).
     azure_ad_scope: str = ""
-    # GATEWAY_AZURE_AD_AUTHORITY — AAD authority host for sovereign/government clouds
-    # (e.g. https://login.microsoftonline.us). Empty = public-cloud DEFAULT_AUTHORITY.
+    # GATEWAY_AZURE_AD_AUTHORITY — AAD authority host for sovereign/government clouds.
     azure_ad_authority: str = ""
+
+    # ── Per-tenant Azure AD token provider cache (dynamic-auth-byok task-3) ───
+    # GATEWAY_AZURE_AD_PROVIDER_CACHE_TTL_S — per-entry TTL in seconds.
+    # Controls how fast a rotated client_secret takes effect (bounded staleness).
+    azure_ad_provider_cache_ttl_s: float = 300.0
+    # GATEWAY_AZURE_AD_PROVIDER_CACHE_MAX — soft size cap (oldest-created evicted).
+    azure_ad_provider_cache_max: int = 512
 
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.

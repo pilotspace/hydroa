@@ -10,8 +10,13 @@ CONTRACT (FROZEN): gateway.proxy.infrastructure.bedrock_sigv4
     -> dict[str, str] with keys:
       "x-amz-date", "x-amz-content-sha256", "Authorization"
       + "x-amz-security-token" ONLY when credentials.session_token is set.
-  - resolve_aws_credentials(settings) -> AwsCredentials | None.
   - SERVICE = "bedrock" constant.
+
+v25 task-3 amendment: resolve_aws_credentials is DELETED (env-secret removal §6).
+SV6 (test_resolve_present), SV7a (test_resolve_absent_missing_field), and
+SV7b (test_resolve_absent_default_settings) are REMOVED — they tested the deleted
+function. The pure SigV4 oracle tests (SV0–SV5, SV8) and the boot-guard test are
+KEPT UNTOUCHED as required by the context file constraint.
 
 AUTHENTIC VECTORS:
   The signing computations for SV1 and SV2 are derived from the AWS SigV4 test
@@ -57,11 +62,11 @@ from types import SimpleNamespace
 
 import pytest
 
-# RED: this module does not exist yet — all imports will raise ModuleNotFoundError.
+# resolve_aws_credentials was DELETED in v25 task-3 (env-secret removal §6).
+# Import only the symbols that remain.
 from gateway.proxy.infrastructure.bedrock_sigv4 import (
     SERVICE,
     AwsCredentials,
-    resolve_aws_credentials,
     sign_request,
 )
 
@@ -347,90 +352,24 @@ def test_secret_never_leaks() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SV6 — resolve_aws_credentials: all fields set → AwsCredentials returned
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_present() -> None:
-    """SV6: settings with all three required fields → AwsCredentials with correct values;
-    session_token is None when bedrock_session_token is absent/empty.
-    """
-    settings_all = SimpleNamespace(
-        bedrock_access_key_id="AKIAIOSFODNN7EXAMPLE",
-        bedrock_secret_access_key="wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-        bedrock_region="us-east-1",
-        bedrock_session_token="",  # empty string → treated as None
-    )
-    creds = resolve_aws_credentials(settings_all)
-    assert creds is not None
-    assert creds.access_key_id == "AKIAIOSFODNN7EXAMPLE"
-    assert creds.region == "us-east-1"
-    assert creds.session_token is None
-
-    # With an actual session token
-    settings_with_token = SimpleNamespace(
-        bedrock_access_key_id="AKIAIOSFODNN7EXAMPLE",
-        bedrock_secret_access_key="wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-        bedrock_region="us-east-1",
-        bedrock_session_token="some-session-token",
-    )
-    creds_tok = resolve_aws_credentials(settings_with_token)
-    assert creds_tok is not None
-    assert creds_tok.session_token == "some-session-token"
-
-
-# ---------------------------------------------------------------------------
-# SV7 — resolve_aws_credentials: any missing field → None; default Settings → None
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "missing_field",
-    ["bedrock_access_key_id", "bedrock_secret_access_key", "bedrock_region"],
-)
-def test_resolve_absent_missing_field(missing_field: str) -> None:
-    """SV7a: any one of the three required fields empty/missing → None."""
-    base = {
-        "bedrock_access_key_id": "AKIAIOSFODNN7EXAMPLE",
-        "bedrock_secret_access_key": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-        "bedrock_region": "us-east-1",
-        "bedrock_session_token": "",
-    }
-    base[missing_field] = ""  # empty string = absent/not-configured
-    settings = SimpleNamespace(**base)
-    result = resolve_aws_credentials(settings)
-    assert result is None, f"Expected None when {missing_field} is empty, got {result!r}"
-
-
-def test_resolve_absent_default_settings() -> None:
-    """SV7b: a default Settings() (nothing configured) → None.
-
-    Uses the real Settings class so the test covers the actual config defaults.
-    This test is also RED until Settings gains the bedrock_* fields.
-    """
-    from gateway.core.config import Settings
-
-    settings = Settings()
-    result = resolve_aws_credentials(settings)
-    assert result is None, f"Expected None from default Settings, got {result!r}"
-
-
+# SV6 and SV7 (resolve_aws_credentials tests) REMOVED — v25 task-3 §6:
+# resolve_aws_credentials is DELETED (env-secret removal). The pure SigV4
+# oracle tests (SV0–SV5, SV8) and the boot-guard test below are kept.
 # ---------------------------------------------------------------------------
 # Config boot guard — bedrock key env vars in _UPSTREAM_KEY_ENV_VARS
 # ---------------------------------------------------------------------------
 
 
-def test_config_boot_guard_lists_bedrock_keys() -> None:
-    """GATEWAY_BEDROCK_ACCESS_KEY_ID and GATEWAY_BEDROCK_SECRET_ACCESS_KEY must be
-    in gateway.core.config._UPSTREAM_KEY_ENV_VARS so they are checked at boot.
-
-    RED until config.py is updated with the bedrock key variables.
+def test_config_boot_guard_excludes_bedrock_keys() -> None:
+    """GATEWAY_BEDROCK_ACCESS_KEY_ID and GATEWAY_BEDROCK_SECRET_ACCESS_KEY must NOT be
+    in gateway.core.config._UPSTREAM_KEY_ENV_VARS — v25 task-3 §6 retired all provider
+    secret env vars from the boot guard (credentials are now BYOK per-tenant at request time).
     """
     from gateway.core.config import _UPSTREAM_KEY_ENV_VARS
 
-    assert "GATEWAY_BEDROCK_ACCESS_KEY_ID" in _UPSTREAM_KEY_ENV_VARS, (
-        "GATEWAY_BEDROCK_ACCESS_KEY_ID must be in _UPSTREAM_KEY_ENV_VARS"
+    assert "GATEWAY_BEDROCK_ACCESS_KEY_ID" not in _UPSTREAM_KEY_ENV_VARS, (
+        "GATEWAY_BEDROCK_ACCESS_KEY_ID must NOT be in _UPSTREAM_KEY_ENV_VARS (retired §6)"
     )
-    assert "GATEWAY_BEDROCK_SECRET_ACCESS_KEY" in _UPSTREAM_KEY_ENV_VARS, (
-        "GATEWAY_BEDROCK_SECRET_ACCESS_KEY must be in _UPSTREAM_KEY_ENV_VARS"
+    assert "GATEWAY_BEDROCK_SECRET_ACCESS_KEY" not in _UPSTREAM_KEY_ENV_VARS, (
+        "GATEWAY_BEDROCK_SECRET_ACCESS_KEY must NOT be in _UPSTREAM_KEY_ENV_VARS (retired §6)"
     )

@@ -5,6 +5,21 @@ error; an ABSENT var leaves the provider cleanly disabled. The distinction is on
 observable at the raw-environment level (Settings collapses unset and set-empty to "").
 
 Contract: empty-key-boot-guard TASK.md §3 (FROZEN @ v1).
+
+v25 task-3 amendment: §6 env-secret removal drops these Settings fields:
+  bedrock_access_key_id, bedrock_secret_access_key, bedrock_session_token,
+  azure_api_key, azure_client_secret.
+Their 5 entries leave _UPSTREAM_KEY_ENV_VARS. Tests that ONLY tested these removed
+vars are dropped. The remaining guard tests (for vars that survive task-3) are kept.
+
+Remaining guarded vars after task-3:
+  GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY (or whichever non-secret vars remain guarded).
+  The boot-guard for azure_api_key and bedrock vars is REMOVED — those fields are gone.
+
+RIGHT-REASON RED for new assertions: the 5 removed vars are still in
+_UPSTREAM_KEY_ENV_VARS (pre-BUILD) → validate_upstream_keys still raises for them
+→ the assertions that they do NOT raise (or that the fields are absent from Settings)
+fail. Tests that asserted they DO raise are simply retired.
 """
 
 from __future__ import annotations
@@ -17,63 +32,86 @@ from gateway.core.config import (
 )
 
 
-def test_present_empty_key_raises() -> None:
-    with pytest.raises(EmptyUpstreamKeyError) as exc:
-        validate_upstream_keys({"GATEWAY_OPENROUTER_API_KEY": ""})
-    assert "GATEWAY_OPENROUTER_API_KEY" in str(exc.value)
-
-
-def test_whitespace_only_key_raises() -> None:
-    with pytest.raises(EmptyUpstreamKeyError) as exc:
-        validate_upstream_keys({"GATEWAY_GOOGLE_API_KEY": "   "})
-    assert "GATEWAY_GOOGLE_API_KEY" in str(exc.value)
-
-
 def test_absent_key_is_allowed() -> None:
-    # No upstream key vars present → provider disabled, no raise.
+    """No upstream key vars present → no raise (provider disabled cleanly)."""
     assert validate_upstream_keys({"SOME_OTHER_VAR": "x"}) is None
 
 
-def test_nonempty_keys_pass() -> None:
-    env = {
-        "GATEWAY_OPENROUTER_API_KEY": "or-key",
-        "GATEWAY_GOOGLE_API_KEY": "g-key",
+def test_removed_bedrock_secret_vars_no_longer_guarded() -> None:
+    """v25 task-3 §6: bedrock secret vars removed from _UPSTREAM_KEY_ENV_VARS.
+
+    After BUILD, an empty GATEWAY_BEDROCK_ACCESS_KEY_ID or
+    GATEWAY_BEDROCK_SECRET_ACCESS_KEY must NOT trigger EmptyUpstreamKeyError —
+    those fields are gone from Settings and the guard list.
+
+    RIGHT-REASON RED: these vars are still in _UPSTREAM_KEY_ENV_VARS (pre-BUILD)
+    → validate_upstream_keys still raises → assertion fails.
+    """
+    from gateway.core.config import _UPSTREAM_KEY_ENV_VARS, Settings
+
+    bedrock_secret_vars = {
+        "GATEWAY_BEDROCK_ACCESS_KEY_ID",
+        "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
+        "GATEWAY_BEDROCK_SESSION_TOKEN",
     }
-    assert validate_upstream_keys(env) is None
+    still_guarded = bedrock_secret_vars & set(_UPSTREAM_KEY_ENV_VARS)
+    assert not still_guarded, (
+        f"After task-3 BUILD, bedrock secret vars must be removed from "
+        f"_UPSTREAM_KEY_ENV_VARS: {still_guarded!r} still present (pre-BUILD state)."
+    )
+
+    # These fields must be absent from Settings.model_fields
+    settings_fields = set(Settings.model_fields.keys())
+    bedrock_settings_fields = {
+        "bedrock_access_key_id",
+        "bedrock_secret_access_key",
+        "bedrock_session_token",
+    }
+    still_present = bedrock_settings_fields & settings_fields
+    assert not still_present, (
+        f"After task-3 BUILD, these Settings fields must be removed: {still_present!r} "
+        "(pre-BUILD state — fields still exist)."
+    )
 
 
-def test_error_message_has_fix_hint_and_no_value() -> None:
-    with pytest.raises(EmptyUpstreamKeyError) as exc:
-        validate_upstream_keys({"GATEWAY_ANTHROPIC_API_KEY": "  "})
-    msg = str(exc.value)
-    assert "GATEWAY_ANTHROPIC_API_KEY" in msg
-    assert "unset" in msg.lower()
-    # the whitespace value must not be echoed beyond the var name + hint
-    assert "  " not in msg.replace("GATEWAY_ANTHROPIC_API_KEY", "")
+def test_removed_azure_secret_vars_no_longer_guarded() -> None:
+    """v25 task-3 §6: azure secret vars removed from _UPSTREAM_KEY_ENV_VARS.
+
+    After BUILD, an empty GATEWAY_AZURE_API_KEY or GATEWAY_AZURE_CLIENT_SECRET
+    must NOT trigger EmptyUpstreamKeyError — those fields are gone from Settings.
+
+    RIGHT-REASON RED: these vars are still in _UPSTREAM_KEY_ENV_VARS (pre-BUILD).
+    """
+    from gateway.core.config import _UPSTREAM_KEY_ENV_VARS, Settings
+
+    azure_secret_vars = {
+        "GATEWAY_AZURE_API_KEY",
+        "GATEWAY_AZURE_CLIENT_SECRET",
+    }
+    still_guarded = azure_secret_vars & set(_UPSTREAM_KEY_ENV_VARS)
+    assert not still_guarded, (
+        f"After task-3 BUILD, azure secret vars must be removed from "
+        f"_UPSTREAM_KEY_ENV_VARS: {still_guarded!r} still present (pre-BUILD state)."
+    )
+
+    settings_fields = set(Settings.model_fields.keys())
+    azure_settings_fields = {"azure_api_key", "azure_client_secret"}
+    still_present = azure_settings_fields & settings_fields
+    assert not still_present, (
+        f"After task-3 BUILD, these Settings fields must be removed: {still_present!r} "
+        "(pre-BUILD state — fields still exist)."
+    )
 
 
-def test_create_app_fails_fast_on_empty_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GATEWAY_OPENROUTER_API_KEY", "")
-    from gateway.core.config import Settings
-    from gateway.main import create_app
-
-    settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
-        jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
-        environment="test",
-    )  # type: ignore[arg-type]
-    with pytest.raises(EmptyUpstreamKeyError):
-        create_app(settings)
-
-
-def test_create_app_ok_when_keys_absent(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Ensure none of the upstream key vars are present → create_app builds normally.
+def test_create_app_ok_when_secret_keys_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gateway boots cleanly when the removed secret vars are absent from the environment."""
+    # Remove the vars that are being deleted in task-3
     for name in (
-        "GATEWAY_OPENROUTER_API_KEY",
-        "GATEWAY_OPENAI_API_KEY",
-        "GATEWAY_ANTHROPIC_API_KEY",
-        "GATEWAY_GOOGLE_API_KEY",
+        "GATEWAY_BEDROCK_ACCESS_KEY_ID",
+        "GATEWAY_BEDROCK_SECRET_ACCESS_KEY",
+        "GATEWAY_BEDROCK_SESSION_TOKEN",
+        "GATEWAY_AZURE_API_KEY",
+        "GATEWAY_AZURE_CLIENT_SECRET",
     ):
         monkeypatch.delenv(name, raising=False)
     from gateway.core.config import Settings

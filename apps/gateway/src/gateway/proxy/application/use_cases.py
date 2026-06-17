@@ -47,6 +47,10 @@ from gateway.core.error_catalog import (
 from gateway.core.errors import ProblemError
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
 from gateway.proxy.domain.errors import (
     AllDeploymentsSaturatedError,
     CircuitOpenError,
@@ -58,10 +62,16 @@ from gateway.proxy.domain.ports import (
     KeyAuthenticator,
     ModelAccess,
     ModelChecker,
+    ProviderResolver,
     ResponseCache,
+    TenantCredentialResolver,
     UsageRecorder,
     UsageRecordExtras,
     VectorCache,
+)
+from gateway.proxy.domain.provider_credentials import (
+    BYOK_PROVIDERS,
+    ProviderKeyMissing,
 )
 from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
 from gateway.rate_limits.domain.errors import RateLimitExceededError
@@ -370,6 +380,39 @@ def _parse_spend(raw: bytes | str | None) -> Decimal:
         return _ZERO
 
 
+async def resolve_provider_credential(
+    resolver: TenantCredentialResolver | None,
+    tenant_id: Any,
+    provider: str,
+) -> object | None:
+    """Resolve a tenant credential for ``provider`` and set the request contextvar.
+
+    The single source of truth for the credential-resolution-seam §3 gate, shared by
+    the chat use-case (``CompletionUseCase._resolve_credential``) and the non-chat
+    use-cases (embeddings / images / audio). Returns the contextvar reset Token — the
+    caller MUST call ``reset_provider_credential(token)`` in a ``finally`` — or ``None``
+    when resolution is SKIPPED (no resolver wired, or a still-env-bound provider).
+
+    Resolves for ALL six providers in ``BYOK_PROVIDERS`` (task-3 dynamic-auth-byok
+    extends the task-2 Bearer-only set to include bedrock and azure). Returns ``None``
+    only when the resolver is not wired (no credential seam configured).
+
+    Raises:
+        ProblemError(402, ERR_PROVIDER_KEY_MISSING): the tenant has no enabled credential
+            for the requested provider (absent/disabled/None/resolver-timeout). Fail-closed.
+    """
+    if resolver is None or provider not in BYOK_PROVIDERS:
+        return None
+    try:
+        cred = await resolver.resolve(tenant_id, provider)
+    except ProviderKeyMissing as pkm:
+        # §3 CONTRACT: ERR_PROVIDER_KEY_MISSING → HTTP 402 (no secret in the chain).
+        raise ProblemError(
+            402, pkm.code, "Provider key not configured for this tenant"
+        ) from None
+    return set_provider_credential(cred)
+
+
 class CompletionUseCase:
     """Orchestrate a single /v1/chat/completions request."""
 
@@ -384,6 +427,8 @@ class CompletionUseCase:
         span_emitter: OtelSpanEmitter | None = None,
         stream_resilience_enabled: bool = False,
         vector_cache: VectorCache | None = None,
+        tenant_credential_resolver: TenantCredentialResolver | None = None,
+        provider_resolver: ProviderResolver | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -402,6 +447,12 @@ class CompletionUseCase:
         # Embedding-similarity "vector" cache (semantic-cache v19) — the THIRD lookup layer.
         # None (default) ⇒ feature OFF ⇒ complete() is byte-identical (no vector lookup, no embed).
         self._vector_cache = vector_cache
+        # Credential resolution seam (credential-resolution-seam §3).
+        # None = resolver not wired (frozen test suites / backward compat).
+        # When wired, credential is resolved per-request from (tenant_id, provider) and
+        # placed in the request-scoped contextvar before the upstream call.
+        self._tenant_credential_resolver = tenant_credential_resolver
+        self._provider_resolver = provider_resolver
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -712,6 +763,30 @@ class CompletionUseCase:
         guard = self._budget_guard
         return getattr(guard, "_session_factory", None)
 
+    async def _resolve_credential(self, tenant_id: Any, model_id: str) -> object | None:
+        """Resolve the per-tenant provider credential and set it in the request contextvar.
+
+        Returns the contextvar reset Token when resolution succeeds, or ``None`` when it is
+        SKIPPED (resolvers not wired / a still-env-bound provider). Caller MUST call
+        ``reset_provider_credential(token)`` in a ``finally`` block when non-None.
+
+        The chat entry point: it resolves the provider from ``model_id`` via the provider
+        resolver, then delegates the STAGED gate + resolve + set + ProviderKeyMissing→402
+        mapping to the module-level ``resolve_provider_credential`` (shared with the
+        non-chat use-cases — the single source of truth for the §3 seam).
+
+        Raises:
+            ProblemError(402): when the tenant has no configured key for a CONVERTED
+                provider. Mapped inside ``resolve_provider_credential`` so
+                ``complete()``/``stream()`` need no extra except clause (complexity).
+        """
+        if self._tenant_credential_resolver is None or self._provider_resolver is None:
+            return None
+        _provider = await self._provider_resolver.provider_for(model_id)
+        return await resolve_provider_credential(
+            self._tenant_credential_resolver, tenant_id, _provider
+        )
+
     async def complete(
         self,
         *,
@@ -740,6 +815,7 @@ class CompletionUseCase:
         _guardrail_blocked: bool = False
         _pii_masked: bool = False
         _error_code: str | None = None
+        _cred_token: object = None  # set by _resolve_credential — reset in finally
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
@@ -751,6 +827,11 @@ class CompletionUseCase:
             # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
             _model_groups = model_router.model_groups if model_router is not None else None
             await self._enforce_governance(authz, model_id, self._budget_guard, _model_groups)
+
+            # Credential resolution (credential-resolution-seam §3): resolve the per-tenant
+            # provider credential and place it in the request-scoped contextvar so Bearer
+            # adapters can read it in _auth_headers() without a signature change.
+            _cred_token = await self._resolve_credential(authz.tenant_id, model_id)
 
             # --- Step 4: Pre-call guardrails (after governance, before cache lookup) ---
             guardrail_evaluator = self._guardrail_evaluator
@@ -1183,6 +1264,7 @@ class CompletionUseCase:
             return status, response_body, x_cache
 
         except ProblemError as _prob_err:
+            # ProviderKeyMissing is pre-converted to ProblemError(402) by _resolve_credential.
             _status_code = _prob_err.status
             _error_code = _prob_err.code
             if _prob_err.code == "ERR_GUARDRAIL_BLOCKED":
@@ -1192,6 +1274,10 @@ class CompletionUseCase:
             _status_code = 502
             raise
         finally:
+            # Reset the per-request credential contextvar (credential-resolution-seam §3).
+            # MUST run even on exception paths to prevent cross-request credential leaks.
+            if _cred_token is not None:
+                reset_provider_credential(_cred_token)  # type: ignore[arg-type]
             # Span emission: only when authz succeeded (post-authz) and emitter is wired.
             # Pre-authz 401 → _authz is None → no span (inviolable §3 contract).
             if _authz is not None and self._span_emitter is not None:
@@ -1238,6 +1324,7 @@ class CompletionUseCase:
         _stream_pii_masked: bool = False
         _stream_model_id: str = ""
         _emitter = self._span_emitter
+        _stream_cred_token: object = None  # set by _resolve_credential — reset in finally
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
@@ -1250,6 +1337,9 @@ class CompletionUseCase:
             await self._enforce_governance(
                 authz, model_id, self._budget_guard, _stream_model_groups
             )
+
+            # Credential resolution (credential-resolution-seam §3) — same as complete().
+            _stream_cred_token = await self._resolve_credential(authz.tenant_id, model_id)
 
             # --- Step 4: Pre-call guardrails (after governance, before upstream stream) ---
             guardrail_evaluator = self._guardrail_evaluator
@@ -1377,6 +1467,21 @@ class CompletionUseCase:
                         team_id=team_id,
                     )
                     return
+                finally:
+                    # credential-resolution-seam §3: clear the per-request credential once
+                    # the stream is fully consumed (normal end), errors out, or is closed
+                    # early (GeneratorExit on client disconnect). The token was produced in
+                    # the request task's context where set_provider_credential() ran in the
+                    # method body; reset it here so the success path is symmetric with the
+                    # pre-generator error path (which resets in the method-level finally) and
+                    # the credential never outlives the stream. Tolerate a cross-context reset
+                    # (Starlette may drain the StreamingResponse in a copied context) — the
+                    # original context is discarded at task end, so this never leaks.
+                    if _stream_cred_token is not None:
+                        try:
+                            reset_provider_credential(_stream_cred_token)  # type: ignore[arg-type]
+                        except ValueError:
+                            pass
                 # Tee: extract usage from collected SSE chunks after stream completes
                 extracted_usage = extract_usage_from_sse(collected)
                 _fire_record_with_raw(
@@ -1414,6 +1519,7 @@ class CompletionUseCase:
             return _wrapped()
 
         except ProblemError as _prob_err:
+            # ProviderKeyMissing is pre-converted to ProblemError(402) by _resolve_credential.
             if _stream_error_status is None:
                 _stream_error_status = _prob_err.status
             _stream_error_code = _prob_err.code
@@ -1425,6 +1531,14 @@ class CompletionUseCase:
                 _stream_error_status = 502
             raise
         finally:
+            # Reset the per-request credential contextvar on the PRE-GENERATOR error path
+            # ONLY (auth/governance/guardrail/stream-setup failure → _wrapped() never runs,
+            # so it cannot reset). On success (_stream_error_status is None) the contextvar
+            # MUST stay set: the resilient peek already fired _auth_headers() in this body,
+            # and the lazy path fires it during _wrapped() iteration — _wrapped()'s own
+            # finally then resets it after the last chunk (symmetric, exactly-once).
+            if _stream_cred_token is not None and _stream_error_status is not None:
+                reset_provider_credential(_stream_cred_token)  # type: ignore[arg-type]
             # Only emit here for pre-generator errors (auth/governance/guardrail failures).
             # Successful streams set _stream_error_status=None before returning — _wrapped()
             # handles the span in that case.

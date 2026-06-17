@@ -6,10 +6,15 @@ HTTP behavior via httpx.MockTransport (token endpoint + chat endpoint); time via
 injected clock. No network.
 
 CONTRACT (FROZEN @ v1): azure-aad-auth TASK.md §3
-  - AzureADConfig (frozen; client_secret repr-hidden) + resolve_azure_ad_config.
+  - AzureADConfig (frozen; client_secret repr-hidden).
   - AzureADTokenProvider.get_token(): cache/refresh/single-flight/FAIL-CLOSED.
-  - AzureCompletionUpstream(token_provider=…): Bearer when set, api-key when None.
-  - GATEWAY_AZURE_CLIENT_SECRET boot-guard.
+  - AzureCompletionUpstream reads AzureCredential from contextvar (task-3).
+
+v25 task-3 amendment:
+  - resolve_azure_ad_config is DELETED (env-secret removal §6); its tests are REMOVED.
+  - GATEWAY_AZURE_CLIENT_SECRET boot-guard test is REMOVED (field deleted from Settings).
+  - _make_adapter now constructs AzureCompletionUpstream via contextvar (task-3 ctor).
+  - test_wiring_aad_precedence_enables_without_api_key updated: asserts unconditional wiring.
 """
 
 from __future__ import annotations
@@ -19,15 +24,17 @@ import asyncio
 import httpx
 import pytest
 
-from gateway.core.config import EmptyUpstreamKeyError, validate_upstream_keys
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
-from gateway.proxy.infrastructure.azure_config import AzureConfig
+from gateway.proxy.domain.provider_credentials import AzureCredential
 
-# RED: azure_ad does not exist yet → ModuleNotFoundError.
+# azure_ad still exists (AzureADConfig + AzureADTokenProvider remain; resolve_azure_ad_config deleted).
 from gateway.proxy.infrastructure.azure_ad import (
     AzureADConfig,
     AzureADTokenProvider,
-    resolve_azure_ad_config,
 )
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
 
@@ -37,11 +44,23 @@ _AD_CFG = AzureADConfig(
     client_secret="top-secret",
 )
 
-_AZ_CFG = AzureConfig(
-    api_key="api-key-fallback",
+# v25 task-3: AzureCredential (aad mode) used for contextvar-based adapter tests.
+_AZ_AAD_CRED = AzureCredential(
+    mode="aad",
     endpoint="https://r.openai.azure.com",
     api_version="2024-10-21",
     deployment_map={"gpt-4o": "prod-4o"},
+    tenant_id="tenant-1",
+    client_id="client-1",
+    client_secret="top-secret",
+)
+
+_AZ_API_KEY_CRED = AzureCredential(
+    mode="api_key",
+    endpoint="https://r.openai.azure.com",
+    api_version="2024-10-21",
+    deployment_map={"gpt-4o": "prod-4o"},
+    api_key="api-key-fallback",
 )
 
 
@@ -162,10 +181,39 @@ class _FakeProvider:
         return self._token
 
 
-def _make_adapter(handler: object, *, token_provider: object | None) -> AzureCompletionUpstream:
-    adapter = AzureCompletionUpstream(
-        config=_AZ_CFG,
-        token_provider=token_provider,  # type: ignore[arg-type]
+class _FailingProvider:
+    """A provider whose get_token always fails closed (AAD mint unreachable)."""
+
+    async def get_token(self) -> str:
+        raise UpstreamUnavailableError("Azure AD token request failed")
+
+
+class _FakeCache:
+    """Stub AzureADTokenProviderCache that returns a fixed provider."""
+
+    def __init__(self, provider: object) -> None:
+        self._provider = provider
+
+    def get_or_create(self, config: object) -> object:
+        return self._provider
+
+
+def _make_adapter(
+    handler: object,
+    *,
+    cred: AzureCredential,
+    fake_cache: object | None = None,
+) -> AzureCompletionUpstream:
+    """Construct task-3 adapter (no ctor config/token_provider), swap _client.
+
+    v25 task-3: AzureCompletionUpstream no longer takes config= or token_provider=.
+    It gains token_provider_cache= and reads AzureCredential from the contextvar.
+    The caller must set/reset the contextvar around .complete() calls.
+
+    RIGHT-REASON RED: existing ctor still requires config= → TypeError until BUILD.
+    """
+    adapter = AzureCompletionUpstream(  # type: ignore[call-arg]
+        token_provider_cache=fake_cache,  # type: ignore[arg-type]
         backoff_base=0.0,
         retry_deadline_s=0.0,
     )
@@ -176,6 +224,11 @@ def _make_adapter(handler: object, *, token_provider: object | None) -> AzureCom
 
 
 async def test_adapter_uses_bearer_with_token_provider() -> None:
+    """AzureCredential (aad mode) in contextvar → Bearer token from cache.
+
+    v25 task-3: token_provider sourced from AzureADTokenProviderCache.get_or_create(),
+    not from ctor token_provider= arg.
+    """
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -183,13 +236,22 @@ async def test_adapter_uses_bearer_with_token_provider() -> None:
         seen["api_key"] = request.headers.get("api-key")
         return httpx.Response(200, json={"id": "x", "usage": {}})
 
-    adapter = _make_adapter(handler, token_provider=_FakeProvider("tok-123"))
-    await adapter.complete({"model": "gpt-4o", "messages": []})
+    cache = _FakeCache(_FakeProvider("tok-123"))
+    adapter = _make_adapter(handler, cred=_AZ_AAD_CRED, fake_cache=cache)
+    tok = set_provider_credential(_AZ_AAD_CRED)
+    try:
+        await adapter.complete({"model": "gpt-4o", "messages": []})
+    finally:
+        reset_provider_credential(tok)
     assert seen["authorization"] == "Bearer tok-123"
     assert seen["api_key"] is None
 
 
 async def test_adapter_keeps_api_key_without_provider() -> None:
+    """AzureCredential (api_key mode) in contextvar → api-key header, no Bearer.
+
+    v25 task-3: api_key sourced from AzureCredential.api_key in contextvar.
+    """
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -197,41 +259,84 @@ async def test_adapter_keeps_api_key_without_provider() -> None:
         seen["api_key"] = request.headers.get("api-key")
         return httpx.Response(200, json={"id": "x", "usage": {}})
 
-    adapter = _make_adapter(handler, token_provider=None)
-    await adapter.complete({"model": "gpt-4o", "messages": []})
+    adapter = _make_adapter(handler, cred=_AZ_API_KEY_CRED, fake_cache=None)
+    tok = set_provider_credential(_AZ_API_KEY_CRED)
+    try:
+        await adapter.complete({"model": "gpt-4o", "messages": []})
+    finally:
+        reset_provider_credential(tok)
     assert seen["authorization"] is None
     assert seen["api_key"] == "api-key-fallback"
 
 
-def test_resolve_ad_config_gates_on_all_three() -> None:
-    from types import SimpleNamespace
+async def test_adapter_aad_mint_failure_fails_closed_no_post() -> None:
+    """§2-R3 (chat): an AAD mint failure on complete() fails closed.
 
-    base = {
-        "azure_tenant_id": "t",
-        "azure_client_id": "c",
-        "azure_client_secret": "",
-        "azure_ad_scope": "",
-    }
-    assert resolve_azure_ad_config(SimpleNamespace(**base)) is None
-    full = {**base, "azure_client_secret": "s"}
-    assert resolve_azure_ad_config(SimpleNamespace(**full)) is not None
+    The token mint raises UpstreamUnavailableError → the adapter must propagate it
+    and send NO upstream request: no api-key fallback, no unauthenticated/blank-auth
+    POST. Mirrors azure_embeddings::test_token_failure_fails_closed_no_post for the
+    chat path (AzureCompletionUpstream._auth_headers_for_credential).
+    """
+    hits = [0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hits[0] += 1
+        return httpx.Response(200, json={"id": "x", "usage": {}})
+
+    cache = _FakeCache(_FailingProvider())
+    adapter = _make_adapter(handler, cred=_AZ_AAD_CRED, fake_cache=cache)
+    tok = set_provider_credential(_AZ_AAD_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await adapter.complete({"model": "gpt-4o", "messages": []})
+    finally:
+        reset_provider_credential(tok)
+    assert hits[0] == 0  # no POST → no api-key fallback, no unauthenticated request
 
 
-def test_empty_client_secret_fails_boot() -> None:
-    with pytest.raises(EmptyUpstreamKeyError) as exc:
-        validate_upstream_keys({"GATEWAY_AZURE_CLIENT_SECRET": ""})
-    assert "GATEWAY_AZURE_CLIENT_SECRET" in str(exc.value)
+async def test_adapter_aad_mint_failure_fails_closed_no_post_on_stream() -> None:
+    """§2-R3 (chat stream): an AAD mint failure on stream() fails closed.
+
+    stream() resolves the credential + guards the breaker synchronously, then awaits
+    the auth header INSIDE the generator — a mint failure must raise on the first
+    iteration with NO bytes streamed and NO upstream request sent.
+    """
+    hits = [0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hits[0] += 1
+        return httpx.Response(200, content=b"data: {}\n\n")
+
+    cache = _FakeCache(_FailingProvider())
+    adapter = _make_adapter(handler, cred=_AZ_AAD_CRED, fake_cache=cache)
+    tok = set_provider_credential(_AZ_AAD_CRED)
+    try:
+        gen = adapter.stream({"model": "gpt-4o", "messages": []})
+        with pytest.raises(UpstreamUnavailableError):
+            async for _ in gen:
+                pass
+    finally:
+        reset_provider_credential(tok)
+    assert hits[0] == 0  # no POST → no api-key fallback, no unauthenticated request
 
 
-def test_wiring_aad_precedence_enables_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+# resolve_azure_ad_config and GATEWAY_AZURE_CLIENT_SECRET boot-guard tests REMOVED —
+# v25 task-3 §6: resolve_azure_ad_config is DELETED and azure_client_secret field
+# is REMOVED from Settings. These tests are retired per deliverable C.
+
+
+def test_wiring_azure_unconditional(monkeypatch: pytest.MonkeyPatch) -> None:
+    """create_app() with NO Azure env creds → 'azure' still in app.state.chat_adapters.
+
+    v25 task-3: azure is registered unconditionally (env-guard removed).
+
+    RIGHT-REASON RED: current wiring gates 'azure' on resolve_azure_config(settings)
+    being truthy — absent without env creds → assertion fails.
+    """
     from gateway.core.config import Settings
     from gateway.main import create_app
 
     for name in (
-        "GATEWAY_OPENROUTER_API_KEY",
-        "GATEWAY_OPENAI_API_KEY",
-        "GATEWAY_ANTHROPIC_API_KEY",
-        "GATEWAY_GOOGLE_API_KEY",
         "GATEWAY_AZURE_API_KEY",
         "GATEWAY_AZURE_CLIENT_SECRET",
     ):
@@ -242,10 +347,10 @@ def test_wiring_aad_precedence_enables_without_api_key(monkeypatch: pytest.Monke
         jwt_secret="test-secret-not-for-production-0123456789",
         redis_url="redis://localhost:6380/9",
         environment="test",
-        azure_endpoint="https://r.openai.azure.com",
-        azure_tenant_id="t",
-        azure_client_id="c",
-        azure_client_secret="s",
+        # No azure_api_key, no azure_client_secret, no azure_endpoint
     )  # type: ignore[arg-type]
     app = create_app(settings)
-    assert "azure" in app.state.chat_adapters
+    assert "azure" in app.state.chat_adapters, (
+        "'azure' must be in app.state.chat_adapters UNCONDITIONALLY after task-3 BUILD. "
+        "It is absent — the env-guard is still in place (pre-BUILD state)."
+    )

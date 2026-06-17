@@ -30,14 +30,16 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.provider_credentials import AzureCredential, ProviderKeyMissing
 from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
-    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
+    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
 
 _CONNECT_TIMEOUT = 10.0
 _NON_STREAM_TIMEOUT = 120.0
@@ -51,20 +53,22 @@ class AzureCompletionUpstream:
     _chat_adapters["azure"]). The circuit breaker is per-instance (per-replica).
     Internal attrs follow the OpenRouterCompletionUpstream convention (self._client,
     self._breaker) so tests can swap _client for a MockTransport-backed client.
+
+    Credentials are resolved per-request from the AzureCredential contextvar (task-3 BYOK).
+    No boot-time config or token_provider is accepted; fail-closed when contextvar is unset.
     """
 
     def __init__(
         self,
         *,
-        config: AzureConfig,
-        token_provider: AzureADTokenProvider | None = None,
+        token_provider_cache: AzureADTokenProviderCache | None = None,
         max_retries: int = 0,
         backoff_base: float = 0.5,
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
-        self._config = config
-        self._token_provider = token_provider
+        # Credentials resolved per-request from the contextvar (task-3 BYOK).
+        self._token_provider_cache = token_provider_cache
         self._breaker = CircuitBreaker()
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(
@@ -79,14 +83,46 @@ class AzureCompletionUpstream:
         self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
 
-    async def _auth_headers(self) -> dict[str, str]:
-        # Azure AD bearer token takes precedence when configured; otherwise the api-key.
-        # The token is fetched (cached) from the provider — fail-closed (raises on token error).
-        if self._token_provider is not None:
-            token = await self._token_provider.get_token()
+    def _get_credential(self) -> AzureCredential:
+        """Read AzureCredential from the request contextvar (fail-closed).
+
+        Raises ProviderKeyMissing("azure") when the contextvar is unset OR holds a
+        wrong-type value — NEVER produces an unauthenticated upstream request.
+        """
+        cred = get_provider_credential()
+        if cred is None or not isinstance(cred, AzureCredential):
+            raise ProviderKeyMissing("azure")
+        return cred
+
+    async def _auth_headers_for_credential(self, cred: AzureCredential) -> dict[str, str]:
+        """Build auth headers from a resolved AzureCredential (contextvar path).
+
+        api_key mode  → ``api-key: <key>`` header.
+        aad mode      → Bearer token minted via the per-tenant cache (or a direct
+                         AzureADTokenProvider when cache is None — verify / test path).
+        """
+        if cred.mode == "aad":
+            ad_cfg = cred.to_azure_ad_config()
+            if self._token_provider_cache is not None:
+                tp = self._token_provider_cache.get_or_create(ad_cfg)
+            else:
+                # No cache supplied (e.g. verify tests) — instantiate directly per-call.
+                from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
+                tp = AzureADTokenProvider(config=ad_cfg)
+            token = await tp.get_token()
             return {"Authorization": f"Bearer {token}"}
-        # Azure uses the `api-key` header — NOT `Authorization: Bearer`.
-        return {"api-key": self._config.api_key}
+        # api_key mode
+        cfg = cred.to_azure_config()
+        return {"api-key": cfg.api_key}
+
+    def _resolve_config_and_cred(self) -> tuple[AzureConfig, AzureCredential]:
+        """Resolve the AzureConfig and AzureCredential from the request contextvar.
+
+        Raises ProviderKeyMissing("azure") when the contextvar is unset or holds a
+        wrong-type value (fail-closed — no unauthenticated request, ever).
+        """
+        cred = self._get_credential()
+        return cred.to_azure_config(), cred
 
     async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """Forward a non-streaming chat request to the resolved Azure deployment.
@@ -95,11 +131,16 @@ class AzureCompletionUpstream:
         5xx / transport errors raise UpstreamUnavailableError via the shared retry seam.
         With max_retries=0 (default): exactly one attempt — byte-identical to the
         OpenRouter default.
+
+        Credential is read from the request contextvar (AzureCredential); raises
+        ProviderKeyMissing("azure") before any HTTP if unset or wrong type (fail-closed).
         """
+        cfg, cred = self._resolve_config_and_cred()
         model = str(payload.get("model", ""))
-        deployment = self._config.resolve_deployment(model)
-        url = self._config.build_url(deployment, "chat/completions")
-        headers = {**(await self._auth_headers()), "content-type": "application/json"}
+        deployment = cfg.resolve_deployment(model)
+        url = cfg.build_url(deployment, "chat/completions")
+        auth = await self._auth_headers_for_credential(cred)
+        headers = {**auth, "content-type": "application/json"}
 
         async def _do_request() -> httpx.Response:
             return await self._client.post(url, json=payload, headers=headers)
@@ -119,21 +160,27 @@ class AzureCompletionUpstream:
         """Return an async generator that yields raw SSE byte chunks (byte-passthrough).
 
         Mirrors OpenRouterCompletionUpstream.stream exactly, bar the per-request Azure
-        deployment URL + `api-key` header. The circuit breaker is checked before the
-        first byte; a 5xx open raises UpstreamUnavailableError BEFORE yielding any chunk
-        (v19 failover). Zero retry machinery. Billing is application-layer: the caller
-        drains these bytes and extract_usage_from_sse reads the terminal usage frame.
-        """
-        self._breaker.guard()
+        deployment URL + auth header derived from the tenant's AzureCredential contextvar.
+        The circuit breaker is checked before the first byte; a 5xx open raises
+        UpstreamUnavailableError BEFORE yielding any chunk (v19 failover). Zero retry
+        machinery. Billing is application-layer: the caller drains these bytes and
+        extract_usage_from_sse reads the terminal usage frame.
 
+        Credential is read from the request contextvar (AzureCredential); raises
+        ProviderKeyMissing("azure") before any HTTP if unset or wrong type (fail-closed).
+        """
+        # Fail-closed: read & validate credential BEFORE yielding the generator object.
+        cfg, cred = self._resolve_config_and_cred()
         model = str(payload.get("model", ""))
-        deployment = self._config.resolve_deployment(model)
-        url = self._config.build_url(deployment, "chat/completions")
+        deployment = cfg.resolve_deployment(model)
+        url = cfg.build_url(deployment, "chat/completions")
+        self._breaker.guard()
 
         async def _gen() -> AsyncIterator[bytes]:
             # auth headers are awaited INSIDE the generator (the token fetch is async;
             # a token failure raises UpstreamUnavailableError before the first byte).
-            headers = {**(await self._auth_headers()), "content-type": "application/json"}
+            auth = await self._auth_headers_for_credential(cred)
+            headers = {**auth, "content-type": "application/json"}
             try:
                 async with self._client.stream(
                     "POST",

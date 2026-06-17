@@ -36,9 +36,11 @@ from gateway.proxy.application.governance import NonChatGovernance
 # recorder fn — hence the targeted reportPrivateUsage suppression.
 from gateway.proxy.application.use_cases import (
     _fire_record_with_raw,  # pyright: ignore[reportPrivateUsage]
+    resolve_provider_credential,
 )
+from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
-from gateway.proxy.domain.ports import UsageRecorder
+from gateway.proxy.domain.ports import TenantCredentialResolver, UsageRecorder
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
 
 
@@ -50,9 +52,12 @@ class ImagesUseCase:
         *,
         governance: NonChatGovernance,
         session: AsyncSession,
+        tenant_credential_resolver: TenantCredentialResolver | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
+        # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
+        self._tenant_credential_resolver = tenant_credential_resolver
 
     async def execute(
         self,
@@ -101,11 +106,21 @@ class ImagesUseCase:
         # Step 5: Resolve provider adapter
         provider_adapter = select_provider(row.modality, row.provider, registry)
 
+        # Step 5.5: Resolve the per-tenant provider credential into the request contextvar
+        # (credential-resolution-seam §3). Gated to converted providers; Bedrock/Azure skip
+        # (env-bound, task 3). ProviderKeyMissing → ProblemError(402). Reset in finally.
+        _cred_token = await resolve_provider_credential(
+            self._tenant_credential_resolver, authz.tenant_id, row.provider
+        )
+
         # Step 6: Call upstream
         try:
             status, resp_body = await provider_adapter.post_json("/images/generations", body)
         except (UpstreamUnavailableError, CircuitOpenError):
             raise UPSTREAM_UNAVAILABLE.exc() from None
+        finally:
+            if _cred_token is not None:
+                reset_provider_credential(_cred_token)  # type: ignore[arg-type]
 
         # Step 7: Compute billed quantity — bill exactly the images the upstream returned.
         # NO fallback to requested n: absent/empty data → bill 0 (never over-bill on failure).

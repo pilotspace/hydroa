@@ -12,7 +12,10 @@ Contract: frozen at v20 task 2 (bedrock-upstream).
     5xx/429-exhausted -> UpstreamUnavailableError.
   - stream(): raises NotImplementedError (implemented in v20 task 3).
   - Signs every request with AWS SigV4 (bedrock_sigv4.sign_request).
-  - Wired in main.py create_app() iff resolve_aws_credentials(settings) is truthy.
+  - Wired in main.py create_app() UNCONDITIONALLY (task-3: no env-cred guard).
+
+v25 task-3 amendment: _make_adapter now sets the credential via the contextvar
+(not ctor args). BC8 wiring tests updated to assert unconditional presence.
 """
 
 from __future__ import annotations
@@ -25,8 +28,13 @@ import httpx
 import pytest
 
 # ── Existing stable imports (already implemented) ────────────────────────────
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.ports import CompletionUpstream
+from gateway.proxy.domain.provider_credentials import BedrockCredential
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials
 
 # RED until BUILD creates the module/symbols.
@@ -44,7 +52,16 @@ pytestmark = pytest.mark.asyncio
 # Fixtures / constants
 # ---------------------------------------------------------------------------
 
+# v25 task-3: credentials travel via BedrockCredential in the contextvar, NOT ctor args.
+# _DUMMY_CRED is a BedrockCredential; _DUMMY_CREDS (AwsCredentials) kept only for
+# translation-helper tests (BC1-BC5) which call private helpers directly.
 _DUMMY_CREDS = AwsCredentials(
+    access_key_id="AKIDTEST000000000000",
+    secret_access_key="fakesecretkey0000000000000000000000000000",
+    region="us-east-1",
+)
+
+_DUMMY_CRED = BedrockCredential(
     access_key_id="AKIDTEST000000000000",
     secret_access_key="fakesecretkey0000000000000000000000000000",
     region="us-east-1",
@@ -87,15 +104,20 @@ _CONVERSE_503 = {
 def _make_adapter(
     handler: object,
     *,
-    creds: AwsCredentials = _DUMMY_CREDS,
-    region: str = "us-east-1",
+    cred: BedrockCredential = _DUMMY_CRED,
     endpoint_url: str = "https://bedrock-runtime.us-east-1.amazonaws.com",
     max_retries: int = 0,
 ) -> BedrockCompletionUpstream:
-    """Construct the adapter, then swap its _client for a MockTransport-backed one."""
-    adapter = BedrockCompletionUpstream(
-        credentials=creds,
-        region=region,
+    """Construct the adapter (no ctor creds/region — task-3), swap _client, set contextvar.
+
+    v25 task-3 amendment: credentials travel via the contextvar (BedrockCredential),
+    NOT as ctor arguments. The caller is responsible for setting and resetting the
+    contextvar around the actual adapter.complete() / adapter.stream() call.
+
+    This factory injects the cred into the contextvar for the duration of the test;
+    tests that need fine-grained contextvar control set it themselves.
+    """
+    adapter = BedrockCompletionUpstream(  # type: ignore[call-arg]
         endpoint_url=endpoint_url,
         default_max_tokens=4096,
         max_retries=max_retries,
@@ -223,7 +245,9 @@ async def test_complete_signs_converse_path() -> None:
     - the SigV4 canonical URI single-encodes ':' as %3A (never %253A)
     - 'Authorization' header starts with 'AWS4-HMAC-SHA256'
     - 'x-amz-date' and 'x-amz-content-sha256' headers are present
-    Handler returns a minimal valid 200 Converse body."""
+    Handler returns a minimal valid 200 Converse body.
+
+    v25 task-3: credential supplied via contextvar, not ctor."""
     captured: dict[str, httpx.Request] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -231,12 +255,16 @@ async def test_complete_signs_converse_path() -> None:
         return httpx.Response(200, json=_CONVERSE_200)
 
     adapter = _make_adapter(handler)
-    status, body = await adapter.complete(
-        {
-            "model": _MODEL_ID,
-            "messages": [{"role": "user", "content": "hi"}],
-        }
-    )
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        status, body = await adapter.complete(
+            {
+                "model": _MODEL_ID,
+                "messages": [{"role": "user", "content": "hi"}],
+            }
+        )
+    finally:
+        reset_provider_credential(tok)
 
     assert status == 200, f"Expected 200, got {status}: {body}"
 
@@ -357,16 +385,22 @@ def test_finish_reason_map() -> None:
 
 async def test_4xx_passthrough_and_5xx_raises() -> None:
     """400 -> complete returns (400, body_with_error_key) without raising.
-    503 -> complete raises UpstreamUnavailableError."""
+    503 -> complete raises UpstreamUnavailableError.
+
+    v25 task-3: credential supplied via contextvar."""
 
     # ── 400 passthrough ──
     def handler_400(request: httpx.Request) -> httpx.Response:
         return httpx.Response(400, json=_CONVERSE_400)
 
     adapter_400 = _make_adapter(handler_400)
-    status, body = await adapter_400.complete(
-        {"model": _MODEL_ID, "messages": [{"role": "user", "content": "x"}]}
-    )
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        status, body = await adapter_400.complete(
+            {"model": _MODEL_ID, "messages": [{"role": "user", "content": "x"}]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 400
     # Must wrap in OpenAI error envelope
     assert "error" in body
@@ -377,14 +411,20 @@ async def test_4xx_passthrough_and_5xx_raises() -> None:
         return httpx.Response(503, json=_CONVERSE_503)
 
     adapter_503 = _make_adapter(handler_503)
-    with pytest.raises(UpstreamUnavailableError):
-        await adapter_503.complete(
-            {"model": _MODEL_ID, "messages": [{"role": "user", "content": "x"}]}
-        )
+    tok2 = set_provider_credential(_DUMMY_CRED)
+    try:
+        with pytest.raises(UpstreamUnavailableError):
+            await adapter_503.complete(
+                {"model": _MODEL_ID, "messages": [{"role": "user", "content": "x"}]}
+            )
+    finally:
+        reset_provider_credential(tok2)
 
 
 async def test_422_passthrough() -> None:
-    """Any 4xx response is passed through as (status, error_body), not raised."""
+    """Any 4xx response is passed through as (status, error_body), not raised.
+
+    v25 task-3: credential supplied via contextvar."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -392,9 +432,13 @@ async def test_422_passthrough() -> None:
         )
 
     adapter = _make_adapter(handler)
-    status, body = await adapter.complete(
-        {"model": _MODEL_ID, "messages": [{"role": "user", "content": "x"}]}
-    )
+    tok = set_provider_credential(_DUMMY_CRED)
+    try:
+        status, body = await adapter.complete(
+            {"model": _MODEL_ID, "messages": [{"role": "user", "content": "x"}]}
+        )
+    finally:
+        reset_provider_credential(tok)
     assert status == 422
     assert "error" in body
 
@@ -405,9 +449,11 @@ async def test_422_passthrough() -> None:
 
 
 async def test_session_token_signed() -> None:
-    """When AwsCredentials includes a session_token, the outgoing request
-    must carry an 'x-amz-security-token' header with that value."""
-    creds_with_token = AwsCredentials(
+    """When BedrockCredential includes a session_token, the outgoing request
+    must carry an 'x-amz-security-token' header with that value.
+
+    v25 task-3: session_token travels via BedrockCredential in the contextvar."""
+    cred_with_token = BedrockCredential(
         access_key_id="AKIDTEST000000000000",
         secret_access_key="fakesecretkey0000000000000000000000000000",
         region="us-east-1",
@@ -419,12 +465,16 @@ async def test_session_token_signed() -> None:
         captured["req"] = request
         return httpx.Response(200, json=_CONVERSE_200)
 
-    adapter = _make_adapter(handler, creds=creds_with_token)
-    await adapter.complete({"model": _MODEL_ID, "messages": [{"role": "user", "content": "hi"}]})
+    adapter = _make_adapter(handler)
+    tok = set_provider_credential(cred_with_token)
+    try:
+        await adapter.complete({"model": _MODEL_ID, "messages": [{"role": "user", "content": "hi"}]})
+    finally:
+        reset_provider_credential(tok)
 
     headers = dict(captured["req"].headers)
     assert "x-amz-security-token" in headers, (
-        "x-amz-security-token header must be present when session_token is set"
+        "x-amz-security-token header must be present when session_token is set in BedrockCredential"
     )
     assert headers["x-amz-security-token"] == "FakeSessionToken12345"
 
@@ -440,6 +490,8 @@ async def test_protocol_and_stream_stub() -> None:
     The NotImplementedError stub was superseded by v20 task 3 which implements
     stream() for real.  This test retains only the Protocol structural check;
     the full streaming contract lives in tests/bedrock_streaming/.
+
+    v25 task-3: adapter constructed without ctor creds/region.
     """
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -454,7 +506,11 @@ async def test_protocol_and_stream_stub() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BC8 — Composition-root wiring: create_app() includes/excludes bedrock adapter
+# BC8 — Composition-root wiring: create_app() includes bedrock UNCONDITIONALLY
+# ---------------------------------------------------------------------------
+# v25 task-3 amendment: bedrock is wired unconditionally — no env-cred guard.
+# The three old tests (present-when-creds-set, absent-when-creds-unset,
+# absent-when-only-key-id-set) are REPLACED by a single unconditional test.
 # ---------------------------------------------------------------------------
 
 
@@ -472,51 +528,32 @@ def _make_settings(**kwargs: object) -> object:  # type: ignore[no-untyped-def]
     return Settings(**defaults)  # type: ignore[arg-type]
 
 
-def test_wiring_bedrock_present_when_creds_set() -> None:
-    """create_app() with full Bedrock creds -> 'bedrock' in app.state.chat_adapters
-    and the value is a BedrockCompletionUpstream instance."""
+def test_wiring_bedrock_present_unconditionally() -> None:
+    """create_app() with NO Bedrock env creds -> 'bedrock' still in app.state.chat_adapters.
+
+    v25 task-3: bedrock is registered unconditionally (env-guard removed).
+    The adapter reads its credentials per-request from the contextvar.
+
+    RIGHT-REASON RED: current wiring gates 'bedrock' on resolve_aws_credentials(settings)
+    being truthy — absent without env creds → assertion fails.
+    """
     from gateway.main import create_app
 
-    settings = _make_settings(
-        bedrock_access_key_id="AKIDTEST000000000000",
-        bedrock_secret_access_key="fakesecretkey0000000000000000000000000000",
-        bedrock_region="us-east-1",
-    )
+    # No bedrock env creds at all
+    settings = _make_settings()
     app = create_app(settings)  # type: ignore[arg-type]
     adapters = app.state.chat_adapters
+
     assert "bedrock" in adapters, (
-        "'bedrock' must be in chat_adapters when bedrock_access_key_id, "
-        "bedrock_secret_access_key, and bedrock_region are all set"
+        "'bedrock' must be in chat_adapters UNCONDITIONALLY after task-3 BUILD. "
+        "It is absent — the env-cred guard is still in place (pre-BUILD state)."
     )
     assert isinstance(adapters["bedrock"], BedrockCompletionUpstream), (
-        "adapters['bedrock'] must be a BedrockCompletionUpstream instance"
+        f"adapters['bedrock'] must be a BedrockCompletionUpstream instance, "
+        f"got {type(adapters.get('bedrock'))!r}"
     )
-
-
-def test_wiring_bedrock_absent_when_creds_unset() -> None:
-    """create_app() with no Bedrock creds -> 'bedrock' NOT in app.state.chat_adapters.
-    The 'openrouter' fallback adapter must still be present."""
-    from gateway.main import create_app
-
-    settings = _make_settings()  # bedrock_access_key_id defaults to ""
-    app = create_app(settings)  # type: ignore[arg-type]
-    assert "bedrock" not in app.state.chat_adapters, (
-        "'bedrock' must NOT be in chat_adapters when credentials are unset"
-    )
-    # openrouter fallback is always wired
-    assert "openrouter" in app.state.chat_adapters
-
-
-def test_wiring_bedrock_absent_when_only_key_id_set() -> None:
-    """Partial creds (only access_key_id set, secret absent) -> 'bedrock' absent."""
-    from gateway.main import create_app
-
-    settings = _make_settings(
-        bedrock_access_key_id="AKIDTEST000000000000",
-        # bedrock_secret_access_key intentionally absent (defaults to "")
-    )
-    app = create_app(settings)  # type: ignore[arg-type]
-    assert "bedrock" not in app.state.chat_adapters
+    # openrouter fallback must still be present
+    assert "openrouter" in adapters
 
 
 # ---------------------------------------------------------------------------
