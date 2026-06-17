@@ -1,12 +1,48 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
-  "tasks": {},
-  "milestones": {},
+  "active_task": "openai-retry-parity",
+  "active_milestone": "v26",
+  "tasks": {
+    "openai-retry-parity": {
+      "title": "OpenAI direct-chat retry parity via shared execute_with_retry",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v26",
+      "depends_on": [],
+      "created": "2026-06-17T06:24:37+00:00",
+      "updated": "2026-06-17T06:46:44+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ebd0631df93e8b8102e336fe21090a12",
+        "tests": {
+          "apps/gateway/tests/openai_retry_parity/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/openai_retry_parity/conftest.py": "ad1521fdd4ec867a30e65a827ed98b2b",
+          "apps/gateway/tests/openai_retry_parity/test_openai_retry_parity.py": "9d68addfe358071a64ab6ffc956107ad"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/openai_provider.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/openai_retry_parity/"
+        ],
+        "snapshot_md5": "f98fdb0b2b79013bc060b7b3d0c3159e"
+      }
+    }
+  },
+  "milestones": {
+    "v26": {
+      "title": "Provider config cleanup \u2014 v25 follow-ups",
+      "goal": "the BYOK provider seam carries no dead config: OpenAI direct-chat has retry parity with the other 5 adapters, and the vestigial env-key boot guard is fully retired",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-17T06:24:23+00:00",
+      "updated": "2026-06-17T06:24:23+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-17T04:55:03+00:00",
+  "updated": "2026-06-17T06:46:44+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

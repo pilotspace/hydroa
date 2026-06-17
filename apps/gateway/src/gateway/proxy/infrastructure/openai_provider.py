@@ -12,7 +12,8 @@ Satisfies isinstance(x, UpstreamProvider) at runtime (Protocol is runtime_checka
 Security: api_key is stored as self._api_key and NEVER appears in any log field,
 metric label, span attribute, or repr. Follow the same rule as openrouter_api_key.
 
-No retries in v7 (conservative default). Follow-up: openai_max_retries knob.
+Chat completions (complete()) retry via the shared execute_with_retry seam — parity
+with the other 5 chat adapters; gated by max_retries (default 0 = single attempt).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -48,12 +50,24 @@ class OpenAIDirectProvider:
       self._api_key  — the secret bearer token (never logged/echoed)
       self._client   — httpx.AsyncClient with base_url + timeout wired
       self._breaker  — per-instance CircuitBreaker
+
+    The three retry knobs are declared as CLASS-LEVEL defaults so that __new__-built
+    instances (which skip __init__, e.g. the openai_chat_dispatch test doubles) still
+    resolve them to a single-attempt no-retry configuration rather than AttributeError.
     """
+
+    # Class-level defaults — read by __new__-built instances that skip __init__.
+    _max_retries: int = 0
+    _backoff_base: float = 0.5
+    _retry_deadline_s: float = 0.0
 
     def __init__(
         self,
         *,
         base_url: str = _DEFAULT_BASE_URL,
+        max_retries: int = 0,
+        backoff_base: float = 0.5,
+        retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
     ) -> None:
         self._breaker = CircuitBreaker()
@@ -66,8 +80,10 @@ class OpenAIDirectProvider:
                 pool=_CONNECT_TIMEOUT,
             ),
         )
-        # metrics_registry is stored for future use (follow-up: per-provider counters).
-        # Not used in v7; kept so the constructor signature matches the contract.
+        # Retry knobs — threaded through to the shared execute_with_retry seam by complete().
+        self._max_retries = max_retries
+        self._backoff_base = backoff_base
+        self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
 
     def _auth_headers(self) -> dict[str, str]:
@@ -93,27 +109,31 @@ class OpenAIDirectProvider:
 
         Credential resolved per-request from the contextvar via _auth_headers()
         (raises ProviderKeyMissing("openai") when unset/non-Bearer — fail-closed,
-        BEFORE any HTTP call). Breaker guards the call.
-        5xx / timeout / network → UpstreamUnavailableError; 2xx/4xx pass through.
+        BEFORE any HTTP call). Delegates to the shared execute_with_retry seam:
+        retryable 5xx / 408 / 429 / connect-timeout are retried up to _max_retries
+        with full-jitter backoff bounded by _retry_deadline_s (429 honors Retry-After);
+        200 and terminal 4xx pass through; read/write/network errors raise
+        UpstreamUnavailableError and are NOT retried. With _max_retries=0 (default)
+        this is exactly one attempt — byte-identical to the pre-retry behavior.
         """
-        self._breaker.guard()
-        try:
-            resp = await self._client.post(
+
+        async def _do_request() -> httpx.Response:
+            return await self._client.post(
                 "/chat/completions",
                 json=payload,
                 headers=self._auth_headers(),
             )
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            self._breaker.on_upstream_error()
-            raise UpstreamUnavailableError(str(exc)) from None
 
-        status = resp.status_code
-        if status >= 500:
-            self._breaker.on_upstream_error()
-            raise UpstreamUnavailableError(f"Upstream returned {status}")
-
-        self._breaker.record_success()
-        return status, resp.json()
+        return await execute_with_retry(
+            _do_request,
+            lambda resp: (resp.status_code, resp.json()),
+            breaker=self._breaker,
+            provider="openai",
+            max_retries=self._max_retries,
+            backoff_base=self._backoff_base,
+            deadline_s=self._retry_deadline_s,
+            metrics_registry=self._metrics_registry,
+        )
 
     def stream(self, payload: dict[str, object]) -> AsyncIterator[bytes]:
         """Forward a streaming chat request to POST /chat/completions.

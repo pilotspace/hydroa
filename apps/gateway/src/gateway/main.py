@@ -428,6 +428,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # modalities: embeddings/images/audio). The same instance is reused in _providers below.
     _openai_direct = OpenAIDirectProvider(
         base_url=settings.openai_base_url,
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
         metrics_registry=app.state.metrics_registry,
     )
     _chat_adapters["openai"] = _openai_direct
