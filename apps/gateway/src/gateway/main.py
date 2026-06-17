@@ -39,7 +39,7 @@ from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.routing_strategy import build_strategy
-from gateway.proxy.domain.ports import UpstreamProvider
+from gateway.proxy.domain.ports import CompletionUpstream, UpstreamProvider
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
 from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
 from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
@@ -400,7 +400,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # resolve time (credential-resolution-seam §3 + dynamic-auth-byok §3):
     # ProviderKeyMissing is raised at request dispatch, not at boot. Bedrock/Azure now
     # resolve their credentials per-request from the contextvar (task-3 dynamic-auth-byok).
-    _chat_adapters: dict[str, object] = {"openrouter": _openrouter_upstream}
+    _chat_adapters: dict[str, CompletionUpstream] = {"openrouter": _openrouter_upstream}
 
     # Anthropic adapter — UNCONDITIONAL (credential resolved per-request from contextvar).
     _chat_adapters["anthropic"] = AnthropicCompletionUpstream(
@@ -471,7 +471,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Dispatch wrapper — implements CompletionUpstream; selection only.
     app.state.completion_upstream = ProviderAwareCompletionUpstream(
-        adapters=_chat_adapters,  # type: ignore[arg-type]
+        adapters=_chat_adapters,
         resolver=app.state.provider_resolver,
     )
 

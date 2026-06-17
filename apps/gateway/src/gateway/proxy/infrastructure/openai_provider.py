@@ -80,6 +80,78 @@ class OpenAIDirectProvider:
             raise ProviderKeyMissing("openai")
         return {"Authorization": f"Bearer {cred.secret.get_secret_value()}"}
 
+    # -- CompletionUpstream surface (chat dispatch) --------------------------
+    # provider="openai" routes here via ProviderAwareCompletionUpstream.complete/stream.
+    # Pinned to "/chat/completions"; mirrors post_json / stream_bytes exactly so the
+    # circuit-breaker + error semantics match the rest of the chat adapters.
+
+    async def complete(
+        self,
+        payload: dict[str, object],
+    ) -> tuple[int, dict[str, object]]:
+        """Forward a non-streaming chat request to POST /chat/completions.
+
+        Credential resolved per-request from the contextvar via _auth_headers()
+        (raises ProviderKeyMissing("openai") when unset/non-Bearer — fail-closed,
+        BEFORE any HTTP call). Breaker guards the call.
+        5xx / timeout / network → UpstreamUnavailableError; 2xx/4xx pass through.
+        """
+        self._breaker.guard()
+        try:
+            resp = await self._client.post(
+                "/chat/completions",
+                json=payload,
+                headers=self._auth_headers(),
+            )
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._breaker.on_upstream_error()
+            raise UpstreamUnavailableError(str(exc)) from None
+
+        status = resp.status_code
+        if status >= 500:
+            self._breaker.on_upstream_error()
+            raise UpstreamUnavailableError(f"Upstream returned {status}")
+
+        self._breaker.record_success()
+        return status, resp.json()
+
+    def stream(self, payload: dict[str, object]) -> AsyncIterator[bytes]:
+        """Forward a streaming chat request to POST /chat/completions.
+
+        Mirrors stream_bytes but pinned to the chat path. The breaker is checked
+        before the first byte; a >=500 status raises UpstreamUnavailableError
+        BEFORE any byte is yielded (clean 502, never a leaked partial body).
+        """
+        self._breaker.guard()
+
+        async def _gen() -> AsyncIterator[bytes]:
+            try:
+                async with self._client.stream(
+                    "POST",
+                    "/chat/completions",
+                    json=payload,
+                    headers=self._auth_headers(),
+                    timeout=httpx.Timeout(
+                        connect=_CONNECT_TIMEOUT,
+                        read=_STREAM_READ_TIMEOUT,
+                        write=_NON_STREAM_TIMEOUT,
+                        pool=_CONNECT_TIMEOUT,
+                    ),
+                ) as response:
+                    if response.status_code >= 500:
+                        self._breaker.on_upstream_error()
+                        raise UpstreamUnavailableError(
+                            f"Upstream returned {response.status_code} on stream"
+                        )
+                    self._breaker.record_success()
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                self._breaker.on_upstream_error()
+                raise UpstreamUnavailableError(str(exc)) from None
+
+        return _gen()
+
     async def post_json(
         self,
         path: str,
