@@ -1,0 +1,51 @@
+# v25-BYOK overlay — additive on the e2e base.
+#
+# Points all SIX providers at the host-side independent auth-verifying stubs and gives the
+# gateway the Fernet key it needs to encrypt/decrypt the per-tenant credential store. The
+# v25 difference vs v20/v21: there are NO env provider keys here — credentials are resolved
+# per request from the tenant's Fernet-encrypted store (BYOK). The live script PUTs each
+# tenant key via /admin/provider-keys/{provider} before calling.
+#
+# Overlay chain:
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v25.yml \
+#     up --build -d --wait
+#
+# The stubs bind 127.0.0.1 ONLY; TLS is still enforced by the Envoy edge (:8443).
+# http:// is intentional for the loopback stubs. host.docker.internal resolves to the
+# Docker Desktop host IP where scripts/live_v25_verify.py runs the 3 stub threads:
+#   :9928 bearer stub  → openrouter (/api/v1) · openai (/v1) · anthropic (/v1) · google (/v1beta)
+#   :9927 v20 bedrock stub (SigV4)
+#   :9921 v21 azure stub  (api-key; endpoint comes from the tenant's PUT body, NOT env)
+#
+# GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY is a FAKE public test Fernet key (NOT a secret); it
+# only needs to be a valid base64url 32-byte Fernet key so the store can round-trip.
+#
+# Double-pass close rule: run scripts/live_v25_verify.py twice; both must exit 0.
+# Source: byok-live-verify TASK.md §3 CONTRACT (FROZEN @ v1).
+
+services:
+  gateway:
+    environment:
+      # ── Fernet key for the per-tenant provider-credential store (BYOK) ────────
+      # FAKE public test key — valid base64url 32-byte Fernet key. NEVER a real secret.
+      GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY: "ykjz8nXk81rGbmRCVIhK0HDxss5FYDHQxLqa4C_81N4="
+
+      # ── All 6 providers → host stubs (the gateway only ever sees loopback) ────
+      # Bearer providers share the v25 bearer stub on :9928, distinguished by path.
+      GATEWAY_OPENROUTER_BASE_URL: "http://host.docker.internal:9928/api/v1"
+      GATEWAY_OPENAI_BASE_URL: "http://host.docker.internal:9928/v1"
+      GATEWAY_ANTHROPIC_BASE_URL: "http://host.docker.internal:9928/v1"
+      GATEWAY_GOOGLE_BASE_URL: "http://host.docker.internal:9928/v1beta"
+      # Bedrock → v20 SigV4 stub on :9927.
+      GATEWAY_BEDROCK_ENDPOINT_URL: "http://host.docker.internal:9927"
+      GATEWAY_BEDROCK_REGION: "us-east-1"
+      # Azure endpoint is NOT env-set here — it is carried per-tenant in the PUT body
+      # (mode=api_key, endpoint=http://host.docker.internal:9921). api-version default kept.
+      GATEWAY_AZURE_API_VERSION: "2024-10-21"
+
+      # ── BYOK invariant: the platform holds NO provider keys ───────────────────
+      # Intentionally NO GATEWAY_*_API_KEY here. The base compose's empty-present
+      # GATEWAY_OPENROUTER_API_KEY is harmlessly ignored (Settings extra="ignore");
+      # all credentials come from the per-tenant store at request time.

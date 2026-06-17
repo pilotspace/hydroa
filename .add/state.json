@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "provider-config-ui",
+  "active_task": "byok-live-verify",
   "active_milestone": "v25",
   "tasks": {
     "provider-credential-store": {
@@ -218,6 +218,66 @@
           }
         ]
       }
+    },
+    "byok-live-verify": {
+      "title": "Byok Live Verify",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v25",
+      "depends_on": [],
+      "created": "2026-06-17T03:02:35+00:00",
+      "updated": "2026-06-17T04:49:33+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "e0c023d8c4c2e2abf7d2df0d2396e8a8",
+        "tests": {
+          "apps/gateway/tests/byok_verify/test_byok_verify.py": "46ef29234caaf534db32e170f8b7b764"
+        }
+      },
+      "scope": {
+        "declared": [
+          "scripts/v25_bearer_stub.py",
+          "scripts/live_v25_verify.py",
+          "infra/docker-compose.e2e.v25.yml",
+          "apps/gateway/tests/byok_verify/",
+          "apps/gateway/tests/byok_verify/Makefile"
+        ],
+        "snapshot_md5": "b3880cf7cfa72045601e27912bc1f58e"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-17T04:42:52+00:00",
+            "reason": "scope_violation: task 'byok-live-verify' touched outside its declared \u00a75 Scope \u2014 Makefile \u00b7 apps/gateway/src/gateway/main.py \u00b7 apps/gateway/src/gateway/proxy/infrastructure/openai_provider.py \u00b7 apps/gateway/tests/openai_chat_dispatch/__init__.py \u00b7 apps/gateway/tests/openai_chat_dispatch/test_openai_chat_dispatch.py (5 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "openai-chat-complete": {
+      "title": "OpenAI direct provider: implement CompletionUpstream (complete/stream) for chat dispatch",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v25",
+      "depends_on": [],
+      "created": "2026-06-17T04:30:14+00:00",
+      "updated": "2026-06-17T04:42:04+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "fc3610a068c418ddd19e936b65b9e358",
+        "tests": {
+          "apps/gateway/tests/openai_chat_dispatch/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/openai_chat_dispatch/test_openai_chat_dispatch.py": "bd5e04fb7e858ff91a57a1652e1e55c8"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/openai_provider.py",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "819a94d832b1250ce840388e704e7472"
+      }
     }
   },
   "milestones": {
@@ -231,7 +291,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-17T02:19:17+00:00",
+  "updated": "2026-06-17T04:49:33+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
