@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "stream-disconnect-billing",
+  "active_task": "stt-duration-cap",
   "active_milestone": "v28",
   "tasks": {
     "stream-disconnect-billing": {
@@ -47,6 +47,33 @@
           }
         ]
       }
+    },
+    "stt-duration-cap": {
+      "title": "Clamp derived STT duration to a configured maximum",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v28",
+      "depends_on": [],
+      "created": "2026-06-18T10:34:15+00:00",
+      "updated": "2026-06-18T10:56:25+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "436cda2d0b9a152fb503a5e9e1a7653f",
+        "tests": {
+          "apps/gateway/tests/stt_duration_cap/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/stt_duration_cap/conftest.py": "d188994183992dc3e04d3468a78eec67",
+          "apps/gateway/tests/stt_duration_cap/test_stt_duration_cap.py": "9b19315ec8044df2bd5271c74338c828"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/proxy/application/audio_use_case.py",
+          "apps/gateway/src/gateway/proxy/api/audio_deps.py",
+          "apps/gateway/tests/stt_duration_cap/"
+        ],
+        "snapshot_md5": "8027b02b715aab72cf1c59a024323d9b"
+      }
     }
   },
   "milestones": {
@@ -60,7 +87,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T10:27:40+00:00",
+  "updated": "2026-06-18T10:56:25+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

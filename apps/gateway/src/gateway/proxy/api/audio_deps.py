@@ -67,6 +67,8 @@ def get_transcription_use_case(
         governance=governance,
         session=session,
         tenant_credential_resolver=tenant_credential_resolver,
+        # stt-duration-cap §3: bound the billed per_second duration (GATEWAY_STT_MAX_DURATION_SECONDS).
+        max_duration_seconds=request.app.state.settings.stt_max_duration_seconds,
     )
 
 

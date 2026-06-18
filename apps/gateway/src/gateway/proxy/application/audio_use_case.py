@@ -108,11 +108,15 @@ class TranscriptionUseCase:
         governance: NonChatGovernance,
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
+        max_duration_seconds: float | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
+        # stt-duration-cap §3: clamp ceiling (seconds) on the billed per_second duration.
+        # None ⇒ no clamp (legacy/test-double parity); production DI injects the knob.
+        self._max_duration_seconds = max_duration_seconds
 
     async def execute(
         self,
@@ -218,6 +222,22 @@ class TranscriptionUseCase:
                     "stt_duration_unavailable",
                     extra={"model": model_id, "provider": row.provider},
                 )
+
+        # Step 7b: Clamp the billable duration to the configured maximum (stt-duration-cap
+        # §3). Covers BOTH the upstream-reported and server-derived branches: a corrupt/
+        # lying header (or upstream body["duration"]) can over-derive an absurd duration →
+        # over-bill per_second. Clamp + WARN; a normal file (<= cap) is byte-identical and
+        # the $0 unavailable path (0.0) never clamps. None ⇒ no cap (legacy/test parity).
+        if self._max_duration_seconds is not None and duration_s > self._max_duration_seconds:
+            _log.warning(
+                "stt_duration_capped",
+                extra={
+                    "model": model_id,
+                    "original": duration_s,
+                    "cap": self._max_duration_seconds,
+                },
+            )
+            duration_s = self._max_duration_seconds
 
         # Step 8: Fire-and-forget usage record (single-bill invariant)
         _fire_record_with_raw(
