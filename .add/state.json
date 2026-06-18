@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "reconciliation-aggregate",
+  "active_task": "reconciliation-endpoint",
   "active_milestone": "v29",
   "tasks": {
     "reconciliation-aggregate": {
@@ -28,6 +28,32 @@
         ],
         "snapshot_md5": "4b03f193af0658d38f7753a5fcd49ced"
       }
+    },
+    "reconciliation-endpoint": {
+      "title": "Admin reconciliation endpoint \u2014 observe a window's drift on demand",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v29",
+      "depends_on": [],
+      "created": "2026-06-18T12:23:31+00:00",
+      "updated": "2026-06-18T12:49:35+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "eecfe47270051aa7b3dd501e41813bff",
+        "tests": {
+          "apps/gateway/tests/reconciliation_endpoint/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/reconciliation_endpoint/conftest.py": "5c9df97f7544919da035fd4bea6c8599",
+          "apps/gateway/tests/reconciliation_endpoint/test_reconciliation_endpoint.py": "474933b166812774f20937d04c2ed048"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/gateway/src/gateway/usage/api/schemas.py",
+          "apps/gateway/tests/reconciliation_endpoint/"
+        ],
+        "snapshot_md5": "f36fe5a465db498cefe08cd3a946e481"
+      }
     }
   },
   "milestones": {
@@ -41,7 +67,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T12:05:25+00:00",
+  "updated": "2026-06-18T12:49:35+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
