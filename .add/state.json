@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "reconciliation-endpoint",
+  "active_task": "drift-alert",
   "active_milestone": "v29",
   "tasks": {
     "reconciliation-aggregate": {
@@ -54,6 +54,33 @@
         ],
         "snapshot_md5": "f36fe5a465db498cefe08cd3a946e481"
       }
+    },
+    "drift-alert": {
+      "title": "Periodic drift-alert \u2014 fire one deduped alert when window drift exceeds the threshold",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v29",
+      "depends_on": [],
+      "created": "2026-06-18T13:08:19+00:00",
+      "updated": "2026-06-18T14:14:42+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "e67f543577608b63f456af7aa1d4faee",
+        "tests": {
+          "apps/gateway/tests/drift_alert/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/drift_alert/conftest.py": "03a15004b1b659f88eee38dc990851e1",
+          "apps/gateway/tests/drift_alert/test_drift_alert.py": "0581b07f7ca35bbda32da91fc4cb15cf"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/drift_checker.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/drift_alert/"
+        ],
+        "snapshot_md5": "14ff7c0acdb9089215e9323168586cb0"
+      }
     }
   },
   "milestones": {
@@ -61,13 +88,13 @@
       "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert",
       "goal": "every dollar an upstream provider charges us is reconciled against what we billed the tenant, and drift beyond a configured threshold raises an alert \u2014 an upstream charge with no matching user charge can never go unnoticed",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-18T11:34:14+00:00",
-      "updated": "2026-06-18T11:34:14+00:00"
+      "updated": "2026-06-18T14:17:45+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T12:49:35+00:00",
+  "updated": "2026-06-18T14:17:45+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
