@@ -1,4 +1,4 @@
-"""Reconciliation aggregate — Σ(provider_cost) vs Σ(billed) over a window (reconciliation-aggregate §3).
+"""Reconciliation aggregate — Σ(provider_cost) vs Σ(billed) over a [from,to] window (§3).
 
 A pure, READ-ONLY measurement over the append-only `usage_records` ledger. For a half-open
 `[window_from, window_to)` window it compares the upstream-reported provider cost against what
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import text
@@ -41,7 +41,7 @@ class ReconciliationSummary:
     window_to: datetime  # exclusive
     provider_cost_total: Decimal  # Σ provider_cost over cost_basis='provider'
     billed_total: Decimal  # Σ cost_usd over cost_basis='provider'
-    drift: Decimal  # provider_cost_total − billed_total
+    drift: Decimal  # provider_cost_total - billed_total
     unbilled_upstream_cost: Decimal  # Σ provider_cost where provider_cost>0 AND cost_usd=0
     unbilled_rows: int  # COUNT(*) of those rows
     catalog_billed_total: Decimal  # Σ cost_usd over cost_basis='catalog'
@@ -59,10 +59,10 @@ def _as_naive_utc(dt: datetime) -> datetime:
     asyncpg expects NAIVE UTC datetimes when binding the `usage_records.created_at` parameter —
     the existing spend query strips tz the same way (`window_start.replace(tzinfo=None)  # asyncpg
     expects naive UTC`, usage/api/router.py). The reconciliation endpoint passes UTC-AWARE bounds,
-    so convert aware → UTC then drop tzinfo; a naive bound is assumed already UTC and passes through.
+    so convert aware → UTC then drop tzinfo; a naive bound is assumed UTC and passes through.
     """
     if dt.tzinfo is not None:
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt.astimezone(UTC).replace(tzinfo=None)
     return dt
 
 
@@ -123,7 +123,7 @@ async def reconcile_window(
     source_rows = (
         await session.execute(
             text(
-                "SELECT usage_source,"
+                "SELECT usage_source,"  # noqa: S608 (static clause, bound params)
                 "  COUNT(*) AS rows,"
                 "  COALESCE(SUM(provider_cost), 0) AS provider_cost"
                 " FROM usage_records"
