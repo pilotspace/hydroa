@@ -245,13 +245,13 @@ provider/header regression or an abusive client) · the distribution of billed p
   let ops alert on clamp rate without log scraping (evidence: the Watch list wants a rate).
 
 ### Competency deltas
-- [TDD · open] a WARN asserted only by event-name substring (`in caplog.text`) silently permits
+- [TDD · folded] a WARN asserted only by event-name substring (`in caplog.text`) silently permits [folded foundation-version 26]
   contract drift in the WARN's payload; assert the LogRecord's `extra` fields via
   `caplog.records` when the contract specifies them (evidence: refute-read NIT-2 — DCAP1/DCAP2
   passed without the contracted `{model, original, cap}` until strengthened).
-- [TDD · open] a constructor-default unit assert (`uc._max_dur… is None`) pins the wiring but not
+- [TDD · folded] a constructor-default unit assert (`uc._max_dur… is None`) pins the wiring but not [folded foundation-version 26]
   the execute-time behavior; pair it with a billed-outcome test for the same path when cheap
   (evidence: refute-read NIT-1 — DCAP7 covers the default, DCAP3/DCAP5 cover the no-clamp bill).
-- [ADD · open] the working-tree engine added an `unflagged_freeze` gate requiring the literal
+- [ADD · folded] the working-tree engine added an `unflagged_freeze` gate requiring the literal [folded foundation-version 26]
   `Least-sure flag surfaced at freeze:` label + a `[part]` tag; prose like "Lowest-confidence
   flag" no longer parses (evidence: tests→build refused until the §3 marker matched `_FLAG_LABEL_RE`).

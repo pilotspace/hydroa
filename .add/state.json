@@ -1,119 +1,12 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "stt-nonfinite-passthrough",
-  "active_milestone": "v28",
-  "tasks": {
-    "stream-disconnect-billing": {
-      "title": "Flag a mid-stream client disconnect so it is never an unexplained silent $0",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v28",
-      "depends_on": [],
-      "created": "2026-06-18T09:58:12+00:00",
-      "updated": "2026-06-18T10:27:40+00:00",
-      "tripwire": {
-        "contract_md5": "de324a1bec269ba97b55b8a59c505db4",
-        "tests": {
-          "apps/gateway/tests/stream_disconnect_billing/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/stream_disconnect_billing/conftest.py": "52a4cc8737e006ff5a6a67751efa9784",
-          "apps/gateway/tests/stream_disconnect_billing/test_stream_disconnect_billing.py": "f43ee578281e1ccf28d5934e74646904"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/proxy/application/use_cases.py",
-          "apps/gateway/tests/stream_disconnect_billing/"
-        ],
-        "snapshot_md5": "ecb886e086ece11ab99097093437e31f"
-      },
-      "heal": {
-        "attempts": 3,
-        "history": [
-          {
-            "at": "2026-06-18T10:17:53+00:00",
-            "reason": "scope_violation: task 'stream-disconnect-billing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (1 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-06-18T10:18:27+00:00",
-            "reason": "scope_violation: task 'stream-disconnect-billing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/.gitignore \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/15857191058005275921 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 \u00b7 apps/gateway/.ruff_cache/0.15.16/16576050670446413392 (6 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-06-18T10:22:19+00:00",
-            "reason": "scope_violation: task 'stream-disconnect-billing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.ruff_cache/.gitignore \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/15857191058005275921 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (7 total)",
-            "source": "scope"
-          }
-        ]
-      }
-    },
-    "stt-duration-cap": {
-      "title": "Clamp derived STT duration to a configured maximum",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v28",
-      "depends_on": [],
-      "created": "2026-06-18T10:34:15+00:00",
-      "updated": "2026-06-18T10:56:25+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "436cda2d0b9a152fb503a5e9e1a7653f",
-        "tests": {
-          "apps/gateway/tests/stt_duration_cap/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/stt_duration_cap/conftest.py": "d188994183992dc3e04d3468a78eec67",
-          "apps/gateway/tests/stt_duration_cap/test_stt_duration_cap.py": "9b19315ec8044df2bd5271c74338c828"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/proxy/application/audio_use_case.py",
-          "apps/gateway/src/gateway/proxy/api/audio_deps.py",
-          "apps/gateway/tests/stt_duration_cap/"
-        ],
-        "snapshot_md5": "8027b02b715aab72cf1c59a024323d9b"
-      }
-    },
-    "stt-nonfinite-passthrough": {
-      "title": "Sanitize non-finite floats in the STT response body",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v28",
-      "depends_on": [],
-      "created": "2026-06-18T10:57:31+00:00",
-      "updated": "2026-06-18T11:21:32+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "9c1fa42662106268dd739c53b070efb5",
-        "tests": {
-          "apps/gateway/tests/stt_nonfinite_passthrough/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/stt_nonfinite_passthrough/conftest.py": "7390e89301d2376f593d3d55e6bd67ac",
-          "apps/gateway/tests/stt_nonfinite_passthrough/test_stt_nonfinite_passthrough.py": "61afb3ae111d84e15e33cb9963bcce2d"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/proxy/application/json_sanitize.py",
-          "apps/gateway/src/gateway/proxy/application/audio_use_case.py",
-          "apps/gateway/tests/stt_nonfinite_passthrough/"
-        ],
-        "snapshot_md5": "4f8d8755e1a9b75dbbd1cfa98f626060"
-      }
-    }
-  },
-  "milestones": {
-    "v28": {
-      "title": "Billing & passthrough robustness",
-      "goal": "every streamed or transcription call that consumed real upstream work is billed or explicitly flagged \u2014 no remaining silent $0, and no non-finite value can enter the ledger or the response body",
-      "stage": "production",
-      "status": "active",
-      "created": "2026-06-18T09:57:10+00:00",
-      "updated": "2026-06-18T09:57:10+00:00"
-    }
-  },
+  "active_task": null,
+  "active_milestone": null,
+  "tasks": {},
+  "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T11:21:32+00:00",
+  "updated": "2026-06-18T11:26:27+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -459,6 +352,17 @@
         "provider-cost-reconciliation",
         "stt-duration-derivation",
         "stream-usage-completeness"
+      ],
+      "archived": "2026-06-18"
+    },
+    {
+      "slug": "v28",
+      "title": "Billing & passthrough robustness",
+      "tasks": 3,
+      "task_slugs": [
+        "stream-disconnect-billing",
+        "stt-duration-cap",
+        "stt-nonfinite-passthrough"
       ],
       "archived": "2026-06-18"
     }

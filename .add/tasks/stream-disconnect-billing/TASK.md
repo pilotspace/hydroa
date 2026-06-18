@@ -378,15 +378,15 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [TDD · open] `gen.athrow(asyncio.CancelledError)` / `gen.aclose()` are the DETERMINISTIC way to unit-test an
+- [TDD · folded] `gen.athrow(asyncio.CancelledError)` / `gen.aclose()` are the DETERMINISTIC way to unit-test an [folded foundation-version 26]
   async generator's disconnect/cancellation billing — they inject GeneratorExit/CancelledError at the exact
   suspended yield with no real-task race, far more reliable than create_task+cancel+sleep. Evidence: DC1/DC7
   deterministic single-shot; the spy records during the injected teardown.
-- [ADD · open] the freeze's lowest-confidence flag (fire-and-forget flushing from INSIDE GeneratorExit
+- [ADD · folded] the freeze's lowest-confidence flag (fire-and-forget flushing from INSIDE GeneratorExit [folded foundation-version 26]
   handling) was PROVEN by making the test itself the falsifier (DC1/DC4 can only go green if the record
   fires) — a "the test is the proof of the risky assumption" pattern, not a hand-wave. Evidence: DC1/DC4
   red→green is exactly the timing proof.
-- [ADD · open] CARRIED RESIDUE (refute-read NIT-3, untestable in unit): the real uvicorn loop-teardown on a
+- [ADD · folded] CARRIED RESIDUE (refute-read NIT-3, untestable in unit): the real uvicorn loop-teardown on a [folded foundation-version 26]
   production client disconnect is not proven by the unit suite — the independent-task architecture mitigates
   it, but an e2e/live check (disconnect a real stream, assert a client_disconnect ledger row) would close it.
   Evidence: refute-read 0.93 discount was entirely this scenario.
