@@ -20,6 +20,7 @@ dependencies = [
     "cryptography>=48.0.1",
     "tenacity>=8.2",
     "python-multipart>=0.0.32",
+    "tinytag>=2.2,<3",
 ]
 
 [dependency-groups]

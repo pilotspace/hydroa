@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "provider-cost-reconciliation",
+  "active_task": "stt-duration-derivation",
   "active_milestone": "v27",
   "tasks": {
     "tiered-token-billing": {
@@ -71,6 +71,33 @@
         ],
         "snapshot_md5": "e05d436c4730414bc7e2639e1c04c084"
       }
+    },
+    "stt-duration-derivation": {
+      "title": "Derive STT audio duration server-side so per_second billing is accurate without verbose_json",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v27",
+      "depends_on": [],
+      "created": "2026-06-17T09:40:57+00:00",
+      "updated": "2026-06-18T08:11:41+00:00",
+      "tripwire": {
+        "contract_md5": "1d116abc26110e8fdeb464cb9f158a7d",
+        "tests": {
+          "apps/gateway/tests/stt_duration_derivation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/stt_duration_derivation/conftest.py": "1bf3a323a9b0e2ce85fd8524829560cf",
+          "apps/gateway/tests/stt_duration_derivation/test_stt_duration_derivation.py": "8a6a47ab8eab059378e913eab21ce908"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/audio_duration.py",
+          "apps/gateway/src/gateway/proxy/application/audio_use_case.py",
+          "apps/gateway/pyproject.toml",
+          "apps/gateway/scripts/check_allowlist.py",
+          "apps/gateway/tests/stt_duration_derivation/"
+        ],
+        "snapshot_md5": "fe126b08fbcbaac0ceb640a707b0917d"
+      }
     }
   },
   "milestones": {
@@ -84,7 +111,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-17T09:32:35+00:00",
+  "updated": "2026-06-18T08:11:41+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
