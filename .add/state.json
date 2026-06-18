@@ -1,9 +1,35 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "reconciliation-aggregate",
   "active_milestone": "v29",
-  "tasks": {},
+  "tasks": {
+    "reconciliation-aggregate": {
+      "title": "Reconcile provider cost vs billed over a window (the metric primitive)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v29",
+      "depends_on": [],
+      "created": "2026-06-18T11:38:23+00:00",
+      "updated": "2026-06-18T12:05:25+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b45fb13aefa335f48f342a336d5e1f8c",
+        "tests": {
+          "apps/gateway/tests/reconciliation_aggregate/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/reconciliation_aggregate/conftest.py": "42b59ce3eeec44430daa8d1fce7b1949",
+          "apps/gateway/tests/reconciliation_aggregate/test_reconciliation_aggregate.py": "53176bfda101465074e172a4f8165860"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/reconciliation.py",
+          "apps/gateway/tests/reconciliation_aggregate/"
+        ],
+        "snapshot_md5": "4b03f193af0658d38f7753a5fcd49ced"
+      }
+    }
+  },
   "milestones": {
     "v29": {
       "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert",
@@ -15,7 +41,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T11:34:14+00:00",
+  "updated": "2026-06-18T12:05:25+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

@@ -43,7 +43,7 @@ Out: retroactive RE-BILLING or any mutation of historical ledger rows (the ledge
   `reconciliation-aggregate`.
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] reconciliation-aggregate   depends-on: none — a pure, tested aggregation over `usage_records` for a [from,to] window: Σ(provider_cost where cost_basis='provider'), Σ(billed cost), drift = provider_cost − billed, and the UNBILLED-UPSTREAM breakdown (provider_cost>0 ∧ billed=0, grouped by `usage_source`). Read-only, no schema change. Owns the shared metric contract.
+- [x] reconciliation-aggregate   depends-on: none — a pure, tested aggregation over `usage_records` for a [from,to] window: Σ(provider_cost where cost_basis='provider'), Σ(billed cost), drift = provider_cost − billed, and the UNBILLED-UPSTREAM breakdown (provider_cost>0 ∧ billed=0, grouped by `usage_source`). Read-only, no schema change. Owns the shared metric contract.   **DONE 2026-06-18 · gate PASS · 8 RA tests green (1194 full suite).**
 - [ ] reconciliation-endpoint    depends-on: reconciliation-aggregate — `GET /admin/reconciliation?from=&to=` (owner/admin-scoped; tenant-scoped + an operator-wide view) returning the window's drift summary, so ops can observe leak on demand. Thin handler over the aggregate.
 - [ ] drift-alert                depends-on: reconciliation-aggregate — a periodic check (scheduled/flusher-adjacent) that computes the window drift and, when it exceeds `GATEWAY_RECONCILIATION_DRIFT_THRESHOLD` (abs-$ or %), fires ONE deduped alert via the existing `alert_events` + webhook seam. The "can never go unnoticed" guarantee.
 
