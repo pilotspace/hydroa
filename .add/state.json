@@ -6,7 +6,7 @@
   "tasks": {},
   "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T11:26:27+00:00",
+  "updated": "2026-06-18T14:19:02+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -363,6 +363,17 @@
         "stream-disconnect-billing",
         "stt-duration-cap",
         "stt-nonfinite-passthrough"
+      ],
+      "archived": "2026-06-18"
+    },
+    {
+      "slug": "v29",
+      "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert",
+      "tasks": 3,
+      "task_slugs": [
+        "reconciliation-aggregate",
+        "reconciliation-endpoint",
+        "drift-alert"
       ],
       "archived": "2026-06-18"
     }

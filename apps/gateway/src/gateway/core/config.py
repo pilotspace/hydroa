@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from typing import Annotated
 
 from pydantic import (
@@ -116,6 +117,13 @@ class Settings(BaseSettings):
     alert_webhook_url: str = ""  # GATEWAY_ALERT_WEBHOOK_URL (empty = disabled)
     alert_retry_max: int = 3  # GATEWAY_ALERT_RETRY_MAX
     health_check_interval_seconds: int = 60  # GATEWAY_HEALTH_CHECK_INTERVAL_SECONDS (0 = disabled)
+
+    # ── Reconciliation drift-alert (v29 drift-alert task) ─────────────────────
+    # Fire a deduped operator-wide alert when a day's unbilled-upstream cost
+    # (provider_cost>0 ∧ billed=0) exceeds this absolute-USD threshold. Both knobs
+    # default to the OFF position — the checker is only started when BOTH are > 0.
+    reconciliation_drift_threshold: Decimal = Decimal("0")  # GATEWAY_RECONCILIATION_DRIFT_THRESHOLD
+    reconciliation_check_interval_seconds: int = 0  # GATEWAY_RECONCILIATION_CHECK_INTERVAL_SECONDS
 
     # ── OpenTelemetry trace export (obs-callbacks task) ──────────────────────
     otel_enabled: bool = False  # GATEWAY_OTEL_ENABLED

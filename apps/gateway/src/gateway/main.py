@@ -81,6 +81,10 @@ from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.usage.api.router import usage_router
+from gateway.usage.application.drift_checker import (
+    ReconciliationDriftChecker,
+    should_start_drift_checker,
+)
 from gateway.usage.application.flusher import UsageLedgerFlusher
 from gateway.usage.application.recorder import RecordingUsageRecorder
 from gateway.usage.infrastructure.alert_events_orm import (
@@ -279,6 +283,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # ReconciliationDriftChecker — periodic operator-wide unbilled-upstream leak monitor
+        # (v29 drift-alert). Default-OFF: started only when BOTH knobs are > 0.
+        app.state.drift_checker_task = None
+        if should_start_drift_checker(
+            _settings.reconciliation_drift_threshold,
+            _settings.reconciliation_check_interval_seconds,
+        ):
+            drift_checker = ReconciliationDriftChecker(
+                session_factory=_sessionmaker,
+                threshold=_settings.reconciliation_drift_threshold,
+            )
+            app.state.drift_checker = drift_checker
+            app.state.drift_checker_task = asyncio.create_task(
+                drift_checker.run_forever(
+                    interval_seconds=float(_settings.reconciliation_check_interval_seconds)
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -295,6 +317,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await health_task
 
+        drift_task: asyncio.Task[None] | None = getattr(app.state, "drift_checker_task", None)
+        if drift_task is not None:
+            drift_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await drift_task
+
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
             await dispatcher.run_once()
@@ -303,6 +331,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if hc is not None:
                 with contextlib.suppress(Exception):
                     await hc.check_once()
+        dc = getattr(app.state, "drift_checker", None)
+        if dc is not None:  # only set when the default-OFF guard started it
+            with contextlib.suppress(Exception):
+                await dc.check_once()
 
         # 2b. Cancel OtelFlusher task + final flush_once()
         otel_flusher_task: asyncio.Task[None] | None = getattr(app.state, "otel_flusher_task", None)
@@ -349,6 +381,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # (which does not trigger lifespan) can still inspect these attributes.
     # The lifespan overwrites them on startup.
     app.state.health_checker_task = None
+    app.state.drift_checker_task = None
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings

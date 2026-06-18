@@ -129,3 +129,38 @@ class SpendWindowResponse(BaseModel):
     buckets: list[SpendBucket]
     # Omitted (None) when group_by is not supplied.
     breakdown: list[SpendBreakdownItem] | list[TeamSpendBreakdownItem] | None = None
+
+
+# ── GET /admin/reconciliation schemas (FROZEN @ reconciliation-endpoint v1) ─────
+
+
+class ReconciliationSourceItem(BaseModel):
+    """Per-usage_source rollup of the unbilled-upstream rows in the window."""
+
+    model_config = ConfigDict(frozen=True)
+
+    usage_source: str  # frame | stream_fallback | client_disconnect
+    rows: int
+    provider_cost: str  # str(Decimal) — Σ provider_cost of unbilled rows with this source
+
+
+class ReconciliationResponse(BaseModel):
+    """Response body for GET /admin/reconciliation (the window's drift summary).
+
+    Maps the v29 reconcile_window aggregate's ReconciliationSummary. All money fields are
+    str(Decimal) — exact, never float. drift = provider_cost_total - billed_total over
+    cost_basis='provider' rows (healthy < 0); catalog_billed_total is reported separately and
+    is never folded into drift.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    window_from: str  # ISO-8601 UTC, inclusive
+    window_to: str  # ISO-8601 UTC, exclusive
+    provider_cost_total: str  # str(Decimal) — Σ provider_cost, cost_basis='provider'
+    billed_total: str  # str(Decimal) — Σ cost_usd, cost_basis='provider'
+    drift: str  # str(Decimal) — provider_cost_total - billed_total
+    unbilled_upstream_cost: str  # str(Decimal) — Σ provider_cost where pcost>0 AND cost_usd=0
+    unbilled_rows: int  # COUNT(*) of those rows
+    catalog_billed_total: str  # str(Decimal) — Σ cost_usd, cost_basis='catalog'
+    by_source: list[ReconciliationSourceItem]  # unbilled rows grouped by usage_source, sorted

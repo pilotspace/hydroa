@@ -37,10 +37,13 @@ from gateway.core.error_catalog import (
     PAYLOAD_START_DATE_INVALID,
     PAYLOAD_WINDOW_INVALID,
 )
+from gateway.keys.api.deps import require_owner_or_admin
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
 from gateway.usage.api.schemas import (
+    ReconciliationResponse,
+    ReconciliationSourceItem,
     SpendBreakdownItem,
     SpendBucket,
     SpendTotals,
@@ -49,6 +52,7 @@ from gateway.usage.api.schemas import (
     UsageRecordItem,
     UsageTotalsResponse,
 )
+from gateway.usage.application.reconciliation import reconcile_window
 
 usage_router = APIRouter(prefix="/admin", tags=["usage"])
 
@@ -469,4 +473,45 @@ async def get_spend(
         totals=totals,
         buckets=buckets,
         breakdown=breakdown,
+    )
+
+
+@usage_router.get("/reconciliation", response_model=ReconciliationResponse)
+async def get_reconciliation(
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    window: Annotated[str, Query()] = "month",
+    start: Annotated[str | None, Query()] = None,
+    end: Annotated[str | None, Query()] = None,
+) -> ReconciliationResponse:
+    """Return the caller's tenant reconciliation drift for a window (FROZEN @ v1 — TASK.md §3).
+
+    Owner/admin-scoped (member → 403) and TENANT-SCOPED: tenant_id is always the caller's own
+    tenant — the aggregate is never invoked operator-wide here. A thin read over the v29
+    reconcile_window aggregate; reuses /admin/spend's window params and _compute_window_bounds
+    (422 on a bad window/date). Empty window → 200 with explicit zeros (never 404). READ-ONLY.
+    """
+    window_start, window_end, _granularity = _compute_window_bounds(window, start, end)
+
+    summary = await reconcile_window(
+        session, window_start, window_end, tenant_id=identity.tenant_id
+    )
+
+    return ReconciliationResponse(
+        window_from=summary.window_from.isoformat(),
+        window_to=summary.window_to.isoformat(),
+        provider_cost_total=str(summary.provider_cost_total),
+        billed_total=str(summary.billed_total),
+        drift=str(summary.drift),
+        unbilled_upstream_cost=str(summary.unbilled_upstream_cost),
+        unbilled_rows=summary.unbilled_rows,
+        catalog_billed_total=str(summary.catalog_billed_total),
+        by_source=[
+            ReconciliationSourceItem(
+                usage_source=item.usage_source,
+                rows=item.rows,
+                provider_cost=str(item.provider_cost),
+            )
+            for item in summary.by_source
+        ],
     )
