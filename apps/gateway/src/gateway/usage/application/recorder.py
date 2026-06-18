@@ -52,6 +52,7 @@ class RecordingUsageRecorder:
             "pii_masked",
             "pricing_unit",
             "quantity",
+            "usage_source",
         }
     )
 
@@ -79,6 +80,7 @@ class RecordingUsageRecorder:
         pii_masked: bool = False,
         pricing_unit: str | None = None,
         quantity: Decimal | None = None,
+        usage_source: str | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -104,6 +106,7 @@ class RecordingUsageRecorder:
                 pii_masked=pii_masked,
                 pricing_unit=pricing_unit,
                 quantity=quantity,
+                usage_source=usage_source,
             )
         except Exception as exc:
             _log.warning(
@@ -131,15 +134,22 @@ class RecordingUsageRecorder:
         pii_masked: bool = False,
         pricing_unit: str | None = None,
         quantity: Decimal | None = None,
+        usage_source: str | None = None,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
         prompt_tokens = 0
         completion_tokens = 0
+        cached_tokens = 0
+        reasoning_tokens = 0
         cost_usd = _ZERO
         pricing_snapshot_id: str = ""
         resolved_pricing_unit = "per_token"
         resolved_quantity: Decimal | None = None
+        # provider-cost-reconciliation: default catalog basis; provider_cost stays NULL
+        # unless an upstream cost is consumed below.
+        cost_basis = "catalog"
+        provider_cost: Decimal | None = None
 
         if not cached:
             # Only fetch pricing for non-cached records; cached hits always cost 0
@@ -154,6 +164,8 @@ class RecordingUsageRecorder:
                     completion_price,
                     snapshot_pricing_unit,
                     unit_usd_per_unit,
+                    cached_input_price,
+                    reasoning_price,
                 ) = pricing
                 pricing_snapshot_id = str(snap_id)
 
@@ -168,14 +180,36 @@ class RecordingUsageRecorder:
                     resolved_pricing_unit = "per_token"
 
                 if resolved_pricing_unit == "per_token":
-                    # v6 path — BYTE-IDENTICAL (same operand order, no intermediate rounding)
+                    # tiered-token-billing: split cached/reasoning tiers; no-tier case is
+                    # BYTE-IDENTICAL to the v6 path (see compute_per_token_cost_usd).
                     if usage is not None:
                         prompt_tokens = int(str(usage.get("prompt_tokens", 0)))
                         completion_tokens = int(str(usage.get("completion_tokens", 0)))
-                    cost_usd = (
-                        Decimal(str(prompt_tokens)) * Decimal(str(prompt_price))
-                        + Decimal(str(completion_tokens)) * Decimal(str(completion_price))
-                    ) * (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100"))
+                        cached_tokens = _safe_tier(usage, "prompt_tokens_details", "cached_tokens")
+                        reasoning_tokens = _safe_tier(
+                            usage, "completion_tokens_details", "reasoning_tokens"
+                        )
+                    # provider-cost-reconciliation: PREFER the upstream-reported cost when
+                    # present; otherwise the UNCHANGED catalog path (byte-identical floor).
+                    provider_cost = _safe_provider_cost(usage)
+                    if provider_cost is not None:
+                        cost_usd = provider_cost * (
+                            Decimal("1") + Decimal(str(markup_pct)) / Decimal("100")
+                        )
+                        cost_basis = "provider"
+                    else:
+                        cost_usd = compute_per_token_cost_usd(
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            cached_tokens=cached_tokens,
+                            reasoning_tokens=reasoning_tokens,
+                            prompt_price=prompt_price,
+                            completion_price=completion_price,
+                            cached_price=cached_input_price,
+                            reasoning_price=reasoning_price,
+                            markup_pct=markup_pct,
+                            model=model,
+                        )
                 else:
                     # Non-token path: per_image / per_second / per_character
                     prompt_tokens = 0
@@ -218,6 +252,10 @@ class RecordingUsageRecorder:
             if usage is not None:
                 prompt_tokens = int(str(usage.get("prompt_tokens", 0)))
                 completion_tokens = int(str(usage.get("completion_tokens", 0)))
+                cached_tokens = _safe_tier(usage, "prompt_tokens_details", "cached_tokens")
+                reasoning_tokens = _safe_tier(
+                    usage, "completion_tokens_details", "reasoning_tokens"
+                )
             # Preserve the pricing_unit from extras even on cache hits (for event fields)
             _known_units = {"per_token", "per_image", "per_second", "per_character"}
             if pricing_unit is not None and pricing_unit in _known_units:
@@ -259,6 +297,17 @@ class RecordingUsageRecorder:
             # pricing-units: new contract fields (pricing-units TASK.md §3)
             "pricing_unit": resolved_pricing_unit,
             "quantity": quantity_str,
+            # tiered-token-billing: per-tier token counts (TASK.md §3)
+            "cached_tokens": str(cached_tokens),
+            "reasoning_tokens": str(reasoning_tokens),
+            # provider-cost-reconciliation: billed basis + raw upstream cost (TASK.md §3)
+            # provider_cost "" encodes NULL (catalog rows carry no upstream cost).
+            "cost_basis": cost_basis,
+            "provider_cost": str(provider_cost) if provider_cost is not None else "",
+            # stream-usage-completeness: usage provenance (TASK.md §3). Default 'frame'
+            # so every non-stream caller (no usage_source) reads true; 'stream_fallback'
+            # marks a stream whose terminal usage frame was missing/partial.
+            "usage_source": usage_source or "frame",
         }
 
         # Push to Redis Stream — must not drop the event even on cost-0
@@ -286,23 +335,128 @@ class RecordingUsageRecorder:
                 await self._redis.incrbyfloat(per_team_spend_key, float(cost_usd))
 
 
+def _safe_tier(usage: dict[str, Any] | None, outer: str, inner: str) -> int:
+    """Extract a token-tier count (cached / reasoning) from a usage dict, fail-safe.
+
+    Returns max(0, count) for a valid int; 0 for any malformed shape (missing,
+    non-dict `*_details`, non-int member, or negative). Per TASK.md §1 Reject:
+    a malformed tier is treated as ABSENT, never an error.
+    """
+    if not isinstance(usage, dict):
+        return 0
+    details = usage.get(outer)
+    if not isinstance(details, dict):
+        return 0
+    val = details.get(inner)
+    # bool is an int subclass — exclude it explicitly; non-int → absent.
+    if isinstance(val, bool) or not isinstance(val, int):
+        return 0
+    return max(0, val)
+
+
+def _safe_provider_cost(usage: dict[str, Any] | None) -> Decimal | None:
+    """Extract an upstream-reported cost (USD) from a usage dict, fail-safe.
+
+    Returns Decimal(cost) for a valid NON-NEGATIVE number (provider-cost-reconciliation
+    TASK.md §3) — 0 IS valid (a free model that genuinely cost the upstream nothing is
+    authoritative, not absent). Returns None for any other shape so the caller falls back
+    to catalog math:
+      - missing / non-dict usage / None / str / non-numeric -> None
+      - bool (int subclass) -> None (a flag is not a cost)
+      - negative -> None + WARNING "provider_cost_rejected" (never trust a negative cost)
+    Never raises — accuracy degrades to catalog, the request always ships.
+    """
+    if not isinstance(usage, dict):
+        return None
+    val = usage.get("cost")
+    # bool is an int subclass — exclude it explicitly before the numeric check.
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        return None
+    if val < 0:
+        _log.warning("provider_cost_rejected", extra={"cost": val})
+        return None
+    return Decimal(str(val))
+
+
+def compute_per_token_cost_usd(
+    *,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cached_tokens: int,
+    reasoning_tokens: int,
+    prompt_price: Decimal,
+    completion_price: Decimal,
+    cached_price: Decimal | None,
+    reasoning_price: Decimal | None,
+    markup_pct: Decimal,
+    model: str = "",
+) -> Decimal:
+    """Per-tier token cost (tiered-token-billing TASK.md §3).
+
+    When both tier counts are 0 the FLAT path runs the exact v6 expression verbatim
+    (byte-identical). Otherwise the tiered expression splits fresh/cached input and
+    fresh/reasoning output; a NULL tier price falls back to its base price; fresh
+    counts clamp to max(0, …) so cost is never negative (logs "tier_token_clamped").
+    """
+    markup = Decimal("1") + Decimal(str(markup_pct)) / Decimal("100")
+    if cached_tokens == 0 and reasoning_tokens == 0:
+        # FLAT PATH — verbatim v6 operand order; byte-identical to the pre-tier code.
+        return (
+            Decimal(str(prompt_tokens)) * Decimal(str(prompt_price))
+            + Decimal(str(completion_tokens)) * Decimal(str(completion_price))
+        ) * markup
+
+    # TIERED PATH
+    fresh_in = prompt_tokens - cached_tokens
+    fresh_out = completion_tokens - reasoning_tokens
+    if fresh_in < 0 or fresh_out < 0:
+        _log.warning(
+            "tier_token_clamped",
+            extra={
+                "model": model,
+                "prompt_tokens": prompt_tokens,
+                "cached_tokens": cached_tokens,
+                "completion_tokens": completion_tokens,
+                "reasoning_tokens": reasoning_tokens,
+            },
+        )
+    fresh_in = max(0, fresh_in)
+    fresh_out = max(0, fresh_out)
+    cprice = Decimal(str(cached_price)) if cached_price is not None else Decimal(str(prompt_price))
+    rprice = (
+        Decimal(str(reasoning_price))
+        if reasoning_price is not None
+        else Decimal(str(completion_price))
+    )
+    return (
+        Decimal(str(fresh_in)) * Decimal(str(prompt_price))
+        + Decimal(str(cached_tokens)) * cprice
+        + Decimal(str(fresh_out)) * Decimal(str(completion_price))
+        + Decimal(str(reasoning_tokens)) * rprice
+    ) * markup
+
+
 async def _fetch_latest_pricing(
     session: AsyncSession,
     model_id: str,
-) -> tuple[uuid.UUID, Decimal, Decimal, str, Decimal | None] | None:
-    """Return (snapshot_id, prompt_price, completion_price, pricing_unit, unit_usd_per_unit).
+) -> tuple[uuid.UUID, Decimal, Decimal, str, Decimal | None, Decimal | None, Decimal | None] | None:
+    """Return (snapshot_id, prompt_price, completion_price, pricing_unit,
+    unit_usd_per_unit, cached_input_price, reasoning_price).
 
     Returns None if no pricing snapshot found for the model.
 
-    Additive extension (pricing-units TASK.md §3):
-      pricing_unit      — discriminator; defaults to 'per_token' for old rows.
-      unit_usd_per_unit — per-unit price for non-token rows; NULL for per_token rows.
+    Additive extensions:
+      pricing_unit      — discriminator; defaults to 'per_token' for old rows. (pricing-units)
+      unit_usd_per_unit — per-unit price for non-token rows; NULL otherwise. (pricing-units)
+      cached_input_price / reasoning_price — per-tier prices; NULL → base-price
+                          fallback. (tiered-token-billing)
     """
     row = (
         await session.execute(
             text(
                 "SELECT id, prompt_usd_per_token, completion_usd_per_token,"
-                " pricing_unit, unit_usd_per_unit"
+                " pricing_unit, unit_usd_per_unit,"
+                " cached_input_usd_per_token, reasoning_usd_per_token"
                 " FROM pricing_snapshots"
                 " WHERE model_id = :model_id"
                 " ORDER BY captured_at DESC"
@@ -314,12 +468,16 @@ async def _fetch_latest_pricing(
     if row is None:
         return None
     unit_usd: Decimal | None = Decimal(str(row[4])) if row[4] is not None else None
+    cached_price: Decimal | None = Decimal(str(row[5])) if row[5] is not None else None
+    reasoning_price: Decimal | None = Decimal(str(row[6])) if row[6] is not None else None
     return (
         uuid.UUID(str(row[0])),
         Decimal(str(row[1])),
         Decimal(str(row[2])),
         str(row[3]) if row[3] is not None else "per_token",
         unit_usd,
+        cached_price,
+        reasoning_price,
     )
 
 

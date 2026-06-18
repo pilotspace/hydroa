@@ -69,3 +69,13 @@ class UsageRecordRow(Base):
     # pricing-units (pricing-units TASK.md §3): discriminator + billed quantity
     pricing_unit: Mapped[str] = mapped_column(Text, nullable=False, server_default="per_token")
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    # tiered-token-billing (TASK.md §3): per-tier token counts, queryable on the row.
+    cached_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # provider-cost-reconciliation (TASK.md §3): which basis billed the row + the raw
+    # upstream-reported cost (pre-markup) on provider-basis rows; NULL on catalog rows.
+    cost_basis: Mapped[str] = mapped_column(Text, nullable=False, server_default="catalog")
+    provider_cost: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    # stream-usage-completeness (TASK.md §3): provenance of the billed usage —
+    # 'frame' (real terminal usage frame) | 'stream_fallback' (frame missing/partial).
+    usage_source: Mapped[str] = mapped_column(Text, nullable=False, server_default="frame")

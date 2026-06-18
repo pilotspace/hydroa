@@ -6,7 +6,7 @@
   "tasks": {},
   "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-17T07:00:31+00:00",
+  "updated": "2026-06-18T09:14:46+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -342,6 +342,18 @@
         "retire-empty-key-guard"
       ],
       "archived": "2026-06-17"
+    },
+    {
+      "slug": "v27",
+      "title": "Billing precision \u2014 true per-tier cost on every call",
+      "tasks": 4,
+      "task_slugs": [
+        "tiered-token-billing",
+        "provider-cost-reconciliation",
+        "stt-duration-derivation",
+        "stream-usage-completeness"
+      ],
+      "archived": "2026-06-18"
     }
   ]
 }

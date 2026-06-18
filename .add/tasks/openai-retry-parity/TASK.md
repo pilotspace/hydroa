@@ -292,5 +292,5 @@ Watch (reuse scenarios as monitors): `gateway_upstream_retries_total{provider="o
 Spec delta for the next loop: OpenAI now has transient-5xx resilience parity; all 6 chat adapters share one retry policy.
 
 ### Competency deltas
-- [TDD · open] class-level attribute defaults are the clean seam to extend an adapter's ctor without
+- [TDD · folded] class-level attribute defaults are the clean seam to extend an adapter's ctor without
   breaking a sibling task's `__new__`-built test doubles (evidence: kept frozen openai_chat_dispatch green).

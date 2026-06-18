@@ -1,6 +1,7 @@
 """AudioUseCase — POST /v1/audio/transcriptions (STT) + /v1/audio/speech (TTS).
 
-Contract FROZEN @ audio-endpoints (TASK.md §3).
+Contract FROZEN @ audio-endpoints (TASK.md §3); the STT duration resolution
+(step 6) is extended by stt-duration-derivation (TASK.md §3).
 
 STT flow:
   1. Validate file + model fields from multipart form.
@@ -8,7 +9,9 @@ STT flow:
   3. Query ModelRow.modality + ModelRow.provider for the model_id.
   4. select_provider → UpstreamProvider adapter.
   5. await upstream.post_multipart("/audio/transcriptions", files, data).
-  6. duration_s = float(body.get("duration") or 0.0)
+  6. Resolve duration_s: positive upstream body["duration"] wins (verbose_json);
+     else derive server-side from the uploaded header
+     (audio_duration.derive_duration_seconds); else 0.0 + stt_duration_unavailable WARN.
   7. _fire_record_with_raw (single-bill, pricing_unit="per_second").
   8. Return (status, body).
 
@@ -24,6 +27,8 @@ TTS flow:
 
 from __future__ import annotations
 
+import logging
+import math
 from collections.abc import AsyncIterator
 from decimal import Decimal
 from typing import Any
@@ -40,6 +45,7 @@ from gateway.core.error_catalog import (
     PAYLOAD_VOICE_REQUIRED,
     UPSTREAM_UNAVAILABLE,
 )
+from gateway.proxy.application.audio_duration import derive_duration_seconds
 from gateway.proxy.application.governance import NonChatGovernance
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so _fire_record_with_raw
@@ -53,6 +59,8 @@ from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
 from gateway.proxy.domain.ports import TenantCredentialResolver, UsageRecorder
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
+
+_log = logging.getLogger(__name__)
 
 
 async def _stream_resetting_credential(
@@ -123,7 +131,8 @@ class TranscriptionUseCase:
           4. Query ModelRow.modality + ModelRow.provider
           5. select_provider → UpstreamProvider
           6. Read file bytes; build files + data dicts; call post_multipart
-          7. duration_s = float(body.get("duration") or 0.0)
+          7. Resolve duration_s: positive upstream body["duration"] wins; else
+             derive_duration_seconds(file_bytes); else 0.0 + stt_duration_unavailable WARN
           8. _fire_record_with_raw (single-bill, pricing_unit="per_second")
           9. return (status, resp_body)
         """
@@ -185,8 +194,30 @@ class TranscriptionUseCase:
             if _cred_token is not None:
                 reset_provider_credential(_cred_token)  # type: ignore[arg-type]
 
-        # Step 7: Extract duration; absent → 0.0 (cost $0 + WARN; NEVER raises)
-        duration_s = float(resp_body.get("duration") or 0.0)
+        # Step 7: Resolve billable duration (prefer-upstream-fallback-derive).
+        # Upstream's own positive duration (verbose_json) is authoritative and wins
+        # byte-identically (AU2). Absent it, derive server-side from the uploaded
+        # header so a no-verbose_json call no longer silently bills $0. An
+        # undecodable header degrades to $0 + WARN — accuracy is never an
+        # availability gate; the transcription still returns 200.
+        raw_duration = resp_body.get("duration")
+        if (
+            isinstance(raw_duration, (int, float))
+            and not isinstance(raw_duration, bool)
+            and math.isfinite(raw_duration)
+            and raw_duration > 0
+        ):
+            duration_s = float(raw_duration)
+        else:
+            derived = derive_duration_seconds(file_bytes)
+            if derived is not None:
+                duration_s = derived
+            else:
+                duration_s = 0.0
+                _log.warning(
+                    "stt_duration_unavailable",
+                    extra={"model": model_id, "provider": row.provider},
+                )
 
         # Step 8: Fire-and-forget usage record (single-bill invariant)
         _fire_record_with_raw(

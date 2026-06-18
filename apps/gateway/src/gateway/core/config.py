@@ -247,6 +247,12 @@ class Settings(BaseSettings):
     # (byte-identical: the first candidate only, no stream fallover). Once a byte reaches the
     # client the stream is committed — no replay. The retry seam stays complete()-only.
     upstream_stream_resilience_enabled: bool = Field(default=False)
+    # GATEWAY_OPENROUTER_USAGE_ACCOUNTING — when True, the OpenRouter upstream injects
+    # usage={"include": true} into the outbound request so OpenRouter returns its own
+    # reported cost, which the recorder then bills on (cost_basis="provider"). Default
+    # False = opt-in (byte-identical outbound request; recorder falls back to catalog).
+    # provider-cost-reconciliation TASK.md §3 (knob frozen default-OFF, Tin 2026-06-17).
+    openrouter_usage_accounting: bool = Field(default=False)
 
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip

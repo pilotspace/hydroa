@@ -63,8 +63,12 @@ from gateway.core.db import Base
 config = context.config
 
 # Interpret the config file for Python logging if present.
+# disable_existing_loggers=False: when Alembic runs IN-PROCESS (e.g. the migrations
+# test-suite invoking autogenerate), the default True would set disabled=True on every
+# already-imported app logger (gateway.*) — silently suppressing their warnings for the
+# rest of the process and breaking downstream caplog-based assertions. False preserves them.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Target metadata for autogenerate support.
 target_metadata = Base.metadata

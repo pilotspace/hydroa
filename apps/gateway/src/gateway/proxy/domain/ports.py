@@ -42,6 +42,9 @@ class UsageRecordExtras(TypedDict, total=False):
       guardrail_blocked — raw marker on guardrail block (guardrails-core)
       blocked_by        — guardrail name that triggered the block (guardrails-core)
       pii_masked        — raw marker when pre-call PII masking fired (guardrails-core)
+      usage_source      — provenance of the billed usage: "frame" (real terminal
+                          usage frame) | "stream_fallback" (stream omitted/partialed
+                          the frame) (stream-usage-completeness)
     """
 
     team_id: uuid.UUID
@@ -51,6 +54,7 @@ class UsageRecordExtras(TypedDict, total=False):
     pii_masked: bool
     pricing_unit: str
     quantity: Decimal
+    usage_source: str
 
 
 class ModelAccess(Enum):
