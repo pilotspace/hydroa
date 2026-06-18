@@ -623,3 +623,50 @@ Build/harness conventions folded from v1 (2026-06-10):
 Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         drafted in `tmp/*.txt`, committed via `git commit -F`; scopes: gateway,
         dashboard, infra, docs, pipeline, config
+
+        Testing / harness conventions folded from v25 (2026-06-18 catch-up, BYOK — provider-credential-store):
+        - [TDD] a delegated/subagent per-task "green" on a SCHEMA-touching change is NOT trustworthy — only the FULL
+          suite caught a second hardcoded table-manifest (tests/guardrails/test_guardrails_core.py) the narrow per-task
+          run missed; never accept a delegated green on a schema change without the full-suite blast-radius run.
+        - [ADD] the §5 "Scope (may touch):" anchor freezes from a SINGLE physical line at the tests→build snapshot; a
+          build that legitimately touches files beyond it needs an explicit amend + re-snapshot (`phase tests`→`advance`)
+          — hit 4× (main.py/env.py · tenants ORM + migrations manifest · guardrails manifest · gate-added test).
+        - [ADD] a risk:high SECRET task's verify MUST run an INDEPENDENT adversarial security subagent: it found a real
+          api_key encrypt→decrypt path never DB-tested that the all-green suite hid; the human gate then CLOSED (not
+          accepted) the gap.
+
+        Testing / harness conventions folded from v26 (2026-06-18 catch-up, provider config cleanup):
+        - [TDD] earned-green tested the adapter's TRANSPORT (post_json) but not the dispatch CONTRACT (complete()) — the
+          live pass caught the gap; protocol-surface tests must assert `isinstance` against the Protocol the CALLER uses
+          (evidence: openai-chat-complete; a `# type: ignore` masking the Protocol mismatch was a latent 500).
+        - [ADD] never `# type: ignore` a Protocol-adapter type error — it masks a real dispatch mismatch that only an
+          end-to-end verify surfaces (evidence: openai-chat-complete 500).
+        - [TDD] class-level attribute defaults are the clean seam to extend an adapter ctor without breaking a sibling
+          task's `__new__`-built test doubles (evidence: openai-retry-parity kept frozen openai_chat_dispatch green;
+          RE-CONFIRMED v27 for `OpenRouterCompletionUpstream._usage_accounting=False` — 9 retry doubles).
+        - [ADD] when retiring dead code whose tests doubled as weak invariant guards, RE-EXPRESS the invariant against a
+          LIVE surface (Settings.model_fields) rather than deleting the assertion (evidence: retire-empty-key-guard).
+
+        Testing / harness conventions folded from v27 (2026-06-18, billing precision — true per-tier cost):
+        - [TDD] Alembic `env.py fileConfig(...)` defaults `disable_existing_loggers=True`: once the migrations suite runs
+          in-process it disables every `gateway.*` logger, so downstream caplog-on-app-logger tests see an EMPTY caplog —
+          RED only in the FULL suite, green in isolation. Canonical fix `disable_existing_loggers=False`; treat full-suite
+          ordering as part of a caplog test's contract (evidence: provider-cost-reconciliation, 3 caplog tests bisected).
+        - [TDD] a pure-TOTAL predicate's test table must enumerate the TYPE-CONFUSION axis (bool/float/negative/None/
+          non-dict), not just the value axis (0 vs positive) — the refute-read found 3 missing type rows on a green 9-param
+          table (evidence: stream-usage-completeness SU7, now 12 params).
+        - [TDD] an inf-via-HTTP billing test is CONFOUNDED — Starlette renders the echoed body with `allow_nan=False`, so
+          an upstream `inf` makes the RESPONSE raise before any status assert; pin the LEDGER instead: `pytest.raises(
+          ValueError)` on the call + poll the `asyncio.ensure_future` usage-record spy for the billed `quantity.is_finite()`
+          (evidence: stt-duration-derivation SD8).
+        - [ADD] the verify-gate adversarial refute-read keeps paying for itself on fully-GREEN builds: provider-cost found
+          2 real coverage gaps (stream() injection + Settings→upstream wiring, closed PC13/PC14); stt found 2 real
+          findings (isfinite gap + no over-bill cap); stream-usage found 3 predicate-table NITs. EARNED-GREEN ≠ flawless.
+        - [ADD] editing a declared test file during VERIFY (to close a refute-read NIT) requires the sanctioned tripwire
+          re-cross (`phase tests` → `advance` ×2 to re-snapshot tests→build); an in-place edit burns a monotonic heal
+          attempt — the refute-read→fix loop steps back to `tests` FIRST (evidence: stream-usage-completeness, re-crossed
+          clean; reconfirms the v25 tamper-tripwire ordering).
+        - [ADD · OPEN FOLLOW-UP] no UPPER magnitude cap on a billed STT duration — a corrupt/lying audio header
+          over-derives via tinytag's header trust; needs a product-chosen max, revisit as a change-request (stt-duration).
+        - [ADD · OPEN FOLLOW-UP] an inf/nan upstream `duration` in the STT response body still 500s on serialization
+          (`allow_nan=False`), independent of billing — sanitize non-finite floats before echoing the upstream body (stt).

@@ -318,19 +318,19 @@ response-passthrough — both about bounding/normalizing a non-finite-or-absurd 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [TDD · open] An inf-via-HTTP test is confounded: Starlette renders the echoed body with `allow_nan=False`,
+- [TDD · folded] An inf-via-HTTP test is confounded: Starlette renders the echoed body with `allow_nan=False`,
   so the response RAISES before any status assert. Pin the LEDGER instead — `pytest.raises(ValueError)` on the
   call + poll the `asyncio.ensure_future` usage-record spy for the billed `quantity`. (evidence: SD8 RED showed
   `Decimal('Infinity')` in the spy, GREEN after the guard.)
-- [SDD · open] A frozen contract can carry a guard ASYMMETRY: the decoder spec had `math.isfinite`, the
+- [SDD · folded] A frozen contract can carry a guard ASYMMETRY: the decoder spec had `math.isfinite`, the
   upstream-branch spec did not → an inf upstream billed `Decimal('Infinity')`. The refute-read (Finding 1)
   caught it; the fix was a CHANGE-REQUEST re-freezing §3 @ v2, not a silent edit. Mirror an invariant across
   every sibling code path when freezing.
-- [ADD · open] The verify-gate adversarial refute-read paid off again: 2 real findings on a fully-green build
+- [ADD · folded] The verify-gate adversarial refute-read paid off again: 2 real findings on a fully-green build
   (isfinite gap + no over-bill cap). EARNED-GREEN ≠ flawless. (evidence: refute-read on this task.)
-- [ADD · open] FOLLOW-UP (Finding 2, deferred by Tin): no UPPER magnitude cap on the billed duration — a
+- [ADD · folded] FOLLOW-UP (Finding 2, deferred by Tin): no UPPER magnitude cap on the billed duration — a
   lying/corrupt audio header (huge declared `data` chunk) over-derives; tinytag trusts the header. Harm is
   tenant-self-inflicted; a sane ceiling needs a product-chosen max. Not built here; revisit as a change-request.
-- [ADD · open] FOLLOW-UP (separate, pre-existing): an inf/nan `duration` in the upstream STT body still 500s
+- [ADD · folded] FOLLOW-UP (separate, pre-existing): an inf/nan `duration` in the upstream STT body still 500s
   on response serialization (allow_nan=False), independent of billing. Response-passthrough robustness, out of
   this billing task's scope; candidate to sanitize non-finite floats before echoing the upstream body.

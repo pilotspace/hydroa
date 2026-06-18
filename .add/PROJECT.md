@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-16 · foundation-version: 24
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 25
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -298,6 +298,23 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     (HS256 + iss + required-claims + exp), trust ONLY a gateway 200, FAIL-CLOSED on every other path
     (401→ERR_AUTH_INVALID_SESSION, unreachable/timeout/5xx/3xx→503 ERR_AUTH_UPSTREAM, zero claims).
     The dashboard holds NO signing secret (no sprawl); reusable for any BFF-trusts-a-token surface.
+- Folded from v27 (2026-06-18) — billing precision (true per-tier cost on every call):
+  - SETTLED: every usage_records row carries the PROVENANCE/BASIS of its money, never a bare number — a
+    `cost_basis` ('provider' | 'catalog'), per-tier counts (`cached_tokens`/`reasoning_tokens`), and a
+    `usage_source` ('frame' | 'stream_fallback'). A $0 row is always EXPLAINED; "prefer the authoritative
+    source, fall back to a documented+flagged estimate" is the billing-accuracy floor (cached/reasoning
+    priced distinctly, provider-reported cost preferred, audio duration derived, streams never silently $0).
+  - SETTLED: "consume the upstream-reported cost" had a hidden DORMANCY trap — reading `usage["cost"]` is
+    correct but NEVER fires unless the gateway opts INTO OpenRouter usage accounting. Surface the enabling
+    knob (default-OFF `GATEWAY_OPENROUTER_USAGE_ACCOUNTING`) at the freeze so a feature is operator-flippable,
+    not a silent no-op (evidence: provider-cost-reconciliation).
+  - SETTLED: a frozen contract can carry a GUARD ASYMMETRY — the STT decoder spec had `math.isfinite` but the
+    upstream-duration branch did not, so an `inf` would bill `Decimal('Infinity')` into the NUMERIC ledger.
+    Mirror an invariant across EVERY sibling code path when freezing; the fix is a CHANGE-REQUEST re-freeze
+    (§3 v2), never a silent edit (evidence: stt-duration-derivation).
+  - OPEN follow-up: a streaming client DISCONNECT (GeneratorExit through `_wrapped` before the terminal frame)
+    still bills a silent $0 with NO `usage_source` marker — distinct from the missing-frame case v27 closed;
+    candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
 
@@ -560,3 +577,18 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 | 2026-06-16 | The no-flash theme `<script>` renders from a SERVER COMPONENT: a function exported from a `"use client"` module is a client *reference* (uncallable in server render), so `themeScript` lives in a non-client module, the client context moves to `app/providers.tsx`, and `app/layout.tsx` is a plain Server Component (fold: UDD+SDD/overview-heading-a11y-fix) | removes the React 19 client-`<head>` dev warning + is idiomatic App Router; `next build` clean (18 routes); RESIDUAL backlog: inline script has no CSP nonce/hash — wire one if a CSP layer lands | folded v24 |
 | 2026-06-16 | §5 scope-walk papercut RECURRED a 4th time, now acute — a background `tsc` (`incremental:true`) regenerates `tsconfig.tsbuildinfo` AFTER a clean re-snapshot, so delete-then-gate races and the gate trips on an artifact it cannot prevent; in-task fix = DECLARE the artifact as an in-scope token on the §5 Scope line (truthful: tsc produces it) (fold: ADD/overview-heading-a11y-fix) | FOUR recurrences ⇒ the engine fix is now overdue: extend `_SCOPE_EXCLUDE_DIRS`(+`.next`) and `_SCOPE_EXCLUDE_FILES`(+`tsconfig.tsbuildinfo`, `*.tsbuildinfo` suffix) in add.py | folded v24 |
 | 2026-06-16 | A pure-dedup/refactor with NO behavioral delta gets a GREEN-BY-DESIGN preservation assertion + the refute-read, never a fabricated red→green; icon-only controls keep a DS default accessible name as a safety net (the consumer dedup removes the duplicate, not the name) (fold: TDD/overview-heading-a11y-fix) | test_sidebartrigger_name_from_ds_default passes before and after — inventing a fake red would be the dishonest move the method forbids | folded v24 |
+| 2026-06-18 | CATCH-UP: v25 & v26 deltas were never consolidated (their milestones archived without the fold step) — swept into the foundation at the v27 close (fold: ADD/foundation-debt-reconcile) | foundation-version was 24 while v25/v26/v27 deltas sat open; one session clears all 19 genuinely-open deltas (the 4 v24 strays were already folded, status only flipped) | folded v25 |
+| 2026-06-18 | A delegated/subagent per-task "green" on a SCHEMA-touching change is not trustworthy — only the FULL-suite blast-radius run catches a 2nd hardcoded table-manifest (fold: TDD/provider-credential-store) | tests/guardrails/test_guardrails_core.py held a second manifest the narrow run missed | folded v25 |
+| 2026-06-18 | The §5 "Scope (may touch):" anchor freezes from a SINGLE physical line at tests→build; legitimately touching more needs an explicit amend + re-snapshot (fold: ADD/provider-credential-store) | hit 4× (main.py/env.py · tenants ORM+migrations manifest · guardrails manifest · gate-added test) | folded v25 |
+| 2026-06-18 | A risk:high SECRET task's verify MUST run an INDEPENDENT adversarial security subagent (fold: ADD/provider-credential-store) | it found a real api_key encrypt→decrypt path never DB-tested that the all-green suite hid; human gate closed it | folded v25 |
+| 2026-06-18 | Earned-green must test the dispatch CONTRACT (complete()), not only the adapter TRANSPORT (post_json) — protocol-surface tests assert isinstance against the Protocol the CALLER uses; never `# type: ignore` a Protocol-adapter mismatch (fold: TDD+ADD/openai-chat-complete) | a type:ignore masked a Protocol mismatch → latent 500 only the end-to-end verify surfaced | folded v26 |
+| 2026-06-18 | Class-level attribute defaults extend an adapter ctor without breaking a sibling task's `__new__`-built doubles (fold: TDD/openai-retry-parity) | kept frozen openai_chat_dispatch green; re-confirmed v27 for `_usage_accounting=False` (9 retry doubles) | folded v26 |
+| 2026-06-18 | Retiring dead code whose tests doubled as weak invariant guards = RE-EXPRESS the invariant against a live surface (Settings.model_fields), never delete the assertion (fold: ADD/retire-empty-key-guard) | the BYOK invariant stayed pinned to a live config surface after the guard was removed | folded v26 |
+| 2026-06-18 | Every usage_records row carries the PROVENANCE of its money (cost_basis · per-tier counts · usage_source); a $0 row is always EXPLAINED — prefer the authoritative source, else a documented+flagged fallback (fold: SDD/tiered-token-billing+provider-cost-reconciliation+stt-duration-derivation+stream-usage-completeness) | the v27 billing-accuracy floor: cached/reasoning priced distinctly, provider cost preferred, audio derived, streams never silent $0 | folded v27 |
+| 2026-06-18 | "Consume upstream cost" had a DORMANCY trap — reading usage["cost"] never fires unless the gateway opts into usage accounting; surface the default-OFF knob at freeze (fold: SDD/provider-cost-reconciliation) | GATEWAY_OPENROUTER_USAGE_ACCOUNTING turned a silent no-op into an operator-flippable feature | folded v27 |
+| 2026-06-18 | A frozen contract can carry a GUARD ASYMMETRY — mirror an invariant across every sibling code path when freezing; fix via CHANGE-REQUEST re-freeze, not a silent edit (fold: SDD/stt-duration-derivation) | the STT decoder had math.isfinite but the upstream-duration branch did not → inf would bill Decimal('Infinity'); §3 re-froze @ v2 | folded v27 |
+| 2026-06-18 | Alembic `env.py fileConfig()` defaults disable_existing_loggers=True → it silently disables every gateway.* logger in-process, emptying downstream caplog (RED only full-suite); fix disable_existing_loggers=False (fold: TDD/provider-cost-reconciliation) | 3 caplog-on-app-logger tests RED in the full suite, green isolated; bisected to tests/migrations | folded v27 |
+| 2026-06-18 | A pure-TOTAL predicate's test table enumerates the TYPE-CONFUSION axis (bool/float/negative/None/non-dict), not just the value axis (fold: TDD/stream-usage-completeness) | SU7 shipped green at 9 params; the refute-read found 3 missing type rows → 12 params | folded v27 |
+| 2026-06-18 | An inf-via-HTTP billing test is confounded (allow_nan=False makes the response raise pre-status) — pin the LEDGER: pytest.raises on the call + poll the ensure_future usage spy for the billed quantity (fold: TDD/stt-duration-derivation) | SD8 saw Decimal('Infinity') in the spy RED, finite GREEN after the isfinite guard | folded v27 |
+| 2026-06-18 | The verify-gate adversarial refute-read keeps paying off on fully-GREEN builds; editing a declared test during VERIFY needs the sanctioned tripwire re-cross (phase tests→advance ×2), never an in-place edit (fold: ADD/provider-cost-reconciliation+stt-duration-derivation+stream-usage-completeness) | refute-reads found PC13/PC14 + isfinite/cap + 3 predicate NITs across the 3 tasks; stream-usage re-crossed clean | folded v27 |
+| 2026-06-18 | OPEN follow-ups (v27, feed the next loop): (1) client-disconnect/GeneratorExit still bills a silent $0 with no marker; (2) no UPPER magnitude cap on a billed STT duration (tinytag header trust); (3) inf/nan upstream STT duration still 500s on response serialization (fold: SDD+ADD/stream-usage-completeness+stt-duration-derivation) | three carried candidate-next-loop deltas, out of their tasks' frozen scope | folded v27 (open follow-up) |

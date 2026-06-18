@@ -374,19 +374,19 @@ Spec delta for the next loop: provider-cost is OpenRouter-canonical (`usage["cos
 could broaden to other providers that report cost natively (none today).
 
 ### Competency deltas
-- [TDD · open] A latent test-isolation bug can hide until a 2nd/3rd test of the same kind is added —
+- [TDD · folded] A latent test-isolation bug can hide until a 2nd/3rd test of the same kind is added —
   Alembic's `env.py fileConfig(...)` defaulted to `disable_existing_loggers=True`, silently disabling
   every `gateway.*` logger in-process once the migrations suite ran, so caplog saw nothing downstream.
   t1's TT6/TT7 only "passed" by collection-order luck. Lesson: when adding a caplog-on-app-logger test,
   treat full-suite ordering as part of the contract; the canonical fix is `disable_existing_loggers=False`.
   (evidence: 3 caplog tests RED in full suite, green after the env.py one-liner; bisected to tests/migrations).
-- [TDD · open] Extending a shared adapter ctor with a new attribute breaks sibling `__new__`-built test
+- [TDD · folded] Extending a shared adapter ctor with a new attribute breaks sibling `__new__`-built test
   doubles (retry_policy `make_upstream`) unless a CLASS-LEVEL default is provided — same v26 lesson, now
   re-confirmed for `OpenRouterCompletionUpstream._usage_accounting=False`. Default on the class body, not
   only in __init__. (evidence: 9 retry_policy tests AttributeError → green after class-level default).
-- [ADD · open] The verify-gate adversarial refute-read again paid for itself: confirmed EARNED-GREEN AND
+- [ADD · folded] The verify-gate adversarial refute-read again paid for itself: confirmed EARNED-GREEN AND
   surfaced 2 real coverage gaps (stream() injection + Settings→upstream wiring) that the scenario set
   under-pinned; both closed before gate (PC13/PC14). Extends the t1 refute-read delta.
-- [SDD · open] "Capture upstream-reported cost" had a hidden dormancy trap: consuming `usage["cost"]` is
+- [SDD · folded] "Capture upstream-reported cost" had a hidden dormancy trap: consuming `usage["cost"]` is
   correct but NEVER fires unless the gateway opts into OpenRouter usage accounting. Surfacing that at the
   freeze (the default-off knob) turned a would-be no-op feature into a real, operator-flippable one.

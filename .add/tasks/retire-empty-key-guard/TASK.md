@@ -228,5 +228,5 @@ Spec delta for the next loop: the env-based provider-key boot guard is fully gon
 is the sole credential path. v26 cleanup debt cleared.
 
 ### Competency deltas
-- [ADD · open] when retiring dead code whose tests doubled as weak invariant guards, re-express the invariant
+- [ADD · folded] when retiring dead code whose tests doubled as weak invariant guards, re-express the invariant
   against a live surface (Settings.model_fields) rather than deleting the assertion (evidence: this task).

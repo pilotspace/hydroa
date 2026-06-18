@@ -222,5 +222,5 @@ Watch (reuse scenarios as monitors): provider="openai" chat 5xx rate / ERR_PROVI
 Spec delta for the next loop: an adapter registered in a dispatch map MUST be protocol-verified at wiring time (a `type: ignore[arg-type]` on an adapter map is a smell — the live pass caught what the type-ignore hid).
 
 ### Competency deltas
-- [TDD · open] earned-green tested the adapter's transport (post_json) but not the dispatch contract (complete) — the live pass caught the gap; protocol-surface tests must assert isinstance against the Protocol the caller uses.
-- [ADD · open] a `# type: ignore` that masks a Protocol mismatch is a latent 500; the verify task is what surfaced it end-to-end.
+- [TDD · folded] earned-green tested the adapter's transport (post_json) but not the dispatch contract (complete) — the live pass caught the gap; protocol-surface tests must assert isinstance against the Protocol the caller uses.
+- [ADD · folded] a `# type: ignore` that masks a Protocol mismatch is a latent 500; the verify task is what surfaced it end-to-end.

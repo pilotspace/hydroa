@@ -358,19 +358,19 @@ reconciliation job that re-prices stream_fallback rows from the provider's billi
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [SDD · open] A streaming client DISCONNECT (GeneratorExit raised through `_wrapped` before the terminal
+- [SDD · folded] A streaming client DISCONNECT (GeneratorExit raised through `_wrapped` before the terminal
   frame) currently bills $0 with NO usage_source marker at all — the post-stream record block at use_cases.py
   ~1483 is skipped when the generator is closed early, so this is a SILENT $0 distinct from the missing-frame
   case this task closed. Evidence: §0 trace + manual read of `_wrapped`'s finally/GeneratorExit handling; out
   of this task's frozen scope (no scenario). Candidate next-loop task: stamp `usage_source='client_disconnect'`
   (or fold into stream_fallback) on the disconnect path so EVERY $0 stream row is explained, not just
   missing/partial frames.
-- [TDD · open] Refute-read NIT-3 (predicate table missing float/negative/bool-with-real-int rows) shows a
+- [TDD · folded] Refute-read NIT-3 (predicate table missing float/negative/bool-with-real-int rows) shows a
   pure-total-predicate test table should ENUMERATE the type-confusion axis (bool/float/negative/None/non-dict),
   not just the value axis (0 vs positive). Evidence: SU7 shipped green with 9 params, refute-read found the
   3 missing type cases; all now covered (12 params). Foundation: add "type-confusion row per non-int input
   class" to the pure-predicate test checklist.
-- [ADD · open] Editing a declared test file during VERIFY (to close refute-read NITs) requires the sanctioned
+- [ADD · folded] Editing a declared test file during VERIFY (to close refute-read NITs) requires the sanctioned
   tripwire re-cross (`phase tests` → `advance` ×2) — doing it in-place would burn a monotonic heal attempt.
   Evidence: re-crossed clean this task. Foundation: the refute-read→fix loop should always step back to `tests`
   before editing, never edit-in-verify. (Reconfirms the v25 tamper-tripwire ordering learning.)
