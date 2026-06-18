@@ -2,11 +2,20 @@
   "project": "ai-proxy",
   "stage": "production",
   "active_task": null,
-  "active_milestone": null,
+  "active_milestone": "v29",
   "tasks": {},
-  "milestones": {},
+  "milestones": {
+    "v29": {
+      "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert",
+      "goal": "every dollar an upstream provider charges us is reconciled against what we billed the tenant, and drift beyond a configured threshold raises an alert \u2014 an upstream charge with no matching user charge can never go unnoticed",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-18T11:34:14+00:00",
+      "updated": "2026-06-18T11:34:14+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T11:26:27+00:00",
+  "updated": "2026-06-18T11:34:14+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
