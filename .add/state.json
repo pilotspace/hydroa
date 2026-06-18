@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "stt-duration-cap",
+  "active_task": "stt-nonfinite-passthrough",
   "active_milestone": "v28",
   "tasks": {
     "stream-disconnect-billing": {
@@ -74,6 +74,32 @@
         ],
         "snapshot_md5": "8027b02b715aab72cf1c59a024323d9b"
       }
+    },
+    "stt-nonfinite-passthrough": {
+      "title": "Sanitize non-finite floats in the STT response body",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v28",
+      "depends_on": [],
+      "created": "2026-06-18T10:57:31+00:00",
+      "updated": "2026-06-18T11:21:32+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9c1fa42662106268dd739c53b070efb5",
+        "tests": {
+          "apps/gateway/tests/stt_nonfinite_passthrough/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/stt_nonfinite_passthrough/conftest.py": "7390e89301d2376f593d3d55e6bd67ac",
+          "apps/gateway/tests/stt_nonfinite_passthrough/test_stt_nonfinite_passthrough.py": "61afb3ae111d84e15e33cb9963bcce2d"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/json_sanitize.py",
+          "apps/gateway/src/gateway/proxy/application/audio_use_case.py",
+          "apps/gateway/tests/stt_nonfinite_passthrough/"
+        ],
+        "snapshot_md5": "4f8d8755e1a9b75dbbd1cfa98f626060"
+      }
     }
   },
   "milestones": {
@@ -87,7 +113,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T10:56:25+00:00",
+  "updated": "2026-06-18T11:21:32+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

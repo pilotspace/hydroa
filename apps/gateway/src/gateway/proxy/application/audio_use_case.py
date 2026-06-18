@@ -46,6 +46,7 @@ from gateway.core.error_catalog import (
     UPSTREAM_UNAVAILABLE,
 )
 from gateway.proxy.application.audio_duration import derive_duration_seconds
+from gateway.proxy.application.json_sanitize import sanitize_non_finite
 from gateway.proxy.application.governance import NonChatGovernance
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so _fire_record_with_raw
@@ -251,6 +252,18 @@ class TranscriptionUseCase:
             pricing_unit="per_second",
             quantity=Decimal(str(duration_s)),
         )
+
+        # Step 8b: Sanitize non-finite floats in the echoed body (stt-nonfinite-passthrough
+        # §3). Starlette's JSONResponse renders with allow_nan=False, so an upstream inf/-inf/
+        # nan ANYWHERE in the body would 500 on serialization; replace each with null (degrade,
+        # never fail) and WARN once. An all-finite body is unchanged (count 0 ⇒ no WARN). This
+        # is response-only and runs AFTER the single billing record — the money path is untouched.
+        resp_body, _nf_count = sanitize_non_finite(resp_body)
+        if _nf_count:
+            _log.warning(
+                "stt_nonfinite_sanitized",
+                extra={"model": model_id, "count": _nf_count},
+            )
 
         # Step 9: Return upstream response
         return status, resp_body

@@ -285,10 +285,12 @@ async def test_sd8_non_finite_upstream_duration_falls_through_to_derive(
     upstream branch admits inf (inf > 0) → quantity = Decimal('Infinity').
 
     Scope note: echoing inf in the HTTP body is *separately* non-JSON-serializable
-    (Starlette renders with allow_nan=False) and surfaces as an app error — a
-    pre-existing response-passthrough concern OUT OF SCOPE for this billing task
-    (logged as an observe follow-up). This test pins only the in-scope LEDGER
-    quantity, captured from the fire-and-forget record before the response renders.
+    (Starlette renders with allow_nan=False). v27 deferred this as an observe
+    follow-up; v28 stt-nonfinite-passthrough CLOSED it — the inf is now sanitized to
+    null in the echoed body (degrade, never 500). Billing (Step 8) fires BEFORE the
+    sanitize (Step 8b), so this test's LEDGER invariant is unchanged: the derived 3.0
+    is recorded regardless of the body rewrite. The response now SUCCEEDS (200) with a
+    null duration, which this test also pins.
     """
     await seed_stt_model(db_session)
     fake_provider = inject_fake_openai_audio_provider(app)
@@ -297,15 +299,18 @@ async def test_sd8_non_finite_upstream_duration_falls_through_to_derive(
     spy = SpyRecorder()
     app.state.usage_recorder = spy
 
-    # The record fires inside execute() BEFORE the router renders the inf-bearing body,
-    # which then raises on serialization (the separate, pre-existing concern).
-    with pytest.raises(ValueError):
-        await client.post(
-            TRANSCRIPTIONS_PATH,
-            files=multipart_files(content=make_wav_bytes(seconds=3.0)),
-            data={"model": STT_MODEL_ID},
-            headers=auth_key(api_key_info["key"]),
-        )
+    # The record fires inside execute() BEFORE the body is sanitized, so the inf →
+    # derived-3.0 LEDGER quantity is captured even though the response now returns 200.
+    resp = await client.post(
+        TRANSCRIPTIONS_PATH,
+        files=multipart_files(content=make_wav_bytes(seconds=3.0)),
+        data={"model": STT_MODEL_ID},
+        headers=auth_key(api_key_info["key"]),
+    )
+    assert resp.status_code == 200, (
+        f"inf body must sanitize to null and return 200, not 500, got {resp.status_code}"
+    )
+    assert resp.json()["duration"] is None, "the non-finite duration is sanitized to null"
 
     # Flush the asyncio.ensure_future usage-record task.
     for _ in range(50):
