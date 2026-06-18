@@ -1468,6 +1468,38 @@ class CompletionUseCase:
                         team_id=team_id,
                     )
                     return
+                except (GeneratorExit, asyncio.CancelledError):
+                    # stream-disconnect-billing: the client dropped mid-stream
+                    # (GeneratorExit raised at the suspended yield when Starlette calls the
+                    # generator's aclose()) or the request task was cancelled
+                    # (CancelledError). BEFORE this handler that early-close skipped the
+                    # post-stream record block entirely → ZERO ledger rows for a
+                    # partially-streamed, paid-for response (a silent $0 distinct from the
+                    # v27 missing-frame case). Fire EXACTLY ONE flagged record — no await,
+                    # sync fire-and-forget via the independent ensure_future task — then
+                    # RE-RAISE so the close/cancel completes (never swallow it). A complete
+                    # usage frame that arrived before the disconnect still bills as 'frame'.
+                    disconnect_usage = extract_usage_from_sse(collected)
+                    if stream_usage_is_complete(disconnect_usage):
+                        disconnect_source = "frame"
+                    else:
+                        disconnect_source = "client_disconnect"
+                        _log.warning(
+                            "stream_client_disconnect",
+                            extra={"model": model_id, "tenant_id": str(tenant_id)},
+                        )
+                    _fire_record_with_raw(
+                        usage_recorder,
+                        tenant_id=tenant_id,
+                        key_id=key_id,
+                        model=model_id,
+                        usage=disconnect_usage,
+                        status=200,
+                        team_id=team_id,
+                        pii_masked=_stream_pii_masked,
+                        usage_source=disconnect_source,
+                    )
+                    raise
                 finally:
                     # credential-resolution-seam §3: clear the per-request credential once
                     # the stream is fully consumed (normal end), errors out, or is closed
