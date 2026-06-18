@@ -254,6 +254,14 @@ class Settings(BaseSettings):
     # provider-cost-reconciliation TASK.md §3 (knob frozen default-OFF, Tin 2026-06-17).
     openrouter_usage_accounting: bool = Field(default=False)
 
+    # GATEWAY_STT_MAX_DURATION_SECONDS — upper clamp (seconds) on a billed STT per_second
+    # duration. A corrupt/lying audio header (or a lying upstream body["duration"]) can
+    # over-derive an absurd duration → over-bill; the resolved duration is clamped to this
+    # max (+ a stt_duration_capped WARN) before billing. A normal file (< cap) bills
+    # byte-identically. 14400 = 4h (a generous real-world ceiling). gt=0 → a non-positive
+    # value fails fast at config load. (stt-duration-cap TASK.md §3, default frozen by Tin.)
+    stt_max_duration_seconds: float = Field(default=14400.0, gt=0)
+
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
     # the cooldown for a model. 0 = disabled (feature off, v5 byte-identical behavior).

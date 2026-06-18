@@ -6,7 +6,7 @@
   "tasks": {},
   "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T09:14:46+00:00",
+  "updated": "2026-06-18T11:26:27+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -352,6 +352,17 @@
         "provider-cost-reconciliation",
         "stt-duration-derivation",
         "stream-usage-completeness"
+      ],
+      "archived": "2026-06-18"
+    },
+    {
+      "slug": "v28",
+      "title": "Billing & passthrough robustness",
+      "tasks": 3,
+      "task_slugs": [
+        "stream-disconnect-billing",
+        "stt-duration-cap",
+        "stt-nonfinite-passthrough"
       ],
       "archived": "2026-06-18"
     }

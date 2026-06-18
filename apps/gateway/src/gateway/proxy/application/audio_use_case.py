@@ -46,6 +46,7 @@ from gateway.core.error_catalog import (
     UPSTREAM_UNAVAILABLE,
 )
 from gateway.proxy.application.audio_duration import derive_duration_seconds
+from gateway.proxy.application.json_sanitize import sanitize_non_finite
 from gateway.proxy.application.governance import NonChatGovernance
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so _fire_record_with_raw
@@ -108,11 +109,15 @@ class TranscriptionUseCase:
         governance: NonChatGovernance,
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
+        max_duration_seconds: float | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
+        # stt-duration-cap §3: clamp ceiling (seconds) on the billed per_second duration.
+        # None ⇒ no clamp (legacy/test-double parity); production DI injects the knob.
+        self._max_duration_seconds = max_duration_seconds
 
     async def execute(
         self,
@@ -219,6 +224,22 @@ class TranscriptionUseCase:
                     extra={"model": model_id, "provider": row.provider},
                 )
 
+        # Step 7b: Clamp the billable duration to the configured maximum (stt-duration-cap
+        # §3). Covers BOTH the upstream-reported and server-derived branches: a corrupt/
+        # lying header (or upstream body["duration"]) can over-derive an absurd duration →
+        # over-bill per_second. Clamp + WARN; a normal file (<= cap) is byte-identical and
+        # the $0 unavailable path (0.0) never clamps. None ⇒ no cap (legacy/test parity).
+        if self._max_duration_seconds is not None and duration_s > self._max_duration_seconds:
+            _log.warning(
+                "stt_duration_capped",
+                extra={
+                    "model": model_id,
+                    "original": duration_s,
+                    "cap": self._max_duration_seconds,
+                },
+            )
+            duration_s = self._max_duration_seconds
+
         # Step 8: Fire-and-forget usage record (single-bill invariant)
         _fire_record_with_raw(
             usage_recorder,
@@ -231,6 +252,18 @@ class TranscriptionUseCase:
             pricing_unit="per_second",
             quantity=Decimal(str(duration_s)),
         )
+
+        # Step 8b: Sanitize non-finite floats in the echoed body (stt-nonfinite-passthrough
+        # §3). Starlette's JSONResponse renders with allow_nan=False, so an upstream inf/-inf/
+        # nan ANYWHERE in the body would 500 on serialization; replace each with null (degrade,
+        # never fail) and WARN once. An all-finite body is unchanged (count 0 ⇒ no WARN). This
+        # is response-only and runs AFTER the single billing record — the money path is untouched.
+        resp_body, _nf_count = sanitize_non_finite(resp_body)
+        if _nf_count:
+            _log.warning(
+                "stt_nonfinite_sanitized",
+                extra={"model": model_id, "count": _nf_count},
+            )
 
         # Step 9: Return upstream response
         return status, resp_body
