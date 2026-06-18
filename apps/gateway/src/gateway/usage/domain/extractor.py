@@ -42,3 +42,22 @@ def extract_usage_from_sse(chunks: list[bytes]) -> dict[str, object] | None:
             if isinstance(usage, dict):
                 return usage
     return None
+
+
+def stream_usage_is_complete(usage: object) -> bool:
+    """Return True iff `usage` is a billable terminal stream frame.
+
+    Complete iff `usage` is a dict carrying at least one strictly-positive int
+    among `prompt_tokens` / `completion_tokens` / `total_tokens`. Anything else —
+    None, non-dict, an empty dict, or an all-zero/no-positive-count "partial"
+    frame — is incomplete (the stream-usage-completeness fallback case).
+
+    Pure + total: never raises (stream-usage-completeness TASK.md §3).
+    """
+    if not isinstance(usage, dict):
+        return False
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        value = usage.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return True
+    return False

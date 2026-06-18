@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "stt-duration-derivation",
+  "active_task": "stream-usage-completeness",
   "active_milestone": "v27",
   "tasks": {
     "tiered-token-billing": {
@@ -98,6 +98,36 @@
         ],
         "snapshot_md5": "fe126b08fbcbaac0ceb640a707b0917d"
       }
+    },
+    "stream-usage-completeness": {
+      "title": "Guarantee exactly one billed usage record per stream even when the terminal usage frame is missing/partial",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v27",
+      "depends_on": [],
+      "created": "2026-06-18T08:14:17+00:00",
+      "updated": "2026-06-18T08:57:31+00:00",
+      "tripwire": {
+        "contract_md5": "235e6d163265fe554940100b47cf6065",
+        "tests": {
+          "apps/gateway/tests/stream_usage_completeness/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/stream_usage_completeness/conftest.py": "8c8fae072e37a42f2c0d1e83b62e3f43",
+          "apps/gateway/tests/stream_usage_completeness/test_stream_usage_completeness.py": "1313af2584c3a95165950ecc7510a133"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/domain/extractor.py",
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/infrastructure/orm.py",
+          "apps/gateway/src/gateway/usage/application/flusher.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/domain/ports.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/stream_usage_completeness/"
+        ],
+        "snapshot_md5": "6d65b244a777a2dafb97b1c84d18b1a4"
+      }
     }
   },
   "milestones": {
@@ -105,13 +135,13 @@
       "title": "Billing precision \u2014 true per-tier cost on every call",
       "goal": "every proxied call is billed at the provider's true, per-tier cost: cached and reasoning tokens priced distinctly, provider-reported cost preferred when present, audio and streaming calls never silently under-billed",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-17T07:51:52+00:00",
-      "updated": "2026-06-17T07:51:52+00:00"
+      "updated": "2026-06-18T08:58:14+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T08:11:41+00:00",
+  "updated": "2026-06-18T08:58:14+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

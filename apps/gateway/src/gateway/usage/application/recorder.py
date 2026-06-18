@@ -52,6 +52,7 @@ class RecordingUsageRecorder:
             "pii_masked",
             "pricing_unit",
             "quantity",
+            "usage_source",
         }
     )
 
@@ -79,6 +80,7 @@ class RecordingUsageRecorder:
         pii_masked: bool = False,
         pricing_unit: str | None = None,
         quantity: Decimal | None = None,
+        usage_source: str | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -104,6 +106,7 @@ class RecordingUsageRecorder:
                 pii_masked=pii_masked,
                 pricing_unit=pricing_unit,
                 quantity=quantity,
+                usage_source=usage_source,
             )
         except Exception as exc:
             _log.warning(
@@ -131,6 +134,7 @@ class RecordingUsageRecorder:
         pii_masked: bool = False,
         pricing_unit: str | None = None,
         quantity: Decimal | None = None,
+        usage_source: str | None = None,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -300,6 +304,10 @@ class RecordingUsageRecorder:
             # provider_cost "" encodes NULL (catalog rows carry no upstream cost).
             "cost_basis": cost_basis,
             "provider_cost": str(provider_cost) if provider_cost is not None else "",
+            # stream-usage-completeness: usage provenance (TASK.md §3). Default 'frame'
+            # so every non-stream caller (no usage_source) reads true; 'stream_fallback'
+            # marks a stream whose terminal usage frame was missing/partial.
+            "usage_source": usage_source or "frame",
         }
 
         # Push to Redis Stream — must not drop the event even on cost-0

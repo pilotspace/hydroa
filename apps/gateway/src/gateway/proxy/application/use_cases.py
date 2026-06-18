@@ -76,7 +76,7 @@ from gateway.proxy.domain.provider_credentials import (
 from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
 from gateway.rate_limits.domain.errors import RateLimitExceededError
 from gateway.rate_limits.domain.ports import RateLimiter
-from gateway.usage.domain.extractor import extract_usage_from_sse
+from gateway.usage.domain.extractor import extract_usage_from_sse, stream_usage_is_complete
 
 if TYPE_CHECKING:
     from gateway.observability.otel import OtelSpanEmitter
@@ -306,6 +306,7 @@ def _fire_record_with_raw(
     pii_masked: bool = False,
     pricing_unit: str | None = None,
     quantity: Decimal | None = None,
+    usage_source: str | None = None,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
@@ -329,6 +330,8 @@ def _fire_record_with_raw(
         extras["pricing_unit"] = pricing_unit
     if quantity is not None:
         extras["quantity"] = quantity
+    if usage_source is not None:
+        extras["usage_source"] = usage_source
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -1480,8 +1483,20 @@ class CompletionUseCase:
                             reset_provider_credential(_stream_cred_token)  # type: ignore[arg-type]
                         except ValueError:
                             pass
-                # Tee: extract usage from collected SSE chunks after stream completes
+                # Tee: extract usage from collected SSE chunks after stream completes.
+                # stream-usage-completeness: a complete frame wins byte-identically
+                # (usage_source="frame"); a missing/partial frame is flagged
+                # "stream_fallback" + WARN so the $0 bill is never SILENT (the bytes
+                # already reached the client — accuracy is never an availability gate).
                 extracted_usage = extract_usage_from_sse(collected)
+                if stream_usage_is_complete(extracted_usage):
+                    usage_source = "frame"
+                else:
+                    usage_source = "stream_fallback"
+                    _log.warning(
+                        "stream_usage_frame_missing",
+                        extra={"model": model_id, "tenant_id": str(tenant_id)},
+                    )
                 _fire_record_with_raw(
                     usage_recorder,
                     tenant_id=tenant_id,
@@ -1491,6 +1506,7 @@ class CompletionUseCase:
                     status=200,
                     team_id=team_id,
                     pii_masked=_stream_pii_masked,
+                    usage_source=usage_source,
                 )
                 # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
                 if tpm_limit is not None and isinstance(extracted_usage, dict):

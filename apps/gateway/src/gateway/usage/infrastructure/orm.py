@@ -76,3 +76,6 @@ class UsageRecordRow(Base):
     # upstream-reported cost (pre-markup) on provider-basis rows; NULL on catalog rows.
     cost_basis: Mapped[str] = mapped_column(Text, nullable=False, server_default="catalog")
     provider_cost: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    # stream-usage-completeness (TASK.md §3): provenance of the billed usage —
+    # 'frame' (real terminal usage frame) | 'stream_fallback' (frame missing/partial).
+    usage_source: Mapped[str] = mapped_column(Text, nullable=False, server_default="frame")
