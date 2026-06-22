@@ -133,6 +133,13 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 - [ ] layering & dependencies follow CONVENTIONS.md
 - [ ] a person reviewed and approved the change
 
+### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
+> Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
+> + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
+> row is evidence you can SEE, not a restatement of a test name.
+- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
+- [ ] <another observable outcome> — confirmed by <evidence seen>
+
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
 - [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
@@ -150,7 +157,11 @@ Reviewed by: <name> · date: <date>
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
-Spec delta for the next loop: <what production taught you>
+
+### Spec delta
+Forward changes for the next loop — each re-enters at Specify as the next task. One line
+each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
+the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency

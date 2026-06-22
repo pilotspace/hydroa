@@ -168,6 +168,9 @@ def get_completion_use_case(
     # app.state.tenant_credential_resolver = FakeResolver().
     tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
     provider_resolver = getattr(request.app.state, "provider_resolver", None)
+    # openrouter-cost-recovery-wiring (v30 t6.2c): optional inline recovery service.
+    # Absent / None ⇒ feature off ⇒ byte-identical (tests override via app.state).
+    cost_recovery = getattr(request.app.state, "cost_recovery_service", None)
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -180,4 +183,5 @@ def get_completion_use_case(
         vector_cache=vector_cache,
         tenant_credential_resolver=tenant_credential_resolver,
         provider_resolver=provider_resolver,
+        cost_recovery=cost_recovery,
     )

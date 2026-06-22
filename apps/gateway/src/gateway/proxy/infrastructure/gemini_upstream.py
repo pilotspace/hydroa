@@ -32,7 +32,7 @@ import json
 import logging
 import math
 import time
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Iterable, Iterator
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -336,24 +336,36 @@ def _gemini_error_to_openai(body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _translate_gemini_sse(chunks: Iterable[dict[str, Any]]) -> Iterable[bytes]:
-    """Translate an iterable of Gemini SSE data dicts → OpenAI SSE chunk bytes.
+class _GeminiSSEStepper:
+    """Stateful Gemini-SSE → OpenAI-SSE translator, fed one chunk at a time.
 
-    Yields ``b"data: " + json_chunk + b"\\n\\n"`` frames:
-      1. First: a role-announcement chunk with ``delta:{role:"assistant"}``.
-      2. For each input chunk's candidates[0].content.parts[].text: a content chunk.
-      3. Terminal: ONE final ``delta:{}`` chunk carrying finish_reason AND usage,
-         then ``b"data: [DONE]\\n\\n"``.
+    ``step(chunk)`` yields a one-time role announcement before the first content/tool
+    frame, then content/tool frames for that chunk; ``finish()`` yields the terminal
+    finish_reason + usage frame and ``[DONE]``. This single core drives BOTH the
+    buffered wrapper (``_translate_gemini_sse``) and the live streaming adapter — so
+    each frame flows as its source chunk arrives, byte-identical to the buffered output.
+    The per-instance ``created`` timestamp is stamped once at construction.
 
-    This satisfies extract_usage_from_sse (which scans in reverse for a "usage" key).
+    Frame order:
+      1. role-announcement chunk with ``delta:{role:"assistant"}`` (once, lazily).
+      2. For each chunk's candidates[0].content.parts[].text/functionCall: a frame.
+      3. Terminal ``delta:{}`` chunk carrying finish_reason AND usage, then ``[DONE]``.
+    extract_usage_from_sse (reverse scan for "usage") still finds the terminal frame.
     """
-    created: int = int(time.time())
 
-    def _make_chunk(delta: dict[str, Any], finish_reason: str | None) -> dict[str, Any]:
+    def __init__(self) -> None:
+        self._created: int = int(time.time())
+        self._role_emitted: bool = False
+        self._finish_reason: str = "stop"
+        self._last_usage: dict[str, Any] = {}
+        self._tc_count: int = 0
+        self._saw_tool_call: bool = False
+
+    def _make_chunk(self, delta: dict[str, Any], finish_reason: str | None) -> dict[str, Any]:
         return {
             "id": "",
             "object": "chat.completion.chunk",
-            "created": created,
+            "created": self._created,
             "model": "",
             "choices": [
                 {
@@ -364,29 +376,31 @@ def _translate_gemini_sse(chunks: Iterable[dict[str, Any]]) -> Iterable[bytes]:
             ],
         }
 
-    # First chunk: role announcement
-    yield b"data: " + json.dumps(_make_chunk({"role": "assistant"}, None)).encode() + b"\n\n"
+    def _role_frame(self) -> Iterator[bytes]:
+        """Emit the role-announcement chunk exactly once, before any content."""
+        if not self._role_emitted:
+            self._role_emitted = True
+            yield (
+                b"data: "
+                + json.dumps(self._make_chunk({"role": "assistant"}, None)).encode()
+                + b"\n\n"
+            )
 
-    finish_reason: str = "stop"
-    last_usage: dict[str, Any] = {}
-    tc_count: int = 0
-    saw_tool_call: bool = False
-
-    chunk_list = list(chunks)
-    for chunk in chunk_list:
+    def step(self, chunk: dict[str, Any]) -> Iterator[bytes]:
+        yield from self._role_frame()
         candidates: list[dict[str, Any]] = chunk.get("candidates", [])
         if candidates:
             candidate = candidates[0]
             # Capture finish reason from this chunk if present
             if "finishReason" in candidate:
-                finish_reason = _map_gemini_finish_reason(candidate["finishReason"])
+                self._finish_reason = _map_gemini_finish_reason(candidate["finishReason"])
             content_obj: dict[str, Any] = candidate.get("content", {})
             parts: list[dict[str, Any]] = content_obj.get("parts", [])
             for part in parts:
                 if "text" in part:
                     yield (
                         b"data: "
-                        + json.dumps(_make_chunk({"content": part["text"]}, None)).encode()
+                        + json.dumps(self._make_chunk({"content": part["text"]}, None)).encode()
                         + b"\n\n"
                     )
                 elif "functionCall" in part:
@@ -394,39 +408,53 @@ def _translate_gemini_sse(chunks: Iterable[dict[str, Any]]) -> Iterable[bytes]:
                     fc = part["functionCall"]
                     name = fc.get("name", "")
                     frag = build_tool_call_delta(
-                        tc_count,
-                        id=synthesize_tool_call_id(name, tc_count),
+                        self._tc_count,
+                        id=synthesize_tool_call_id(name, self._tc_count),
                         name=name,
                         arguments_fragment=dump_tool_arguments(fc.get("args", {})),
                     )
-                    tc_count += 1
-                    saw_tool_call = True
+                    self._tc_count += 1
+                    self._saw_tool_call = True
                     yield (
                         b"data: "
-                        + json.dumps(_make_chunk({"tool_calls": [frag]}, None)).encode()
+                        + json.dumps(self._make_chunk({"tool_calls": [frag]}, None)).encode()
                         + b"\n\n"
                     )
         # Capture the last usageMetadata seen
         if "usageMetadata" in chunk:
-            last_usage = chunk["usageMetadata"]
+            self._last_usage = chunk["usageMetadata"]
 
-    # A functionCall in the stream signals a tool turn (Gemini has no tool finishReason)
-    if saw_tool_call:
-        finish_reason = "tool_calls"
+    def finish(self) -> Iterator[bytes]:
+        # Emit the role frame even for an empty stream (matches the buffered output).
+        yield from self._role_frame()
+        # A functionCall in the stream signals a tool turn (Gemini has no tool finishReason)
+        if self._saw_tool_call:
+            self._finish_reason = "tool_calls"
 
-    # Terminal chunk: finish_reason + usage
-    prompt_tokens: int = last_usage.get("promptTokenCount", 0)
-    completion_tokens: int = last_usage.get("candidatesTokenCount", 0)
-    total_tokens: int = last_usage.get("totalTokenCount", 0)
+        prompt_tokens: int = self._last_usage.get("promptTokenCount", 0)
+        completion_tokens: int = self._last_usage.get("candidatesTokenCount", 0)
+        total_tokens: int = self._last_usage.get("totalTokenCount", 0)
 
-    terminal_chunk = _make_chunk({}, finish_reason)
-    terminal_chunk["usage"] = {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": total_tokens,
-    }
-    yield b"data: " + json.dumps(terminal_chunk).encode() + b"\n\n"
-    yield b"data: [DONE]\n\n"
+        terminal_chunk = self._make_chunk({}, self._finish_reason)
+        terminal_chunk["usage"] = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+        }
+        yield b"data: " + json.dumps(terminal_chunk).encode() + b"\n\n"
+        yield b"data: [DONE]\n\n"
+
+
+def _translate_gemini_sse(chunks: Iterable[dict[str, Any]]) -> Iterable[bytes]:
+    """Translate an iterable of Gemini SSE data dicts → OpenAI SSE chunk bytes.
+
+    Thin buffered wrapper over ``_GeminiSSEStepper`` (byte-identical to the historical
+    implementation). The streaming adapter drives the same stepper live.
+    """
+    stepper = _GeminiSSEStepper()
+    for chunk in chunks:
+        yield from stepper.step(chunk)
+    yield from stepper.finish()
 
 
 def _gemini_embed_to_openai(
@@ -582,8 +610,9 @@ class GeminiCompletionUpstream:
         """Return an async generator that yields OpenAI SSE chunk bytes.
 
         The circuit breaker is checked before the stream opens.
-        Gemini SSE data: frames are collected then translated via
-        _translate_gemini_sse → OpenAI chunk bytes (terminal usage frame + [DONE]).
+        Gemini SSE data: frames are translated LIVE via a stateful _GeminiSSEStepper —
+        each OpenAI chunk is yielded as its source frame arrives (incremental delivery);
+        finish() emits the terminal usage frame + [DONE].
         """
         self._breaker.guard()
 
@@ -615,8 +644,10 @@ class GeminiCompletionUpstream:
                         )
                     self._breaker.record_success()
 
-                    # Collect Gemini SSE data: frames into chunk dicts
-                    chunks: list[dict[str, Any]] = []
+                    # Drive the stepper LIVE: translate + yield each OpenAI frame the
+                    # instant its source Gemini SSE chunk arrives (incremental delivery
+                    # — TTFB ≈ first token). finish() emits the terminal frame + [DONE].
+                    stepper = _GeminiSSEStepper()
                     async for line in response.aiter_lines():
                         line = line.strip()
                         if not line.startswith("data:"):
@@ -628,15 +659,14 @@ class GeminiCompletionUpstream:
                             data_obj: dict[str, Any] = json.loads(raw)
                         except (json.JSONDecodeError, ValueError):
                             continue
-                        chunks.append(data_obj)
+                        for frame in stepper.step(data_obj):
+                            yield frame
+                    for frame in stepper.finish():
+                        yield frame
 
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
-
-            # Translate the buffered chunk sequence → OpenAI SSE chunk bytes
-            for chunk_bytes in _translate_gemini_sse(chunks):
-                yield chunk_bytes
 
         return _gen()
 

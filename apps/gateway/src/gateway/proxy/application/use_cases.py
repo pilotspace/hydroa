@@ -19,14 +19,15 @@ Governance enforcement order (M8-M10, M12):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 import logging
 import os
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog.contextvars
 
@@ -76,7 +77,11 @@ from gateway.proxy.domain.provider_credentials import (
 from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
 from gateway.rate_limits.domain.errors import RateLimitExceededError
 from gateway.rate_limits.domain.ports import RateLimiter
-from gateway.usage.domain.extractor import extract_usage_from_sse, stream_usage_is_complete
+from gateway.usage.domain.extractor import (
+    extract_generation_id_from_sse,
+    extract_usage_from_sse,
+    stream_usage_is_complete,
+)
 
 if TYPE_CHECKING:
     from gateway.observability.otel import OtelSpanEmitter
@@ -307,6 +312,7 @@ def _fire_record_with_raw(
     pricing_unit: str | None = None,
     quantity: Decimal | None = None,
     usage_source: str | None = None,
+    provider_generation_id: str | None = None,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
@@ -332,6 +338,8 @@ def _fire_record_with_raw(
         extras["quantity"] = quantity
     if usage_source is not None:
         extras["usage_source"] = usage_source
+    if provider_generation_id is not None:
+        extras["provider_generation_id"] = provider_generation_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -414,6 +422,23 @@ async def resolve_provider_credential(
     return set_provider_credential(cred)
 
 
+class _InlineCostRecovery(Protocol):
+    """Structural type for the optional inline cost-recovery service (v30 t6.2c).
+
+    Kept structural so the proxy use-case never imports the usage-layer concrete
+    OpenRouterCostRecoveryService (no layering dependency). recover() never raises.
+    """
+
+    async def recover(
+        self,
+        *,
+        tenant_id: Any,
+        key_id: Any,
+        model: str,
+        provider_generation_id: str,
+    ) -> Any: ...
+
+
 class CompletionUseCase:
     """Orchestrate a single /v1/chat/completions request."""
 
@@ -430,6 +455,7 @@ class CompletionUseCase:
         vector_cache: VectorCache | None = None,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
         provider_resolver: ProviderResolver | None = None,
+        cost_recovery: object | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -454,6 +480,10 @@ class CompletionUseCase:
         # placed in the request-scoped contextvar before the upstream call.
         self._tenant_credential_resolver = tenant_credential_resolver
         self._provider_resolver = provider_resolver
+        # openrouter-cost-recovery-wiring (v30 t6.2c): optional inline recovery service.
+        # None ⇒ feature off ⇒ byte-identical. Structurally typed (_InlineCostRecovery)
+        # so the use-case never depends on the concrete usage-layer service.
+        self._cost_recovery: _InlineCostRecovery | None = cost_recovery  # type: ignore[assignment]
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -1342,6 +1372,13 @@ class CompletionUseCase:
             # Credential resolution (credential-resolution-seam §3) — same as complete().
             _stream_cred_token = await self._resolve_credential(authz.tenant_id, model_id)
 
+            # openrouter-cost-recovery-wiring (v30 t6.2c): resolve the provider ONCE here
+            # so the disconnect handler can gate inline recovery WITHOUT a new await in the
+            # GeneratorExit/CancelledError teardown path. None when no resolver is wired.
+            _stream_provider: str | None = None
+            if self._cost_recovery is not None and self._provider_resolver is not None:
+                _stream_provider = await self._provider_resolver.provider_for(model_id)
+
             # --- Step 4: Pre-call guardrails (after governance, before upstream stream) ---
             guardrail_evaluator = self._guardrail_evaluator
             guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
@@ -1480,6 +1517,10 @@ class CompletionUseCase:
                     # RE-RAISE so the close/cancel completes (never swallow it). A complete
                     # usage frame that arrived before the disconnect still bills as 'frame'.
                     disconnect_usage = extract_usage_from_sse(collected)
+                    # provider-generation-id-capture (v30 t6): stamp the provider's SSE
+                    # generation id on the disconnect row so cost-recovery can look up the
+                    # authoritative cost later. None when the stream carried no id (→ NULL).
+                    disconnect_gen_id = extract_generation_id_from_sse(collected)
                     if stream_usage_is_complete(disconnect_usage):
                         disconnect_source = "frame"
                     else:
@@ -1498,7 +1539,54 @@ class CompletionUseCase:
                         team_id=team_id,
                         pii_masked=_stream_pii_masked,
                         usage_source=disconnect_source,
+                        provider_generation_id=disconnect_gen_id,
                     )
+                    # disconnect-provider-cost (v30 t5): "spawn the stop event to the
+                    # provider" — deterministically close the upstream generator NOW so the
+                    # close (GeneratorExit) propagates into the adapter → the httpx response
+                    # is released → TCP FIN to the provider → it STOPS generating (and billing
+                    # us) at the disconnect point, instead of the connection lingering until
+                    # the event-loop async-gen finalizer (GC) runs. Best-effort: swallow ANY
+                    # error from aclose() (a misbehaving adapter raising during teardown must
+                    # never mask the original disconnect/cancel, which we re-raise below).
+                    # Awaiting here is legal during GeneratorExit/CancelledError handling — we
+                    # await, never yield. The incremental-stream refactor (v30 t3/t4) is what
+                    # makes this actually save cost on the previously-buffered providers.
+                    # suppress BaseException, not just Exception: when this handler runs on
+                    # the CancelledError edge, the adapter's own async teardown (httpx stream
+                    # __aexit__) can re-raise CancelledError — a BaseException in py3.11+ —
+                    # which would otherwise ESCAPE and mask the original disconnect/cancel.
+                    if isinstance(gen, AsyncGenerator):
+                        with contextlib.suppress(BaseException):
+                            await gen.aclose()
+                    # openrouter-cost-recovery-wiring (v30 t6.2c): schedule authoritative
+                    # cost recovery as a FIRE-AND-FORGET task — ONLY for an OpenRouter
+                    # disconnect that captured a generation id, and only when the service
+                    # is wired (default-OFF knob). Best-effort: ensure_future never awaits,
+                    # and the whole schedule is suppressed so it can NEVER mask the re-raise
+                    # below (a cancelled/failed inline attempt is re-covered by the t6.3
+                    # sweep). No await here — _stream_provider was resolved at setup.
+                    if (
+                        self._cost_recovery is not None
+                        and disconnect_gen_id
+                        and _stream_provider == "openrouter"
+                    ):
+                        with contextlib.suppress(BaseException):
+                            _recovery_task = asyncio.ensure_future(
+                                self._cost_recovery.recover(
+                                    tenant_id=tenant_id,
+                                    key_id=key_id,
+                                    model=model_id,
+                                    provider_generation_id=disconnect_gen_id,
+                                )
+                            )
+                            # Same fire-and-forget hygiene as the other ensure_future sites
+                            # here: retrieve any exception so a CancelledError escaping
+                            # recover() at shutdown (its guard is `except Exception`, not
+                            # BaseException) never logs "Task exception was never retrieved".
+                            _recovery_task.add_done_callback(
+                                lambda t: t.exception() if not t.cancelled() else None
+                            )
                     raise
                 finally:
                     # credential-resolution-seam §3: clear the per-request credential once

@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 27
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 28
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -125,6 +125,7 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) mirroring an existing field end-to-end (v27 usage_source) is the cheapest safe way to add a ledger column — same extras seam, same NULL-encoding, same migration shape (evidence: byte-for-byte template).  [folded foundation-version 28 · from provider-generation-id-capture]
 
 - Active milestone → none yet (see `add.py status`); first slice: tenant signup →
   API key → proxied completion (streaming + non) → usage row → budget enforcement
@@ -429,6 +430,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-22 | fold all → foundation-version 28 (SDD 1 · TDD 8 · ADD 8) | consolidate captured OBSERVE lessons into the versioned foundation | 17 lessons open→folded; +17 routed bullets; 27→28 |
 | 2026-06-18 | fold all → foundation-version 27 (TDD 5 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 9 lessons open→folded; +9 routed bullets; 26→27 |
 | 2026-06-18 | fold all → foundation-version 26 (TDD 4 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 8 lessons open→folded; +8 routed bullets; 25→26 |
 | 2026-06-10 | Python 3.12 + FastAPI gateway | I/O-bound SSE workload; proxy overhead negligible vs upstream latency; richest AI ecosystem; user choice after tradeoff analysis. Escape hatch: Go data plane only if per-node concurrency becomes the bottleneck | locked |

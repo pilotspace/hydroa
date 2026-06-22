@@ -1,5 +1,5 @@
 import json
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from pydantic import (
@@ -124,6 +124,28 @@ class Settings(BaseSettings):
     # default to the OFF position — the checker is only started when BOTH are > 0.
     reconciliation_drift_threshold: Decimal = Decimal("0")  # GATEWAY_RECONCILIATION_DRIFT_THRESHOLD
     reconciliation_check_interval_seconds: int = 0  # GATEWAY_RECONCILIATION_CHECK_INTERVAL_SECONDS
+
+    @field_validator("reconciliation_drift_threshold", mode="before")
+    @classmethod
+    def _validate_drift_threshold(cls, v: object) -> object:
+        """Fail loud on a nonsense drift threshold (v30 drift-threshold-validation).
+
+        A non-finite (inf/-inf/nan) or negative threshold is a misconfiguration, not a
+        disable signal — 0 is the OFF sentinel. Rejecting at startup turns the silent-but-
+        useless monitor (inf passes the `>0` start-guard yet can never fire) into a clear
+        boot error. mode="before" so this coded error wins over Pydantic's generic
+        finite_number coercion error for inf/nan.
+        """
+        try:
+            d = Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError):
+            return v  # not a parseable number — let Pydantic raise its normal decimal error
+        if not d.is_finite() or d < 0:
+            raise ValueError(
+                "INVALID_RECONCILIATION_DRIFT_THRESHOLD: GATEWAY_RECONCILIATION_DRIFT_THRESHOLD "
+                f"must be a finite, non-negative USD amount (0 disables); got {v!r}"
+            )
+        return v
 
     # ── OpenTelemetry trace export (obs-callbacks task) ──────────────────────
     otel_enabled: bool = False  # GATEWAY_OTEL_ENABLED
@@ -261,6 +283,21 @@ class Settings(BaseSettings):
     # False = opt-in (byte-identical outbound request; recorder falls back to catalog).
     # provider-cost-reconciliation TASK.md §3 (knob frozen default-OFF, Tin 2026-06-17).
     openrouter_usage_accounting: bool = Field(default=False)
+    # GATEWAY_OPENROUTER_COST_RECOVERY_ENABLED — when True, an OpenRouter stream aborted by
+    # client disconnect schedules an inline fire-and-forget authoritative-cost recovery
+    # (OpenRouterCostRecoveryService) from the disconnect handler. Default False = opt-in
+    # (byte-identical streaming; no recovery scheduled). The periodic sweep (v30 t6.3) is
+    # the reliable backstop for whatever inline misses. openrouter-cost-recovery-wiring §3.
+    openrouter_cost_recovery_enabled: bool = Field(default=False)
+
+    # GATEWAY_OPENROUTER_RECOVERY_SWEEP_INTERVAL_SECONDS — when > 0 (and the cost-recovery
+    # service is wired), a periodic background sweeper (OpenRouterRecoverySweeper) scans the
+    # ledger for flushed client_disconnect rows that still have no openrouter_recovered
+    # sibling and calls recover() for each OpenRouter one — the reliable backstop for inline
+    # misses (teardown-cancelled / knob-off rows). 0 = default-OFF (no task). The sweep is
+    # idempotent with the inline path via the deterministic correction-row id (t6.2b).
+    # openrouter-recovery-sweep §3.
+    openrouter_recovery_sweep_interval_seconds: int = Field(default=0)
 
     # GATEWAY_STT_MAX_DURATION_SECONDS — upper clamp (seconds) on a billed STT per_second
     # duration. A corrupt/lying audio header (or a lying upstream body["duration"]) can

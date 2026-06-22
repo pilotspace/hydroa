@@ -3,10 +3,22 @@
   "stage": "production",
   "active_task": null,
   "active_milestone": null,
-  "tasks": {},
+  "tasks": {
+    "operator-wide-reconciliation": {
+      "title": "Cross-tenant reconciliation view behind ops-auth",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": null,
+      "depends_on": [
+        "reconcile-cost-basis-filter"
+      ],
+      "created": "2026-06-18T16:42:11+00:00",
+      "updated": "2026-06-22T09:23:40+00:00"
+    }
+  },
   "milestones": {},
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-18T14:19:02+00:00",
+  "updated": "2026-06-22T09:25:50+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -376,6 +388,24 @@
         "drift-alert"
       ],
       "archived": "2026-06-18"
+    },
+    {
+      "slug": "v30",
+      "title": "Reconciliation hardening \u2014 make leak-detection trustworthy",
+      "tasks": 10,
+      "task_slugs": [
+        "drift-threshold-validation",
+        "reconcile-cost-basis-filter",
+        "disconnect-provider-cost",
+        "incremental-sse-translation",
+        "bedrock-incremental-stream",
+        "openrouter-cost-recovery",
+        "openrouter-generation-client",
+        "provider-generation-id-capture",
+        "openrouter-cost-recovery-wiring",
+        "openrouter-recovery-sweep"
+      ],
+      "archived": "2026-06-22"
     }
   ]
 }

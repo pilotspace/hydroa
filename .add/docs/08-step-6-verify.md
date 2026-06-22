@@ -25,9 +25,12 @@ Verify can be resolved two ways, set per task by the `autonomy:` header (see [go
 
 ## Part one — confirm the evidence
 
+Before the build, the task pre-declares its **build expectations** — the observable outcomes a correct build must produce, read off §2's scenarios and §3's contract. Confirm each one here against evidence you can see, not a restated test name: this is what makes the gate check the build is *right*, not merely that the suite is green.
+
 - [ ] All tests pass.
 - [ ] Coverage did not decrease.
 - [ ] No test or contract was altered during the build.
+- [ ] Every pre-declared build expectation is confirmed by real evidence (not merely a green test).
 
 If any of these is false, stop here and return to the build; there is nothing to verify yet.
 
@@ -71,6 +74,7 @@ A security finding is always a `HARD-STOP`; it is never waved through with a wai
 ## The verification checklist
 
 - [ ] All tests pass (the evidence).
+- [ ] Every pre-declared build expectation is confirmed by observable evidence.
 - [ ] Concurrency/timing of the risky operation is safe.
 - [ ] No exposed secrets, injection openings, or unexpected dependencies.
 - [ ] Layering and dependencies follow `CONVENTIONS.md`.

@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, Text, func
+from sqlalchemy import ForeignKey, Index, Integer, Numeric, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -45,7 +45,18 @@ class UsageRecordRow(Base):
     __tablename__ = "usage_records"
     # Composite index for team-rollup queries: tenant_id first (all queries are
     # tenant-scoped), then team_id for efficient per-team aggregation.
-    __table_args__ = (Index("ix_usage_records_tenant_team", "tenant_id", "team_id"),)
+    # Partial index for the periodic cost-recovery sweep (v30 t6.3): scans
+    # client_disconnect rows carrying a generation id with no openrouter_recovered
+    # sibling. Partial predicate keeps it tiny — only gen-id-bearing rows are indexed.
+    __table_args__ = (
+        Index("ix_usage_records_tenant_team", "tenant_id", "team_id"),
+        Index(
+            "ix_usage_records_gen_recovery",
+            "provider_generation_id",
+            "usage_source",
+            postgresql_where=text("provider_generation_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -79,3 +90,7 @@ class UsageRecordRow(Base):
     # stream-usage-completeness (TASK.md §3): provenance of the billed usage —
     # 'frame' (real terminal usage frame) | 'stream_fallback' (frame missing/partial).
     usage_source: Mapped[str] = mapped_column(Text, nullable=False, server_default="frame")
+    # provider-generation-id-capture (v30 t6): the provider's SSE generation id on a
+    # client-disconnect row — the lookup key for disconnect cost-recovery. NULL on every
+    # other row. Additive + nullable; append-only preserved (no UPDATE/DELETE).
+    provider_generation_id: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -106,7 +106,18 @@ class UsageLedgerFlusher:
             return ""
 
         raw_entry_id = _decode(entry_id) if isinstance(entry_id, bytes) else entry_id
-        record_id = stream_id_to_uuid(raw_entry_id)
+        # cost-recovery (v30 t6): a correction event carries an EXPLICIT deterministic id
+        # so a duplicate recovery dedups via ON CONFLICT (id) DO NOTHING. Absent (every
+        # prior caller) or malformed → the existing stream-id derivation, byte-identical.
+        explicit_id = _field("id")
+        if explicit_id:
+            try:
+                record_id = uuid.UUID(explicit_id)
+            except ValueError:
+                _log.warning("flusher: malformed explicit id %r; using stream id", explicit_id)
+                record_id = stream_id_to_uuid(raw_entry_id)
+        else:
+            record_id = stream_id_to_uuid(raw_entry_id)
 
         tenant_id_str = _field("tenant_id")
         key_id_str = _field("key_id")
@@ -141,6 +152,8 @@ class UsageLedgerFlusher:
         provider_cost: Decimal | None = Decimal(provider_cost_str) if provider_cost_str else None
         # stream-usage-completeness: usage provenance (old events → 'frame').
         usage_source = _field("usage_source") or "frame"
+        # provider-generation-id-capture (v30 t6): ""→NULL (the cost-recovery lookup key)
+        provider_generation_id = _field("provider_generation_id") or None
 
         try:
             tenant_id = uuid.UUID(tenant_id_str)
@@ -173,13 +186,15 @@ class UsageLedgerFlusher:
                         " (id, tenant_id, key_id, model_id, prompt_tokens, completion_tokens,"
                         "  cost_usd, status, pricing_snapshot_id, raw, team_id,"
                         "  pricing_unit, quantity, cached_tokens, reasoning_tokens,"
-                        "  cost_basis, provider_cost, usage_source)"
+                        "  cost_basis, provider_cost, usage_source,"
+                        "  provider_generation_id)"
                         " VALUES"
                         " (:id, :tenant_id, :key_id, :model_id, :prompt_tokens,"
                         "  :completion_tokens, :cost_usd, :status, :pricing_snapshot_id,"
                         "  :raw, :team_id, :pricing_unit, :quantity,"
                         "  :cached_tokens, :reasoning_tokens,"
-                        "  :cost_basis, :provider_cost, :usage_source)"
+                        "  :cost_basis, :provider_cost, :usage_source,"
+                        "  :provider_generation_id)"
                         " ON CONFLICT (id) DO NOTHING"
                     ),
                     {
@@ -201,6 +216,7 @@ class UsageLedgerFlusher:
                         "cost_basis": cost_basis,
                         "provider_cost": provider_cost,
                         "usage_source": usage_source,
+                        "provider_generation_id": provider_generation_id,
                     },
                 )
 

@@ -39,15 +39,27 @@ from .conftest import (
 # ---------------------------------------------------------------------------
 # RA1 — drift over provider-basis rows
 # ---------------------------------------------------------------------------
-async def test_ra1_drift_provider_rows(
-    client: Any, db_session: AsyncSession
-) -> None:
+async def test_ra1_drift_provider_rows(client: Any, db_session: AsyncSession) -> None:
     tenant_id, key_id = await signup_tenant(client, tenant_name="Recon A1", email="a1@recon.io")
     # provider rows: Σ provider_cost = 2.00, Σ cost_usd = 3.00
-    await seed_row(db_session, tenant_id=tenant_id, key_id=key_id, cost_usd=Decimal("1.00"),
-                   provider_cost=Decimal("0.80"), cost_basis="provider", created_at=INSIDE)
-    await seed_row(db_session, tenant_id=tenant_id, key_id=key_id, cost_usd=Decimal("2.00"),
-                   provider_cost=Decimal("1.20"), cost_basis="provider", created_at=INSIDE)
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("1.00"),
+        provider_cost=Decimal("0.80"),
+        cost_basis="provider",
+        created_at=INSIDE,
+    )
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("2.00"),
+        provider_cost=Decimal("1.20"),
+        cost_basis="provider",
+        created_at=INSIDE,
+    )
 
     summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tenant_id)
 
@@ -60,13 +72,18 @@ async def test_ra1_drift_provider_rows(
 # ---------------------------------------------------------------------------
 # RA2 — an unbilled-upstream row is counted, never absorbed
 # ---------------------------------------------------------------------------
-async def test_ra2_unbilled_row_counted(
-    client: Any, db_session: AsyncSession
-) -> None:
+async def test_ra2_unbilled_row_counted(client: Any, db_session: AsyncSession) -> None:
     tenant_id, key_id = await signup_tenant(client, tenant_name="Recon A2", email="a2@recon.io")
-    await seed_row(db_session, tenant_id=tenant_id, key_id=key_id, cost_usd=Decimal("0"),
-                   provider_cost=Decimal("0.50"), cost_basis="provider",
-                   usage_source="client_disconnect", created_at=INSIDE)
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("0.50"),
+        cost_basis="provider",
+        usage_source="client_disconnect",
+        created_at=INSIDE,
+    )
 
     summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tenant_id)
 
@@ -81,15 +98,27 @@ async def test_ra2_unbilled_row_counted(
 # ---------------------------------------------------------------------------
 # RA3 — catalog rows are excluded from drift, surfaced separately
 # ---------------------------------------------------------------------------
-async def test_ra3_catalog_excluded_from_drift(
-    client: Any, db_session: AsyncSession
-) -> None:
+async def test_ra3_catalog_excluded_from_drift(client: Any, db_session: AsyncSession) -> None:
     tenant_id, key_id = await signup_tenant(client, tenant_name="Recon A3", email="a3@recon.io")
     # catalog rows: provider_cost NULL, Σ cost_usd = 4.00
-    await seed_row(db_session, tenant_id=tenant_id, key_id=key_id, cost_usd=Decimal("1.50"),
-                   provider_cost=None, cost_basis="catalog", created_at=INSIDE)
-    await seed_row(db_session, tenant_id=tenant_id, key_id=key_id, cost_usd=Decimal("2.50"),
-                   provider_cost=None, cost_basis="catalog", created_at=INSIDE)
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("1.50"),
+        provider_cost=None,
+        cost_basis="catalog",
+        created_at=INSIDE,
+    )
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("2.50"),
+        provider_cost=None,
+        cost_basis="catalog",
+        created_at=INSIDE,
+    )
 
     summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tenant_id)
 
@@ -102,9 +131,7 @@ async def test_ra3_catalog_excluded_from_drift(
 # ---------------------------------------------------------------------------
 # RA4 — an empty window returns explicit zeros and never raises
 # ---------------------------------------------------------------------------
-async def test_ra4_empty_window_zeros(
-    client: Any, db_session: AsyncSession
-) -> None:
+async def test_ra4_empty_window_zeros(client: Any, db_session: AsyncSession) -> None:
     tenant_id, _ = await signup_tenant(client, tenant_name="Recon A4", email="a4@recon.io")
 
     summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tenant_id)
@@ -121,16 +148,28 @@ async def test_ra4_empty_window_zeros(
 # ---------------------------------------------------------------------------
 # RA5 — the window is half-open [from, to)
 # ---------------------------------------------------------------------------
-async def test_ra5_window_half_open(
-    client: Any, db_session: AsyncSession
-) -> None:
+async def test_ra5_window_half_open(client: Any, db_session: AsyncSession) -> None:
     tenant_id, key_id = await signup_tenant(client, tenant_name="Recon A5", email="a5@recon.io")
     # at the inclusive lower bound → counted
-    await seed_row(db_session, tenant_id=tenant_id, key_id=key_id, cost_usd=Decimal("0"),
-                   provider_cost=Decimal("0.11"), cost_basis="provider", created_at=WINDOW_FROM)
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("0.11"),
+        cost_basis="provider",
+        created_at=WINDOW_FROM,
+    )
     # at the exclusive upper bound → NOT counted
-    await seed_row(db_session, tenant_id=tenant_id, key_id=key_id, cost_usd=Decimal("0"),
-                   provider_cost=Decimal("0.99"), cost_basis="provider", created_at=WINDOW_TO)
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("0.99"),
+        cost_basis="provider",
+        created_at=WINDOW_TO,
+    )
 
     summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tenant_id)
 
@@ -140,15 +179,27 @@ async def test_ra5_window_half_open(
 # ---------------------------------------------------------------------------
 # RA6 — tenant scoping vs operator-wide
 # ---------------------------------------------------------------------------
-async def test_ra6_tenant_scoping(
-    client: Any, db_session: AsyncSession
-) -> None:
+async def test_ra6_tenant_scoping(client: Any, db_session: AsyncSession) -> None:
     tid_a, key_a = await signup_tenant(client, tenant_name="Recon A6a", email="a6a@recon.io")
     tid_b, key_b = await signup_tenant(client, tenant_name="Recon A6b", email="a6b@recon.io")
-    await seed_row(db_session, tenant_id=tid_a, key_id=key_a, cost_usd=Decimal("0"),
-                   provider_cost=Decimal("1.00"), cost_basis="provider", created_at=INSIDE)
-    await seed_row(db_session, tenant_id=tid_b, key_id=key_b, cost_usd=Decimal("0"),
-                   provider_cost=Decimal("2.00"), cost_basis="provider", created_at=INSIDE)
+    await seed_row(
+        db_session,
+        tenant_id=tid_a,
+        key_id=key_a,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("1.00"),
+        cost_basis="provider",
+        created_at=INSIDE,
+    )
+    await seed_row(
+        db_session,
+        tenant_id=tid_b,
+        key_id=key_b,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("2.00"),
+        cost_basis="provider",
+        created_at=INSIDE,
+    )
 
     scoped = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tid_a)
     operator_wide = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=None)
@@ -160,9 +211,7 @@ async def test_ra6_tenant_scoping(
 # ---------------------------------------------------------------------------
 # RA7 — an inverted window is rejected (reject)
 # ---------------------------------------------------------------------------
-async def test_ra7_inverted_window_raises(
-    client: Any, db_session: AsyncSession
-) -> None:
+async def test_ra7_inverted_window_raises(client: Any, db_session: AsyncSession) -> None:
     before = await count_rows(db_session)
 
     with pytest.raises(ValueError):
@@ -174,16 +223,28 @@ async def test_ra7_inverted_window_raises(
 # ---------------------------------------------------------------------------
 # RA8 — by_source groups unbilled rows by usage_source
 # ---------------------------------------------------------------------------
-async def test_ra8_by_source_grouping(
-    client: Any, db_session: AsyncSession
-) -> None:
+async def test_ra8_by_source_grouping(client: Any, db_session: AsyncSession) -> None:
     tenant_id, key_id = await signup_tenant(client, tenant_name="Recon A8", email="a8@recon.io")
-    await seed_row(db_session, tenant_id=tenant_id, key_id=key_id, cost_usd=Decimal("0"),
-                   provider_cost=Decimal("0.10"), cost_basis="provider",
-                   usage_source="client_disconnect", created_at=INSIDE)
-    await seed_row(db_session, tenant_id=tenant_id, key_id=key_id, cost_usd=Decimal("0"),
-                   provider_cost=Decimal("0.20"), cost_basis="provider",
-                   usage_source="stream_fallback", created_at=INSIDE)
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("0.10"),
+        cost_basis="provider",
+        usage_source="client_disconnect",
+        created_at=INSIDE,
+    )
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("0.20"),
+        cost_basis="provider",
+        usage_source="stream_fallback",
+        created_at=INSIDE,
+    )
 
     summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tenant_id)
 
@@ -195,3 +256,91 @@ async def test_ra8_by_source_grouping(
     assert by_src["client_disconnect"].provider_cost == Decimal("0.10")
     assert by_src["stream_fallback"].rows == 1
     assert by_src["stream_fallback"].provider_cost == Decimal("0.20")
+
+
+# ---------------------------------------------------------------------------
+# RA9 (v30) — a catalog row carrying a provider_cost is NOT counted as unbilled
+# ---------------------------------------------------------------------------
+async def test_ra9_catalog_provider_cost_not_counted_as_unbilled(
+    client: Any, db_session: AsyncSession
+) -> None:
+    tenant_id, key_id = await signup_tenant(client, tenant_name="Recon A9", email="a9@recon.io")
+    # A hypothetical future back-fill: catalog row with a non-NULL provider_cost and $0 billed.
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("5.00"),
+        cost_basis="catalog",
+        usage_source="frame",
+        created_at=INSIDE,
+    )
+
+    summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tenant_id)
+
+    # cost_basis='catalog' is NOT provider truth → never an unbilled-upstream leak.
+    assert summary.unbilled_upstream_cost == Decimal("0")
+    assert summary.unbilled_rows == 0
+    assert summary.by_source == ()
+
+
+# ---------------------------------------------------------------------------
+# RA10 (v30) — a genuine provider leak row is still counted (regression guard)
+# ---------------------------------------------------------------------------
+async def test_ra10_provider_leak_still_counted(client: Any, db_session: AsyncSession) -> None:
+    tenant_id, key_id = await signup_tenant(client, tenant_name="Recon A10", email="a10@recon.io")
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("5.00"),
+        cost_basis="provider",
+        usage_source="client_disconnect",
+        created_at=INSIDE,
+    )
+
+    summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tenant_id)
+
+    assert summary.unbilled_upstream_cost == Decimal("5.00")
+    assert summary.unbilled_rows == 1
+    assert any(
+        b.usage_source == "client_disconnect" and b.provider_cost == Decimal("5.00")
+        for b in summary.by_source
+    )
+
+
+# ---------------------------------------------------------------------------
+# RA11 (v30) — a mixed window counts only the provider leak, across all 3 outputs
+# ---------------------------------------------------------------------------
+async def test_ra11_mixed_window_counts_only_provider(
+    client: Any, db_session: AsyncSession
+) -> None:
+    tenant_id, key_id = await signup_tenant(client, tenant_name="Recon A11", email="a11@recon.io")
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("5.00"),
+        cost_basis="provider",
+        usage_source="frame",
+        created_at=INSIDE,
+    )
+    await seed_row(
+        db_session,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        cost_usd=Decimal("0"),
+        provider_cost=Decimal("3.00"),
+        cost_basis="catalog",
+        usage_source="frame",
+        created_at=INSIDE,
+    )
+
+    summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=tenant_id)
+
+    assert summary.unbilled_upstream_cost == Decimal("5.00")  # catalog 3.00 excluded
+    assert summary.unbilled_rows == 1
+    assert sum((b.provider_cost for b in summary.by_source), Decimal("0")) == Decimal("5.00")
