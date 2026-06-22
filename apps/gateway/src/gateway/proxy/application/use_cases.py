@@ -19,12 +19,13 @@ Governance enforcement order (M8-M10, M12):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 import logging
 import os
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
@@ -1499,6 +1500,24 @@ class CompletionUseCase:
                         pii_masked=_stream_pii_masked,
                         usage_source=disconnect_source,
                     )
+                    # disconnect-provider-cost (v30 t5): "spawn the stop event to the
+                    # provider" — deterministically close the upstream generator NOW so the
+                    # close (GeneratorExit) propagates into the adapter → the httpx response
+                    # is released → TCP FIN to the provider → it STOPS generating (and billing
+                    # us) at the disconnect point, instead of the connection lingering until
+                    # the event-loop async-gen finalizer (GC) runs. Best-effort: swallow ANY
+                    # error from aclose() (a misbehaving adapter raising during teardown must
+                    # never mask the original disconnect/cancel, which we re-raise below).
+                    # Awaiting here is legal during GeneratorExit/CancelledError handling — we
+                    # await, never yield. The incremental-stream refactor (v30 t3/t4) is what
+                    # makes this actually save cost on the previously-buffered providers.
+                    # suppress BaseException, not just Exception: when this handler runs on
+                    # the CancelledError edge, the adapter's own async teardown (httpx stream
+                    # __aexit__) can re-raise CancelledError — a BaseException in py3.11+ —
+                    # which would otherwise ESCAPE and mask the original disconnect/cancel.
+                    if isinstance(gen, AsyncGenerator):
+                        with contextlib.suppress(BaseException):
+                            await gen.aclose()
                     raise
                 finally:
                     # credential-resolution-seam §3: clear the per-request credential once

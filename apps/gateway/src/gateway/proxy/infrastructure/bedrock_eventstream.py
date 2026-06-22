@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import binascii
 import struct
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 
 # ---------------------------------------------------------------------------
 # Public exception
@@ -61,6 +61,85 @@ _FIXED_WIDTHS: dict[int, int] = {0: 0, 1: 0, 2: 1, 3: 2, 4: 4, 5: 8, 8: 8, 9: 16
 # ---------------------------------------------------------------------------
 
 
+def _read_prelude(buf: bytes | bytearray, off: int) -> tuple[int, int]:
+    """Parse + CRC-validate the 12-byte prelude at ``off`` (caller ensures ≥12 bytes).
+
+    Returns (total_len, headers_len). Raises EventStreamError on prelude CRC mismatch.
+    """
+    total_len, headers_len = struct.unpack(">II", buf[off : off + 8])
+    prelude_crc = struct.unpack(">I", buf[off + 8 : off + 12])[0]
+    computed_prelude_crc = binascii.crc32(buf[off : off + 8]) & 0xFFFFFFFF
+    if computed_prelude_crc != prelude_crc:
+        raise EventStreamError(
+            f"Prelude CRC mismatch at offset {off}: "
+            f"expected {prelude_crc:#010x}, got {computed_prelude_crc:#010x}"
+        )
+    return total_len, headers_len
+
+
+def _parse_frame(msg: bytes, off: int) -> tuple[dict[str, str], bytes]:
+    """Validate the message CRC and parse ONE complete frame (``msg`` = exactly total_len bytes).
+
+    ``off`` is the buffer offset, used only in error messages. Returns (headers, payload)
+    where headers contains ONLY the string-typed (type code 7) header values.
+
+    Raises:
+        EventStreamError: On message CRC mismatch or unknown header type byte.
+    """
+    headers_len = struct.unpack(">I", msg[4:8])[0]
+
+    # ── Message CRC ───────────────────────────────────────────────────────
+    message_crc = struct.unpack(">I", msg[-4:])[0]
+    computed_msg_crc = binascii.crc32(msg[:-4]) & 0xFFFFFFFF
+    if computed_msg_crc != message_crc:
+        raise EventStreamError(
+            f"Message CRC mismatch at offset {off}: "
+            f"expected {message_crc:#010x}, got {computed_msg_crc:#010x}"
+        )
+
+    # ── Slice headers + payload ────────────────────────────────────────────
+    headers_bytes = msg[12 : 12 + headers_len]
+    payload = msg[12 + headers_len : -4]
+
+    # ── Parse headers ──────────────────────────────────────────────────────
+    headers: dict[str, str] = {}
+    h = 0
+    hlen = len(headers_bytes)
+
+    while h < hlen:
+        # Name
+        name_len = headers_bytes[h]
+        h += 1
+        name = headers_bytes[h : h + name_len].decode("utf-8")
+        h += name_len
+
+        # Type byte
+        htype = headers_bytes[h]
+        h += 1
+
+        if htype in _FIXED_WIDTHS:
+            width = _FIXED_WIDTHS[htype]
+            h += width
+            # Fixed-width types are NOT stored (none are string-valued)
+        elif htype == 6:
+            # bytearray: 2-byte length prefix + data (walk past, not stored)
+            vlen = struct.unpack(">H", headers_bytes[h : h + 2])[0]
+            h += 2 + vlen
+        elif htype == 7:
+            # string: 2-byte length prefix + UTF-8 data (STORED)
+            vlen = struct.unpack(">H", headers_bytes[h : h + 2])[0]
+            h += 2
+            value = headers_bytes[h : h + vlen].decode("utf-8")
+            h += vlen
+            headers[name] = value
+        else:
+            raise EventStreamError(
+                f"Unknown header type {htype!r} for header {name!r} at offset {off}"
+            )
+
+    return headers, payload
+
+
 def decode_event_stream(data: bytes) -> Iterator[tuple[dict[str, str], bytes]]:
     """Decode a full AWS EventStream buffer into (headers_dict, payload) tuples.
 
@@ -91,16 +170,7 @@ def decode_event_stream(data: bytes) -> Iterator[tuple[dict[str, str], bytes]]:
                 "need at least 12 for the prelude"
             )
 
-        total_len, headers_len = struct.unpack(">II", data[off : off + 8])
-        prelude_crc = struct.unpack(">I", data[off + 8 : off + 12])[0]
-
-        # Validate prelude CRC
-        computed_prelude_crc = binascii.crc32(data[off : off + 8]) & 0xFFFFFFFF
-        if computed_prelude_crc != prelude_crc:
-            raise EventStreamError(
-                f"Prelude CRC mismatch at offset {off}: "
-                f"expected {prelude_crc:#010x}, got {computed_prelude_crc:#010x}"
-            )
+        total_len, _headers_len = _read_prelude(data, off)
 
         # Validate that the full frame fits in the remaining buffer
         if off + total_len > total:
@@ -109,55 +179,39 @@ def decode_event_stream(data: bytes) -> Iterator[tuple[dict[str, str], bytes]]:
                 f"frame declares total_len={total_len} but only {total - off} bytes remain"
             )
 
-        # ── Message CRC ───────────────────────────────────────────────────
-        msg = data[off : off + total_len]
-        message_crc = struct.unpack(">I", msg[-4:])[0]
-        computed_msg_crc = binascii.crc32(msg[:-4]) & 0xFFFFFFFF
-        if computed_msg_crc != message_crc:
-            raise EventStreamError(
-                f"Message CRC mismatch at offset {off}: "
-                f"expected {message_crc:#010x}, got {computed_msg_crc:#010x}"
-            )
-
-        # ── Slice headers + payload ────────────────────────────────────────
-        headers_bytes = msg[12 : 12 + headers_len]
-        payload = msg[12 + headers_len : -4]
-
-        # ── Parse headers ─────────────────────────────────────────────────
-        headers: dict[str, str] = {}
-        h = 0
-        hlen = len(headers_bytes)
-
-        while h < hlen:
-            # Name
-            name_len = headers_bytes[h]
-            h += 1
-            name = headers_bytes[h : h + name_len].decode("utf-8")
-            h += name_len
-
-            # Type byte
-            htype = headers_bytes[h]
-            h += 1
-
-            if htype in _FIXED_WIDTHS:
-                width = _FIXED_WIDTHS[htype]
-                h += width
-                # Fixed-width types are NOT stored (none are string-valued)
-            elif htype == 6:
-                # bytearray: 2-byte length prefix + data (walk past, not stored)
-                vlen = struct.unpack(">H", headers_bytes[h : h + 2])[0]
-                h += 2 + vlen
-            elif htype == 7:
-                # string: 2-byte length prefix + UTF-8 data (STORED)
-                vlen = struct.unpack(">H", headers_bytes[h : h + 2])[0]
-                h += 2
-                value = headers_bytes[h : h + vlen].decode("utf-8")
-                h += vlen
-                headers[name] = value
-            else:
-                raise EventStreamError(
-                    f"Unknown header type {htype!r} for header {name!r} at offset {off}"
-                )
-
+        headers, payload = _parse_frame(data[off : off + total_len], off)
         yield headers, payload
         off += total_len
+
+
+async def aiter_event_stream(
+    chunks: AsyncIterator[bytes],
+) -> AsyncIterator[tuple[dict[str, str], bytes]]:
+    """Incrementally decode an AWS EventStream from a byte-chunk async iterator.
+
+    Yields each (headers, payload) the instant its length-prefixed frame is fully
+    buffered — correctly reassembling a frame split across chunks AND splitting
+    multiple frames packed into one chunk. Only the partial trailing frame is held.
+
+    "Not enough bytes yet" is NOT an error — the decoder waits for the next chunk.
+
+    Raises:
+        EventStreamError: On a prelude/message CRC mismatch (corrupt frame), or when
+            the stream ends with a partial trailing frame (truncation).
+    """
+    buf = bytearray()
+    async for chunk in chunks:
+        buf += chunk
+        while True:
+            if len(buf) < 12:
+                break  # need more bytes for the prelude
+            total_len, _headers_len = _read_prelude(buf, 0)
+            if len(buf) < total_len:
+                break  # need more bytes for the full frame
+            headers, payload = _parse_frame(bytes(buf[:total_len]), 0)
+            yield headers, payload
+            del buf[:total_len]
+    if buf:
+        raise EventStreamError(
+            f"Truncated EventStream: {len(buf)} trailing bytes do not form a complete frame"
+        )

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Iterable, Iterator
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -356,13 +356,15 @@ def _anthropic_error_to_openai(body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _translate_anthropic_sse(
-    events: Iterable[tuple[str, dict[str, Any]]],
-) -> Iterable[bytes]:
-    """Translate an iterable of (event_name, data_obj) pairs → OpenAI SSE chunk bytes.
+class _AnthropicSSEStepper:
+    """Stateful Anthropic-SSE → OpenAI-SSE translator, fed one event at a time.
 
-    Yields ``b"data: " + json_chunk + b"\\n\\n"`` for each meaningful event, then
-    a terminal frame carrying ``finish_reason`` + ``usage``, then ``b"data: [DONE]\\n\\n"``.
+    ``step(event_name, data)`` yields 0+ OpenAI chunk frames for that event;
+    ``finish()`` yields the terminal frame + ``[DONE]`` if not already emitted.
+    This single core drives BOTH the buffered wrapper (``_translate_anthropic_sse``)
+    and the live streaming adapter — so each translated frame can be emitted the
+    instant its source event arrives, without changing the byte output. The
+    per-instance ``created`` timestamp is stamped once at construction.
 
     Events consumed:
       message_start         → first chunk ``delta:{role:"assistant"}``; capture input_tokens.
@@ -373,29 +375,31 @@ def _translate_anthropic_sse(
       message_stop          → emit terminal frame + [DONE].
       ping / content_block_stop / unknown → ignored.
     """
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    finish_reason: str = "stop"
-    chunk_id: str = ""
-    chunk_model: str = ""
-    created: int = int(time.time())
-    terminal_emitted: bool = False
-    # v10 tool streaming: map each Anthropic content-block index → its OpenAI
-    # tool_calls index (counts only tool_use blocks, text blocks excluded).
-    block_to_tc: dict[int, int] = {}
-    tc_count: int = 0
-    # v11 JSON-mode: a streamed coercion ("json_output") tool_use block is unwrapped —
-    # its input_json_delta fragments stream as delta.content, not delta.tool_calls; the
-    # block is excluded from block_to_tc and the terminal finish_reason is "stop".
-    coercion_block_index: int | None = None
-    saw_coercion: bool = False
 
-    def _make_chunk(delta: dict[str, Any], fr: str | None) -> dict[str, Any]:
+    def __init__(self) -> None:
+        self._prompt_tokens: int = 0
+        self._completion_tokens: int = 0
+        self._finish_reason: str = "stop"
+        self._chunk_id: str = ""
+        self._chunk_model: str = ""
+        self._created: int = int(time.time())
+        self._terminal_emitted: bool = False
+        # v10 tool streaming: map each Anthropic content-block index → its OpenAI
+        # tool_calls index (counts only tool_use blocks, text blocks excluded).
+        self._block_to_tc: dict[int, int] = {}
+        self._tc_count: int = 0
+        # v11 JSON-mode: a streamed coercion ("json_output") tool_use block is unwrapped —
+        # its input_json_delta fragments stream as delta.content, not delta.tool_calls; the
+        # block is excluded from block_to_tc and the terminal finish_reason is "stop".
+        self._coercion_block_index: int | None = None
+        self._saw_coercion: bool = False
+
+    def _make_chunk(self, delta: dict[str, Any], fr: str | None) -> dict[str, Any]:
         return {
-            "id": chunk_id,
+            "id": self._chunk_id,
             "object": "chat.completion.chunk",
-            "created": created,
-            "model": chunk_model,
+            "created": self._created,
+            "model": self._chunk_model,
             "choices": [
                 {
                     "index": 0,
@@ -405,15 +409,26 @@ def _translate_anthropic_sse(
             ],
         }
 
-    for event_name, data in events:
+    def _emit_terminal(self) -> Iterator[bytes]:
+        terminal_chunk: dict[str, Any] = self._make_chunk({}, self._finish_reason)
+        terminal_chunk["usage"] = {
+            "prompt_tokens": self._prompt_tokens,
+            "completion_tokens": self._completion_tokens,
+            "total_tokens": self._prompt_tokens + self._completion_tokens,
+        }
+        yield b"data: " + json.dumps(terminal_chunk).encode() + b"\n\n"
+        yield b"data: [DONE]\n\n"
+        self._terminal_emitted = True
+
+    def step(self, event_name: str, data: dict[str, Any]) -> Iterator[bytes]:
         if event_name == "message_start":
             msg = data.get("message", {})
-            chunk_id = msg.get("id", "")
-            chunk_model = msg.get("model", "")
+            self._chunk_id = msg.get("id", "")
+            self._chunk_model = msg.get("model", "")
             usage = msg.get("usage", {})
-            prompt_tokens = usage.get("input_tokens", 0)
+            self._prompt_tokens = usage.get("input_tokens", 0)
             # Yield first role chunk
-            chunk = _make_chunk({"role": "assistant"}, None)
+            chunk = self._make_chunk({"role": "assistant"}, None)
             yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
         elif event_name == "content_block_start":
@@ -423,72 +438,75 @@ def _translate_anthropic_sse(
                 if is_coercion_tool_call(block.get("name", "")):
                     # JSON-mode coercion block: its input streams as content (below);
                     # emit no tool_calls fragment and skip the tool index.
-                    coercion_block_index = block_index
-                    saw_coercion = True
+                    self._coercion_block_index = block_index
+                    self._saw_coercion = True
                 else:
-                    tc_index = tc_count
-                    block_to_tc[block_index] = tc_index
-                    tc_count += 1
+                    tc_index = self._tc_count
+                    self._block_to_tc[block_index] = tc_index
+                    self._tc_count += 1
                     frag = build_tool_call_delta(
                         tc_index, id=block.get("id", ""), name=block.get("name", "")
                     )
-                    chunk = _make_chunk({"tool_calls": [frag]}, None)
+                    chunk = self._make_chunk({"tool_calls": [frag]}, None)
                     yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
         elif event_name == "content_block_delta":
             delta = data.get("delta", {})
             if delta.get("type") == "text_delta":
                 text = delta.get("text", "")
-                chunk = _make_chunk({"content": text}, None)
+                chunk = self._make_chunk({"content": text}, None)
                 yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
             elif delta.get("type") == "input_json_delta":
                 block_index = data.get("index", 0)
-                if coercion_block_index is not None and block_index == coercion_block_index:
+                if (
+                    self._coercion_block_index is not None
+                    and block_index == self._coercion_block_index
+                ):
                     # coercion JSON streams as delta.content, not delta.tool_calls
-                    chunk = _make_chunk({"content": delta.get("partial_json", "")}, None)
+                    chunk = self._make_chunk({"content": delta.get("partial_json", "")}, None)
                     yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
                 else:
-                    tc_index = block_to_tc.get(block_index)
+                    tc_index = self._block_to_tc.get(block_index)
                     if tc_index is not None:
                         frag = build_tool_call_delta(
                             tc_index, arguments_fragment=delta.get("partial_json", "")
                         )
-                        chunk = _make_chunk({"tool_calls": [frag]}, None)
+                        chunk = self._make_chunk({"tool_calls": [frag]}, None)
                         yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
         elif event_name == "message_delta":
             delta = data.get("delta", {})
-            finish_reason = _map_finish_reason(delta.get("stop_reason"))
+            self._finish_reason = _map_finish_reason(delta.get("stop_reason"))
             # JSON-mode: when only the coercion tool was used, the stop is a normal "stop".
-            if saw_coercion and tc_count == 0:
-                finish_reason = "stop"
+            if self._saw_coercion and self._tc_count == 0:
+                self._finish_reason = "stop"
             usage = data.get("usage", {})
-            completion_tokens = usage.get("output_tokens", completion_tokens)
+            self._completion_tokens = usage.get("output_tokens", self._completion_tokens)
 
         elif event_name == "message_stop":
-            # Emit terminal frame
-            terminal_chunk: dict[str, Any] = _make_chunk({}, finish_reason)
-            terminal_chunk["usage"] = {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens,
-            }
-            yield b"data: " + json.dumps(terminal_chunk).encode() + b"\n\n"
-            yield b"data: [DONE]\n\n"
-            terminal_emitted = True
+            yield from self._emit_terminal()
 
         # ping / content_block_start / content_block_stop / unknown → ignored
 
-    # If the stream ends without a message_stop event, emit the terminal frame anyway
-    if not terminal_emitted:
-        terminal_chunk = _make_chunk({}, finish_reason)
-        terminal_chunk["usage"] = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        }
-        yield b"data: " + json.dumps(terminal_chunk).encode() + b"\n\n"
-        yield b"data: [DONE]\n\n"
+    def finish(self) -> Iterator[bytes]:
+        # If the stream ends without a message_stop event, emit the terminal frame anyway.
+        if not self._terminal_emitted:
+            yield from self._emit_terminal()
+
+
+def _translate_anthropic_sse(  # pyright: ignore[reportUnusedFunction]  # kept as the byte-identical translation contract exercised by the unit tests
+    events: Iterable[tuple[str, dict[str, Any]]],
+) -> Iterable[bytes]:
+    """Translate an iterable of (event_name, data_obj) pairs → OpenAI SSE chunk bytes.
+
+    Thin buffered wrapper over ``_AnthropicSSEStepper`` (byte-identical to the
+    historical implementation). The streaming adapter drives the same stepper live;
+    this entry point is retained as the unit-tested translation contract.
+    """
+    stepper = _AnthropicSSEStepper()
+    for event_name, data in events:
+        yield from stepper.step(event_name, data)
+    yield from stepper.finish()
 
 
 # ---------------------------------------------------------------------------
@@ -597,10 +615,10 @@ class AnthropicCompletionUpstream:
         """Return an async generator that yields OpenAI SSE chunk bytes.
 
         The circuit breaker is checked before the stream opens.
-        Anthropic SSE events are collected from the wire stream, then the complete
-        event list is fed to _translate_anthropic_sse (stateful helper that needs the
-        full sequence to emit the terminal usage frame correctly). The translated
-        OpenAI chunk bytes are yielded in order.
+        Anthropic SSE events are translated LIVE via a stateful _AnthropicSSEStepper:
+        each OpenAI chunk is yielded the instant its source event is read off the wire
+        (incremental delivery — TTFB ≈ first token). finish() emits the terminal usage
+        frame + [DONE] after the last event.
         """
         self._breaker.guard()
 
@@ -633,11 +651,11 @@ class AnthropicCompletionUpstream:
                         )
                     self._breaker.record_success()
 
-                    # Collect Anthropic SSE events incrementally line-by-line.
-                    # _translate_anthropic_sse is stateful (accumulates prompt/completion
-                    # tokens across events) so we buffer the complete sequence and pass
-                    # it once to the translator for correct terminal-frame generation.
-                    events: list[tuple[str, dict[str, Any]]] = []
+                    # Drive the stepper LIVE: translate + yield each OpenAI frame the
+                    # instant its source Anthropic event arrives on the wire (incremental
+                    # delivery — TTFB ≈ first token, not full generation). The stepper is
+                    # stateful across events; finish() emits the terminal frame + [DONE].
+                    stepper = _AnthropicSSEStepper()
                     current_event: str = ""
                     async for line in response.aiter_lines():
                         line = line.strip()
@@ -653,18 +671,17 @@ class AnthropicCompletionUpstream:
                                 continue
                             # Use event_type from the data object when event: line absent
                             event_name = current_event or data_obj.get("type", "")
-                            events.append((event_name, data_obj))
+                            for frame in stepper.step(event_name, data_obj):
+                                yield frame
                             current_event = ""
                         elif line == "":
                             # blank line = SSE frame boundary; reset pending event name
                             current_event = ""
+                    for frame in stepper.finish():
+                        yield frame
 
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
-
-            # Translate the buffered event sequence → OpenAI SSE chunk bytes
-            for chunk in _translate_anthropic_sse(events):
-                yield chunk
 
         return _gen()

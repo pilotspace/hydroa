@@ -1,5 +1,5 @@
 import json
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from pydantic import (
@@ -124,6 +124,28 @@ class Settings(BaseSettings):
     # default to the OFF position — the checker is only started when BOTH are > 0.
     reconciliation_drift_threshold: Decimal = Decimal("0")  # GATEWAY_RECONCILIATION_DRIFT_THRESHOLD
     reconciliation_check_interval_seconds: int = 0  # GATEWAY_RECONCILIATION_CHECK_INTERVAL_SECONDS
+
+    @field_validator("reconciliation_drift_threshold", mode="before")
+    @classmethod
+    def _validate_drift_threshold(cls, v: object) -> object:
+        """Fail loud on a nonsense drift threshold (v30 drift-threshold-validation).
+
+        A non-finite (inf/-inf/nan) or negative threshold is a misconfiguration, not a
+        disable signal — 0 is the OFF sentinel. Rejecting at startup turns the silent-but-
+        useless monitor (inf passes the `>0` start-guard yet can never fire) into a clear
+        boot error. mode="before" so this coded error wins over Pydantic's generic
+        finite_number coercion error for inf/nan.
+        """
+        try:
+            d = Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError):
+            return v  # not a parseable number — let Pydantic raise its normal decimal error
+        if not d.is_finite() or d < 0:
+            raise ValueError(
+                "INVALID_RECONCILIATION_DRIFT_THRESHOLD: GATEWAY_RECONCILIATION_DRIFT_THRESHOLD "
+                f"must be a finite, non-negative USD amount (0 disables); got {v!r}"
+            )
+        return v
 
     # ── OpenTelemetry trace export (obs-callbacks task) ──────────────────────
     otel_enabled: bool = False  # GATEWAY_OTEL_ENABLED

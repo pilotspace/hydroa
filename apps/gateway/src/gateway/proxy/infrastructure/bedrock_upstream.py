@@ -34,7 +34,7 @@ from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BedrockCredential, ProviderKeyMissing
 from gateway.proxy.domain.tool_translation import dump_tool_arguments, load_tool_arguments
-from gateway.proxy.infrastructure.bedrock_eventstream import decode_event_stream
+from gateway.proxy.infrastructure.bedrock_eventstream import aiter_event_stream
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
@@ -304,40 +304,34 @@ def _converse_to_openai(resp_json: dict[str, Any], *, model_id: str) -> dict[str
     }
 
 
-def _converse_stream_to_openai_sse(
-    events: list[tuple[str, dict[str, Any]]],
-    *,
-    model_id: str,
-) -> Iterator[bytes]:
-    """Translate a list of (event_type, payload_dict) ConverseStream events → OpenAI SSE bytes.
+class _BedrockSSEStepper:
+    """Stateful ConverseStream → OpenAI-SSE translator, fed one event at a time.
 
-    Yields ``b"data: " + json_chunk + b"\\n\\n"`` for each meaningful event.
-    After the loop, ALWAYS emits the terminal frame (finish_reason + usage) then
-    ``b"data: [DONE]\\n\\n"``.
+    ``step(event_type, payload)`` yields 0+ OpenAI frames for that event (messageStart
+    → role, contentBlockDelta → content) and captures stop_reason / usage from
+    messageStop / metadata. ``finish()`` ALWAYS emits the terminal frame
+    (finish_reason + usage) then ``[DONE]`` — exactly once, after the last event.
 
-    Args:
-        events:   [(event_type, payload_dict)] in upstream wire order.
-        model_id: The Bedrock model ID to embed in each chunk's "model" field.
-
-    Yields:
-        OpenAI SSE byte frames, one per meaningful event, then the terminal frame,
-        then the [DONE] sentinel.
+    This single core drives BOTH the buffered wrapper (``_converse_stream_to_openai_sse``)
+    and the live streaming adapter, so each frame flows as its source event arrives,
+    byte-identical to the buffered output. ``created`` is stamped once at construction.
     """
-    stop_reason: str | None = None
-    usage: dict[str, Any] = {}
-    created = int(time.time())
 
-    base: dict[str, Any] = {
-        "id": "",
-        "object": "chat.completion.chunk",
-        "created": created,
-        "model": model_id,
-    }
+    def __init__(self, *, model_id: str) -> None:
+        self._stop_reason: str | None = None
+        self._usage: dict[str, Any] = {}
+        self._terminal_emitted: bool = False
+        self._base: dict[str, Any] = {
+            "id": "",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model_id,
+        }
 
-    for event_type, payload in events:
+    def step(self, event_type: str, payload: dict[str, Any]) -> Iterator[bytes]:
         if event_type == "messageStart":
             chunk = {
-                **base,
+                **self._base,
                 "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
             }
             yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
@@ -346,7 +340,7 @@ def _converse_stream_to_openai_sse(
             text = payload.get("delta", {}).get("text")
             if text is not None:
                 chunk = {
-                    **base,
+                    **self._base,
                     "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
                 }
                 yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
@@ -356,36 +350,57 @@ def _converse_stream_to_openai_sse(
             pass
 
         elif event_type == "messageStop":
-            stop_reason = payload.get("stopReason")
+            self._stop_reason = payload.get("stopReason")
 
         elif event_type == "metadata":
-            usage = payload.get("usage", {})
+            self._usage = payload.get("usage", {})
 
-    # Terminal frame — always emitted, even when the event list is empty
-    input_tokens: int = usage.get("inputTokens", 0)
-    output_tokens: int = usage.get("outputTokens", 0)
-    total_tokens_raw = usage.get("totalTokens")
-    total_tokens: int = (
-        int(total_tokens_raw) if total_tokens_raw is not None else input_tokens + output_tokens
-    )
+    def finish(self) -> Iterator[bytes]:
+        # Terminal frame — always emitted ONCE, even when no events were seen.
+        # Idempotent: a second finish() call yields nothing (guards against duplicate [DONE]).
+        if self._terminal_emitted:
+            return
+        self._terminal_emitted = True
+        input_tokens: int = self._usage.get("inputTokens", 0)
+        output_tokens: int = self._usage.get("outputTokens", 0)
+        total_tokens_raw = self._usage.get("totalTokens")
+        total_tokens: int = (
+            int(total_tokens_raw) if total_tokens_raw is not None else input_tokens + output_tokens
+        )
 
-    terminal: dict[str, Any] = {
-        **base,
-        "choices": [
-            {
-                "index": 0,
-                "delta": {},
-                "finish_reason": _map_finish_reason(stop_reason),
-            }
-        ],
-        "usage": {
-            "prompt_tokens": input_tokens,
-            "completion_tokens": output_tokens,
-            "total_tokens": total_tokens,
-        },
-    }
-    yield b"data: " + json.dumps(terminal).encode() + b"\n\n"
-    yield b"data: [DONE]\n\n"
+        terminal: dict[str, Any] = {
+            **self._base,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": _map_finish_reason(self._stop_reason),
+                }
+            ],
+            "usage": {
+                "prompt_tokens": input_tokens,
+                "completion_tokens": output_tokens,
+                "total_tokens": total_tokens,
+            },
+        }
+        yield b"data: " + json.dumps(terminal).encode() + b"\n\n"
+        yield b"data: [DONE]\n\n"
+
+
+def _converse_stream_to_openai_sse(  # pyright: ignore[reportUnusedFunction]  # kept as the byte-identical translation contract exercised by the unit tests
+    events: list[tuple[str, dict[str, Any]]],
+    *,
+    model_id: str,
+) -> Iterator[bytes]:
+    """Translate a list of (event_type, payload_dict) ConverseStream events → OpenAI SSE bytes.
+
+    Thin buffered wrapper over ``_BedrockSSEStepper`` (byte-identical to the historical
+    implementation). The streaming adapter drives the same stepper live.
+    """
+    stepper = _BedrockSSEStepper(model_id=model_id)
+    for event_type, payload in events:
+        yield from stepper.step(event_type, payload)
+    yield from stepper.finish()
 
 
 def _bedrock_error_to_openai(resp_json: dict[str, Any], status: int) -> dict[str, Any]:
@@ -540,12 +555,14 @@ class BedrockCompletionUpstream:
     def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
         """Return an async generator that yields OpenAI SSE chunk bytes.
 
-        The circuit breaker is checked before the stream opens.  The full
-        ConverseStream response body is buffered once (AWS binary EventStream
-        over a single HTTP response), then decoded and translated to OpenAI SSE.
+        The circuit breaker is checked before the stream opens.  The AWS binary
+        EventStream is decoded INCREMENTALLY via ``aiter_event_stream`` and translated
+        live by ``_BedrockSSEStepper`` — each OpenAI SSE chunk is yielded as its source
+        ConverseStream frame completes on the wire (TTFB ≈ first token); finish() emits
+        the terminal frame + [DONE].
 
-        The status check + body buffering happen BEFORE the first ``yield``,
-        so a 5xx raises UpstreamUnavailableError with zero chunks emitted (BS7).
+        The status check happens BEFORE the first ``yield``, so a 5xx raises
+        UpstreamUnavailableError with zero chunks emitted (BS7).
 
         Uses ``content=body_bytes`` (raw bytes) so the signed x-amz-content-sha256
         matches the wire body exactly — httpx must NOT re-encode the body.
@@ -589,19 +606,23 @@ class BedrockCompletionUpstream:
                         raise UpstreamUnavailableError(
                             f"Upstream returned {resp.status_code} on stream"
                         )
-                    # Buffer the full binary EventStream body before decoding
-                    buf = b"".join([c async for c in resp.aiter_bytes()])
+                    self._breaker.record_success()
 
-                self._breaker.record_success()
+                    # Drive both layers LIVE: aiter_event_stream decodes each binary
+                    # EventStream frame as it completes on the wire; the stepper
+                    # translates it to OpenAI SSE and yields it immediately (incremental
+                    # delivery — TTFB ≈ first token). finish() emits the terminal frame.
+                    stepper = _BedrockSSEStepper(model_id=model_id)
+                    async for ev_headers, ev_payload in aiter_event_stream(resp.aiter_bytes()):
+                        for frame in stepper.step(
+                            ev_headers.get(":event-type", ""), json.loads(ev_payload)
+                        ):
+                            yield frame
+                    for frame in stepper.finish():
+                        yield frame
 
             except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
                 self._breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
-
-            events = [
-                (h.get(":event-type", ""), json.loads(p)) for h, p in decode_event_stream(buf)
-            ]
-            for frame in _converse_stream_to_openai_sse(events, model_id=model_id):
-                yield frame
 
         return _gen()

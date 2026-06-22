@@ -42,7 +42,7 @@ class ReconciliationSummary:
     provider_cost_total: Decimal  # Σ provider_cost over cost_basis='provider'
     billed_total: Decimal  # Σ cost_usd over cost_basis='provider'
     drift: Decimal  # provider_cost_total - billed_total
-    unbilled_upstream_cost: Decimal  # Σ provider_cost where provider_cost>0 AND cost_usd=0
+    unbilled_upstream_cost: Decimal  # Σ provider_cost (>0, cost_usd=0, cost_basis='provider')
     unbilled_rows: int  # COUNT(*) of those rows
     catalog_billed_total: Decimal  # Σ cost_usd over cost_basis='catalog'
     by_source: tuple[SourceBreakdown, ...]  # unbilled rows grouped by usage_source, sorted
@@ -102,9 +102,10 @@ async def reconcile_window(
                 "  COALESCE(SUM(cost_usd) FILTER (WHERE cost_basis = 'catalog'), 0)"
                 "    AS catalog_billed_total,"
                 "  COALESCE(SUM(provider_cost) FILTER"
-                "    (WHERE provider_cost > 0 AND cost_usd = 0), 0)"
+                "    (WHERE provider_cost > 0 AND cost_usd = 0 AND cost_basis = 'provider'), 0)"
                 "    AS unbilled_upstream_cost,"
-                "  COUNT(*) FILTER (WHERE provider_cost > 0 AND cost_usd = 0)"
+                "  COUNT(*) FILTER"
+                "    (WHERE provider_cost > 0 AND cost_usd = 0 AND cost_basis = 'provider')"
                 "    AS unbilled_rows"
                 " FROM usage_records"
                 " WHERE created_at >= :from AND created_at < :to" + tenant_clause
@@ -127,7 +128,7 @@ async def reconcile_window(
                 "  COUNT(*) AS rows,"
                 "  COALESCE(SUM(provider_cost), 0) AS provider_cost"
                 " FROM usage_records"
-                " WHERE provider_cost > 0 AND cost_usd = 0"
+                " WHERE provider_cost > 0 AND cost_usd = 0 AND cost_basis = 'provider'"
                 "   AND created_at >= :from AND created_at < :to"
                 + tenant_clause
                 + " GROUP BY usage_source ORDER BY usage_source"
