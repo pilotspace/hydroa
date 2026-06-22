@@ -89,17 +89,22 @@ describe("LoginForm — Card-wrapped fields + styled SSO", () => {
     // Fields live inside the token-styled auth Card.
     const card = container.querySelector('[data-slot="auth-card"]');
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).getByLabelText(/email/i)).toBeInTheDocument();
+    // Exact /^email$/ — the password-login email field (distinct from the SSO
+    // "Work email or domain" field added by the sso-login-button task).
+    expect(within(card as HTMLElement).getByLabelText(/^email$/i)).toBeInTheDocument();
     expect(within(card as HTMLElement).getByLabelText(/password/i)).toBeInTheDocument();
 
     // Submit is the DS Button (frozen name preserved).
     expect(screen.getByRole("button", { name: /^log in$/i })).toBeInTheDocument();
 
-    // SSO stays an <a> (full-page nav) but is styled via buttonVariants.
-    const sso = screen.getByRole("link", { name: /sso/i });
-    expect(sso.tagName).toBe("A");
-    expect(sso).toHaveAttribute("href", "/api/auth/oidc/login");
+    // SSO is now a styled Button (type=button) that navigates via the new
+    // domain-driven handler (sso-login-button task supersedes the v24 <a> design).
+    const sso = screen.getByRole("button", { name: /sign in with sso/i });
     expect(sso.className).toContain("inline-flex"); // buttonVariants base marker
+    // The new work-email/domain field drives the SSO ?domain=.
+    expect(
+      within(card as HTMLElement).getByLabelText(/work email or domain/i),
+    ).toBeInTheDocument();
   });
 });
 

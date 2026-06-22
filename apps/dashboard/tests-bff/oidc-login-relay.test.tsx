@@ -164,13 +164,17 @@ describe("oidc-login-relay — GET /api/auth/oidc/login", () => {
   });
 });
 
-describe("LoginForm — SSO link", () => {
-  it("test_loginform_has_sso_link", () => {
+describe("LoginForm — SSO entry", () => {
+  it("test_loginform_has_sso_button_and_domain_field", () => {
     render(<LoginForm />);
-    const link = screen.getByRole("link", { name: /sso/i });
-    expect(link).toHaveAttribute("href", "/api/auth/oidc/login");
+    // SSO is now a Button (sso-login-button task supersedes the v24 <a> design);
+    // the per-tenant ?domain= behavior is covered by tests/sso-login.test.tsx.
+    expect(
+      screen.getByRole("button", { name: /sign in with sso/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/work email or domain/i)).toBeInTheDocument();
     // the email/password form is unchanged
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
   });
 });

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "operator-wide-reconciliation",
+  "active_task": "sso-login-button",
   "active_milestone": "v31",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -35,6 +35,26 @@
         ],
         "snapshot_md5": "9186d7e3719b0bf9df307e2171871838"
       }
+    },
+    "sso-login-button": {
+      "title": "Sign in with SSO entry on the login page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T15:24:48+00:00",
+      "updated": "2026-06-22T15:46:40+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8e221fc1204555e3708a61a726ff5bce",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/auth/LoginForm.tsx"
+        ],
+        "snapshot_md5": "0cfe5e281642ddc0dcd8203e7f80b19e"
+      }
     }
   },
   "milestones": {
@@ -48,7 +68,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T14:51:03+00:00",
+  "updated": "2026-06-22T15:46:40+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
