@@ -21,6 +21,8 @@ Wraps httpx.AsyncClient with:
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -41,6 +43,58 @@ _NON_STREAM_TIMEOUT = 120.0
 _STREAM_READ_TIMEOUT = 300.0
 
 _log = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationCost:
+    """Authoritative cost + native token usage for one OpenRouter generation.
+
+    Returned by ``OpenRouterCompletionUpstream.get_generation``. Money fields are
+    ``Decimal`` (billing precision — never float); token counts are ints. Built from
+    the ``data`` object of the GET /generation response (v30 cost-recovery).
+    """
+
+    total_cost: Decimal
+    upstream_inference_cost: Decimal
+    native_tokens_prompt: int
+    native_tokens_completion: int
+    native_tokens_cached: int
+
+
+def _gen_to_decimal(value: object) -> Decimal:
+    """Parse a money value to Decimal via str (never float). Missing/garbage -> 0."""
+    if value is None:
+        return Decimal("0")
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal("0")
+
+
+def _gen_to_int(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return 0
+
+
+def _parse_generation(body: dict[str, Any]) -> GenerationCost | None:
+    """Map a /generation response body to GenerationCost, or None if unavailable.
+
+    Tolerates both ``{"data": {...}}`` and a flat top-level shape. A body without a
+    ``total_cost`` is treated as 'not available yet' (None) — same as a non-200, so
+    the recovery caller can retry or defer to the sweep backstop.
+    """
+    data = body.get("data", body)
+    if not isinstance(data, dict) or data.get("total_cost") is None:
+        return None
+    return GenerationCost(
+        total_cost=_gen_to_decimal(data.get("total_cost")),
+        upstream_inference_cost=_gen_to_decimal(data.get("upstream_inference_cost")),
+        native_tokens_prompt=_gen_to_int(data.get("native_tokens_prompt")),
+        native_tokens_completion=_gen_to_int(data.get("native_tokens_completion")),
+        native_tokens_cached=_gen_to_int(data.get("native_tokens_cached")),
+    )
 
 
 class OpenRouterCompletionUpstream:
@@ -149,6 +203,55 @@ class OpenRouterCompletionUpstream:
             deadline_s=self._retry_deadline_s,
             metrics_registry=self._metrics_registry,
         )
+
+    async def get_generation(self, generation_id: str) -> GenerationCost | None:
+        """Fetch a past generation's authoritative cost + native token usage.
+
+        GET /generation?id=... through the shared designed-for-failure seam
+        (bounded retry on 5xx/429/408/connect+pool-timeout + circuit breaker).
+        Returns a GenerationCost on a 200 that carries cost; None when the
+        generation is not available (a non-200, or a 200 without total_cost —
+        OpenRouter stats are eventually-consistent, so the recovery caller retries
+        or defers to the sweep backstop). Raises UpstreamUnavailableError on an
+        exhausted/terminal transport failure and CircuitOpenError when the breaker
+        is open — same contract as complete().
+
+        Read-side primitive for disconnect cost-recovery (v30 t6); complete() and
+        stream() are untouched and the per-instance breaker state is shared.
+        """
+
+        async def _do_request() -> httpx.Response:
+            return await self._client.get(
+                "/generation",
+                params={"id": generation_id},
+                headers=self._auth_headers(),
+            )
+
+        def _render(resp: httpx.Response) -> tuple[int, dict[str, Any]]:
+            try:
+                body = resp.json()
+            except ValueError:  # includes json.JSONDecodeError
+                body = {}
+            return resp.status_code, body if isinstance(body, dict) else {}
+
+        status, body = await execute_with_retry(
+            _do_request,
+            _render,
+            breaker=self._breaker,
+            provider="openrouter",
+            max_retries=self._max_retries,
+            backoff_base=self._backoff_base,
+            deadline_s=self._retry_deadline_s,
+            metrics_registry=self._metrics_registry,
+        )
+        if status == 200:
+            return _parse_generation(body)
+        if status == 404:
+            # Not ready / unknown id — an expected, retry-or-defer signal (eventual consistency).
+            return None
+        # Any other terminal non-200 (e.g. 401/403 auth failure) is PERMANENT: surface it so the
+        # recovery caller hard-fails instead of re-polling a broken lookup forever as "not ready".
+        raise UpstreamUnavailableError(f"get_generation failed: HTTP {status}")
 
     def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
         """Return an async generator that yields raw SSE byte chunks.
