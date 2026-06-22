@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "sso-login-button",
+  "active_task": "alerts-events-viewer",
   "active_milestone": "v31",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -55,6 +55,33 @@
         ],
         "snapshot_md5": "0cfe5e281642ddc0dcd8203e7f80b19e"
       }
+    },
+    "alerts-events-viewer": {
+      "title": "Alerts & events viewer \u2014 GET /admin/alerts + dashboard Alerts page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T16:29:20+00:00",
+      "updated": "2026-06-22T16:57:08+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a2aa9ee06edf39c356db7d27bc670a0b",
+        "tests": {
+          "apps/gateway/tests/alerts_events_viewer/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/alerts_events_viewer/conftest.py": "aa534ad7e8216bb8c6d93e871148ceb4",
+          "apps/gateway/tests/alerts_events_viewer/test_alerts_events_viewer.py": "9d8496dcc1fffc7486415b407378826d"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/dashboard/app/(dashboard)/alerts/",
+          "apps/dashboard/components/alerts/",
+          "apps/dashboard/components/ui/app-shell.tsx"
+        ],
+        "snapshot_md5": "694cf1014d27477029391f181e9f07a1"
+      }
     }
   },
   "milestones": {
@@ -68,7 +95,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T15:46:40+00:00",
+  "updated": "2026-06-22T16:57:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

@@ -17,12 +17,15 @@ GET /admin/spend contract (FROZEN @ spend-windows — TASK.md §3):
 
 from __future__ import annotations
 
+import asyncio
 import datetime
+import json
 import uuid
 from decimal import Decimal
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +36,7 @@ from gateway.core.error_catalog import (
     KEY_NOT_FOUND_IN_TENANT,
     PAYLOAD_END_DATE_INVALID,
     PAYLOAD_GROUP_BY_INVALID,
+    PAYLOAD_INVALID,
     PAYLOAD_KEY_ID_UUID_INVALID,
     PAYLOAD_START_DATE_INVALID,
     PAYLOAD_WINDOW_INVALID,
@@ -515,3 +519,130 @@ async def get_reconciliation(
             for item in summary.by_source
         ],
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/alerts — paginated alert/event history (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+_ALERTS_DEFAULT_LIMIT = 50
+_ALERTS_MAX_LIMIT = 100
+_ALERTS_READ_TIMEOUT_SECONDS = 30.0
+
+
+class AlertEventItem(BaseModel):
+    """One alert_events row as returned by GET /admin/alerts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    event_type: str
+    payload: dict[str, object]
+    created_at: str
+    delivered: bool
+    delivered_at: str | None
+
+
+class AlertListResponse(BaseModel):
+    """Paginated alert history envelope: { items, total }."""
+
+    model_config = ConfigDict(frozen=True)
+
+    items: list[AlertEventItem]
+    total: int
+
+
+def _parse_pagination(limit: str | None, offset: str | None) -> tuple[int, int]:
+    """Parse limit (1..100, default 50) + offset (>=0, default 0).
+
+    Parsed manually (not via FastAPI int coercion) so a bad value maps to the catalog
+    ERR_PAYLOAD_INVALID code rather than FastAPI's own 422 shape.
+    """
+    parsed_limit = _ALERTS_DEFAULT_LIMIT
+    if limit is not None:
+        try:
+            parsed_limit = int(limit)
+        except ValueError:
+            raise PAYLOAD_INVALID.exc() from None
+        if parsed_limit < 1 or parsed_limit > _ALERTS_MAX_LIMIT:
+            raise PAYLOAD_INVALID.exc()
+
+    parsed_offset = 0
+    if offset is not None:
+        try:
+            parsed_offset = int(offset)
+        except ValueError:
+            raise PAYLOAD_INVALID.exc() from None
+        if parsed_offset < 0:
+            raise PAYLOAD_INVALID.exc()
+
+    return parsed_limit, parsed_offset
+
+
+def _coerce_payload(raw: object) -> dict[str, object]:
+    """alert_events.payload is JSONB; asyncpg may surface it as a JSON string or a dict."""
+    if isinstance(raw, dict):
+        return cast("dict[str, object]", raw)
+    if isinstance(raw, str):
+        try:
+            loaded = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return loaded if isinstance(loaded, dict) else {}
+    return {}
+
+
+@usage_router.get("/alerts", response_model=AlertListResponse)
+async def get_alerts(
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[str | None, Query()] = None,
+    offset: Annotated[str | None, Query()] = None,
+) -> AlertListResponse:
+    """Return the caller's tenant-visible alert history (FROZEN @ v1 — TASK.md §3).
+
+    Owner/admin-scoped (member → 403). Visibility is the caller's own tenant rows PLUS
+    platform system events (tenant_id IS NULL: circuit-open, upstream-health, drift) —
+    Tin-approved at the freeze; system rows belong to no tenant (operational-info, not
+    cross-tenant tenant-data). Newest-first, paginated. READ-ONLY — never writes
+    delivered_at or any row.
+    """
+    parsed_limit, parsed_offset = _parse_pagination(limit, offset)
+    tenant_id: uuid.UUID = identity.tenant_id
+    where = "WHERE tenant_id = :tid OR tenant_id IS NULL"
+
+    async with asyncio.timeout(_ALERTS_READ_TIMEOUT_SECONDS):
+        total_row = (
+            await session.execute(
+                text(f"SELECT COUNT(*) FROM alert_events {where}"),
+                {"tid": str(tenant_id)},
+            )
+        ).fetchone()
+        total = int(total_row[0]) if total_row else 0
+
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, event_type, payload, created_at, delivered_at"
+                    f" FROM alert_events {where}"
+                    " ORDER BY created_at DESC, id DESC"
+                    " LIMIT :limit OFFSET :offset"
+                ),
+                {"tid": str(tenant_id), "limit": parsed_limit, "offset": parsed_offset},
+            )
+        ).fetchall()
+
+    items = [
+        AlertEventItem(
+            id=str(row[0]),
+            event_type=str(row[1]),
+            payload=_coerce_payload(row[2]),
+            created_at=row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3]),
+            delivered=row[4] is not None,
+            delivered_at=(
+                row[4].isoformat() if row[4] is not None and hasattr(row[4], "isoformat") else None
+            ),
+        )
+        for row in rows
+    ]
+
+    return AlertListResponse(items=items, total=total)
