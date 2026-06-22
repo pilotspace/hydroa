@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "alerts-events-viewer",
+  "active_task": "catalog-sync-trigger",
   "active_milestone": "v31",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -82,6 +82,33 @@
         ],
         "snapshot_md5": "694cf1014d27477029391f181e9f07a1"
       }
+    },
+    "catalog-sync-trigger": {
+      "title": "Catalog sync trigger \u2014 POST /admin/catalog/sync + /models re-sync button",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T17:01:00+00:00",
+      "updated": "2026-06-22T17:24:42+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6c5480a16d74cef9130217958c5753e7",
+        "tests": {
+          "apps/gateway/tests/catalog_sync_trigger/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/catalog_sync_trigger/conftest.py": "14f71b265278fb8451b898164caeac44",
+          "apps/gateway/tests/catalog_sync_trigger/test_catalog_sync_trigger.py": "f2a75adebdeab9f83a078cca9df4337d"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/catalog/api/router.py",
+          "apps/gateway/src/gateway/catalog/api/schemas.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/dashboard/components/models/ModelsPage.tsx"
+        ],
+        "snapshot_md5": "ddf0f466234f6de275bd816b466a3016"
+      }
     }
   },
   "milestones": {
@@ -95,7 +122,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T16:57:08+00:00",
+  "updated": "2026-06-22T17:24:42+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

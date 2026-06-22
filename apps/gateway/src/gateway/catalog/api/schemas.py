@@ -11,6 +11,17 @@ class SyncResponse(BaseModel):
     synced: int
 
 
+class CatalogSyncResponse(BaseModel):
+    """Response for POST /admin/catalog/sync — adds the completion time the UI shows.
+
+    Distinct from the internal SyncResponse so the internal endpoint stays byte-identical.
+    synced_at is the gateway clock (ISO-8601 UTC) stamped when the sync completed.
+    """
+
+    synced: int
+    synced_at: str
+
+
 class ModelItem(BaseModel):
     """Single model entry in the GET /v1/models response."""
 

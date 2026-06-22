@@ -18,8 +18,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { bffGet, bffPut, BffError } from "@/lib/bff-client";
+import { bffGet, bffPost, bffPut, BffError } from "@/lib/bff-client";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import {
+  Button,
   Card,
   CardContent,
   DataTable,
@@ -42,6 +44,12 @@ interface AdminModelsListResponse {
   data: AdminModelItem[];
 }
 
+/** Response of POST /admin/catalog/sync (gateway CatalogSyncResponse). */
+interface CatalogSyncResponse {
+  synced: number;
+  synced_at: string;
+}
+
 function getErrorTitle(err: unknown): string {
   if (err instanceof BffError) return err.problem.title;
   if (err instanceof Error) return err.message;
@@ -51,10 +59,23 @@ function getErrorTitle(err: unknown): string {
 export function ModelsPage() {
   const queryClient = useQueryClient();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<string | null>(null);
+
+  // Role from /api/auth/me — owner/admin may force a catalog re-sync; members may not.
+  const { data: currentUser } = useCurrentUser();
+  const canManage = currentUser?.role === "owner" || currentUser?.role === "admin";
 
   const { data, isLoading, isError, error } = useQuery<AdminModelsListResponse>({
     queryKey: ["admin-models"],
     queryFn: () => bffGet<AdminModelsListResponse>("/admin/models"),
+  });
+
+  const resyncCatalog = useMutation({
+    mutationFn: () => bffPost<CatalogSyncResponse>("/admin/catalog/sync", {}),
+    onSuccess: (result) => {
+      setLastSync(result.synced_at);
+      void queryClient.invalidateQueries({ queryKey: ["admin-models"] });
+    },
   });
 
   const toggleModel = useMutation({
@@ -118,12 +139,31 @@ export function ModelsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Models</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Enable or disable individual catalog models for your tenant.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Models</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Enable or disable individual catalog models for your tenant.
+          </p>
+        </div>
+        {canManage && (
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              type="button"
+              onClick={() => resyncCatalog.mutate()}
+              disabled={resyncCatalog.isPending}
+            >
+              {resyncCatalog.isPending ? "Re-syncing…" : "Re-sync catalog"}
+            </Button>
+            {lastSync && (
+              <span className="text-xs text-muted-foreground">Last synced: {lastSync}</span>
+            )}
+          </div>
+        )}
       </header>
+
+      {/* A failed catalog re-sync (e.g. 502 ERR_UPSTREAM_UNAVAILABLE) surfaces inline. */}
+      {resyncCatalog.isError && <ErrorState title={getErrorTitle(resyncCatalog.error)} />}
 
       {isLoading && <Loading label="Loading models" className="animate-pulse" />}
 

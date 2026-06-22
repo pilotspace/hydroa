@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -19,6 +20,7 @@ from gateway.catalog.api.deps import (
 from gateway.catalog.api.schemas import (
     AdminModelItem,
     AdminModelsListResponse,
+    CatalogSyncResponse,
     ModelItem,
     ModelsListResponse,
     PutModelRequest,
@@ -48,6 +50,10 @@ catalog_router = APIRouter(prefix="/v1", tags=["catalog"])
 
 # Admin model management router — owner/admin JWT required (model-mgmt TASK.md §3).
 admin_models_router = APIRouter(prefix="/admin/models", tags=["admin-models"])
+
+# Admin catalog router — owner/admin JWT required (catalog-sync-trigger TASK.md §3).
+# Separate prefix from /admin/models to avoid the {model_id:path} converter collision with /sync.
+admin_catalog_router = APIRouter(prefix="/admin/catalog", tags=["admin-catalog"])
 
 
 @internal_catalog_router.post("/sync", response_model=SyncResponse)
@@ -210,3 +216,44 @@ async def put_admin_model(
         context_length=model_row.context_length,
         enabled=body.enabled,
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin catalog sync trigger (catalog-sync-trigger TASK.md §3)
+# ---------------------------------------------------------------------------
+
+
+@admin_catalog_router.post("/sync", response_model=CatalogSyncResponse)
+async def admin_sync_catalog(
+    request: Request,
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    use_case: Annotated[SyncCatalogUseCase, Depends(get_sync_use_case)],
+) -> CatalogSyncResponse:
+    """POST /admin/catalog/sync — owner/admin-triggered model-catalog re-sync.
+
+    A thin owner/admin wrapper over the same SyncCatalogUseCase the internal endpoint uses
+    (member → 403 ERR_AUTH_FORBIDDEN via require_owner_or_admin). The catalog is a GLOBAL
+    platform resource; this is an idempotent upsert. Returns {synced, synced_at} where
+    synced_at is the gateway clock at completion (ISO-8601 UTC) — the dashboard shows it.
+
+    502 ERR_UPSTREAM_UNAVAILABLE if the catalog source is unreachable (raised before any
+    write — the catalog is unchanged on failure). After a successful sync, refreshes the
+    provider resolver cache fail-safely (a refresh error never alters the response).
+    """
+    try:
+        synced = await use_case.execute()
+    except CatalogSourceUnavailableError as exc:
+        raise CATALOG_UPSTREAM_UNAVAILABLE.exc(detail=str(exc)) from exc
+
+    synced_at = datetime.datetime.now(datetime.UTC).isoformat()
+
+    # Fail-safe provider resolver refresh — keep the model→provider map in sync after a
+    # catalog sync. Never let a refresh error affect the response (mirrors the internal handler).
+    try:
+        _r = getattr(request.app.state, "provider_resolver", None)
+        if _r is not None:
+            await _r.refresh()
+    except Exception:  # noqa: S110 — intentional; refresh is fail-safe, never alters sync response
+        pass
+
+    return CatalogSyncResponse(synced=synced, synced_at=synced_at)

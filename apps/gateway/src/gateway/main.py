@@ -22,7 +22,12 @@ from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcPr
 )
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
-from gateway.catalog.api.router import admin_models_router, catalog_router, internal_catalog_router
+from gateway.catalog.api.router import (
+    admin_catalog_router,
+    admin_models_router,
+    catalog_router,
+    internal_catalog_router,
+)
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
@@ -31,6 +36,7 @@ from gateway.keys.api.router import authz_router as keys_authz_router
 from gateway.observability.logging_config import configure_structlog
 from gateway.observability.metrics import MetricsRegistry, expose_metrics
 from gateway.observability.middleware import RequestIdMiddleware
+from gateway.ops.api.router import ops_router
 from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
@@ -80,7 +86,6 @@ from gateway.tenants.infrastructure.jwt_service import JwtTokenService
 from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
-from gateway.ops.api.router import ops_router
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
 from gateway.usage.application.drift_checker import (
@@ -722,6 +727,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(keys_authz_router)
     app.include_router(teams_router)
     app.include_router(admin_models_router)
+    app.include_router(admin_catalog_router)
     app.include_router(routing_admin_router)
     app.include_router(proxy_router)
     app.include_router(embeddings_router)
