@@ -88,6 +88,10 @@ from gateway.usage.application.drift_checker import (
 )
 from gateway.usage.application.flusher import UsageLedgerFlusher
 from gateway.usage.application.recorder import RecordingUsageRecorder
+from gateway.usage.application.recovery_sweep import (
+    OpenRouterRecoverySweeper,
+    should_start_recovery_sweep,
+)
 from gateway.usage.infrastructure.alert_events_orm import (
     AlertEventRow as _AlertEventRow,  # noqa: F401 — registers alert_events ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
@@ -302,6 +306,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # OpenRouterRecoverySweeper — periodic backstop that recovers authoritative cost for
+        # client-disconnect rows the inline path (t6.2c) missed (v30 t6.3). Default-OFF:
+        # started only when the interval knob is > 0 AND the cost-recovery service is wired.
+        app.state.recovery_sweep_task = None
+        _recovery_service = getattr(app.state, "cost_recovery_service", None)
+        if (
+            should_start_recovery_sweep(_settings.openrouter_recovery_sweep_interval_seconds)
+            and _recovery_service is not None
+        ):
+            recovery_sweeper = OpenRouterRecoverySweeper(
+                session_factory=_sessionmaker,
+                recovery_service=_recovery_service,
+                provider_resolver=app.state.provider_resolver,
+            )
+            app.state.recovery_sweeper = recovery_sweeper
+            app.state.recovery_sweep_task = asyncio.create_task(
+                recovery_sweeper.run_forever(
+                    interval_seconds=float(_settings.openrouter_recovery_sweep_interval_seconds)
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -323,6 +348,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             drift_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await drift_task
+
+        sweep_task: asyncio.Task[None] | None = getattr(app.state, "recovery_sweep_task", None)
+        if sweep_task is not None:
+            sweep_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sweep_task
 
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
@@ -383,6 +414,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # The lifespan overwrites them on startup.
     app.state.health_checker_task = None
     app.state.drift_checker_task = None
+    app.state.recovery_sweep_task = None
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "openrouter-cost-recovery-wiring",
+  "active_task": "openrouter-recovery-sweep",
   "active_milestone": "v30",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -253,6 +253,34 @@
         ],
         "snapshot_md5": "9345b013cd9e2184c9966c016ab6f1f9"
       }
+    },
+    "openrouter-recovery-sweep": {
+      "title": "Openrouter Recovery Sweep",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-22T08:44:57+00:00",
+      "updated": "2026-06-22T09:16:08+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6121edfb1c7db5d83949090f68545daa",
+        "tests": {
+          "apps/gateway/tests/openrouter_recovery_sweep/conftest.py": "66d6438dafbf4b660b7df15530ced24f",
+          "apps/gateway/tests/openrouter_recovery_sweep/test_openrouter_recovery_sweep.py": "2f3ecf3229d6b54ab4dee777516b66bc"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/recovery_sweep.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/usage/infrastructure/orm.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/openrouter_recovery_sweep/"
+        ],
+        "snapshot_md5": "054925aea1000208d29f19ff69f72e41"
+      }
     }
   },
   "milestones": {
@@ -266,7 +294,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T08:43:10+00:00",
+  "updated": "2026-06-22T09:16:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

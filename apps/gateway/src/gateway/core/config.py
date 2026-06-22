@@ -290,6 +290,15 @@ class Settings(BaseSettings):
     # the reliable backstop for whatever inline misses. openrouter-cost-recovery-wiring §3.
     openrouter_cost_recovery_enabled: bool = Field(default=False)
 
+    # GATEWAY_OPENROUTER_RECOVERY_SWEEP_INTERVAL_SECONDS — when > 0 (and the cost-recovery
+    # service is wired), a periodic background sweeper (OpenRouterRecoverySweeper) scans the
+    # ledger for flushed client_disconnect rows that still have no openrouter_recovered
+    # sibling and calls recover() for each OpenRouter one — the reliable backstop for inline
+    # misses (teardown-cancelled / knob-off rows). 0 = default-OFF (no task). The sweep is
+    # idempotent with the inline path via the deterministic correction-row id (t6.2b).
+    # openrouter-recovery-sweep §3.
+    openrouter_recovery_sweep_interval_seconds: int = Field(default=0)
+
     # GATEWAY_STT_MAX_DURATION_SECONDS — upper clamp (seconds) on a billed STT per_second
     # duration. A corrupt/lying audio header (or a lying upstream body["duration"]) can
     # over-derive an absurd duration → over-bill; the resolved duration is clamped to this
