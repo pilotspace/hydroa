@@ -322,8 +322,8 @@ UpstreamUnavailableError (hard fail) returns · breaker trips attributable to /g
   account (verified from docs only) — fold into the t6 live-verify pass (evidence: §1 ⚠ assumption).
 
 ### Competency deltas
-- [ADD · open] a refute-read on a thin IO primitive still earns a contract refinement: 401/403 must not
+- [ADD · folded] a refute-read on a thin IO primitive still earns a contract refinement: 401/403 must not [folded foundation-version 28]
   alias "not ready" (None) or the caller infinite-re-polls — split not-ready (404) from permanent (raise)
   (evidence: refute MEDIUM → change-request v2).
-- [TDD · open] a money-precision test must feed a JSON NUMBER, not a string — a str fixture trivially
+- [TDD · folded] a money-precision test must feed a JSON NUMBER, not a string — a str fixture trivially [folded foundation-version 28]
   passes Decimal(str(str)) and proves nothing about the real float→str→Decimal path (evidence: refute LOW).

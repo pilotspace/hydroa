@@ -1,7 +1,7 @@
-# TASK: {{title}}
+# TASK: Cross-tenant reconciliation view behind ops-auth
 
-slug: {{slug}} · created: {{date}} · stage: {{stage}}
-autonomy: {{autonomy}}   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. -->
+slug: operator-wide-reconciliation · created: 2026-06-18 · stage: production
+autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. -->
 phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
@@ -132,13 +132,6 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 - [ ] no exposed secrets, injection openings, or unexpected dependencies
 - [ ] layering & dependencies follow CONVENTIONS.md
 - [ ] a person reviewed and approved the change
-
-### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
-> Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
-> + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
-> row is evidence you can SEE, not a restatement of a test name.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed

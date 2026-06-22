@@ -290,8 +290,8 @@ volume) · ledger rows with usage_source="client_disconnect" (partial/flagged bi
   only OpenRouter exposes a post-hoc cost endpoint).
 
 ### Competency deltas
-- [ADD · open] an adversarial refute-read earns its keep even on a 3-line change — it surfaced the
+- [ADD · folded] an adversarial refute-read earns its keep even on a 3-line change — it surfaced the [folded foundation-version 28]
   Exception-vs-BaseException (CancelledError) gap that the first green hid (evidence: BUG-1 → strengthened test).
-- [TDD · open] best-effort cleanup in async-gen close handlers must be tested with a BaseException
+- [TDD · folded] best-effort cleanup in async-gen close handlers must be tested with a BaseException [folded foundation-version 28]
   (CancelledError), not just Exception — `suppress(Exception)` silently leaks BaseException (evidence:
   the new red test failed against suppress(Exception), passed against suppress(BaseException)).

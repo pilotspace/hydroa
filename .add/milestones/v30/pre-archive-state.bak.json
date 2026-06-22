@@ -1,0 +1,280 @@
+{
+  "milestone": {
+    "title": "Reconciliation hardening \u2014 make leak-detection trustworthy",
+    "goal": "a platform operator can trust the billing reconciliation signal \u2014 no nonsense config silently disables it, no false leak from catalog rows, no unexplained $0 on disconnect, and drift is visible across all tenants",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-18T16:38:49+00:00",
+    "updated": "2026-06-22T09:25:32+00:00"
+  },
+  "tasks": {
+    "drift-threshold-validation": {
+      "title": "Reject a non-finite or non-positive drift threshold at startup",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-18T16:42:30+00:00",
+      "updated": "2026-06-22T03:38:05+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "426f34f59a33b87f554c316bc0f7e252",
+        "tests": {
+          "apps/gateway/tests/test_config.py": "b768f99ffe8eadbb8e795d586b7ac165"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/core/config.py"
+        ],
+        "snapshot_md5": "1f6a8774c52c55b6e98a94bdc568f8dd"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-22T03:36:33+00:00",
+            "reason": "scope_violation: task 'drift-threshold-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/.gitignore \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 \u00b7 apps/gateway/.ruff_cache/CACHEDIR.TAG \u00b7 apps/gateway/src/gateway/core/config.py (5 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "reconcile-cost-basis-filter": {
+      "title": "Scope the unbilled-upstream filter to cost_basis='provider'",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-18T16:42:30+00:00",
+      "updated": "2026-06-22T03:46:52+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "3839600f8fed9728243e0a414b88d8b1",
+        "tests": {
+          "apps/gateway/tests/reconciliation_aggregate/test_reconciliation_aggregate.py": "25bcb8790151be5d9e1062bb36ac16f2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/reconciliation.py"
+        ],
+        "snapshot_md5": "c1b4295a5d3a30c7a88ae917c6ce07c2"
+      }
+    },
+    "disconnect-provider-cost": {
+      "title": "Stamp provider_cost on client-disconnect mid-stream rows",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-18T16:42:31+00:00",
+      "updated": "2026-06-22T06:27:30+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "018cd86bd9cbfabf100d89a9dd381643",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/use_cases.py"
+        ],
+        "snapshot_md5": "cd783449e951d65888f66c5117bdbe25"
+      }
+    },
+    "incremental-sse-translation": {
+      "title": "Incremental SSE translation for Anthropic + Gemini (byte-identical, enables mid-stream abort)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-22T04:58:15+00:00",
+      "updated": "2026-06-22T05:29:02+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a79be1e4bc6e1148dc52cf50dec1c086",
+        "tests": {
+          "apps/gateway/tests/incremental_sse_streaming/test_incremental_sse.py": "a5a670ce965d3d0106d936316e547689"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py"
+        ],
+        "snapshot_md5": "540a97d71b375a18bcb7cbdce98cf8a1"
+      }
+    },
+    "bedrock-incremental-stream": {
+      "title": "Incremental AWS EventStream decode for Bedrock streaming",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [
+        "incremental-sse-translation"
+      ],
+      "created": "2026-06-22T04:58:15+00:00",
+      "updated": "2026-06-22T06:03:47+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "1d14dec25e51d41219f492348e4ab378",
+        "tests": {
+          "apps/gateway/tests/bedrock_incremental_stream/test_bedrock_incremental_stream.py": "66f62a21c63edf603bf3c5ee76f3b805"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_eventstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py"
+        ],
+        "snapshot_md5": "e42b774f622504988e1a670a8b469c18"
+      }
+    },
+    "openrouter-cost-recovery": {
+      "title": "Recover OpenRouter authoritative cost via generation endpoint on disconnect",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [
+        "disconnect-provider-cost"
+      ],
+      "created": "2026-06-22T04:58:15+00:00",
+      "updated": "2026-06-22T08:17:39+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "506bd15c97ad826d8b1ed1b31997b3bf",
+        "tests": {
+          "apps/gateway/tests/openrouter_cost_recovery/conftest.py": "3edffd15cb7daa590d40631673f8980f",
+          "apps/gateway/tests/openrouter_cost_recovery/test_openrouter_cost_recovery.py": "ce184c378feea1e0f1ab03efe4a46f2a"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/cost_recovery.py",
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/application/flusher.py",
+          "apps/gateway/tests/openrouter_cost_recovery/"
+        ],
+        "snapshot_md5": "8c717a836038d4b1f3d42c00ac79e2ca"
+      }
+    },
+    "openrouter-generation-client": {
+      "title": "OpenRouter get_generation(id) cost-recovery IO client",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-22T06:41:12+00:00",
+      "updated": "2026-06-22T06:57:02+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "3a9a00aa0c7143619fbfcfd61c4f6a57",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/openrouter_upstream.py"
+        ],
+        "snapshot_md5": "814cde15d7c71d0a3c7575a59d454dc9"
+      }
+    },
+    "provider-generation-id-capture": {
+      "title": "Persist provider generation id on the disconnect ledger row",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-22T07:24:40+00:00",
+      "updated": "2026-06-22T07:42:22+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b4499ed3640cee056c0b24ebf92d2c03",
+        "tests": {
+          "apps/gateway/tests/provider_generation_id_capture/test_provider_generation_id_capture.py": "e2b3200dbd890ad8358bf0a89f213235"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/domain/extractor.py",
+          "apps/gateway/src/gateway/proxy/domain/ports.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/application/flusher.py",
+          "apps/gateway/src/gateway/usage/infrastructure/orm.py",
+          "apps/gateway/migrations/versions/"
+        ],
+        "snapshot_md5": "f09ebd27a8e92111abb20dc3d42b4bcc"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-22T07:39:00+00:00",
+            "reason": "scope_violation: task 'provider-generation-id-capture' touched outside its declared \u00a75 Scope \u2014 apps/gateway/migrations/versions/c9f2a4d7e1b8_provider_generation_id_capture.py \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/src/gateway/proxy/domain/ports.py \u00b7 apps/gateway/src/gateway/usage/application/flusher.py \u00b7 apps/gateway/src/gateway/usage/application/recorder.py (6 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-22T07:39:31+00:00",
+            "reason": "scope_violation: task 'provider-generation-id-capture' touched outside its declared \u00a75 Scope \u2014 apps/gateway/migrations/versions/c9f2a4d7e1b8_provider_generation_id_capture.py \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/src/gateway/proxy/domain/ports.py \u00b7 apps/gateway/src/gateway/usage/application/flusher.py \u00b7 apps/gateway/src/gateway/usage/application/recorder.py (6 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "openrouter-cost-recovery-wiring": {
+      "title": "Openrouter Cost Recovery Wiring",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-22T08:19:43+00:00",
+      "updated": "2026-06-22T08:43:10+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0cc537238c2e4330632550ba71cd3c33",
+        "tests": {
+          "apps/gateway/tests/openrouter_cost_recovery_wiring/test_openrouter_cost_recovery_wiring.py": "bbc162844f661195c7547f24f264ef04"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/api/deps.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/tests/openrouter_cost_recovery_wiring/"
+        ],
+        "snapshot_md5": "9345b013cd9e2184c9966c016ab6f1f9"
+      }
+    },
+    "openrouter-recovery-sweep": {
+      "title": "Openrouter Recovery Sweep",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-22T08:44:57+00:00",
+      "updated": "2026-06-22T09:16:08+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6121edfb1c7db5d83949090f68545daa",
+        "tests": {
+          "apps/gateway/tests/openrouter_recovery_sweep/conftest.py": "66d6438dafbf4b660b7df15530ced24f",
+          "apps/gateway/tests/openrouter_recovery_sweep/test_openrouter_recovery_sweep.py": "2f3ecf3229d6b54ab4dee777516b66bc"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/recovery_sweep.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/usage/infrastructure/orm.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/openrouter_recovery_sweep/"
+        ],
+        "snapshot_md5": "054925aea1000208d29f19ff69f72e41"
+      }
+    }
+  },
+  "archived_at": "2026-06-22T09:25:50+00:00"
+}

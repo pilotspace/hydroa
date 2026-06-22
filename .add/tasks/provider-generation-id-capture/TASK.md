@@ -261,7 +261,7 @@ provider_generation_id (NULL rate = how often the id wasn't in the stream → un
   the documented OpenAI-compatible shape) — fold into the t6 live pass.
 
 ### Competency deltas
-- [ADD · open] a 10-hop additive field threading is best de-risked by a refute-read that traces EVERY hop
+- [ADD · folded] a 10-hop additive field threading is best de-risked by a refute-read that traces EVERY hop [folded foundation-version 28]
   (the silent-drop failure mode hides between Redis event and Postgres column) — refute confirmed all 10.
-- [SDD · open] mirroring an existing field end-to-end (v27 usage_source) is the cheapest safe way to add a
+- [SDD · folded] mirroring an existing field end-to-end (v27 usage_source) is the cheapest safe way to add a [folded foundation-version 28]
   ledger column — same extras seam, same NULL-encoding, same migration shape (evidence: byte-for-byte template).
