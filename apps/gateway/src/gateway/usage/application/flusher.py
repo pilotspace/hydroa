@@ -106,7 +106,18 @@ class UsageLedgerFlusher:
             return ""
 
         raw_entry_id = _decode(entry_id) if isinstance(entry_id, bytes) else entry_id
-        record_id = stream_id_to_uuid(raw_entry_id)
+        # cost-recovery (v30 t6): a correction event carries an EXPLICIT deterministic id
+        # so a duplicate recovery dedups via ON CONFLICT (id) DO NOTHING. Absent (every
+        # prior caller) or malformed → the existing stream-id derivation, byte-identical.
+        explicit_id = _field("id")
+        if explicit_id:
+            try:
+                record_id = uuid.UUID(explicit_id)
+            except ValueError:
+                _log.warning("flusher: malformed explicit id %r; using stream id", explicit_id)
+                record_id = stream_id_to_uuid(raw_entry_id)
+        else:
+            record_id = stream_id_to_uuid(raw_entry_id)
 
         tenant_id_str = _field("tenant_id")
         key_id_str = _field("key_id")

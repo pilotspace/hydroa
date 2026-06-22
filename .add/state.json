@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "provider-generation-id-capture",
+  "active_task": "openrouter-cost-recovery",
   "active_milestone": "v30",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -139,14 +139,31 @@
     },
     "openrouter-cost-recovery": {
       "title": "Recover OpenRouter authoritative cost via generation endpoint on disconnect",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v30",
       "depends_on": [
         "disconnect-provider-cost"
       ],
       "created": "2026-06-22T04:58:15+00:00",
-      "updated": "2026-06-22T04:58:15+00:00"
+      "updated": "2026-06-22T08:17:39+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "506bd15c97ad826d8b1ed1b31997b3bf",
+        "tests": {
+          "apps/gateway/tests/openrouter_cost_recovery/conftest.py": "3edffd15cb7daa590d40631673f8980f",
+          "apps/gateway/tests/openrouter_cost_recovery/test_openrouter_cost_recovery.py": "ce184c378feea1e0f1ab03efe4a46f2a"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/cost_recovery.py",
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/application/flusher.py",
+          "apps/gateway/tests/openrouter_cost_recovery/"
+        ],
+        "snapshot_md5": "8c717a836038d4b1f3d42c00ac79e2ca"
+      }
     },
     "openrouter-generation-client": {
       "title": "OpenRouter get_generation(id) cost-recovery IO client",
@@ -223,7 +240,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T07:42:22+00:00",
+  "updated": "2026-06-22T08:17:39+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

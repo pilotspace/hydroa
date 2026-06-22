@@ -25,6 +25,10 @@ from gateway.usage.infrastructure.redis_stream import STREAM_KEY
 _log = logging.getLogger(__name__)
 
 _ZERO = Decimal("0")
+# TTL for the per-correction advisory-counter idempotency guard (cost-recovery v30 t6).
+# A correction is permanent, but the guard need only outlive any realistic re-fire window
+# (inline recovery racing the periodic sweep) — 30 days is far beyond it.
+_CORRECTION_COUNTED_TTL_S = 60 * 60 * 24 * 30
 
 
 class RecordingUsageRecorder:
@@ -340,6 +344,101 @@ class RecordingUsageRecorder:
             if team_id is not None:
                 per_team_spend_key = f"usage:spend:team:{team_id}:{yyyymm}"
                 await self._redis.incrbyfloat(per_team_spend_key, float(cost_usd))
+
+    async def record_correction(
+        self,
+        *,
+        event_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        key_id: uuid.UUID,
+        model: str,
+        cost_usd: Decimal,
+        provider_cost: Decimal,
+        provider_generation_id: str,
+        usage_source: str = "openrouter_recovered",
+        team_id: uuid.UUID | None = None,
+    ) -> None:
+        """Append a pre-priced SIGNED cost CORRECTION to the ledger (cost-recovery v30 t6).
+
+        Unlike record(), this posts a cost_usd computed by the CALLER (a delta that may be
+        NEGATIVE when a partial estimate over-shot the real cost) plus an EXPLICIT,
+        deterministic event id so a duplicate recovery is an idempotent no-op at the
+        flusher (ON CONFLICT (id) DO NOTHING). Always cost_basis='provider' with the
+        authoritative provider_cost attached. Never raises — Redis unavailability is
+        logged and swallowed, exactly like record().
+        """
+        try:
+            created_at = datetime.datetime.now(datetime.UTC).isoformat()
+            raw_payload: dict[str, object] = {
+                "tenant_id": str(tenant_id),
+                "key_id": str(key_id),
+                "model": model,
+                "usage": None,
+                "status": 200,
+                "correction": True,
+                "provider_generation_id": provider_generation_id,
+            }
+            event_fields: dict[str, str] = {
+                # Explicit id → the flusher uses it as the row PK (deterministic dedup).
+                "id": str(event_id),
+                "tenant_id": str(tenant_id),
+                "key_id": str(key_id),
+                "model_id": model,
+                "prompt_tokens": "0",
+                "completion_tokens": "0",
+                "cost_usd": str(cost_usd),
+                "pricing_snapshot_id": "",
+                "status": "200",
+                "raw": json.dumps(raw_payload),
+                "created_at": created_at,
+                "team_id": str(team_id) if team_id is not None else "",
+                "pricing_unit": "per_token",
+                "quantity": "",
+                "cached_tokens": "0",
+                "reasoning_tokens": "0",
+                "cost_basis": "provider",
+                "provider_cost": str(provider_cost),
+                "usage_source": usage_source,
+                "provider_generation_id": provider_generation_id,
+            }
+            await self._redis.xadd(STREAM_KEY, event_fields)
+
+            # Advisory spend counters move by the SIGNED delta (negative supported by
+            # INCRBYFLOAT). Skip a zero delta — no balance change to record. The DB row
+            # dedups via ON CONFLICT (id), but INCRBYFLOAT is NOT idempotent: a concurrent
+            # inline+sweep double-fire of the SAME deterministic event_id would double-move
+            # the per-key budget counter (which gates enforcement). SET NX keyed by the
+            # event_id lets EXACTLY ONE caller apply the delta — exactly-once even across
+            # replicas; the loser skips. (refute-driven hardening, v30 t6.2b.)
+            if cost_usd != _ZERO:
+                counted = await self._redis.set(
+                    f"usage:correction:counted:{event_id}",
+                    "1",
+                    nx=True,
+                    ex=_CORRECTION_COUNTED_TTL_S,
+                )
+                if counted:
+                    yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
+                    await self._redis.incrbyfloat(
+                        f"usage:spend:{tenant_id}:{yyyymm}", float(cost_usd)
+                    )
+                    await self._redis.incrbyfloat(
+                        f"usage:spend:key:{key_id}:{yyyymm}", float(cost_usd)
+                    )
+                    if team_id is not None:
+                        await self._redis.incrbyfloat(
+                            f"usage:spend:team:{team_id}:{yyyymm}", float(cost_usd)
+                        )
+        except Exception as exc:
+            _log.warning(
+                "usage_recorder.record_correction failed (swallowed)",
+                exc_info=exc,
+                extra={
+                    "tenant_id": str(tenant_id),
+                    "model": model,
+                    "provider_generation_id": provider_generation_id,
+                },
+            )
 
 
 def _safe_tier(usage: dict[str, Any] | None, outer: str, inner: str) -> int:
