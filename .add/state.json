@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "upstream-health-view",
+  "active_task": "ratelimit-counter-view",
   "active_milestone": "v31",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -136,6 +136,32 @@
         ],
         "snapshot_md5": "be109115a2d814e341f91d5217eb2947"
       }
+    },
+    "ratelimit-counter-view": {
+      "title": "Rate-limit counter view \u2014 GET /admin/ratelimits + read-only counter panel",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T17:51:36+00:00",
+      "updated": "2026-06-22T18:11:44+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9e578e876139bbaf68707d193917c30b",
+        "tests": {
+          "apps/gateway/tests/ratelimit_counter_view/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/ratelimit_counter_view/conftest.py": "d91c4b412e9ece22af0f11bcf26f841b",
+          "apps/gateway/tests/ratelimit_counter_view/test_ratelimit_counter_view.py": "8c9786a3f063488bde5fad42d937a8fa"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/dashboard/components/keys/KeysPage.tsx",
+          "apps/dashboard/components/keys/"
+        ],
+        "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
+      }
     }
   },
   "milestones": {
@@ -149,7 +175,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T17:50:11+00:00",
+  "updated": "2026-06-22T18:11:44+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

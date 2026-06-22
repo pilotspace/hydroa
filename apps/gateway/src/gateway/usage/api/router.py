@@ -26,6 +26,7 @@ from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict
+from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -737,3 +738,101 @@ async def get_upstream_health(
             )
 
     return UpstreamHealthResponse(checked_at=checked_at, upstreams=upstreams)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/ratelimits — live per-key rpm/tpm consumption (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+# The live counters are the SAME Redis keys RedisLuaRateLimiter writes (the single source of
+# truth — no drift). READ-ONLY: ZCARD + GET only, never ZADD/INCR/EXPIRE. Design-for-failure:
+# Redis unavailable/erroring → counters reported as null (unknown, never 0 or 500), mirroring
+# the limiter's own fail-open. Tenant-scoped: only the caller's tenant's keys.
+_RATELIMIT_DB_TIMEOUT_SECONDS = 30.0
+_RATELIMIT_REDIS_TIMEOUT_SECONDS = 5.0
+
+
+class RatelimitItem(BaseModel):
+    """One API key's live rpm/tpm consumption vs its configured limit."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key_id: str
+    name: str
+    rpm_limit: int | None
+    tpm_limit: int | None
+    rpm_current: int | None  # null when Redis is unavailable
+    tpm_current: float | None  # null when Redis is unavailable
+
+
+class RatelimitsResponse(BaseModel):
+    """Envelope: { keys } — per-key live counters for the caller's tenant."""
+
+    model_config = ConfigDict(frozen=True)
+
+    keys: list[RatelimitItem]
+
+
+async def _read_ratelimit_counters(
+    redis_client: object, key_ids: list[str]
+) -> dict[str, tuple[int | None, float | None]]:
+    """Read live (rpm, tpm) per key from Redis, READ-ONLY. Fail-open: ANY Redis error (or an
+    absent client) → an empty map, so every key reports null (unknown) — never 0, never 500."""
+    if redis_client is None:
+        return {}
+    counters: dict[str, tuple[int | None, float | None]] = {}
+    try:
+        async with asyncio.timeout(_RATELIMIT_REDIS_TIMEOUT_SECONDS):
+            for key_id in key_ids:
+                rpm = int(await redis_client.zcard(f"ratelimit:rpm:{key_id}"))  # type: ignore[attr-defined]
+                raw = await redis_client.get(f"ratelimit:tpm_sum:{key_id}")  # type: ignore[attr-defined]
+                tpm = float(raw) if raw is not None else 0.0
+                counters[key_id] = (rpm, tpm)
+    except (RedisError, OSError, ValueError, TimeoutError):
+        return {}  # fail-open — all counters unknown
+    return counters
+
+
+@usage_router.get("/ratelimits", response_model=RatelimitsResponse)
+async def get_ratelimits(
+    request: Request,
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RatelimitsResponse:
+    """Return the caller's tenant's per-key live rpm/tpm counters (FROZEN @ v1 — TASK.md §3).
+
+    Owner/admin-scoped (member → 403). Tenant-scoped: only this tenant's keys are listed, so the
+    Redis counters read (keyed by key_id) are implicitly tenant-isolated — another tenant's
+    counters are never reached. READ-ONLY; Redis-down → null counters, still 200.
+    """
+    tenant_id: uuid.UUID = identity.tenant_id
+
+    async with asyncio.timeout(_RATELIMIT_DB_TIMEOUT_SECONDS):
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, name, rpm_limit, tpm_limit FROM api_keys"
+                    " WHERE tenant_id = :tid AND revoked_at IS NULL"
+                    " ORDER BY created_at ASC, id ASC"
+                ),
+                {"tid": str(tenant_id)},
+            )
+        ).fetchall()
+
+    key_ids = [str(row[0]) for row in rows]
+    counters = await _read_ratelimit_counters(
+        getattr(request.app.state, "redis_client", None), key_ids
+    )
+
+    items = [
+        RatelimitItem(
+            key_id=str(row[0]),
+            name=str(row[1]),
+            rpm_limit=int(row[2]) if row[2] is not None else None,
+            tpm_limit=int(row[3]) if row[3] is not None else None,
+            rpm_current=counters.get(str(row[0]), (None, None))[0],
+            tpm_current=counters.get(str(row[0]), (None, None))[1],
+        )
+        for row in rows
+    ]
+
+    return RatelimitsResponse(keys=items)

@@ -24,6 +24,7 @@ import { KeyRow } from "./KeyRow";
 import { CreateKeyDialog } from "./CreateKeyDialog";
 import { PlaintextKeyBanner } from "./PlaintextKeyBanner";
 import { KeyGovernanceEditor, ApiKeyGovernance } from "./KeyGovernanceEditor";
+import { RatelimitsPanel } from "./RatelimitsPanel";
 import {
   Button,
   Card,
@@ -300,6 +301,9 @@ export function KeysPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Read-only live rate-limit usage per key (current rpm/tpm vs configured limits) */}
+      <RatelimitsPanel />
 
       <CreateKeyDialog
         isOpen={isCreateDialogOpen}
