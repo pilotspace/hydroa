@@ -44,6 +44,34 @@ def extract_usage_from_sse(chunks: list[bytes]) -> dict[str, object] | None:
     return None
 
 
+def extract_generation_id_from_sse(chunks: list[bytes]) -> str | None:
+    """Return the provider generation id (`id`) from the SSE data frames, or None.
+
+    Scans the joined byte stream for the FIRST `data: {...}` frame carrying a
+    non-empty string `id` (OpenAI-compatible shape — OpenRouter emits e.g.
+    "gen-..."). Operates on the joined stream so an id frame split across network
+    chunks still parses. Pure + total: never raises (returns None on any absence
+    or garbage). This is the rail disconnect cost-recovery (v30 t6) looks up later.
+    """
+    text = b"".join(chunks).decode("utf-8", errors="replace")
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        payload = line[len("data:") :].strip()
+        if payload in ("[DONE]", ""):
+            continue
+        try:
+            parsed = json.loads(payload)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(parsed, dict):
+            gen_id = parsed.get("id")
+            if isinstance(gen_id, str) and gen_id:
+                return gen_id
+    return None
+
+
 def stream_usage_is_complete(usage: object) -> bool:
     """Return True iff `usage` is a billable terminal stream frame.
 

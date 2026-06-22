@@ -53,6 +53,7 @@ class RecordingUsageRecorder:
             "pricing_unit",
             "quantity",
             "usage_source",
+            "provider_generation_id",
         }
     )
 
@@ -81,6 +82,7 @@ class RecordingUsageRecorder:
         pricing_unit: str | None = None,
         quantity: Decimal | None = None,
         usage_source: str | None = None,
+        provider_generation_id: str | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -107,6 +109,7 @@ class RecordingUsageRecorder:
                 pricing_unit=pricing_unit,
                 quantity=quantity,
                 usage_source=usage_source,
+                provider_generation_id=provider_generation_id,
             )
         except Exception as exc:
             _log.warning(
@@ -135,6 +138,7 @@ class RecordingUsageRecorder:
         pricing_unit: str | None = None,
         quantity: Decimal | None = None,
         usage_source: str | None = None,
+        provider_generation_id: str | None = None,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -308,6 +312,9 @@ class RecordingUsageRecorder:
             # so every non-stream caller (no usage_source) reads true; 'stream_fallback'
             # marks a stream whose terminal usage frame was missing/partial.
             "usage_source": usage_source or "frame",
+            # provider-generation-id-capture (v30 t6): the provider's SSE generation id
+            # on a client-disconnect row; ""=NULL (the lookup key for cost-recovery).
+            "provider_generation_id": provider_generation_id or "",
         }
 
         # Push to Redis Stream — must not drop the event even on cost-0

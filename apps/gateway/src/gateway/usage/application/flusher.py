@@ -141,6 +141,8 @@ class UsageLedgerFlusher:
         provider_cost: Decimal | None = Decimal(provider_cost_str) if provider_cost_str else None
         # stream-usage-completeness: usage provenance (old events → 'frame').
         usage_source = _field("usage_source") or "frame"
+        # provider-generation-id-capture (v30 t6): ""→NULL (the cost-recovery lookup key)
+        provider_generation_id = _field("provider_generation_id") or None
 
         try:
             tenant_id = uuid.UUID(tenant_id_str)
@@ -173,13 +175,15 @@ class UsageLedgerFlusher:
                         " (id, tenant_id, key_id, model_id, prompt_tokens, completion_tokens,"
                         "  cost_usd, status, pricing_snapshot_id, raw, team_id,"
                         "  pricing_unit, quantity, cached_tokens, reasoning_tokens,"
-                        "  cost_basis, provider_cost, usage_source)"
+                        "  cost_basis, provider_cost, usage_source,"
+                        "  provider_generation_id)"
                         " VALUES"
                         " (:id, :tenant_id, :key_id, :model_id, :prompt_tokens,"
                         "  :completion_tokens, :cost_usd, :status, :pricing_snapshot_id,"
                         "  :raw, :team_id, :pricing_unit, :quantity,"
                         "  :cached_tokens, :reasoning_tokens,"
-                        "  :cost_basis, :provider_cost, :usage_source)"
+                        "  :cost_basis, :provider_cost, :usage_source,"
+                        "  :provider_generation_id)"
                         " ON CONFLICT (id) DO NOTHING"
                     ),
                     {
@@ -201,6 +205,7 @@ class UsageLedgerFlusher:
                         "cost_basis": cost_basis,
                         "provider_cost": provider_cost,
                         "usage_source": usage_source,
+                        "provider_generation_id": provider_generation_id,
                     },
                 )
 

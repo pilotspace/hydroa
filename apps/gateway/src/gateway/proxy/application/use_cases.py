@@ -77,7 +77,11 @@ from gateway.proxy.domain.provider_credentials import (
 from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
 from gateway.rate_limits.domain.errors import RateLimitExceededError
 from gateway.rate_limits.domain.ports import RateLimiter
-from gateway.usage.domain.extractor import extract_usage_from_sse, stream_usage_is_complete
+from gateway.usage.domain.extractor import (
+    extract_generation_id_from_sse,
+    extract_usage_from_sse,
+    stream_usage_is_complete,
+)
 
 if TYPE_CHECKING:
     from gateway.observability.otel import OtelSpanEmitter
@@ -308,6 +312,7 @@ def _fire_record_with_raw(
     pricing_unit: str | None = None,
     quantity: Decimal | None = None,
     usage_source: str | None = None,
+    provider_generation_id: str | None = None,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
@@ -333,6 +338,8 @@ def _fire_record_with_raw(
         extras["quantity"] = quantity
     if usage_source is not None:
         extras["usage_source"] = usage_source
+    if provider_generation_id is not None:
+        extras["provider_generation_id"] = provider_generation_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -1481,6 +1488,10 @@ class CompletionUseCase:
                     # RE-RAISE so the close/cancel completes (never swallow it). A complete
                     # usage frame that arrived before the disconnect still bills as 'frame'.
                     disconnect_usage = extract_usage_from_sse(collected)
+                    # provider-generation-id-capture (v30 t6): stamp the provider's SSE
+                    # generation id on the disconnect row so cost-recovery can look up the
+                    # authoritative cost later. None when the stream carried no id (→ NULL).
+                    disconnect_gen_id = extract_generation_id_from_sse(collected)
                     if stream_usage_is_complete(disconnect_usage):
                         disconnect_source = "frame"
                     else:
@@ -1499,6 +1510,7 @@ class CompletionUseCase:
                         team_id=team_id,
                         pii_masked=_stream_pii_masked,
                         usage_source=disconnect_source,
+                        provider_generation_id=disconnect_gen_id,
                     )
                     # disconnect-provider-cost (v30 t5): "spawn the stop event to the
                     # provider" — deterministically close the upstream generator NOW so the

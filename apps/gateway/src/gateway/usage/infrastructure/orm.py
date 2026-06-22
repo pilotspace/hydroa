@@ -79,3 +79,7 @@ class UsageRecordRow(Base):
     # stream-usage-completeness (TASK.md §3): provenance of the billed usage —
     # 'frame' (real terminal usage frame) | 'stream_fallback' (frame missing/partial).
     usage_source: Mapped[str] = mapped_column(Text, nullable=False, server_default="frame")
+    # provider-generation-id-capture (v30 t6): the provider's SSE generation id on a
+    # client-disconnect row — the lookup key for disconnect cost-recovery. NULL on every
+    # other row. Additive + nullable; append-only preserved (no UPDATE/DELETE).
+    provider_generation_id: Mapped[str | None] = mapped_column(Text, nullable=True)

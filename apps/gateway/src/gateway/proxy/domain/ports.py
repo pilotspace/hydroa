@@ -45,6 +45,9 @@ class UsageRecordExtras(TypedDict, total=False):
       usage_source      — provenance of the billed usage: "frame" (real terminal
                           usage frame) | "stream_fallback" (stream omitted/partialed
                           the frame) (stream-usage-completeness)
+      provider_generation_id — the provider's SSE generation id captured on a
+                          client-disconnect row; the lookup key for disconnect
+                          cost-recovery (v30 provider-generation-id-capture)
     """
 
     team_id: uuid.UUID
@@ -55,6 +58,7 @@ class UsageRecordExtras(TypedDict, total=False):
     pricing_unit: str
     quantity: Decimal
     usage_source: str
+    provider_generation_id: str
 
 
 class ModelAccess(Enum):
