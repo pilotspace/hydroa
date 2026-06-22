@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "catalog-sync-trigger",
+  "active_task": "upstream-health-view",
   "active_milestone": "v31",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -109,6 +109,33 @@
         ],
         "snapshot_md5": "ddf0f466234f6de275bd816b466a3016"
       }
+    },
+    "upstream-health-view": {
+      "title": "Upstream health view \u2014 GET /admin/health/upstreams + dashboard health panel",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T17:27:20+00:00",
+      "updated": "2026-06-22T17:50:11+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2c5fe7c5d997a46aa6b5cc930bb3cc21",
+        "tests": {
+          "apps/gateway/tests/upstream_health_view/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/upstream_health_view/conftest.py": "2d632f318699b4eedee4c15c75fe45e1",
+          "apps/gateway/tests/upstream_health_view/test_upstream_health_view.py": "64037f1deae1aa4306ede495d5d3fbf2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/dashboard/components/health/",
+          "apps/dashboard/app/(dashboard)/health/page.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx"
+        ],
+        "snapshot_md5": "be109115a2d814e341f91d5217eb2947"
+      }
     }
   },
   "milestones": {
@@ -122,7 +149,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T17:24:42+00:00",
+  "updated": "2026-06-22T17:50:11+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BarChart3, Bell, Boxes, Hexagon, KeyRound, Menu, Receipt, Settings, Users } from "lucide-react";
+import { Activity, BarChart3, Bell, Boxes, HeartPulse, Hexagon, KeyRound, Menu, Receipt, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   Sidebar,
@@ -48,6 +48,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/teams", label: "Teams", icon: Users, minRole: "admin" },
   { href: "/routing", label: "Routing", icon: Activity, minRole: "admin" },
   { href: "/alerts", label: "Alerts", icon: Bell, minRole: "admin" },
+  { href: "/health", label: "Health", icon: HeartPulse, minRole: "admin" },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

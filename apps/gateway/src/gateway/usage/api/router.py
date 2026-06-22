@@ -646,3 +646,94 @@ async def get_alerts(
     ]
 
     return AlertListResponse(items=items, total=total)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/health/upstreams — per-upstream up/down (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+# MONITORED today is exactly the upstream the health checker actually pings (OpenRouter).
+# We deliberately do NOT fabricate up/down rows for providers with no health ping
+# (anthropic/gemini/bedrock/azure/openai) — reporting fake-green would be dishonest. The
+# response is a LIST so it extends for free when per-provider pingers land (filed spec delta).
+_MONITORED_UPSTREAMS: tuple[str, ...] = ("openrouter",)
+_HEALTH_FAIL_EVENT = "upstream_health_fail"
+_HEALTH_RECOVERED_EVENT = "upstream_health_recovered"
+_HEALTH_READ_TIMEOUT_SECONDS = 30.0
+
+
+class UpstreamHealthItem(BaseModel):
+    """The current health status of one monitored upstream."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    status: str  # "up" | "down"
+    last_event_at: str | None
+    last_event_type: str | None
+
+
+class UpstreamHealthResponse(BaseModel):
+    """Envelope: { checked_at, upstreams } — status as of the query time."""
+
+    model_config = ConfigDict(frozen=True)
+
+    checked_at: str
+    upstreams: list[UpstreamHealthItem]
+
+
+@usage_router.get("/health/upstreams", response_model=UpstreamHealthResponse)
+async def get_upstream_health(
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UpstreamHealthResponse:
+    """Return per-upstream up/down derived from durable health events (FROZEN @ v1 — TASK.md §3).
+
+    Owner/admin-scoped (member → 403). Status is GLOBAL platform state, derived from the
+    NULL-tenant system rows in alert_events (the same operational rows GET /admin/alerts reads —
+    Tin-approved at the alerts freeze; no new tenant-scope relaxation). For each monitored
+    upstream: the latest of {upstream_health_fail, upstream_health_recovered} decides up/down; no
+    health event ever → up with null last_event_*. READ-ONLY — never writes a row.
+    """
+    checked_at = datetime.datetime.now(datetime.UTC).isoformat()
+    upstreams: list[UpstreamHealthItem] = []
+
+    async with asyncio.timeout(_HEALTH_READ_TIMEOUT_SECONDS):
+        for name in _MONITORED_UPSTREAMS:
+            # OpenRouter is the only emitter today, so all health events belong to it. When
+            # per-provider pingers land, this gains a payload/provider filter per upstream.
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT event_type, created_at FROM alert_events"
+                        " WHERE tenant_id IS NULL"
+                        " AND event_type IN (:fail, :recovered)"
+                        " ORDER BY created_at DESC, id DESC"
+                        " LIMIT 1"
+                    ),
+                    {"fail": _HEALTH_FAIL_EVENT, "recovered": _HEALTH_RECOVERED_EVENT},
+                )
+            ).fetchone()
+
+            if row is None:
+                upstreams.append(
+                    UpstreamHealthItem(
+                        name=name, status="up", last_event_at=None, last_event_type=None
+                    )
+                )
+                continue
+
+            last_event_type = str(row[0])
+            last_event_at = (
+                row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+            )
+            status = "down" if last_event_type == _HEALTH_FAIL_EVENT else "up"
+            upstreams.append(
+                UpstreamHealthItem(
+                    name=name,
+                    status=status,
+                    last_event_at=last_event_at,
+                    last_event_type=last_event_type,
+                )
+            )
+
+    return UpstreamHealthResponse(checked_at=checked_at, upstreams=upstreams)

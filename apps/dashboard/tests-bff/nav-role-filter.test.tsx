@@ -2,12 +2,13 @@
  * tests-bff/nav-role-filter.test.tsx — RED suite for v17 task nav-role-filter.
  *
  * Role-based Primary-nav visibility: a `member` must not SEE links to pages whose
- * GET 403s on member (/models, /teams, /routing, /alerts — all require_owner_or_admin in
- * the gateway). usage/spend/keys/settings stay (member-viewable). admin/owner see all 8.
- * Unknown role fails OPEN (all 8) — the gateway still enforces RBAC on navigate.
+ * GET 403s on member (/models, /teams, /routing, /alerts, /health — all
+ * require_owner_or_admin in the gateway). usage/spend/keys/settings stay (member-viewable).
+ * admin/owner see all 9. Unknown role fails OPEN (all 9) — the gateway still enforces RBAC.
  *
- * UPDATED by alerts-events-viewer: the admin-only "Alerts" link (GET /admin/alerts is
- * owner/admin-only) supersedes the prior count of 7 → admin/owner/unknown now see 8.
+ * UPDATED by alerts-events-viewer: the admin-only "Alerts" link superseded the prior 7 → 8.
+ * UPDATED by upstream-health-view: the admin-only "Health" link (GET /admin/health/upstreams
+ * is owner/admin-only) supersedes 8 → admin/owner/unknown now see 9.
  *
  * AppShell takes an optional `role` prop (presentational); DashboardShell ("use
  * client") feeds it from useCurrentUser().role. The nav filter is UX-only — no
@@ -30,9 +31,9 @@ import { AppShell } from "@/components/ui";
 import { DashboardShell } from "@/components/dashboard-shell";
 
 const APP = "http://localhost:3000";
-const ADMIN_ONLY = [/models/i, /teams/i, /routing/i, /alerts/i];
+const ADMIN_ONLY = [/models/i, /teams/i, /routing/i, /alerts/i, /health/i];
 const MEMBER_OK = [/usage/i, /spend/i, /api keys/i, /settings/i];
-const ALL_EIGHT = [...MEMBER_OK.slice(0, 3), ...ADMIN_ONLY, /settings/i];
+const ALL_NINE = [...MEMBER_OK.slice(0, 3), ...ADMIN_ONLY, /settings/i];
 
 function makeQueryClient() {
   return new QueryClient({
@@ -74,10 +75,10 @@ describe("AppShell — role-based nav visibility", () => {
       </AppShell>,
     );
     const n = nav();
-    for (const re of ALL_EIGHT) {
+    for (const re of ALL_NINE) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
-    expect(within(n).getAllByRole("link")).toHaveLength(8);
+    expect(within(n).getAllByRole("link")).toHaveLength(9);
   });
 
   it("test_owner_sees_all_links", () => {
@@ -86,7 +87,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(8);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(9);
   });
 
   it("test_unknown_role_fails_open", () => {
@@ -95,7 +96,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(8);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(9);
     unmount();
 
     // no role prop at all → also fail-open (preserves the prior AppShell behavior)
@@ -104,7 +105,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(8);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(9);
   });
 });
 
