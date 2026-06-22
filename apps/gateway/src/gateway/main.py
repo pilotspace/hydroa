@@ -80,6 +80,7 @@ from gateway.tenants.infrastructure.jwt_service import JwtTokenService
 from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.ops.api.router import ops_router
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
 from gateway.usage.application.drift_checker import (
@@ -727,6 +728,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(images_router)
     app.include_router(audio_router)
     app.include_router(usage_router)
+    app.include_router(ops_router)
     app.include_router(budget_router)
 
     # RequestIdMiddleware must be added AFTER routers are included so it wraps

@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     jwt_secret: str = _DEV_JWT_SECRET
     jwt_ttl_seconds: int = 86400
     jwt_issuer: str = "ai-proxy"
+    # ── Operator-wide reconciliation ops-auth (operator-wide-reconciliation task) ──
+    # CSV allow-list of SHA-256 client-cert fingerprints (hex) trusted as the platform
+    # operator on /ops/*. The cert is validated by Envoy (mTLS) and forwarded via the
+    # x-forwarded-client-cert (XFCC) header. Default "" = OFF / fail-closed: the ops
+    # surface authorizes NO ONE until an operator fingerprint is provisioned.
+    ops_cert_fingerprints: str = Field(default="")  # GATEWAY_OPS_CERT_FINGERPRINTS
     redis_url: str = "redis://localhost:6380/0"
     shutdown_drain_timeout_seconds: int = 10  # env: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
 

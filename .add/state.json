@@ -1,19 +1,40 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "operator-wide-reconciliation",
   "active_milestone": "v31",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v31",
       "depends_on": [
         "reconcile-cost-basis-filter"
       ],
       "created": "2026-06-18T16:42:11+00:00",
-      "updated": "2026-06-22T09:31:48+00:00"
+      "updated": "2026-06-22T14:51:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "11043f8802f9d51c16e09ca2b24b2feb",
+        "tests": {
+          "apps/gateway/tests/operator_wide_reconciliation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/operator_wide_reconciliation/conftest.py": "eb884ffe1fde400cf59653d99b53199b",
+          "apps/gateway/tests/operator_wide_reconciliation/test_operator_wide_reconciliation.py": "1a1ca1dce206841a76d3b628af1b49bf"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/ops/",
+          "apps/gateway/src/gateway/usage/application/reconciliation.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/ops_cert_verifier.py",
+          "apps/gateway/src/gateway/usage/api/schemas.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "9186d7e3719b0bf9df307e2171871838"
+      }
     }
   },
   "milestones": {
@@ -27,7 +48,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T09:31:48+00:00",
+  "updated": "2026-06-22T14:51:03+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

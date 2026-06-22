@@ -34,6 +34,22 @@ class SourceBreakdown:
 
 
 @dataclass(frozen=True)
+class TenantReconciliation:
+    """One tenant's reconciliation drift within a window (operator-wide breakdown).
+
+    Provider-only, mirroring the global drift semantics: tenants with no `cost_basis='provider'`
+    rows in the window do not appear (catalog usage carries no upstream truth, hence no drift).
+    """
+
+    tenant_id: uuid.UUID
+    provider_cost_total: Decimal
+    billed_total: Decimal
+    drift: Decimal  # provider_cost_total - billed_total
+    unbilled_upstream_cost: Decimal
+    unbilled_rows: int
+
+
+@dataclass(frozen=True)
 class ReconciliationSummary:
     """The window's reconciliation result (all money fields are Decimal)."""
 
@@ -152,4 +168,54 @@ async def reconcile_window(
         unbilled_rows=unbilled_rows,
         catalog_billed_total=catalog_billed_total,
         by_source=by_source,
+    )
+
+
+async def reconcile_by_tenant(
+    session: AsyncSession,
+    window_from: datetime,
+    window_to: datetime,
+) -> tuple[TenantReconciliation, ...]:
+    """Per-tenant provider drift over `created_at ∈ [window_from, window_to)` (operator-wide).
+
+    READ-ONLY: one SELECT-only `GROUP BY tenant_id` aggregate over the cost_basis='provider'
+    rows (the rows that carry upstream truth). Cross-tenant by design — the caller MUST be the
+    platform operator (the audited tenant-scope exception). Rows are sorted by tenant_id for
+    determinism. Raises ``ValueError`` on an inverted window; an empty window → ``()``.
+    """
+    window_from = _as_naive_utc(window_from)
+    window_to = _as_naive_utc(window_to)
+    if window_to < window_from:
+        raise ValueError(
+            f"inverted reconciliation window: window_to {window_to!r} < window_from {window_from!r}"
+        )
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT tenant_id,"
+                "  COALESCE(SUM(provider_cost), 0) AS provider_cost_total,"
+                "  COALESCE(SUM(cost_usd), 0) AS billed_total,"
+                "  COALESCE(SUM(provider_cost) FILTER"
+                "    (WHERE provider_cost > 0 AND cost_usd = 0), 0) AS unbilled_upstream_cost,"
+                "  COUNT(*) FILTER"
+                "    (WHERE provider_cost > 0 AND cost_usd = 0) AS unbilled_rows"
+                " FROM usage_records"
+                " WHERE created_at >= :from AND created_at < :to AND cost_basis = 'provider'"
+                " GROUP BY tenant_id ORDER BY tenant_id"
+            ),
+            {"from": window_from, "to": window_to},
+        )
+    ).fetchall()
+
+    return tuple(
+        TenantReconciliation(
+            tenant_id=uuid.UUID(str(row[0])),
+            provider_cost_total=_money(row[1]),
+            billed_total=_money(row[2]),
+            drift=_money(row[1]) - _money(row[2]),
+            unbilled_upstream_cost=_money(row[3]),
+            unbilled_rows=int(row[4]),
+        )
+        for row in rows
     )

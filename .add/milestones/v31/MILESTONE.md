@@ -22,7 +22,7 @@ Out: an operator-view **dashboard UI** in this milestone unless explicitly scope
 - **OPEN at operator-wide specify**: whether the cross-tenant aggregation needs an all-tenants *mode* on the (v30-re-frozen) `reconcile_window` — a second supersession — vs a sibling query. Decide at §1/§3.
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] operator-wide-reconciliation  depends-on: none (reconcile-cost-basis-filter shipped v30) — **LEAD, risk:high.** Cross-tenant (all-tenants) reconciliation endpoint behind the new separate ops-auth surface; tenant admin/member denied (403). ground→contract DRAFT then **HARD-STOP for Tin's security approval** before build. [usage/api/router.py, usage/api/schemas.py, new ops-auth]
+- [x] operator-wide-reconciliation  **DONE 2026-06-22, gate PASS (risk:high, Tin-approved).** `GET /ops/reconciliation` behind mTLS+XFCC ops-auth (default-OFF/fail-closed); tenant JWT→403, else byte-identical 401; global + per-tenant drift; READ-ONLY. Refute UPHELD 0.87, 1303 suite green. Shipped: `ops/` package, `OpsCertVerifier`, `reconcile_by_tenant`, `GATEWAY_OPS_CERT_FINGERPRINTS`. ⚠ RELEASE REQ: Envoy must strip client XFCC + restrict /ops/* (trust boundary).
 - [ ] alerts-events-viewer       depends-on: none — new `GET /admin/alerts` (read `alert_events`, tenant-scoped, paginated) + dashboard Alerts page (history, type, dedupe_key, delivery status).
 - [ ] sso-login-button           depends-on: none — `/login` "Sign in with SSO" entry (domain field → `/auth/oidc/login`); BE flow already exists (UI-only, lightest slice).
 - [ ] catalog-sync-trigger       depends-on: none — owner-safe `POST /admin/catalog/sync` (wrapper over the internal sync) + a `/models` button with last-sync timestamp.
@@ -31,7 +31,7 @@ Out: an operator-view **dashboard UI** in this milestone unless explicitly scope
 - [ ] routing-config-write       depends-on: none — largest slice: write endpoints for model-groups / routing strategy / per-deployment rpm-tpm limits + circuit/retry thresholds (today env-only) + a `/routing` editor. May warrant its own sub-milestone — re-size at open.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A platform operator reads cross-tenant reconciliation drift through the authorized ops-auth endpoint; a tenant admin/member is denied (403).   (← operator-wide-reconciliation)
+- [x] A platform operator reads cross-tenant reconciliation drift through the authorized ops-auth endpoint; a tenant admin/member is denied (403).   (← operator-wide-reconciliation — DONE 2026-06-22, gate PASS)
 - [ ] An owner browses alert history (soft-budget, circuit-open, health) in the dashboard.   (← alerts-events-viewer)
 - [ ] A tenant with SSO configured logs in from the `/login` page without a manual URL.   (← sso-login-button)
 - [ ] An owner forces a catalog re-sync from the dashboard and sees the new last-sync time.   (← catalog-sync-trigger)
