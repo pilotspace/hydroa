@@ -81,6 +81,7 @@ from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.usage.api.router import usage_router
+from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
 from gateway.usage.application.drift_checker import (
     ReconciliationDriftChecker,
     should_start_drift_checker,
@@ -629,6 +630,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.tenant_credential_resolver = CachedTenantCredentialResolver(
         store=app.state.tenant_provider_key_store,
         settings=settings,
+    )
+
+    # openrouter-cost-recovery-wiring (v30 t6.2c): inline authoritative-cost recovery for
+    # disconnected OpenRouter streams. Constructed ONLY when the knob is on (default OFF ⇒
+    # None ⇒ byte-identical streaming). The use-case schedules recover() fire-and-forget
+    # from the disconnect handler; the periodic sweep (t6.3) is the reliable backstop.
+    # Tests override via app.state.cost_recovery_service after app creation.
+    app.state.cost_recovery_service = (
+        OpenRouterCostRecoveryService(
+            upstream=app.state.openrouter_completion_upstream,
+            recorder=app.state.usage_recorder,
+            session_factory=app.state.sessionmaker,
+            credential_resolver=app.state.tenant_credential_resolver,
+        )
+        if settings.openrouter_cost_recovery_enabled
+        else None
     )
 
     # Cache TTL — exposed on app.state so proxy router can read it per-request.

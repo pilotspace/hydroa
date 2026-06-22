@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "openrouter-cost-recovery",
+  "active_task": "openrouter-cost-recovery-wiring",
   "active_milestone": "v30",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -227,6 +227,32 @@
           }
         ]
       }
+    },
+    "openrouter-cost-recovery-wiring": {
+      "title": "Openrouter Cost Recovery Wiring",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v30",
+      "depends_on": [],
+      "created": "2026-06-22T08:19:43+00:00",
+      "updated": "2026-06-22T08:43:10+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0cc537238c2e4330632550ba71cd3c33",
+        "tests": {
+          "apps/gateway/tests/openrouter_cost_recovery_wiring/test_openrouter_cost_recovery_wiring.py": "bbc162844f661195c7547f24f264ef04"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/api/deps.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/tests/openrouter_cost_recovery_wiring/"
+        ],
+        "snapshot_md5": "9345b013cd9e2184c9966c016ab6f1f9"
+      }
     }
   },
   "milestones": {
@@ -240,7 +266,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T08:17:39+00:00",
+  "updated": "2026-06-22T08:43:10+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

@@ -283,6 +283,12 @@ class Settings(BaseSettings):
     # False = opt-in (byte-identical outbound request; recorder falls back to catalog).
     # provider-cost-reconciliation TASK.md §3 (knob frozen default-OFF, Tin 2026-06-17).
     openrouter_usage_accounting: bool = Field(default=False)
+    # GATEWAY_OPENROUTER_COST_RECOVERY_ENABLED — when True, an OpenRouter stream aborted by
+    # client disconnect schedules an inline fire-and-forget authoritative-cost recovery
+    # (OpenRouterCostRecoveryService) from the disconnect handler. Default False = opt-in
+    # (byte-identical streaming; no recovery scheduled). The periodic sweep (v30 t6.3) is
+    # the reliable backstop for whatever inline misses. openrouter-cost-recovery-wiring §3.
+    openrouter_cost_recovery_enabled: bool = Field(default=False)
 
     # GATEWAY_STT_MAX_DURATION_SECONDS — upper clamp (seconds) on a billed STT per_second
     # duration. A corrupt/lying audio header (or a lying upstream body["duration"]) can

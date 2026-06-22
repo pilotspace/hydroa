@@ -27,7 +27,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog.contextvars
 
@@ -422,6 +422,23 @@ async def resolve_provider_credential(
     return set_provider_credential(cred)
 
 
+class _InlineCostRecovery(Protocol):
+    """Structural type for the optional inline cost-recovery service (v30 t6.2c).
+
+    Kept structural so the proxy use-case never imports the usage-layer concrete
+    OpenRouterCostRecoveryService (no layering dependency). recover() never raises.
+    """
+
+    async def recover(
+        self,
+        *,
+        tenant_id: Any,
+        key_id: Any,
+        model: str,
+        provider_generation_id: str,
+    ) -> Any: ...
+
+
 class CompletionUseCase:
     """Orchestrate a single /v1/chat/completions request."""
 
@@ -438,6 +455,7 @@ class CompletionUseCase:
         vector_cache: VectorCache | None = None,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
         provider_resolver: ProviderResolver | None = None,
+        cost_recovery: object | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -462,6 +480,10 @@ class CompletionUseCase:
         # placed in the request-scoped contextvar before the upstream call.
         self._tenant_credential_resolver = tenant_credential_resolver
         self._provider_resolver = provider_resolver
+        # openrouter-cost-recovery-wiring (v30 t6.2c): optional inline recovery service.
+        # None ⇒ feature off ⇒ byte-identical. Structurally typed (_InlineCostRecovery)
+        # so the use-case never depends on the concrete usage-layer service.
+        self._cost_recovery: _InlineCostRecovery | None = cost_recovery  # type: ignore[assignment]
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -1350,6 +1372,13 @@ class CompletionUseCase:
             # Credential resolution (credential-resolution-seam §3) — same as complete().
             _stream_cred_token = await self._resolve_credential(authz.tenant_id, model_id)
 
+            # openrouter-cost-recovery-wiring (v30 t6.2c): resolve the provider ONCE here
+            # so the disconnect handler can gate inline recovery WITHOUT a new await in the
+            # GeneratorExit/CancelledError teardown path. None when no resolver is wired.
+            _stream_provider: str | None = None
+            if self._cost_recovery is not None and self._provider_resolver is not None:
+                _stream_provider = await self._provider_resolver.provider_for(model_id)
+
             # --- Step 4: Pre-call guardrails (after governance, before upstream stream) ---
             guardrail_evaluator = self._guardrail_evaluator
             guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
@@ -1530,6 +1559,34 @@ class CompletionUseCase:
                     if isinstance(gen, AsyncGenerator):
                         with contextlib.suppress(BaseException):
                             await gen.aclose()
+                    # openrouter-cost-recovery-wiring (v30 t6.2c): schedule authoritative
+                    # cost recovery as a FIRE-AND-FORGET task — ONLY for an OpenRouter
+                    # disconnect that captured a generation id, and only when the service
+                    # is wired (default-OFF knob). Best-effort: ensure_future never awaits,
+                    # and the whole schedule is suppressed so it can NEVER mask the re-raise
+                    # below (a cancelled/failed inline attempt is re-covered by the t6.3
+                    # sweep). No await here — _stream_provider was resolved at setup.
+                    if (
+                        self._cost_recovery is not None
+                        and disconnect_gen_id
+                        and _stream_provider == "openrouter"
+                    ):
+                        with contextlib.suppress(BaseException):
+                            _recovery_task = asyncio.ensure_future(
+                                self._cost_recovery.recover(
+                                    tenant_id=tenant_id,
+                                    key_id=key_id,
+                                    model=model_id,
+                                    provider_generation_id=disconnect_gen_id,
+                                )
+                            )
+                            # Same fire-and-forget hygiene as the other ensure_future sites
+                            # here: retrieve any exception so a CancelledError escaping
+                            # recover() at shutdown (its guard is `except Exception`, not
+                            # BaseException) never logs "Task exception was never retrieved".
+                            _recovery_task.add_done_callback(
+                                lambda t: t.exception() if not t.cancelled() else None
+                            )
                     raise
                 finally:
                     # credential-resolution-seam §3: clear the per-request credential once
