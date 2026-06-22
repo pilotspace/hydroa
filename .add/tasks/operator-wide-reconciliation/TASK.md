@@ -1,7 +1,7 @@
 # TASK: Cross-tenant reconciliation view behind ops-auth
 
-slug: operator-wide-reconciliation · created: 2026-06-18 · stage: production
-autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. -->
+slug: operator-wide-reconciliation · created: 2026-06-18 · stage: production · risk: high
+autonomy: manual   <!-- LOWERED for risk:high (cross-tenant tenant-scoping exception + new ops-auth authority). The engine refuses an unguarded completion (unguarded_high_risk_auto). Security contract freeze is a HARD-STOP for Tin's explicit approval before any code. -->
 phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion

@@ -2,23 +2,32 @@
   "project": "ai-proxy",
   "stage": "production",
   "active_task": null,
-  "active_milestone": null,
+  "active_milestone": "v31",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
       "phase": "ground",
       "gate": "none",
-      "milestone": null,
+      "milestone": "v31",
       "depends_on": [
         "reconcile-cost-basis-filter"
       ],
       "created": "2026-06-18T16:42:11+00:00",
-      "updated": "2026-06-22T09:23:40+00:00"
+      "updated": "2026-06-22T09:31:48+00:00"
     }
   },
-  "milestones": {},
+  "milestones": {
+    "v31": {
+      "title": "Operator-wide reconciliation + UI\u2194BE coverage",
+      "goal": "a platform operator reads cross-tenant reconciliation drift through an authorized ops-auth endpoint, and every implemented backend control-plane capability has a dashboard surface",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-22T09:31:42+00:00",
+      "updated": "2026-06-22T09:31:42+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T09:25:50+00:00",
+  "updated": "2026-06-22T09:31:48+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
