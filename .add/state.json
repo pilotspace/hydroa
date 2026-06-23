@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "prompt-cache-passthrough",
+  "active_task": "parallel-tool-streaming-verify",
   "active_milestone": "v34",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -256,6 +256,36 @@
           }
         ]
       }
+    },
+    "parallel-tool-streaming-verify": {
+      "title": "Verify parallel tool-call streaming across Anthropic/Gemini/Bedrock",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T11:19:02+00:00",
+      "updated": "2026-06-23T12:10:10+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b7742c2bf23cb974c0656b95a82d43c4",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py"
+        ],
+        "snapshot_md5": "ca4246cd3da0d653ec13592d10b1e688"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-23T12:09:33+00:00",
+            "reason": "tamper_detected:contract_tampered",
+            "source": "tamper"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -277,7 +307,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T11:16:33+00:00",
+  "updated": "2026-06-23T12:10:10+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
