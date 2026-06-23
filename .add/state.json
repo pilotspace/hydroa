@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "concurrency-load-guard",
+  "active_task": "helios-live-smoke",
   "active_milestone": "v34",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -332,6 +332,30 @@
         ],
         "snapshot_md5": "26925c49a907ca2b9c9d5c2314ec18e3"
       }
+    },
+    "helios-live-smoke": {
+      "title": "Live double-pass: Helios drives a coding session through the proxy",
+      "phase": "verify",
+      "gate": "none",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T14:52:12+00:00",
+      "updated": "2026-06-23T15:20:04+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "952dd455f1952f80b3aa1100eb6bb252",
+        "tests": {
+          "apps/gateway/tests/helios_live_smoke/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/helios_live_smoke/test_offline_helpers.py": "a2235e03e000c07ead24b6feeefb9a0e"
+        }
+      },
+      "scope": {
+        "declared": [
+          "scripts/live_helios_smoke.py",
+          "apps/gateway/tests/helios_live_smoke/"
+        ],
+        "snapshot_md5": "a73373d955da0158a3bd7f6ba628cf15"
+      }
     }
   },
   "milestones": {
@@ -353,7 +377,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T14:00:17+00:00",
+  "updated": "2026-06-23T15:20:04+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
