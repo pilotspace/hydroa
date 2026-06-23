@@ -340,6 +340,72 @@ class Settings(BaseSettings):
     # value fails fast at config load. (stt-duration-cap TASK.md §3, default frozen by Tin.)
     stt_max_duration_seconds: float = Field(default=14400.0, gt=0)
 
+    # ── Global back-pressure / concurrency cap (concurrency-load-guard task) ──────
+    # GATEWAY_MAX_CONCURRENT_REQUESTS — per-worker global cap on simultaneous in-flight
+    # HTTP requests. 0 (default) = disabled = today's unbounded behavior (opt-in, byte-
+    # identical). When > 0, the GlobalBackPressureMiddleware admits at most this many
+    # concurrent requests per worker; excess requests receive 503 + Retry-After immediately
+    # without invoking the downstream app. Total cluster cap = workers x this value.
+    # A negative value is treated as 0 (disabled) + WARN at startup.
+    max_concurrent_requests: int = Field(default=0)  # GATEWAY_MAX_CONCURRENT_REQUESTS
+    # GATEWAY_BACK_PRESSURE_RETRY_AFTER_SECONDS — value of the Retry-After header on 503
+    # shed responses. Default 1 second.
+    back_pressure_retry_after_seconds: int = Field(
+        default=1
+    )  # GATEWAY_BACK_PRESSURE_RETRY_AFTER_SECONDS
+
+    @field_validator("back_pressure_retry_after_seconds", mode="before")
+    @classmethod
+    def _coerce_negative_retry_after(cls, v: object) -> object:
+        """Coerce a negative GATEWAY_BACK_PRESSURE_RETRY_AFTER_SECONDS to 0 + emit a WARNING.
+
+        A negative Retry-After value is a misconfiguration — RFC 7231 requires the header
+        to be a non-negative integer. Rather than crashing startup with a validation error,
+        the gateway coerces to 0 (no Retry-After delay hint) and emits a WARNING so the
+        operator notices. Mirrors the max_concurrent_requests coercion convention.
+        """
+        import logging as _logging
+
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return v  # not an int — let Pydantic raise its normal type error
+        if n < 0:
+            _logging.getLogger(__name__).warning(
+                "INVALID_BACK_PRESSURE_RETRY_AFTER_SECONDS: "
+                "GATEWAY_BACK_PRESSURE_RETRY_AFTER_SECONDS=%r is negative; "
+                "coercing to 0 (no Retry-After delay hint). "
+                "Set to a non-negative integer for a valid RFC Retry-After value.",
+                v,
+            )
+            return 0
+        return n
+
+    @field_validator("max_concurrent_requests", mode="before")
+    @classmethod
+    def _coerce_negative_max_concurrent(cls, v: object) -> object:
+        """Coerce a negative GATEWAY_MAX_CONCURRENT_REQUESTS to 0 + emit a startup WARNING.
+
+        A negative concurrency cap is a misconfiguration, not a disable signal — 0 is the
+        OFF sentinel. Rather than crashing startup, the gateway coerces to 0 (disabled) and
+        emits a WARNING so the operator notices. This matches the opt-in default convention
+        (cooldown/deployment-limit) while failing loudly enough to be actionable.
+        """
+        import logging as _logging
+
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return v  # not an int — let Pydantic raise its normal type error
+        if n < 0:
+            _logging.getLogger(__name__).warning(
+                "INVALID_MAX_CONCURRENT_REQUESTS: GATEWAY_MAX_CONCURRENT_REQUESTS=%r is negative; "
+                "coercing to 0 (disabled). Set to a positive integer to enable back-pressure.",
+                v,
+            )
+            return 0
+        return n
+
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
     # the cooldown for a model. 0 = disabled (feature off, v5 byte-identical behavior).

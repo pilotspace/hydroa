@@ -40,6 +40,7 @@ from gateway.observability.metrics import MetricsRegistry, expose_metrics
 from gateway.observability.middleware import RequestIdMiddleware
 from gateway.ops.api.router import ops_router
 from gateway.proxy.api.audio_router import audio_router
+from gateway.proxy.api.concurrency_guard import GlobalBackPressureMiddleware
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
 from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
@@ -799,5 +800,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # the full ASGI app and captures final status codes including those set by
     # FastAPI exception handlers (401/402/4xx from ProblemError).
     app.add_middleware(RequestIdMiddleware)
+
+    # GlobalBackPressureMiddleware is registered AFTER RequestIdMiddleware so that
+    # Starlette's reversed build order makes it the outermost USER middleware — the
+    # guard runs first on every request before RequestIdMiddleware, auth, and routing.
+    # (Starlette's ServerErrorMiddleware is technically the outermost layer; this is
+    # outermost among application-registered middleware.)
+    # Starlette add_middleware inserts at index 0; build_middleware_stack iterates
+    # reversed(user_middleware), so the LAST add_middleware call = outermost wrapper.
+    # When max_concurrent_requests=0 (default), the middleware is a pure pass-through
+    # (byte-identical to today's behavior).
+    app.add_middleware(
+        GlobalBackPressureMiddleware,
+        max_concurrent=settings.max_concurrent_requests,
+        retry_after_s=settings.back_pressure_retry_after_seconds,
+    )
+    # Expose the back-pressure middleware instance on app.state for tests/metrics.
+    # The middleware stack is built lazily on first request; accessing it here forces
+    # the build so app.state.back_pressure is available immediately after create_app().
+    _mw_stack = app.middleware_stack  # triggers build_middleware_stack
+    from starlette.types import ASGIApp as _ASGIApp  # local import avoids circular
+
+    _cur: _ASGIApp = _mw_stack
+    for _ in range(20):
+        if isinstance(_cur, GlobalBackPressureMiddleware):
+            app.state.back_pressure = _cur
+            break
+        _cur = getattr(_cur, "_app", None) or getattr(_cur, "app", None)  # type: ignore[assignment]
+        if _cur is None:
+            break
+    else:
+        app.state.back_pressure = None  # middleware not found — unexpected stack-shape change
 
     return app
