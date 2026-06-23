@@ -231,5 +231,5 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-  - [ADD · open] a v28 §7 delta named the FIX SITES verbatim ("images_router:49, embeddings_router:64, proxy/api/router.py:82") — a precise carry-over delta makes the next task's ground nearly free; reward writing fix-site-specific deltas (evidence: §0 came straight from the delta).
-  - [TDD · open] the v28 placement (use_case) was NOT the right place for the siblings — re-derive placement from THIS task's control flow (chat/embeddings cache-HIT bodies bypass the use_case → only converge at the router), don't copy the precedent's location blindly (evidence: §0 PLACEMENT DECISION).
+  - [ADD · folded] a v28 §7 delta named the FIX SITES verbatim ("images_router:49, embeddings_router:64, proxy/api/router.py:82") — a precise carry-over delta makes the next task's ground nearly free; reward writing fix-site-specific deltas (evidence: §0 came straight from the delta). [folded foundation-version 30]
+  - [TDD · folded] the v28 placement (use_case) was NOT the right place for the siblings — re-derive placement from THIS task's control flow (chat/embeddings cache-HIT bodies bypass the use_case → only converge at the router), don't copy the precedent's location blindly (evidence: §0 PLACEMENT DECISION). [folded foundation-version 30]

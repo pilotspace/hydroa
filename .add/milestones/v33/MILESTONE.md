@@ -29,26 +29,30 @@ Out: operator control plane (Envoy XFCC-strip infra, operator dashboard view, ce
 - [ ] passthrough-nonfinite-sanitize depends-on: none  — apply `sanitize_non_finite` to `images_router`, `embeddings_router`, and `proxy/api/router` (the sibling `JSONResponse(allow_nan=False)` render paths).
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A non-finite or ≤0 drift threshold (and a negative check-interval) is rejected at startup, not silently disabled.        (← drift-threshold-validation)
-- [ ] The unbilled-upstream-cost filter explicitly requires `cost_basis='provider'`; existing data is audited for breaches.   (← reconcile-cost-basis-filter)
-- [ ] A residual (non-OpenRouter / no-frame) client-disconnect row carries a `provider_cost` or recorded recovery path — no silent $0 upstream charge.   (← disconnect-provider-cost)
-- [ ] The images, embeddings, and proxy passthrough routers null-replace non-finite numbers without altering billed values.   (← passthrough-nonfinite-sanitize)
+- [x] A non-finite or ≤0 drift threshold (and a negative check-interval) is rejected at startup, not silently disabled.        (← drift-threshold-validation)
+- [x] The unbilled-upstream-cost filter explicitly requires `cost_basis='provider'`; existing data is audited for breaches.   (← reconcile-cost-basis-filter)
+- [x] A residual (non-OpenRouter / no-frame) client-disconnect row carries a `provider_cost` or recorded recovery path — no silent $0 upstream charge.   (← disconnect-provider-cost)
+- [x] The images, embeddings, and proxy passthrough routers null-replace non-finite numbers without altering billed values.   (← passthrough-nonfinite-sanitize)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway/core : `config.py` — new `_validate_check_interval` field-validator (negative `GATEWAY_RECONCILIATION_CHECK_INTERVAL_SECONDS` rejected at startup; the ≤0/non-finite threshold guard already shipped v30).
+- gateway/usage : `reconciliation.py` — new READ-ONLY audits `audit_cost_basis_breaches` (catalog+provider_cost breach) + `audit_unrecovered_disconnects` (zero-estimate residue) + `CostBasisBreach`/`UnrecoveredDisconnect`; explicit `cost_basis='provider'` on `reconcile_by_tenant`'s unbilled FILTER. `recorder.py` — `disconnect_estimate` extra + stamp rule (residual partial disconnect → markup-stripped provider_cost, cost_usd=0, provider basis).
+- gateway/proxy : `ports.py` (UsageRecordExtras.disconnect_estimate) + `use_cases.py` (disconnect handler computes/forwards disconnect_estimate, gen-id-absence gated) + `images_router.py`/`embeddings_router.py`/`router.py` (sanitize_non_finite at the JSONResponse render sites).
+- tooling/skill/book : untouched (no engine/skill/docs changes this milestone).
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- drift-threshold-validation : gate=PASS · tests=3 green (config validator) · residue=none
+- reconcile-cost-basis-filter : gate=PASS · tests=3 green · residue=none (re-grounded: guard already present → delivered the audit + belt-and-suspenders)
+- disconnect-provider-cost : gate=PASS · tests=7 green · residue=none (refute-read caught + fixed a double-count BLOCKER; 87 v30 recovery/streaming tests still green)
+- passthrough-nonfinite-sanitize : gate=PASS · tests=4 green · residue=none
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which) — criterion 1 ← drift-threshold-validation; 2 ← reconcile-cost-basis-filter; 3 ← disconnect-provider-cost; 4 ← passthrough-nonfinite-sanitize.
+- goal: the reconciliation + disconnect-billing pipeline is trustworthy under bad config and partial streams — proven by the full gateway suite at 1385 green with nonsense config rejected at boot, the leak filter explicitly provider-scoped + auditable, residual disconnects surfaced (stamp or audit, double-count-proof), and passthrough routers null-safe on inf/nan.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
