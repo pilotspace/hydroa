@@ -434,7 +434,18 @@ async def test_ra8_schema_stable_all_top_level_keys_present() -> None:
     body: dict[str, Any] = resp.json()
 
     # Exact top-level keys
-    expected_top = {"retry_policy", "cooldown", "model_groups", "candidates"}
+    # DISPOSITION EDIT (routing-config-write §3, 2026-06-23): the FROZEN routing-admin shape is
+    # ADDITIVELY extended with `routing_strategy` + `deployments` so the write endpoint round-trips
+    # and the editor can read strategy/deployment detail. The four original blocks are unchanged;
+    # the secrets-free intent of this assertion is preserved (both additions are config, not secrets).
+    expected_top = {
+        "retry_policy",
+        "cooldown",
+        "model_groups",
+        "candidates",
+        "routing_strategy",
+        "deployments",
+    }
     actual_top = set(body.keys())
     assert actual_top == expected_top, (
         f"Top-level keys mismatch.\n  Expected: {expected_top}\n  Actual: {actual_top}"

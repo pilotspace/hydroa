@@ -144,6 +144,16 @@ MODEL_NOT_ALLOWED = ErrorSpec(403, "ERR_MODEL_NOT_ALLOWED", "Model not permitted
 MODEL_NOT_FOUND = ErrorSpec(404, "ERR_MODEL_NOT_FOUND", "Model '{model_id}' not found in catalog")
 
 # ---------------------------------------------------------------------------
+# Routing config write (routing-config-write)
+# ---------------------------------------------------------------------------
+
+#: PUT /admin/routing body failed the Settings/Deployment validators. The underlying
+#: validator code (e.g. UNKNOWN_ROUTING_STRATEGY, DUPLICATE_DEPLOYMENT) is passed as `detail`.
+ROUTING_CONFIG_INVALID = ErrorSpec(
+    422, "ERR_ROUTING_CONFIG_INVALID", "Routing configuration failed validation"
+)
+
+# ---------------------------------------------------------------------------
 # Payload / request validation errors
 # ---------------------------------------------------------------------------
 

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "routing-config-store",
+  "active_task": "routing-config-write",
   "active_milestone": "v32",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -165,12 +165,28 @@
     },
     "routing-config-write": {
       "title": "Routing config write \u2014 editable model-groups / strategy / deployment limits + /routing editor",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v32",
       "depends_on": [],
       "created": "2026-06-22T18:12:41+00:00",
-      "updated": "2026-06-23T01:59:32+00:00"
+      "updated": "2026-06-23T03:22:49+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9eb97ca963c2099b889b280aeb0b6b60",
+        "tests": {
+          "apps/gateway/tests/routing_config_write/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/routing_config_write/conftest.py": "b588f9eb836248c7e36142c1b195ed82",
+          "apps/gateway/tests/routing_config_write/test_routing_config_write.py": "6922cb45538e801a4d4884ee165ccd0b"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/api/routing_admin_router.py",
+          "apps/gateway/src/gateway/core/error_catalog.py"
+        ],
+        "snapshot_md5": "6c0710124f9717708449d27e20deb840"
+      }
     },
     "routing-config-store": {
       "title": "Routing config store \u2014 persist routing config + boot-merge over Settings (DB-wins, env fallback)",
@@ -217,7 +233,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T02:47:56+00:00",
+  "updated": "2026-06-23T03:22:49+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

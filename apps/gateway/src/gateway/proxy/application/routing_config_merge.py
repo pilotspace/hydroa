@@ -19,7 +19,8 @@ from typing import Any
 from gateway.core.config import Settings
 
 # The overridable scalar routing fields (deployments handled separately via the model_groups alias).
-_ROUTING_OVERRIDE_KEYS = (
+# Public: also consumed by the routing-config-write endpoint to bound the persistable key set.
+ROUTING_OVERRIDE_KEYS = (
     "routing_strategy",
     "cooldown_failure_threshold",
     "cooldown_ttl_s",
@@ -48,10 +49,10 @@ def merge_routing_config(settings: Settings, stored: dict[str, Any] | None) -> S
     base = settings.model_dump()
     deployments_dump = base.pop("deployments", {})
     model_groups = stored.get("model_groups", deployments_dump)
-    scalar_overrides = {k: stored[k] for k in _ROUTING_OVERRIDE_KEYS if k in stored}
+    scalar_overrides = {k: stored[k] for k in ROUTING_OVERRIDE_KEYS if k in stored}
     probe = Settings(**{**base, **scalar_overrides, "model_groups": model_groups})
 
     # 2. Apply only the VALIDATED routing fields onto the real settings (preserves secrets/db).
-    update: dict[str, Any] = {k: getattr(probe, k) for k in _ROUTING_OVERRIDE_KEYS}
+    update: dict[str, Any] = {k: getattr(probe, k) for k in ROUTING_OVERRIDE_KEYS}
     update["deployments"] = probe.deployments
     return settings.model_copy(update=update)
