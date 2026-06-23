@@ -23,13 +23,13 @@ Out: **LIVE hot-reload of the running `FallbackModelRouter`** (explicitly deferr
 - **`PUT /admin/routing` validated write contract** -> owning task `routing-config-write-endpoint`. Round-trips all validators; owner/admin; returns the new persisted config in the (extended) `GET /admin/routing` shape.
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md — written just-in-time)
-- [ ] routing-config-store          depends-on: none — NEW alembic migration + ORM `routing_config` (operator-wide singleton row) + repository; `create_app` loads it over `Settings` at boot (DB-wins-when-present, env fallback). Freeze the persistence shape + boot precedence here.
+- [x] routing-config-store          depends-on: none — NEW alembic migration `a2c4e6f8b0d1` + ORM `RoutingConfigRow` (operator-wide singleton row, boolean-PK CHECK) + `RoutingConfigRepository`; `merge_routing_config` (probe-validate + model_copy = validator parity) + extracted `build_model_router`; lifespan boot-apply rebuilds the router over merged Settings (DB-wins, env fallback; fail-closed to env on read/build error). Gate PASS 2026-06-23, refute-read UPHOLD 0.82. Persistence shape + boot precedence FROZEN.
 - [ ] routing-config-write-endpoint depends-on: routing-config-store — `PUT /admin/routing` (owner/admin) that validates (full Settings/Deployment validator parity) → persists; extend `GET /admin/routing` to additively expose deployment weight/rpm/tpm. Read-after-write round-trips.
 - [ ] routing-config-editor         depends-on: routing-config-write-endpoint — dashboard `/routing` editor: model-group/deployment CRUD (alias, model_id, weight, rpm/tpm), strategy dropdown, retry + cooldown knobs; "changes apply on restart" notice; invalidate ["admin-routing"]. (re-size if the editor alone proves large.)
 - [ ] routing-config-write (the original v31 task) — UMBRELLA/recon holder: its §0 GROUND recon seeds the three tasks above. Close or re-purpose once the three land.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A persisted routing config exists in the DB and the gateway loads it over env at boot (DB-wins-when-present, env fallback).   (← routing-config-store)
+- [x] A persisted routing config exists in the DB and the gateway loads it over env at boot (DB-wins-when-present, env fallback).   (← routing-config-store; verified by `test_boot_applies_persisted_config` + migration parity, gate PASS)
 - [ ] An owner PUTs a new routing config (valid) and reads it back; an invalid config (e.g. duplicate deployment, unknown strategy) is rejected with the existing validator error, nothing persisted.   (← routing-config-write-endpoint)
 - [ ] An owner edits model-groups / routing strategy / deployment limits from the `/routing` dashboard and sees the saved config (with a clear "applies on restart" indication).   (← routing-config-editor)
 

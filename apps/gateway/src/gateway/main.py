@@ -2,9 +2,11 @@ import asyncio
 import contextlib
 import re
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 import redis.asyncio as aioredis
+import structlog
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from prometheus_client import CollectorRegistry
@@ -44,6 +46,7 @@ from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_rou
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
+from gateway.proxy.application.routing_config_merge import merge_routing_config
 from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import CompletionUpstream, UpstreamProvider
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
@@ -72,6 +75,7 @@ from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate
 from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
+from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
 from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.teams.api.router import teams_router
@@ -188,6 +192,53 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "service": "gateway"}
 
 
+def build_model_router(
+    settings: Settings,
+    *,
+    redis_client: Any,
+    completion_upstream: Any,
+    cooldown_gate: Any,
+    metrics_registry: Any,
+) -> FallbackModelRouter:
+    """Construct the FallbackModelRouter from settings (extracted so it can be REBUILT at boot
+    from a persisted routing config — v32 routing-config-store). Byte-identical to the inline
+    create_app construction when called with the env settings.
+
+    Gate construction does NOT connect to Redis (safe without lifespan): the load gate exists
+    only for {least-busy, latency}; the limit gate only when some deployment declares a limit.
+    """
+    if settings.routing_strategy in {"least-busy", "latency"}:
+        load_gate: RedisDeploymentLoadGate | None = RedisDeploymentLoadGate(
+            redis=redis_client,
+            alpha=settings.loadbal_ewma_alpha,
+            in_flight_ttl_s=settings.loadbal_inflight_ttl_s,
+        )
+    else:
+        load_gate = None
+
+    has_any_limit = any(
+        d.rpm_limit is not None or d.tpm_limit is not None
+        for deps in settings.deployments.values()
+        for d in deps
+    )
+    limit_gate: RedisDeploymentLimitGate | None = (
+        RedisDeploymentLimitGate(redis=redis_client) if has_any_limit else None
+    )
+
+    return FallbackModelRouter(
+        upstream=completion_upstream,
+        model_groups=settings.model_groups,
+        health_gate=cooldown_gate,
+        metrics_registry=metrics_registry,
+        deployments=settings.deployments,
+        strategy=build_strategy(settings.routing_strategy, load_gate),
+        load_gate=load_gate,
+        limit_gate=limit_gate,
+        fallback_on_error=settings.upstream_fallback_on_error,
+        stream_resilience_enabled=settings.upstream_stream_resilience_enabled,
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Composition root: wires infrastructure adapters into domain ports."""
     settings = settings if settings is not None else Settings()
@@ -234,6 +285,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Warm up the provider resolver cache from the catalog DB.
         # Fail-safe: refresh() never raises; empty map at startup → all "openrouter".
         await app.state.provider_resolver.refresh()
+
+        # Apply the persisted operator-wide routing config OVER the env Settings (v32
+        # routing-config-store). DB-wins-when-present, env fallback. RESTART-TO-APPLY: the
+        # router is rebuilt HERE at startup (before serving) — never mutated under live traffic.
+        # Design-for-failure: a DB read or validation failure must NOT crash startup; we log and
+        # keep the env config + env-built router.
+        try:
+            _stored_routing = await RoutingConfigRepository(_sessionmaker).get()
+            if _stored_routing is not None:
+                _merged = merge_routing_config(_settings, _stored_routing)
+                # Build the router FIRST; only commit both fields once it succeeds so
+                # settings and model_router can never drift out of sync if the build raises
+                # (the except below then keeps BOTH at the env config).
+                _merged_router = build_model_router(
+                    _merged,
+                    redis_client=_redis,
+                    completion_upstream=app.state.completion_upstream,
+                    cooldown_gate=app.state.cooldown_gate,
+                    metrics_registry=app.state.metrics_registry,
+                )
+                app.state.settings = _merged
+                app.state.model_router = _merged_router
+                structlog.get_logger(__name__).info(
+                    "routing_config_applied",
+                    routing_strategy=_merged.routing_strategy,
+                    model_groups=list(_merged.model_groups.keys()),
+                )
+        except Exception:
+            structlog.get_logger(__name__).warning(
+                "routing_config_apply_failed_fallback_env", exc_info=True
+            )
 
         flusher = UsageLedgerFlusher(
             redis=_redis,
@@ -589,42 +671,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # potentially a test fake) via the `upstream` override kwarg on router.complete() and
     # router.stream(). This preserves the frozen-suite injection contract: tests that set
     # app.state.completion_upstream = FakeUpstream still work correctly.
-    # Load-balancing gate — constructed only when strategy needs it.
-    # Construction does NOT connect to Redis (safe without lifespan).
-    # None for ordered/simple-shuffle → v6 byte-identical (zero new Redis IO).
-    if settings.routing_strategy in {"least-busy", "latency"}:
-        _load_gate: RedisDeploymentLoadGate | None = RedisDeploymentLoadGate(
-            redis=redis_client,
-            alpha=settings.loadbal_ewma_alpha,
-            in_flight_ttl_s=settings.loadbal_inflight_ttl_s,
-        )
-    else:
-        _load_gate = None
-
-    # Deployment-limits gate — constructed only when at least one configured
-    # deployment declares an rpm_limit or tpm_limit. Construction does NOT connect
-    # to Redis (safe without lifespan). None preserves v6/balance-strategies
-    # byte-identical behavior (zero new Redis IO for no-limit configs).
-    _has_any_limit = any(
-        d.rpm_limit is not None or d.tpm_limit is not None
-        for deps in settings.deployments.values()
-        for d in deps
-    )
-    _limit_gate: RedisDeploymentLimitGate | None = (
-        RedisDeploymentLimitGate(redis=redis_client) if _has_any_limit else None
-    )
-
-    app.state.model_router = FallbackModelRouter(
-        upstream=app.state.completion_upstream,
-        model_groups=settings.model_groups,
-        health_gate=app.state.cooldown_gate,
+    # Model router built from the env settings. The load/limit gates are constructed inside
+    # build_model_router (load gate only for least-busy/latency; limit gate only when a
+    # deployment declares a limit) — no Redis IO at construction (safe without lifespan).
+    # A persisted routing config, when present, REBUILDS this at boot in the lifespan startup
+    # (v32 routing-config-store; restart-to-apply — no live-traffic mutation).
+    app.state.model_router = build_model_router(
+        settings,
+        redis_client=redis_client,
+        completion_upstream=app.state.completion_upstream,
+        cooldown_gate=app.state.cooldown_gate,
         metrics_registry=app.state.metrics_registry,
-        deployments=settings.deployments,
-        strategy=build_strategy(settings.routing_strategy, _load_gate),
-        load_gate=_load_gate,
-        limit_gate=_limit_gate,
-        fallback_on_error=settings.upstream_fallback_on_error,
-        stream_resilience_enabled=settings.upstream_stream_resilience_enabled,
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).

@@ -43,6 +43,7 @@ EXPECTED_TABLES = frozenset(
         "team_members",  # SANCTIONED EDIT — teams-core TASK.md §3 manifest maintenance; disposition: additive migration 3a7f1c9e2b5d adds this table
         "oidc_provider_configs",  # SANCTIONED EDIT — oidc-tenant-config TASK.md §3 manifest maintenance; disposition: additive migration a9b3c4d5e6f7 adds this table
         "tenant_provider_keys",  # SANCTIONED EDIT — provider-credential-store TASK.md §3 manifest maintenance; disposition: additive migration d8f3a1c9e5b2 adds this table
+        "routing_config",  # SANCTIONED EDIT — routing-config-store TASK.md §3 manifest maintenance; disposition: additive migration a2c4e6f8b0d1 adds this table
     }
 )
 

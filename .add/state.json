@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "routing-config-write",
+  "active_task": "routing-config-store",
   "active_milestone": "v32",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -171,6 +171,31 @@
       "depends_on": [],
       "created": "2026-06-22T18:12:41+00:00",
       "updated": "2026-06-23T01:59:32+00:00"
+    },
+    "routing-config-store": {
+      "title": "Routing config store \u2014 persist routing config + boot-merge over Settings (DB-wins, env fallback)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v32",
+      "depends_on": [],
+      "created": "2026-06-23T02:09:14+00:00",
+      "updated": "2026-06-23T02:47:56+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ecd90a49309b3ca05ac5118b185e738c",
+        "tests": {
+          "apps/gateway/tests/routing_config_store/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/routing_config_store/test_routing_config_store.py": "df47ede3e8e77c87b52c093aeb909176"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "1150bdd26346d29621af011e3ff5a2db"
+      }
     }
   },
   "milestones": {
@@ -192,7 +217,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T02:00:14+00:00",
+  "updated": "2026-06-23T02:47:56+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
