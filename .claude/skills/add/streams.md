@@ -1,8 +1,11 @@
 # Parallel streams — pipelining independent tasks
 
-Load this **only** when a milestone has more than one task and you want to run them
-concurrently. The default ADD path is one task at a time; this rubric is the opt-in
-escape hatch for when independent tasks are queued and a human is ready to review.
+Load this when a milestone has more than one task and you want to run them concurrently.
+**Default:** when a project confirms `parallel + auto` as its run mode at setup
+(`phases/0-setup.md` "Run mode"), parallel streaming is the project default — an **opt-out**, not
+the opt-in it once was; downgrade in one step (`add.py autonomy set conservative --project`, or just
+run tasks one at a time). A project that kept the conservative run mode still treats this rubric as
+the opt-in escape hatch. Either way it changes nothing below.
 
 It changes **no `add.py` code and no phase semantics**. It is a way *you, the
 orchestrator*, drive several tasks at once by reading the dependency DAG that
@@ -34,6 +37,44 @@ Compute both from one `python3 .add/tooling/add.py status` — no new state:
        ▲                                                          strictly serial)
        └──────────────── a task gating PASS unblocks its dependents ──────────────┘
 ```
+
+## The DAG strategy — let the engine schedule the waves (`add.py waves`)
+
+Do **not** eyeball the READY-QUEUE by hand once a milestone has more than a couple of
+tasks — the engine computes the whole schedule from the dependency DAG `status` already
+holds. `add.py waves` (read-only, writes nothing) groups the active milestone's not-done
+tasks into **topological waves**, names the **critical path**, and emits an advisory
+**tier hint** — exactly the inputs you need to fan out effectively:
+
+```
+$ add.py waves
+milestone: v13-onboarding-polish
+wave 1: dag-scheduler, setup-suggest-milestone, setup-domain-deepdive, soul-artifact
+wave 2: setup-run-mode (deps: dag-scheduler), soul-self-improve (deps: soul-artifact)
+critical path: dag-scheduler → setup-run-mode  (2 tasks)
+tier hint: top → dag-scheduler, setup-run-mode; mid → the rest
+```
+
+Read the schedule as a strategy, not a command:
+
+- **Wave = a fan-out batch.** Every task in a wave has all its in-milestone deps already
+  PASS, so the whole wave is spawnable at once (one worker per task, `isolation="worktree"`).
+  Finish a wave, gate its tasks PASS, then `add.py waves` again — the next wave is unblocked.
+- **Run the widest wave first.** It hides the most build latency under the human's review
+  latency (the honest frame above): more concurrent builds while the reviewer reads one bundle.
+- **Spend your strongest model on the critical path.** The critical-path tasks gate the most
+  downstream work, so a wrong-but-plausible result there is the costliest — give them the
+  **top** tier (`run.md` tiers); off-path tasks take **mid**. The tier hint is exactly this rule,
+  applied to the graph. It is **advisory** — graph position is a proxy for scope difficulty, not a
+  gate; override it when you know a task is harder than its position suggests.
+- **`--json`** (`{ milestone, waves, critical_path, critical_path_len, tiers, blocked }`) feeds a
+  runner that spawns the wave programmatically. `blocked` lists any task whose dep can never be
+  satisfied within this milestone (a cross-milestone dep) — surfaced, never silently dropped; a
+  `dependency_cycle` is refused with the offending members named (no schedule exists).
+
+What `waves` does **not** change: the irreducible floor below still holds — one human approval
+per contract, builds overlap but the review queue stays serial. `waves` decides *order and model*,
+never *whether the human gate fires*.
 
 ## The autonomy level is the throttle (not a new flag)
 

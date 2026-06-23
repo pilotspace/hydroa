@@ -20,7 +20,7 @@ work can start before the real code exists.
 **The freeze is the one approval.** This decision point is where the single human approval lands, over the
 whole bundle (§1–§4). Before asking for it, present the bundle **lowest-confidence first**: the 1–2 points
 most likely wrong (`⚠ [spec|scenario|contract|test] … — because …; if wrong: …`) — aim the human's
-eye before they freeze. Open that report with the ARC (goal · done · plan) per `report-template.md` so the
+eye before they freeze. Open that report with the ARC (goal · done · plan) per `report-template.md`, rendering the freeze DECISION as a guided choice (the recommended pick + described alternatives), so the
 human sees the goal this freeze serves and the plan beyond it, not just the bundle. See `run.md`.
 The approval also freezes the §5 Scope (may touch) + Strategy declarations — the bundle covers them.
 
@@ -65,6 +65,8 @@ Never: change a frozen contract — a change reopens Specify.
 - [ ] Every name matches the glossary.
 - [ ] Every spec rejection has a contracted response.
 </exit_gate>
+
+> **Advisor · Confidence** — a second opinion on a risky shape is worth a spawn (advisor.md); a low self-score is your cue to lower autonomy before you freeze (confidence.md).
 
 ## Next
 

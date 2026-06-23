@@ -18,7 +18,9 @@ understand the feature — that is information, not an obstacle. Stop and ask.
 **Identity is direction, not default (UDD).** For UI/design work, identity values — the brand
 color, the core palette, the typeface — are human-owned. Surface them for discussion during
 Diverge; never assume a brand value. The UDD token dialect checks a token's *shape*; its *value*
-is the user's call (`udd-tokens.md`).
+is the user's call (`udd-tokens.md`). For a UI feature with a screen, run the design-definition
+loop in `design.md` — domain → research and reuse components → wireframe → a real captured screen
+the human confirms before build — and carry the confirmed layout into the contract.
 
 ## Produce (in TASK.md §1)
 
@@ -62,6 +64,8 @@ Never: resolve an ambiguity by guessing.
 - [ ] Assumptions ordered lowest-confidence first; the 1–2 `⚠` flags carry why + cost — or an honest
       "none material" that still names the single biggest risk (never a blank "none").
 </exit_gate>
+
+> **Advisor · Confidence** — for an unfamiliar domain, spawn a researcher (advisor.md); self-score the spec and let the lowest dimension aim your ⚠ flag (confidence.md).
 
 ## Next
 
