@@ -274,5 +274,5 @@ Watch (reuse scenarios as monitors): bedrock_tooluse_incomplete WARN rate · bed
 - [SPEC · open] the same parallel-tool streaming live double-pass should exercise Anthropic + Gemini + Bedrock end-to-end (task 7 dependency)
 
 ### Competency deltas
-- [TDD · open] adversarial refute-read surfaced DEAD code (_saw_tool_call set-but-unread) that tests alone didn't catch — wiring it as a fail-safe + a no-stopReason test turned a latent risk into covered robustness (evidence: refute-read item 6)
-- [ADD · open] a verify-phase robustness improvement that is a STRICT SUPERSET of a frozen contract clause ("finish() unchanged") is best recorded as a documented v1.1 amendment with a test, not a silent edit — keeps the frozen artifact honest while honoring the design-for-failure mandate (evidence: this task's §3 finish() amendment)
+- [TDD · folded] adversarial refute-read surfaced DEAD code (_saw_tool_call set-but-unread) that tests alone didn't catch — wiring it as a fail-safe + a no-stopReason test turned a latent risk into covered robustness (evidence: refute-read item 6) [folded foundation-version 31]
+- [ADD · folded] a verify-phase robustness improvement that is a STRICT SUPERSET of a frozen contract clause ("finish() unchanged") is best recorded as a documented v1.1 amendment with a test, not a silent edit — keeps the frozen artifact honest while honoring the design-for-failure mandate (evidence: this task's §3 finish() amendment) [folded foundation-version 31]

@@ -276,6 +276,6 @@ Watch (reuse scenarios as monitors): rate of reasoning_effort_unrecognized / rea
 - [SPEC · open] Gemini thinkingBudget cap is model-specific (Flash 24576, Pro ~32768); we use a single 24576 cap — make the cap per-model if Pro reasoning is under-budgeted (evidence: ai.google.dev thinking docs). [reasoning-passthrough]
 
 ### Competency deltas
-- [SDD · open] delegating D1 to web research (Tin) beat my fixed-number guess — the OpenRouter ratio formula scales with max_tokens and is the industry convention; surfacing "investigate latest docs" as a freeze option is worth repeating for provider-API-shaped decisions (evidence: ratio formula replaced low=1024/med=8000/high=16000).
-- [TDD · open] asserting the ratio FORMULA in tests (compute expected both sides) not a hardcoded number means the test survives a tuning of the constants without becoming a change-detector (evidence: _expected_anthropic_budget mirrors the impl). See the `add` skill's `deltas.md`.
+- [SDD · folded] delegating D1 to web research (Tin) beat my fixed-number guess — the OpenRouter ratio formula scales with max_tokens and is the industry convention; surfacing "investigate latest docs" as a freeze option is worth repeating for provider-API-shaped decisions (evidence: ratio formula replaced low=1024/med=8000/high=16000). [folded foundation-version 31]
+- [TDD · folded] asserting the ratio FORMULA in tests (compute expected both sides) not a hardcoded number means the test survives a tuning of the constants without becoming a change-detector (evidence: _expected_anthropic_budget mirrors the impl). See the `add` skill's `deltas.md`. [folded foundation-version 31]
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->

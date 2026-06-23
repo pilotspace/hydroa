@@ -392,14 +392,14 @@ rate on C4; disconnect-row visibility on C5.
   contract's bar), so not a blocker; worth a longer-window check that recovery eventually appends the delta.
 
 ### Competency deltas
-- [TDD · open] live LLM criteria are non-deterministic: a reasoning model needs bounded max_tokens or its
+- [TDD · folded] live LLM criteria are non-deterministic: a reasoning model needs bounded max_tokens or its [folded foundation-version 31]
   stream outlasts the read window (C2 [DONE] truncation), and opportunistic upstream caching needs a
   warmup+retry (cache-write must register before a read hits) — bound + retry, never assume (evidence: C2/C4
   flaked until fixed). A retry that breaks on first hit must still honor min-call-count invariants (C4a/C4c
   needed ≥2 calls; a warm-cache pass-2 hit on attempt 1 broke that until guarded).
-- [ADD · open] a hard EXTERNAL wall (provider credits) is not a HARD-STOP of the work — surface it, offer
+- [ADD · folded] a hard EXTERNAL wall (provider credits) is not a HARD-STOP of the work — surface it, offer [folded foundation-version 31]
   concrete unblock options (AskUserQuestion), and re-frame the contract as a Tin-approved change request
   (v1 Gemini → v2 OpenRouter) rather than silently editing the frozen shape (evidence: this session).
-- [ADD · open] redirecting the provider-under-test is a contract amendment, not a constant swap: passthrough
+- [ADD · folded] redirecting the provider-under-test is a contract amendment, not a constant swap: passthrough [folded foundation-version 31]
   (OpenRouter) vs native (Gemini) genuinely changes C4 (cache mechanism) and C5 (recoverable vs estimate) —
   re-frame provider-accurately, never weaken (evidence: v2 amendment).

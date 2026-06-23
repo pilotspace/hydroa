@@ -1,0 +1,207 @@
+{
+  "milestone": {
+    "title": "Helios agent-coding integration readiness",
+    "goal": "A real AI coding agent (Helios) can drive sustained coding sessions through the proxy \u2014 streaming tool-calls, prompt caching, and reasoning all working with accurate cost tracking and graceful behavior under load \u2014 proven by a CI-gated stub suite and a live double-pass.",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-23T07:22:22+00:00",
+    "updated": "2026-06-23T16:59:24+00:00"
+  },
+  "tasks": {
+    "agent-coding-stub-harness": {
+      "title": "Deterministic Helios-shaped stub harness (CI gate backbone)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T07:23:15+00:00",
+      "updated": "2026-06-23T07:57:46+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "77b6c4b39e0939491dcb1560430d309b",
+        "tests": {
+          "apps/gateway/tests/agent_coding_harness/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/agent_coding_harness/test_agent_coding_harness.py": "3aaf169f6314b049f6965637c9a35b90"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/tests/_helios_harness/",
+          "apps/gateway/tests/conftest.py"
+        ],
+        "snapshot_md5": "852065c77ad960329d3c77835a2f15ab"
+      }
+    },
+    "reasoning-passthrough": {
+      "title": "Translate OpenAI-wire reasoning_effort to Anthropic thinking / Gemini thinkingConfig + reasoning-token accounting",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T08:02:05+00:00",
+      "updated": "2026-06-23T08:20:28+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f9332788783fab8a69f9bf8192efdc0b",
+        "tests": {
+          "apps/gateway/tests/reasoning_passthrough/conftest.py": "71c4a4fd48470ace249cb645be853b8b",
+          "apps/gateway/tests/reasoning_passthrough/test_reasoning_passthrough.py": "a09c0ed1abb02188a54b6ab06c10d267"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py"
+        ],
+        "snapshot_md5": "ad5c86aad2a4ca502aad43c8b89a786a"
+      }
+    },
+    "prompt-cache-passthrough": {
+      "title": "Prompt-cache passthrough: forward OpenAI-wire cache hints to Anthropic/Gemini + surface cache tokens for billing",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T08:21:00+00:00",
+      "updated": "2026-06-23T11:16:33+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6156ed7197b82fe750071b84034b1a07",
+        "tests": {
+          "apps/gateway/tests/prompt_cache_passthrough/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/prompt_cache_passthrough/test_prompt_cache_passthrough.py": "5cc9b53112403f24e314e6083d24d9a6"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/application/flusher.py",
+          "apps/gateway/src/gateway/usage/infrastructure/orm.py",
+          "apps/gateway/src/gateway/catalog/infrastructure/orm.py",
+          "apps/gateway/src/gateway/migrations/versions/"
+        ],
+        "snapshot_md5": "07686180e1437c6d2f6efa91e36afe2c"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-23T11:15:59+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/prompt_cache_passthrough/test_prompt_cache_passthrough.py",
+            "source": "tamper"
+          },
+          {
+            "at": "2026-06-23T11:16:16+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/prompt_cache_passthrough/test_prompt_cache_passthrough.py",
+            "source": "tamper"
+          }
+        ]
+      }
+    },
+    "parallel-tool-streaming-verify": {
+      "title": "Verify parallel tool-call streaming across Anthropic/Gemini/Bedrock",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T11:19:02+00:00",
+      "updated": "2026-06-23T12:10:10+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b7742c2bf23cb974c0656b95a82d43c4",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py"
+        ],
+        "snapshot_md5": "ca4246cd3da0d653ec13592d10b1e688"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-23T12:09:33+00:00",
+            "reason": "tamper_detected:contract_tampered",
+            "source": "tamper"
+          }
+        ]
+      }
+    },
+    "disconnect-billing-all-providers": {
+      "title": "Bill partial-stream usage on client disconnect across all providers",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T12:10:41+00:00",
+      "updated": "2026-06-23T13:09:41+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9d7798441ad3a91ff0ee9b6e971cfc2c",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py",
+          "apps/gateway/src/gateway/usage/domain/partial_usage.py"
+        ],
+        "snapshot_md5": "cba3fa96397e065638ac20108caa9d7d"
+      }
+    },
+    "concurrency-load-guard": {
+      "title": "Graceful back-pressure under concurrent agent-coding load",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T13:10:37+00:00",
+      "updated": "2026-06-23T14:00:17+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "65ddc3dc14fe559dd402435f18b99f77",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/api/concurrency_guard.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/config.py"
+        ],
+        "snapshot_md5": "26925c49a907ca2b9c9d5c2314ec18e3"
+      }
+    },
+    "helios-live-smoke": {
+      "title": "Live double-pass: Helios drives a coding session through the proxy",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T14:52:12+00:00",
+      "updated": "2026-06-23T16:57:11+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c74dff2b2002562e141c81ea4c7e6b47",
+        "tests": {
+          "apps/gateway/tests/helios_live_smoke/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/helios_live_smoke/test_offline_helpers.py": "25a9e526c66409918048d17da663b86e"
+        }
+      },
+      "scope": {
+        "declared": [
+          "scripts/live_helios_smoke.py",
+          "apps/gateway/tests/helios_live_smoke/"
+        ],
+        "snapshot_md5": "a91f110be704a16f06066aa1b9dbc088"
+      }
+    }
+  },
+  "archived_at": "2026-06-23T16:59:48+00:00"
+}
