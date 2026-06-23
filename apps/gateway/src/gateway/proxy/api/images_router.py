@@ -9,6 +9,7 @@ get_completion_upstream() or CompletionUseCase.
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -17,8 +18,11 @@ from fastapi.responses import JSONResponse
 from gateway.proxy.api.deps import get_raw_api_key, get_usage_recorder
 from gateway.proxy.api.images_deps import get_images_use_case, get_provider_registry
 from gateway.proxy.application.images_use_case import ImagesUseCase
+from gateway.proxy.application.json_sanitize import sanitize_non_finite
 from gateway.proxy.domain.ports import UsageRecorder
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
+
+_log = logging.getLogger(__name__)
 
 images_router = APIRouter(tags=["proxy"])
 
@@ -45,5 +49,15 @@ async def images_generations(
         registry=registry,
         usage_recorder=usage_recorder,
     )
+
+    # Sanitize non-finite floats (inf/-inf/nan) before render: Starlette serializes with
+    # allow_nan=False, so an upstream non-finite anywhere would 500. Replace with null
+    # (degrade, never fail) + WARN once. Response-only — billing already recorded.
+    response_body, _nf = sanitize_non_finite(response_body)
+    if _nf:
+        _log.warning(
+            "images_nonfinite_sanitized",
+            extra={"model": body.get("model"), "count": _nf},
+        )
 
     return JSONResponse(content=response_body, status_code=status)

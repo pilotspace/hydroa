@@ -9,6 +9,7 @@ Upstream 5xx / circuit open → 502 ERR_UPSTREAM_UNAVAILABLE.
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -20,9 +21,12 @@ from gateway.proxy.api.deps import (
     get_raw_api_key,
     get_usage_recorder,
 )
+from gateway.proxy.application.json_sanitize import sanitize_non_finite
 from gateway.proxy.application.use_cases import CompletionUseCase
 from gateway.proxy.domain.ports import CompletionUpstream, UsageRecorder
 from gateway.proxy.infrastructure.response_cache import resolve_cache_ttl
+
+_log = logging.getLogger(__name__)
 
 proxy_router = APIRouter(tags=["proxy"])
 
@@ -78,6 +82,17 @@ async def completions(
         request_headers=req_headers,
         model_router=model_router,
     )
+    # Sanitize non-finite floats (inf/-inf/nan) before render: Starlette serializes with
+    # allow_nan=False, so an upstream non-finite anywhere (e.g. a -inf logprob) would 500.
+    # Replace with null (degrade, never fail) + WARN once. This is the single non-stream
+    # chokepoint — it also catches cache-HIT bodies that bypass the use_case post-call path.
+    response_body, _nf = sanitize_non_finite(response_body)
+    if _nf:
+        _log.warning(
+            "chat_nonfinite_sanitized",
+            extra={"model": body.get("model"), "count": _nf},
+        )
+
     # Upstream 4xx: pass through verbatim — JSONResponse with upstream status
     resp = JSONResponse(content=response_body, status_code=status)
     if x_cache is not None:

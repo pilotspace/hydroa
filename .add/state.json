@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "drift-threshold-validation",
+  "active_task": "passthrough-nonfinite-sanitize",
   "active_milestone": "v33",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -165,12 +165,29 @@
     },
     "passthrough-nonfinite-sanitize": {
       "title": "Non-finite sanitization on images / embeddings / proxy passthrough routers",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v33",
       "depends_on": [],
       "created": "2026-06-23T04:36:53+00:00",
-      "updated": "2026-06-23T04:36:53+00:00"
+      "updated": "2026-06-23T05:40:39+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c9521b97d6639be7419d2d89ff2c7f7c",
+        "tests": {
+          "apps/gateway/tests/passthrough_nonfinite_sanitize/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/passthrough_nonfinite_sanitize/conftest.py": "b137caa230eb262bf2187152820c2168",
+          "apps/gateway/tests/passthrough_nonfinite_sanitize/test_passthrough_nonfinite_sanitize.py": "54a045977b03e0af22c511b093369eb2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/api/images_router.py",
+          "apps/gateway/src/gateway/proxy/api/embeddings_router.py",
+          "apps/gateway/src/gateway/proxy/api/router.py"
+        ],
+        "snapshot_md5": "d2054cb354a219416a20f48c0b66f1aa"
+      }
     },
     "reconcile-cost-basis-filter": {
       "title": "Scope the unbilled-upstream filter to cost_basis='provider'",
@@ -242,7 +259,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T05:18:02+00:00",
+  "updated": "2026-06-23T05:40:39+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
