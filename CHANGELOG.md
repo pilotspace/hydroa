@@ -3,6 +3,55 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic versioning.
 
+## [0.2.0] — 2026-06-23
+
+Second release of the metered multi-tenant AI proxy. Hardens billing trustworthiness under
+client disconnects, completes control-plane dashboard coverage (every operator/admin read has a
+backend), and makes routing configuration writable from the dashboard. Bundles 3 closed
+milestones (v30, v31, v32) since 0.1.0. No breaking changes.
+
+### Added
+
+**Control-plane dashboard coverage** (v31) — every operator/admin surface now has a backend
+- Alerts & events viewer — `GET /admin/alerts` + dashboard Alerts page (tenant-scoped; platform
+  system rows visible to all tenants).
+- Catalog re-sync trigger — `POST /admin/catalog/sync` (owner/admin) for on-demand model-catalog refresh.
+- Upstream health view — `GET /admin/health/upstreams` (honest, monitored-providers-only status).
+- Rate-limit counter view — `GET /admin/ratelimits` (live per-key counters, fail-open).
+- Per-tenant SSO domain field on the login page — drives the OIDC relay `?domain=` so a tenant
+  with per-tenant SSO can start login.
+
+**Operator-wide reconciliation** (v31)
+- `GET /ops/reconciliation` — cross-tenant reconciliation for operators, behind mTLS + XFCC
+  edge-trust ops-auth. Default-OFF and fail-closed (no operator certificate ⇒ all requests 401).
+
+**Writable routing configuration** (v32)
+- Persisted operator-wide routing config (singleton store) applied over env at gateway boot
+  (DB-wins-when-present, env fallback).
+- `PUT /admin/routing` (owner/admin) — edit model-groups, routing strategy, and per-deployment
+  weight/rpm/tpm limits with full validator parity; `GET /admin/routing` additively exposes
+  `routing_strategy` + `deployments`.
+- Dashboard routing editor on `/routing` with a clear "applies on next restart" notice.
+
+### Changed
+
+- Streaming responses for Anthropic, Google Gemini, and AWS Bedrock are now forwarded
+  incrementally instead of buffered, improving time-to-first-token (v30).
+
+### Fixed
+
+- Client-disconnect billing integrity (v30): a dropped streaming connection now deterministically
+  aborts the upstream generation, captures the real provider cost, and reconciles it via a
+  signed-delta correction with idempotency and a periodic sweep backstop — so an upstream charge
+  on a disconnected stream is billed accurately and can never silently go unrecovered.
+
+### Security & operations
+
+- The `/ops/*` operator surface is the app-side verify-half of an mTLS edge-trust model. **Release
+  requirement:** the reverse proxy (Envoy) must strip any client-supplied `x-forwarded-client-cert`
+  header and restrict `/ops/*` before any operator certificate is provisioned. The endpoint ships
+  default-OFF and fail-closed; this requirement gates enabling it, not the release.
+
 ## [0.1.0] — 2026-06-18
 
 First public beta release of the metered multi-tenant AI proxy. A tenant can be set up, log
