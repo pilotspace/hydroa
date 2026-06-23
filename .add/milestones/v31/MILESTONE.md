@@ -28,7 +28,7 @@ Out: an operator-view **dashboard UI** in this milestone unless explicitly scope
 - [x] catalog-sync-trigger       **DONE 2026-06-23, gate PASS (auto, refute 0.87 no-blockers).** NEW `admin_catalog_router` → `POST /admin/catalog/sync`: owner/admin (member 403/missing-bearer 401), delegates to the existing `SyncCatalogUseCase` (idempotent global upsert; inherits its 10s timeout+retry), 200 `{synced, synced_at(ISO, gateway clock)}`, upstream-down → 502 ERR_UPSTREAM_UNAVAILABLE before any write, fail-safe provider_resolver refresh. Internal `/internal/catalog/sync` + SyncResponse byte-identical (separate CatalogSyncResponse). + `/models` owner/admin "Re-sync catalog" button (last-sync shown, invalidates admin-models; member can't see it). 9 backend + 3 frontend tests; suites 1326 + 368 green. NO migration. last-sync EPHEMERAL (persist = spec delta). [catalog/api/router.py:admin_sync_catalog, ModelsPage.tsx]
 - [x] upstream-health-view       **DONE 2026-06-23, gate PASS (auto, refute 0.88 no-blockers).** `GET /admin/health/upstreams` on usage_router: owner/admin (member 403/missing-bearer 401), READ-ONLY, derives per-upstream up/down from durable `alert_events` health rows (tenant_id NULL, latest of upstream_health_fail|upstream_health_recovered by created_at,id DESC; no event → up+null). HONESTY: MONITORED = ["openrouter"] only (the one upstream actually pinged) — NO fabricated rows for unpinged providers. 200 `{checked_at, upstreams:[{name,status,last_event_at,last_event_type}]}`, asyncio.timeout(30s). + dashboard admin-only `/health` page (HealthPage/UpstreamsTable, 4 states, HeartPulse nav 8→9). 11 backend + 5 frontend tests (incl. tenant-owned-row-excluded isolation guard); suites 1335 + 373 green. NO migration/new table. [usage/api/router.py:get_upstream_health, components/health/*]
 - [x] ratelimit-counter-view     **DONE 2026-06-23, gate PASS (auto, refute 0.91 no-blockers).** `GET /admin/ratelimits` on usage_router: owner/admin (member 403/missing-bearer 401), READ-ONLY, per-key live consumption vs configured limits for the CALLER'S tenant only. rpm_current=ZCARD `ratelimit:rpm:{key_id}`, tpm_current=float(GET `ratelimit:tpm_sum:{key_id}`) — the SAME keys RedisLuaRateLimiter writes (single source of truth). Unused key (Redis up)→0/0.0; Redis down→null counters + still 200 (design-for-failure fail-open, ZCARD/GET non-mutating, asyncio.timeout). Tenant-scoped via `WHERE tenant_id=:tid AND revoked_at IS NULL` (revoked excluded). 200 `{keys:[{key_id,name,rpm_limit,tpm_limit,rpm_current,tpm_current}]}`. + read-only "Rate-limit usage" panel (RatelimitsPanel) mounted on /keys (null→"—", null-limit→"∞"); NO new BFF route/nav. 9 backend + 5 frontend tests; suites 1346 + 378 green. NO migration/new table/Redis write. [usage/api/router.py:get_ratelimits, components/keys/RatelimitsPanel.tsx]
-- [ ] routing-config-write       depends-on: none — largest slice: write endpoints for model-groups / routing strategy / per-deployment rpm-tpm limits + circuit/retry thresholds (today env-only) + a `/routing` editor. May warrant its own sub-milestone — re-size at open.
+- [→] routing-config-write       **MOVED to v32 (Tin 2026-06-23).** Ground recon proved it is sub-milestone-sized: routing config is purely boot-time env vars (no DB/ORM/migration, no router reload — `FallbackModelRouter` is a singleton built once at boot on the request hot-path). Making it writable needs persistence + write endpoint + dashboard editor + (chosen) persist+restart-to-apply. Re-sized as **v32 "Writable routing configuration"** per the milestone's "may warrant its own sub-milestone — re-size at open" flag. §0 GROUND recon preserved in the task (now under v32).
 
 ## Exit criteria (observable; map each to the task that delivers it)
 - [x] A platform operator reads cross-tenant reconciliation drift through the authorized ops-auth endpoint; a tenant admin/member is denied (403).   (← operator-wide-reconciliation — DONE 2026-06-22, gate PASS)
@@ -37,27 +37,34 @@ Out: an operator-view **dashboard UI** in this milestone unless explicitly scope
 - [x] An owner forces a catalog re-sync from the dashboard and sees the new last-sync time.   (← catalog-sync-trigger — DONE 2026-06-23, gate PASS; last-sync ephemeral, persist=spec delta)
 - [x] An owner sees per-provider upstream up/down status in the dashboard.   (← upstream-health-view — DONE 2026-06-23, gate PASS; per-MONITORED-upstream = openrouter today, honest no-fabrication)
 - [x] An owner sees current rpm/tpm consumption per key.   (← ratelimit-counter-view — DONE 2026-06-23, gate PASS; live Redis ZCARD/GET counters vs limits, fail-open to null)
-- [ ] An owner edits model-groups / routing strategy / deployment limits from the dashboard.   (← routing-config-write)
+- [→] An owner edits model-groups / routing strategy / deployment limits from the dashboard.   (← routing-config-write — MOVED to v32 "Writable routing configuration"; descoped from v31 at re-size, Tin 2026-06-23. Apply-mechanism chosen: persist + restart-to-apply.)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway (backend) : NEW `ops/` package + `GET /ops/reconciliation` (mTLS+XFCC ops-auth, OpsCertVerifier, reconcile_by_tenant) · 4 NEW read-only owner/admin endpoints on `usage_router` — `GET /admin/alerts`, `GET /admin/health/upstreams`, `GET /admin/ratelimits` · NEW `admin_catalog_router` `POST /admin/catalog/sync`. NO new migrations except none-needed (all reads over existing tables/Redis). Settings: `GATEWAY_OPS_CERT_FINGERPRINTS`.
+- dashboard (frontend) : NEW admin-only `/alerts` + `/health` pages (nav 7→9) · `/login` work-email/domain field driving SSO `?domain=` · `/models` owner/admin "Re-sync catalog" button · `/keys` read-only "Rate-limit usage" panel. No new BFF routes (existing catch-all).
+- tooling : `.add/state.json` task/milestone bookkeeping only; engine untouched.
+- skill / book : untouched.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- operator-wide-reconciliation : gate=PASS · refute UPHELD 0.87 · residue=⚠ RELEASE REQ: Envoy must strip client XFCC + restrict /ops/* (trust boundary).
+- alerts-events-viewer : gate=PASS · refute 0.82 · tests=15 BE + 4 FE · residue=none (visibility own+NULL system rows, Tin-approved).
+- sso-login-button : gate=PASS · tests=5 FE + 361 suite · residue=none (re-scoped at ground: domain field, button pre-existed).
+- catalog-sync-trigger : gate=PASS · refute 0.87 · tests=9 BE + 3 FE · residue=last-sync ephemeral (persist=filed spec delta).
+- upstream-health-view : gate=PASS · refute 0.88 · tests=11 BE + 5 FE · residue=per-MONITORED-upstream=openrouter only (per-provider pingers=spec delta).
+- ratelimit-counter-view : gate=PASS · refute 0.91 · tests=9 BE + 5 FE · residue=rpm via ZCARD approximate (exact ZCOUNT=spec delta).
+- routing-config-write : MOVED to v32 (sub-milestone) — ground recon proved sub-milestone scope; apply-mechanism persist+restart-to-apply chosen.
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] 6 of 7 Exit criteria satisfied by the Cross-task evidence rows above (operator-wide, alerts, SSO, catalog-sync, upstream-health, ratelimit). The 7th (routing edit) was consciously DESCOPED to v32 at the milestone's pre-declared "re-size at open" point, with Tin's explicit approval (2026-06-23) — not an unmet gap but a planned re-home.
+- goal: "a platform operator reads cross-tenant reconciliation drift through an authorized ops-auth endpoint, AND every implemented backend control-plane capability has a dashboard surface." MET for the operator-reconciliation half (GET /ops/reconciliation, gate PASS) and for all READ-side coverage; the one WRITE-side capability (routing config) is itself not yet a writable backend capability (env-only) — making it writable is net-new architecture, correctly its own milestone (v32).
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [ ] Open a PR for branch `feat/v31` → main (7 commits: v31-open, operator-wide, sso-login, alerts, catalog-sync, upstream-health, ratelimit). Tin reviews + merges (CLAUDE.md: ask before PR — held until Tin asks).
+- [ ] ⚠ BEFORE provisioning any operator cert: land the Envoy edge config that strips client-supplied XFCC + restricts `/ops/*` to the mTLS listener (operator-wide-reconciliation trust boundary — release req).
+- [ ] v32 "Writable routing configuration" carries the descoped routing-config-write (persist + restart-to-apply); its release bundles with the next cut.
