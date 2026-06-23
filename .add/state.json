@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "reconcile-cost-basis-filter",
+  "active_task": "disconnect-provider-cost",
   "active_milestone": "v33",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -215,12 +215,23 @@
     },
     "disconnect-provider-cost": {
       "title": "Recoverable provider_cost on residual non-OpenRouter client-disconnect rows",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v33",
       "depends_on": [],
       "created": "2026-06-23T04:37:39+00:00",
-      "updated": "2026-06-23T04:37:39+00:00"
+      "updated": "2026-06-23T06:37:12+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f51197587a1f279587cf23803340190b",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/disconnect-provider-cost/recorder.py"
+        ],
+        "snapshot_md5": "3ed28a40c72ee819863e6f6f3e2ebe06"
+      }
     },
     "drift-threshold-validation": {
       "title": "Reject a non-finite / non-positive drift threshold (and negative check-interval) at startup",
@@ -274,7 +285,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T05:54:27+00:00",
+  "updated": "2026-06-23T06:37:12+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

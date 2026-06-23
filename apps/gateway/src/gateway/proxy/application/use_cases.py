@@ -313,6 +313,7 @@ def _fire_record_with_raw(
     quantity: Decimal | None = None,
     usage_source: str | None = None,
     provider_generation_id: str | None = None,
+    disconnect_estimate: bool = False,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
@@ -340,6 +341,8 @@ def _fire_record_with_raw(
         extras["usage_source"] = usage_source
     if provider_generation_id is not None:
         extras["provider_generation_id"] = provider_generation_id
+    if disconnect_estimate:
+        extras["disconnect_estimate"] = True
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -1529,6 +1532,18 @@ class CompletionUseCase:
                             "stream_client_disconnect",
                             extra={"model": model_id, "tenant_id": str(tenant_id)},
                         )
+                    # disconnect-provider-cost (v33): surface a RESIDUAL partial/no-frame
+                    # disconnect's estimate as unbilled-upstream so the drift monitor sees it
+                    # (never a silent $0). Stamp ONLY when there is NO generation id: the v30
+                    # recovery chain — inline AND the periodic sweep — keys exclusively on
+                    # provider_generation_id, so a no-gen-id row is NEVER a recovery candidate and
+                    # can never be double-counted. A row WITH a gen id is left for the chain (we
+                    # cannot tell the provider here when the recovery knob is off → _stream_provider
+                    # is None — so gating on provider would wrongly stamp OpenRouter rows the sweep
+                    # later recovers; gating on gen-id absence is the double-count-proof invariant).
+                    disconnect_estimate = (
+                        disconnect_source == "client_disconnect" and not disconnect_gen_id
+                    )
                     _fire_record_with_raw(
                         usage_recorder,
                         tenant_id=tenant_id,
@@ -1540,6 +1555,7 @@ class CompletionUseCase:
                         pii_masked=_stream_pii_masked,
                         usage_source=disconnect_source,
                         provider_generation_id=disconnect_gen_id,
+                        disconnect_estimate=disconnect_estimate,
                     )
                     # disconnect-provider-cost (v30 t5): "spawn the stop event to the
                     # provider" — deterministically close the upstream generator NOW so the

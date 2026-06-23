@@ -80,6 +80,22 @@ class CostBasisBreach:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class UnrecoveredDisconnect:
+    """A residual client-disconnect row that is billed $0 with no recovery (v33).
+
+    A `client_disconnect` row with `provider_cost IS NULL` and `cost_usd = 0` and no
+    `openrouter_recovered` sibling: the disconnect cost upstream money but we recorded a silent
+    $0 with no estimate (zero-token / no-frame) and no recovery path. The audit enumerates these
+    so an operator can investigate — the partial-token case is instead stamped at record time.
+    """
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    model_id: str
+    created_at: datetime
+
+
 def _money(value: object) -> Decimal:
     """Coerce a DB-returned numeric to Decimal without going through float."""
     return Decimal(str(value))
@@ -288,6 +304,65 @@ async def audit_cost_basis_breaches(
             id=uuid.UUID(str(row[0])),
             tenant_id=uuid.UUID(str(row[1])),
             provider_cost=_money(row[2]),
+            created_at=row[3],
+        )
+        for row in rows
+    )
+
+
+async def audit_unrecovered_disconnects(
+    session: AsyncSession,
+    window_from: datetime | None = None,
+    window_to: datetime | None = None,
+) -> tuple[UnrecoveredDisconnect, ...]:
+    """Surface residual silent-$0 client-disconnect rows: no estimate, no recovery (v33).
+
+    A `usage_source='client_disconnect'` row with `provider_cost IS NULL` and `cost_usd = 0` and
+    NO `openrouter_recovered` sibling on its generation id — the disconnect cost upstream money
+    but was recorded as a silent $0 with nothing to estimate (zero-token / no-frame) and no
+    out-of-band recovery. The partial-token case is stamped at record time, so what remains here
+    is the genuinely unrecoverable residue an operator should investigate. READ-ONLY: one
+    SELECT-only scan, ordered by `created_at`. The window is OPTIONAL (both bounds or neither);
+    half-open `[from, to)` when given. Raises ``ValueError`` on an inverted window.
+    """
+    clause = ""
+    params: dict[str, object] = {}
+    if window_from is not None and window_to is not None:
+        wf = _as_naive_utc(window_from)
+        wt = _as_naive_utc(window_to)
+        if wt < wf:
+            raise ValueError(
+                f"inverted reconciliation window: window_to {wt!r} < window_from {wf!r}"
+            )
+        clause = " AND u.created_at >= :from AND u.created_at < :to"
+        params = {"from": wf, "to": wt}
+    elif window_from is not None or window_to is not None:
+        raise ValueError(
+            "audit_unrecovered_disconnects: pass both window_from and window_to, or neither"
+        )
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT u.id, u.tenant_id, u.model_id, u.created_at"  # noqa: S608 (static clause, bound params)
+                " FROM usage_records u"
+                " WHERE u.usage_source = 'client_disconnect'"
+                "   AND u.provider_cost IS NULL AND u.cost_usd = 0"
+                "   AND NOT EXISTS ("
+                "         SELECT 1 FROM usage_records r"
+                "          WHERE r.provider_generation_id = u.provider_generation_id"
+                "            AND r.usage_source = 'openrouter_recovered')" + clause
+                + " ORDER BY u.created_at"
+            ),
+            params,
+        )
+    ).fetchall()
+
+    return tuple(
+        UnrecoveredDisconnect(
+            id=uuid.UUID(str(row[0])),
+            tenant_id=uuid.UUID(str(row[1])),
+            model_id=str(row[2]),
             created_at=row[3],
         )
         for row in rows
