@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 28
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 29
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -125,6 +125,11 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) when a contract grants a second exception to a core invariant, record the decision verbatim at the §3 freeze AND mirror it as an inline comment at the enforcing WHERE clause — so the relaxation is auditable from the code, not just the TASK (evidence: get_alerts docstring + §3 "Decided at freeze").  [folded foundation-version 29 · from alerts-events-viewer]
+- (SDD) exposing a previously-internal (Envoy-guarded, no-auth) operation as an authed external endpoint is a thin, safe move when the op is idempotent + delegates to the same use case — give it a SEPARATE response model so the internal contract stays byte-identical (don't extend the shared DTO). Evidence: CatalogSyncResponse vs SyncResponse.  [folded foundation-version 29 · from catalog-sync-trigger]
+- (SDD) mTLS behind a reverse proxy = an XFCC EDGE-TRUST model: the app can only be the verify-half (match the forwarded fingerprint); the cryptographic check + the anti-spoof strip live in Envoy. Capture this as the standard shape for any future operator/edge-authed surface — freeze the strip+path-restriction as a release requirement, keep the app fail-closed (evidence: this task's §3 trust boundary + Least-sure flag).  [folded foundation-version 29 · from operator-wide-reconciliation]
+- (SDD) read-after-write under a RESTART-TO-APPLY model must read the persisted store (merge over settings), NOT the live app.state (which is stale until restart) — and stay byte-identical when no row exists so the existing read contract is preserved (evidence: GET/PUT render merge_routing_config(settings, stored); routing-admin frozen blocks unchanged when no row).  [routing-config-write]  [folded foundation-version 29 · from routing-config-write]
+- (SDD) a "add X" task where X already EXISTS → ground re-scopes to the real adjacent gap (here: the SSO button existed; the gap was the domain field) BEFORE building the wrong thing — surface the re-scope to the human at ground/specify (evidence: this task's §0 RE-SCOPE FINDING).  [folded foundation-version 29 · from sso-login-button]
 - (SDD) mirroring an existing field end-to-end (v27 usage_source) is the cheapest safe way to add a ledger column — same extras seam, same NULL-encoding, same migration shape (evidence: byte-for-byte template).  [folded foundation-version 28 · from provider-generation-id-capture]
 
 - Active milestone → none yet (see `add.py status`); first slice: tenant signup →
@@ -318,6 +323,7 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+- (UDD) for a SMALL UI change, an AskUserQuestion `preview` (ASCII layout) served as the design-confirm — no full render-loop needed; the human picked the layout before build (evidence: Tin approved the /login layout preview 2026-06-22).  [folded foundation-version 29 · from sso-login-button]
 
 - Primary users & jobs: tenant **owner/admin** — provision org, issue/revoke keys,
   watch spend; tenant **developer** — call OpenAI-compatible API with a key;
@@ -430,6 +436,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-23 | fold all → foundation-version 29 (SDD 5 · UDD 1 · TDD 6 · ADD 9) | consolidate captured OBSERVE lessons into the versioned foundation | 21 lessons open→folded; +21 routed bullets; 28→29 |
 | 2026-06-22 | fold all → foundation-version 28 (SDD 1 · TDD 8 · ADD 8) | consolidate captured OBSERVE lessons into the versioned foundation | 17 lessons open→folded; +17 routed bullets; 27→28 |
 | 2026-06-18 | fold all → foundation-version 27 (TDD 5 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 9 lessons open→folded; +9 routed bullets; 26→27 |
 | 2026-06-18 | fold all → foundation-version 26 (TDD 4 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 8 lessons open→folded; +8 routed bullets; 25→26 |

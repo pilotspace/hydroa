@@ -284,14 +284,12 @@ Reviewed by: auto-resolved (autonomy:auto, non-security risk:medium) + sonnet re
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
+Watch (reuse scenarios as monitors): boot `routing_config_applied` vs `routing_config_apply_failed_fallback_env` log rate; migration parity in CI.
 
 ### Spec delta
-Forward changes for the next loop — each re-enters at Specify as the next task. One line
-each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
-the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+- [SPEC · open] expose `updated_at` on a future GET so the editor can show "last saved at" (evidence: the column exists but no read path surfaces it).  [routing-config-store]
 
 ### Competency deltas
-What did this loop teach the foundation? One line each, tagged by competency
-(`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [ADD · folded] a NEW alembic migration's `down_revision` must chain to the ACTUAL current head (`alembic heads`), NOT the head an older recon/TASK doc named — a stale parent creates a second head so `alembic upgrade head` is ambiguous and EVERY migration-parity test fails at once (evidence: routing_config first chained to f4a9b3c7e8d2; real head was d1e2f3a4b5c6; 5/6 migration tests red until re-pointed).  [routing-config-store] [folded foundation-version 29]
+- [ADD · folded] adding a DB table trips TWO shared schema manifests — `tests/migrations/test_migrations.py:EXPECTED_TABLES` AND the `tests/guardrails` table allowlist — both are SANCTIONED-EDIT manifests: update both with a disposition note, don't treat the failure as a real regression (evidence: routing_config added to both).  [routing-config-store] [folded foundation-version 29]
+- [ADD · folded] in a lifespan boot-apply that swaps app.state, BUILD the new object (router) FIRST and assign app.state.settings + app.state.model_router together only on success — so a build failure caught by the fallback can't leave settings/router out of sync (evidence: refute-read F1 → reorder + regression test).  [routing-config-store] [folded foundation-version 29]

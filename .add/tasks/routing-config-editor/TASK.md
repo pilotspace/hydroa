@@ -218,14 +218,12 @@ Reviewed by: auto-resolved (autonomy:auto, UI task no security surface) + sonnet
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
+Watch (reuse scenarios as monitors): editor Save success vs 422 rate; whether operators discover "applies on restart".
 
 ### Spec delta
-Forward changes for the next loop — each re-enters at Specify as the next task. One line
-each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
-the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+- [SPEC · open] add per-deployment validation hints in the editor (e.g. weight must be > 0) so an empty/zero weight is caught client-side before the 422 round-trip (evidence: refute F2 — empty weight sends 0 → backend 422; surfacing the validator code helps but client-side guard is better UX).  [routing-config-editor]
+- [SPEC · open] a "restart now / pending-restart" affordance or banner once a config is saved-but-not-yet-applied, so operators know a restart is required to take effect (evidence: restart-to-apply is easy to forget after Save).  [routing-config-editor]
 
 ### Competency deltas
-What did this loop teach the foundation? One line each, tagged by competency
-(`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [ADD · folded] delegating a UI build to a subagent is fine under auto, but INDEPENDENTLY re-verify its claims — re-run the suite with the REAL test binary (npx shim prints fake green here), read the diff, and run a refute-read — don't trust the subagent's reported counts (evidence: re-ran node_modules/.bin/vitest → confirmed 6/384; refute-read then surfaced 2 real fixes).  [routing-config-editor] [folded foundation-version 29]
+- [TDD · folded] a role-gated UI control's "member sees nothing" test is only meaningful when the gate is fail-closed by construction (canEdit defaults false via optional chaining) — assert absence with queryBy*/toBeNull, and note the gate can never render for the wrong role regardless of async ordering (evidence: test_member_no_editor + canEdit default-false refutes the "flash" concern).  [routing-config-editor] [folded foundation-version 29]

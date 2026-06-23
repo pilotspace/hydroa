@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "routing-config-editor",
-  "active_milestone": "v32",
+  "active_task": null,
+  "active_milestone": null,
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -162,77 +162,6 @@
         ],
         "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
       }
-    },
-    "routing-config-write": {
-      "title": "Routing config write \u2014 editable model-groups / strategy / deployment limits + /routing editor",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v32",
-      "depends_on": [],
-      "created": "2026-06-22T18:12:41+00:00",
-      "updated": "2026-06-23T03:22:49+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "9eb97ca963c2099b889b280aeb0b6b60",
-        "tests": {
-          "apps/gateway/tests/routing_config_write/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/routing_config_write/conftest.py": "b588f9eb836248c7e36142c1b195ed82",
-          "apps/gateway/tests/routing_config_write/test_routing_config_write.py": "6922cb45538e801a4d4884ee165ccd0b"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/proxy/api/routing_admin_router.py",
-          "apps/gateway/src/gateway/core/error_catalog.py"
-        ],
-        "snapshot_md5": "6c0710124f9717708449d27e20deb840"
-      }
-    },
-    "routing-config-store": {
-      "title": "Routing config store \u2014 persist routing config + boot-merge over Settings (DB-wins, env fallback)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v32",
-      "depends_on": [],
-      "created": "2026-06-23T02:09:14+00:00",
-      "updated": "2026-06-23T02:47:56+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "ecd90a49309b3ca05ac5118b185e738c",
-        "tests": {
-          "apps/gateway/tests/routing_config_store/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/routing_config_store/test_routing_config_store.py": "df47ede3e8e77c87b52c093aeb909176"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/proxy/",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/src/gateway/main.py"
-        ],
-        "snapshot_md5": "1150bdd26346d29621af011e3ff5a2db"
-      }
-    },
-    "routing-config-editor": {
-      "title": "Routing config editor \u2014 dashboard /routing edit forms (applies on restart)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v32",
-      "depends_on": [],
-      "created": "2026-06-23T03:23:54+00:00",
-      "updated": "2026-06-23T03:39:37+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "78a07a07e2d30a8544eae3977dcfc737",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/routing/RoutingEditor.tsx",
-          "apps/dashboard/components/routing/RoutingPage.tsx"
-        ],
-        "snapshot_md5": "2fa8f2b227800586d410155da67c0277"
-      }
     }
   },
   "milestones": {
@@ -243,18 +172,10 @@
       "status": "done",
       "created": "2026-06-22T09:31:42+00:00",
       "updated": "2026-06-23T02:00:14+00:00"
-    },
-    "v32": {
-      "title": "Writable routing configuration",
-      "goal": "an owner edits model-groups, routing strategy, and per-deployment limits from the dashboard and the changes persist (apply on restart)",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-23T01:59:32+00:00",
-      "updated": "2026-06-23T03:40:49+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T03:40:49+00:00",
+  "updated": "2026-06-23T03:46:59+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -642,6 +563,17 @@
         "openrouter-recovery-sweep"
       ],
       "archived": "2026-06-22"
+    },
+    {
+      "slug": "v32",
+      "title": "Writable routing configuration",
+      "tasks": 3,
+      "task_slugs": [
+        "routing-config-write",
+        "routing-config-store",
+        "routing-config-editor"
+      ],
+      "archived": "2026-06-23"
     }
   ]
 }

@@ -255,14 +255,14 @@ Reviewed by: Tin (security authz HARD-STOP, AskUserQuestion 2026-06-23) + auto-r
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
+Watch (reuse scenarios as monitors): 422 ERR_ROUTING_CONFIG_INVALID rate by validator code; PUT /admin/routing volume (no rate-limit yet).
 
 ### Spec delta
-Forward changes for the next loop — each re-enters at Specify as the next task. One line
-each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
-the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+- [SPEC · open] add a rate-limit/debounce on PUT /admin/routing — any owner/admin can repeatedly rewrite operator-wide config (evidence: same accepted-risk shape as catalog-sync-trigger).  [routing-config-write]
+- [SPEC · open] expose the global retry/cooldown/loadbal scalar knobs in the editor too (GET already returns retry_policy+cooldown; PUT accepts the knobs) — this task wired strategy + deployments only (evidence: milestone named those three; the rest are additive).  [routing-config-write]
+- [SPEC · open] when there IS no operator role, consider a future operator/platform role so operator-wide routing write is not tenant-owner-scoped (evidence: Tin accepted owner/admin always-on for single-operator deployments; a multi-operator tenancy would want a higher bar).  [routing-config-write]
 
 ### Competency deltas
-What did this loop teach the foundation? One line each, tagged by competency
-(`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [SDD · folded] read-after-write under a RESTART-TO-APPLY model must read the persisted store (merge over settings), NOT the live app.state (which is stale until restart) — and stay byte-identical when no row exists so the existing read contract is preserved (evidence: GET/PUT render merge_routing_config(settings, stored); routing-admin frozen blocks unchanged when no row).  [routing-config-write] [folded foundation-version 29]
+- [ADD · folded] a refute-read BLOCK verdict can OVER-claim — evaluate each finding on its merits (F1 "member flash" was actually fail-closed-correct; F3 "re-seed" was by-design per the refetch contract), FIX the real ones (surface the validator `detail`), and REFUTE the false ones with reasoning; never just accept the headline verdict (evidence: editor refute BLOCK 0.82 → 2 fixed, 2 refuted, green earned).  [routing-config-write] [folded foundation-version 29]
+- [ADD · folded] a privileged WRITE endpoint is a security contract freeze even when it reuses an existing auth dep — surface the authz model (who, always-on vs flag vs ops-boundary) to the human as a HARD-STOP before building, because the role SCOPE (tenant-owner vs operator) materially changes the blast radius (evidence: PUT /admin/routing authz → AskUserQuestion → Tin chose owner/admin always-on).  [routing-config-write] [folded foundation-version 29]
