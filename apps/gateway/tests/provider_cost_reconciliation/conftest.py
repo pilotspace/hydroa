@@ -109,6 +109,7 @@ class FakeSession:
                         if self.cached_input_price is not None
                         else None,
                         str(self.reasoning_price) if self.reasoning_price is not None else None,
+                        None,  # cache_creation_usd_per_token (prompt-cache-passthrough §3)
                     )
                 )
             )

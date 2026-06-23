@@ -302,6 +302,14 @@ class Settings(BaseSettings):
     # (byte-identical: the first candidate only, no stream fallover). Once a byte reaches the
     # client the stream is committed — no replay. The retry seam stays complete()-only.
     upstream_stream_resilience_enabled: bool = Field(default=False)
+    # GATEWAY_ANTHROPIC_AUTO_CACHE — when True (default), the Anthropic adapter
+    # auto-injects cache_control:{type:"ephemeral"} on the stable prefix (system block +
+    # last tool definition) when the client has NOT supplied any cache_control markers.
+    # A model below Anthropic's min cacheable length simply won't cache (no error).
+    # Set False to opt out (byte-identical request; no cache breakpoints added).
+    # prompt-cache-passthrough TASK.md §3 (knob frozen default-ON, Tin 2026-06-23).
+    anthropic_auto_cache: bool = Field(default=True)
+
     # GATEWAY_OPENROUTER_USAGE_ACCOUNTING — when True, the OpenRouter upstream injects
     # usage={"include": true} into the outbound request so OpenRouter returns its own
     # reported cost, which the recorder then bills on (cost_basis="provider"). Default

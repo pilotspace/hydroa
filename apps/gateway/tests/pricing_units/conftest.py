@@ -100,6 +100,7 @@ class FakeSession:
                         # leaving per-unit pricing-units assertions byte-identical).
                         None,  # cached_input_usd_per_token
                         None,  # reasoning_usd_per_token
+                        None,  # cache_creation_usd_per_token (prompt-cache-passthrough §3)
                     )
                 )
             )

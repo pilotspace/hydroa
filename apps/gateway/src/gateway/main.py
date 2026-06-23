@@ -562,6 +562,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         backoff_base=settings.upstream_retry_backoff_base_s,
         retry_deadline_s=settings.upstream_retry_deadline_s,
         metrics_registry=app.state.metrics_registry,
+        auto_cache=settings.anthropic_auto_cache,
     )
 
     # Google (Gemini) adapter — UNCONDITIONAL (credential resolved per-request from contextvar).

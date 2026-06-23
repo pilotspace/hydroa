@@ -51,10 +51,13 @@ class FakeResult:
 
 class FakeSession:
     """In-memory async session intercepting `_fetch_latest_pricing` +
-    `_fetch_markup_pct`. Returns a 7-value pricing row:
+    `_fetch_markup_pct`. Returns an 8-value pricing row:
 
       (id, prompt_price, completion_price, pricing_unit, unit_usd_per_unit,
-       cached_input_price, reasoning_price)
+       cached_input_price, reasoning_price, cache_creation_price)
+
+    cache_creation_price (prompt-cache-passthrough TASK.md §3): added at position [7];
+    existing callers that don't set it get None (→ prompt-rate fallback, byte-identical).
     """
 
     def __init__(
@@ -67,6 +70,7 @@ class FakeSession:
         unit_usd_per_unit: Decimal | None = None,
         cached_input_price: Decimal | None = None,
         reasoning_price: Decimal | None = None,
+        cache_creation_price: Decimal | None = None,
         markup_pct: Decimal = Decimal("0"),
         has_pricing: bool = True,
     ) -> None:
@@ -77,6 +81,7 @@ class FakeSession:
         self.unit_usd_per_unit = unit_usd_per_unit
         self.cached_input_price = cached_input_price
         self.reasoning_price = reasoning_price
+        self.cache_creation_price = cache_creation_price
         self.markup_pct = markup_pct
         self.has_pricing = has_pricing
 
@@ -97,6 +102,9 @@ class FakeSession:
                         if self.cached_input_price is not None
                         else None,
                         str(self.reasoning_price) if self.reasoning_price is not None else None,
+                        str(self.cache_creation_price)
+                        if self.cache_creation_price is not None
+                        else None,
                     )
                 )
             )

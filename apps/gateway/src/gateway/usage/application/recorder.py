@@ -154,6 +154,7 @@ class RecordingUsageRecorder:
         completion_tokens = 0
         cached_tokens = 0
         reasoning_tokens = 0
+        cache_creation_tokens = 0
         cost_usd = _ZERO
         pricing_snapshot_id: str = ""
         resolved_pricing_unit = "per_token"
@@ -181,6 +182,7 @@ class RecordingUsageRecorder:
                     unit_usd_per_unit,
                     cached_input_price,
                     reasoning_price,
+                    cache_creation_price,
                 ) = pricing
                 pricing_snapshot_id = str(snap_id)
 
@@ -204,6 +206,10 @@ class RecordingUsageRecorder:
                         reasoning_tokens = _safe_tier(
                             usage, "completion_tokens_details", "reasoning_tokens"
                         )
+                        # prompt-cache-passthrough (TASK.md §3): read Anthropic cache-write count.
+                        cache_creation_tokens = _safe_tier(
+                            usage, "prompt_tokens_details", "cache_creation_tokens"
+                        )
                     # provider-cost-reconciliation: PREFER the upstream-reported cost when
                     # present; otherwise the UNCHANGED catalog path (byte-identical floor).
                     provider_cost = _safe_provider_cost(usage)
@@ -218,10 +224,12 @@ class RecordingUsageRecorder:
                             completion_tokens=completion_tokens,
                             cached_tokens=cached_tokens,
                             reasoning_tokens=reasoning_tokens,
+                            cache_creation_tokens=cache_creation_tokens,
                             prompt_price=prompt_price,
                             completion_price=completion_price,
                             cached_price=cached_input_price,
                             reasoning_price=reasoning_price,
+                            cache_creation_price=cache_creation_price,
                             markup_pct=markup_pct,
                             model=model,
                         )
@@ -333,6 +341,8 @@ class RecordingUsageRecorder:
             # tiered-token-billing: per-tier token counts (TASK.md §3)
             "cached_tokens": str(cached_tokens),
             "reasoning_tokens": str(reasoning_tokens),
+            # prompt-cache-passthrough (TASK.md §3): Anthropic cache-write token count.
+            "cache_creation_tokens": str(cache_creation_tokens),
             # provider-cost-reconciliation: billed basis + raw upstream cost (TASK.md §3)
             # provider_cost "" encodes NULL (catalog rows carry no upstream cost).
             "cost_basis": cost_basis,
@@ -421,6 +431,7 @@ class RecordingUsageRecorder:
                 "quantity": "",
                 "cached_tokens": "0",
                 "reasoning_tokens": "0",
+                "cache_creation_tokens": "0",
                 "cost_basis": "provider",
                 "provider_cost": str(provider_cost),
                 "usage_source": usage_source,
@@ -515,22 +526,27 @@ def compute_per_token_cost_usd(
     completion_tokens: int,
     cached_tokens: int,
     reasoning_tokens: int,
+    cache_creation_tokens: int = 0,
     prompt_price: Decimal,
     completion_price: Decimal,
     cached_price: Decimal | None,
     reasoning_price: Decimal | None,
+    cache_creation_price: Decimal | None = None,
     markup_pct: Decimal,
     model: str = "",
 ) -> Decimal:
-    """Per-tier token cost (tiered-token-billing TASK.md §3).
+    """Per-tier token cost (tiered-token-billing TASK.md §3 + prompt-cache-passthrough §3).
 
-    When both tier counts are 0 the FLAT path runs the exact v6 expression verbatim
-    (byte-identical). Otherwise the tiered expression splits fresh/cached input and
-    fresh/reasoning output; a NULL tier price falls back to its base price; fresh
-    counts clamp to max(0, …) so cost is never negative (logs "tier_token_clamped").
+    When all tier counts are 0 the FLAT path runs the exact v6 expression verbatim
+    (byte-identical). Otherwise the tiered expression splits fresh/cached/cache_creation
+    input and fresh/reasoning output; a NULL tier price falls back to its base price;
+    fresh counts clamp to max(0, …) so cost is never negative (logs "tier_token_clamped").
+
+    cache_creation_tokens: Anthropic cache-write tokens (billed at cache_creation_price or
+    prompt_price when cache_creation_price is NULL — no regression).
     """
     markup = Decimal("1") + Decimal(str(markup_pct)) / Decimal("100")
-    if cached_tokens == 0 and reasoning_tokens == 0:
+    if cached_tokens == 0 and reasoning_tokens == 0 and cache_creation_tokens == 0:
         # FLAT PATH — verbatim v6 operand order; byte-identical to the pre-tier code.
         return (
             Decimal(str(prompt_tokens)) * Decimal(str(prompt_price))
@@ -538,7 +554,7 @@ def compute_per_token_cost_usd(
         ) * markup
 
     # TIERED PATH
-    fresh_in = prompt_tokens - cached_tokens
+    fresh_in = prompt_tokens - cached_tokens - cache_creation_tokens
     fresh_out = completion_tokens - reasoning_tokens
     if fresh_in < 0 or fresh_out < 0:
         _log.warning(
@@ -547,6 +563,7 @@ def compute_per_token_cost_usd(
                 "model": model,
                 "prompt_tokens": prompt_tokens,
                 "cached_tokens": cached_tokens,
+                "cache_creation_tokens": cache_creation_tokens,
                 "completion_tokens": completion_tokens,
                 "reasoning_tokens": reasoning_tokens,
             },
@@ -559,9 +576,16 @@ def compute_per_token_cost_usd(
         if reasoning_price is not None
         else Decimal(str(completion_price))
     )
+    # cache_creation_price NULL → fall back to prompt_price (no billing regression).
+    ccprice = (
+        Decimal(str(cache_creation_price))
+        if cache_creation_price is not None
+        else Decimal(str(prompt_price))
+    )
     return (
         Decimal(str(fresh_in)) * Decimal(str(prompt_price))
         + Decimal(str(cached_tokens)) * cprice
+        + Decimal(str(cache_creation_tokens)) * ccprice
         + Decimal(str(fresh_out)) * Decimal(str(completion_price))
         + Decimal(str(reasoning_tokens)) * rprice
     ) * markup
@@ -570,24 +594,39 @@ def compute_per_token_cost_usd(
 async def _fetch_latest_pricing(
     session: AsyncSession,
     model_id: str,
-) -> tuple[uuid.UUID, Decimal, Decimal, str, Decimal | None, Decimal | None, Decimal | None] | None:
+) -> (
+    tuple[
+        uuid.UUID,
+        Decimal,
+        Decimal,
+        str,
+        Decimal | None,
+        Decimal | None,
+        Decimal | None,
+        Decimal | None,
+    ]
+    | None
+):
     """Return (snapshot_id, prompt_price, completion_price, pricing_unit,
-    unit_usd_per_unit, cached_input_price, reasoning_price).
+    unit_usd_per_unit, cached_input_price, reasoning_price, cache_creation_price).
 
     Returns None if no pricing snapshot found for the model.
 
     Additive extensions:
-      pricing_unit      — discriminator; defaults to 'per_token' for old rows. (pricing-units)
-      unit_usd_per_unit — per-unit price for non-token rows; NULL otherwise. (pricing-units)
+      pricing_unit           — discriminator; defaults to 'per_token' for old rows. (pricing-units)
+      unit_usd_per_unit      — per-unit price for non-token rows; NULL otherwise. (pricing-units)
       cached_input_price / reasoning_price — per-tier prices; NULL → base-price
-                          fallback. (tiered-token-billing)
+                              fallback. (tiered-token-billing)
+      cache_creation_price   — Anthropic ~1.25x write premium; NULL -> prompt-rate
+                              fallback (no regression). (prompt-cache-passthrough)
     """
     row = (
         await session.execute(
             text(
                 "SELECT id, prompt_usd_per_token, completion_usd_per_token,"
                 " pricing_unit, unit_usd_per_unit,"
-                " cached_input_usd_per_token, reasoning_usd_per_token"
+                " cached_input_usd_per_token, reasoning_usd_per_token,"
+                " cache_creation_usd_per_token"
                 " FROM pricing_snapshots"
                 " WHERE model_id = :model_id"
                 " ORDER BY captured_at DESC"
@@ -601,6 +640,7 @@ async def _fetch_latest_pricing(
     unit_usd: Decimal | None = Decimal(str(row[4])) if row[4] is not None else None
     cached_price: Decimal | None = Decimal(str(row[5])) if row[5] is not None else None
     reasoning_price: Decimal | None = Decimal(str(row[6])) if row[6] is not None else None
+    cache_creation_price: Decimal | None = Decimal(str(row[7])) if row[7] is not None else None
     return (
         uuid.UUID(str(row[0])),
         Decimal(str(row[1])),
@@ -609,6 +649,7 @@ async def _fetch_latest_pricing(
         unit_usd,
         cached_price,
         reasoning_price,
+        cache_creation_price,
     )
 
 

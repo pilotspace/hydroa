@@ -22,6 +22,7 @@ Security:
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import AsyncIterator, Iterable, Iterator
 from typing import TYPE_CHECKING, Any
@@ -45,9 +46,86 @@ from gateway.proxy.domain.tool_translation import (
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
+logger = logging.getLogger(__name__)
+
 # v11 JSON-mode: instruction appended to the system prompt for response_format
 # json_object (free-form JSON, no schema to force a tool with).
 _JSON_OBJECT_INSTRUCTION = "You must respond with a single valid JSON object and nothing else."
+
+# ---------------------------------------------------------------------------
+# D1 reasoning budget constants (FROZEN @ reasoning-passthrough CONTRACT v1)
+# ---------------------------------------------------------------------------
+
+# ratio = {low: 0.2, medium: 0.5, high: 0.8}[effort]
+# raw   = round((requested max_tokens OR default_max_tokens) * ratio)
+# Anthropic budget_tokens = clamp(raw, 1024, 128000)
+_REASONING_EFFORT_RATIO: dict[str, float] = {"low": 0.2, "medium": 0.5, "high": 0.8}
+_ANTHROPIC_BUDGET_MIN = 1024
+_ANTHROPIC_BUDGET_MAX = 128000
+
+
+def _extract_reasoning_effort(payload: dict[str, Any]) -> str | None:
+    """Extract the OpenAI-wire reasoning effort string from the payload.
+
+    Accepts both top-level ``reasoning_effort`` (str) and nested
+    ``reasoning.effort`` (str).  Returns None when absent, malformed, or
+    the value is not in {low, medium, high} (fail-safe — callers log WARN).
+
+    Fail-safe: malformed inputs log WARN and return None — never raise.
+    """
+    # 1. Top-level reasoning_effort (str)
+    top_level = payload.get("reasoning_effort")
+    if top_level is not None:
+        if not isinstance(top_level, str):
+            logger.warning(
+                "reasoning_field_malformed",
+                extra={"field": "reasoning_effort", "value": repr(top_level)},
+            )
+            return None
+        effort = top_level
+        if effort not in _REASONING_EFFORT_RATIO:
+            logger.warning(
+                "reasoning_effort_unrecognized",
+                extra={"effort": effort},
+            )
+            return None
+        return effort
+
+    # 2. Nested reasoning.effort (dict with str effort)
+    nested = payload.get("reasoning")
+    if nested is not None:
+        if not isinstance(nested, dict):
+            logger.warning(
+                "reasoning_field_malformed",
+                extra={"field": "reasoning", "value": repr(nested)},
+            )
+            return None
+        effort_val = nested.get("effort")
+        if effort_val is None:
+            return None
+        if not isinstance(effort_val, str):
+            logger.warning(
+                "reasoning_field_malformed",
+                extra={"field": "reasoning.effort", "value": repr(effort_val)},
+            )
+            return None
+        if effort_val not in _REASONING_EFFORT_RATIO:
+            logger.warning(
+                "reasoning_effort_unrecognized",
+                extra={"effort": effort_val},
+            )
+            return None
+        return effort_val
+
+    return None
+
+
+def _compute_anthropic_budget(effort: str, max_tokens: int) -> int:
+    """Compute Anthropic budget_tokens using the D1 ratio formula (FROZEN)."""
+    ratio = _REASONING_EFFORT_RATIO[effort]
+    raw = round(max_tokens * ratio)
+    return max(_ANTHROPIC_BUDGET_MIN, min(_ANTHROPIC_BUDGET_MAX, raw))
+
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -78,6 +156,63 @@ def _tools_to_anthropic(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         entry["input_schema"] = fn.get("parameters", {})
         out.append(entry)
     return out
+
+
+def _has_client_cache_control(messages: list[dict[str, Any]]) -> bool:
+    """Return True if ANY message content part carries a ``cache_control`` key.
+
+    Detects the OpenRouter convention: cache_control on a content-array part.
+    Used to decide whether to suppress auto-inject (client intent respected).
+    """
+    for msg in messages:
+        content = msg.get("content")
+        if isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and "cache_control" in part:
+                    return True
+    return False
+
+
+def _is_valid_cache_control(cc: Any) -> bool:
+    """Return True iff cc is a dict with a string ``type`` key.
+
+    Anthropic supports {type:"ephemeral"} and may add more types; we validate
+    that the shape is a dict with at least a string type field (forward-compatible).
+    """
+    return isinstance(cc, dict) and isinstance(cc.get("type"), str)
+
+
+def _auto_inject_cache_control(result: dict[str, Any]) -> None:
+    """Inject cache_control:{type:"ephemeral"} on system block + last tool (≤4 breakpoints).
+
+    Mutates *result* in-place:
+    - If ``system`` is a string → converted to a list of one text block with cache_control.
+    - Last tool in ``tools`` list → gets cache_control:{type:"ephemeral"} added.
+    Anthropic allows ≤4 cache breakpoints; this helper uses at most 2.
+    """
+    injected = 0
+
+    # System block: convert to list form and add cache_control
+    if "system" in result:
+        sys_val = result["system"]
+        if isinstance(sys_val, str):
+            result["system"] = [
+                {"type": "text", "text": sys_val, "cache_control": {"type": "ephemeral"}}
+            ]
+        elif isinstance(sys_val, list) and sys_val:
+            # Already in list form (from a passthrough path) — add to last block
+            last = sys_val[-1]
+            if isinstance(last, dict) and "cache_control" not in last:
+                sys_val[-1] = {**last, "cache_control": {"type": "ephemeral"}}
+        injected += 1
+
+    # Last tool definition
+    tools = result.get("tools", [])
+    if tools and injected < 4:
+        last_tool = tools[-1]
+        if isinstance(last_tool, dict) and "cache_control" not in last_tool:
+            tools[-1] = {**last_tool, "cache_control": {"type": "ephemeral"}}
+        injected += 1
 
 
 def _tool_choice_to_anthropic(choice: Any) -> dict[str, Any] | None:
@@ -126,6 +261,7 @@ def _openai_to_anthropic_request(
     payload: dict[str, Any],
     *,
     default_max_tokens: int,
+    auto_cache: bool = False,
 ) -> dict[str, Any]:
     """Translate an OpenAI chat-completions request body → Anthropic Messages body.
 
@@ -144,12 +280,27 @@ def _openai_to_anthropic_request(
     - ``model`` passes through verbatim.
     - ``stream`` is NOT included by this helper; the caller adds it when needed.
 
+    Cache control (prompt-cache-passthrough TASK.md §3):
+    - PASS-THROUGH: if any content part carries ``cache_control``, forward it verbatim
+      to the Anthropic block and suppress auto-inject (client intent respected).
+      Malformed ``cache_control`` (not a dict with a string ``type``) → drop + WARN.
+    - AUTO-INJECT (auto_cache=True AND no client cc): inject ephemeral breakpoint on
+      the system block + last tool. When there is nothing to anchor → no-op + DEBUG.
+    - auto_cache=False AND no client cc → byte-identical output (no new keys).
+
     Raises ValueError("tool_call_id_required") when a ``role:"tool"`` message lacks
     ``tool_call_id`` (no correlation id for the tool_result block).
     """
     messages: list[dict[str, Any]] = payload.get("messages", [])
 
+    # Detect whether the client supplied any cache_control markers (before we translate)
+    client_has_cc = _has_client_cache_control(messages)
+
     system_parts: list[str] = []
+    # system_blocks tracks blocks with potential cache_control (only populated when a
+    # system message uses list-content form so we can preserve the block structure).
+    system_blocks: list[dict[str, Any]] = []
+    system_has_cc = False
     non_system: list[dict[str, Any]] = []
     i = 0
     n = len(messages)
@@ -157,7 +308,32 @@ def _openai_to_anthropic_request(
         msg = messages[i]
         role = msg.get("role")
         if role == "system":
-            system_parts.append(str(msg.get("content", "")))
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    text = str(part.get("text", ""))
+                    system_parts.append(text)
+                    cc = part.get("cache_control")
+                    if cc is not None:
+                        if _is_valid_cache_control(cc):
+                            system_blocks.append(
+                                {"type": "text", "text": text, "cache_control": cc}
+                            )
+                            system_has_cc = True
+                        else:
+                            logger.warning(
+                                "cache_control_malformed",
+                                extra={"cache_control": repr(cc), "role": "system"},
+                            )
+                            system_blocks.append({"type": "text", "text": text})
+                    else:
+                        system_blocks.append({"type": "text", "text": text})
+            else:
+                text = str(content)
+                system_parts.append(text)
+                system_blocks.append({"type": "text", "text": text})
             i += 1
         elif role == "tool":
             # Collapse a run of consecutive tool messages into ONE user message.
@@ -182,17 +358,58 @@ def _openai_to_anthropic_request(
             )
             i += 1
         else:
-            non_system.append({"role": role, "content": msg.get("content", "")})
+            # Non-system, non-tool message: check for content-array form with cache_control
+            content = msg.get("content")
+            if isinstance(content, list):
+                blocks: list[dict[str, Any]] = []
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    block: dict[str, Any] = {"type": "text", "text": str(part.get("text", ""))}
+                    cc = part.get("cache_control")
+                    if cc is not None:
+                        if _is_valid_cache_control(cc):
+                            block["cache_control"] = cc
+                        else:
+                            logger.warning(
+                                "cache_control_malformed",
+                                extra={"cache_control": repr(cc), "role": role},
+                            )
+                    blocks.append(block)
+                non_system.append({"role": role, "content": blocks})
+            else:
+                non_system.append({"role": role, "content": content or ""})
             i += 1
+
+    # D1/D2 reasoning: resolve effort → budget_tokens → bump max_tokens (FROZEN CONTRACT v1)
+    _mt_raw = payload.get("max_tokens", default_max_tokens)
+    base_max_tokens: int = int(_mt_raw) if _mt_raw is not None else default_max_tokens
+    effort = _extract_reasoning_effort(payload)
+    if effort is not None:
+        budget_tokens = _compute_anthropic_budget(effort, base_max_tokens)
+        # D2: bump max_tokens so the answer keeps its full room above the thinking budget
+        effective_max_tokens = budget_tokens + base_max_tokens
+        thinking_block: dict[str, Any] = {"type": "enabled", "budget_tokens": budget_tokens}
+    else:
+        effective_max_tokens = base_max_tokens
+        thinking_block = {}
 
     result: dict[str, Any] = {
         "model": payload["model"],
         "messages": non_system,
-        "max_tokens": payload.get("max_tokens", default_max_tokens),
+        "max_tokens": effective_max_tokens,
     }
 
+    if thinking_block:
+        result["thinking"] = thinking_block
+
     if system_parts:
-        result["system"] = "\n\n".join(system_parts)
+        # Use block form when the client explicitly set cache_control on a system part;
+        # otherwise use plain string form (byte-identical to the pre-cache code path).
+        if system_has_cc:
+            result["system"] = system_blocks
+        else:
+            result["system"] = "\n\n".join(system_parts)
 
     if "temperature" in payload:
         result["temperature"] = payload["temperature"]
@@ -230,11 +447,36 @@ def _openai_to_anthropic_request(
                 result["tool_choice"] = forced
         else:  # json_object
             existing_system = result.get("system", "")
-            result["system"] = (
-                f"{existing_system}\n\n{_JSON_OBJECT_INSTRUCTION}".strip()
-                if existing_system
-                else _JSON_OBJECT_INSTRUCTION
-            )
+            # json_object may run after cache injection → preserve block form if present
+            if isinstance(existing_system, list):
+                result["system"] = [
+                    *existing_system,
+                    {"type": "text", "text": _JSON_OBJECT_INSTRUCTION},
+                ]
+            else:
+                result["system"] = (
+                    f"{existing_system}\n\n{_JSON_OBJECT_INSTRUCTION}".strip()
+                    if existing_system
+                    else _JSON_OBJECT_INSTRUCTION
+                )
+
+    # prompt-cache-passthrough (TASK.md §3): cache injection runs AFTER response_format
+    # processing so the final tools list is complete (json_schema appends a coercion tool).
+    # Anchors are ONLY caller-supplied system/tools: the synthetic json_object system
+    # instruction is NOT a stable prefix worth caching; likewise a json_schema coercion
+    # tool is transient. We therefore check against what the ORIGINAL payload carried:
+    #   - original_has_system: at least one system message (system_parts populated)
+    #   - original_tools: caller's own tools (not the coercion tool)
+    # The coercion tool IS included in inject (it's in result["tools"] already) because
+    # it acts as a stable function definition alongside real tools; the json_object system
+    # instruction is EXCLUDED (it's pure synthetic glue, not a stable prompt prefix).
+    original_has_system = bool(system_parts)
+    original_has_tools = bool(payload.get("tools"))
+    if auto_cache and not client_has_cc:
+        if original_has_system or original_has_tools:
+            _auto_inject_cache_control(result)
+        else:
+            logger.debug("cache_nothing_to_anchor", extra={"model": payload.get("model", "")})
 
     return result
 
@@ -290,7 +532,12 @@ def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
         )
 
     usage_raw: dict[str, Any] = body.get("usage", {})
-    prompt_tokens: int = usage_raw.get("input_tokens", 0)
+    input_tokens: int = usage_raw.get("input_tokens", 0)
+    # prompt-cache-passthrough (TASK.md §3): surface Anthropic cache token counts.
+    cache_read: int = usage_raw.get("cache_read_input_tokens", 0)
+    cache_creation: int = usage_raw.get("cache_creation_input_tokens", 0)
+    # Total prompt_tokens = fresh input + cache_read + cache_creation
+    prompt_tokens: int = input_tokens + cache_read + cache_creation
     completion_tokens: int = usage_raw.get("output_tokens", 0)
 
     # JSON-mode content wins; else text; else null when only (real) tool calls; else "".
@@ -312,6 +559,18 @@ def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
         else _map_finish_reason(body.get("stop_reason"))
     )
 
+    usage_out: dict[str, Any] = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+    # Only emit prompt_tokens_details when there are cache tokens to surface.
+    if cache_read > 0 or cache_creation > 0:
+        usage_out["prompt_tokens_details"] = {
+            "cached_tokens": cache_read,
+            "cache_creation_tokens": cache_creation,
+        }
+
     return {
         "id": body.get("id", ""),
         "object": "chat.completion",
@@ -324,11 +583,7 @@ def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
                 "finish_reason": finish_reason,
             }
         ],
-        "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        },
+        "usage": usage_out,
     }
 
 
@@ -393,6 +648,9 @@ class _AnthropicSSEStepper:
         # block is excluded from block_to_tc and the terminal finish_reason is "stop".
         self._coercion_block_index: int | None = None
         self._saw_coercion: bool = False
+        # prompt-cache-passthrough (TASK.md §3): cache token counts from message_start.usage
+        self._cached_tokens: int = 0
+        self._cache_creation_tokens: int = 0
 
     def _make_chunk(self, delta: dict[str, Any], fr: str | None) -> dict[str, Any]:
         return {
@@ -411,11 +669,18 @@ class _AnthropicSSEStepper:
 
     def _emit_terminal(self) -> Iterator[bytes]:
         terminal_chunk: dict[str, Any] = self._make_chunk({}, self._finish_reason)
-        terminal_chunk["usage"] = {
+        usage_out: dict[str, Any] = {
             "prompt_tokens": self._prompt_tokens,
             "completion_tokens": self._completion_tokens,
             "total_tokens": self._prompt_tokens + self._completion_tokens,
         }
+        # prompt-cache-passthrough (TASK.md §3): emit cache token details when present.
+        if self._cached_tokens > 0 or self._cache_creation_tokens > 0:
+            usage_out["prompt_tokens_details"] = {
+                "cached_tokens": self._cached_tokens,
+                "cache_creation_tokens": self._cache_creation_tokens,
+            }
+        terminal_chunk["usage"] = usage_out
         yield b"data: " + json.dumps(terminal_chunk).encode() + b"\n\n"
         yield b"data: [DONE]\n\n"
         self._terminal_emitted = True
@@ -426,7 +691,13 @@ class _AnthropicSSEStepper:
             self._chunk_id = msg.get("id", "")
             self._chunk_model = msg.get("model", "")
             usage = msg.get("usage", {})
-            self._prompt_tokens = usage.get("input_tokens", 0)
+            # prompt-cache-passthrough (TASK.md §3): capture cache token counts from
+            # message_start.usage; total prompt_tokens = fresh input + read + creation.
+            cache_read: int = usage.get("cache_read_input_tokens", 0)
+            cache_creation: int = usage.get("cache_creation_input_tokens", 0)
+            self._cached_tokens = cache_read
+            self._cache_creation_tokens = cache_creation
+            self._prompt_tokens = usage.get("input_tokens", 0) + cache_read + cache_creation
             # Yield first role chunk
             chunk = self._make_chunk({"role": "assistant"}, None)
             yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
@@ -537,6 +808,7 @@ class AnthropicCompletionUpstream:
         backoff_base: float = 0.5,
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
+        auto_cache: bool = False,
     ) -> None:
         self._version = anthropic_version
         self._default_max_tokens = default_max_tokens
@@ -544,6 +816,10 @@ class AnthropicCompletionUpstream:
         self._backoff_base = backoff_base
         self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
+        # prompt-cache-passthrough (TASK.md §3): whether to auto-inject ephemeral
+        # cache_control on the stable prefix (system block + last tool) when the
+        # client has not supplied any cache_control markers.
+        self._auto_cache = auto_cache
 
         self._breaker = CircuitBreaker()
         self._client = httpx.AsyncClient(
@@ -586,6 +862,7 @@ class AnthropicCompletionUpstream:
         anthropic_body = _openai_to_anthropic_request(
             payload,
             default_max_tokens=self._default_max_tokens,
+            auto_cache=self._auto_cache,
         )
 
         async def _do_request() -> httpx.Response:
@@ -627,6 +904,7 @@ class AnthropicCompletionUpstream:
                 **_openai_to_anthropic_request(
                     payload,
                     default_max_tokens=self._default_max_tokens,
+                    auto_cache=self._auto_cache,
                 ),
                 "stream": True,
             }
