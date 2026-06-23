@@ -192,12 +192,35 @@
     },
     "drift-threshold-validation": {
       "title": "Reject a non-finite / non-positive drift threshold (and negative check-interval) at startup",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v33",
       "depends_on": [],
       "created": "2026-06-23T04:37:39+00:00",
-      "updated": "2026-06-23T04:37:39+00:00"
+      "updated": "2026-06-23T05:18:02+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9cb952655724a04a376aefd17f4fb18c",
+        "tests": {
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/core/config.py"
+        ],
+        "snapshot_md5": "e6c1f0b7885c215e1974f3dd4467db43"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-23T05:17:24+00:00",
+            "reason": "scope_violation: task 'drift-threshold-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/.gitignore \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/CACHEDIR.TAG (3 total)",
+            "source": "scope"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -219,7 +242,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T04:37:39+00:00",
+  "updated": "2026-06-23T05:18:02+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
