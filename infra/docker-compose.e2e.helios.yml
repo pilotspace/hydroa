@@ -1,0 +1,23 @@
+# Helios live-smoke overlay (v34 task 7 helios-live-smoke).
+#
+# Layers ON TOP of infra/docker-compose.e2e.yml. Unlike the v25 overlay, this
+# does NOT redirect provider base URLs to local stubs — GATEWAY_GOOGLE_BASE_URL
+# keeps its real-endpoint default (https://generativelanguage.googleapis.com/v1beta)
+# so the smoke drives REAL Gemini via a gcloud-minted BYOK key.
+#
+# The ONLY thing it adds is the Fernet key the per-tenant provider-credential
+# store (BYOK) requires — without it, PUT /admin/provider-keys/* returns
+# 409 ERR_PROVIDER_KEY_ENCRYPTION_UNAVAILABLE.
+#
+# GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY below is a FAKE public test Fernet key
+# (valid base64url 32-byte) — NOT a secret. The real Gemini key is NEVER set
+# here; it is PUT at runtime by the verifier and stored Fernet-at-rest.
+#
+# Bring up:
+#   docker compose -f infra/docker-compose.e2e.yml -f infra/docker-compose.e2e.helios.yml up --build -d --wait
+# Then run scripts/live_helios_smoke.py twice (both exit 0).
+
+services:
+  gateway:
+    environment:
+      GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY: "ykjz8nXk81rGbmRCVIhK0HDxss5FYDHQxLqa4C_81N4="

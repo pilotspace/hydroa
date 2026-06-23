@@ -5,7 +5,7 @@ Layer (a) of the v34 helios-live-smoke test plan (TASK.md §4):
   any API key material.  They assert the BEHAVIOR of the four safety-critical pure
   helpers that the script exposes:
 
-    1. resolve_gemini_key()   — absent/empty HELIOS_GEMINI_KEY → SystemExit(2)
+    1. resolve_provider_key()   — absent/empty OPENROUTER_API_KEY → SystemExit(2)
     2. _redact(line, *secrets) — replaces each secret substring with a fixed mask
     3. exit_code(results)      — any FAIL → 1; all PASS/SKIP → 0
     4. applicable(criterion, env) — C6 SKIPped (not FAILed) when cap is unset/0
@@ -47,7 +47,7 @@ except SystemExit as _exc:
     raise ImportError(
         f"live_helios_smoke.py raised SystemExit({_exc.code}) during import — "
         "ensure main() is guarded by `if __name__ == '__main__':` and "
-        "resolve_gemini_key() is only called inside main()."
+        "resolve_provider_key() is only called inside main()."
     ) from _exc
 
 
@@ -61,58 +61,58 @@ def _get(name: str) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Test 1: resolve_gemini_key() → SystemExit(2) when key is absent
+# Test 1: resolve_provider_key() → SystemExit(2) when key is absent
 # ---------------------------------------------------------------------------
 
 class TestResolveGeminiKey:
-    """resolve_gemini_key() must exit 2 when HELIOS_GEMINI_KEY is absent or empty."""
+    """resolve_provider_key() must exit 2 when OPENROUTER_API_KEY is absent or empty."""
 
     def _call(self, env_val: str | None) -> Any:
-        resolve_gemini_key = _get("resolve_gemini_key")
-        old = os.environ.pop("HELIOS_GEMINI_KEY", None)
+        resolve_provider_key = _get("resolve_provider_key")
+        old = os.environ.pop("OPENROUTER_API_KEY", None)
         try:
             if env_val is not None:
-                os.environ["HELIOS_GEMINI_KEY"] = env_val
-            elif "HELIOS_GEMINI_KEY" in os.environ:
-                del os.environ["HELIOS_GEMINI_KEY"]
-            return resolve_gemini_key()
+                os.environ["OPENROUTER_API_KEY"] = env_val
+            elif "OPENROUTER_API_KEY" in os.environ:
+                del os.environ["OPENROUTER_API_KEY"]
+            return resolve_provider_key()
         finally:
             # Restore
             if old is not None:
-                os.environ["HELIOS_GEMINI_KEY"] = old
-            elif "HELIOS_GEMINI_KEY" in os.environ:
-                del os.environ["HELIOS_GEMINI_KEY"]
+                os.environ["OPENROUTER_API_KEY"] = old
+            elif "OPENROUTER_API_KEY" in os.environ:
+                del os.environ["OPENROUTER_API_KEY"]
 
     def test_missing_key_exits_2(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """HELIOS_GEMINI_KEY unset → SystemExit(2), no provisioning or network call."""
-        resolve_gemini_key = _get("resolve_gemini_key")
-        monkeypatch.delenv("HELIOS_GEMINI_KEY", raising=False)
+        """OPENROUTER_API_KEY unset → SystemExit(2), no provisioning or network call."""
+        resolve_provider_key = _get("resolve_provider_key")
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
         with pytest.raises(SystemExit) as exc_info:
-            resolve_gemini_key()
+            resolve_provider_key()
 
         assert exc_info.value.code == 2, (
             f"Expected SystemExit(2) for missing key, got SystemExit({exc_info.value.code})"
         )
 
     def test_empty_key_exits_2(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """HELIOS_GEMINI_KEY='' (empty string) → SystemExit(2), treated as absent."""
-        resolve_gemini_key = _get("resolve_gemini_key")
-        monkeypatch.setenv("HELIOS_GEMINI_KEY", "")
+        """OPENROUTER_API_KEY='' (empty string) → SystemExit(2), treated as absent."""
+        resolve_provider_key = _get("resolve_provider_key")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")
 
         with pytest.raises(SystemExit) as exc_info:
-            resolve_gemini_key()
+            resolve_provider_key()
 
         assert exc_info.value.code == 2, (
             f"Expected SystemExit(2) for empty key, got SystemExit({exc_info.value.code})"
         )
 
     def test_present_key_returns_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """HELIOS_GEMINI_KEY='test-key' → returns the key string, no SystemExit."""
-        resolve_gemini_key = _get("resolve_gemini_key")
-        monkeypatch.setenv("HELIOS_GEMINI_KEY", "test-api-key-abc123")
+        """OPENROUTER_API_KEY='test-key' → returns the key string, no SystemExit."""
+        resolve_provider_key = _get("resolve_provider_key")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-api-key-abc123")
 
-        result = resolve_gemini_key()
+        result = resolve_provider_key()
 
         assert result == "test-api-key-abc123"
 

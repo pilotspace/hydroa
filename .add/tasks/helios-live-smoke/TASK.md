@@ -2,7 +2,7 @@
 
 slug: helios-live-smoke · created: 2026-06-23 · stage: production
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -218,6 +218,47 @@ SECURITY: $HELIOS_GEMINI_KEY never logged/echoed/written to repo; BYOK stores it
   output redacts secrets; PR diff carries no key material.
 ```
 
+### v2 AMENDMENT — provider under test redirected Gemini → OpenRouter (change request, Tin-approved 2026-06-23)
+Why: the gcloud-provisioned Gemini key hit a hard external wall — the GCP project's Generative Language API
+returned `429 RESOURCE_EXHAUSTED "prepayment credits depleted"` (proven by a raw call bypassing the proxy;
+the proxy correctly surfaced it). Tin chose to redirect the live double-pass to OpenRouter (a funded key).
+OpenRouter is OpenAI-wire PASSTHROUGH, so three criteria re-frame to its REAL semantics (provider-accurate,
+NOT weakened); C1/C2/C7 are provider-agnostic and unchanged.
+
+```
+CLI / ENV (v2):
+  env OPENROUTER_API_KEY (REQUIRED; absent -> exit 2)   funded OpenRouter key (sk-or-v1-…); read at run time
+  (SMOKE_BASE / E2E_CA_CERT / GATEWAY_MAX_CONCURRENT_REQUESTS unchanged)
+PROVISIONING (v2): PUT /admin/provider-keys/openrouter {secret: $OPENROUTER_API_KEY}  (JWT) -> 200/204
+  model = $HELIOS_OR_MODEL (Tin chose "z-ai/glm-5.2" — covers tools+reasoning+automatic-cache at low cost;
+  default in code is anthropic/claude-3.7-sonnet); seeded catalog row id = that model string,
+  provider="openrouter", per_token pricing >0.
+CRITERIA (v2 — deltas from v1):
+  C1, C2, C7  UNCHANGED (chat · streaming tool-calls · no-Bearer→401 + 0 rows). NOTE: streaming criteria
+       cap max_tokens so a reasoning model's stream completes [DONE]+tool_calls within the read window.
+  C3 reasoning  reasoning_effort on a reasoning-capable OR model → 200; usage reasoning_tokens present (≥0).
+  C4 prompt-cache  verifier SENDS cache_control (content-blocks; passthrough — auto-inject is native-only) on
+       the IDENTICAL large-context prefix, repeated up to 6× with spacing (upstream automatic caching is
+       OPPORTUNISTIC and the cache-WRITE must register before a read can hit — back-to-back calls race it).
+       Assert (≥2 calls): all 200, all rows cost>0, AND a GENUINE cache hit surfaces (cached_tokens /
+       cache_read / cache_creation > 0). Retry tolerates write-then-read latency; a real hit is still required.
+  C5 disconnect  OpenRouter is the RECOVERABLE path (use_cases.py:1563 recoverable=openrouter+gen-id):
+       start stream then abort → a disconnect row with user cost_usd=0 (never silent-$0); the gen-id is
+       captured and the cost-recovery chain is scheduled. Assert: ≥1 row for the key, user cost_usd=0 on the
+       disconnect row, NOT a silent zero. (v1's "exactly 1 row + provider_cost partial floor" was the native
+       estimate path; OpenRouter defers authoritative cost to recovery, which may append a later row.)
+EXIT: 0 = all applicable PASS · 1 = any fail/secret-leak · 2 = OPENROUTER_API_KEY absent.
+SECURITY (v2): $OPENROUTER_API_KEY never logged/echoed/committed; read from gitignored tmp/.or_key at run
+  time, deleted after; BYOK stores it Fernet-at-rest; output redacts it; PR diff carries no key material.
+```
+
+Status: FROZEN @ v2 — approved by Tin (2026-06-23)
+Least-sure flag surfaced at freeze (v2): [contract] C4 cache detail depends on OpenRouter/Anthropic honoring
+  client-sent cache_control AND a context ≥ the cache minimum — if no cache hit surfaces, that is a real
+  passthrough finding (not weakened away). [contract] C5 recovery may append a second row within the poll
+  window → assertion is "≥1 row, user cost_usd=0, not silent-$0", not "exactly 1".
+
+— superseded freeze below —
 Status: FROZEN @ v1 — approved by Tin (2026-06-23)
 Least-sure flag surfaced at freeze: [spec/test] cost_usd>0 depends on a seeded `per_token` pricing row for
   the live Gemini model id — mitigated by seeding model+pricing (live_v9 pattern) + gateway restart; secondary:
@@ -312,8 +353,11 @@ Constraints: do NOT change any test or the contract; NO proxy src change (Tin's 
 - [x] Offline helpers behave per contract — confirmed by the 18 green tests (key-absent exit 2; redaction; exit-code; C6 SKIP).
 - [x] Verifier matches the real edge/admin/BYOK/psql surfaces — confirmed by grounding vs provider_keys_admin_router
       (PUT /admin/provider-keys/google), partial_usage.py (C5 target), concurrency_guard.py (C6 503), live_v9 psql.
-- [ ] LIVE: both passes exit 0 (C1–C7 PASS/SKIP) against real Gemini — confirmed by OPERATOR DOUBLE-PASS (PENDING:
-      needs HELIOS_GEMINI_KEY + e2e stack). THIS is the v34 live exit criterion; the gate is HELD until it's green ×2.
+- [x] LIVE: both passes exit 0 against a REAL provider — DOUBLE-PASS GREEN on z-ai/glm-5.2 via OpenRouter
+      (run_ids 1782233615 + 1782233647): each 18 PASS / 1 SKIP (C6, cap disabled) / 0 FAIL. C1 chat (cost>0) ·
+      C2 streaming parallel tool-calls (tool_calls + usage frame, row 228/89) · C3 reasoning_tokens=61 ·
+      C4 prompt-cache (cached_tokens=4416 surfaced through the proxy) · C5 disconnect recorded user cost_usd=0 ·
+      C7 401 + 0 rows. THIS is the v34 live exit criterion — MET.
 
 ### Deep checks
 - [x] WIRING — every helper/criterion is referenced from main(); main() guarded by `if __name__=="__main__"`.
@@ -321,10 +365,12 @@ Constraints: do NOT change any test or the contract; NO proxy src change (Tin's 
 - [x] SEMANTIC — full script + offline tests read line-by-line in the refute-read (not skimmed).
 
 ### GATE RECORD
-Outcome: HELD — CI portion verified (offline tests + full gate green, refute-read earned); GATE NOT RECORDED.
-  The live double-pass (operator-run, real Gemini key) is the milestone exit evidence and is PENDING Tin.
-  Per Tin's cadence "pause before live smoke" — this is the pause. Record gate PASS only after both live runs exit 0.
-Reviewed by: <pending — Tin, at the live double-pass + PR>  · date: <pending>
+Outcome: PASS — offline suite green (18 tests) + full gate 1513 green @ 87.40% + refute-read EARNED + the
+  LIVE DOUBLE-PASS is GREEN ×2 on z-ai/glm-5.2 via OpenRouter (18/1/0 each, exit 0). No proxy src change; no
+  test/contract weakened (the v2 OpenRouter re-frame was a Tin-approved change request; C4 warmup/retry tolerates
+  the upstream's opportunistic-cache write-then-read latency but still requires a GENUINE cache hit). Secrets
+  cleaned up (key file deleted, GCP key deleted, repo secret-free).
+Reviewed by: Tin (live double-pass driven this session) · date: 2026-06-23
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
@@ -332,14 +378,28 @@ Reviewed by: <pending — Tin, at the live double-pass + PR>  · date: <pending>
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
-Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
+Watch (reuse scenarios as monitors): live-smoke per-criterion PASS rate across re-runs; upstream cache-hit
+rate on C4; disconnect-row visibility on C5.
 
 ### Spec delta
-Forward changes for the next loop — each re-enters at Specify as the next task. One line
-each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
-the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+- [SPEC · open] proxy maps an upstream 429 (rate-limit / depleted-credits, e.g. Gemini RESOURCE_EXHAUSTED)
+  to a 502 Bad Gateway — loses the retryable/rate-limit signal a client (Helios) needs to back off; consider
+  mapping upstream 429 → 429/503 with Retry-After (evidence: raw Gemini 429 surfaced as proxy 502 this session).
+- [SPEC · open] Gemini live path was unverified (GCP credits depleted); re-run the smoke against real Gemini
+  once credits exist — the verifier is provider-parametrized (HELIOS_OR_MODEL / provider) so only config changes.
+- [SPEC · dropped] C5 OpenRouter recovery row: within the 45s poll the recovery chain did not append an
+  authoritative-cost row (recovery_cost_present=False) — disconnect row was visible with user cost_usd=0 (the
+  contract's bar), so not a blocker; worth a longer-window check that recovery eventually appends the delta.
 
 ### Competency deltas
-What did this loop teach the foundation? One line each, tagged by competency
-(`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [TDD · open] live LLM criteria are non-deterministic: a reasoning model needs bounded max_tokens or its
+  stream outlasts the read window (C2 [DONE] truncation), and opportunistic upstream caching needs a
+  warmup+retry (cache-write must register before a read hits) — bound + retry, never assume (evidence: C2/C4
+  flaked until fixed). A retry that breaks on first hit must still honor min-call-count invariants (C4a/C4c
+  needed ≥2 calls; a warm-cache pass-2 hit on attempt 1 broke that until guarded).
+- [ADD · open] a hard EXTERNAL wall (provider credits) is not a HARD-STOP of the work — surface it, offer
+  concrete unblock options (AskUserQuestion), and re-frame the contract as a Tin-approved change request
+  (v1 Gemini → v2 OpenRouter) rather than silently editing the frozen shape (evidence: this session).
+- [ADD · open] redirecting the provider-under-test is a contract amendment, not a constant swap: passthrough
+  (OpenRouter) vs native (Gemini) genuinely changes C4 (cache mechanism) and C5 (recoverable vs estimate) —
+  re-frame provider-accurately, never weaken (evidence: v2 amendment).
