@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "passthrough-nonfinite-sanitize",
+  "active_task": "reconcile-cost-basis-filter",
   "active_milestone": "v33",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -191,12 +191,27 @@
     },
     "reconcile-cost-basis-filter": {
       "title": "Scope the unbilled-upstream filter to cost_basis='provider'",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v33",
       "depends_on": [],
       "created": "2026-06-23T04:37:39+00:00",
-      "updated": "2026-06-23T04:37:39+00:00"
+      "updated": "2026-06-23T05:54:27+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "be6460cc65e3d43e2a8c4c36aaa876f5",
+        "tests": {
+          "apps/gateway/tests/reconcile_cost_basis_filter/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/reconcile_cost_basis_filter/conftest.py": "54ba5e3abeb701fa290025a64a4c304e",
+          "apps/gateway/tests/reconcile_cost_basis_filter/test_reconcile_cost_basis_filter.py": "5d0c76e30d4aad2e05543b60286d8538"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/reconciliation.py"
+        ],
+        "snapshot_md5": "5a30d56833898ae3cc12ae3c92e21850"
+      }
     },
     "disconnect-provider-cost": {
       "title": "Recoverable provider_cost on residual non-OpenRouter client-disconnect rows",
@@ -259,7 +274,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T05:40:39+00:00",
+  "updated": "2026-06-23T05:54:27+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

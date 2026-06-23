@@ -64,6 +64,22 @@ class ReconciliationSummary:
     by_source: tuple[SourceBreakdown, ...]  # unbilled rows grouped by usage_source, sorted
 
 
+@dataclass(frozen=True)
+class CostBasisBreach:
+    """One recorder-invariant breach: a `cost_basis='catalog'` row carrying a provider_cost.
+
+    Catalog rows have no upstream truth, so they must never carry a provider_cost. A row that
+    does is a recorder bug (the cost basis was misclassified) — it is silently excluded from
+    drift and the unbilled-upstream leak filter, so it would otherwise leak unnoticed. The audit
+    surfaces these rows so the operator can detect and fix the misclassification.
+    """
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    provider_cost: Decimal
+    created_at: datetime
+
+
 def _money(value: object) -> Decimal:
     """Coerce a DB-returned numeric to Decimal without going through float."""
     return Decimal(str(value))
@@ -197,9 +213,11 @@ async def reconcile_by_tenant(
                 "  COALESCE(SUM(provider_cost), 0) AS provider_cost_total,"
                 "  COALESCE(SUM(cost_usd), 0) AS billed_total,"
                 "  COALESCE(SUM(provider_cost) FILTER"
-                "    (WHERE provider_cost > 0 AND cost_usd = 0), 0) AS unbilled_upstream_cost,"
+                "    (WHERE provider_cost > 0 AND cost_usd = 0 AND cost_basis = 'provider'), 0)"
+                "    AS unbilled_upstream_cost,"
                 "  COUNT(*) FILTER"
-                "    (WHERE provider_cost > 0 AND cost_usd = 0) AS unbilled_rows"
+                "    (WHERE provider_cost > 0 AND cost_usd = 0 AND cost_basis = 'provider')"
+                "    AS unbilled_rows"
                 " FROM usage_records"
                 " WHERE created_at >= :from AND created_at < :to AND cost_basis = 'provider'"
                 " GROUP BY tenant_id ORDER BY tenant_id"
@@ -216,6 +234,61 @@ async def reconcile_by_tenant(
             drift=_money(row[1]) - _money(row[2]),
             unbilled_upstream_cost=_money(row[3]),
             unbilled_rows=int(row[4]),
+        )
+        for row in rows
+    )
+
+
+async def audit_cost_basis_breaches(
+    session: AsyncSession,
+    window_from: datetime | None = None,
+    window_to: datetime | None = None,
+) -> tuple[CostBasisBreach, ...]:
+    """Surface recorder-invariant breaches: `cost_basis='catalog'` rows carrying a provider_cost.
+
+    A catalog row has no upstream truth and must never carry `provider_cost`; one that does was
+    misclassified and is silently excluded from drift and the unbilled-upstream leak filter — so
+    it would otherwise leak unnoticed. READ-ONLY: one SELECT-only scan, sorted by `created_at` for
+    determinism. The window is OPTIONAL: with both bounds omitted the audit scans the whole ledger
+    (cheap, the breach is rare); when given it is half-open `[from, to)`. Operator-wide (all
+    tenants) — the caller MUST be the platform operator. Raises ``ValueError`` on an inverted
+    window.
+    """
+    clause = ""
+    params: dict[str, object] = {}
+    if window_from is not None and window_to is not None:
+        wf = _as_naive_utc(window_from)
+        wt = _as_naive_utc(window_to)
+        if wt < wf:
+            raise ValueError(
+                f"inverted reconciliation window: window_to {wt!r} < window_from {wf!r}"
+            )
+        clause = " AND created_at >= :from AND created_at < :to"
+        params = {"from": wf, "to": wt}
+    elif window_from is not None or window_to is not None:
+        raise ValueError(
+            "audit_cost_basis_breaches: pass both window_from and window_to, or neither"
+        )
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT id, tenant_id, provider_cost, created_at"  # noqa: S608 (static clause, bound params)
+                " FROM usage_records"
+                " WHERE cost_basis = 'catalog'"
+                "   AND provider_cost IS NOT NULL AND provider_cost > 0" + clause
+                + " ORDER BY created_at"
+            ),
+            params,
+        )
+    ).fetchall()
+
+    return tuple(
+        CostBasisBreach(
+            id=uuid.UUID(str(row[0])),
+            tenant_id=uuid.UUID(str(row[1])),
+            provider_cost=_money(row[2]),
+            created_at=row[3],
         )
         for row in rows
     )
