@@ -1,6 +1,6 @@
-# TASK: Recoverable provider_cost on residual non-OpenRouter client-disconnect rows
+# TASK: Non-finite sanitization on images / embeddings / proxy passthrough routers
 
-slug: disconnect-provider-cost · created: 2026-06-23 · stage: production
+slug: passthrough-nonfinite-sanitize · created: 2026-06-23 · stage: production
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. -->
 phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
