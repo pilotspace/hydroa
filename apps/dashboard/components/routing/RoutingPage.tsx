@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * RoutingPage — /routing READ-ONLY health surface (owner/admin).
+ * RoutingPage — /routing health + config-edit surface.
  *
  * Consumes GET /admin/routing (BFF verbatim, no {data} envelope):
- *   { retry_policy, cooldown, model_groups, candidates } | 403 | 500
- * No mutation exists on this contract — the page only reads + displays.
+ *   { routing_strategy, retry_policy, cooldown, model_groups, deployments, candidates } | 403 | 500
+ *
+ * READ-ONLY health cards: visible to all roles that can reach the endpoint.
+ * EDITOR section: visible only to owner/admin (gated via useCurrentUser).
  *
  * SECURITY/UX: the response is secrets-free by the gateway contract. Circuit state
  * (open|half_open|closed|unknown) renders as a labelled Badge whose TEXT is the
@@ -18,6 +20,8 @@ import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet, BffError } from "@/lib/bff-client";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
+import { RoutingEditor, type RoutingStrategy, type DeploymentRow } from "./RoutingEditor";
 import {
   Badge,
   type BadgeProps,
@@ -52,9 +56,12 @@ interface Candidate {
 }
 
 interface RoutingConf {
+  routing_strategy: RoutingStrategy;
   retry_policy: RetryPolicy;
   cooldown: Cooldown;
   model_groups: Record<string, string[]>;
+  /** Object-form deployment rows — present in v32 contract. */
+  deployments: Record<string, DeploymentRow[]>;
   candidates: Candidate[];
 }
 
@@ -106,6 +113,10 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 export function RoutingPage() {
+  // Role-gate: editor section is owner/admin only
+  const { data: currentUser } = useCurrentUser();
+  const canEdit = currentUser?.role === "owner" || currentUser?.role === "admin";
+
   const { data, isLoading, isError, error } = useQuery<RoutingConf>({
     queryKey: ["admin-routing"],
     queryFn: () => bffGet<RoutingConf>("/admin/routing"),
@@ -122,7 +133,7 @@ export function RoutingPage() {
     return <ErrorState title={getErrorTitle(error)} />;
   }
 
-  const { retry_policy, cooldown, model_groups, candidates } = data;
+  const { routing_strategy, retry_policy, cooldown, model_groups, deployments, candidates } = data;
   const aliases = Object.keys(model_groups);
 
   return (
@@ -212,6 +223,14 @@ export function RoutingPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Editor — owner/admin only */}
+      {canEdit && (
+        <RoutingEditor
+          serverStrategy={routing_strategy}
+          serverDeployments={deployments ?? {}}
+        />
+      )}
     </div>
   );
 }

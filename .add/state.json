@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "routing-config-write",
+  "active_task": "routing-config-editor",
   "active_milestone": "v32",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -212,6 +212,27 @@
         ],
         "snapshot_md5": "1150bdd26346d29621af011e3ff5a2db"
       }
+    },
+    "routing-config-editor": {
+      "title": "Routing config editor \u2014 dashboard /routing edit forms (applies on restart)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v32",
+      "depends_on": [],
+      "created": "2026-06-23T03:23:54+00:00",
+      "updated": "2026-06-23T03:39:37+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "78a07a07e2d30a8544eae3977dcfc737",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/routing/RoutingEditor.tsx",
+          "apps/dashboard/components/routing/RoutingPage.tsx"
+        ],
+        "snapshot_md5": "2fa8f2b227800586d410155da67c0277"
+      }
     }
   },
   "milestones": {
@@ -233,7 +254,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T03:22:49+00:00",
+  "updated": "2026-06-23T03:39:37+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
