@@ -1,40 +1,70 @@
-# MILESTONE: UI↔BE coverage — close the dashboard gaps   ⟦ROADMAP STUB — NOT YET OPENED⟧
+# MILESTONE: Operator-wide reconciliation + UI↔BE coverage
 
-goal: every implemented backend control-plane capability has a dashboard surface — close the 6 UI↔BE gaps the v25 intake audit surfaced.
+goal: a platform operator reads cross-tenant reconciliation drift through an authorized ops-auth endpoint, and every implemented backend control-plane capability has a dashboard surface
+rationale: new-major (v31). Carries the ONE consciously-deferred slice of v30 (`operator-wide-reconciliation`, risk:high) as the LEAD task (Tin 2026-06-22 "defer to v31, open v31, seed operator-wide as first task"), then resumes the UI↔BE coverage program from the v25-intake gap audit (the original v31 sketch, renumbered 5×). Operator-wide is sequenced first because it is risk:high (a deliberate tenant-scoping exception + a new ops-auth authority) and its endpoint is the prerequisite for the eventual operator-view dashboard surface.
+stage: production · status: active · created: 2026-06-22
 
-rationale: new-major follow-on (v31; project-lead/auto, 2026-06-16, Tin confirmed "full coverage program" at v25 intake). This is a **roadmap stub written to disk for visibility only** — it is intentionally NOT registered as an active engine milestone (a milestone is only ever active or archived; a not-yet-opened one is a planning doc). **Open it with `add.py new-milestone v31 --force`** once the prior milestones land, then re-fill from this sketch through the normal scope-drafting loop (co-specify + human confirm). The provider-config gap is delivered by v25, so it is excluded here. (Renumbered five times: v26→v27 then v27→v28 on 2026-06-17 as Tin sequenced the v25 BE config-cleanup follow-ups then the billing-precision program ahead of it; then v28→v29 on 2026-06-18 when Tin chose the v27 billing follow-ups — residual silent-$0 + non-finite hardening — as v28; then v29→v30 on 2026-06-18 when Tin chose billing reconciliation — Σ provider_cost vs Σ billed + drift alert — as v29; then v30→v31 on 2026-06-18 when Tin chose reconciliation hardening — non-finite threshold guard + cost_basis filter + disconnect provider_cost + operator-wide cross-tenant view — as v30.)
+> SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
+> exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,
+> written just-in-time. Update this doc whenever a task reveals a milestone gap.
 
-stage: production · status: PLANNED (stub) · drafted: 2026-06-16
+## Scope
+In:  operator-wide cross-tenant reconciliation **endpoint** behind a new platform-operator authority (separate ops-auth surface) · the UI↔BE coverage program — dashboard surfaces for the backend control-plane capabilities the v25 intake audit found with no UI (alerts viewer, SSO login button, catalog-sync trigger, upstream-health view, rate-limit counter view, routing-config write).
+Out: an operator-view **dashboard UI** in this milestone unless explicitly scoped as a follow-up task (the operator-wide slice ships the ENDPOINT + ops-auth first; UI surface re-sized at open) · any change to markup semantics or the drift-sign convention (frozen v29) · alert delivery-channel changes (the `drift-alert` seam stays as-is) · the provider-config gap (delivered by v25).
 
-> This is a SKETCH, not a frozen milestone. Task slugs, dependencies, and exit
-> criteria below are a starting point — re-validate them at open time.
+## Shared decisions & glossary deltas   (living — every task must honor these)
+- **`platform operator`** (carried from v30): an authority that reads *across* tenants. The #1 invariant ("every tenant-owned query is tenant-scoped") gets exactly ONE named, audited exception — the cross-tenant reconciliation read — behind a **separate ops-auth surface**, never on a tenant JWT.
+- **`ops-auth`** (carried from v30): the separate operator credential surface — its own issuer/signing key (NOT mintable via tenant signup), enforced on an edge-restricted path. Designed-for-failure per the IO rule (verification timeout/cache/fallback where a key fetch is involved).
+- UI tasks honor the established dashboard a11y + data-slot + npm-test-gate conventions (see [[ui-restyle-recipe]] foundation lessons).
 
-## Source — the v25 intake UI↔BE gap audit (file-cited)
-Backend capabilities that had NO dashboard surface as of 2026-06-16 (provider-config → delivered by v25):
+## Shared / risky contracts (freeze these first)
+- **Platform-operator authority model = separate ops-auth surface** (DECIDED 2026-06-18, Tin) -> owning task `operator-wide-reconciliation`. A dedicated operator credential with its own issuer/signing key, NOT issuable through tenant signup, enforced on an edge-restricted path (`/ops/...` or the edge-blocked `/internal` family). Cross-tenant power NEVER rides a tenant JWT; the tenant-isolation invariant stays pure. **Freeze the exact wire shape (issuer/claims/path/verification + failure modes) in this task's §3 — risk:high, autonomy lowered, security HARD-STOP: human-approved by Tin BEFORE any code.**
+- **OPEN at operator-wide specify**: whether the cross-tenant aggregation needs an all-tenants *mode* on the (v30-re-frozen) `reconcile_window` — a second supersession — vs a sibling query. Decide at §1/§3.
 
-| Gap | Backend today | UI today |
-|---|---|---|
-| Alert events viewer | `alert_events` table + webhook dispatcher; NO `/admin/alerts` endpoint | ✗ |
-| Routing config **write** | `/admin/routing` is read-only; model-groups/strategy/limits are env/startup only | ✗ |
-| Catalog sync trigger | `POST /internal/catalog/sync` exists | ✗ (no button) |
-| SSO login button | full OIDC flow wired (`/auth/oidc/login` + callback) | ✗ (`/login` is email+password only) |
-| Upstream health view | `UpstreamHealthChecker` writes events; NO read endpoint | ✗ |
-| Rate-limit counter visibility | per-key rpm/tpm enforced in Redis | ~ editable, not observable |
+## Tasks (breadth-first decomposition; detail lives in each TASK.md)
+- [x] operator-wide-reconciliation  **DONE 2026-06-22, gate PASS (risk:high, Tin-approved).** `GET /ops/reconciliation` behind mTLS+XFCC ops-auth (default-OFF/fail-closed); tenant JWT→403, else byte-identical 401; global + per-tenant drift; READ-ONLY. Refute UPHELD 0.87, 1303 suite green. Shipped: `ops/` package, `OpsCertVerifier`, `reconcile_by_tenant`, `GATEWAY_OPS_CERT_FINGERPRINTS`. ⚠ RELEASE REQ: Envoy must strip client XFCC + restrict /ops/* (trust boundary).
+- [x] alerts-events-viewer       **DONE 2026-06-22, gate PASS (auto, refute 0.82 no-blockers).** `GET /admin/alerts` on usage_router: owner/admin-scoped, paginated (limit 1..100/offset, total), newest-first, READ-ONLY. **Visibility (Tin-approved @ freeze): `tenant_id = :tid OR tenant_id IS NULL`** — own soft-budget + platform system events (circuit/health/drift); other tenants NEVER. 422 ERR_PAYLOAD_INVALID / member 403 / missing-bearer 401. + dashboard admin-only `/alerts` page (DataTable, Type/When/Status, 4 states). 15 backend + 4 frontend tests; full suites 1318 + 365 green. NO migration/new table. [usage/api/router.py:get_alerts, components/alerts/*]
+- [x] sso-login-button           **DONE 2026-06-22, gate PASS (auto, autonomy:auto).** Ground re-scoped: the SSO button already existed — the gap was a per-tenant domain field. Added a "Work email or domain" input on /login driving the existing SSO button's `?domain=` (email→domain extraction, empty→env fallback, lenient validation, full-page nav via window.location.assign). 5 SSO tests + 361 dashboard suite green; eslint+tsc clean. [LoginForm.tsx]
+- [x] catalog-sync-trigger       **DONE 2026-06-23, gate PASS (auto, refute 0.87 no-blockers).** NEW `admin_catalog_router` → `POST /admin/catalog/sync`: owner/admin (member 403/missing-bearer 401), delegates to the existing `SyncCatalogUseCase` (idempotent global upsert; inherits its 10s timeout+retry), 200 `{synced, synced_at(ISO, gateway clock)}`, upstream-down → 502 ERR_UPSTREAM_UNAVAILABLE before any write, fail-safe provider_resolver refresh. Internal `/internal/catalog/sync` + SyncResponse byte-identical (separate CatalogSyncResponse). + `/models` owner/admin "Re-sync catalog" button (last-sync shown, invalidates admin-models; member can't see it). 9 backend + 3 frontend tests; suites 1326 + 368 green. NO migration. last-sync EPHEMERAL (persist = spec delta). [catalog/api/router.py:admin_sync_catalog, ModelsPage.tsx]
+- [x] upstream-health-view       **DONE 2026-06-23, gate PASS (auto, refute 0.88 no-blockers).** `GET /admin/health/upstreams` on usage_router: owner/admin (member 403/missing-bearer 401), READ-ONLY, derives per-upstream up/down from durable `alert_events` health rows (tenant_id NULL, latest of upstream_health_fail|upstream_health_recovered by created_at,id DESC; no event → up+null). HONESTY: MONITORED = ["openrouter"] only (the one upstream actually pinged) — NO fabricated rows for unpinged providers. 200 `{checked_at, upstreams:[{name,status,last_event_at,last_event_type}]}`, asyncio.timeout(30s). + dashboard admin-only `/health` page (HealthPage/UpstreamsTable, 4 states, HeartPulse nav 8→9). 11 backend + 5 frontend tests (incl. tenant-owned-row-excluded isolation guard); suites 1335 + 373 green. NO migration/new table. [usage/api/router.py:get_upstream_health, components/health/*]
+- [x] ratelimit-counter-view     **DONE 2026-06-23, gate PASS (auto, refute 0.91 no-blockers).** `GET /admin/ratelimits` on usage_router: owner/admin (member 403/missing-bearer 401), READ-ONLY, per-key live consumption vs configured limits for the CALLER'S tenant only. rpm_current=ZCARD `ratelimit:rpm:{key_id}`, tpm_current=float(GET `ratelimit:tpm_sum:{key_id}`) — the SAME keys RedisLuaRateLimiter writes (single source of truth). Unused key (Redis up)→0/0.0; Redis down→null counters + still 200 (design-for-failure fail-open, ZCARD/GET non-mutating, asyncio.timeout). Tenant-scoped via `WHERE tenant_id=:tid AND revoked_at IS NULL` (revoked excluded). 200 `{keys:[{key_id,name,rpm_limit,tpm_limit,rpm_current,tpm_current}]}`. + read-only "Rate-limit usage" panel (RatelimitsPanel) mounted on /keys (null→"—", null-limit→"∞"); NO new BFF route/nav. 9 backend + 5 frontend tests; suites 1346 + 378 green. NO migration/new table/Redis write. [usage/api/router.py:get_ratelimits, components/keys/RatelimitsPanel.tsx]
+- [→] routing-config-write       **MOVED to v32 (Tin 2026-06-23).** Ground recon proved it is sub-milestone-sized: routing config is purely boot-time env vars (no DB/ORM/migration, no router reload — `FallbackModelRouter` is a singleton built once at boot on the request hot-path). Making it writable needs persistence + write endpoint + dashboard editor + (chosen) persist+restart-to-apply. Re-sized as **v32 "Writable routing configuration"** per the milestone's "may warrant its own sub-milestone — re-size at open" flag. §0 GROUND recon preserved in the task (now under v32).
 
-## Tasks (breadth-first SKETCH — re-validate at open)
-- [ ] alerts-events-viewer       depends-on: none — new `GET /admin/alerts` (read `alert_events`, tenant-scoped, paginated) + dashboard Alerts page (history, type, dedupe_key, delivery status).
-- [ ] sso-login-button           depends-on: none — `/login` "Sign in with SSO" entry (domain field → `/auth/oidc/login`); BE flow already exists (UI-only, lightest slice — likely the first one to land).
-- [ ] catalog-sync-trigger       depends-on: none — expose catalog re-sync to owners: `POST /admin/catalog/sync` (tenant-safe wrapper over the internal sync) + a dashboard button on `/models` with last-sync timestamp.
-- [ ] upstream-health-view       depends-on: alerts-events-viewer — `GET /admin/health/upstreams` (last ping per provider/up-down) + a health panel (compose with the alerts viewer).
-- [ ] ratelimit-counter-view     depends-on: none — `GET /admin/ratelimits` (current Redis rpm/tpm consumption per key) + a read-only panel on `/keys` or `/usage`.
-- [ ] routing-config-write       depends-on: none — the largest slice: write endpoints for model-groups / routing strategy / per-deployment rpm-tpm limits + circuit/retry thresholds (today env-only), and a `/routing` editor. May warrant its own sub-milestone — re-size at open.
+## Exit criteria (observable; map each to the task that delivers it)
+- [x] A platform operator reads cross-tenant reconciliation drift through the authorized ops-auth endpoint; a tenant admin/member is denied (403).   (← operator-wide-reconciliation — DONE 2026-06-22, gate PASS)
+- [x] An owner browses alert history (soft-budget, circuit-open, health) in the dashboard.   (← alerts-events-viewer — DONE 2026-06-22; visibility own+NULL system rows, gate PASS)
+- [x] A tenant with SSO configured logs in from the `/login` page without a manual URL.   (← sso-login-button — DONE 2026-06-22, domain field drives per-tenant ?domain=)
+- [x] An owner forces a catalog re-sync from the dashboard and sees the new last-sync time.   (← catalog-sync-trigger — DONE 2026-06-23, gate PASS; last-sync ephemeral, persist=spec delta)
+- [x] An owner sees per-provider upstream up/down status in the dashboard.   (← upstream-health-view — DONE 2026-06-23, gate PASS; per-MONITORED-upstream = openrouter today, honest no-fabrication)
+- [x] An owner sees current rpm/tpm consumption per key.   (← ratelimit-counter-view — DONE 2026-06-23, gate PASS; live Redis ZCARD/GET counters vs limits, fail-open to null)
+- [→] An owner edits model-groups / routing strategy / deployment limits from the dashboard.   (← routing-config-write — MOVED to v32 "Writable routing configuration"; descoped from v31 at re-size, Tin 2026-06-23. Apply-mechanism chosen: persist + restart-to-apply.)
 
-## Exit criteria (SKETCH; each maps to a task)
-- [ ] An owner browses alert history (soft-budget, circuit-open, health) in the dashboard.   (← alerts-events-viewer)
-- [ ] A tenant with SSO configured logs in from the `/login` page without a manual URL.   (← sso-login-button)
-- [ ] An owner forces a catalog re-sync from the dashboard and sees the new last-sync time.   (← catalog-sync-trigger)
-- [ ] An owner sees per-provider upstream up/down status in the dashboard.   (← upstream-health-view)
-- [ ] An owner sees current rpm/tpm consumption per key.   (← ratelimit-counter-view)
-- [ ] An owner edits model-groups / routing strategy / deployment limits from the dashboard.   (← routing-config-write)
+## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
+> Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
+> gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
-## Status: PLANNED (roadmap stub) — open after the prior milestones land via `add.py new-milestone v31 --force`.
+### Ship by domain   (what changed, per bounded context)
+- gateway (backend) : NEW `ops/` package + `GET /ops/reconciliation` (mTLS+XFCC ops-auth, OpsCertVerifier, reconcile_by_tenant) · 4 NEW read-only owner/admin endpoints on `usage_router` — `GET /admin/alerts`, `GET /admin/health/upstreams`, `GET /admin/ratelimits` · NEW `admin_catalog_router` `POST /admin/catalog/sync`. NO new migrations except none-needed (all reads over existing tables/Redis). Settings: `GATEWAY_OPS_CERT_FINGERPRINTS`.
+- dashboard (frontend) : NEW admin-only `/alerts` + `/health` pages (nav 7→9) · `/login` work-email/domain field driving SSO `?domain=` · `/models` owner/admin "Re-sync catalog" button · `/keys` read-only "Rate-limit usage" panel. No new BFF routes (existing catch-all).
+- tooling : `.add/state.json` task/milestone bookkeeping only; engine untouched.
+- skill / book : untouched.
+
+### Cross-task evidence   (one row per task)
+- operator-wide-reconciliation : gate=PASS · refute UPHELD 0.87 · residue=⚠ RELEASE REQ: Envoy must strip client XFCC + restrict /ops/* (trust boundary).
+- alerts-events-viewer : gate=PASS · refute 0.82 · tests=15 BE + 4 FE · residue=none (visibility own+NULL system rows, Tin-approved).
+- sso-login-button : gate=PASS · tests=5 FE + 361 suite · residue=none (re-scoped at ground: domain field, button pre-existed).
+- catalog-sync-trigger : gate=PASS · refute 0.87 · tests=9 BE + 3 FE · residue=last-sync ephemeral (persist=filed spec delta).
+- upstream-health-view : gate=PASS · refute 0.88 · tests=11 BE + 5 FE · residue=per-MONITORED-upstream=openrouter only (per-provider pingers=spec delta).
+- ratelimit-counter-view : gate=PASS · refute 0.91 · tests=9 BE + 5 FE · residue=rpm via ZCARD approximate (exact ZCOUNT=spec delta).
+- routing-config-write : MOVED to v32 (sub-milestone) — ground recon proved sub-milestone scope; apply-mechanism persist+restart-to-apply chosen.
+
+### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
+- [x] 6 of 7 Exit criteria satisfied by the Cross-task evidence rows above (operator-wide, alerts, SSO, catalog-sync, upstream-health, ratelimit). The 7th (routing edit) was consciously DESCOPED to v32 at the milestone's pre-declared "re-size at open" point, with Tin's explicit approval (2026-06-23) — not an unmet gap but a planned re-home.
+- goal: "a platform operator reads cross-tenant reconciliation drift through an authorized ops-auth endpoint, AND every implemented backend control-plane capability has a dashboard surface." MET for the operator-reconciliation half (GET /ops/reconciliation, gate PASS) and for all READ-side coverage; the one WRITE-side capability (routing config) is itself not yet a writable backend capability (env-only) — making it writable is net-new architecture, correctly its own milestone (v32).
+
+## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
+> The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
+> small step among them. These feed the release scope (release.md) when the cut is bundled.
+- [ ] Open a PR for branch `feat/v31` → main (7 commits: v31-open, operator-wide, sso-login, alerts, catalog-sync, upstream-health, ratelimit). Tin reviews + merges (CLAUDE.md: ask before PR — held until Tin asks).
+- [ ] ⚠ BEFORE provisioning any operator cert: land the Envoy edge config that strips client-supplied XFCC + restricts `/ops/*` to the mTLS listener (operator-wide-reconciliation trust boundary — release req).
+- [ ] v32 "Writable routing configuration" carries the descoped routing-config-write (persist + restart-to-apply); its release bundles with the next cut.

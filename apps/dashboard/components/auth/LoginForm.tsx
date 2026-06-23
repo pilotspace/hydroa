@@ -23,13 +23,58 @@ const LoginSchema = z.object({
 
 type FieldErrors = Partial<Record<"email" | "password", string>>;
 
+const OIDC_LOGIN_PATH = "/api/auth/oidc/login";
+
+/**
+ * Resolve an SSO domain from raw input: a full email yields the part after the
+ * last "@"; a bare domain is used as-is. Trimmed + lowercased.
+ */
+export function resolveSsoDomain(raw: string): string {
+  const value = raw.trim().toLowerCase();
+  if (value.includes("@")) return value.slice(value.lastIndexOf("@") + 1).trim();
+  return value;
+}
+
+/**
+ * Lenient SSO-domain validation — the gateway is the authority (it 404s an
+ * unconfigured domain). We only require a plausible domain shape: a dot, and no
+ * spaces or stray "@". Returns null when valid, else an error message.
+ */
+export function validateSsoDomain(domain: string): string | null {
+  if (!/^[^\s@]+\.[^\s@]+$/.test(domain)) {
+    return "Enter a valid work email or domain";
+  }
+  return null;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [ssoDomain, setSsoDomain] = useState("");
+  const [ssoError, setSsoError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  function handleSso() {
+    setSsoError(null);
+    const raw = ssoDomain.trim();
+    if (raw === "") {
+      // Empty field → env-level SSO fallback (no ?domain=), unchanged behavior.
+      window.location.assign(OIDC_LOGIN_PATH);
+      return;
+    }
+    const domain = resolveSsoDomain(raw);
+    const error = validateSsoDomain(domain);
+    if (error) {
+      setSsoError(error); // block navigation; the gateway never sees a bad domain
+      return;
+    }
+    // Full-page navigation (not fetch) so the browser follows the relay's 302
+    // chain to the external IdP.
+    window.location.assign(`${OIDC_LOGIN_PATH}?domain=${encodeURIComponent(domain)}`);
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -133,11 +178,43 @@ export function LoginForm() {
             {isSubmitting ? "Signing in…" : "Log in"}
           </Button>
 
-          {/* SSO login — a full-page NAVIGATION to the pre-auth BFF relay (NOT a
-              fetch): the browser must follow the relay's 302 chain to the external
-              IdP, which a fetch cannot do. Styled via Button asChild — stays an <a>. */}
-          <Button asChild variant="outline" className="w-full">
-            <a href="/api/auth/oidc/login">Sign in with SSO</a>
+          {/* SSO login — an optional work-email/domain field drives the relay's
+              ?domain= so a tenant with per-tenant OIDC configured can start SSO
+              from here. Empty field → env-level SSO (no ?domain=). The click does
+              a full-page NAVIGATION (window.location.assign) so the browser follows
+              the relay's 302 chain to the external IdP — a fetch could not. */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="sso_domain" className="text-sm font-medium text-foreground">
+              Work email or domain
+            </label>
+            <Input
+              id="sso_domain"
+              type="text"
+              value={ssoDomain}
+              onChange={(e) => setSsoDomain(e.target.value)}
+              autoComplete="email"
+              placeholder="you@company.com"
+              aria-describedby={ssoError ? "sso_domain_error" : undefined}
+            />
+            {ssoError && (
+              <p
+                id="sso_domain_error"
+                role="alert"
+                aria-live="polite"
+                className="text-sm text-destructive"
+              >
+                {ssoError}
+              </p>
+            )}
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleSso}
+          >
+            Sign in with SSO
           </Button>
         </CardContent>
       </Card>

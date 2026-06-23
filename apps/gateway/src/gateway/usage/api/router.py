@@ -17,12 +17,16 @@ GET /admin/spend contract (FROZEN @ spend-windows — TASK.md §3):
 
 from __future__ import annotations
 
+import asyncio
 import datetime
+import json
 import uuid
 from decimal import Decimal
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel, ConfigDict
+from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +37,7 @@ from gateway.core.error_catalog import (
     KEY_NOT_FOUND_IN_TENANT,
     PAYLOAD_END_DATE_INVALID,
     PAYLOAD_GROUP_BY_INVALID,
+    PAYLOAD_INVALID,
     PAYLOAD_KEY_ID_UUID_INVALID,
     PAYLOAD_START_DATE_INVALID,
     PAYLOAD_WINDOW_INVALID,
@@ -515,3 +520,319 @@ async def get_reconciliation(
             for item in summary.by_source
         ],
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/alerts — paginated alert/event history (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+_ALERTS_DEFAULT_LIMIT = 50
+_ALERTS_MAX_LIMIT = 100
+_ALERTS_READ_TIMEOUT_SECONDS = 30.0
+
+
+class AlertEventItem(BaseModel):
+    """One alert_events row as returned by GET /admin/alerts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    event_type: str
+    payload: dict[str, object]
+    created_at: str
+    delivered: bool
+    delivered_at: str | None
+
+
+class AlertListResponse(BaseModel):
+    """Paginated alert history envelope: { items, total }."""
+
+    model_config = ConfigDict(frozen=True)
+
+    items: list[AlertEventItem]
+    total: int
+
+
+def _parse_pagination(limit: str | None, offset: str | None) -> tuple[int, int]:
+    """Parse limit (1..100, default 50) + offset (>=0, default 0).
+
+    Parsed manually (not via FastAPI int coercion) so a bad value maps to the catalog
+    ERR_PAYLOAD_INVALID code rather than FastAPI's own 422 shape.
+    """
+    parsed_limit = _ALERTS_DEFAULT_LIMIT
+    if limit is not None:
+        try:
+            parsed_limit = int(limit)
+        except ValueError:
+            raise PAYLOAD_INVALID.exc() from None
+        if parsed_limit < 1 or parsed_limit > _ALERTS_MAX_LIMIT:
+            raise PAYLOAD_INVALID.exc()
+
+    parsed_offset = 0
+    if offset is not None:
+        try:
+            parsed_offset = int(offset)
+        except ValueError:
+            raise PAYLOAD_INVALID.exc() from None
+        if parsed_offset < 0:
+            raise PAYLOAD_INVALID.exc()
+
+    return parsed_limit, parsed_offset
+
+
+def _coerce_payload(raw: object) -> dict[str, object]:
+    """alert_events.payload is JSONB; asyncpg may surface it as a JSON string or a dict."""
+    if isinstance(raw, dict):
+        return cast("dict[str, object]", raw)
+    if isinstance(raw, str):
+        try:
+            loaded = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return loaded if isinstance(loaded, dict) else {}
+    return {}
+
+
+@usage_router.get("/alerts", response_model=AlertListResponse)
+async def get_alerts(
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[str | None, Query()] = None,
+    offset: Annotated[str | None, Query()] = None,
+) -> AlertListResponse:
+    """Return the caller's tenant-visible alert history (FROZEN @ v1 — TASK.md §3).
+
+    Owner/admin-scoped (member → 403). Visibility is the caller's own tenant rows PLUS
+    platform system events (tenant_id IS NULL: circuit-open, upstream-health, drift) —
+    Tin-approved at the freeze; system rows belong to no tenant (operational-info, not
+    cross-tenant tenant-data). Newest-first, paginated. READ-ONLY — never writes
+    delivered_at or any row.
+    """
+    parsed_limit, parsed_offset = _parse_pagination(limit, offset)
+    tenant_id: uuid.UUID = identity.tenant_id
+    where = "WHERE tenant_id = :tid OR tenant_id IS NULL"
+
+    async with asyncio.timeout(_ALERTS_READ_TIMEOUT_SECONDS):
+        total_row = (
+            await session.execute(
+                text(f"SELECT COUNT(*) FROM alert_events {where}"),
+                {"tid": str(tenant_id)},
+            )
+        ).fetchone()
+        total = int(total_row[0]) if total_row else 0
+
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, event_type, payload, created_at, delivered_at"
+                    f" FROM alert_events {where}"
+                    " ORDER BY created_at DESC, id DESC"
+                    " LIMIT :limit OFFSET :offset"
+                ),
+                {"tid": str(tenant_id), "limit": parsed_limit, "offset": parsed_offset},
+            )
+        ).fetchall()
+
+    items = [
+        AlertEventItem(
+            id=str(row[0]),
+            event_type=str(row[1]),
+            payload=_coerce_payload(row[2]),
+            created_at=row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3]),
+            delivered=row[4] is not None,
+            delivered_at=(
+                row[4].isoformat() if row[4] is not None and hasattr(row[4], "isoformat") else None
+            ),
+        )
+        for row in rows
+    ]
+
+    return AlertListResponse(items=items, total=total)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/health/upstreams — per-upstream up/down (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+# MONITORED today is exactly the upstream the health checker actually pings (OpenRouter).
+# We deliberately do NOT fabricate up/down rows for providers with no health ping
+# (anthropic/gemini/bedrock/azure/openai) — reporting fake-green would be dishonest. The
+# response is a LIST so it extends for free when per-provider pingers land (filed spec delta).
+_MONITORED_UPSTREAMS: tuple[str, ...] = ("openrouter",)
+_HEALTH_FAIL_EVENT = "upstream_health_fail"
+_HEALTH_RECOVERED_EVENT = "upstream_health_recovered"
+_HEALTH_READ_TIMEOUT_SECONDS = 30.0
+
+
+class UpstreamHealthItem(BaseModel):
+    """The current health status of one monitored upstream."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    status: str  # "up" | "down"
+    last_event_at: str | None
+    last_event_type: str | None
+
+
+class UpstreamHealthResponse(BaseModel):
+    """Envelope: { checked_at, upstreams } — status as of the query time."""
+
+    model_config = ConfigDict(frozen=True)
+
+    checked_at: str
+    upstreams: list[UpstreamHealthItem]
+
+
+@usage_router.get("/health/upstreams", response_model=UpstreamHealthResponse)
+async def get_upstream_health(
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UpstreamHealthResponse:
+    """Return per-upstream up/down derived from durable health events (FROZEN @ v1 — TASK.md §3).
+
+    Owner/admin-scoped (member → 403). Status is GLOBAL platform state, derived from the
+    NULL-tenant system rows in alert_events (the same operational rows GET /admin/alerts reads —
+    Tin-approved at the alerts freeze; no new tenant-scope relaxation). For each monitored
+    upstream: the latest of {upstream_health_fail, upstream_health_recovered} decides up/down; no
+    health event ever → up with null last_event_*. READ-ONLY — never writes a row.
+    """
+    checked_at = datetime.datetime.now(datetime.UTC).isoformat()
+    upstreams: list[UpstreamHealthItem] = []
+
+    async with asyncio.timeout(_HEALTH_READ_TIMEOUT_SECONDS):
+        for name in _MONITORED_UPSTREAMS:
+            # OpenRouter is the only emitter today, so all health events belong to it. When
+            # per-provider pingers land, this gains a payload/provider filter per upstream.
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT event_type, created_at FROM alert_events"
+                        " WHERE tenant_id IS NULL"
+                        " AND event_type IN (:fail, :recovered)"
+                        " ORDER BY created_at DESC, id DESC"
+                        " LIMIT 1"
+                    ),
+                    {"fail": _HEALTH_FAIL_EVENT, "recovered": _HEALTH_RECOVERED_EVENT},
+                )
+            ).fetchone()
+
+            if row is None:
+                upstreams.append(
+                    UpstreamHealthItem(
+                        name=name, status="up", last_event_at=None, last_event_type=None
+                    )
+                )
+                continue
+
+            last_event_type = str(row[0])
+            last_event_at = (
+                row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+            )
+            status = "down" if last_event_type == _HEALTH_FAIL_EVENT else "up"
+            upstreams.append(
+                UpstreamHealthItem(
+                    name=name,
+                    status=status,
+                    last_event_at=last_event_at,
+                    last_event_type=last_event_type,
+                )
+            )
+
+    return UpstreamHealthResponse(checked_at=checked_at, upstreams=upstreams)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/ratelimits — live per-key rpm/tpm consumption (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+# The live counters are the SAME Redis keys RedisLuaRateLimiter writes (the single source of
+# truth — no drift). READ-ONLY: ZCARD + GET only, never ZADD/INCR/EXPIRE. Design-for-failure:
+# Redis unavailable/erroring → counters reported as null (unknown, never 0 or 500), mirroring
+# the limiter's own fail-open. Tenant-scoped: only the caller's tenant's keys.
+_RATELIMIT_DB_TIMEOUT_SECONDS = 30.0
+_RATELIMIT_REDIS_TIMEOUT_SECONDS = 5.0
+
+
+class RatelimitItem(BaseModel):
+    """One API key's live rpm/tpm consumption vs its configured limit."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key_id: str
+    name: str
+    rpm_limit: int | None
+    tpm_limit: int | None
+    rpm_current: int | None  # null when Redis is unavailable
+    tpm_current: float | None  # null when Redis is unavailable
+
+
+class RatelimitsResponse(BaseModel):
+    """Envelope: { keys } — per-key live counters for the caller's tenant."""
+
+    model_config = ConfigDict(frozen=True)
+
+    keys: list[RatelimitItem]
+
+
+async def _read_ratelimit_counters(
+    redis_client: object, key_ids: list[str]
+) -> dict[str, tuple[int | None, float | None]]:
+    """Read live (rpm, tpm) per key from Redis, READ-ONLY. Fail-open: ANY Redis error (or an
+    absent client) → an empty map, so every key reports null (unknown) — never 0, never 500."""
+    if redis_client is None:
+        return {}
+    counters: dict[str, tuple[int | None, float | None]] = {}
+    try:
+        async with asyncio.timeout(_RATELIMIT_REDIS_TIMEOUT_SECONDS):
+            for key_id in key_ids:
+                rpm = int(await redis_client.zcard(f"ratelimit:rpm:{key_id}"))  # type: ignore[attr-defined]
+                raw = await redis_client.get(f"ratelimit:tpm_sum:{key_id}")  # type: ignore[attr-defined]
+                tpm = float(raw) if raw is not None else 0.0
+                counters[key_id] = (rpm, tpm)
+    except (RedisError, OSError, ValueError, TimeoutError):
+        return {}  # fail-open — all counters unknown
+    return counters
+
+
+@usage_router.get("/ratelimits", response_model=RatelimitsResponse)
+async def get_ratelimits(
+    request: Request,
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RatelimitsResponse:
+    """Return the caller's tenant's per-key live rpm/tpm counters (FROZEN @ v1 — TASK.md §3).
+
+    Owner/admin-scoped (member → 403). Tenant-scoped: only this tenant's keys are listed, so the
+    Redis counters read (keyed by key_id) are implicitly tenant-isolated — another tenant's
+    counters are never reached. READ-ONLY; Redis-down → null counters, still 200.
+    """
+    tenant_id: uuid.UUID = identity.tenant_id
+
+    async with asyncio.timeout(_RATELIMIT_DB_TIMEOUT_SECONDS):
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, name, rpm_limit, tpm_limit FROM api_keys"
+                    " WHERE tenant_id = :tid AND revoked_at IS NULL"
+                    " ORDER BY created_at ASC, id ASC"
+                ),
+                {"tid": str(tenant_id)},
+            )
+        ).fetchall()
+
+    key_ids = [str(row[0]) for row in rows]
+    counters = await _read_ratelimit_counters(
+        getattr(request.app.state, "redis_client", None), key_ids
+    )
+
+    items = [
+        RatelimitItem(
+            key_id=str(row[0]),
+            name=str(row[1]),
+            rpm_limit=int(row[2]) if row[2] is not None else None,
+            tpm_limit=int(row[3]) if row[3] is not None else None,
+            rpm_current=counters.get(str(row[0]), (None, None))[0],
+            tpm_current=counters.get(str(row[0]), (None, None))[1],
+        )
+        for row in rows
+    ]
+
+    return RatelimitsResponse(keys=items)

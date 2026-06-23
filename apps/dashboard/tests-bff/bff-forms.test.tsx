@@ -66,9 +66,11 @@ describe("LoginForm (BFF behavior)", () => {
   async function fillAndSubmitLogin(overrides?: { email?: string; password?: string }) {
     const email = overrides?.email ?? "ada@acme.io";
     const password = overrides?.password ?? "hunter12345";
-    await user.type(screen.getByLabelText(/email/i), email);
+    // /^email$/ — the password-login email field (distinct from the SSO
+    // "Work email or domain" field added by the sso-login-button task).
+    await user.type(screen.getByLabelText(/^email$/i), email);
     await user.type(screen.getByLabelText(/password/i), password);
-    await user.click(screen.getByRole("button", { name: /log in|sign in/i }));
+    await user.click(screen.getByRole("button", { name: /^log in$/i }));
   }
 
   /**

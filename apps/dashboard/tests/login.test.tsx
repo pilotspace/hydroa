@@ -27,9 +27,9 @@ describe("LoginForm", () => {
     const email = overrides?.email ?? "ada@acme.io";
     const password = overrides?.password ?? "hunter12345";
 
-    await user.type(screen.getByLabelText(/email/i), email);
+    await user.type(screen.getByLabelText(/^email$/i), email);
     await user.type(screen.getByLabelText(/password/i), password);
-    await user.click(screen.getByRole("button", { name: /log in|sign in/i }));
+    await user.click(screen.getByRole("button", { name: /^log in$/i }));
   }
 
   /**

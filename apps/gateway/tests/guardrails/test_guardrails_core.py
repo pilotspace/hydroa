@@ -1324,6 +1324,10 @@ async def test_guardrails_core_migration_column_exists(
     # tenant_provider_keys table to this manifest too (same oidc/teams precedent) — it is
     # registered on Base.metadata via main.py's side-effect ORM import, so it now appears
     # under create_all. Guardrails still adds no tables of its own; intent unchanged.
+    # DISPOSITION EDIT (routing-config-store §3, 2026-06-23): added the contracted
+    # routing_config singleton table to this manifest too (same precedent) — it is
+    # registered on Base.metadata via main.py's side-effect ORM import, so it now appears
+    # under create_all. Guardrails still adds no tables of its own; intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1332,7 +1336,7 @@ async def test_guardrails_core_migration_column_exists(
                 "('tenants','users','api_keys','models','pricing_snapshots',"
                 " 'usage_records','alert_events','tenant_model_overrides',"
                 " 'teams','team_members','oidc_provider_configs',"
-                " 'tenant_provider_keys','alembic_version')"
+                " 'tenant_provider_keys','routing_config','alembic_version')"
             )
         )
     ).fetchall()

@@ -6,19 +6,176 @@
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
-      "phase": "ground",
-      "gate": "none",
-      "milestone": null,
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
       "depends_on": [
         "reconcile-cost-basis-filter"
       ],
       "created": "2026-06-18T16:42:11+00:00",
-      "updated": "2026-06-22T09:23:40+00:00"
+      "updated": "2026-06-22T14:51:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "11043f8802f9d51c16e09ca2b24b2feb",
+        "tests": {
+          "apps/gateway/tests/operator_wide_reconciliation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/operator_wide_reconciliation/conftest.py": "eb884ffe1fde400cf59653d99b53199b",
+          "apps/gateway/tests/operator_wide_reconciliation/test_operator_wide_reconciliation.py": "1a1ca1dce206841a76d3b628af1b49bf"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/ops/",
+          "apps/gateway/src/gateway/usage/application/reconciliation.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/ops_cert_verifier.py",
+          "apps/gateway/src/gateway/usage/api/schemas.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "9186d7e3719b0bf9df307e2171871838"
+      }
+    },
+    "sso-login-button": {
+      "title": "Sign in with SSO entry on the login page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T15:24:48+00:00",
+      "updated": "2026-06-22T15:46:40+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8e221fc1204555e3708a61a726ff5bce",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/auth/LoginForm.tsx"
+        ],
+        "snapshot_md5": "0cfe5e281642ddc0dcd8203e7f80b19e"
+      }
+    },
+    "alerts-events-viewer": {
+      "title": "Alerts & events viewer \u2014 GET /admin/alerts + dashboard Alerts page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T16:29:20+00:00",
+      "updated": "2026-06-22T16:57:08+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a2aa9ee06edf39c356db7d27bc670a0b",
+        "tests": {
+          "apps/gateway/tests/alerts_events_viewer/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/alerts_events_viewer/conftest.py": "aa534ad7e8216bb8c6d93e871148ceb4",
+          "apps/gateway/tests/alerts_events_viewer/test_alerts_events_viewer.py": "9d8496dcc1fffc7486415b407378826d"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/dashboard/app/(dashboard)/alerts/",
+          "apps/dashboard/components/alerts/",
+          "apps/dashboard/components/ui/app-shell.tsx"
+        ],
+        "snapshot_md5": "694cf1014d27477029391f181e9f07a1"
+      }
+    },
+    "catalog-sync-trigger": {
+      "title": "Catalog sync trigger \u2014 POST /admin/catalog/sync + /models re-sync button",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T17:01:00+00:00",
+      "updated": "2026-06-22T17:24:42+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6c5480a16d74cef9130217958c5753e7",
+        "tests": {
+          "apps/gateway/tests/catalog_sync_trigger/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/catalog_sync_trigger/conftest.py": "14f71b265278fb8451b898164caeac44",
+          "apps/gateway/tests/catalog_sync_trigger/test_catalog_sync_trigger.py": "f2a75adebdeab9f83a078cca9df4337d"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/catalog/api/router.py",
+          "apps/gateway/src/gateway/catalog/api/schemas.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/dashboard/components/models/ModelsPage.tsx"
+        ],
+        "snapshot_md5": "ddf0f466234f6de275bd816b466a3016"
+      }
+    },
+    "upstream-health-view": {
+      "title": "Upstream health view \u2014 GET /admin/health/upstreams + dashboard health panel",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T17:27:20+00:00",
+      "updated": "2026-06-22T17:50:11+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2c5fe7c5d997a46aa6b5cc930bb3cc21",
+        "tests": {
+          "apps/gateway/tests/upstream_health_view/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/upstream_health_view/conftest.py": "2d632f318699b4eedee4c15c75fe45e1",
+          "apps/gateway/tests/upstream_health_view/test_upstream_health_view.py": "64037f1deae1aa4306ede495d5d3fbf2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/dashboard/components/health/",
+          "apps/dashboard/app/(dashboard)/health/page.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx"
+        ],
+        "snapshot_md5": "be109115a2d814e341f91d5217eb2947"
+      }
+    },
+    "ratelimit-counter-view": {
+      "title": "Rate-limit counter view \u2014 GET /admin/ratelimits + read-only counter panel",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v31",
+      "depends_on": [],
+      "created": "2026-06-22T17:51:36+00:00",
+      "updated": "2026-06-22T18:11:44+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9e578e876139bbaf68707d193917c30b",
+        "tests": {
+          "apps/gateway/tests/ratelimit_counter_view/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/ratelimit_counter_view/conftest.py": "d91c4b412e9ece22af0f11bcf26f841b",
+          "apps/gateway/tests/ratelimit_counter_view/test_ratelimit_counter_view.py": "8c9786a3f063488bde5fad42d937a8fa"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/dashboard/components/keys/KeysPage.tsx",
+          "apps/dashboard/components/keys/"
+        ],
+        "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
+      }
     }
   },
-  "milestones": {},
+  "milestones": {
+    "v31": {
+      "title": "Operator-wide reconciliation + UI\u2194BE coverage",
+      "goal": "a platform operator reads cross-tenant reconciliation drift through an authorized ops-auth endpoint, and every implemented backend control-plane capability has a dashboard surface",
+      "stage": "production",
+      "status": "done",
+      "created": "2026-06-22T09:31:42+00:00",
+      "updated": "2026-06-23T02:00:14+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-22T09:25:50+00:00",
+  "updated": "2026-06-23T03:46:59+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -406,6 +563,17 @@
         "openrouter-recovery-sweep"
       ],
       "archived": "2026-06-22"
+    },
+    {
+      "slug": "v32",
+      "title": "Writable routing configuration",
+      "tasks": 3,
+      "task_slugs": [
+        "routing-config-write",
+        "routing-config-store",
+        "routing-config-editor"
+      ],
+      "archived": "2026-06-23"
     }
   ]
 }

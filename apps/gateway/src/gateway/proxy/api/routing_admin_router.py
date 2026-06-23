@@ -1,92 +1,137 @@
-"""GET /admin/routing — read-only routing health+config surface.
+"""GET + PUT /admin/routing — routing config read + (owner/admin) write surface.
 
-Contract: routing-admin TASK.md §3 (FROZEN).
+Contract: routing-admin TASK.md §3 (GET, FROZEN) + routing-config-write TASK.md §3 (PUT + the
+additive GET extensions: `routing_strategy`, `deployments`).
 
-Returns retry policy, cooldown config, model groups, and per-candidate
-circuit state in a single JSON response. Secrets-free: only the four named
-blocks are present in the response body.
+GET returns retry policy, cooldown config, model groups, per-candidate circuit state, the routing
+strategy, and a per-deployment `deployments` block (weight/rpm/tpm). PUT validates an incoming
+routing config through the SAME Settings/Deployment validators (via merge_routing_config) and, on
+success, persists it to the operator-wide singleton. Both render the EFFECTIVE-ON-NEXT-BOOT config
+= merge_routing_config(app.state.settings, stored_row): no row → settings unchanged (the four
+frozen blocks are byte-identical); a row → the persisted config (read-after-write for the editor).
+candidates[].state always comes from the LIVE cooldown_gate (runtime health, not config).
 
-Auth: same require_owner_or_admin dependency as gateway/keys/api/router.py
-(Bearer JWT; member role → 403; missing/invalid → 401).
+Auth (both): require_owner_or_admin (Bearer JWT; member → 403; missing/invalid → 401). PUT is
+always-on (Tin-approved 2026-06-23) — any owner/admin may write the operator-wide routing config.
 
-State derivation:
-  - app.state.cooldown_gate is None → all candidates "closed", zero Redis I/O.
-  - Else: call snapshot_state(model_id) on the concrete RedisCooldownGate.
-    snapshot_state is an additive method (NOT part of ModelHealthGate protocol).
-    Any Redis exception in snapshot_state → state "unknown"; 200 still returned.
-
-NOTE: snapshot_state is defined on RedisCooldownGate only (concrete class).
-In v6 exactly one non-None gate type exists. If a second implementation is
-introduced, add isinstance dispatch here or extend the gate interface.
+Restart-to-apply: PUT NEVER mutates app.state.settings/model_router. The persisted config is
+adopted by the live router only at the next gateway boot (the shipped boot-merge).
 """
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any
 
 import structlog
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Body, Depends, Request
 
+from gateway.core.config import Settings
+from gateway.core.error_catalog import ROUTING_CONFIG_INVALID
 from gateway.keys.api.deps import require_owner_or_admin
+from gateway.proxy.application.routing_config_merge import (
+    ROUTING_OVERRIDE_KEYS,
+    merge_routing_config,
+)
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
+from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
 from gateway.tenants.domain.entities import Identity
 
 routing_admin_router = APIRouter(prefix="/admin/routing", tags=["routing-admin"])
 
+# The set of keys a stored routing-config document may legitimately hold (model_groups + the
+# scalar override knobs). The PUT persists ONLY these — a client cannot smuggle arbitrary keys
+# (e.g. a stray secret) into the JSONB row; they would be ignored at boot anyway (extra="ignore").
+_PERSISTABLE_KEYS: frozenset[str] = frozenset(("model_groups", *ROUTING_OVERRIDE_KEYS))
 
-@routing_admin_router.get("")
-async def get_routing_admin(
-    request: Request,
-    _identity: Annotated[Identity, Depends(require_owner_or_admin)],
-) -> dict[str, Any]:
-    """GET /admin/routing — routing config and per-candidate cooldown health.
+# Known Settings/Deployment validator codes (UPPER_SNAKE tokens emitted ahead of ": <message>").
+# Matching against this set avoids echoing a user-controlled alias from the error field-path.
+_VALIDATOR_CODES: frozenset[str] = frozenset(
+    {
+        "UNKNOWN_ROUTING_STRATEGY",
+        "DUPLICATE_DEPLOYMENT",
+        "EMPTY_CANDIDATE_LIST",
+        "TOO_MANY_CANDIDATES",
+        "ALIAS_COLLIDES_WITH_CANDIDATE",
+        "INVALID_DEPLOYMENT_WEIGHT",
+        "INVALID_DEPLOYMENT_LIMIT",
+        "DEPLOYMENT_MODEL_ID_REQUIRED",
+        "INVALID_LOADBAL_ALPHA",
+        "INVALID_LOADBAL_TTL",
+    }
+)
+_UPPER_TOKEN_RE = re.compile(r"[A-Z][A-Z0-9_]{4,}")
 
-    Returns 200 with the exact shape frozen in §3:
-      {retry_policy, cooldown, model_groups, candidates}
 
-    All four top-level keys are always present regardless of configuration.
-    Response is secrets-free: only the named Settings knobs appear.
+def _validator_code(exc: Exception) -> str:
+    """Return the first KNOWN Settings/Deployment validator code in the error, else a generic code.
+
+    Scans all UPPER_SNAKE tokens and returns the first that is a recognised validator code — so a
+    user-controlled alias appearing earlier in Pydantic's field-path (e.g. model_groups.MYALIAS.0)
+    is never echoed back as the code.
     """
-    settings = request.app.state.settings
+    for token in _UPPER_TOKEN_RE.findall(str(exc)):
+        if token in _VALIDATOR_CODES:
+            return token
+    return "INVALID_ROUTING_CONFIG"
 
-    # ── retry_policy block ──────────────────────────────────────────────────
+
+async def _effective_settings(request: Request) -> Settings:
+    """Return settings merged with the persisted routing config (DB-wins), env on any read error.
+
+    Design-for-failure: a missing table / unreachable DB / invalid stored row must NOT break the
+    read surface — fall back to the env settings (the four frozen blocks stay byte-identical).
+    """
+    settings: Settings = request.app.state.settings
+    try:
+        stored = await RoutingConfigRepository(request.app.state.sessionmaker).get()
+        return merge_routing_config(settings, stored)
+    except Exception:
+        structlog.get_logger(__name__).warning(
+            "routing_config_read_failed_fallback_env", exc_info=True
+        )
+        return settings
+
+
+async def _routing_response(request: Request, effective: Settings) -> dict[str, Any]:
+    """Build the extended /admin/routing body from the effective settings + live cooldown gate."""
     retry_policy = {
-        "max_retries": settings.upstream_max_retries,
-        "backoff_base_s": settings.upstream_retry_backoff_base_s,
+        "max_retries": effective.upstream_max_retries,
+        "backoff_base_s": effective.upstream_retry_backoff_base_s,
     }
 
-    # ── cooldown block ──────────────────────────────────────────────────────
-    cooldown_threshold: int = settings.cooldown_failure_threshold
+    cooldown_threshold: int = effective.cooldown_failure_threshold
     cooldown = {
         "enabled": cooldown_threshold > 0,
         "threshold": cooldown_threshold,
-        "ttl_s": settings.cooldown_ttl_s,
-        "window_s": settings.cooldown_window_s,
+        "ttl_s": effective.cooldown_ttl_s,
+        "window_s": effective.cooldown_window_s,
     }
 
-    # ── model_groups block ──────────────────────────────────────────────────
-    # Read from app.state.model_router (wired at create_app from Settings.model_groups).
-    model_router = request.app.state.model_router
-    model_groups: dict[str, list[str]] = model_router.model_groups
+    model_groups: dict[str, list[str]] = effective.model_groups
 
-    # ── candidates block ────────────────────────────────────────────────────
-    # Narrow cast: exactly one non-None gate type in v6 is RedisCooldownGate.
-    # When gate is None (cooldown disabled), all candidates are "closed" with
-    # zero Redis I/O.  When gate is not None, call snapshot_state per candidate.
-    # app.state is untyped (Any); narrow to RedisCooldownGate | None for the call below.
+    # deployments block (additive): per-alias normalized Deployment detail.
+    deployments: dict[str, list[dict[str, Any]]] = {
+        alias: [
+            {
+                "model_id": d.model_id,
+                "weight": d.weight,
+                "rpm_limit": d.rpm_limit,
+                "tpm_limit": d.tpm_limit,
+            }
+            for d in deps
+        ]
+        for alias, deps in effective.deployments.items()
+    }
+
+    # candidates: model_ids from the effective config; state from the LIVE cooldown gate.
     gate: RedisCooldownGate | None = request.app.state.cooldown_gate
-
     candidates: list[dict[str, str]] = []
     for alias, candidate_list in model_groups.items():
         for model_id in candidate_list:
             if gate is None:
                 state = "closed"
             else:
-                # Direct call on the concrete gate type — snapshot_state is an
-                # additive method on RedisCooldownGate, not on ModelHealthGate.
-                # Defensive try/except: RedisCooldownGate.snapshot_state already
-                # catches all Redis exceptions internally, but test fakes may raise
-                # directly. Fail-open: any exception → "unknown", 200 still returned.
                 try:
                     state = await gate.snapshot_state(model_id)
                 except Exception as exc:
@@ -103,4 +148,41 @@ async def get_routing_admin(
         "cooldown": cooldown,
         "model_groups": model_groups,
         "candidates": candidates,
+        "routing_strategy": effective.routing_strategy,
+        "deployments": deployments,
     }
+
+
+@routing_admin_router.get("")
+async def get_routing_admin(
+    request: Request,
+    _identity: Annotated[Identity, Depends(require_owner_or_admin)],
+) -> dict[str, Any]:
+    """GET /admin/routing — effective routing config + per-candidate cooldown health."""
+    effective = await _effective_settings(request)
+    return await _routing_response(request, effective)
+
+
+@routing_admin_router.put("")
+async def put_routing_admin(
+    request: Request,
+    body: Annotated[dict[str, Any], Body(...)],
+    _identity: Annotated[Identity, Depends(require_owner_or_admin)],
+) -> dict[str, Any]:
+    """PUT /admin/routing — validate (Settings/Deployment parity) then persist; restart-to-apply.
+
+    Validation is performed by round-tripping the body through merge_routing_config against the
+    live settings — the EXACT validators that run at boot. On failure, NOTHING is persisted (422
+    with the underlying validator code in `detail`). On success, the singleton row is replaced and
+    the effective config is returned; the live router is untouched (adopted on next restart).
+    """
+    settings: Settings = request.app.state.settings
+    try:
+        effective = merge_routing_config(settings, body)
+    except ValueError as exc:
+        raise ROUTING_CONFIG_INVALID.exc(detail=_validator_code(exc)) from exc
+
+    # Persist ONLY recognised routing keys — never store arbitrary client-supplied keys in the row.
+    persistable = {k: body[k] for k in _PERSISTABLE_KEYS if k in body}
+    await RoutingConfigRepository(request.app.state.sessionmaker).upsert(persistable)
+    return await _routing_response(request, effective)

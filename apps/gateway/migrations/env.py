@@ -55,6 +55,9 @@ import gateway.auth.infrastructure.orm  # noqa: F401 — registers OidcProviderC
 # provider-credential-store TASK.md §3: registers TenantProviderKeyRow on Base.metadata.
 import gateway.proxy.infrastructure.orm  # noqa: F401 — registers TenantProviderKeyRow on Base.metadata
 
+# routing-config-store TASK.md §3: registers RoutingConfigRow on Base.metadata.
+import gateway.proxy.infrastructure.routing_config_orm  # noqa: F401 — registers RoutingConfigRow on Base.metadata
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------

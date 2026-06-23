@@ -86,6 +86,18 @@ AUTH_FORBIDDEN = ErrorSpec(403, "ERR_AUTH_FORBIDDEN", "Insufficient role for thi
 AUTH_FORBIDDEN_OWNER_REQUIRED = ErrorSpec(403, "ERR_AUTH_FORBIDDEN", "Owner role required")
 
 # ---------------------------------------------------------------------------
+# Ops-auth — operator-wide (cross-tenant) surface (operator-wide-reconciliation)
+# ---------------------------------------------------------------------------
+
+#: No recognised operator client cert (missing / unrecognised / malformed XFCC, or
+#: ops-auth not configured). BYTE-IDENTICAL across every failure mode — no oracle.
+OPS_UNAUTHORIZED = ErrorSpec(401, "ERR_OPS_UNAUTHORIZED", "Operator authorization required")
+
+#: A valid TENANT credential was presented to the operator surface — wrong credential
+#: type; cross-tenant power never rides a tenant token.
+OPS_FORBIDDEN = ErrorSpec(403, "ERR_OPS_FORBIDDEN", "Tenant credentials cannot access the operator surface")
+
+# ---------------------------------------------------------------------------
 # Auth — API key errors
 # ---------------------------------------------------------------------------
 
@@ -130,6 +142,16 @@ MODEL_NOT_ALLOWED = ErrorSpec(403, "ERR_MODEL_NOT_ALLOWED", "Model not permitted
 
 #: Model not found in catalog admin endpoints (dynamic: model_id).
 MODEL_NOT_FOUND = ErrorSpec(404, "ERR_MODEL_NOT_FOUND", "Model '{model_id}' not found in catalog")
+
+# ---------------------------------------------------------------------------
+# Routing config write (routing-config-write)
+# ---------------------------------------------------------------------------
+
+#: PUT /admin/routing body failed the Settings/Deployment validators. The underlying
+#: validator code (e.g. UNKNOWN_ROUTING_STRATEGY, DUPLICATE_DEPLOYMENT) is passed as `detail`.
+ROUTING_CONFIG_INVALID = ErrorSpec(
+    422, "ERR_ROUTING_CONFIG_INVALID", "Routing configuration failed validation"
+)
 
 # ---------------------------------------------------------------------------
 # Payload / request validation errors
