@@ -47,3 +47,23 @@ def test_nan_drift_threshold_rejected() -> None:
 def test_negative_drift_threshold_rejected() -> None:
     with pytest.raises(ValueError, match="INVALID_RECONCILIATION_DRIFT_THRESHOLD"):
         Settings(reconciliation_drift_threshold="-1")
+
+
+# ── v33 drift-threshold-validation: fail loud on a negative check-interval ──
+
+
+def test_default_check_interval_is_zero_and_off() -> None:
+    """Unset interval boots to the OFF sentinel — byte-identical to today."""
+    s = Settings()
+    assert s.reconciliation_check_interval_seconds == 0
+    assert should_start_drift_checker(Decimal("1"), s.reconciliation_check_interval_seconds) is False
+
+
+def test_positive_check_interval_accepted() -> None:
+    s = Settings(reconciliation_check_interval_seconds="60")
+    assert s.reconciliation_check_interval_seconds == 60
+
+
+def test_negative_check_interval_rejected() -> None:
+    with pytest.raises(ValueError, match="INVALID_RECONCILIATION_CHECK_INTERVAL"):
+        Settings(reconciliation_check_interval_seconds="-1")

@@ -58,6 +58,7 @@ class RecordingUsageRecorder:
             "quantity",
             "usage_source",
             "provider_generation_id",
+            "disconnect_estimate",
         }
     )
 
@@ -87,6 +88,7 @@ class RecordingUsageRecorder:
         quantity: Decimal | None = None,
         usage_source: str | None = None,
         provider_generation_id: str | None = None,
+        disconnect_estimate: bool = False,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -114,6 +116,7 @@ class RecordingUsageRecorder:
                 quantity=quantity,
                 usage_source=usage_source,
                 provider_generation_id=provider_generation_id,
+                disconnect_estimate=disconnect_estimate,
             )
         except Exception as exc:
             _log.warning(
@@ -143,6 +146,7 @@ class RecordingUsageRecorder:
         quantity: Decimal | None = None,
         usage_source: str | None = None,
         provider_generation_id: str | None = None,
+        disconnect_estimate: bool = False,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -158,6 +162,9 @@ class RecordingUsageRecorder:
         # unless an upstream cost is consumed below.
         cost_basis = "catalog"
         provider_cost: Decimal | None = None
+        # disconnect-provider-cost (v33): bound on every path so the post-costing stamp
+        # below can strip markup even on the cached / no-pricing branches (where it stays 0).
+        markup_pct: Decimal = _ZERO
 
         if not cached:
             # Only fetch pricing for non-cached records; cached hits always cost 0
@@ -268,6 +275,24 @@ class RecordingUsageRecorder:
             _known_units = {"per_token", "per_image", "per_second", "per_character"}
             if pricing_unit is not None and pricing_unit in _known_units:
                 resolved_pricing_unit = pricing_unit
+
+        # disconnect-provider-cost (v33): a NON-RECOVERABLE client-disconnect (non-OpenRouter
+        # or no generation id) gets no out-of-band recovery, so a positive partial estimate
+        # would otherwise sit as a catalog row with provider_cost NULL — billed ~$0 and INVISIBLE
+        # to the drift monitor (a silent $0 upstream charge). Surface it: stamp provider_cost =
+        # the markup-stripped catalog cost (≈ the upstream's list charge), zero the user-billed
+        # amount (never charged for a dropped response), and flip to the provider basis so the
+        # unbilled-upstream filter (provider_cost>0, cost_usd=0, cost_basis='provider') counts it.
+        # Zero-estimate disconnects fall through (nothing to estimate) → audit surfaces them.
+        if (
+            disconnect_estimate
+            and provider_cost is None
+            and cost_basis == "catalog"
+            and cost_usd > _ZERO
+        ):
+            provider_cost = cost_usd / (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100"))
+            cost_usd = _ZERO
+            cost_basis = "provider"
 
         created_at = datetime.datetime.now(datetime.UTC).isoformat()
         raw_payload: dict[str, object] = {

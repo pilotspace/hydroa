@@ -48,6 +48,13 @@ class UsageRecordExtras(TypedDict, total=False):
       provider_generation_id — the provider's SSE generation id captured on a
                           client-disconnect row; the lookup key for disconnect
                           cost-recovery (v30 provider-generation-id-capture)
+      disconnect_estimate — True on a NON-RECOVERABLE client-disconnect row (a
+                          non-OpenRouter / no-generation-id disconnect the v30
+                          recovery chain will never correct). Tells the recorder to
+                          surface a positive partial estimate as unbilled-upstream
+                          (provider_cost stamped, cost_usd=0, cost_basis='provider')
+                          so the drift monitor sees it — never a silent $0
+                          (v33 disconnect-provider-cost)
     """
 
     team_id: uuid.UUID
@@ -59,6 +66,7 @@ class UsageRecordExtras(TypedDict, total=False):
     quantity: Decimal
     usage_source: str
     provider_generation_id: str
+    disconnect_estimate: bool
 
 
 class ModelAccess(Enum):

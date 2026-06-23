@@ -9,6 +9,7 @@ get_completion_upstream() or CompletionUseCase.
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -21,9 +22,12 @@ from gateway.proxy.api.embeddings_deps import (
     get_response_cache,
 )
 from gateway.proxy.application.embeddings_use_case import EmbeddingsUseCase
+from gateway.proxy.application.json_sanitize import sanitize_non_finite
 from gateway.proxy.domain.ports import ResponseCache, UsageRecorder
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.response_cache import resolve_cache_ttl
+
+_log = logging.getLogger(__name__)
 
 embeddings_router = APIRouter(tags=["proxy"])
 
@@ -60,6 +64,16 @@ async def embeddings(
         cache_ttl_seconds=effective_ttl,
         request_headers=req_headers,
     )
+
+    # Sanitize non-finite floats (inf/-inf/nan) before render: Starlette serializes with
+    # allow_nan=False, so an upstream non-finite anywhere (e.g. in an embedding vector) would
+    # 500. Replace with null (degrade, never fail) + WARN once. Catches cache-HIT bodies too.
+    response_body, _nf = sanitize_non_finite(response_body)
+    if _nf:
+        _log.warning(
+            "embeddings_nonfinite_sanitized",
+            extra={"model": body.get("model"), "count": _nf},
+        )
 
     resp = JSONResponse(content=response_body, status_code=status)
     if x_cache is not None:

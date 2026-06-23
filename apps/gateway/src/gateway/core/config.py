@@ -153,6 +153,25 @@ class Settings(BaseSettings):
             )
         return v
 
+    @field_validator("reconciliation_check_interval_seconds")
+    @classmethod
+    def _validate_check_interval(cls, v: int) -> int:
+        """Fail loud on a negative check-interval (v33 drift-threshold-validation).
+
+        Mirrors `_validate_drift_threshold`: a negative seconds interval is a typo, not a
+        disable signal — 0 is the OFF sentinel. Today `should_start_drift_checker`'s `> 0`
+        silently treats a negative interval as OFF; rejecting at startup turns that silent
+        misconfiguration into a clear boot error. A plain after-validator suffices — an int
+        carries no inf/nan, so there is no coercion race like the Decimal threshold's.
+        """
+        if v < 0:
+            raise ValueError(
+                "INVALID_RECONCILIATION_CHECK_INTERVAL: "
+                "GATEWAY_RECONCILIATION_CHECK_INTERVAL_SECONDS must be a non-negative "
+                f"number of seconds (0 disables); got {v!r}"
+            )
+        return v
+
     # ── OpenTelemetry trace export (obs-callbacks task) ──────────────────────
     otel_enabled: bool = False  # GATEWAY_OTEL_ENABLED
     otel_export_url: str = ""  # GATEWAY_OTEL_EXPORT_URL (required when enabled)
