@@ -12,11 +12,20 @@ sufficient. Fill **§6** in TASK.md including the GATE RECORD.
 > or whenever residue is found, this phase is **human-led** and the checks below
 > are the human's.
 
+## Before you build — declare the build expectations
+
+Fill the §6 **Build expectations** block BEFORE you start Build: the OBSERVABLE outcomes a
+correct build must produce, derived from §2 SCENARIOS + §3 CONTRACT. At this gate, confirm each
+one against real evidence (the `confirmed by` column) — so verify proves the build is *correct*,
+not merely that the suite is green. An expectation with no evidence is not yet verified; passing
+tests on inputs you thought of never substitute for the outcome you promised.
+
 ## Part one — confirm the evidence
 
 - [ ] All tests pass.
 - [ ] Coverage did not decrease.
 - [ ] No test or contract was altered during build.
+- [ ] Every §6 Build expectation is confirmed by real evidence (not just a green test).
 
 If any is false, stop and return to Build — there is nothing to verify yet.
 
@@ -66,7 +75,7 @@ redo, and only after the loop's cap does it HARD-STOP to the human (the loop liv
 ## Record exactly one outcome (no silent pass)
 
 When you present this gate to the human, open with the ARC (goal · done · plan) per
-`report-template.md`, and reconcile its FLAGS with `add.py report --decide`'s open-item count
+`report-template.md`, render the gate DECISION as a guided choice (the recommended pick + described alternatives), and reconcile its FLAGS with `add.py report --decide`'s open-item count
 before the ask — per that file's reconcile rule (verify is where a flag-vs-digest mismatch bites).
 
 | Outcome | When |
@@ -81,6 +90,8 @@ before the ask — per that file's reconcile rule (verify is where a flag-vs-dig
 - [ ] Evidence confirmed, non-functional risks checked, outcome recorded — a person approved, or
   (under `autonomy: auto` with no residue) the run auto-resolved as the accountable owner.
 </exit_gate>
+
+> **Advisor · Confidence** — the earned-green refute-read is the canonical adversarial spawn (advisor.md); score the verdict before you record the gate (confidence.md).
 
 ```bash
 python3 .add/tooling/add.py gate PASS          # marks the task done

@@ -55,6 +55,8 @@ Never: change a test or the contract; use a package off the allow-list; or push 
 - [ ] Change small enough to review in full.
 </exit_gate>
 
+> **Advisor · Confidence** — delegate an independent, well-scoped batch (advisor.md); self-score before you present green, and refine while it is cheap (confidence.md).
+
 ## Next
 
 `python3 .add/tooling/add.py advance` → read `phases/6-verify.md`.

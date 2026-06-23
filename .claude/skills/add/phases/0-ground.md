@@ -60,6 +60,8 @@ Never: invent a file, symbol, or signature you have not opened.
 - [ ] The anchors §3 will cite are listed — §3 names only anchors that exist here.
 </exit_gate>
 
+> **Advisor · Confidence** — a broad sweep is the canonical spawn case (advisor.md); self-score your grounding before you specify against it (confidence.md).
+
 ## Next
 
 `python3 .add/tooling/add.py advance` → read `phases/1-specify.md`.
