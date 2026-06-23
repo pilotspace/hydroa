@@ -248,13 +248,13 @@
       "title": "Writable routing configuration",
       "goal": "an owner edits model-groups, routing strategy, and per-deployment limits from the dashboard and the changes persist (apply on restart)",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-23T01:59:32+00:00",
-      "updated": "2026-06-23T01:59:32+00:00"
+      "updated": "2026-06-23T03:40:49+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T03:39:37+00:00",
+  "updated": "2026-06-23T03:40:49+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
