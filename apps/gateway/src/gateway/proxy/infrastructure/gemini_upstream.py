@@ -49,6 +49,7 @@ from gateway.proxy.domain.tool_translation import (
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
+from gateway.usage.domain.partial_usage import publish_partial_usage
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -518,6 +519,12 @@ class _GeminiSSEStepper:
         # Capture the last usageMetadata seen
         if "usageMetadata" in chunk:
             self._last_usage = chunk["usageMetadata"]
+            # disconnect-billing-all-providers (v34): publish to the partial-usage sink
+            # so the disconnect handler has a floor even before finish() runs.
+            publish_partial_usage(
+                self._last_usage.get("promptTokenCount", 0),
+                self._last_usage.get("candidatesTokenCount", 0),
+            )
 
     def finish(self) -> Iterator[bytes]:
         # Emit the role frame even for an empty stream (matches the buffered output).

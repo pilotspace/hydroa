@@ -82,6 +82,10 @@ from gateway.usage.domain.extractor import (
     extract_usage_from_sse,
     stream_usage_is_complete,
 )
+from gateway.usage.domain.partial_usage import (
+    partial_stream_usage,
+    read_partial_usage,
+)
 
 if TYPE_CHECKING:
     from gateway.observability.otel import OtelSpanEmitter
@@ -1487,6 +1491,10 @@ class CompletionUseCase:
 
             async def _wrapped() -> AsyncIterator[bytes]:
                 collected: list[bytes] = []
+                # disconnect-billing-all-providers (v34): set a fresh per-request
+                # partial-usage sink so native steppers can publish accumulated token
+                # counts into it.  reset() in the finally block so it never leaks.
+                _partial_token = partial_stream_usage.set({})
                 try:
                     # Resilient path: the peeked first chunk was obtained pre-first-byte and
                     # COMMITS the stream — yield it before draining the rest (no replay after).
@@ -1528,21 +1536,33 @@ class CompletionUseCase:
                         disconnect_source = "frame"
                     else:
                         disconnect_source = "client_disconnect"
+                        # disconnect-billing-all-providers (v34): if the complete SSE frame
+                        # hasn't arrived yet, read the partial-usage sink that native steppers
+                        # publish into as tokens accrue.  A non-empty partial floor becomes
+                        # the disconnect usage so the recorder's estimate block can stamp
+                        # provider_cost (cost_usd=0, cost_basis='provider') — visible in drift.
+                        # Malformed/negative sink data → None + WARN (fail-safe, no raise).
+                        if disconnect_usage is None:
+                            _partial = read_partial_usage()
+                            if _partial is not None:
+                                disconnect_usage = _partial
                         _log.warning(
                             "stream_client_disconnect",
                             extra={"model": model_id, "tenant_id": str(tenant_id)},
                         )
-                    # disconnect-provider-cost (v33): surface a RESIDUAL partial/no-frame
-                    # disconnect's estimate as unbilled-upstream so the drift monitor sees it
-                    # (never a silent $0). Stamp ONLY when there is NO generation id: the v30
-                    # recovery chain — inline AND the periodic sweep — keys exclusively on
-                    # provider_generation_id, so a no-gen-id row is NEVER a recovery candidate and
-                    # can never be double-counted. A row WITH a gen id is left for the chain (we
-                    # cannot tell the provider here when the recovery knob is off → _stream_provider
-                    # is None — so gating on provider would wrongly stamp OpenRouter rows the sweep
-                    # later recovers; gating on gen-id absence is the double-count-proof invariant).
+                    # disconnect-provider-cost (v34): recoverability-based gate.
+                    # A disconnect is recoverable ONLY when the provider is OpenRouter AND
+                    # a generation id was captured — the v30 recovery chain (inline + sweep)
+                    # keys exclusively on provider_generation_id, so only OpenRouter gen-ids
+                    # (gen-…) feed a recovery candidate.  Anthropic (msg_…) and Azure
+                    # (chatcmpl-…) gen-ids are NOT recoverable — they were silently invisible
+                    # under the old gen-id-absence gate; now they are stamped (estimate=True)
+                    # and visible to the drift monitor. Double-count is impossible: OpenRouter
+                    # recoverable rows (estimate=False) are left to the recovery chain exactly
+                    # as before; their estimate is suppressed regardless of any partial sink.
+                    recoverable = _stream_provider == "openrouter" and bool(disconnect_gen_id)
                     disconnect_estimate = (
-                        disconnect_source == "client_disconnect" and not disconnect_gen_id
+                        disconnect_source == "client_disconnect" and not recoverable
                     )
                     _fire_record_with_raw(
                         usage_recorder,
@@ -1576,17 +1596,13 @@ class CompletionUseCase:
                         with contextlib.suppress(BaseException):
                             await gen.aclose()
                     # openrouter-cost-recovery-wiring (v30 t6.2c): schedule authoritative
-                    # cost recovery as a FIRE-AND-FORGET task — ONLY for an OpenRouter
-                    # disconnect that captured a generation id, and only when the service
-                    # is wired (default-OFF knob). Best-effort: ensure_future never awaits,
-                    # and the whole schedule is suppressed so it can NEVER mask the re-raise
-                    # below (a cancelled/failed inline attempt is re-covered by the t6.3
-                    # sweep). No await here — _stream_provider was resolved at setup.
-                    if (
-                        self._cost_recovery is not None
-                        and disconnect_gen_id
-                        and _stream_provider == "openrouter"
-                    ):
+                    # cost recovery as a FIRE-AND-FORGET task — ONLY for a RECOVERABLE
+                    # disconnect (OpenRouter + gen-id), and only when the service is wired
+                    # (default-OFF knob). Best-effort: ensure_future never awaits, and the
+                    # whole schedule is suppressed so it can NEVER mask the re-raise below
+                    # (a cancelled/failed inline attempt is re-covered by the t6.3 sweep).
+                    # No await here — _stream_provider was resolved at setup.
+                    if self._cost_recovery is not None and recoverable:
                         with contextlib.suppress(BaseException):
                             _recovery_task = asyncio.ensure_future(
                                 self._cost_recovery.recover(
@@ -1605,6 +1621,13 @@ class CompletionUseCase:
                             )
                     raise
                 finally:
+                    # disconnect-billing-all-providers (v34): reset the partial-usage sink
+                    # so it never outlives the stream.  Tolerates cross-context reset (same
+                    # reasoning as the credential reset below).
+                    try:
+                        partial_stream_usage.reset(_partial_token)
+                    except ValueError:
+                        pass
                     # credential-resolution-seam §3: clear the per-request credential once
                     # the stream is fully consumed (normal end), errors out, or is closed
                     # early (GeneratorExit on client disconnect). The token was produced in

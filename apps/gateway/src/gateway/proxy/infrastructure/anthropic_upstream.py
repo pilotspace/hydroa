@@ -45,6 +45,7 @@ from gateway.proxy.domain.tool_translation import (
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
+from gateway.usage.domain.partial_usage import publish_partial_usage
 
 logger = logging.getLogger(__name__)
 
@@ -698,6 +699,9 @@ class _AnthropicSSEStepper:
             self._cached_tokens = cache_read
             self._cache_creation_tokens = cache_creation
             self._prompt_tokens = usage.get("input_tokens", 0) + cache_read + cache_creation
+            # disconnect-billing-all-providers (v34): publish prompt tokens so the
+            # disconnect handler has a partial floor even before any output arrives.
+            publish_partial_usage(self._prompt_tokens, self._completion_tokens)
             # Yield first role chunk
             chunk = self._make_chunk({"role": "assistant"}, None)
             yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
@@ -753,6 +757,9 @@ class _AnthropicSSEStepper:
                 self._finish_reason = "stop"
             usage = data.get("usage", {})
             self._completion_tokens = usage.get("output_tokens", self._completion_tokens)
+            # disconnect-billing-all-providers (v34): update the partial-usage sink with
+            # the cumulative completion token count so the disconnect floor stays current.
+            publish_partial_usage(self._prompt_tokens, self._completion_tokens)
 
         elif event_name == "message_stop":
             yield from self._emit_terminal()

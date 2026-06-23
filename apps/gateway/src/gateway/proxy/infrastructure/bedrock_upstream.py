@@ -43,6 +43,7 @@ from gateway.proxy.infrastructure.bedrock_eventstream import aiter_event_stream
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
+from gateway.usage.domain.partial_usage import publish_partial_usage
 
 _log = logging.getLogger(__name__)
 
@@ -419,6 +420,12 @@ class _BedrockSSEStepper:
 
         elif event_type == "metadata":
             self._usage = payload.get("usage", {})
+            # disconnect-billing-all-providers (v34): publish to the partial-usage sink
+            # so the disconnect handler has a floor even before finish() runs.
+            publish_partial_usage(
+                self._usage.get("inputTokens", 0),
+                self._usage.get("outputTokens", 0),
+            )
 
     def finish(self) -> Iterator[bytes]:
         # Terminal frame — always emitted ONCE, even when no events were seen.

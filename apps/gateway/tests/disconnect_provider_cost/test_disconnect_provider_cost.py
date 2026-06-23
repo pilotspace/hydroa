@@ -158,18 +158,29 @@ async def test_audit_surfaces_zero_estimate_residue(
     kid = api_key["key_id"]
     # residue: a zero-estimate non-recoverable disconnect (provider_cost NULL, cost_usd 0)
     await seed_disconnect_row(
-        db_session, tenant_id=tid, key_id=kid,
-        provider_generation_id=None, usage_source="client_disconnect",
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        provider_generation_id=None,
+        usage_source="client_disconnect",
     )
     # a recovered disconnect: gen id + an openrouter_recovered sibling → must NOT surface
     await seed_disconnect_row(
-        db_session, tenant_id=tid, key_id=kid,
-        provider_generation_id="gen-done", usage_source="client_disconnect",
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        provider_generation_id="gen-done",
+        usage_source="client_disconnect",
     )
     await seed_disconnect_row(
-        db_session, tenant_id=tid, key_id=kid,
-        provider_generation_id="gen-done", usage_source="openrouter_recovered",
-        provider_cost="1.00", cost_usd="1.10", cost_basis="provider",
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        provider_generation_id="gen-done",
+        usage_source="openrouter_recovered",
+        provider_cost="1.00",
+        cost_usd="1.10",
+        cost_basis="provider",
     )
 
     rows = await audit_unrecovered_disconnects(db_session)
@@ -188,9 +199,13 @@ async def test_audit_inverted_window_raises(db_session: Any) -> None:
 
 # ---------------------------------------------------------------------------
 # use_cases disconnect-handler predicate (no DB) — the recoverability decision.
-# A row with a generation id is a recovery-chain candidate (inline OR sweep, which
-# key ONLY on provider_generation_id), so it must NEVER be stamped — else a sweep
-# enabled later would double-count it. Only a NO-generation-id disconnect is stamped.
+# v34 recoverability gate: a disconnect is recoverable ONLY when the resolved
+# provider is "openrouter" AND a generation id was captured.  A non-recoverable
+# disconnect (non-OpenRouter provider, or no cost_recovery service wired) is
+# stamped as disconnect_estimate=True even when a gen-id is present — Anthropic
+# msg_… and Azure chatcmpl-… ids are NOT OpenRouter recovery candidates.
+# The old v33 "gen-id absence" gate is replaced: gen-id alone no longer prevents
+# stamping; only the (provider==openrouter AND gen-id) conjunction does.
 # ---------------------------------------------------------------------------
 
 _NO_ID_CHUNK = b'data: {"choices":[{"delta":{"content":"x"}}]}\n\n'
@@ -261,10 +276,17 @@ async def test_no_gen_id_disconnect_is_stamped() -> None:
 
 
 async def test_gen_id_disconnect_is_not_stamped() -> None:
-    # A chunk carrying a generation id → a recovery-chain candidate → must NOT be stamped,
-    # even though the recovery knob is off here (_stream_provider unresolved).
+    # v34 recoverability gate: recoverable = provider=="openrouter" AND gen-id.
+    # When cost_recovery is NOT wired, _stream_provider=None → recoverable=False →
+    # disconnect_estimate=True for ALL non-frame disconnects (regardless of gen-id).
+    # This replaces the v33 gen-id-absence gate: the provider_generation_id is still
+    # captured (for any future recovery wiring), but the estimate IS stamped now so
+    # the drift monitor sees it. Only when provider=="openrouter" AND cost_recovery IS
+    # wired will the estimate be suppressed (covered by openrouter_cost_recovery tests).
     id_chunk = b'data: {"id":"gen-xyz","choices":[{"delta":{"content":"x"}}]}\n\n'
     recorder = await _disconnect_after_first_chunk(id_chunk)
     assert recorder.last_call.get("usage_source") == "client_disconnect"
     assert recorder.last_call.get("provider_generation_id") == "gen-xyz"
-    assert recorder.last_call.get("disconnect_estimate") is not True
+    # v34: no cost_recovery wired → _stream_provider=None → recoverable=False →
+    # disconnect_estimate=True (stamped, visible to drift monitor)
+    assert recorder.last_call.get("disconnect_estimate") is True

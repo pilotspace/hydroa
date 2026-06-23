@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "parallel-tool-streaming-verify",
+  "active_task": "disconnect-billing-all-providers",
   "active_milestone": "v34",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -286,6 +286,30 @@
           }
         ]
       }
+    },
+    "disconnect-billing-all-providers": {
+      "title": "Bill partial-stream usage on client disconnect across all providers",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v34",
+      "depends_on": [],
+      "created": "2026-06-23T12:10:41+00:00",
+      "updated": "2026-06-23T13:09:41+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9d7798441ad3a91ff0ee9b6e971cfc2c",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py",
+          "apps/gateway/src/gateway/usage/domain/partial_usage.py"
+        ],
+        "snapshot_md5": "cba3fa96397e065638ac20108caa9d7d"
+      }
     }
   },
   "milestones": {
@@ -307,7 +331,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T12:10:10+00:00",
+  "updated": "2026-06-23T13:09:41+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
