@@ -277,3 +277,149 @@ describe("RoutingPage — routing-config-editor (v32)", () => {
     expect(screen.queryByRole("button", { name: /save/i })).toBeNull();
   });
 });
+
+// ── v37 routing-editor-feedback: client guard + post-save restart affordance ──
+describe("RoutingEditor — feedback + validation (v37)", () => {
+  const user = userEvent.setup();
+
+  it("test_routing_zero_weight_blocked", async () => {
+    let putHit = false;
+    server.use(
+      me("owner"),
+      http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
+      http.put(`${APP}/api/gw/admin/routing`, () => {
+        putHit = true;
+        return HttpResponse.json(BASE_ROUTING);
+      }),
+    );
+
+    renderRouting();
+
+    const weightInput = await screen.findByLabelText(/weight.*gpt.*1|gpt.*weight.*1/i);
+    await user.clear(weightInput); // empty -> coerced to 0
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    // inline client error, no PUT round-trip
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/weight greater than 0/i);
+    expect(putHit).toBe(false);
+  });
+
+  it("test_routing_blank_model_blocked", async () => {
+    let putHit = false;
+    server.use(
+      me("owner"),
+      http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
+      http.put(`${APP}/api/gw/admin/routing`, () => {
+        putHit = true;
+        return HttpResponse.json(BASE_ROUTING);
+      }),
+    );
+
+    renderRouting();
+
+    const modelInput = await screen.findByDisplayValue("a");
+    await user.clear(modelInput); // blank model_id
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/model and a weight/i);
+    expect(putHit).toBe(false);
+  });
+
+  it("test_routing_guard_error_clears_then_saves", async () => {
+    let putHit = false;
+    server.use(
+      me("owner"),
+      http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
+      http.put(`${APP}/api/gw/admin/routing`, () => {
+        putHit = true;
+        return HttpResponse.json(BASE_ROUTING);
+      }),
+    );
+
+    renderRouting();
+
+    // 1. zero weight → blocked, no PUT, inline error
+    const weightInput = await screen.findByLabelText(/weight.*gpt.*1|gpt.*weight.*1/i);
+    await user.clear(weightInput);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(putHit).toBe(false);
+
+    // 2. fix the weight → the client error clears as soon as editing resumes
+    await user.type(weightInput, "3");
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+
+    // 3. save again → PUT fires and the restart affordance shows
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/restart/i);
+    expect(putHit).toBe(true);
+  });
+
+  it("test_routing_valid_save_shows_restart", async () => {
+    let putHit = false;
+    server.use(
+      me("owner"),
+      http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
+      http.put(`${APP}/api/gw/admin/routing`, () => {
+        putHit = true;
+        return HttpResponse.json(BASE_ROUTING);
+      }),
+    );
+
+    renderRouting();
+
+    // BASE_ROUTING is already valid (weight 1, model "a") — just save.
+    await screen.findByLabelText(/routing strategy/i);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/restart/i);
+    expect(putHit).toBe(true);
+  });
+
+  it("test_routing_saved_clears_on_edit", async () => {
+    server.use(
+      me("owner"),
+      http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
+      http.put(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
+    );
+
+    renderRouting();
+
+    const strategySelect = await screen.findByLabelText(/routing strategy/i);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    expect(await screen.findByRole("status")).toBeInTheDocument();
+
+    // editing clears the transient saved affordance; the static notice stays
+    await user.selectOptions(strategySelect, "simple-shuffle");
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+    expect(screen.getByText(/changes take effect on next restart/i)).toBeInTheDocument();
+  });
+
+  it("test_routing_server_422_no_saved", async () => {
+    server.use(
+      me("owner"),
+      http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
+      http.put(`${APP}/api/gw/admin/routing`, () =>
+        HttpResponse.json(
+          { title: "Invalid routing config", status: 422, detail: "INVALID_DEPLOYMENT_WEIGHT" },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    renderRouting();
+
+    // client-valid body, but the server rejects → mutError, no saved affordance
+    await screen.findByLabelText(/routing strategy/i);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/INVALID_DEPLOYMENT_WEIGHT/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+});
