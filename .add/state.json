@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "marketing-shell",
+  "active_milestone": "v38",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -162,6 +162,31 @@
         ],
         "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
       }
+    },
+    "marketing-shell": {
+      "title": "Public marketing shell + root-route split",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T15:48:59+00:00",
+      "updated": "2026-06-24T16:25:34+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9aa424180ef00366cb7abe7bb941aae8",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/",
+          "apps/dashboard/components/",
+          "apps/dashboard/proxy.ts",
+          "apps/dashboard/next.config.ts",
+          "apps/dashboard/tests/",
+          "apps/dashboard/e2e-a11y/"
+        ],
+        "snapshot_md5": "3b2ad127ff5b3fd4fa5c2864db7a4d86"
+      }
     }
   },
   "milestones": {
@@ -172,10 +197,18 @@
       "status": "done",
       "created": "2026-06-22T09:31:42+00:00",
       "updated": "2026-06-23T02:00:14+00:00"
+    },
+    "v38": {
+      "title": "Enterprise readiness",
+      "goal": "A prospective customer can discover and evaluate the product on a public marketing site, and an enterprise operator can run it with the audit trail, role-based access, compliance/SLA surfaces, and observability an enterprise deployment requires.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-24T15:48:13+00:00",
+      "updated": "2026-06-24T15:48:13+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T15:07:16+00:00",
+  "updated": "2026-06-24T16:25:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
