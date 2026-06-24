@@ -66,6 +66,11 @@ class PricingSnapshotRow(Base):
         Numeric(20, 10), nullable=True
     )
     reasoning_usd_per_token: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    # prompt-cache-passthrough (TASK.md §3): Anthropic ~1.25x write premium for cache
+    # creation; NULL -> falls back to prompt rate (no billing regression until feed populated).
+    cache_creation_usd_per_token: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
 
 
 class TenantModelOverrideRow(Base):

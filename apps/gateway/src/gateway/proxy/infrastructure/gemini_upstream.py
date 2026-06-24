@@ -49,11 +49,87 @@ from gateway.proxy.domain.tool_translation import (
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
+from gateway.usage.domain.partial_usage import publish_partial_usage
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# D1 reasoning budget constants (FROZEN @ reasoning-passthrough CONTRACT v1)
+# ---------------------------------------------------------------------------
+
+# ratio = {low: 0.2, medium: 0.5, high: 0.8}[effort]
+# raw   = round((requested max_tokens OR default_max_tokens) * ratio)
+# Gemini thinkingBudget = clamp(raw, 1, 24576)  # 2.5 Flash ceiling
+_REASONING_EFFORT_RATIO: dict[str, float] = {"low": 0.2, "medium": 0.5, "high": 0.8}
+_GEMINI_BUDGET_MIN = 1
+_GEMINI_BUDGET_MAX = 24576
+
+
+def _extract_reasoning_effort(payload: dict[str, Any]) -> str | None:
+    """Extract the OpenAI-wire reasoning effort string from the payload.
+
+    Accepts both top-level ``reasoning_effort`` (str) and nested
+    ``reasoning.effort`` (str).  Returns None when absent, malformed, or
+    the value is not in {low, medium, high} (fail-safe — callers log WARN).
+
+    Fail-safe: malformed inputs log WARN and return None — never raise.
+    """
+    # 1. Top-level reasoning_effort (str)
+    top_level = payload.get("reasoning_effort")
+    if top_level is not None:
+        if not isinstance(top_level, str):
+            logger.warning(
+                "reasoning_field_malformed",
+                extra={"field": "reasoning_effort", "value": repr(top_level)},
+            )
+            return None
+        effort = top_level
+        if effort not in _REASONING_EFFORT_RATIO:
+            logger.warning(
+                "reasoning_effort_unrecognized",
+                extra={"effort": effort},
+            )
+            return None
+        return effort
+
+    # 2. Nested reasoning.effort (dict with str effort)
+    nested = payload.get("reasoning")
+    if nested is not None:
+        if not isinstance(nested, dict):
+            logger.warning(
+                "reasoning_field_malformed",
+                extra={"field": "reasoning", "value": repr(nested)},
+            )
+            return None
+        effort_val = nested.get("effort")
+        if effort_val is None:
+            return None
+        if not isinstance(effort_val, str):
+            logger.warning(
+                "reasoning_field_malformed",
+                extra={"field": "reasoning.effort", "value": repr(effort_val)},
+            )
+            return None
+        if effort_val not in _REASONING_EFFORT_RATIO:
+            logger.warning(
+                "reasoning_effort_unrecognized",
+                extra={"effort": effort_val},
+            )
+            return None
+        return effort_val
+
+    return None
+
+
+def _compute_gemini_budget(effort: str, max_tokens: int) -> int:
+    """Compute Gemini thinkingBudget using the D1 ratio formula (FROZEN)."""
+    ratio = _REASONING_EFFORT_RATIO[effort]
+    raw = round(max_tokens * ratio)
+    return max(_GEMINI_BUDGET_MIN, min(_GEMINI_BUDGET_MAX, raw))
+
 
 _CONNECT_TIMEOUT = 10.0
 _NON_STREAM_TIMEOUT = 120.0
@@ -189,8 +265,11 @@ def _openai_to_gemini_request(
         else:
             contents.append({"role": "user", "parts": [{"text": str(msg.get("content", ""))}]})
 
+    _mt_raw = payload.get("max_tokens", default_max_tokens)
+    base_max_tokens: int = int(_mt_raw) if _mt_raw is not None else default_max_tokens
+
     generation_config: dict[str, Any] = {
-        "maxOutputTokens": payload.get("max_tokens", default_max_tokens),
+        "maxOutputTokens": base_max_tokens,
     }
     if "temperature" in payload:
         generation_config["temperature"] = payload["temperature"]
@@ -199,6 +278,12 @@ def _openai_to_gemini_request(
     stop = payload.get("stop")
     if stop is not None:
         generation_config["stopSequences"] = [stop] if isinstance(stop, str) else list(stop)
+
+    # D1 reasoning: reasoning_effort → generationConfig.thinkingConfig (FROZEN CONTRACT v1)
+    effort = _extract_reasoning_effort(payload)
+    if effort is not None:
+        thinking_budget = _compute_gemini_budget(effort, base_max_tokens)
+        generation_config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
 
     # response_format → Gemini native structured output (v11). extract_response_format
     # returns None for absent / {type:"text"} (byte-identical v9/v10), else json_object /
@@ -283,6 +368,8 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
     prompt_tokens: int = usage_raw.get("promptTokenCount", 0)
     completion_tokens: int = usage_raw.get("candidatesTokenCount", 0)
     total_tokens: int = usage_raw.get("totalTokenCount", 0)
+    # D3 authoritative reasoning tokens: thoughtsTokenCount → completion_tokens_details
+    thoughts_token_count: int | None = usage_raw.get("thoughtsTokenCount")
 
     # content is null when the model returned only tool calls (OpenAI convention)
     message: dict[str, Any] = {
@@ -291,6 +378,19 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
     }
     if tool_calls:
         message["tool_calls"] = tool_calls
+
+    usage_out: dict[str, Any] = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+    }
+    if thoughts_token_count is not None:
+        usage_out["completion_tokens_details"] = {"reasoning_tokens": thoughts_token_count}
+    # prompt-cache-passthrough (TASK.md §3): Gemini 2.5 implicit caching surfaces the
+    # cached portion via cachedContentTokenCount; promptTokenCount already includes it.
+    cached_content_tokens: int | None = usage_raw.get("cachedContentTokenCount")
+    if cached_content_tokens is not None and cached_content_tokens > 0:
+        usage_out["prompt_tokens_details"] = {"cached_tokens": cached_content_tokens}
 
     return {
         "id": "",
@@ -304,11 +404,7 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
                 "finish_reason": finish_reason,
             }
         ],
-        "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-        },
+        "usage": usage_out,
     }
 
 
@@ -423,6 +519,12 @@ class _GeminiSSEStepper:
         # Capture the last usageMetadata seen
         if "usageMetadata" in chunk:
             self._last_usage = chunk["usageMetadata"]
+            # disconnect-billing-all-providers (v34): publish to the partial-usage sink
+            # so the disconnect handler has a floor even before finish() runs.
+            publish_partial_usage(
+                self._last_usage.get("promptTokenCount", 0),
+                self._last_usage.get("candidatesTokenCount", 0),
+            )
 
     def finish(self) -> Iterator[bytes]:
         # Emit the role frame even for an empty stream (matches the buffered output).
@@ -434,13 +536,22 @@ class _GeminiSSEStepper:
         prompt_tokens: int = self._last_usage.get("promptTokenCount", 0)
         completion_tokens: int = self._last_usage.get("candidatesTokenCount", 0)
         total_tokens: int = self._last_usage.get("totalTokenCount", 0)
+        # D3 authoritative reasoning tokens: thoughtsTokenCount → completion_tokens_details
+        thoughts_token_count: int | None = self._last_usage.get("thoughtsTokenCount")
 
         terminal_chunk = self._make_chunk({}, self._finish_reason)
-        terminal_chunk["usage"] = {
+        usage_out: dict[str, Any] = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
         }
+        if thoughts_token_count is not None:
+            usage_out["completion_tokens_details"] = {"reasoning_tokens": thoughts_token_count}
+        # prompt-cache-passthrough (TASK.md §3): surface Gemini implicit cache count.
+        cached_content_tokens: int | None = self._last_usage.get("cachedContentTokenCount")
+        if cached_content_tokens is not None and cached_content_tokens > 0:
+            usage_out["prompt_tokens_details"] = {"cached_tokens": cached_content_tokens}
+        terminal_chunk["usage"] = usage_out
         yield b"data: " + json.dumps(terminal_chunk).encode() + b"\n\n"
         yield b"data: [DONE]\n\n"
 

@@ -10,7 +10,10 @@ un-isolated, WITHOUT a blanket FLUSHDB (which would destroy the consumer group).
 """
 
 import os
+import uuid
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 import pytest
@@ -112,3 +115,116 @@ async def client(app: object) -> AsyncIterator[httpx.AsyncClient]:
 async def db_session(app: object) -> AsyncIterator[AsyncSession]:
     async with app.state.sessionmaker() as session:  # type: ignore[attr-defined]
         yield session
+
+
+# ---------------------------------------------------------------------------
+# Helios harness fixtures (agent-coding-stub-harness TASK.md §3)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _UsageSnapshot:
+    """Duck-type of UsageRecordRow for harness-layer recorded_usage queries.
+
+    Field names mirror UsageRecordRow so tests can access them identically.
+    """
+
+    model_id: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    status: int = 0
+    tenant_id: uuid.UUID | None = None
+    key_id: uuid.UUID | None = None
+
+
+class _HarnessUsageRecorder:
+    """In-process usage recorder that captures records for recorded_usage reads.
+
+    Installed at app.state.usage_recorder by the stub_upstream / recorded_usage fixtures.
+    Avoids the async Redis→Postgres flush path (non-deterministic timing in tests).
+    """
+
+    def __init__(self) -> None:
+        self.records: list[dict[str, Any]] = []
+
+    async def record(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        key_id: uuid.UUID,
+        model: str,
+        usage: dict[str, Any] | None,
+        status: int,
+        **_kwargs: Any,
+    ) -> None:
+        self.records.append(
+            {
+                "tenant_id": tenant_id,
+                "key_id": key_id,
+                "model": model,
+                "usage": usage,
+                "status": status,
+            }
+        )
+
+
+@pytest.fixture
+def stub_upstream(app: object) -> Any:
+    """Factory fixture: builds a StubCompletionUpstream and installs it on app.state.
+
+    Usage::
+
+        def test_foo(stub_upstream, client, api_key, active_model):
+            stub = stub_upstream(complete=(200, {...}))
+            # app.state.completion_upstream is now that stub
+    """
+    from tests._helios_harness import StubCompletionUpstream
+
+    def _factory(
+        *,
+        complete: tuple[int, dict[str, object]] | None = None,
+        stream: list[bytes] | None = None,
+    ) -> StubCompletionUpstream:
+        stub = StubCompletionUpstream(complete=complete, stream=stream)
+        app.state.completion_upstream = stub  # type: ignore[attr-defined]
+        return stub
+
+    return _factory
+
+
+@pytest.fixture
+def recorded_usage(app: object) -> Any:
+    """Installs a HarnessUsageRecorder on app.state and returns an async callable.
+
+    Call ``await recorded_usage()`` after a SEAM-B request to get the last
+    captured usage record as a _UsageSnapshot (duck-type of UsageRecordRow).
+
+    Usage::
+
+        async def test_foo(client, stub_upstream, recorded_usage, api_key, active_model):
+            stub_upstream(complete=(200, body))
+            await client.post(...)
+            row = await recorded_usage()
+            assert row.prompt_tokens == 7
+    """
+    recorder = _HarnessUsageRecorder()
+    app.state.usage_recorder = recorder  # type: ignore[attr-defined]
+
+    async def _get(model: str | None = None) -> _UsageSnapshot | None:
+        recs = recorder.records
+        if model is not None:
+            recs = [r for r in recs if r.get("model") == model]
+        if not recs:
+            return None
+        r = recs[-1]
+        usage: dict[str, Any] = r.get("usage") or {}
+        return _UsageSnapshot(
+            model_id=r.get("model", ""),
+            prompt_tokens=int(usage.get("prompt_tokens", 0)),
+            completion_tokens=int(usage.get("completion_tokens", 0)),
+            status=int(r.get("status", 0)),
+            tenant_id=r.get("tenant_id"),
+            key_id=r.get("key_id"),
+        )
+
+    return _get

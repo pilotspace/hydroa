@@ -23,6 +23,7 @@ Security:
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
@@ -33,11 +34,18 @@ import httpx
 from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BedrockCredential, ProviderKeyMissing
-from gateway.proxy.domain.tool_translation import dump_tool_arguments, load_tool_arguments
+from gateway.proxy.domain.tool_translation import (
+    build_tool_call_delta,
+    dump_tool_arguments,
+    load_tool_arguments,
+)
 from gateway.proxy.infrastructure.bedrock_eventstream import aiter_event_stream
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
+from gateway.usage.domain.partial_usage import publish_partial_usage
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -327,6 +335,11 @@ class _BedrockSSEStepper:
             "created": int(time.time()),
             "model": model_id,
         }
+        # Tool-call streaming state: map Converse contentBlockIndex → OpenAI tool index.
+        # Arrival-order counter (like Gemini's _tc_count); text blocks are excluded.
+        self._tool_index: int = 0
+        self._block_to_tool_index: dict[int, int] = {}
+        self._saw_tool_call: bool = False
 
     def step(self, event_type: str, payload: dict[str, Any]) -> Iterator[bytes]:
         if event_type == "messageStart":
@@ -336,12 +349,65 @@ class _BedrockSSEStepper:
             }
             yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
+        elif event_type == "contentBlockStart":
+            # Only toolUse blocks generate a frame; text blocks are ignored here.
+            tu = payload.get("start", {}).get("toolUse")
+            if tu is not None:
+                cbi: int = payload.get("contentBlockIndex", self._tool_index)
+                idx = self._tool_index
+                self._block_to_tool_index[cbi] = idx
+                self._tool_index += 1
+                tool_id: str = tu.get("toolUseId", "")
+                name: str = tu.get("name", "")
+                if not tool_id or not name:
+                    _log.warning(
+                        "bedrock_tooluse_incomplete: contentBlockIndex=%s toolUseId=%r name=%r",
+                        cbi,
+                        tool_id,
+                        name,
+                    )
+                frag = build_tool_call_delta(idx, id=tool_id, name=name)
+                chunk = {
+                    **self._base,
+                    "choices": [
+                        {"index": 0, "delta": {"tool_calls": [frag]}, "finish_reason": None}
+                    ],
+                }
+                self._saw_tool_call = True
+                yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+
         elif event_type == "contentBlockDelta":
-            text = payload.get("delta", {}).get("text")
-            if text is not None:
+            delta = payload.get("delta", {})
+            if "text" in delta:
+                # Byte-identical text path — unchanged.
+                text = delta["text"]
                 chunk = {
                     **self._base,
                     "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
+                }
+                yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
+            elif "toolUse" in delta:
+                cbi = payload.get("contentBlockIndex", -1)
+                idx_or_none = self._block_to_tool_index.get(cbi)
+                if idx_or_none is None:
+                    # Orphan input: no prior contentBlockStart for this index.
+                    idx_or_none = self._tool_index
+                    self._block_to_tool_index[cbi] = idx_or_none
+                    self._tool_index += 1
+                    _log.warning(
+                        "bedrock_tooluse_orphan_input: contentBlockIndex=%s has no prior "
+                        "contentBlockStart; assigning fresh tool index %s",
+                        cbi,
+                        idx_or_none,
+                    )
+                # Bedrock sends input as a partial-JSON STRING — pass verbatim.
+                frag_input: str = delta["toolUse"].get("input", "")
+                frag = build_tool_call_delta(idx_or_none, arguments_fragment=frag_input)
+                chunk = {
+                    **self._base,
+                    "choices": [
+                        {"index": 0, "delta": {"tool_calls": [frag]}, "finish_reason": None}
+                    ],
                 }
                 yield b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
@@ -354,6 +420,12 @@ class _BedrockSSEStepper:
 
         elif event_type == "metadata":
             self._usage = payload.get("usage", {})
+            # disconnect-billing-all-providers (v34): publish to the partial-usage sink
+            # so the disconnect handler has a floor even before finish() runs.
+            publish_partial_usage(
+                self._usage.get("inputTokens", 0),
+                self._usage.get("outputTokens", 0),
+            )
 
     def finish(self) -> Iterator[bytes]:
         # Terminal frame — always emitted ONCE, even when no events were seen.
@@ -361,6 +433,10 @@ class _BedrockSSEStepper:
         if self._terminal_emitted:
             return
         self._terminal_emitted = True
+        # Fail-safe: a tool-streaming turn that arrives with NO stopReason (abnormal) still
+        # resolves to "tool_calls" instead of "stop".  Mirrors _GeminiSSEStepper.finish().
+        if self._saw_tool_call and not self._stop_reason:
+            self._stop_reason = "tool_use"
         input_tokens: int = self._usage.get("inputTokens", 0)
         output_tokens: int = self._usage.get("outputTokens", 0)
         total_tokens_raw = self._usage.get("totalTokens")

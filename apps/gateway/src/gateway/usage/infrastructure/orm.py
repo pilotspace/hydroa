@@ -83,6 +83,8 @@ class UsageRecordRow(Base):
     # tiered-token-billing (TASK.md §3): per-tier token counts, queryable on the row.
     cached_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     reasoning_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # prompt-cache-passthrough (TASK.md §3): Anthropic cache-write token count for this row.
+    cache_creation_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     # provider-cost-reconciliation (TASK.md §3): which basis billed the row + the raw
     # upstream-reported cost (pre-markup) on provider-basis rows; NULL on catalog rows.
     cost_basis: Mapped[str] = mapped_column(Text, nullable=False, server_default="catalog")

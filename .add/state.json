@@ -175,7 +175,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T06:38:31+00:00",
+  "updated": "2026-06-23T16:59:48+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -584,6 +584,21 @@
         "reconcile-cost-basis-filter",
         "disconnect-provider-cost",
         "drift-threshold-validation"
+      ],
+      "archived": "2026-06-23"
+    },
+    {
+      "slug": "v34",
+      "title": "Helios agent-coding integration readiness",
+      "tasks": 7,
+      "task_slugs": [
+        "agent-coding-stub-harness",
+        "reasoning-passthrough",
+        "prompt-cache-passthrough",
+        "parallel-tool-streaming-verify",
+        "disconnect-billing-all-providers",
+        "concurrency-load-guard",
+        "helios-live-smoke"
       ],
       "archived": "2026-06-23"
     }
