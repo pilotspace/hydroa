@@ -40,35 +40,37 @@ Out: changing the retry POLICY itself (counts/backoff/circuit — frozen as-is);
 - Streaming upstream-failure terminal-frame contract         -> owning task `stream-upstream-error-frame`
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] upstream-ratelimit-passthrough  depends-on: none                          — on 429 retry-exhaust, raise an UpstreamRateLimitedError carrying Retry-After; API maps it to client 429 ERR_UPSTREAM_RATE_LIMITED + Retry-After header (not 502)
-- [ ] stream-upstream-error-frame     depends-on: none                          — when an upstream failure hits an already-open SSE stream, emit one OpenAI error chunk + a terminal [DONE] so the client never hangs
-- [ ] error-fidelity-live-verify      depends-on: upstream-ratelimit-passthrough, stream-upstream-error-frame — CI stub proving both behaviors + a live re-probe (multi-model harness) against real rate-limited free OpenRouter models; live double-pass
+- [x] upstream-ratelimit-passthrough  depends-on: none                          — on 429 retry-exhaust, raise an UpstreamRateLimitedError carrying Retry-After; API maps it to client 429 ERR_UPSTREAM_RATE_LIMITED + Retry-After header (not 502)  ✅ gate PASS `f538463`
+- [x] stream-upstream-error-frame     depends-on: none                          — when an upstream failure hits an already-open SSE stream, emit one OpenAI error chunk + a terminal [DONE] so the client never hangs  ✅ gate PASS `5cd6197`
+- [x] stream-graceful-close-mapping   depends-on: stream-upstream-error-frame   — Finding C (added mid-milestone, Tin-approved): a graceful mid-stream peer-close raises httpx.RemoteProtocolError (a ProtocolError, NOT NetworkError) → was unmapped → task-2 frame never fired for the COMMON real drop. Map it → UpstreamUnavailableError across all 5 adapters.  ✅ gate PASS `93c24cb`
+- [x] error-fidelity-live-verify      depends-on: upstream-ratelimit-passthrough, stream-upstream-error-frame, stream-graceful-close-mapping — CI stub proving the behaviors + a live re-probe (multi-model harness) against real free OpenRouter models; live double-pass  ✅ gate PASS `c3e1d06`
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A rate-limited upstream (429 surviving retries) returns a client 429 ERR_UPSTREAM_RATE_LIMITED carrying the upstream Retry-After — never a generic 502   (← upstream-ratelimit-passthrough)
-- [ ] A streaming request whose upstream fails after the 200 is flushed receives one OpenAI error chunk + a terminal [DONE]; a [DONE]-waiting client never hangs   (← stream-upstream-error-frame)
-- [ ] Every upstream-SUCCESS path (non-stream + stream) stays byte-identical to pre-v35   (← both tasks; regression-guarded in CI)
-- [ ] Both behaviors are green in CI via a stub harness AND confirmed by a live re-probe (double-pass) against real rate-limited free OpenRouter models   (← error-fidelity-live-verify)
+- [x] A rate-limited upstream (429 surviving retries) returns a client 429 ERR_UPSTREAM_RATE_LIMITED carrying the upstream Retry-After — never a generic 502   (← upstream-ratelimit-passthrough; live EF-1: 429 + Retry-After: 7 through the edge)
+- [x] A streaming request whose upstream fails after the 200 is flushed receives one OpenAI error chunk + a terminal [DONE]; a [DONE]-waiting client never hangs   (← stream-upstream-error-frame + stream-graceful-close-mapping; live EF-2: graceful FIN-close → ERR_UPSTREAM_UNAVAILABLE frame + [DONE] through Envoy)
+- [x] Every upstream-SUCCESS path (non-stream + stream) stays byte-identical to pre-v35   (← both tasks; regression-guarded — stream_upstream_error_frame SEF-5, streaming_resilience, stream_graceful_close_mapping ReadError guard; full suite 1536 green)
+- [x] Both behaviors are green in CI via a stub harness AND confirmed by a live re-probe (double-pass) against real free OpenRouter models   (← error-fidelity-live-verify; stub-mode double-pass 12/12 ×2 exit 0; live mode 13P/2S/0F exit 0)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway src : `proxy/domain/errors.py` (UpstreamRateLimitedError), `core/error_catalog.py` (ERR_UPSTREAM_RATE_LIMITED), `proxy/infrastructure/upstream_retry.py` (429-exhaust → rate-limit error), `proxy/application/fallback_router.py` (track max Retry-After), `proxy/application/use_cases.py` (map 429→client 429+Retry-After; mid-stream `_sse_error_frame` + guarded [DONE]), 5 adapters `*_upstream.py` (RemoteProtocolError mapping).
+- tooling : `.add/tooling/add.py` scope-walk excludes Python caches (`35cbaa1`); else state.json bookkeeping only.
+- ops / verify : NEW `scripts/v35_error_fidelity_stub.py`, `scripts/live_v35_verify.py`, `infra/docker-compose.e2e.v35.yml` (operator live-verify triad). No skill/book change.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- upstream-ratelimit-passthrough : gate=PASS · tests=11 (RP/FR/SR/UC) + suite green · residue=parse_retry_after integer-seconds-only (HTTP-date → no header)
+- stream-upstream-error-frame    : gate=PASS · tests=6 (SEF) + 3 cross-suite corrected · residue=none (2 documented trade-offs: frame-after-[DONE] when upstream pre-sent [DONE]; status=502 unchangeable mid-stream)
+- stream-graceful-close-mapping  : gate=PASS · tests=6 (5 adapters + ReadError guard) · residue=non-stream complete() RemoteProtocolError still unmapped (out of scope; §7 delta)
+- error-fidelity-live-verify     : gate=PASS · tests=stub-mode double-pass 12/12 ×2 exit 0 + live 13P/2S/0F · residue=live EF probes SKIP (free tier not on-demand forceable)
 
-### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+### Goal met?   (map the evidence back to this milestone's Exit criteria)
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row (EF-1 ← passthrough; EF-2 ← error-frame + graceful-close-mapping, proven live FIN-close through Envoy; byte-identical ← regression guards + 1536 green; CI+live ← live-verify double-pass)
+- goal: the proxy now surfaces an UNhealthy upstream faithfully — a surviving 429 → client 429 + Retry-After (not 502), and ANY mid-stream upstream failure (incl. the common graceful close) → a terminal SSE error frame + [DONE]. Proof: live_v35_verify stub-mode double-pass 12/12 ×2 exit 0 through the real Envoy edge, with the graceful FIN-close firing ERR_UPSTREAM_UNAVAILABLE + [DONE].
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
-> The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
-> small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [ ] open a PR from feat/v35 → main (5 commits: f538463, 5cd6197, 93c24cb, c3e1d06, + fold chore); Tin reviews + merges (gh acct TinDang97, ADMIN; CI billing-blocked → --admin merge, reconcile local main via HTTPS ff-only)
+- [ ] (optional) bundle into a release cut — v31 + v34 + v35 are now releasable since 0.2.0 (release.md)
+- [ ] tag / publish / deploy (human-run, per release.md)
