@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "docs-blog-scaffold",
+  "active_task": "trust-status-page",
   "active_milestone": "v38",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -286,6 +286,29 @@
         ],
         "snapshot_md5": "89150d7c7a85279e2ca9a64f414e5346"
       }
+    },
+    "trust-status-page": {
+      "title": "Public trust and status page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:47:05+00:00",
+      "updated": "2026-06-24T16:50:43+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "cd0d71b563826d1c1ee317300356cb3f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/status/",
+          "apps/dashboard/components/marketing/",
+          "apps/dashboard/components/marketing-shell.tsx",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "acb1c712b3b6f1ef64891f5db3bdb50f"
+      }
     }
   },
   "milestones": {
@@ -307,7 +330,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T16:46:46+00:00",
+  "updated": "2026-06-24T16:50:43+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
