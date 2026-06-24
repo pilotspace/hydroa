@@ -12,6 +12,19 @@ class UpstreamUnavailableError(ProxyError):
     """
 
 
+class UpstreamRateLimitedError(UpstreamUnavailableError):
+    """Upstream returned HTTP 429 after exhausting all retry attempts.
+
+    IS-A UpstreamUnavailableError so the circuit breaker still counts it and
+    the fallback router still falls over on it (no behavior change for those paths).
+    Carries the parsed Retry-After value (seconds) when the upstream supplied one.
+    """
+
+    def __init__(self, message: str = "", *, retry_after: float | None = None) -> None:
+        self.retry_after = retry_after
+        super().__init__(message)
+
+
 class CircuitOpenError(ProxyError):
     """Circuit breaker is open — no upstream call was made."""
 

@@ -32,7 +32,7 @@ import httpx
 import structlog
 
 from gateway.observability.metrics import MetricsRegistry
-from gateway.proxy.domain.errors import UpstreamUnavailableError
+from gateway.proxy.domain.errors import UpstreamRateLimitedError, UpstreamUnavailableError
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 
 _log = structlog.get_logger(__name__)
@@ -181,6 +181,10 @@ async def execute_with_retry(
             _count(reason, "exhausted")
             if terminal_exc is not None:
                 raise UpstreamUnavailableError(str(terminal_exc)) from None
+            if reason == "upstream_429":
+                raise UpstreamRateLimitedError(
+                    "Upstream returned 429", retry_after=retry_after
+                )
             raise UpstreamUnavailableError(f"Upstream returned {status}")
 
         # A retry will follow — compute its backoff and check it against the deadline.
@@ -194,6 +198,10 @@ async def execute_with_retry(
             _count(reason, "deadline_exceeded")
             if terminal_exc is not None:
                 raise UpstreamUnavailableError(str(terminal_exc)) from None
+            if reason == "upstream_429":
+                raise UpstreamRateLimitedError(
+                    "Upstream returned 429", retry_after=retry_after
+                )
             raise UpstreamUnavailableError(f"Upstream retry deadline exceeded after {reason}")
 
         _count(reason, "retried")
