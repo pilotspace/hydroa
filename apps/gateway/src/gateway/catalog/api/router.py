@@ -15,6 +15,7 @@ from gateway.catalog.api.deps import (
     get_current_identity,
     get_list_use_case,
     get_sync_use_case,
+    require_catalog_sync,
     require_owner_or_admin,
 )
 from gateway.catalog.api.schemas import (
@@ -226,7 +227,7 @@ async def put_admin_model(
 @admin_catalog_router.post("/sync", response_model=CatalogSyncResponse)
 async def admin_sync_catalog(
     request: Request,
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(require_catalog_sync)],
     use_case: Annotated[SyncCatalogUseCase, Depends(get_sync_use_case)],
 ) -> CatalogSyncResponse:
     """POST /admin/catalog/sync — owner/admin-triggered model-catalog re-sync.

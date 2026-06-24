@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.budgets.api.schemas import BudgetGetResponse, BudgetPutRequest, BudgetPutResponse
 from gateway.core.db import get_session
 from gateway.core.error_catalog import PAYLOAD_BUDGET_DECIMAL_INVALID, PAYLOAD_BUDGET_NEGATIVE
-from gateway.keys.api.deps import get_identity, require_owner_or_admin
+from gateway.keys.api.deps import get_identity
+from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
 from gateway.tenants.domain.entities import Identity
 
 budget_router = APIRouter(prefix="/admin/budget", tags=["budgets"])
@@ -73,10 +74,21 @@ async def get_budget(
     )
 
 
+def _require_budgets_manage(
+    identity: Annotated[Identity, Depends(get_identity)],
+) -> Identity:
+    """Require BUDGETS_MANAGE permission (owner/admin/billing_admin)."""
+    if Permission.BUDGETS_MANAGE not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
+        from gateway.core.error_catalog import AUTH_FORBIDDEN
+
+        raise AUTH_FORBIDDEN.exc()
+    return identity
+
+
 @budget_router.put("", response_model=BudgetPutResponse)
 async def put_budget(
     body: BudgetPutRequest,
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_budgets_manage)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BudgetPutResponse:
     """PUT /admin/budget — set or clear the monthly budget ceiling.

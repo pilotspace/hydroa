@@ -20,14 +20,20 @@ from gateway.teams.application.use_cases import (
     UpdateTeamBudgetUseCase,
 )
 from gateway.teams.infrastructure.repository import SqlAlchemyTeamRepository
-from gateway.tenants.domain.entities import Identity, Role
+from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
+from gateway.tenants.domain.entities import Identity
 
 
 def require_owner_or_admin(
     identity: Annotated[Identity, Depends(get_identity)],
 ) -> Identity:
-    """Raise 403 if the caller is a member."""
-    if identity.role == Role.MEMBER:
+    """Raise 403 if the caller lacks MEMBERS_MANAGE permission (escalation guard).
+
+    Re-expressed over ROLE_PERMISSIONS allowlist: only OWNER and ADMIN hold MEMBERS_MANAGE.
+    Back-compat: OWNER/ADMIN pass, MEMBER 403 — byte-identical to pre-task.
+    New tiers (OPERATOR/BILLING_ADMIN/VIEWER) are correctly denied (escalation guard).
+    """
+    if Permission.MEMBERS_MANAGE not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
         raise AUTH_FORBIDDEN.exc()
     return identity
 

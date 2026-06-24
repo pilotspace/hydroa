@@ -43,7 +43,7 @@ from gateway.core.error_catalog import (
     PAYLOAD_START_DATE_INVALID,
     PAYLOAD_WINDOW_INVALID,
 )
-from gateway.keys.api.deps import require_owner_or_admin
+from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
@@ -77,6 +77,26 @@ def _extract_identity(request: Request) -> Identity:
         return token_service.decode(token)
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
+
+
+def _require_usage_read(request: Request) -> Identity:
+    """Require USAGE_READ permission (owner/admin/operator/billing_admin/viewer)."""
+    from gateway.core.error_catalog import AUTH_FORBIDDEN
+
+    identity = _extract_identity(request)
+    if Permission.USAGE_READ not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
+        raise AUTH_FORBIDDEN.exc()
+    return identity
+
+
+def _require_ops_read(request: Request) -> Identity:
+    """Require OPS_READ permission (owner/admin/operator/billing_admin/viewer)."""
+    from gateway.core.error_catalog import AUTH_FORBIDDEN
+
+    identity = _extract_identity(request)
+    if Permission.OPS_READ not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
+        raise AUTH_FORBIDDEN.exc()
+    return identity
 
 
 @usage_router.get("/usage", response_model=UsageTotalsResponse)
@@ -484,7 +504,7 @@ async def get_spend(
 
 @usage_router.get("/reconciliation", response_model=ReconciliationResponse)
 async def get_reconciliation(
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_usage_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
     window: Annotated[str, Query()] = "month",
     start: Annotated[str | None, Query()] = None,
@@ -595,7 +615,7 @@ def _coerce_payload(raw: object) -> dict[str, object]:
 
 @usage_router.get("/alerts", response_model=AlertListResponse)
 async def get_alerts(
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_ops_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[str | None, Query()] = None,
     offset: Annotated[str | None, Query()] = None,
@@ -685,7 +705,7 @@ class UpstreamHealthResponse(BaseModel):
 
 @usage_router.get("/health/upstreams", response_model=UpstreamHealthResponse)
 async def get_upstream_health(
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_ops_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> UpstreamHealthResponse:
     """Return per-upstream up/down derived from durable health events (FROZEN @ v1 — TASK.md §3).
@@ -794,7 +814,7 @@ async def _read_ratelimit_counters(
 @usage_router.get("/ratelimits", response_model=RatelimitsResponse)
 async def get_ratelimits(
     request: Request,
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_ops_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> RatelimitsResponse:
     """Return the caller's tenant's per-key live rpm/tpm counters (FROZEN @ v1 — TASK.md §3).
@@ -907,7 +927,7 @@ async def _read_bandwidth_levels(
 @usage_router.get("/bandwidth", response_model=BandwidthResponse)
 async def get_bandwidth(
     request: Request,
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_ops_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BandwidthResponse:
     """Return the caller's tenant's per-key bandwidth bucket levels (FROZEN @ v1 — TASK.md §3).
