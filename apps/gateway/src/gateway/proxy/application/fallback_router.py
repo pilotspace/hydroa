@@ -56,7 +56,11 @@ from gateway.proxy.application.routing_strategy import (
     RoutingStrategy,
 )
 from gateway.proxy.application.streaming_resilience import open_resilient_stream
-from gateway.proxy.domain.errors import AllDeploymentsSaturatedError, UpstreamUnavailableError
+from gateway.proxy.domain.errors import (
+    AllDeploymentsSaturatedError,
+    UpstreamRateLimitedError,
+    UpstreamUnavailableError,
+)
 from gateway.proxy.domain.ports import (
     CompletionUpstream,
     DeploymentLimitGate,
@@ -284,6 +288,10 @@ class FallbackModelRouter:
         # served response but an earlier candidate produced a context-window/content-policy
         # 4xx, this carries it so the client receives the REAL error, not a synthetic 502.
         last_error: tuple[int, dict[str, Any], str] | None = None
+        # upstream-ratelimit-passthrough: track whether any candidate was rate-limited and
+        # the maximum Retry-After seen across rate-limited candidates.
+        saw_rate_limit: bool = False
+        max_retry_after: float | None = None
 
         for i, candidate in enumerate(order):
             next_model = order[i + 1] if i + 1 < len(order) else "_exhausted"
@@ -315,8 +323,14 @@ class FallbackModelRouter:
                 # CircuitOpenError and any non-fallback exception propagate naturally
                 # (abort loop, no health gate call). The finally still releases.
                 status, body = await _upstream.complete(rewritten)
-            except UpstreamUnavailableError:
+            except UpstreamUnavailableError as exc:
                 # Step 5: fall-through to the next candidate (release fires in finally).
+                # upstream-ratelimit-passthrough: track rate-limit signals for exhaustion raise.
+                if isinstance(exc, UpstreamRateLimitedError):
+                    saw_rate_limit = True
+                    if exc.retry_after is not None:
+                        if max_retry_after is None or exc.retry_after > max_retry_after:
+                            max_retry_after = exc.retry_after
                 if gate is not None:
                     await gate.record_failure(candidate)
                 structlog.get_logger().warning(
@@ -394,6 +408,14 @@ class FallbackModelRouter:
             to_model="_exhausted",
             outcome="exhausted",
         )
+        # upstream-ratelimit-passthrough: when at least one candidate was rate-limited,
+        # raise UpstreamRateLimitedError (with the max seen Retry-After) so the use case
+        # can surface a 429 instead of a generic 502.
+        if saw_rate_limit:
+            raise UpstreamRateLimitedError(
+                f"All candidates for alias '{alias}' are rate-limited",
+                retry_after=max_retry_after,
+            )
         raise UpstreamUnavailableError(f"All candidates for alias '{alias}' are unavailable")
 
     def stream(

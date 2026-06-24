@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 31
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 32
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -125,6 +125,7 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) a subclass error (`UpstreamRateLimitedError(UpstreamUnavailableError)`) is the clean way to add a NEW HTTP mapping without disturbing existing `except` sites — mirrors the AllDeploymentsSaturatedError→429 precedent. Evidence: 0 regression across 1524 tests.  [folded foundation-version 32 · from upstream-ratelimit-passthrough]
 - (SDD) delegating D1 to web research (Tin) beat my fixed-number guess — the OpenRouter ratio formula scales with max_tokens and is the industry convention; surfacing "investigate latest docs" as a freeze option is worth repeating for provider-API-shaped decisions (evidence: ratio formula replaced low=1024/med=8000/high=16000).  [folded foundation-version 31 · from reasoning-passthrough]
 - (SDD) when a contract grants a second exception to a core invariant, record the decision verbatim at the §3 freeze AND mirror it as an inline comment at the enforcing WHERE clause — so the relaxation is auditable from the code, not just the TASK (evidence: get_alerts docstring + §3 "Decided at freeze").  [folded foundation-version 29 · from alerts-events-viewer]
 - (SDD) exposing a previously-internal (Envoy-guarded, no-auth) operation as an authed external endpoint is a thin, safe move when the op is idempotent + delegates to the same use case — give it a SEPARATE response model so the internal contract stays byte-identical (don't extend the shared DTO). Evidence: CatalogSyncResponse vs SyncResponse.  [folded foundation-version 29 · from catalog-sync-trigger]
@@ -437,6 +438,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-24 | fold all → foundation-version 32 (SDD 1 · TDD 1 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 3 lessons open→folded; +3 routed bullets; 31→32 |
 | 2026-06-23 | fold all → foundation-version 31 (SDD 1 · TDD 7 · ADD 8) | consolidate captured OBSERVE lessons into the versioned foundation | 16 lessons open→folded; +16 routed bullets; 30→31 |
 | 2026-06-23 | fold all → foundation-version 30 (TDD 4 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 8 lessons open→folded; +8 routed bullets; 29→30 |
 | 2026-06-23 | fold all → foundation-version 29 (SDD 5 · UDD 1 · TDD 6 · ADD 9) | consolidate captured OBSERVE lessons into the versioned foundation | 21 lessons open→folded; +21 routed bullets; 28→29 |

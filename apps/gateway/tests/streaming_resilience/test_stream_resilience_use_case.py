@@ -114,9 +114,14 @@ async def test_mid_stream_failure_after_first_byte_commits_no_replay() -> None:
     gen = await _run_stream(uc, up, rec)
     chunks = [c async for c in gen]
     await _settle()
-    assert chunks == [A0]  # the committed prefix; stream stops at the mid-stream error
+    # v35 stream-upstream-error-frame: after the committed prefix, a mid-stream failure
+    # now emits a terminal error frame + [DONE] (was a silent stop at [A0]). The
+    # no-replay (no fallover to B) + 502-record invariants are unchanged.
+    assert chunks[0] == A0  # the committed prefix
+    body = b"".join(chunks)
+    assert b"ERR_UPSTREAM_UNAVAILABLE" in body
+    assert b"[DONE]" in body
     assert up.stream_calls == [CAND_A]  # no fallover to B after commit (no replay)
-    # Today's mid-stream behavior: a status=502 usage record is fired internally.
     assert any(c["status"] == 502 for c in rec.calls)
 
 
@@ -128,5 +133,11 @@ async def test_flag_off_is_byte_identical_no_fallover() -> None:
     gen = await _run_stream(uc, up, rec)
     chunks = [c async for c in gen]
     await _settle()
-    assert chunks == []  # A fails on first iteration; today's behavior = empty stream, no fallover
-    assert up.stream_calls == [CAND_A]  # B NEVER attempted with the flag off (byte-identical)
+    # v35 stream-upstream-error-frame: a pre-first-byte failure on the flag-off path now
+    # surfaces a terminal error frame + [DONE] instead of an empty stream. What this test
+    # guards is the NO-FALLOVER invariant (B never attempted with the flag off), NOT literal
+    # empty bytes — that invariant is unchanged.
+    body = b"".join(chunks)
+    assert b"ERR_UPSTREAM_UNAVAILABLE" in body
+    assert b"[DONE]" in body
+    assert up.stream_calls == [CAND_A]  # B NEVER attempted with the flag off

@@ -175,7 +175,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-23T16:59:48+00:00",
+  "updated": "2026-06-24T06:07:20+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -601,6 +601,18 @@
         "helios-live-smoke"
       ],
       "archived": "2026-06-23"
+    },
+    {
+      "slug": "v35",
+      "title": "Agent-loop error fidelity",
+      "tasks": 4,
+      "task_slugs": [
+        "upstream-ratelimit-passthrough",
+        "stream-upstream-error-frame",
+        "error-fidelity-live-verify",
+        "stream-graceful-close-mapping"
+      ],
+      "archived": "2026-06-24"
     }
   ]
 }

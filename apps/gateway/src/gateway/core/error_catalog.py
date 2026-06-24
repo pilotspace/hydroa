@@ -366,6 +366,10 @@ PROVIDER_KEY_ENCRYPTION_UNAVAILABLE = ErrorSpec(
 # Upstream / catalog service errors
 # ---------------------------------------------------------------------------
 
+#: Upstream LLM service returned HTTP 429 (rate-limited) after exhausting all retry attempts.
+#: When the upstream supplied a Retry-After value the caller adds that header.
+UPSTREAM_RATE_LIMITED = ErrorSpec(429, "ERR_UPSTREAM_RATE_LIMITED", "Upstream rate limit exceeded")
+
 #: Upstream LLM service returned an error or is unreachable.
 UPSTREAM_UNAVAILABLE = ErrorSpec(502, "ERR_UPSTREAM_UNAVAILABLE", "Upstream service unavailable")
 

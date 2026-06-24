@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
+import json
 import logging
 import os
 import time
@@ -43,6 +44,7 @@ from gateway.core.error_catalog import (
     PAYLOAD_MESSAGES_REQUIRED,
     PAYLOAD_MODEL_REQUIRED,
     RATE_LIMITED,
+    UPSTREAM_RATE_LIMITED,
     UPSTREAM_UNAVAILABLE,
 )
 from gateway.core.errors import ProblemError
@@ -55,6 +57,7 @@ from gateway.proxy.domain.credential_context import (
 from gateway.proxy.domain.errors import (
     AllDeploymentsSaturatedError,
     CircuitOpenError,
+    UpstreamRateLimitedError,
     UpstreamUnavailableError,
 )
 from gateway.proxy.domain.ports import (
@@ -93,6 +96,16 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 _ZERO = Decimal("0")
+
+
+def _sse_error_frame(code: str, message: str) -> bytes:
+    """Return a single SSE data line carrying an OpenAI-shaped error object.
+
+    Format mirrors the adapter convention in anthropic_upstream.py:
+        b"data: " + json.dumps(payload).encode() + b"\\n\\n"
+    """
+    payload = {"error": {"message": message, "type": "upstream_error", "code": code}}
+    return b"data: " + json.dumps(payload).encode() + b"\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -1162,6 +1175,25 @@ class CompletionUseCase:
                     detail=f"all deployments for '{exc.alias}' are rate-limited",
                     headers={"Retry-After": "60"},
                 ) from exc
+            except UpstreamRateLimitedError as exc:
+                # upstream-ratelimit-passthrough: upstream returned 429 after exhausting
+                # retries. Surface as client 429 ERR_UPSTREAM_RATE_LIMITED + Retry-After
+                # (only when the upstream supplied a parseable value).
+                _fire_record(
+                    usage_recorder,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=model_id,
+                    usage=None,
+                    status=429,
+                    team_id=authz.team_id,
+                )
+                _status_code = 429
+                if exc.retry_after is not None:
+                    raise UPSTREAM_RATE_LIMITED.exc(
+                        headers={"Retry-After": str(int(exc.retry_after))}
+                    ) from None
+                raise UPSTREAM_RATE_LIMITED.exc() from None
             except (UpstreamUnavailableError, CircuitOpenError):
                 # Circuit-breaker proxy has already counted the failure.
                 _fire_record(
@@ -1455,8 +1487,15 @@ class CompletionUseCase:
                     )
 
             # first_chunk is the peeked pre-first-byte chunk from the resilient path (when
-            # enabled); None on the old paths. _wrapped() prepends it before draining `gen`.
+            # enabled) or from the rate-limit peek below; None on the old paths.
+            # _wrapped() prepends it before draining `gen`.
             first_chunk: bytes | None = None
+            # upstream-ratelimit-passthrough: set the partial-usage ContextVar BEFORE the
+            # peek so that any upstream side-effects during the first __anext__() call
+            # (e.g. publish_partial_usage in Gemini/Bedrock steppers) land in the same
+            # per-request sink that _wrapped() will read on disconnect. _wrapped() skips
+            # its own set() and reuses this token for reset(). None = not yet set.
+            _pre_peek_partial_token: object = None
             try:
                 # Route stream through model_router when wired. With stream resilience enabled
                 # (streaming-resilience v19), peek the first chunk via stream_resilient so a
@@ -1468,8 +1507,76 @@ class CompletionUseCase:
                     first_chunk, gen = await model_router.stream_resilient(body, upstream=upstream)
                 elif model_router is not None:
                     gen = model_router.stream(body, upstream=upstream)
+                    # upstream-ratelimit-passthrough: peek the first chunk so a pre-first-byte
+                    # UpstreamRateLimitedError surfaces here (before StreamingResponse commits).
+                    # Set the partial-usage sink now so peek-time side-effects are captured.
+                    # A plain UpstreamUnavailableError (non-429) must NOT propagate here —
+                    # reconstruct a "poisoned" generator so _wrapped() handles it as before
+                    # (flag-off: empty-200, not a 502 before response commits).
+                    _pre_peek_partial_token = partial_stream_usage.set({})
+                    try:
+                        first_chunk = await gen.__anext__()
+                    except UpstreamRateLimitedError:
+                        raise  # surfaces to the outer except UpstreamRateLimitedError handler
+                    except UpstreamUnavailableError as _peek_exc:
+                        # Plain unavailable pre-byte: reconstruct a generator that immediately
+                        # re-raises the original exception so _wrapped()'s mid-stream catch
+                        # handles it — emitting the terminal error frame + [DONE]
+                        # (stream-upstream-error-frame, v35). The 200 is already committed.
+                        # Bind the captured exception as a default arg so it survives the
+                        # except block (where `_peek_exc` is deleted) — no late binding.
+                        async def _poisoned(
+                            _captured: BaseException = _peek_exc,
+                        ) -> AsyncIterator[bytes]:
+                            raise _captured
+                            yield  # make it an async generator  # type: ignore[misc]
+
+                        gen = _poisoned()
+                        first_chunk = None
+                    except StopAsyncIteration:
+                        first_chunk = None  # empty stream — commit transparently
                 else:
                     gen = upstream.stream(body)
+                    _pre_peek_partial_token = partial_stream_usage.set({})
+                    try:
+                        first_chunk = await gen.__anext__()
+                    except UpstreamRateLimitedError:
+                        raise
+                    except UpstreamUnavailableError as _peek_exc:
+                        # Bind the captured exception as a default arg so it survives the
+                        # except block (where `_peek_exc` is deleted) — no late binding.
+                        async def _poisoned(
+                            _captured: BaseException = _peek_exc,
+                        ) -> AsyncIterator[bytes]:
+                            raise _captured
+                            yield  # make it an async generator  # type: ignore[misc]
+
+                        gen = _poisoned()
+                        first_chunk = None
+                    except StopAsyncIteration:
+                        first_chunk = None  # empty stream — commit transparently
+            except UpstreamRateLimitedError as exc:
+                # upstream-ratelimit-passthrough: upstream returned 429 pre-first-byte.
+                # Status not yet committed — surface as client 429 ERR_UPSTREAM_RATE_LIMITED.
+                # Reset the partial-usage sink set by the peek so the ContextVar never leaks
+                # (mirrors the v34 _wrapped() finally — this error path skips _wrapped()).
+                if _pre_peek_partial_token is not None:
+                    partial_stream_usage.reset(_pre_peek_partial_token)
+                _fire_record(
+                    usage_recorder,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=model_id,
+                    usage=None,
+                    status=429,
+                    team_id=authz.team_id,
+                )
+                _stream_error_status = 429
+                if exc.retry_after is not None:
+                    raise UPSTREAM_RATE_LIMITED.exc(
+                        headers={"Retry-After": str(int(exc.retry_after))}
+                    ) from None
+                raise UPSTREAM_RATE_LIMITED.exc() from None
             except (UpstreamUnavailableError, CircuitOpenError):
                 _fire_record(
                     usage_recorder,
@@ -1494,7 +1601,13 @@ class CompletionUseCase:
                 # disconnect-billing-all-providers (v34): set a fresh per-request
                 # partial-usage sink so native steppers can publish accumulated token
                 # counts into it.  reset() in the finally block so it never leaks.
-                _partial_token = partial_stream_usage.set({})
+                # upstream-ratelimit-passthrough: when the peek already set the sink
+                # (_pre_peek_partial_token is not None), reuse that token so we don't
+                # overwrite publish_partial_usage() calls made during the peek.
+                if _pre_peek_partial_token is not None:
+                    _partial_token = _pre_peek_partial_token
+                else:
+                    _partial_token = partial_stream_usage.set({})
                 try:
                     # Resilient path: the peeked first chunk was obtained pre-first-byte and
                     # COMMITS the stream — yield it before draining the rest (no replay after).
@@ -1504,7 +1617,7 @@ class CompletionUseCase:
                     async for chunk in gen:
                         collected.append(chunk)
                         yield chunk
-                except (UpstreamUnavailableError, CircuitOpenError):
+                except (UpstreamUnavailableError, CircuitOpenError) as exc:
                     # Can't change status code mid-stream; record and stop
                     _fire_record(
                         usage_recorder,
@@ -1515,6 +1628,16 @@ class CompletionUseCase:
                         status=502,
                         team_id=team_id,
                     )
+                    # stream-upstream-error-frame (v35): emit a parseable error chunk so
+                    # a [DONE]-waiting agent loop (e.g. Helios) never hangs on truncation.
+                    _code = (
+                        "ERR_UPSTREAM_RATE_LIMITED"
+                        if isinstance(exc, UpstreamRateLimitedError)
+                        else "ERR_UPSTREAM_UNAVAILABLE"
+                    )
+                    yield _sse_error_frame(_code, "upstream error")
+                    if not (collected and b"[DONE]" in collected[-1]):
+                        yield b"data: [DONE]\n\n"
                     return
                 except (GeneratorExit, asyncio.CancelledError):
                     # stream-disconnect-billing: the client dropped mid-stream

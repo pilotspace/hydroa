@@ -170,7 +170,13 @@ async def test_dc6_upstream_error_502_not_disconnect() -> None:
     chunks = [chunk async for chunk in gen]  # error is caught inside _wrapped → clean end
     await _settle()
 
-    assert chunks == [A0]
+    # v35 stream-upstream-error-frame: a mid-stream upstream failure now surfaces a
+    # terminal error frame + [DONE] (was a silent truncation that ended at [A0]). The
+    # 502-record + not-a-disconnect invariants are unchanged.
+    assert chunks[0] == A0
+    body = b"".join(chunks)
+    assert b"ERR_UPSTREAM_UNAVAILABLE" in body
+    assert b"[DONE]" in body
     assert rec.call_count == 1
     assert rec.last_call["status"] == 502
     assert rec.last_call.get("usage_source") != "client_disconnect"

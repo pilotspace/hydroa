@@ -1,0 +1,132 @@
+{
+  "milestone": {
+    "title": "Agent-loop error fidelity",
+    "goal": "When an upstream provider fails (rate-limit, auth, 5xx, mid-stream), the proxy surfaces a faithful, actionable signal to the OpenAI-wire client \u2014 correct 429 + Retry-After on rate-limits and a well-formed terminal SSE error frame on streaming failures \u2014 so an agent loop (Helios) backs off or recovers instead of seeing a generic 502 or a hung stream.",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-24T02:28:43+00:00",
+    "updated": "2026-06-24T06:06:34+00:00"
+  },
+  "tasks": {
+    "upstream-ratelimit-passthrough": {
+      "title": "Surface upstream 429 as client 429 + Retry-After (not 502)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v35",
+      "depends_on": [],
+      "created": "2026-06-24T02:29:27+00:00",
+      "updated": "2026-06-24T03:34:19+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "bbc8d34ef97a732af392c76c84b3cf2b",
+        "tests": {
+          "apps/gateway/tests/upstream_ratelimit_passthrough/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/upstream_ratelimit_passthrough/test_upstream_ratelimit_passthrough.py": "08a283d05938ec1169565d84a0a0dee8"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/domain/errors.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/upstream_retry.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/application/fallback_router.py"
+        ],
+        "snapshot_md5": "d1dbf799bb8439367a81489f6d389238"
+      },
+      "heal": {
+        "attempts": 3,
+        "history": [
+          {
+            "at": "2026-06-24T03:32:00+00:00",
+            "reason": "scope_violation: task 'upstream-ratelimit-passthrough' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 (3 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-24T03:32:26+00:00",
+            "reason": "scope_violation: task 'upstream-ratelimit-passthrough' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (11 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-24T03:33:37+00:00",
+            "reason": "scope_violation: task 'upstream-ratelimit-passthrough' touched outside its declared \u00a75 Scope \u2014 .ruff_cache/.gitignore \u00b7 .ruff_cache/0.15.16/3803784132600827788 \u00b7 .ruff_cache/CACHEDIR.TAG \u00b7 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore (14 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "stream-upstream-error-frame": {
+      "title": "Emit a terminal SSE error frame + [DONE] on mid-stream upstream failure",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v35",
+      "depends_on": [],
+      "created": "2026-06-24T03:36:46+00:00",
+      "updated": "2026-06-24T05:06:34+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ac59fa74830ea8e19eabdb10dac11a1c",
+        "tests": {
+          "apps/gateway/tests/stream_upstream_error_frame/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/stream_upstream_error_frame/test_stream_upstream_error_frame.py": "230345a62906e3bde9be64e38f9005dc"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/use_cases.py"
+        ],
+        "snapshot_md5": "811a88d4291c660b76b907095a21b91d"
+      }
+    },
+    "error-fidelity-live-verify": {
+      "title": "CI stub + live re-probe proving 429-passthrough and mid-stream error-frame fidelity",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v35",
+      "depends_on": [],
+      "created": "2026-06-24T05:07:52+00:00",
+      "updated": "2026-06-24T06:04:38+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "92422222c63f79a547540bb0e03e72a8",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "scripts/v35_error_fidelity_stub.py",
+          "scripts/live_v35_verify.py",
+          "infra/docker-compose.e2e.v35.yml"
+        ],
+        "snapshot_md5": "53c3f67add8ff3dc26c43522584c7780"
+      }
+    },
+    "stream-graceful-close-mapping": {
+      "title": "Map graceful mid-stream peer-close (httpx.RemoteProtocolError) to UpstreamUnavailableError across provider adapters",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v35",
+      "depends_on": [],
+      "created": "2026-06-24T05:28:24+00:00",
+      "updated": "2026-06-24T05:46:48+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "36c15c7f0fa99656ab9431e04034b186",
+        "tests": {
+          "apps/gateway/tests/stream_graceful_close_mapping/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/stream_graceful_close_mapping/test_graceful_close_mapping.py": "8f9725bd48ae7a6635755f4f0982be4f"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/openrouter_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/azure_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py"
+        ],
+        "snapshot_md5": "4220326ae2345c354d780936338605d0"
+      }
+    }
+  },
+  "archived_at": "2026-06-24T06:07:20+00:00"
+}
