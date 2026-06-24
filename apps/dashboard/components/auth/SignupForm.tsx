@@ -6,7 +6,7 @@
  * Behavior (per frozen contract §3 v2):
  *   1. Client-side Zod validation before any fetch
  *   2. POST /api/auth/signup BFF endpoint with credentials:"include"
- *   3. 201 → router.push("/keys"); no localStorage write
+ *   3. 201 → router.push("/app/keys"); no localStorage write
  *   4. 409 → inline email field error "An account with this email already exists"
  *   5. Other errors → surface problem+json title
  */
@@ -74,7 +74,7 @@ export function SignupForm() {
       }
 
       // No localStorage write — cookie is set server-side by the BFF
-      router.push("/keys");
+      router.push("/app/keys");
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 409) {

@@ -397,13 +397,13 @@ describe("SettingsPage — axe + nav", () => {
 
   it("test_nav_exposes_settings", () => {
     render(
-      <AppShell activePath="/settings">
+      <AppShell activePath="/app/settings">
         <div>content</div>
       </AppShell>,
     );
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const link = within(nav).getByRole("link", { name: /settings/i });
-    expect(link).toHaveAttribute("href", "/settings");
+    expect(link).toHaveAttribute("href", "/app/settings");
     expect(link).toHaveAttribute("aria-current", "page");
   });
 });

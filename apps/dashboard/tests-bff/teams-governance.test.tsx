@@ -565,13 +565,13 @@ describe("TeamsPage — axe + dialog a11y + nav", () => {
 
   it("test_nav_exposes_teams", () => {
     render(
-      <AppShell activePath="/teams">
+      <AppShell activePath="/app/teams">
         <div>content</div>
       </AppShell>,
     );
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const link = within(nav).getByRole("link", { name: /teams/i });
-    expect(link).toHaveAttribute("href", "/teams");
+    expect(link).toHaveAttribute("href", "/app/teams");
     expect(link).toHaveAttribute("aria-current", "page");
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TeamsPage — owner/admin teams governance surface (`/teams`).
+ * TeamsPage — owner/admin teams governance surface (`/app/teams`).
  *
  * Master-detail on one page: a teams list (create / delete / set budget) plus a
  * members panel for the selected team. Consumes the frozen teams gateway contract
