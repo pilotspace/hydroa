@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "trust-status-page",
+  "active_task": "rbac-roles",
   "active_milestone": "v38",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -309,6 +309,52 @@
         ],
         "snapshot_md5": "acb1c712b3b6f1ef64891f5db3bdb50f"
       }
+    },
+    "rbac-roles": {
+      "title": "Enterprise RBAC role tiers + authorization matrix",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:56:03+00:00",
+      "updated": "2026-06-24T17:30:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c15301671a33d046ed8ca048c0bacd4a",
+        "tests": {
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "a475ed5c76711b678d5bef3ee22a181c",
+          "apps/gateway/tests/credential_stub.py": "bcfeaf8d11069c18638703cb79b172bb",
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/",
+          "apps/gateway/src/gateway/keys/api/deps.py",
+          "apps/gateway/src/gateway/catalog/api/",
+          "apps/gateway/src/gateway/usage/api/",
+          "apps/gateway/src/gateway/budgets/api/",
+          "apps/gateway/src/gateway/teams/api/",
+          "apps/gateway/src/gateway/proxy/api/routing_admin_router.py",
+          "apps/gateway/src/gateway/ops/api/",
+          "apps/gateway/src/gateway/core/",
+          "apps/gateway/migrations/",
+          "apps/gateway/tests/"
+        ],
+        "snapshot_md5": "2e479be457cbb6d22f85365d5fe6c2a9"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-24T17:29:53+00:00",
+            "reason": "scope_violation: task 'rbac-roles' touched outside its declared \u00a75 Scope \u2014 tmp/rbac-roles-commit.txt (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -330,7 +376,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T16:50:43+00:00",
+  "updated": "2026-06-24T17:30:03+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
