@@ -406,6 +406,62 @@ class Settings(BaseSettings):
             return 0
         return n
 
+    # ── Per-key bandwidth pacing (bandwidth-token-bucket task, v36) ─────────────
+    # GATEWAY_BANDWIDTH_TOKENS_PER_SEC — per-API-key throughput ceiling (tokens/sec) the
+    # aggregate Redis token-bucket paces toward. 0 (default) = disabled = today's unbounded
+    # behavior (opt-in, byte-identical; the stream seam wires PassthroughBandwidthBucket).
+    # A negative value is a misconfiguration → coerced to 0 (disabled) + WARN at startup.
+    bandwidth_tokens_per_sec: int = Field(default=0)  # GATEWAY_BANDWIDTH_TOKENS_PER_SEC
+    # GATEWAY_BANDWIDTH_BURST_TOKENS — bucket capacity (max level). 0 (default) ⇒ when the
+    # rate is enabled, the bucket defaults burst to the rate (a 1-second burst window).
+    bandwidth_burst_tokens: int = Field(default=0)  # GATEWAY_BANDWIDTH_BURST_TOKENS
+    # GATEWAY_BANDWIDTH_MAX_WAIT_SECONDS — bounded-wait budget the stream seam passes to
+    # acquire(); once a grant would need more waiting than this, the request is shed (503).
+    # 0.0 (default) = no pacing wait. A negative value is coerced to 0.0 + WARN.
+    bandwidth_max_wait_seconds: float = Field(default=0.0)  # GATEWAY_BANDWIDTH_MAX_WAIT_SECONDS
+
+    @field_validator("bandwidth_tokens_per_sec", "bandwidth_burst_tokens", mode="before")
+    @classmethod
+    def _coerce_negative_bandwidth_int(cls, v: object) -> object:
+        """Coerce a negative bandwidth token/burst knob to 0 (disabled) + WARN.
+
+        A negative ceiling/capacity is a misconfiguration, not a disable signal — 0 is the
+        OFF sentinel. Mirrors the max_concurrent_requests coercion convention.
+        """
+        import logging as _logging
+
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return v
+        if n < 0:
+            _logging.getLogger(__name__).warning(
+                "INVALID_BANDWIDTH_KNOB: a GATEWAY_BANDWIDTH_* token/burst value=%r is negative; "
+                "coercing to 0 (disabled). Set to a positive integer to enable bandwidth pacing.",
+                v,
+            )
+            return 0
+        return n
+
+    @field_validator("bandwidth_max_wait_seconds", mode="before")
+    @classmethod
+    def _coerce_negative_bandwidth_wait(cls, v: object) -> object:
+        """Coerce a negative GATEWAY_BANDWIDTH_MAX_WAIT_SECONDS to 0.0 + WARN."""
+        import logging as _logging
+
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return v
+        if f < 0:
+            _logging.getLogger(__name__).warning(
+                "INVALID_BANDWIDTH_MAX_WAIT_SECONDS: GATEWAY_BANDWIDTH_MAX_WAIT_SECONDS=%r is "
+                "negative; coercing to 0.0 (no pacing wait).",
+                v,
+            )
+            return 0.0
+        return f
+
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
     # the cooldown for a model. 0 = disabled (feature off, v5 byte-identical behavior).
