@@ -175,7 +175,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T14:00:30+00:00",
+  "updated": "2026-06-24T15:07:16+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -623,6 +623,17 @@
         "stream-bandwidth-pacing",
         "bandwidth-usage-reconcile",
         "bandwidth-counter-view"
+      ],
+      "archived": "2026-06-24"
+    },
+    {
+      "slug": "v37",
+      "title": "Dashboard observability parity",
+      "tasks": 3,
+      "task_slugs": [
+        "bandwidth-panel",
+        "routing-editor-feedback",
+        "sso-login-polish"
       ],
       "archived": "2026-06-24"
     }
