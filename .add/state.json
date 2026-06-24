@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "stream-upstream-error-frame",
+  "active_task": "stream-graceful-close-mapping",
   "active_milestone": "v35",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -232,6 +232,42 @@
         ],
         "snapshot_md5": "811a88d4291c660b76b907095a21b91d"
       }
+    },
+    "error-fidelity-live-verify": {
+      "title": "CI stub + live re-probe proving 429-passthrough and mid-stream error-frame fidelity",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "v35",
+      "depends_on": [],
+      "created": "2026-06-24T05:07:52+00:00",
+      "updated": "2026-06-24T05:10:25+00:00"
+    },
+    "stream-graceful-close-mapping": {
+      "title": "Map graceful mid-stream peer-close (httpx.RemoteProtocolError) to UpstreamUnavailableError across provider adapters",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v35",
+      "depends_on": [],
+      "created": "2026-06-24T05:28:24+00:00",
+      "updated": "2026-06-24T05:46:48+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "36c15c7f0fa99656ab9431e04034b186",
+        "tests": {
+          "apps/gateway/tests/stream_graceful_close_mapping/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/stream_graceful_close_mapping/test_graceful_close_mapping.py": "8f9725bd48ae7a6635755f4f0982be4f"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/openrouter_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/azure_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py"
+        ],
+        "snapshot_md5": "4220326ae2345c354d780936338605d0"
+      }
     }
   },
   "milestones": {
@@ -253,7 +289,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T05:06:34+00:00",
+  "updated": "2026-06-24T05:46:48+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

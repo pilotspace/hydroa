@@ -285,7 +285,14 @@ class OpenRouterCompletionUpstream:
                     self._breaker.record_success()
                     async for chunk in response.aiter_bytes():
                         yield chunk
-            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            # RemoteProtocolError = graceful mid-stream peer-close (Finding C, v35):
+            # a ProtocolError, not a NetworkError — map it like any upstream failure so
+            # the use-case mid-stream catch can emit the terminal SSE error frame + [DONE].
+            except (
+                httpx.TimeoutException,
+                httpx.NetworkError,
+                httpx.RemoteProtocolError,
+            ) as exc:
                 self._breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
