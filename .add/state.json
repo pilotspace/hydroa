@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "landing-page",
+  "active_task": "pricing-page",
   "active_milestone": "v38",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -219,6 +219,28 @@
           }
         ]
       }
+    },
+    "pricing-page": {
+      "title": "Public pricing page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:36:39+00:00",
+      "updated": "2026-06-24T16:41:14+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c5361a6195f9f6ddfa70b77a5733a3f1",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/pricing/",
+          "apps/dashboard/components/marketing/",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "19576afd49b6b1d6ae6eaf468018dafc"
+      }
     }
   },
   "milestones": {
@@ -240,7 +262,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T16:36:27+00:00",
+  "updated": "2026-06-24T16:41:14+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
