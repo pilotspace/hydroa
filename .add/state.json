@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "stream-graceful-close-mapping",
+  "active_task": "error-fidelity-live-verify",
   "active_milestone": "v35",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -235,12 +235,25 @@
     },
     "error-fidelity-live-verify": {
       "title": "CI stub + live re-probe proving 429-passthrough and mid-stream error-frame fidelity",
-      "phase": "specify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v35",
       "depends_on": [],
       "created": "2026-06-24T05:07:52+00:00",
-      "updated": "2026-06-24T05:10:25+00:00"
+      "updated": "2026-06-24T06:04:38+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "92422222c63f79a547540bb0e03e72a8",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "scripts/v35_error_fidelity_stub.py",
+          "scripts/live_v35_verify.py",
+          "infra/docker-compose.e2e.v35.yml"
+        ],
+        "snapshot_md5": "53c3f67add8ff3dc26c43522584c7780"
+      }
     },
     "stream-graceful-close-mapping": {
       "title": "Map graceful mid-stream peer-close (httpx.RemoteProtocolError) to UpstreamUnavailableError across provider adapters",
@@ -289,7 +302,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T05:46:48+00:00",
+  "updated": "2026-06-24T06:04:38+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

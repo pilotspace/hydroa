@@ -1,0 +1,74 @@
+# v35 error-fidelity overlay — additive on base + v4 + v5 + v6 overlays.
+#
+# Points the OpenRouter upstream at the v35 error-fidelity stub on the host (:9935)
+# and sets the resilience/retry knobs the EF checks need.
+#
+# Overlay chain:
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v4.yml \
+#     -f infra/docker-compose.e2e.v5.yml \
+#     -f infra/docker-compose.e2e.v6.yml \
+#     -f infra/docker-compose.e2e.v35.yml \
+#     up --build -d --wait
+#
+# v35 error-fidelity behaviors verified:
+#   Finding A: upstream 429 + Retry-After: 7  → client 429 + Retry-After (NOT 502)
+#              checked by EF-1 in live_v35_verify.py
+#   Finding B+C: upstream streams ≥1 SSE chunk then GRACEFULLY closes mid-stream
+#              → client receives chunk(s) + ERR_UPSTREAM_UNAVAILABLE error frame
+#              + terminal data:[DONE]; no hang.
+#              checked by EF-2 in live_v35_verify.py
+#
+# Retry knob (EF-1 rationale):
+#   GATEWAY_UPSTREAM_MAX_RETRIES=0 means exactly ONE attempt.  In execute_with_retry
+#   (upstream_retry.py L134), attempt=0 >= max_retries=0 on a 429 → raises
+#   UpstreamRateLimitedError immediately (no re-attempt), carrying the parsed
+#   Retry-After.  Setting >0 would cause the stub to be called multiple times and
+#   the first exhaustion to surface only after max_retries failures — we want the
+#   429 to surface on the FIRST attempt (most faithful to a client directly seeing
+#   a 429 from a rate-limited upstream).  0 is the default; stated explicitly here
+#   to document the intent and prevent a higher-level overlay from accidentally
+#   turning on retries for the rate-limit check.
+#
+# Source: error-fidelity-live-verify TASK.md §3 CONTRACT (FROZEN @ v1)
+# Security: stub binds 127.0.0.1 only; key is a non-secret placeholder.
+#           http:// is intentional (stub on loopback); TLS enforced by Envoy edge (:8443).
+#           NEVER set a real OpenRouter key here — the stub ignores the bearer value.
+# Double-pass close rule: run live_v35_verify.py twice; both must exit 0.
+
+services:
+  gateway:
+    environment:
+      # ── v35: OpenRouter upstream → v35 error-fidelity stub on :9935 ─────────
+      # The stub speaks the OpenRouter /chat/completions surface.
+      # http:// is intentional (stub on loopback); TLS enforced by the Envoy edge.
+      # Overrides any v6 overlay value.
+      GATEWAY_OPENROUTER_BASE_URL: "http://host.docker.internal:9935/api/v1"
+
+      # ── v35: OpenRouter API key — non-secret placeholder ────────────────────
+      # Must be non-empty so boot validation does not reject it.
+      # The stub ignores the bearer value entirely.
+      # NEVER a real key — this is a fake placeholder for the stub only.
+      GATEWAY_OPENROUTER_API_KEY: "stub-v35-openrouter-key"
+
+      # ── v35: BYOK Fernet encryption key ─────────────────────────────────────
+      # Required so PUT /admin/provider-keys/* returns 200 (not 409).
+      # This is the SAME fake public test key used by docker-compose.e2e.helios.yml
+      # — it is NOT a secret, valid for the e2e harness only, safe to commit.
+      GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY: "ykjz8nXk81rGbmRCVIhK0HDxss5FYDHQxLqa4C_81N4="
+
+      # ── v35: Retry policy — 0 retries so EF-1 429 surfaces on attempt 1 ────
+      # With max_retries=0: execute_with_retry makes exactly ONE attempt; a 429
+      # response immediately raises UpstreamRateLimitedError carrying the upstream
+      # Retry-After value → use_cases maps it to client 429 + Retry-After header.
+      # Setting this to >0 would retry the stub before surfacing the 429 to the
+      # client, which is NOT the EF-1 scenario (we want direct passthrough).
+      GATEWAY_UPSTREAM_MAX_RETRIES: "0"
+
+      # ── v35: Disable features that are not under test ───────────────────────
+      # These are all OFF by default; stated explicitly to prevent a parent overlay
+      # (v4/v5/v6) from accidentally enabling them and altering error-path semantics.
+      GATEWAY_UPSTREAM_FALLBACK_ON_ERROR: "false"
+      GATEWAY_UPSTREAM_STREAM_RESILIENCE_ENABLED: "false"
+      GATEWAY_VECTOR_CACHE_ENABLED: "false"
