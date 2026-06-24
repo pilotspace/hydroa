@@ -81,6 +81,10 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
   const [groups, setGroups] = useState<Record<string, DeploymentRow[]>>(serverDeployments);
   const [newAlias, setNewAlias] = useState("");
   const [mutError, setMutError] = useState<string | null>(null);
+  // v37 routing-editor-feedback: client validation error (fast-fail, no PUT) + a transient
+  // post-save "restart to apply" confirmation that clears the moment editing resumes.
+  const [clientError, setClientError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   // ── Seed-during-render guard ────────────────────────────────────────────────
   // Mirrors GuardrailSettings: fires only when the server reference changes
@@ -105,6 +109,7 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
     mutationFn: (body: PutRoutingBody) => bffPut<PutRoutingBody>("/admin/routing", body),
     onSuccess: () => {
       setMutError(null);
+      setSaved(true); // show the transient "Saved — restart to apply" confirmation
       void queryClient.invalidateQueries({ queryKey: ["admin-routing"] });
     },
     onError: (err) => {
@@ -112,9 +117,18 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
     },
   });
 
+  // v37: any user edit invalidates the transient "saved" confirmation and dismisses a stale
+  // client error — but NOT the programmatic reseed after a save's refetch (that path never
+  // calls this, so the post-save affordance survives the invalidate→refetch round-trip).
+  function markEdited() {
+    if (saved) setSaved(false);
+    if (clientError) setClientError(null);
+  }
+
   // ── Group handlers ─────────────────────────────────────────────────────────
 
   function handleAddGroup() {
+    markEdited();
     const alias = newAlias.trim();
     if (!alias || alias in groups) return;
     setGroups((prev) => ({ ...prev, [alias]: [emptyRow()] }));
@@ -122,6 +136,7 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
   }
 
   function handleRemoveGroup(alias: string) {
+    markEdited();
     setGroups((prev) => {
       const next = { ...prev };
       delete next[alias];
@@ -130,6 +145,7 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
   }
 
   function handleAddRow(alias: string) {
+    markEdited();
     setGroups((prev) => ({
       ...prev,
       [alias]: [...prev[alias], emptyRow()],
@@ -137,6 +153,7 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
   }
 
   function handleRemoveRow(alias: string, idx: number) {
+    markEdited();
     setGroups((prev) => ({
       ...prev,
       [alias]: prev[alias].filter((_, i) => i !== idx),
@@ -149,6 +166,7 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
     field: keyof DeploymentRow,
     rawValue: string,
   ) {
+    markEdited();
     setGroups((prev) => {
       const rows = prev[alias].map((row, i) => {
         if (i !== idx) return row;
@@ -166,6 +184,18 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
 
   function handleSave() {
     setMutError(null);
+    // v37 client guard: every deployment needs a model_id and a weight > 0. Fast-fail before the
+    // PUT so an empty/zero weight (handleRowChange coerces "" → 0) never costs a 422 round-trip.
+    // The server still backstops anything this guard does not cover.
+    const invalid = Object.values(groups)
+      .flat()
+      .some((row) => row.model_id.trim() === "" || !(row.weight > 0));
+    if (invalid) {
+      setSaved(false);
+      setClientError("Every deployment needs a model and a weight greater than 0.");
+      return;
+    }
+    setClientError(null);
     saveRouting.mutate({ routing_strategy: strategy, model_groups: groups });
   }
 
@@ -197,7 +227,10 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
           id="routing-strategy"
           aria-label="Routing strategy"
           value={strategy}
-          onChange={(e) => setStrategy(e.target.value as RoutingStrategy)}
+          onChange={(e) => {
+            markEdited();
+            setStrategy(e.target.value as RoutingStrategy);
+          }}
           className="w-56 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {STRATEGY_OPTIONS.map((opt) => (
@@ -363,10 +396,24 @@ export function RoutingEditor({ serverStrategy, serverDeployments }: RoutingEdit
         </div>
       </div>
 
+      {/* Client validation error (fast-fail, no PUT) — v37 */}
+      {clientError && (
+        <p role="alert" aria-live="polite" className="text-sm text-destructive">
+          {clientError}
+        </p>
+      )}
+
       {/* Mutation error inline */}
       {mutError && (
         <p role="alert" aria-live="polite" className="text-sm text-destructive">
           {mutError}
+        </p>
+      )}
+
+      {/* Transient post-save confirmation — clears on the next edit (v37) */}
+      {saved && (
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+          Saved — restart the gateway to apply.
         </p>
       )}
 

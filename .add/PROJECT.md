@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 33
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 34
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -326,6 +326,9 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+- (UDD) mirroring an APPROVED sibling component (RatelimitsPanel) collapses the UDD design loop to "reuse" — inherit its four-state recipe + a11y region pattern verbatim rather than re-deriving a design (evidence: this panel shipped with zero new design decisions beyond the frozen disabled-caption).  [folded foundation-version 34 · from bandwidth-panel]
+- (UDD) when a STATIC always-on hint already exists, a "saved" CONFIRMATION is a SEPARATE transient affordance (role=status) that must survive the save's own refetch-reseed but clear on the next user edit — gate it on user-edit handlers, NOT on a [data]-dep effect (evidence: refute attack-vector 1; reseed uses setGroups directly so saved survives).  [folded foundation-version 34 · from routing-editor-feedback]
+- (UDD) a localStorage seed must read in an effect (not a lazy useState initializer) to stay SSR-safe; the `react-hooks/set-state-in-effect` lint flags it → a single-line scoped disable directly above the setState (multi-line directive misses the target line) (evidence: directive on the comment-continuation line read as "unused").  [folded foundation-version 34 · from sso-login-polish]
 - (UDD) for a SMALL UI change, an AskUserQuestion `preview` (ASCII layout) served as the design-confirm — no full render-loop needed; the human picked the layout before build (evidence: Tin approved the /login layout preview 2026-06-22).  [folded foundation-version 29 · from sso-login-button]
 
 - Primary users & jobs: tenant **owner/admin** — provision org, issue/revoke keys,
@@ -439,6 +442,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-24 | fold all → foundation-version 34 (UDD 3 · TDD 3 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 7 lessons open→folded; +7 routed bullets; 33→34 |
 | 2026-06-24 | fold all → foundation-version 33 (SDD 1 · TDD 2 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 4 lessons open→folded; +4 routed bullets; 32→33 |
 | 2026-06-24 | fold all → foundation-version 32 (SDD 1 · TDD 1 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 3 lessons open→folded; +3 routed bullets; 31→32 |
 | 2026-06-23 | fold all → foundation-version 31 (SDD 1 · TDD 7 · ADD 8) | consolidate captured OBSERVE lessons into the versioned foundation | 16 lessons open→folded; +16 routed bullets; 30→31 |

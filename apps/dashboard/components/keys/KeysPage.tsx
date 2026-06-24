@@ -25,6 +25,7 @@ import { CreateKeyDialog } from "./CreateKeyDialog";
 import { PlaintextKeyBanner } from "./PlaintextKeyBanner";
 import { KeyGovernanceEditor, ApiKeyGovernance } from "./KeyGovernanceEditor";
 import { RatelimitsPanel } from "./RatelimitsPanel";
+import { BandwidthPanel } from "./BandwidthPanel";
 import {
   Button,
   Card,
@@ -304,6 +305,9 @@ export function KeysPage() {
 
       {/* Read-only live rate-limit usage per key (current rpm/tpm vs configured limits) */}
       <RatelimitsPanel />
+
+      {/* Read-only live bandwidth bucket level per key (current vs capacity) — v37 */}
+      <BandwidthPanel />
 
       <CreateKeyDialog
         isOpen={isCreateDialogOpen}

@@ -10,7 +10,7 @@
  *   4. 401/error → inline error with problem+json title, no navigation
  */
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { ApiError } from "@/lib/api-client";
@@ -24,6 +24,32 @@ const LoginSchema = z.object({
 type FieldErrors = Partial<Record<"email" | "password", string>>;
 
 const OIDC_LOGIN_PATH = "/api/auth/oidc/login";
+/** Non-secret UI preference: the last SSO domain a user signed in with. */
+const SSO_DOMAIN_KEY = "sso_domain";
+/** Bound the pre-flight so a slow/hung gateway never blocks a real login. */
+const SSO_PREFLIGHT_TIMEOUT_MS = 5000;
+const SSO_NOT_CONFIGURED_MSG =
+  "That domain isn’t set up for single sign-on. Check the spelling or contact your administrator.";
+
+/**
+ * SSO-domain preference accessors — defensive on purpose. localStorage is absent
+ * during SSR and may throw (private mode, disabled storage, partial test envs),
+ * so persistence DEGRADES silently; it is a convenience, never a login blocker.
+ */
+function readSsoDomain(): string | null {
+  try {
+    return typeof localStorage !== "undefined" ? localStorage.getItem(SSO_DOMAIN_KEY) : null;
+  } catch {
+    return null;
+  }
+}
+function persistSsoDomain(domain: string): void {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(SSO_DOMAIN_KEY, domain);
+  } catch {
+    // non-fatal — never block navigation on a storage failure
+  }
+}
 
 /**
  * Resolve an SSO domain from raw input: a full email yields the part after the
@@ -57,7 +83,18 @@ export function LoginForm() {
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSso() {
+  // Seed the SSO field with the last-used domain (non-secret UI preference).
+  // Effect (not a useState initializer) so it never runs during SSR — localStorage
+  // is browser-only, and this avoids a hydration mismatch.
+  useEffect(() => {
+    // One-shot sync from an external store (localStorage) — the SSR-safe pattern for
+    // a browser-only seed; not a cascading render. (rule is over-strict here.)
+    const saved = readSsoDomain();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (saved) setSsoDomain(saved);
+  }, []);
+
+  async function handleSso() {
     setSsoError(null);
     const raw = ssoDomain.trim();
     if (raw === "") {
@@ -71,9 +108,29 @@ export function LoginForm() {
       setSsoError(error); // block navigation; the gateway never sees a bad domain
       return;
     }
-    // Full-page navigation (not fetch) so the browser follows the relay's 302
-    // chain to the external IdP.
-    window.location.assign(`${OIDC_LOGIN_PATH}?domain=${encodeURIComponent(domain)}`);
+    const target = `${OIDC_LOGIN_PATH}?domain=${encodeURIComponent(domain)}`;
+    // Pre-flight the relay to catch an unconfigured domain (it 404s) BEFORE the
+    // full-page nav — otherwise the browser dead-ends on a raw 404 page. With
+    // redirect:"manual" a configured 3xx is an opaqueredirect (status 0) or a
+    // readable 302 depending on the runtime, so "not configured" == a 4xx.
+    try {
+      const preflight = await fetch(target, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(SSO_PREFLIGHT_TIMEOUT_MS),
+      });
+      if (preflight.status >= 400 && preflight.status < 500) {
+        setSsoError(SSO_NOT_CONFIGURED_MSG); // unconfigured domain — no navigation
+        return;
+      }
+      // Verified configured (non-4xx): persist the last-used domain. We persist
+      // ONLY on a confirmed-good probe, never on the degrade path below.
+      persistSsoDomain(domain);
+    } catch {
+      // Probe failed (network/timeout) — DEGRADE to the direct full-page nav so a
+      // flaky probe never blocks a real login (no persist: the domain is unverified).
+    }
+    // Full-page navigation so the browser follows the relay's 302 chain to the IdP.
+    window.location.assign(target);
   }
 
   async function handleSubmit(e: FormEvent) {
