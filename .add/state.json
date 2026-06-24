@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "pricing-page",
+  "active_task": "legal-pages",
   "active_milestone": "v38",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -241,6 +241,28 @@
         ],
         "snapshot_md5": "19576afd49b6b1d6ae6eaf468018dafc"
       }
+    },
+    "legal-pages": {
+      "title": "Public legal pages (terms/privacy/security)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:41:32+00:00",
+      "updated": "2026-06-24T16:44:18+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "25f30370d1ed44dd9b0a0a15f885f0ef",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/legal/",
+          "apps/dashboard/components/marketing/",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "206309d0f9d19866e7acea3c2504d6f0"
+      }
     }
   },
   "milestones": {
@@ -262,7 +284,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T16:41:14+00:00",
+  "updated": "2026-06-24T16:44:18+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
