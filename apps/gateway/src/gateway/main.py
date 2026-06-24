@@ -78,7 +78,9 @@ from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGa
 from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
 from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
+from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
+from gateway.rate_limits.infrastructure.redis_token_bucket import RedisTokenBucket
 from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
     TeamMemberRow as _TeamMemberRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -651,6 +653,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Rate limiter: wire RedisLuaRateLimiter for production;
     # tests override via app.state.rate_limiter after app creation.
     app.state.rate_limiter = RedisLuaRateLimiter(redis=redis_client)
+
+    # Bandwidth pacing (stream-bandwidth-pacing, v36): per-key aggregate token-bucket.
+    # rate==0 (default) → PassthroughBandwidthBucket → byte-identical (no pacing, no Redis).
+    # Construction does NOT connect to Redis (safe without lifespan); tests override via app.state.
+    if settings.bandwidth_tokens_per_sec > 0:
+        app.state.bandwidth_bucket = RedisTokenBucket(
+            redis=redis_client,
+            rate=settings.bandwidth_tokens_per_sec,
+            burst=settings.bandwidth_burst_tokens,
+        )
+    else:
+        app.state.bandwidth_bucket = PassthroughBandwidthBucket()
 
     # Cooldown circuit breaker gate — constructed only when threshold > 0.
     # Construction does NOT connect to Redis (safe without lifespan).

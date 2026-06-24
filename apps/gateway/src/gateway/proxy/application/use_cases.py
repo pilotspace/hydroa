@@ -36,6 +36,7 @@ from gateway.budgets.domain.ports import BudgetGuard, PassthroughBudgetGuard
 from gateway.core.error_catalog import (
     AUTH_KEY_EXPIRED,
     AUTH_KEY_INVALID,
+    BANDWIDTH_EXHAUSTED,
     BUDGET_EXCEEDED,
     GUARDRAIL_BLOCKED,
     MODEL_DISABLED,
@@ -77,9 +78,15 @@ from gateway.proxy.domain.provider_credentials import (
     BYOK_PROVIDERS,
     ProviderKeyMissing,
 )
-from gateway.rate_limits.application.passthrough import PassthroughRateLimiter
-from gateway.rate_limits.domain.errors import RateLimitExceededError
-from gateway.rate_limits.domain.ports import RateLimiter
+from gateway.rate_limits.application.passthrough import (
+    PassthroughBandwidthBucket,
+    PassthroughRateLimiter,
+)
+from gateway.rate_limits.domain.errors import (
+    BandwidthExhaustedError,
+    RateLimitExceededError,
+)
+from gateway.rate_limits.domain.ports import BandwidthBucket, BandwidthGrant, RateLimiter
 from gateway.usage.domain.extractor import (
     extract_generation_id_from_sse,
     extract_usage_from_sse,
@@ -171,6 +178,27 @@ def _fire_record_tpm(
     Swallows all errors — post-stream accounting must never fail a request.
     """
     task = asyncio.ensure_future(rate_limiter.record_tpm(key_id, tokens))
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
+def _fire_bandwidth_reconcile(
+    bucket: BandwidthBucket,
+    *,
+    key_id: uuid.UUID,
+    estimate: int,
+    real_tokens: int,
+) -> None:
+    """Schedule a fire-and-forget estimate->real bandwidth reconcile (bandwidth-usage-reconcile).
+
+    Applies the signed delta (estimate minus real_tokens) to the per-key bucket so its level
+    reflects the REAL usage, not the pacing estimate. NO-OP unless both estimate>0 and real_tokens>0
+    (no truth to correct toward). Mirrors _fire_record_tpm: never blocks the response, swallows the
+    task exception (the bucket also swallows Redis errors). Passthrough.reconcile is itself a no-op.
+    """
+    if estimate <= 0 or real_tokens <= 0:
+        return
+    grant = BandwidthGrant(key_id=key_id, consumed=estimate, waited_s=0.0)
+    task = asyncio.ensure_future(bucket.reconcile(key_id, grant, real_tokens))
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
@@ -476,6 +504,8 @@ class CompletionUseCase:
         tenant_credential_resolver: TenantCredentialResolver | None = None,
         provider_resolver: ProviderResolver | None = None,
         cost_recovery: object | None = None,
+        bandwidth_bucket: BandwidthBucket | None = None,
+        bandwidth_max_wait_s: float = 0.0,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -504,6 +534,13 @@ class CompletionUseCase:
         # None ⇒ feature off ⇒ byte-identical. Structurally typed (_InlineCostRecovery)
         # so the use-case never depends on the concrete usage-layer service.
         self._cost_recovery: _InlineCostRecovery | None = cost_recovery  # type: ignore[assignment]
+        # Per-key bandwidth pacing (stream-bandwidth-pacing, v36). None ⇒ Passthrough ⇒
+        # acquire is an immediate no-op grant ⇒ the stream/complete paths are byte-identical
+        # to today (zero Redis, zero pacing). max_wait_s comes from settings.
+        self._bandwidth_bucket: BandwidthBucket = (
+            bandwidth_bucket if bandwidth_bucket is not None else PassthroughBandwidthBucket()
+        )
+        self._bandwidth_max_wait_s = bandwidth_max_wait_s
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -878,6 +915,31 @@ class CompletionUseCase:
             # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
             _model_groups = model_router.model_groups if model_router is not None else None
             await self._enforce_governance(authz, model_id, self._budget_guard, _model_groups)
+
+            # bandwidth-pacing pre-flight (stream-bandwidth-pacing v36): charge the per-key
+            # bucket BEFORE the upstream call so a non-stream request is SHED (never paid) when
+            # the bounded wait is exhausted. estimate = prompt chars/4 + max_tokens (a coarse
+            # upper bound; task 3 reconciles to the real total at close). Default-OFF ⇒ Passthrough
+            # ⇒ immediate grant ⇒ byte-identical. fail-open is guaranteed by the bucket (admits).
+            _bw_prompt_chars = sum(
+                len(str(_m.get("content", "")))
+                for _m in body.get("messages", [])
+                if isinstance(_m, dict)
+            )
+            # max_tokens is untrusted: coerce defensively (a non-numeric value must never
+            # 500 the request here — payload validation owns rejection, not this estimator).
+            _bw_max_tokens = body.get("max_tokens")
+            _bw_extra = int(_bw_max_tokens) if isinstance(_bw_max_tokens, (int, float)) else 0
+            _bw_estimate = max(1, _bw_prompt_chars // 4 + max(0, _bw_extra))
+            try:
+                await self._bandwidth_bucket.acquire(
+                    authz.key_id, _bw_estimate, self._bandwidth_max_wait_s
+                )
+            except BandwidthExhaustedError as _bw_exc:
+                raise BANDWIDTH_EXHAUSTED.exc(
+                    detail=f"Bandwidth limit exceeded for key {_bw_exc.key_id}",
+                    headers={"Retry-After": str(_bw_exc.retry_after_s)},
+                ) from None
 
             # Credential resolution (credential-resolution-seam §3): resolve the per-tenant
             # provider credential and place it in the request-scoped contextvar so Bearer
@@ -1330,6 +1392,21 @@ class CompletionUseCase:
                 total_tokens = usage.get("total_tokens")
                 if isinstance(total_tokens, int) and total_tokens > 0:
                     _fire_record_tpm(self._rate_limiter, key_id=authz.key_id, tokens=total_tokens)
+            # bandwidth-usage-reconcile (v36): correct the non-stream pre-flight ESTIMATE to the
+            # REAL response usage, fire-and-forget. Gated on active pacing (default-OFF schedules
+            # nothing); total_tokens absent/0 ⇒ the estimate debit stands.
+            if (
+                not isinstance(self._bandwidth_bucket, PassthroughBandwidthBucket)
+                and usage is not None
+            ):
+                _bw_real = usage.get("total_tokens")
+                if isinstance(_bw_real, int) and _bw_real > 0:
+                    _fire_bandwidth_reconcile(
+                        self._bandwidth_bucket,
+                        key_id=authz.key_id,
+                        estimate=_bw_estimate,
+                        real_tokens=_bw_real,
+                    )
             _status_code = status
             return status, response_body, x_cache
 
@@ -1598,6 +1675,19 @@ class CompletionUseCase:
 
             async def _wrapped() -> AsyncIterator[bytes]:
                 collected: list[bytes] = []
+                # bandwidth-pacing (v36): set once the shed branch has ALREADY fired its
+                # terminal billing record. The shed branch yields the error frame + [DONE]
+                # from INSIDE the outer try body, so a client disconnect DURING those yields
+                # would otherwise reach the (GeneratorExit, CancelledError) handler below and
+                # fire a SECOND record (double-bill). This flag gates that handler off.
+                _bw_shed_handled = False
+                # bandwidth-usage-reconcile (v36): Σ of the per-chunk estimates actually DEBITED
+                # (paced chunks only; the TTFB chunk is unpaced ⇒ excluded). At a clean close — or a
+                # disconnect with partial usage — this is reconciled to the REAL total_tokens so the
+                # bucket carries true debt, not the estimate. _bw_active gates the fire so the
+                # default-OFF (Passthrough) path schedules no reconcile task (byte-identical).
+                _bw_estimate_total = 0
+                _bw_active = not isinstance(self._bandwidth_bucket, PassthroughBandwidthBucket)
                 # disconnect-billing-all-providers (v34): set a fresh per-request
                 # partial-usage sink so native steppers can publish accumulated token
                 # counts into it.  reset() in the finally block so it never leaks.
@@ -1613,8 +1703,51 @@ class CompletionUseCase:
                     # COMMITS the stream — yield it before draining the rest (no replay after).
                     if first_chunk is not None:
                         collected.append(first_chunk)
-                        yield first_chunk
+                        yield first_chunk  # TTFB commit — UNPACED (never delay the first byte)
                     async for chunk in gen:
+                        # bandwidth-pacing (v36): meter each OUTBOUND chunk against the per-key
+                        # bucket BEFORE yielding. estimate = max(1, len(chunk)//4) (chars/4; the
+                        # real token count is only in the terminal usage frame — reconcile at close
+                        # is task 3). Default-OFF ⇒ Passthrough ⇒ this awaits an immediate no-op
+                        # grant ⇒ byte-identical. fail-open is guaranteed by the bucket (admits).
+                        _bw_chunk_est = max(1, len(chunk) // 4)
+                        try:
+                            await self._bandwidth_bucket.acquire(
+                                key_id, _bw_chunk_est, self._bandwidth_max_wait_s
+                            )
+                        except BandwidthExhaustedError:
+                            # The per-chunk wait budget is spent. A 200 was already sent, so we
+                            # cannot 503 — record the streamed prefix (truncation billing, like
+                            # the v35 upstream branch), emit a terminal error frame + [DONE], stop.
+                            _bw_usage = extract_usage_from_sse(collected)
+                            _bw_source = (
+                                "frame"
+                                if stream_usage_is_complete(_bw_usage)
+                                else "stream_fallback"
+                            )
+                            _fire_record_with_raw(
+                                usage_recorder,
+                                tenant_id=tenant_id,
+                                key_id=key_id,
+                                model=model_id,
+                                usage=_bw_usage,
+                                status=200,
+                                team_id=team_id,
+                                pii_masked=_stream_pii_masked,
+                                usage_source=_bw_source,
+                            )
+                            # record fired — gate the disconnect handler so a drop during the
+                            # two yields below cannot double-bill this request.
+                            _bw_shed_handled = True
+                            yield _sse_error_frame(
+                                "ERR_BANDWIDTH_EXHAUSTED", "bandwidth limit exceeded"
+                            )
+                            if not (collected and b"[DONE]" in collected[-1]):
+                                yield b"data: [DONE]\n\n"
+                            return
+                        # acquire granted ⇒ this chunk's estimate was debited; track it for the
+                        # estimate→real reconcile at close (bandwidth-usage-reconcile v36).
+                        _bw_estimate_total += _bw_chunk_est
                         collected.append(chunk)
                         yield chunk
                 except (UpstreamUnavailableError, CircuitOpenError) as exc:
@@ -1640,6 +1773,14 @@ class CompletionUseCase:
                         yield b"data: [DONE]\n\n"
                     return
                 except (GeneratorExit, asyncio.CancelledError):
+                    # bandwidth-pacing (v36): if the shed branch already fired its terminal
+                    # record, a disconnect during its error-frame/[DONE] yields must NOT bill
+                    # again. Still close the upstream and re-raise so the close/cancel completes.
+                    if _bw_shed_handled:
+                        if isinstance(gen, AsyncGenerator):
+                            with contextlib.suppress(BaseException):
+                                await gen.aclose()
+                        raise
                     # stream-disconnect-billing: the client dropped mid-stream
                     # (GeneratorExit raised at the suspended yield when Starlette calls the
                     # generator's aclose()) or the request task was cancelled
@@ -1700,6 +1841,19 @@ class CompletionUseCase:
                         provider_generation_id=disconnect_gen_id,
                         disconnect_estimate=disconnect_estimate,
                     )
+                    # bandwidth-usage-reconcile (v36, Tin): a disconnect ALSO reconciles the
+                    # estimate debited so far toward the PARTIAL usage actually generated, when a
+                    # partial total is known. Gated on active pacing; total_tokens absent ⇒ the
+                    # estimate debit stands (no truth to correct toward). Fire-and-forget.
+                    if _bw_active and isinstance(disconnect_usage, dict):
+                        _bw_partial_real = disconnect_usage.get("total_tokens")
+                        if isinstance(_bw_partial_real, int) and _bw_partial_real > 0:
+                            _fire_bandwidth_reconcile(
+                                self._bandwidth_bucket,
+                                key_id=key_id,
+                                estimate=_bw_estimate_total,
+                                real_tokens=_bw_partial_real,
+                            )
                     # disconnect-provider-cost (v30 t5): "spawn the stop event to the
                     # provider" — deterministically close the upstream generator NOW so the
                     # close (GeneratorExit) propagates into the adapter → the httpx response
@@ -1795,6 +1949,18 @@ class CompletionUseCase:
                     total_tokens = extracted_usage.get("total_tokens")
                     if total_tokens and isinstance(total_tokens, int) and total_tokens > 0:
                         _fire_record_tpm(rate_limiter, key_id=key_id, tokens=total_tokens)
+                # bandwidth-usage-reconcile (v36): correct the paced ESTIMATE to the REAL usage at
+                # clean close, fire-and-forget (never blocks). Gated on active pacing so default-OFF
+                # schedules nothing; total_tokens absent/0 ⇒ no truth ⇒ the estimate debit stands.
+                if _bw_active and isinstance(extracted_usage, dict):
+                    _bw_real = extracted_usage.get("total_tokens")
+                    if isinstance(_bw_real, int) and _bw_real > 0:
+                        _fire_bandwidth_reconcile(
+                            self._bandwidth_bucket,
+                            key_id=key_id,
+                            estimate=_bw_estimate_total,
+                            real_tokens=_bw_real,
+                        )
                 # Successful stream span — emitted here after the last chunk (§3 pinned).
                 # _authz and _emitter are captured from the enclosing scope.
                 if _authz is not None and _emitter is not None:  # pyright: ignore[reportUnnecessaryComparison]  — defensive None check; _authz captured from enclosing scope

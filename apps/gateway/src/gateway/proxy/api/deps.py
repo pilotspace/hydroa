@@ -171,6 +171,12 @@ def get_completion_use_case(
     # openrouter-cost-recovery-wiring (v30 t6.2c): optional inline recovery service.
     # Absent / None ⇒ feature off ⇒ byte-identical (tests override via app.state).
     cost_recovery = getattr(request.app.state, "cost_recovery_service", None)
+    # bandwidth-pacing (v36): per-key throughput bucket. Absent / None ⇒ the use-case
+    # defaults to PassthroughBandwidthBucket ⇒ byte-identical (tests override via app.state).
+    bandwidth_bucket = getattr(request.app.state, "bandwidth_bucket", None)
+    bandwidth_max_wait_s: float = (
+        float(getattr(_settings, "bandwidth_max_wait_seconds", 0.0)) if _settings else 0.0
+    )
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -184,4 +190,6 @@ def get_completion_use_case(
         tenant_credential_resolver=tenant_credential_resolver,
         provider_resolver=provider_resolver,
         cost_recovery=cost_recovery,
+        bandwidth_bucket=bandwidth_bucket,
+        bandwidth_max_wait_s=bandwidth_max_wait_s,
     )

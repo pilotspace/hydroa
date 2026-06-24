@@ -95,7 +95,9 @@ OPS_UNAUTHORIZED = ErrorSpec(401, "ERR_OPS_UNAUTHORIZED", "Operator authorizatio
 
 #: A valid TENANT credential was presented to the operator surface — wrong credential
 #: type; cross-tenant power never rides a tenant token.
-OPS_FORBIDDEN = ErrorSpec(403, "ERR_OPS_FORBIDDEN", "Tenant credentials cannot access the operator surface")
+OPS_FORBIDDEN = ErrorSpec(
+    403, "ERR_OPS_FORBIDDEN", "Tenant credentials cannot access the operator surface"
+)
 
 # ---------------------------------------------------------------------------
 # Auth — API key errors
@@ -330,6 +332,11 @@ BUDGET_EXCEEDED = ErrorSpec(402, "ERR_BUDGET_EXCEEDED", "Monthly budget exceeded
 #: RPM or TPM rate limit exceeded.
 #: Detail and ``Retry-After`` header are always provided by the caller.
 RATE_LIMITED = ErrorSpec(429, "ERR_RATE_LIMITED", "Rate limit exceeded")
+
+#: Per-key bandwidth (tokens/sec) budget exhausted (stream-bandwidth-pacing, v36).
+#: 503 on the non-stream PRE-FLIGHT shed path (Retry-After always provided by the caller);
+#: mid-stream it is only the SSE error-frame body's ``code`` (status is already 200).
+BANDWIDTH_EXHAUSTED = ErrorSpec(503, "ERR_BANDWIDTH_EXHAUSTED", "Bandwidth limit exceeded")
 
 # ---------------------------------------------------------------------------
 # Guardrail / content policy

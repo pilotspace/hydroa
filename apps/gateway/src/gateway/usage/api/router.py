@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import time
 import uuid
 from decimal import Decimal
 from typing import Annotated, cast
@@ -724,9 +725,7 @@ async def get_upstream_health(
                 continue
 
             last_event_type = str(row[0])
-            last_event_at = (
-                row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
-            )
+            last_event_at = row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
             status = "down" if last_event_type == _HEALTH_FAIL_EVENT else "up"
             upstreams.append(
                 UpstreamHealthItem(
@@ -836,3 +835,116 @@ async def get_ratelimits(
     ]
 
     return RatelimitsResponse(keys=items)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/bandwidth — live per-key bandwidth bucket level (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+# The per-key token-bucket (bandwidth-token-bucket / stream-bandwidth-pacing, v36) persists its
+# level in the SAME Redis keys RedisTokenBucket writes — the single source of truth (no drift).
+# READ-ONLY: GET only, never SET/INCR/EXPIRE. We do NOT call bucket.level() because that masks a
+# Redis error as a FULL bucket (fail-open=admit) — honest for admission, dishonest for a readout.
+# Instead we read the persisted (level, ts) and REFILL-ADJUST them in-process so a quiet key shows
+# its true CURRENT level, not the stale floor. Fail-open: Redis down/erroring → level reported null
+# (unknown, never 0, never 500). Tenant-scoped: only the caller's tenant's keys.
+_BANDWIDTH_DB_TIMEOUT_SECONDS = 30.0
+_BANDWIDTH_REDIS_TIMEOUT_SECONDS = 5.0
+
+
+class BandwidthItem(BaseModel):
+    """One API key's current bandwidth bucket level (refill-adjusted) vs the global capacity."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key_id: str
+    name: str
+    level: int | None  # null when the key is untouched, Redis is unavailable, or pacing is disabled
+
+
+class BandwidthResponse(BaseModel):
+    """Envelope: { enabled, rate_per_sec, burst, keys } — per-key levels for the caller's tenant."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+    rate_per_sec: int
+    burst: int
+    keys: list[BandwidthItem]
+
+
+async def _read_bandwidth_levels(
+    redis_client: object, key_ids: list[str], *, rate: int, burst: int, now_ms: float
+) -> dict[str, int | None]:
+    """Read the refill-adjusted current level per key from Redis, READ-ONLY (GET only).
+
+    For each key: GET bandwidth:bucket:{kid} (persisted float level, may be negative) and
+    bandwidth:bucket_ts:{kid} (last-refill epoch ms), then apply task-1's EXACT refill
+    (redis_token_bucket.py Lua 59-62): level = min(burst, stored + rate * max(0, now-ts)/1000).
+    The stored value is a FLOAT string (tostring(level)) → parse via float() then int(); int(raw)
+    would raise on "199.5". A key with no level row → omitted (caller reports null). Fail-open: ANY
+    Redis error (or absent client / disabled pacing) → empty map, so every key reports null.
+    """
+    if redis_client is None or rate <= 0:
+        return {}  # disabled or no client ⇒ all levels unknown (null)
+    levels: dict[str, int | None] = {}
+    try:
+        async with asyncio.timeout(_BANDWIDTH_REDIS_TIMEOUT_SECONDS):
+            for key_id in key_ids:
+                raw_level = await redis_client.get(f"bandwidth:bucket:{key_id}")  # type: ignore[attr-defined]
+                if raw_level is None:
+                    continue  # never touched ⇒ null
+                stored = float(raw_level)
+                raw_ts = await redis_client.get(f"bandwidth:bucket_ts:{key_id}")  # type: ignore[attr-defined]
+                ts = float(raw_ts) if raw_ts is not None else now_ms  # absent ⇒ no refill
+                elapsed_s = max(0.0, now_ms - ts) / 1000.0
+                refilled = min(float(burst), stored + elapsed_s * rate)
+                levels[key_id] = int(refilled)
+    except (RedisError, OSError, ValueError, TimeoutError):
+        return {}  # fail-open — all levels unknown
+    return levels
+
+
+@usage_router.get("/bandwidth", response_model=BandwidthResponse)
+async def get_bandwidth(
+    request: Request,
+    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BandwidthResponse:
+    """Return the caller's tenant's per-key bandwidth bucket levels (FROZEN @ v1 — TASK.md §3).
+
+    Owner/admin-scoped (member → 403). Tenant-scoped: only this tenant's keys are listed, so the
+    Redis levels read (keyed by key_id) are implicitly tenant-isolated. READ-ONLY; Redis-down or
+    pacing-disabled → null levels, still 200. rate/burst are the global knobs (per-key override
+    deferred).
+    """
+    tenant_id: uuid.UUID = identity.tenant_id
+    _settings = getattr(request.app.state, "settings", None)
+    rate = int(getattr(_settings, "bandwidth_tokens_per_sec", 0)) if _settings else 0
+    burst = int(getattr(_settings, "bandwidth_burst_tokens", 0)) if _settings else 0
+
+    async with asyncio.timeout(_BANDWIDTH_DB_TIMEOUT_SECONDS):
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, name FROM api_keys"
+                    " WHERE tenant_id = :tid AND revoked_at IS NULL"
+                    " ORDER BY created_at ASC, id ASC"
+                ),
+                {"tid": str(tenant_id)},
+            )
+        ).fetchall()
+
+    key_ids = [str(row[0]) for row in rows]
+    levels = await _read_bandwidth_levels(
+        getattr(request.app.state, "redis_client", None),
+        key_ids,
+        rate=rate,
+        burst=burst,
+        now_ms=time.time() * 1000.0,
+    )
+
+    items = [
+        BandwidthItem(key_id=str(row[0]), name=str(row[1]), level=levels.get(str(row[0])))
+        for row in rows
+    ]
+    return BandwidthResponse(enabled=rate > 0, rate_per_sec=rate, burst=burst, keys=items)
