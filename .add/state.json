@@ -175,7 +175,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T06:07:20+00:00",
+  "updated": "2026-06-24T14:00:30+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -611,6 +611,18 @@
         "stream-upstream-error-frame",
         "error-fidelity-live-verify",
         "stream-graceful-close-mapping"
+      ],
+      "archived": "2026-06-24"
+    },
+    {
+      "slug": "v36",
+      "title": "Per-key bandwidth pacing",
+      "tasks": 4,
+      "task_slugs": [
+        "bandwidth-token-bucket",
+        "stream-bandwidth-pacing",
+        "bandwidth-usage-reconcile",
+        "bandwidth-counter-view"
       ],
       "archived": "2026-06-24"
     }
