@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
+import json
 import logging
 import os
 import time
@@ -95,6 +96,16 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 _ZERO = Decimal("0")
+
+
+def _sse_error_frame(code: str, message: str) -> bytes:
+    """Return a single SSE data line carrying an OpenAI-shaped error object.
+
+    Format mirrors the adapter convention in anthropic_upstream.py:
+        b"data: " + json.dumps(payload).encode() + b"\\n\\n"
+    """
+    payload = {"error": {"message": message, "type": "upstream_error", "code": code}}
+    return b"data: " + json.dumps(payload).encode() + b"\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -1509,8 +1520,9 @@ class CompletionUseCase:
                         raise  # surfaces to the outer except UpstreamRateLimitedError handler
                     except UpstreamUnavailableError as _peek_exc:
                         # Plain unavailable pre-byte: reconstruct a generator that immediately
-                        # re-raises the original exception so _wrapped() handles it (→ empty 200,
-                        # byte-identical to pre-v35 flag-off behavior).
+                        # re-raises the original exception so _wrapped()'s mid-stream catch
+                        # handles it — emitting the terminal error frame + [DONE]
+                        # (stream-upstream-error-frame, v35). The 200 is already committed.
                         # Bind the captured exception as a default arg so it survives the
                         # except block (where `_peek_exc` is deleted) — no late binding.
                         async def _poisoned(
@@ -1605,7 +1617,7 @@ class CompletionUseCase:
                     async for chunk in gen:
                         collected.append(chunk)
                         yield chunk
-                except (UpstreamUnavailableError, CircuitOpenError):
+                except (UpstreamUnavailableError, CircuitOpenError) as exc:
                     # Can't change status code mid-stream; record and stop
                     _fire_record(
                         usage_recorder,
@@ -1616,6 +1628,16 @@ class CompletionUseCase:
                         status=502,
                         team_id=team_id,
                     )
+                    # stream-upstream-error-frame (v35): emit a parseable error chunk so
+                    # a [DONE]-waiting agent loop (e.g. Helios) never hangs on truncation.
+                    _code = (
+                        "ERR_UPSTREAM_RATE_LIMITED"
+                        if isinstance(exc, UpstreamRateLimitedError)
+                        else "ERR_UPSTREAM_UNAVAILABLE"
+                    )
+                    yield _sse_error_frame(_code, "upstream error")
+                    if not (collected and b"[DONE]" in collected[-1]):
+                        yield b"data: [DONE]\n\n"
                     return
                 except (GeneratorExit, asyncio.CancelledError):
                     # stream-disconnect-billing: the client dropped mid-stream

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "upstream-ratelimit-passthrough",
+  "active_task": "stream-upstream-error-frame",
   "active_milestone": "v35",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -209,6 +209,29 @@
           }
         ]
       }
+    },
+    "stream-upstream-error-frame": {
+      "title": "Emit a terminal SSE error frame + [DONE] on mid-stream upstream failure",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v35",
+      "depends_on": [],
+      "created": "2026-06-24T03:36:46+00:00",
+      "updated": "2026-06-24T05:06:34+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ac59fa74830ea8e19eabdb10dac11a1c",
+        "tests": {
+          "apps/gateway/tests/stream_upstream_error_frame/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/stream_upstream_error_frame/test_stream_upstream_error_frame.py": "230345a62906e3bde9be64e38f9005dc"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/use_cases.py"
+        ],
+        "snapshot_md5": "811a88d4291c660b76b907095a21b91d"
+      }
     }
   },
   "milestones": {
@@ -230,7 +253,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T03:34:19+00:00",
+  "updated": "2026-06-24T05:06:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
