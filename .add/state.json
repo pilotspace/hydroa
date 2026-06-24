@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "marketing-shell",
+  "active_task": "landing-page",
   "active_milestone": "v38",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -187,6 +187,38 @@
         ],
         "snapshot_md5": "3b2ad127ff5b3fd4fa5c2864db7a4d86"
       }
+    },
+    "landing-page": {
+      "title": "Public landing page content",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:27:15+00:00",
+      "updated": "2026-06-24T16:35:52+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "27d032a700b0d583337b48da4a9bec94",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/page.tsx",
+          "apps/dashboard/components/marketing/",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "0d6f15acbb958468f71072a6a82dbbeb"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-24T16:35:52+00:00",
+            "reason": "scope_violation: task 'landing-page' touched outside its declared \u00a75 Scope \u2014 tmp/landing-page-commit.txt (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -208,7 +240,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T16:25:34+00:00",
+  "updated": "2026-06-24T16:35:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
