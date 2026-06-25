@@ -51,7 +51,10 @@ class TenantRow(Base):
 class UserRow(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('owner', 'admin', 'member')", name="users_role_check"),
+        CheckConstraint(
+            "role IN ('owner', 'admin', 'operator', 'billing_admin', 'viewer', 'member')",
+            name="users_role_check",
+        ),
         CheckConstraint("email = lower(email)", name="users_email_lowercase_check"),
     )
 

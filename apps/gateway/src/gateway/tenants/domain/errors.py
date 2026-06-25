@@ -16,3 +16,15 @@ class InvalidCredentialsError(IdentityError):
 
 class InvalidTokenError(IdentityError):
     pass
+
+
+class UserNotFoundError(IdentityError):
+    """Target user does not exist in the caller's tenant."""
+
+    pass
+
+
+class EscalationForbiddenError(IdentityError):
+    """Caller attempted to assign a role above their own privilege ceiling."""
+
+    pass

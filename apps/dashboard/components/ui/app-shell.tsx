@@ -46,6 +46,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/app/keys", label: "API Keys", icon: KeyRound },
   { href: "/app/models", label: "Models", icon: Boxes, minRole: "admin" },
   { href: "/app/teams", label: "Teams", icon: Users, minRole: "admin" },
+  { href: "/app/members", label: "Members", icon: Users, minRole: "admin" },
   { href: "/app/routing", label: "Routing", icon: Activity, minRole: "admin" },
   { href: "/app/alerts", label: "Alerts", icon: Bell, minRole: "admin" },
   { href: "/app/audit", label: "Audit", icon: ClipboardList, minRole: "admin" },
