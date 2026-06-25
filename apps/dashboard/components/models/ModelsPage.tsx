@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * ModelsPage — owner/admin model-management surface (`/models`).
+ * ModelsPage — owner/admin model-management surface (`/app/models`).
  *
  * Lists the tenant's catalog models and toggles each enabled/disabled per tenant,
  * consuming the EXISTING gateway endpoints through the BFF seam:

@@ -58,6 +58,9 @@ import gateway.proxy.infrastructure.orm  # noqa: F401 — registers TenantProvid
 # routing-config-store TASK.md §3: registers RoutingConfigRow on Base.metadata.
 import gateway.proxy.infrastructure.routing_config_orm  # noqa: F401 — registers RoutingConfigRow on Base.metadata
 
+# audit-log-store TASK.md §3: registers AuditEventRow on Base.metadata.
+import gateway.audit.infrastructure.audit_events_orm  # noqa: F401 — registers AuditEventRow on Base.metadata
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------

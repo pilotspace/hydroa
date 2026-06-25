@@ -17,7 +17,8 @@ from gateway.keys.application.use_cases import (
 )
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
-from gateway.tenants.domain.entities import Identity, Role
+from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
+from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
 
@@ -53,8 +54,18 @@ def get_identity(
 def require_owner_or_admin(
     identity: Annotated[Identity, Depends(get_identity)],
 ) -> Identity:
-    """Raise 403 if the caller is a member."""
-    if identity.role == Role.MEMBER:
+    """Raise 403 if the caller does not hold KEYS_MANAGE (allowlist re-expression).
+
+    Re-expressed over ROLE_PERMISSIONS to use an allowlist instead of a member-denylist.
+    Observable behavior is byte-identical for OWNER/ADMIN/MEMBER (the original three roles).
+    New tiers (OPERATOR/BILLING_ADMIN/VIEWER) are correctly handled by the matrix:
+    OPERATOR holds KEYS_MANAGE → pass; BILLING_ADMIN/VIEWER do not → 403.
+
+    NOTE: Most surfaces should prefer require_permission(<specific_perm>) directly.
+    This function is kept for back-compat with the few call sites that have not yet
+    been migrated to per-surface permission binding.
+    """
+    if Permission.KEYS_MANAGE not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
         raise AUTH_FORBIDDEN.exc()
     return identity
 

@@ -109,10 +109,10 @@ test.describe("real-browser a11y — primary surfaces (WCAG 2.2 AA, color-contra
   // on the success path — an error boundary shows ErrorState instead), so the axe
   // pass is never vacuous (it is not silently scanning a loading/error frame).
   const AUTHED: Array<{ path: string; heading: RegExp }> = [
-    { path: "/usage", heading: /Usage & Cost Analytics/i },
-    { path: "/keys", heading: /API Keys/i },
-    { path: "/spend", heading: /Spend Analytics/i },
-    { path: "/settings", heading: /Settings/i },
+    { path: "/app/usage", heading: /Usage & Cost Analytics/i },
+    { path: "/app/keys", heading: /API Keys/i },
+    { path: "/app/spend", heading: /Spend Analytics/i },
+    { path: "/app/settings", heading: /Settings/i },
   ];
 
   for (const { path, heading } of AUTHED) {

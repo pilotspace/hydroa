@@ -6,7 +6,7 @@
  *      close after all
  *   3. Clear localStorage before each test
  *   4. Provide a mock for next/navigation so router.push / redirect are
- *      spyable (tests assert router.push("/keys") etc.)
+ *      spyable (tests assert router.push("/app/keys") etc.)
  *
  * Node 25 ships its own built-in `localStorage` global (used for its web-API
  * support) that is NOT the full Storage interface (no .clear(), .key(), etc.

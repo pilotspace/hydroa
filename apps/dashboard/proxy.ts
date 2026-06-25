@@ -5,9 +5,16 @@
  * `middleware.ts` filename in favour of `proxy.ts` (export `proxy`). Behavior is
  * BYTE-IDENTICAL to the v13 guard.
  *
- * Intercepts requests to /keys and /usage (and any sub-paths).
+ * Intercepts requests to /app and any /app/* sub-paths (the gated authenticated app).
  * If the ai_proxy_session cookie is absent, redirects to /login with 307.
  * If present, passes through (NextResponse.next()).
+ *
+ * ROUTE SPLIT (v38 marketing-shell, frozen §3 v1):
+ *   - / and /(marketing)/* are PUBLIC — proxy does NOT match them
+ *   - /login /signup are PUBLIC — proxy does NOT match them
+ *   - /app and /app/:path* are GATED — proxy guards them here
+ *   Legacy /keys /usage etc. are HARD-CUT to 404 (Tin dropped redirects at freeze
+ *   2026-06-24). Every internal ref has been rewritten to /app/*.
  *
  * NOTE: this is a UX guard only — it checks cookie presence, not validity.
  * The gateway validates the JWT on every proxied call and returns 401 if the
@@ -32,5 +39,5 @@ export function proxy(req: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ["/keys", "/keys/:path*", "/usage", "/usage/:path*"],
+  matcher: ["/app", "/app/:path*"],
 };

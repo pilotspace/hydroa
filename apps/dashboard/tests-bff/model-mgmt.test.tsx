@@ -276,13 +276,13 @@ describe("ModelsPage — axe + keyboard operable", () => {
 describe("ModelsPage — nav entry + shared primitive", () => {
   it("test_nav_exposes_models", () => {
     render(
-      <AppShell activePath="/models">
+      <AppShell activePath="/app/models">
         <div>content</div>
       </AppShell>,
     );
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const link = within(nav).getByRole("link", { name: /models/i });
-    expect(link).toHaveAttribute("href", "/models");
+    expect(link).toHaveAttribute("href", "/app/models");
     expect(link).toHaveAttribute("aria-current", "page");
   });
 

@@ -175,7 +175,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T15:07:16+00:00",
+  "updated": "2026-06-25T05:30:32+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -636,6 +636,27 @@
         "sso-login-polish"
       ],
       "archived": "2026-06-24"
+    },
+    {
+      "slug": "v38",
+      "title": "Enterprise readiness",
+      "tasks": 13,
+      "task_slugs": [
+        "marketing-shell",
+        "landing-page",
+        "pricing-page",
+        "legal-pages",
+        "docs-blog-scaffold",
+        "trust-status-page",
+        "rbac-roles",
+        "audit-log-store",
+        "data-retention-controls",
+        "audit-log-surface",
+        "rbac-admin-ui",
+        "slo-metrics",
+        "slo-dashboard"
+      ],
+      "archived": "2026-06-25"
     }
   ]
 }

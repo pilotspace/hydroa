@@ -6,7 +6,7 @@
  * Behavior (per frozen contract §3 v2):
  *   1. Client-side Zod validation before fetch
  *   2. POST /api/auth/login BFF endpoint with credentials:"include"
- *   3. 200 → router.push("/keys"); no localStorage write
+ *   3. 200 → router.push("/app/keys"); no localStorage write
  *   4. 401/error → inline error with problem+json title, no navigation
  */
 
@@ -173,7 +173,7 @@ export function LoginForm() {
       }
 
       // No localStorage write — cookie is set server-side by the BFF
-      router.push("/keys");
+      router.push("/app/keys");
     } catch (err) {
       if (err instanceof ApiError) {
         setGlobalError(err.problem.title ?? "An error occurred");

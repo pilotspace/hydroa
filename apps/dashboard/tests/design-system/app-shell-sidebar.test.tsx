@@ -33,8 +33,21 @@ async function axeSeriousCritical(container: HTMLElement) {
   return results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
 }
 
-const ALL_LINKS = ["Usage", "Spend", "API Keys", "Models", "Teams", "Routing", "Settings"];
-const ADMIN_ONLY = ["Models", "Teams", "Routing"];
+const ALL_LINKS = [
+  "Usage",
+  "Spend",
+  "API Keys",
+  "Models",
+  "Teams",
+  "Members",
+  "Routing",
+  "Alerts",
+  "Audit",
+  "Health",
+  "SLO",
+  "Settings",
+];
+const ADMIN_ONLY = ["Models", "Teams", "Members", "Routing", "Alerts", "Audit", "Health", "SLO"];
 
 // ── controllable matchMedia + ResizeObserver (theme + Radix Dialog need them) ──
 let systemPrefersDark = false;
@@ -135,7 +148,7 @@ describe("AppShell — the frozen v13 shell contract still holds", () => {
 describe("AppShell — active route marking", () => {
   it("test_active_route_marked", () => {
     render(
-      <AppShell role="owner" activePath="/spend">
+      <AppShell role="owner" activePath="/app/spend">
         <Body />
       </AppShell>,
     );
@@ -308,7 +321,7 @@ describe("SidebarTrigger — accessible name from the DS default", () => {
 // ── LIVE SHELL WIRING ─────────────────────────────────────────────────────────
 describe("DashboardShell — marks route from URL + reuses identity query", () => {
   it("test_dashboard_shell_marks_route_and_reuses_query", () => {
-    vi.mocked(usePathname).mockReturnValue("/keys");
+    vi.mocked(usePathname).mockReturnValue("/app/keys");
     vi.mocked(useCurrentUser).mockReturnValue({
       data: { user_id: "u1", tenant_id: "t1", email: "ada@hydroa.io", role: "owner", exp: null },
       isLoading: false,

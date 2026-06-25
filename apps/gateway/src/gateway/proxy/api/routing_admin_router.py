@@ -20,21 +20,26 @@ adopted by the live router only at the next gateway boot (the shipped boot-merge
 
 from __future__ import annotations
 
+import asyncio
 import re
+import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import structlog
-from fastapi import APIRouter, Body, Depends, Request
+from fastapi import APIRouter, Body, Request
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.config import Settings
 from gateway.core.error_catalog import ROUTING_CONFIG_INVALID
-from gateway.keys.api.deps import require_owner_or_admin
 from gateway.proxy.application.routing_config_merge import (
     ROUTING_OVERRIDE_KEYS,
     merge_routing_config,
 )
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
+from gateway.tenants.domain.authz import Permission, require_permission
 from gateway.tenants.domain.entities import Identity
 
 routing_admin_router = APIRouter(prefix="/admin/routing", tags=["routing-admin"])
@@ -156,7 +161,7 @@ async def _routing_response(request: Request, effective: Settings) -> dict[str, 
 @routing_admin_router.get("")
 async def get_routing_admin(
     request: Request,
-    _identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    _identity: Annotated[Identity, require_permission(Permission.ROUTING_MANAGE)],
 ) -> dict[str, Any]:
     """GET /admin/routing — effective routing config + per-candidate cooldown health."""
     effective = await _effective_settings(request)
@@ -167,7 +172,7 @@ async def get_routing_admin(
 async def put_routing_admin(
     request: Request,
     body: Annotated[dict[str, Any], Body(...)],
-    _identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, require_permission(Permission.ROUTING_MANAGE)],
 ) -> dict[str, Any]:
     """PUT /admin/routing — validate (Settings/Deployment parity) then persist; restart-to-apply.
 
@@ -185,4 +190,24 @@ async def put_routing_admin(
     # Persist ONLY recognised routing keys — never store arbitrary client-supplied keys in the row.
     persistable = {k: body[k] for k in _PERSISTABLE_KEYS if k in body}
     await RoutingConfigRepository(request.app.state.sessionmaker).upsert(persistable)
+
+    # Audit emit — fail-open fire-and-forget (NEVER in the action's own transaction)
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="routing.update",
+                target_type="routing",
+                target_id="singleton",
+                result="success",
+                metadata={"keys_updated": sorted(persistable.keys())},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return await _routing_response(request, effective)

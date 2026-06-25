@@ -345,7 +345,7 @@ describe("AppSidebar parts — landmark, items, collapse trigger, axe", () => {
             <SidebarItem href="/" active>
               Dashboard
             </SidebarItem>
-            <SidebarItem href="/usage">Usage</SidebarItem>
+            <SidebarItem href="/app/usage">Usage</SidebarItem>
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>shadcn</SidebarFooter>

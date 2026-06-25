@@ -43,7 +43,7 @@ from gateway.core.error_catalog import (
     PAYLOAD_START_DATE_INVALID,
     PAYLOAD_WINDOW_INVALID,
 )
-from gateway.keys.api.deps import require_owner_or_admin
+from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission, require_permission
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
@@ -77,6 +77,26 @@ def _extract_identity(request: Request) -> Identity:
         return token_service.decode(token)
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
+
+
+def _require_usage_read(request: Request) -> Identity:
+    """Require USAGE_READ permission (owner/admin/operator/billing_admin/viewer)."""
+    from gateway.core.error_catalog import AUTH_FORBIDDEN
+
+    identity = _extract_identity(request)
+    if Permission.USAGE_READ not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
+        raise AUTH_FORBIDDEN.exc()
+    return identity
+
+
+def _require_ops_read(request: Request) -> Identity:
+    """Require OPS_READ permission (owner/admin/operator/billing_admin/viewer)."""
+    from gateway.core.error_catalog import AUTH_FORBIDDEN
+
+    identity = _extract_identity(request)
+    if Permission.OPS_READ not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
+        raise AUTH_FORBIDDEN.exc()
+    return identity
 
 
 @usage_router.get("/usage", response_model=UsageTotalsResponse)
@@ -484,7 +504,7 @@ async def get_spend(
 
 @usage_router.get("/reconciliation", response_model=ReconciliationResponse)
 async def get_reconciliation(
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_usage_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
     window: Annotated[str, Query()] = "month",
     start: Annotated[str | None, Query()] = None,
@@ -595,7 +615,7 @@ def _coerce_payload(raw: object) -> dict[str, object]:
 
 @usage_router.get("/alerts", response_model=AlertListResponse)
 async def get_alerts(
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_ops_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[str | None, Query()] = None,
     offset: Annotated[str | None, Query()] = None,
@@ -651,6 +671,81 @@ async def get_alerts(
 
 
 # ---------------------------------------------------------------------------
+# GET /admin/audit — paginated audit-event history (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+_AUDIT_DEFAULT_LIMIT = 50
+_AUDIT_MAX_LIMIT = 100
+_AUDIT_READ_TIMEOUT_SECONDS = 30.0
+
+
+class AuditEventItem(BaseModel):
+    """One row in the paginated audit log."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    actor_email: str | None
+    action: str
+    target_type: str | None
+    target_id: str | None
+    result: str
+    metadata: dict[str, object]
+    created_at: str
+
+
+class AuditListResponse(BaseModel):
+    """Envelope: { items, total } — mirrors AlertListResponse shape."""
+
+    model_config = ConfigDict(frozen=True)
+
+    items: list[AuditEventItem]
+    total: int
+
+
+@usage_router.get("/audit", response_model=AuditListResponse)
+async def get_audit(
+    identity: Annotated[Identity, require_permission(Permission.AUDIT_READ)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[str | None, Query()] = None,
+    offset: Annotated[str | None, Query()] = None,
+) -> AuditListResponse:
+    """Return the caller's tenant audit event history (FROZEN @ v1 — TASK.md §3).
+
+    AUDIT_READ gated: owner/admin/operator pass; billing_admin/viewer/member → 403.
+    Tenant-scoped: only the caller's tenant rows. Newest-first (created_at DESC, id DESC),
+    paginated (limit 1..100 default 50, offset >=0 default 0). READ-ONLY.
+    """
+    from gateway.audit.infrastructure.audit_repository import AuditRepository
+
+    parsed_limit, parsed_offset = _parse_pagination(limit, offset)
+    tenant_id: uuid.UUID = identity.tenant_id
+    repo = AuditRepository(session)
+
+    async with asyncio.timeout(_AUDIT_READ_TIMEOUT_SECONDS):
+        total = await repo.count_for_tenant(tenant_id)
+        events = await repo.list_for_tenant_paged(tenant_id, parsed_limit, parsed_offset)
+
+    items = [
+        AuditEventItem(
+            id=str(e.id),
+            actor_email=e.actor_email,
+            action=e.action,
+            target_type=e.target_type,
+            target_id=e.target_id,
+            result=e.result,
+            metadata=e.metadata,
+            created_at=(
+                e.created_at.isoformat()
+                if hasattr(e.created_at, "isoformat")
+                else str(e.created_at)
+            ),
+        )
+        for e in events
+    ]
+    return AuditListResponse(items=items, total=total)
+
+
+# ---------------------------------------------------------------------------
 # GET /admin/health/upstreams — per-upstream up/down (FROZEN @ v1 — TASK.md §3)
 # ---------------------------------------------------------------------------
 # MONITORED today is exactly the upstream the health checker actually pings (OpenRouter).
@@ -685,7 +780,7 @@ class UpstreamHealthResponse(BaseModel):
 
 @usage_router.get("/health/upstreams", response_model=UpstreamHealthResponse)
 async def get_upstream_health(
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_ops_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> UpstreamHealthResponse:
     """Return per-upstream up/down derived from durable health events (FROZEN @ v1 — TASK.md §3).
@@ -794,7 +889,7 @@ async def _read_ratelimit_counters(
 @usage_router.get("/ratelimits", response_model=RatelimitsResponse)
 async def get_ratelimits(
     request: Request,
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_ops_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> RatelimitsResponse:
     """Return the caller's tenant's per-key live rpm/tpm counters (FROZEN @ v1 — TASK.md §3).
@@ -907,7 +1002,7 @@ async def _read_bandwidth_levels(
 @usage_router.get("/bandwidth", response_model=BandwidthResponse)
 async def get_bandwidth(
     request: Request,
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_ops_read)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BandwidthResponse:
     """Return the caller's tenant's per-key bandwidth bucket levels (FROZEN @ v1 — TASK.md §3).
@@ -948,3 +1043,118 @@ async def get_bandwidth(
         for row in rows
     ]
     return BandwidthResponse(enabled=rate > 0, rate_per_sec=rate, burst=burst, keys=items)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/slo — tenant-scoped availability/error-rate/volume (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+# Source: usage_records.status over a time window. NO stored latency → latency_ms is null
+# (honest: do not fabricate). SUCCESS = status < 500 (5xx = SLO breach; 4xx = caller's
+# fault, reported separately, NOT counted against availability). OPS_READ-gated.
+# Zero-div safe: total == 0 → availability 1.0, error_rate 0.0.
+_SLO_DEFAULT_WINDOW = 24
+_SLO_MIN_WINDOW = 1
+_SLO_MAX_WINDOW = 720
+_SLO_READ_TIMEOUT_SECONDS = 30.0
+
+
+class SloResponse(BaseModel):
+    """Per-tenant SLO metrics over a time window (FROZEN @ v1 — TASK.md §3).
+
+    Derived from usage_records.status — only metrics the DB can prove are reported.
+    latency_ms is null (no stored latency; see TASK.md §7 spec delta for future work).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    window_hours: int
+    total_requests: int
+    success_count: int  # status < 500
+    client_error_count: int  # 4xx (400-499)
+    server_error_count: int  # 5xx (500-599)
+    availability: float  # success_count / total_requests, or 1.0 if total == 0
+    error_rate: float  # server_error_count / total_requests, or 0.0 if total == 0
+    latency_ms: None = None  # HONEST omission — no stored latency (spec delta)
+
+
+def _parse_window_hours(raw: str | None) -> int:
+    """Parse window_hours: integer 1..720, default 24.
+
+    Manual parse (not FastAPI int coercion) so a bad value maps to the catalog
+    ERR_PAYLOAD_INVALID code (400) rather than FastAPI's own 422 shape.
+    """
+    if raw is None:
+        return _SLO_DEFAULT_WINDOW
+    try:
+        value = int(raw)
+    except (ValueError, TypeError):
+        raise PAYLOAD_INVALID.exc() from None
+    if value < _SLO_MIN_WINDOW or value > _SLO_MAX_WINDOW:
+        raise PAYLOAD_INVALID.exc()
+    return value
+
+
+@usage_router.get("/slo", response_model=SloResponse)
+async def get_slo(
+    request: Request,
+    identity: Annotated[Identity, Depends(_require_ops_read)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    window_hours: Annotated[str | None, Query()] = None,
+) -> SloResponse:
+    """Return per-tenant SLO metrics (availability/error-rate/volume) over a window.
+
+    Contract (FROZEN @ v1 — TASK.md §3):
+    - OPS_READ-gated: owner/admin/operator/billing_admin/viewer pass; member → 403.
+    - Tenant-scoped: WHERE tenant_id = :tid always applied.
+    - window_hours 1..720 (default 24); bad value → 400 ERR_PAYLOAD_INVALID.
+    - SUCCESS = status < 500; CLIENT = 4xx; SERVER = 5xx.
+    - availability = success / total (or 1.0 when total == 0) — zero-div safe.
+    - error_rate  = server_error / total (or 0.0 when total == 0) — zero-div safe.
+    - latency_ms is null — no stored latency (honest; see spec delta in TASK.md §7).
+    READ-ONLY — never writes a row.
+    """
+    hours = _parse_window_hours(window_hours)
+    tenant_id: uuid.UUID = identity.tenant_id
+
+    # Cutoff: naive UTC (create_all uses TIMESTAMP WITHOUT TIME ZONE; prod uses TIMESTAMPTZ
+    # but asyncpg sends the naive value correctly for both). Consistent with reconcile_window.
+    cutoff = datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - datetime.timedelta(
+        hours=hours
+    )
+
+    async with asyncio.timeout(_SLO_READ_TIMEOUT_SECONDS):
+        row = (
+            await session.execute(
+                text(
+                    "SELECT"
+                    "  COUNT(*) AS total,"
+                    "  SUM(CASE WHEN status < 500 THEN 1 ELSE 0 END) AS success,"
+                    "  SUM(CASE WHEN status >= 400 AND status < 500 THEN 1 ELSE 0 END)"
+                    "    AS client_error,"
+                    "  SUM(CASE WHEN status >= 500 THEN 1 ELSE 0 END) AS server_error"
+                    " FROM usage_records"
+                    " WHERE tenant_id = :tid"
+                    "   AND created_at >= :cutoff"
+                ),
+                {"tid": str(tenant_id), "cutoff": cutoff},
+            )
+        ).fetchone()
+
+    total = int(row[0]) if row and row[0] is not None else 0
+    success = int(row[1]) if row and row[1] is not None else 0
+    client_error = int(row[2]) if row and row[2] is not None else 0
+    server_error = int(row[3]) if row and row[3] is not None else 0
+
+    availability = success / total if total > 0 else 1.0
+    error_rate = server_error / total if total > 0 else 0.0
+
+    return SloResponse(
+        window_hours=hours,
+        total_requests=total,
+        success_count=success,
+        client_error_count=client_error,
+        server_error_count=server_error,
+        availability=availability,
+        error_rate=error_rate,
+        latency_ms=None,
+    )

@@ -24,11 +24,11 @@ import { OverviewPage } from "@/components/overview/OverviewPage";
 
 const APP = "http://localhost:3000";
 
-// ── route-gate mocks (for app/page.tsx) ──
-vi.mock("next/headers", () => ({ cookies: vi.fn() }));
-vi.mock("next/navigation", () => ({ redirect: vi.fn(), usePathname: () => "/" }));
-import RootPage from "../app/page";
-import { cookies } from "next/headers";
+// ── route-gate mocks (for app/(app)/page.tsx) ──
+// The gated app root moved to /app — cookie guard is now in proxy.ts (middleware-level).
+// The page itself is a simple leaf; no cookies() call needed here.
+vi.mock("next/navigation", () => ({ redirect: vi.fn(), usePathname: () => "/app" }));
+import AppOverviewPage from "../app/(app)/app/page";
 import { redirect } from "next/navigation";
 
 function makeQueryClient() {
@@ -120,7 +120,6 @@ beforeAll(() => {
 });
 afterEach(() => {
   requested = [];
-  vi.mocked(cookies).mockReset();
   vi.mocked(redirect).mockReset();
 });
 
@@ -230,23 +229,14 @@ describe("Overview — four-state pattern", () => {
 });
 
 // ── ROUTE GATE ────────────────────────────────────────────────────────────────
-describe("Overview — / route auth gate", () => {
-  it("test_root_redirects_unauthenticated", async () => {
-    // mirror Next's real redirect (it THROWS to halt rendering) so the test proves the Overview
-    // is NEVER rendered without a cookie — not merely that redirect() was called
-    vi.mocked(cookies).mockResolvedValue({ get: () => undefined } as never);
-    vi.mocked(redirect).mockImplementation((): never => {
-      throw new Error("NEXT_REDIRECT");
-    });
-    await expect(RootPage()).rejects.toThrow("NEXT_REDIRECT");
-    expect(redirect).toHaveBeenCalledWith("/login");
-  });
-
-  it("test_root_renders_overview_when_authenticated", async () => {
-    vi.mocked(cookies).mockResolvedValue({
-      get: (n: string) => ({ name: n, value: "x" }),
-    } as never);
-    const el = await RootPage();
+// v38 (marketing-shell): the cookie guard moved from app/page.tsx to proxy.ts
+// (matcher: ["/app", "/app/:path*"]). The /app page is now a simple leaf — no
+// cookies() call, no redirect(). The gate is tested in tests-bff/proxy.test.ts.
+// This describe asserts the /app page renders the Overview (no redirect called).
+describe("Overview — /app route renders Overview (guard is in proxy.ts)", () => {
+  it("test_app_page_renders_overview_leaf", async () => {
+    // AppOverviewPage is a synchronous Server Component leaf — just renders OverviewPage
+    const el = await AppOverviewPage();
     expect(redirect).not.toHaveBeenCalled();
     expect(el).toBeTruthy();
   });

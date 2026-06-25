@@ -8,6 +8,9 @@ MIN_PASSWORD_LENGTH = 10
 class Role(StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
+    OPERATOR = "operator"
+    BILLING_ADMIN = "billing_admin"
+    VIEWER = "viewer"
     MEMBER = "member"
 
 

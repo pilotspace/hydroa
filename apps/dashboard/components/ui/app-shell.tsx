@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BarChart3, Bell, Boxes, HeartPulse, Hexagon, KeyRound, Menu, Receipt, Settings, Users } from "lucide-react";
+import { Activity, BarChart3, Bell, Boxes, ClipboardList, GaugeCircle, HeartPulse, Hexagon, KeyRound, Menu, Receipt, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   Sidebar,
@@ -41,15 +41,18 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/usage", label: "Usage", icon: BarChart3 },
-  { href: "/spend", label: "Spend", icon: Receipt },
-  { href: "/keys", label: "API Keys", icon: KeyRound },
-  { href: "/models", label: "Models", icon: Boxes, minRole: "admin" },
-  { href: "/teams", label: "Teams", icon: Users, minRole: "admin" },
-  { href: "/routing", label: "Routing", icon: Activity, minRole: "admin" },
-  { href: "/alerts", label: "Alerts", icon: Bell, minRole: "admin" },
-  { href: "/health", label: "Health", icon: HeartPulse, minRole: "admin" },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/app/usage", label: "Usage", icon: BarChart3 },
+  { href: "/app/spend", label: "Spend", icon: Receipt },
+  { href: "/app/keys", label: "API Keys", icon: KeyRound },
+  { href: "/app/models", label: "Models", icon: Boxes, minRole: "admin" },
+  { href: "/app/teams", label: "Teams", icon: Users, minRole: "admin" },
+  { href: "/app/members", label: "Members", icon: Users, minRole: "admin" },
+  { href: "/app/routing", label: "Routing", icon: Activity, minRole: "admin" },
+  { href: "/app/alerts", label: "Alerts", icon: Bell, minRole: "admin" },
+  { href: "/app/audit", label: "Audit", icon: ClipboardList, minRole: "admin" },
+  { href: "/app/health", label: "Health", icon: HeartPulse, minRole: "admin" },
+  { href: "/app/slo", label: "SLO", icon: GaugeCircle, minRole: "admin" },
+  { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 
 const BRAND = "Hydroa";

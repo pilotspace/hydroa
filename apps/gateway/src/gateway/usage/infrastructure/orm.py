@@ -56,6 +56,9 @@ class UsageRecordRow(Base):
             "usage_source",
             postgresql_where=text("provider_generation_id IS NOT NULL"),
         ),
+        # Retention sweep: age-based DELETE WHERE created_at < :cutoff needs this index
+        # to avoid a full-table scan on large ledgers. Added in migration f2a4c6e8b0d3.
+        Index("ix_usage_records_created_at", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)

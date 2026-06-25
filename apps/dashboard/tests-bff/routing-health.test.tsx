@@ -209,13 +209,13 @@ describe("RoutingPage — axe + nav", () => {
 
   it("test_nav_exposes_routing", () => {
     render(
-      <AppShell activePath="/routing">
+      <AppShell activePath="/app/routing">
         <div>content</div>
       </AppShell>,
     );
     const nav = screen.getByRole("navigation", { name: /primary/i });
     const link = within(nav).getByRole("link", { name: /routing/i });
-    expect(link).toHaveAttribute("href", "/routing");
+    expect(link).toHaveAttribute("href", "/app/routing");
     expect(link).toHaveAttribute("aria-current", "page");
   });
 });

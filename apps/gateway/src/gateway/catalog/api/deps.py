@@ -11,8 +11,9 @@ from gateway.catalog.application.use_cases import ListModelsForTenantUseCase, Sy
 from gateway.catalog.domain.ports import CatalogSource
 from gateway.catalog.infrastructure.repository import SqlAlchemyCatalogRepository
 from gateway.core.db import get_session
-from gateway.core.error_catalog import AUTH_FORBIDDEN, AUTH_TOKEN_INVALID, AUTH_TOKEN_MISSING
-from gateway.tenants.domain.entities import Identity, Role
+from gateway.core.error_catalog import AUTH_TOKEN_INVALID, AUTH_TOKEN_MISSING
+from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
+from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
 
@@ -64,11 +65,25 @@ def get_current_identity(
 def require_owner_or_admin(
     identity: Annotated[Identity, Depends(get_current_identity)],
 ) -> Identity:
-    """Raise 403 ERR_AUTH_FORBIDDEN if the caller is a member role.
+    """Raise 403 ERR_AUTH_FORBIDDEN if the caller lacks KEYS_MANAGE.
 
-    Reuses the same pattern as gateway.keys.api.deps.require_owner_or_admin.
+    Re-expressed over ROLE_PERMISSIONS allowlist (rbac-roles refactor).
+    Back-compat: OWNER/ADMIN pass, MEMBER 403 — byte-identical to pre-task.
     """
-    if identity.role == Role.MEMBER:
+    if Permission.KEYS_MANAGE not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
+        from gateway.core.error_catalog import AUTH_FORBIDDEN
+
+        raise AUTH_FORBIDDEN.exc()
+    return identity
+
+
+def require_catalog_sync(
+    identity: Annotated[Identity, Depends(get_current_identity)],
+) -> Identity:
+    """Require CATALOG_SYNC permission (owner/admin/operator)."""
+    if Permission.CATALOG_SYNC not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
+        from gateway.core.error_catalog import AUTH_FORBIDDEN
+
         raise AUTH_FORBIDDEN.exc()
     return identity
 

@@ -5,7 +5,7 @@
  * Usage in a test:
  *   import { getRouterMock } from "./mocks/next-navigation";
  *   const router = getRouterMock();
- *   expect(router.push).toHaveBeenCalledWith("/keys");
+ *   expect(router.push).toHaveBeenCalledWith("/app/keys");
  *
  * Note: vi.mock("next/navigation") is declared in setup.ts and hoisted.
  * We access the mocked module via vi.mocked() on the ESM import.

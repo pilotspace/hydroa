@@ -94,7 +94,7 @@ const NAV_LABELS = ["Usage", "Spend", "API Keys", "Models", "Teams", "Routing", 
 describe("v15 verify · AppShell a11y contract", () => {
   it("test_appshell_skiplink_is_first_focusable", () => {
     const { container } = render(
-      <AppShell activePath="/models">
+      <AppShell activePath="/app/models">
         <div>content</div>
       </AppShell>,
     );
@@ -115,7 +115,7 @@ describe("v15 verify · AppShell a11y contract", () => {
 
   it("test_appshell_landmarks_and_nav_links", () => {
     render(
-      <AppShell activePath="/models">
+      <AppShell activePath="/app/models">
         <div>content</div>
       </AppShell>,
     );
@@ -145,7 +145,7 @@ describe("v15 verify · AppShell a11y contract", () => {
 
   it("test_appshell_axe_clean", async () => {
     const { container } = render(
-      <AppShell activePath="/spend">
+      <AppShell activePath="/app/spend">
         <h1>Spend</h1>
       </AppShell>,
     );

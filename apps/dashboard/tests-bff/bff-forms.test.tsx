@@ -105,10 +105,10 @@ describe("LoginForm (BFF behavior)", () => {
     });
     expect((capturedBody as Record<string, unknown>).email).toBe("ada@acme.io");
 
-    // router.push("/keys") called
+    // router.push("/app/keys") called
     const { useRouter } = await import("next/navigation");
     const router = useRouter();
-    expect(router.push).toHaveBeenCalledWith("/keys");
+    expect(router.push).toHaveBeenCalledWith("/app/keys");
 
     // localStorage "ai_proxy_token" is absent — NEVER written in the new code path
     expect(localStorage.getItem("ai_proxy_token")).toBeNull();
@@ -141,7 +141,7 @@ describe("LoginForm (BFF behavior)", () => {
     // No navigation
     const { useRouter } = await import("next/navigation");
     const router = useRouter();
-    expect(router.push).not.toHaveBeenCalledWith("/keys");
+    expect(router.push).not.toHaveBeenCalledWith("/app/keys");
 
     // No localStorage write
     expect(localStorage.getItem("ai_proxy_token")).toBeNull();
@@ -193,10 +193,10 @@ describe("SignupForm (BFF behavior)", () => {
       expect(signupCalled).toBe(true);
     });
 
-    // router.push("/keys") called
+    // router.push("/app/keys") called
     const { useRouter } = await import("next/navigation");
     const router = useRouter();
-    expect(router.push).toHaveBeenCalledWith("/keys");
+    expect(router.push).toHaveBeenCalledWith("/app/keys");
 
     // localStorage "ai_proxy_token" is absent
     expect(localStorage.getItem("ai_proxy_token")).toBeNull();
@@ -225,7 +225,7 @@ describe("SignupForm (BFF behavior)", () => {
 
     const { useRouter } = await import("next/navigation");
     const router = useRouter();
-    expect(router.push).not.toHaveBeenCalledWith("/keys");
+    expect(router.push).not.toHaveBeenCalledWith("/app/keys");
     expect(localStorage.getItem("ai_proxy_token")).toBeNull();
   });
 });

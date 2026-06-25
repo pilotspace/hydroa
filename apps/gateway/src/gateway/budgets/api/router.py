@@ -7,17 +7,23 @@ Contract FROZEN @ v1 (budgets TASK.md §3):
 
 from __future__ import annotations
 
+import asyncio
+import uuid
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.budgets.api.schemas import BudgetGetResponse, BudgetPutRequest, BudgetPutResponse
 from gateway.core.db import get_session
 from gateway.core.error_catalog import PAYLOAD_BUDGET_DECIMAL_INVALID, PAYLOAD_BUDGET_NEGATIVE
-from gateway.keys.api.deps import get_identity, require_owner_or_admin
+from gateway.keys.api.deps import get_identity
+from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
 from gateway.tenants.domain.entities import Identity
 
 budget_router = APIRouter(prefix="/admin/budget", tags=["budgets"])
@@ -73,10 +79,22 @@ async def get_budget(
     )
 
 
+def _require_budgets_manage(
+    identity: Annotated[Identity, Depends(get_identity)],
+) -> Identity:
+    """Require BUDGETS_MANAGE permission (owner/admin/billing_admin)."""
+    if Permission.BUDGETS_MANAGE not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
+        from gateway.core.error_catalog import AUTH_FORBIDDEN
+
+        raise AUTH_FORBIDDEN.exc()
+    return identity
+
+
 @budget_router.put("", response_model=BudgetPutResponse)
 async def put_budget(
+    request: Request,
     body: BudgetPutRequest,
-    identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    identity: Annotated[Identity, Depends(_require_budgets_manage)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BudgetPutResponse:
     """PUT /admin/budget — set or clear the monthly budget ceiling.
@@ -114,5 +132,24 @@ async def put_budget(
         )
 
     await session.commit()
+
+    # Audit emit — fail-open fire-and-forget (new budget value, no secrets)
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="budget.update",
+                target_type="budget",
+                target_id="monthly",
+                result="success",
+                metadata={"budget_usd_monthly": persisted_str},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
 
     return BudgetPutResponse(budget_usd_monthly=persisted_str)

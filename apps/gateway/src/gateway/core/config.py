@@ -462,6 +462,23 @@ class Settings(BaseSettings):
             return 0.0
         return f
 
+    # ── Tenant data retention & purge controls (data-retention-controls task) ───
+    # Periodic RetentionSweeper deletes aged rows from time-series tables in bounded
+    # batches. ALL windows default to non-zero (active by default — Tin-approved 2026-06-25).
+    # 0 = OFF for that knob. GATEWAY_RETENTION_CHECK_INTERVAL_SECONDS=0 disables entirely.
+    # env: GATEWAY_RETENTION_CHECK_INTERVAL_SECONDS
+    retention_check_interval_seconds: int = Field(default=86400)
+    # env: GATEWAY_RETENTION_USAGE_RECORDS_DAYS (0=skip)
+    retention_usage_records_days: int = Field(default=365)
+    # env: GATEWAY_RETENTION_ALERT_EVENTS_DAYS (0=skip)
+    retention_alert_events_days: int = Field(default=90)
+    # env: GATEWAY_RETENTION_AUDIT_EVENTS_DAYS (0=skip); EFFECTIVE=max(knob,floor)
+    retention_audit_events_days: int = Field(default=730)
+    # env: GATEWAY_RETENTION_AUDIT_FLOOR_DAYS (HARD floor — audit window never smaller)
+    retention_audit_floor_days: int = Field(default=365)
+    # env: GATEWAY_RETENTION_BATCH_SIZE (bounds each DELETE)
+    retention_batch_size: int = Field(default=1000)
+
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
     # the cooldown for a model. 0 = disabled (feature off, v5 byte-identical behavior).
