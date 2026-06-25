@@ -625,6 +625,7 @@ Git: `<type>(<scope>): <summary>` + body + `author: Tin Dang` footer; message
         dashboard, infra, docs, pipeline, config
 
 ## Method learnings
+- (ADD) §5 Scope must declare the §4 red-test file too, not just src — the scope-gate reads `anchor.declared` (frozen at the tests→build crossing from the live §5 line), so a test-file touch during a verify→build heal loop reads as a scope_violation until you re-cross tests→build to rebirth the anchor (evidence: streaming-bff gate, 2 heal attempts spent).  [folded foundation-version 36 · from streaming-bff]
 - (ADD) subagent left no tmp scratch file this run (inline -m worked) — the explicit "no tmp/*.txt" constraint prevented the recurring scope_violation; keep it in every backend subagent prompt.  [folded foundation-version 35 · from audit-log-store]
 - (ADD) a later task can legitimately CHANGE-REQUEST a shipped task's frozen mechanism when a new requirement (audit purge) collides with it — surface the collision at the freeze, get explicit approval, implement via a NEW migration (never edit the shipped one), and prove the observable security property is preserved/strengthened (evidence: RULE→trigger here).  [folded foundation-version 35 · from data-retention-controls]
 - (ADD) a "pure FE" task can hide a missing BE security surface — ground BEFORE labelling risk (evidence: rbac-admin-ui mis-called non-security until ground found no role-mutation endpoint).  [folded foundation-version 35 · from rbac-admin-ui]

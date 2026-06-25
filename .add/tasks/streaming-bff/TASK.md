@@ -311,4 +311,4 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
-- [ADD · open] §5 Scope must declare the §4 red-test file too, not just src — the scope-gate reads `anchor.declared` (frozen at the tests→build crossing from the live §5 line), so a test-file touch during a verify→build heal loop reads as a scope_violation until you re-cross tests→build to rebirth the anchor (evidence: streaming-bff gate, 2 heal attempts spent).
+- [ADD · folded] §5 Scope must declare the §4 red-test file too, not just src — the scope-gate reads `anchor.declared` (frozen at the tests→build crossing from the live §5 line), so a test-file touch during a verify→build heal loop reads as a scope_violation until you re-cross tests→build to rebirth the anchor (evidence: streaming-bff gate, 2 heal attempts spent). [folded foundation-version 36]
