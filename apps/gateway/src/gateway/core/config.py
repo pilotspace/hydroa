@@ -316,6 +316,14 @@ class Settings(BaseSettings):
     # False = opt-in (byte-identical outbound request; recorder falls back to catalog).
     # provider-cost-reconciliation TASK.md §3 (knob frozen default-OFF, Tin 2026-06-17).
     openrouter_usage_accounting: bool = Field(default=False)
+
+    # GATEWAY_WEB_SEARCH_ENABLED — when True, a client-supplied web_search:true flag in
+    # the chat-completions body is translated into each provider's NATIVE web-search /
+    # grounding tool before the upstream call; when False (default), the flag is stripped
+    # centrally (before dispatch) so the outgoing upstream body is byte-identical to today.
+    # Non-grounding providers (bedrock/azure) inject nothing and never raise.
+    # web-search-grounding TASK.md §3 (knob frozen default-OFF).
+    web_search_enabled: bool = Field(default=False)
     # GATEWAY_OPENROUTER_COST_RECOVERY_ENABLED — when True, an OpenRouter stream aborted by
     # client disconnect schedules an inline fire-and-forget authoritative-cost recovery
     # (OpenRouterCostRecoveryService) from the disconnect handler. Default False = opt-in

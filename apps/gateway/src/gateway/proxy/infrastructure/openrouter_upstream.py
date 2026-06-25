@@ -31,6 +31,7 @@ import structlog
 from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
+from gateway.proxy.domain.web_search import WEB_SEARCH_FLAG, native_web_search_tool
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
@@ -147,6 +148,29 @@ class OpenRouterCompletionUpstream:
         # payload asks OpenRouter to report its own cost so the recorder can bill on it.
         self._usage_accounting = usage_accounting
 
+    def _maybe_inject_web_search(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Inject the web_search_preview native tool when web_search flag is truthy.
+
+        Returns a shallow copy with:
+          - "web_search" key removed (NEVER reaches upstream).
+          - {"type":"web_search_preview"} appended to a copy of the tools list
+            when web_search was truthy (preserves any existing function tools).
+
+        When web_search is absent/falsy, returns a copy with the flag stripped but
+        tools untouched — byte-identical payload for the non-web-search case.
+        Non-destructive: the caller's dict is never mutated.
+        """
+        if WEB_SEARCH_FLAG not in payload:
+            return payload
+        # Build a clean copy without the raw flag
+        outbound = {k: v for k, v in payload.items() if k != WEB_SEARCH_FLAG}
+        if payload.get(WEB_SEARCH_FLAG):
+            ws_tool = native_web_search_tool("openrouter")
+            if ws_tool is not None:
+                existing = list(outbound.get("tools", []))
+                outbound["tools"] = [*existing, ws_tool]
+        return outbound
+
     def _maybe_inject_usage_accounting(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Opt-in usage accounting (provider-cost-reconciliation §3).
 
@@ -184,7 +208,9 @@ class OpenRouterCompletionUpstream:
         byte-identical to v5 behavior. The retry policy lives in upstream_retry.py.
         """
 
-        outbound = self._maybe_inject_usage_accounting(payload)
+        outbound = self._maybe_inject_usage_accounting(
+            self._maybe_inject_web_search(payload)
+        )
 
         async def _do_request() -> httpx.Response:
             return await self._client.post(
@@ -261,7 +287,9 @@ class OpenRouterCompletionUpstream:
         Zero retry machinery — stream() is unchanged by the retry-policy task.
         """
         self._breaker.guard()
-        outbound = self._maybe_inject_usage_accounting(payload)
+        outbound = self._maybe_inject_usage_accounting(
+            self._maybe_inject_web_search(payload)
+        )
 
         async def _gen() -> AsyncIterator[bytes]:
             try:

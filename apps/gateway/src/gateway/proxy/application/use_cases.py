@@ -506,6 +506,7 @@ class CompletionUseCase:
         cost_recovery: object | None = None,
         bandwidth_bucket: BandwidthBucket | None = None,
         bandwidth_max_wait_s: float = 0.0,
+        web_search_enabled: bool = False,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -541,6 +542,11 @@ class CompletionUseCase:
             bandwidth_bucket if bandwidth_bucket is not None else PassthroughBandwidthBucket()
         )
         self._bandwidth_max_wait_s = bandwidth_max_wait_s
+        # web-search-grounding (web-search task). False (default) = CENTRAL KNOB-KILL:
+        # _strip_web_search_flag() removes the raw web_search flag from the payload before
+        # dispatch so the outgoing upstream body is byte-identical to today. True = adapters
+        # receive the flag and translate it into provider-native grounding tools.
+        self._web_search_enabled = web_search_enabled
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -560,6 +566,21 @@ class CompletionUseCase:
         structlog.contextvars.bind_contextvars(tenant_id=str(result.tenant_id))
         return result
 
+    def _strip_web_search_flag(self, body: dict[str, Any]) -> None:
+        """Central knob-kill for the web_search flag (web-search-grounding task).
+
+        When web_search_enabled=False (default), removes "web_search" from the
+        request body BEFORE dispatch so the outgoing upstream payload is byte-identical
+        to today — no adapter, retry leg, or downstream code ever sees the flag.
+
+        When web_search_enabled=True, leaves the flag in place so adapters can
+        translate it into provider-native grounding tools.
+
+        Mutates body in-place (same pattern as any pre-dispatch normalization).
+        """
+        if not self._web_search_enabled:
+            body.pop("web_search", None)
+
     async def _validate_payload(
         self,
         body: dict[str, Any],
@@ -576,6 +597,11 @@ class CompletionUseCase:
           2. key-level allowlist check   [_enforce_governance step 1]
           3. catalog+tenant check        [_enforce_governance step 2]
         """
+        # web-search-grounding: strip (or keep) the raw web_search flag centrally
+        # BEFORE any field validation — the flag is not a gateway-owned field and must
+        # never reach upstream verbatim. Knob-off ⇒ pop; knob-on ⇒ adapters handle it.
+        self._strip_web_search_flag(body)
+
         model_id = body.get("model")
         if not model_id or not isinstance(model_id, str) or not model_id.strip():
             raise PAYLOAD_MODEL_REQUIRED.exc()

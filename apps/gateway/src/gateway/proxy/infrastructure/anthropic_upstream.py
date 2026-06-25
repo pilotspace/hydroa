@@ -43,6 +43,11 @@ from gateway.proxy.domain.tool_translation import (
     dump_tool_arguments,
     load_tool_arguments,
 )
+from gateway.proxy.domain.web_search import (
+    WEB_SEARCH_FLAG,
+    _normalize_anthropic_grounding,
+    native_web_search_tool,
+)
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 from gateway.usage.domain.partial_usage import publish_partial_usage
@@ -428,6 +433,17 @@ def _openai_to_anthropic_request(
     if tool_choice is not None:
         result["tool_choice"] = tool_choice
 
+    # web-search-grounding: if the source payload has truthy web_search, append the
+    # Anthropic native web_search_20250305 tool. The raw flag is NEVER copied into the
+    # Anthropic body (it builds fresh from the OpenAI payload), so it cannot leak.
+    # We verify: "web_search" is not a key we ever set in result above.
+    if payload.get(WEB_SEARCH_FLAG):
+        ws_tool = native_web_search_tool("anthropic")
+        if ws_tool is not None:
+            # Append to existing anthropic tools (already translated) or create new list
+            existing_anthropic = result.get("tools", [])
+            result["tools"] = [*list(existing_anthropic), ws_tool]
+
     # response_format → Anthropic (v11). Anthropic has no native field:
     #   json_schema  → append a synthetic forced "json_output" tool (input_schema = the
     #                  requested schema) ALONGSIDE caller tools; force its tool_choice.
@@ -572,7 +588,7 @@ def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
             "cache_creation_tokens": cache_creation,
         }
 
-    return {
+    response: dict[str, Any] = {
         "id": body.get("id", ""),
         "object": "chat.completion",
         "created": int(time.time()),
@@ -586,6 +602,15 @@ def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
         ],
         "usage": usage_out,
     }
+
+    # web-search-grounding citation passthrough (non-stream only).
+    # If the Anthropic response carries web_search_result content blocks, normalize
+    # them into response["grounding"]. Absent → do NOT add the field (no fabrication).
+    grounding = _normalize_anthropic_grounding(content_blocks)
+    if grounding is not None:
+        response["grounding"] = grounding
+
+    return response
 
 
 def _anthropic_error_to_openai(body: dict[str, Any]) -> dict[str, Any]:

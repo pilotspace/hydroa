@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "websearch-grounding-passthrough",
+  "active_milestone": "v41",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -162,6 +162,39 @@
         ],
         "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
       }
+    },
+    "websearch-grounding-passthrough": {
+      "title": "Web-search flag \u2192 provider-native grounding + citation passthrough",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v41",
+      "depends_on": [],
+      "created": "2026-06-25T17:14:10+00:00",
+      "updated": "2026-06-25T17:48:10+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "39dee591c4b3a905002d0eb4d6cab491",
+        "tests": {
+          "apps/gateway/tests/web_search/test_web_search.py": "a644248b41ff3b36633d8beced6e2f34"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/domain/web_search.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/openrouter_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/openai_provider.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/azure_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/anthropic_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/gemini_upstream.py",
+          "apps/gateway/src/gateway/proxy/api/deps.py",
+          "apps/gateway/src/gateway/proxy/api/web_search_enabled",
+          "apps/gateway/tests/web_search/",
+          "apps/gateway/tests/web_search/Makefile"
+        ],
+        "snapshot_md5": "227b13efd7cebb5b7f9d7112e9dfa811"
+      }
     }
   },
   "milestones": {
@@ -172,10 +205,18 @@
       "status": "done",
       "created": "2026-06-22T09:31:42+00:00",
       "updated": "2026-06-23T02:00:14+00:00"
+    },
+    "v41": {
+      "title": "Web search augmentation",
+      "goal": "A signed-in user can toggle web search in the chat workspace so the assistant answers with up-to-date, web-grounded information via each provider's native grounding.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-25T17:07:39+00:00",
+      "updated": "2026-06-25T17:07:39+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T17:04:28+00:00",
+  "updated": "2026-06-25T17:48:10+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

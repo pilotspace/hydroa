@@ -47,6 +47,11 @@ from gateway.proxy.domain.tool_translation import (
     load_tool_arguments,
     synthesize_tool_call_id,
 )
+from gateway.proxy.domain.web_search import (
+    WEB_SEARCH_FLAG,
+    _normalize_gemini_grounding,
+    native_web_search_tool,
+)
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 from gateway.usage.domain.partial_usage import publish_partial_usage
@@ -309,6 +314,23 @@ def _openai_to_gemini_request(
     if fcc is not None:
         result["toolConfig"] = {"functionCallingConfig": fcc}
 
+    # web-search-grounding: if the source payload has truthy web_search, append the
+    # Gemini native {"googleSearch":{}} as a SEPARATE sibling entry in result["tools"]
+    # (NOT inside functionDeclarations). The raw flag is NEVER copied into the Gemini
+    # body (it builds fresh), so it cannot leak.
+    #
+    # KNOWN LIMITATION (v41 delta): some Gemini model versions reject a request that
+    # carries BOTH googleSearch grounding AND functionDeclarations in the same `tools`
+    # array (returns 400). v41's chat surface never sends function tools, so this cannot
+    # arise from the product; a raw API caller combining both gets Gemini's own 400
+    # surfaced faithfully (v35 principle). We do NOT speculatively reject here because
+    # newer Gemini relaxes the constraint — tracked as a SPEC delta for live-verify.
+    if payload.get(WEB_SEARCH_FLAG):
+        gs_tool = native_web_search_tool("google")
+        if gs_tool is not None:
+            existing_tools = result.get("tools", [])
+            result["tools"] = [*list(existing_tools), gs_tool]
+
     return result
 
 
@@ -392,7 +414,7 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
     if cached_content_tokens is not None and cached_content_tokens > 0:
         usage_out["prompt_tokens_details"] = {"cached_tokens": cached_content_tokens}
 
-    return {
+    response: dict[str, Any] = {
         "id": "",
         "object": "chat.completion",
         "created": int(time.time()),
@@ -406,6 +428,18 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
         ],
         "usage": usage_out,
     }
+
+    # web-search-grounding citation passthrough (non-stream only).
+    # If the first candidate carries groundingMetadata, normalize it into
+    # response["grounding"]. Absent → do NOT add the field (no fabrication).
+    if candidates:
+        grounding_meta = candidates[0].get("groundingMetadata")
+        if isinstance(grounding_meta, dict):
+            grounding = _normalize_gemini_grounding(grounding_meta)
+            if grounding is not None:
+                response["grounding"] = grounding
+
+    return response
 
 
 def _gemini_error_to_openai(body: dict[str, Any]) -> dict[str, Any]:

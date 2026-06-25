@@ -44,7 +44,8 @@ test-fast:
 	  tests/anthropic_tool_use tests/gemini_tool_use \
 	  tests/anthropic_json_mode tests/gemini_json_mode \
 	  tests/gemini_embed_tokens tests/nonchat_soft_budget_alert \
-	  tests/azure_verify tests/byok_verify
+	  tests/azure_verify tests/byok_verify \
+	  tests/web_search
 
 migrate:
 	cd $(GATEWAY) && uv run alembic upgrade head
