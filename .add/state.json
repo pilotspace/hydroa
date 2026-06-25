@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "slo-metrics",
+  "active_task": "slo-dashboard",
   "active_milestone": "v38",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -542,6 +542,30 @@
         ],
         "snapshot_md5": "25a29e788a087b1a005f003473ab7889"
       }
+    },
+    "slo-dashboard": {
+      "title": "SLO dashboard page (availability/error-rate/volume)",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-25T05:20:12+00:00",
+      "updated": "2026-06-25T05:21:23+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "100fff1b4bdd3117e62534062d440553",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(app)/app/slo/",
+          "apps/dashboard/components/",
+          "apps/dashboard/lib/",
+          "apps/dashboard/tests/",
+          "apps/dashboard/tests-bff/"
+        ],
+        "snapshot_md5": "3156f03eea9e17e8c19bb13bf8ed7cc2"
+      }
     }
   },
   "milestones": {
@@ -563,7 +587,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T05:20:00+00:00",
+  "updated": "2026-06-25T05:21:23+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
