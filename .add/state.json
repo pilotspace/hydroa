@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "azure-audio-provider",
   "active_milestone": "v42",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -162,6 +162,31 @@
         ],
         "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
       }
+    },
+    "azure-audio-provider": {
+      "title": "Azure OpenAI audio provider (STT + TTS)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v42",
+      "depends_on": [],
+      "created": "2026-06-25T18:04:00+00:00",
+      "updated": "2026-06-25T18:18:32+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "727e312206558d57c5ee11f68ff9fa1a",
+        "tests": {
+          "apps/gateway/tests/azure_audio/test_azure_audio.py": "2ac7c55529bcf70fd53941968e09d939"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/azure_embeddings.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/azure_audio/",
+          "apps/gateway/tests/azure_audio/Makefile"
+        ],
+        "snapshot_md5": "7a9027f35fe87cc107dd39dbc8ab4d46"
+      }
     }
   },
   "milestones": {
@@ -183,7 +208,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T18:02:09+00:00",
+  "updated": "2026-06-25T18:18:32+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
