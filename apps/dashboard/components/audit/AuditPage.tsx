@@ -9,7 +9,7 @@
  * member get 403. This page is a read-only viewer — the four states (loading / error /
  * empty / success) are rendered identically to every other dashboard surface.
  *
- * Auth guard: middleware.ts handles cookie-presence server-side. The admin-only nav link
+ * Auth guard: proxy.ts handles cookie-presence server-side. The admin-only nav link
  * and the gateway's AUDIT_READ enforcement keep restricted roles out.
  */
 

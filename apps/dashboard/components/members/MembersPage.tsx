@@ -14,7 +14,7 @@
  * SELF-GUARD: the role selector is disabled for the row matching the caller's
  * own user_id so the UI cannot even attempt a self-role-change.
  *
- * Auth guard: middleware.ts handles cookie presence server-side.
+ * Auth guard: proxy.ts handles cookie presence server-side.
  * The gateway's MEMBERS_MANAGE enforcement keeps lower roles out.
  *
  * Accessibility: one <h1>, table with column headers, per-user aria-label on

@@ -40,10 +40,8 @@ const FOOTER_COLUMNS = [
   {
     heading: "Company",
     links: [
-      { label: "About", href: "/#about" },
-      { label: "Blog", href: "/#blog" },
+      { label: "Blog", href: "/blog" },
       { label: "Status", href: "/status" },
-      { label: "Careers", href: "/#careers" },
     ],
   },
   {

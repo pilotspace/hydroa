@@ -14,7 +14,7 @@
  *   - Empty window: total 0 → availability 100%, 0 requests, NO NaN
  *   - A11Y: one h1; ordered headings; status conveyed by TEXT % (not color alone); axe 0 serious/critical
  *
- * Auth guard: middleware.ts handles cookie-presence server-side. The admin-only nav link and the
+ * Auth guard: proxy.ts handles cookie-presence server-side. The admin-only nav link and the
  * gateway's OPS_READ enforcement keep members out.
  */
 

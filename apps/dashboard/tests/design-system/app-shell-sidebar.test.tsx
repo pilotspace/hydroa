@@ -33,8 +33,21 @@ async function axeSeriousCritical(container: HTMLElement) {
   return results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
 }
 
-const ALL_LINKS = ["Usage", "Spend", "API Keys", "Models", "Teams", "Routing", "Settings"];
-const ADMIN_ONLY = ["Models", "Teams", "Routing"];
+const ALL_LINKS = [
+  "Usage",
+  "Spend",
+  "API Keys",
+  "Models",
+  "Teams",
+  "Members",
+  "Routing",
+  "Alerts",
+  "Audit",
+  "Health",
+  "SLO",
+  "Settings",
+];
+const ADMIN_ONLY = ["Models", "Teams", "Members", "Routing", "Alerts", "Audit", "Health", "SLO"];
 
 // ── controllable matchMedia + ResizeObserver (theme + Radix Dialog need them) ──
 let systemPrefersDark = false;

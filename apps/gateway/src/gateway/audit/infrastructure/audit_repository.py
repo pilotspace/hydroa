@@ -6,9 +6,10 @@ Contract (audit-log-store TASK.md §3 — FROZEN @ v1):
 
 IMMUTABILITY ENFORCEMENT:
   - Application layer: this class exposes NO update/delete/patch/remove/mutate methods.
-  - DB layer: the migration creates RULES that silently no-op any UPDATE/DELETE on
-    audit_events. If an UPDATE attempt reaches the DB, the rule fires DO INSTEAD NOTHING,
-    so the row is unchanged. Verified by test_db_enforced_immutability.
+  - DB layer: migration f2a4c6e8b0d3 installs a BEFORE UPDATE OR DELETE trigger on
+    audit_events. UPDATE always RAISEs; DELETE RAISEs unless the txn-scoped GUC
+    app.audit_purge='on' is set (only the retention sweeper does so, inside its own
+    transaction). Any stray mutation fails loudly. Verified by test_db_enforced_immutability.
 """
 
 from __future__ import annotations
