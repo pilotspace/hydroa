@@ -382,14 +382,26 @@ Watch (reuse scenarios as monitors): live-smoke per-criterion PASS rate across r
 rate on C4; disconnect-row visibility on C5.
 
 ### Spec delta
-- [SPEC · open] proxy maps an upstream 429 (rate-limit / depleted-credits, e.g. Gemini RESOURCE_EXHAUSTED)
+- [SPEC · dropped] proxy maps an upstream 429 (rate-limit / depleted-credits, e.g. Gemini RESOURCE_EXHAUSTED)
   to a 502 Bad Gateway — loses the retryable/rate-limit signal a client (Helios) needs to back off; consider
   mapping upstream 429 → 429/503 with Retry-After (evidence: raw Gemini 429 surfaced as proxy 502 this session).
+  RESOLVED by milestone v35 "Agent-loop error fidelity" — upstream rate-limit now surfaces 429 + Retry-After
+  (error_catalog.py:378 UPSTREAM_RATE_LIMITED ErrorSpec(429,"ERR_UPSTREAM_RATE_LIMITED"); fallback_router.py:415
+  raise UpstreamRateLimitedError(retry_after)). Verified on main 2026-06-25.
 - [SPEC · open] Gemini live path was unverified (GCP credits depleted); re-run the smoke against real Gemini
   once credits exist — the verifier is provider-parametrized (HELIOS_OR_MODEL / provider) so only config changes.
 - [SPEC · dropped] C5 OpenRouter recovery row: within the 45s poll the recovery chain did not append an
   authoritative-cost row (recovery_cost_present=False) — disconnect row was visible with user cost_usd=0 (the
   contract's bar), so not a blocker; worth a longer-window check that recovery eventually appends the delta.
+- [SPEC · open] the live verifier REPLAYS Helios's exact OpenAI-wire shapes rather than driving the real
+  `../helios-mono` Rust binary — proves the proxy is Helios-ready but not an end-to-end binary run; drive the
+  actual binary config-only against the proxy once available (evidence: §3-frozen framing Tin chose; seeded follow-up).
+- [SPEC · open] slow-reasoning models can hit a 504 Gateway Timeout under the default upstream read window
+  (e.g. gemma P4 in the post-v34 multi-model probe) — tune the per-request/stream timeout for long thinking
+  budgets (evidence: post-v34 hardening probe finding D, LOW).
+- [SPEC · open] a request that fails on upstream rate-limit (429 → now ERR_UPSTREAM_RATE_LIMITED) still writes
+  a 0-token usage row — decide whether failed/rate-limited attempts should record a usage row at all, or mark it
+  non-billable (evidence: post-v34 hardening probe minor finding).
 
 ### Competency deltas
 - [TDD · folded] live LLM criteria are non-deterministic: a reasoning model needs bounded max_tokens or its [folded foundation-version 31]
