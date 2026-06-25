@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 35
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 36
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -129,6 +129,9 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) mint_token derives `scope` from the authorization row instead of taking the frozen §3 `scope` param — a benign, strictly-more-correct refinement of the port sketch (a token's scope is ALWAYS its authorization's scope; passing it invites mismatch). Recorded per the foundation "fix-if-strictly-more-correct, record the deviation" rule (evidence: ports.py mint_token signature vs §3 line 249).  [folded foundation-version 36 · from agent-oauth-grant-store]
+- (SDD) reusing the task-2 per-IP limiter keyed by `approve:{user_id}` for a per-USER limit is a clean primitive reuse (no new infra) — the limiter's key is just an opaque string (evidence: §0 reuse note).  [folded foundation-version 36 · from device-approval-flow]
+- (SDD) when reusing a primitive that doesn't fit (the per-UUID RedisLuaRateLimiter vs an unauthenticated caller), spec a NEW fit-for-purpose seam rather than forcing the old one — the per-IP limiter is the right call but should be Lua-atomic like its sibling (evidence: §0 GROUND limiter note + SPEC delta above).  [folded foundation-version 36 · from device-authorization-endpoint]
 - (SDD) read surfaces mirror an existing frozen envelope (alerts) for consistency — cheap and predictable.  [folded foundation-version 35 · from audit-log-surface]
 - (SDD) honest sourcing — report only what the store can prove (availability/error-rate from status); flag the gap (latency) rather than fabricate (mirrors the /status page honesty).  [folded foundation-version 35 · from slo-metrics]
 - (SDD) when a refute-read's worst-case rests on an unphysical assumption (a token deficit that "stays 1 forever" despite refill closing it each slice), FIX the underlying defect anyway if the fix is strictly-more-correct + harmless, but record the corrected severity rather than the reviewer's headline (evidence: acquire() actual-slept budgeting fix; 50000-iter case bounded to ~1 slice by refill). See the `add` skill's `deltas.md`.  [folded foundation-version 33 · from bandwidth-token-bucket]
@@ -452,6 +455,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-25 | fold all → foundation-version 36 (SDD 3 · TDD 6 · ADD 6) | consolidate captured OBSERVE lessons into the versioned foundation | 15 lessons open→folded; +15 routed bullets; 35→36 |
 | 2026-06-25 | fold all → foundation-version 35 (DDD 4 · SDD 2 · UDD 4 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 13 lessons open→folded; +13 routed bullets; 34→35 |
 | 2026-06-24 | fold all → foundation-version 34 (UDD 3 · TDD 3 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 7 lessons open→folded; +7 routed bullets; 33→34 |
 | 2026-06-24 | fold all → foundation-version 33 (SDD 1 · TDD 2 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 4 lessons open→folded; +4 routed bullets; 32→33 |

@@ -175,7 +175,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T05:30:32+00:00",
+  "updated": "2026-06-25T15:37:09+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -655,6 +655,20 @@
         "rbac-admin-ui",
         "slo-metrics",
         "slo-dashboard"
+      ],
+      "archived": "2026-06-25"
+    },
+    {
+      "slug": "v39",
+      "title": "Headless agent authentication (OAuth device flow)",
+      "tasks": 6,
+      "task_slugs": [
+        "agent-oauth-grant-store",
+        "device-authorization-endpoint",
+        "device-approval-flow",
+        "agent-token-endpoint",
+        "agent-token-authn-seam",
+        "agent-oauth-harness-e2e"
       ],
       "archived": "2026-06-25"
     }

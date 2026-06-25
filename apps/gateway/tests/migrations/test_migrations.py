@@ -45,6 +45,8 @@ EXPECTED_TABLES = frozenset(
         "tenant_provider_keys",  # SANCTIONED EDIT — provider-credential-store TASK.md §3 manifest maintenance; disposition: additive migration d8f3a1c9e5b2 adds this table
         "routing_config",  # SANCTIONED EDIT — routing-config-store TASK.md §3 manifest maintenance; disposition: additive migration a2c4e6f8b0d1 adds this table
         "audit_events",  # SANCTIONED EDIT — audit-log-store TASK.md §3 manifest maintenance; disposition: additive migration e3f5a7c9b1d2 adds this table
+        "device_authorizations",  # SANCTIONED EDIT — agent-oauth-grant-store TASK.md §3 manifest maintenance; disposition: additive migration b3d5f7a9c1e4 adds this table
+        "agent_tokens",  # SANCTIONED EDIT — agent-oauth-grant-store TASK.md §3 manifest maintenance; disposition: additive migration b3d5f7a9c1e4 adds this table
     }
 )
 

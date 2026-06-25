@@ -61,6 +61,9 @@ import gateway.proxy.infrastructure.routing_config_orm  # noqa: F401 — registe
 # audit-log-store TASK.md §3: registers AuditEventRow on Base.metadata.
 import gateway.audit.infrastructure.audit_events_orm  # noqa: F401 — registers AuditEventRow on Base.metadata
 
+# agent-oauth-grant-store TASK.md §3: registers DeviceAuthorizationRow + AgentTokenRow on Base.metadata.
+import gateway.agent_oauth.infrastructure.orm  # noqa: F401 — registers agent OAuth tables on Base.metadata
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------

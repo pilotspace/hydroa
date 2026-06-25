@@ -1,0 +1,91 @@
+# v39 agent-oauth-harness-e2e overlay — additive on the e2e base.
+#
+# Wires the gateway to a deterministic stub upstream (scripts/v39_upstream_stub.py
+# on stub:9939 within the compose network) so the live double-pass needs NO real
+# provider key / external network.
+# Also enables the agent_oauth endpoints with all required knobs.
+#
+# Usage:
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v39.yml \
+#     up --build -d --wait
+#
+#   python3 scripts/live_v39_verify.py   # pass 1
+#   python3 scripts/live_v39_verify.py   # pass 2 (double-pass close rule)
+#
+#   docker compose \
+#     -f infra/docker-compose.e2e.yml \
+#     -f infra/docker-compose.e2e.v39.yml \
+#     down -v
+#
+# The stub sidecar runs inside the compose network (service name: stub) so the
+# gateway container reaches it via http://stub:9939 — no host-networking hacks needed.
+# Port 9939 is published to localhost so live_v39_verify.py can poll counters.
+#
+# Double-pass close rule: run scripts/live_v39_verify.py twice; both must exit 0.
+# Source: agent-oauth-harness-e2e TASK.md §3 CONTRACT (FROZEN @ v39).
+
+services:
+  # ── Stub upstream sidecar ────────────────────────────────────────────────────
+  # Runs scripts/v39_upstream_stub.py (stdlib only) as a service inside the
+  # compose network. The gateway reaches it at http://stub:9939/api/v1.
+  # Port 9939 published to localhost so live_v39_verify.py can query counters.
+  stub:
+    image: python:3.12-alpine
+    volumes:
+      - ../scripts/v39_upstream_stub.py:/app/v39_upstream_stub.py:ro
+    working_dir: /app
+    command: ["python", "-u", "v39_upstream_stub.py"]
+    ports:
+      - "9939:9939"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9939/__health', timeout=3)\" || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  gateway:
+    environment:
+      # ── OpenRouter upstream → v39 stub sidecar in compose network ────────────
+      # http:// intentional (stub is internal; TLS enforced by Envoy edge).
+      GATEWAY_OPENROUTER_BASE_URL: "http://stub:9939/api/v1"
+
+      # ── Non-secret placeholder key — stub ignores the bearer value ─────────
+      # Must be non-empty so Settings boot-validation passes.
+      # NEVER a real key — this is a fake placeholder for the stub only.
+      GATEWAY_OPENROUTER_API_KEY: "stub-v39-openrouter-key"
+
+      # ── BYOK Fernet encryption key (required for per-tenant provider key API) ─
+      # The CachedTenantCredentialResolver is always wired; DbTenantProviderKeyStore.get()
+      # raises ERR_PROVIDER_KEY_ENCRYPTION_UNAVAILABLE when this key is absent, even before
+      # checking for a row. live_v39_verify.py seeds a per-tenant openrouter key via
+      # PUT /admin/provider-keys/openrouter after signup so the chat call resolves correctly.
+      # This is a v39 e2e-only non-secret Fernet key: no real provider credential is stored.
+      GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY: "SF0hFUpQ_pLuwt60_GpE1yzKOv-7W4JO3zK1jovoK2Y="
+
+      # ── Agent OAuth knobs (all required for the device-code + token flow) ───
+      # GATEWAY_AGENT_OAUTH_VERIFICATION_URI must be non-empty for the device
+      # authorization response to include the verification_uri field.
+      GATEWAY_AGENT_OAUTH_VERIFICATION_URI: "https://app.test/activate"
+      GATEWAY_AGENT_OAUTH_DEVICE_CODE_TTL_SECONDS: "600"
+      GATEWAY_AGENT_OAUTH_POLL_INTERVAL_SECONDS: "5"
+      GATEWAY_AGENT_OAUTH_DEFAULT_SCOPE: "proxy"
+      GATEWAY_AGENT_OAUTH_AUTHORIZE_RPM: "60"
+      GATEWAY_AGENT_OAUTH_APPROVE_RPM: "60"
+      GATEWAY_AGENT_OAUTH_ACCESS_TOKEN_TTL_SECONDS: "3600"
+      GATEWAY_AGENT_OAUTH_REFRESH_TOKEN_TTL_SECONDS: "2592000"
+      GATEWAY_AGENT_OAUTH_TOKEN_RPM: "60"
+      # Budget cap — default $100.00 (use the Settings default; omit to keep default)
+
+      # ── Disable features not under test ─────────────────────────────────────
+      GATEWAY_UPSTREAM_MAX_RETRIES: "0"
+      GATEWAY_UPSTREAM_FALLBACK_ON_ERROR: "false"
+      GATEWAY_UPSTREAM_STREAM_RESILIENCE_ENABLED: "false"
+      GATEWAY_VECTOR_CACHE_ENABLED: "false"
+      # Disable background sweeps to reduce noise in e2e pass
+      GATEWAY_RETENTION_CHECK_INTERVAL_SECONDS: "0"
+
+    depends_on:
+      stub:
+        condition: service_healthy
