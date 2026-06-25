@@ -72,27 +72,34 @@ Out:
 - [ ] slo-dashboard            depends-on: slo-metrics       — Dashboard SLO view (latency / error budget per tenant).
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] An anonymous visitor at `/` sees a landing page (no login redirect) and can navigate to pricing, legal, and docs   (← marketing-shell, landing-page, pricing-page, legal-pages, docs-blog-scaffold)
-- [ ] Admin/security actions write append-only audit events; an admin can query and filter them in the dashboard   (← audit-log-store, audit-log-surface)
-- [ ] Roles beyond owner/admin exist, are enforced per surface, and are assignable from the dashboard   (← rbac-roles, rbac-admin-ui)
-- [ ] A public trust/status page shows component status + SLA, and a tenant can set a data-retention window that is enforced   (← trust-status-page, data-retention-controls)
-- [ ] Per-tenant SLO/error-budget metrics are exposed and rendered in the dashboard   (← slo-metrics, slo-dashboard)
+- [x] An anonymous visitor at `/` sees a landing page (no login redirect) and can navigate to pricing, legal, and docs   (← marketing-shell, landing-page, pricing-page, legal-pages, docs-blog-scaffold)
+- [x] Admin/security actions write append-only audit events; an admin can query and filter them in the dashboard   (← audit-log-store, audit-log-surface)
+- [x] Roles beyond owner/admin exist, are enforced per surface, and are assignable from the dashboard   (← rbac-roles, rbac-admin-ui)
+- [x] A public trust/status page shows component status + SLA, and a tenant can set a data-retention window that is enforced   (← trust-status-page, data-retention-controls)
+- [x] Per-tenant SLO/error-budget metrics are exposed and rendered in the dashboard   (← slo-metrics, slo-dashboard)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- dashboard : <marketing site + audit/RBAC/SLO viewers — what shipped, or "untouched">
-- gateway   : <audit store/API, RBAC, data-retention sweep, SLO metrics — what shipped, or "untouched">
-- tooling / skill / book : <untouched unless noted>
+- dashboard : Public marketing site (route-split `/`→landing, app→`/app`; hero/features/pricing/legal/docs/blog/status) + read viewers (audit `/app/audit`, members/role-assign `/app/members`, SLO `/app/slo`). dashboard vitest 501 green, tsc 0, next build exit 0.
+- gateway   : RBAC allowlist Permission matrix (6 role tiers) + append-only `audit_events` store (trigger-immutable, fail-open, 8 emit sites) + `GET /admin/audit` + `GET /admin/users`+`PUT /admin/users/{id}/role` (escalation guard) + RetentionSweeper (active-by-default purge, audit-floor) + `GET /admin/slo`. Migrations b2d4f6a8c0e1·e3f5a7c9b1d2·f2a4c6e8b0d3. Gateway suite 1646 green.
+- tooling / skill / book : untouched.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- marketing-shell · landing-page · pricing-page · legal-pages · docs-blog-scaffold · trust-status-page : gate=PASS · dashboard vitest grew to 480 green · residue=none (SPEC deltas: real pricing/legal/docs content, public health-summary endpoint)
+- rbac-roles : gate=PASS · gateway 1584 green · residue=none (Tin-approved matrix; back-compat byte-identical)
+- audit-log-store : gate=PASS · gateway 1599 green · residue=none (Tin-approved A=DB-enforced/B=fail-open/C=all-6)
+- data-retention-controls : gate=PASS · gateway 1607 green · residue=⚠ active-by-default destructive purge (release note) + RULE→trigger change-request to audit-log-store (Tin-approved)
+- audit-log-surface : gate=PASS · gateway 1622 + dashboard 486 green · residue=none (repo-seam refactor)
+- rbac-admin-ui : gate=PASS · gateway 1631 + dashboard 499 green · residue=422-vs-400 on invalid role (codebase convention)
+- slo-metrics : gate=PASS · gateway 1646 green · residue=latency_ms null (no stored latency — spec delta)
+- slo-dashboard : gate=PASS · dashboard 501 green · residue=none (honest latency placeholder)
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which): EC1←marketing wave (dashboard 501) · EC2←audit-log-store+surface · EC3←rbac-roles+admin-ui · EC4←trust-status-page+data-retention-controls · EC5←slo-metrics+dashboard
+- goal: "A prospective customer can discover and evaluate the product on a public marketing site, and an enterprise operator can run it with the audit trail, role-based access, compliance/SLA surfaces, and observability an enterprise deployment requires." PROVEN: public site live at `/` + the four governance surfaces (audit/RBAC/retention+SLA/SLO) all shipped, gate-passed, and independently verified. All 3 BE security contracts Tin-approved.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
