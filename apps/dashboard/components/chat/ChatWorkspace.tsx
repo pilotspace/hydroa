@@ -35,6 +35,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   const [model, setModel] = useState(defaultModel);
   const [system, setSystem] = useState("");
   const [temperature, setTemperature] = useState(1);
+  const [webSearch, setWebSearch] = useState(false);
   const [sessionTokens, setSessionTokens] = useState(0);
   const countedRef = useRef<Usage | undefined>(undefined);
   const threadEndRef = useRef<HTMLDivElement>(null);
@@ -63,7 +64,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   function submit() {
     const text = input.trim();
     if (!text || isStreaming) return; // empty submit / mid-stream = no-op
-    send({ model, text, system: system.trim() || undefined, temperature });
+    send({ model, text, system: system.trim() || undefined, temperature, webSearch });
     setInput("");
   }
 
@@ -136,6 +137,8 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
             onSystemChange={setSystem}
             temperature={temperature}
             onTemperatureChange={setTemperature}
+            webSearch={webSearch}
+            onWebSearchChange={setWebSearch}
           />
           <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:ring-2 focus-within:ring-ring">
           <Textarea

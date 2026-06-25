@@ -20,6 +20,8 @@ export interface ModelControlsProps {
   onSystemChange: (s: string) => void;
   temperature: number;
   onTemperatureChange: (t: number) => void;
+  webSearch: boolean;
+  onWebSearchChange: (v: boolean) => void;
 }
 
 export function ModelControls({
@@ -27,6 +29,8 @@ export function ModelControls({
   onSystemChange,
   temperature,
   onTemperatureChange,
+  webSearch,
+  onWebSearchChange,
 }: ModelControlsProps) {
   const [open, setOpen] = useState(false);
 
@@ -76,6 +80,22 @@ export function ModelControls({
             />
             <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">
               {temperature.toFixed(1)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="chat-websearch"
+              aria-label="Web search"
+              type="checkbox"
+              checked={webSearch}
+              onChange={(e) => onWebSearchChange(e.target.checked)}
+              className="size-4 accent-primary"
+            />
+            <label htmlFor="chat-websearch" className="text-xs font-medium text-foreground">
+              Web search
+            </label>
+            <span className="text-xs text-muted-foreground">
+              — ground replies with live web results (provider-native)
             </span>
           </div>
         </div>

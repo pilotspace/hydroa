@@ -32,6 +32,8 @@ export interface SendInput {
   text: string;
   system?: string;
   temperature?: number;
+  /** v41: opt into provider-native web-search grounding for this turn. */
+  webSearch?: boolean;
 }
 
 export interface UseChatStream {
@@ -115,6 +117,9 @@ export function useChatStream(opts?: { gatewayPath?: string }): UseChatStream {
           stream: true,
           stream_options: { include_usage: true },
           ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+          // v41: opt-in web-search grounding. Omitted entirely when off ⇒ body
+          // byte-identical to v40 (the gateway only injects on a truthy flag).
+          ...(input.webSearch ? { web_search: true } : {}),
         }),
         signal: controller.signal,
       });

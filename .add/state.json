@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "websearch-grounding-passthrough",
+  "active_task": "chat-websearch-toggle",
   "active_milestone": "v41",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -195,6 +195,29 @@
         ],
         "snapshot_md5": "227b13efd7cebb5b7f9d7112e9dfa811"
       }
+    },
+    "chat-websearch-toggle": {
+      "title": "Chat composer web-search toggle \u2192 web_search flag",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v41",
+      "depends_on": [],
+      "created": "2026-06-25T17:49:54+00:00",
+      "updated": "2026-06-25T17:55:39+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "38162794557aca13186c94914abd493f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/hooks/use-chat-stream.ts",
+          "apps/dashboard/components/chat/ModelControls.tsx",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/tests-bff/chat-websearch-toggle.test.tsx"
+        ],
+        "snapshot_md5": "5c0fdef84f5085fadd8f142d0b17a264"
+      }
     }
   },
   "milestones": {
@@ -216,7 +239,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T17:48:10+00:00",
+  "updated": "2026-06-25T17:55:39+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
