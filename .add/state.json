@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "landing-fidelity",
+  "active_task": "admin-fidelity",
   "active_milestone": "ui-fidelity",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -226,6 +226,28 @@
         ],
         "snapshot_md5": "7c322b56fef50866a9ac4de49f20f977"
       }
+    },
+    "admin-fidelity": {
+      "title": "Apply Aurora language to the admin app shell + pages",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "ui-fidelity",
+      "depends_on": [],
+      "created": "2026-06-25T17:28:41+00:00",
+      "updated": "2026-06-25T17:34:01+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "413c518bde2fb1e25a8ecc22d233808c",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/stat-card.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests/design-system/admin-fidelity.test.tsx"
+        ],
+        "snapshot_md5": "da4ae3240f34339cb4ca6605898c66fe"
+      }
     }
   },
   "milestones": {
@@ -247,7 +269,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T17:28:06+00:00",
+  "updated": "2026-06-25T17:34:01+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

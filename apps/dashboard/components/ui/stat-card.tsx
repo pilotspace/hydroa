@@ -30,9 +30,9 @@ const DELTA_META: Record<
   StatDelta["direction"],
   { Icon: React.ComponentType<{ className?: string }>; word: string; tone: string }
 > = {
-  up: { Icon: ArrowUpRight, word: "increase", tone: "text-success" },
-  down: { Icon: ArrowDownRight, word: "decrease", tone: "text-destructive" },
-  neutral: { Icon: Minus, word: "no change", tone: "text-muted-foreground" },
+  up: { Icon: ArrowUpRight, word: "increase", tone: "bg-success/10 text-success" },
+  down: { Icon: ArrowDownRight, word: "decrease", tone: "bg-destructive/10 text-destructive" },
+  neutral: { Icon: Minus, word: "no change", tone: "bg-muted text-muted-foreground" },
 };
 
 export function StatCard({ label, value, delta, icon, footer, className, valueTestId }: StatCardProps) {
@@ -40,19 +40,24 @@ export function StatCard({ label, value, delta, icon, footer, className, valueTe
   return (
     <Card data-slot="stat-card" className={cn("gap-0", className)}>
       <CardHeader className="flex-row items-center justify-between gap-2 pb-2">
-        <span className="text-sm font-medium text-muted-foreground">{label}</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
         {icon ? (
           <span className="text-muted-foreground" aria-hidden="true">
             {icon}
           </span>
         ) : null}
       </CardHeader>
-      <CardContent className="flex flex-col gap-1">
-        <div data-testid={valueTestId} className="text-2xl font-semibold tracking-tight text-foreground">
+      <CardContent className="flex flex-col gap-2">
+        <div data-testid={valueTestId} className="text-3xl font-semibold tracking-tight text-foreground">
           {value}
         </div>
         {delta && meta ? (
-          <div className={cn("inline-flex items-center gap-1 text-sm font-medium", meta.tone)}>
+          <div
+            className={cn(
+              "inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-sm font-medium",
+              meta.tone,
+            )}
+          >
             <meta.Icon className="size-4" aria-hidden="true" />
             <span>{delta.text}</span>
             <span className="sr-only">{meta.word}</span>

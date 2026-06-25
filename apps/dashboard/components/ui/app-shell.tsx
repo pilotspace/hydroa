@@ -178,7 +178,7 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
             </SidebarFooter>
           </Sidebar>
 
-          <main id="main" className="flex-1 p-4 lg:p-8">
+          <main id="main" className="flex-1 bg-muted/30 p-4 lg:p-8">
             {children}
           </main>
         </div>
