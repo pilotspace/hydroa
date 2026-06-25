@@ -46,6 +46,7 @@ test-fast:
 	  tests/gemini_embed_tokens tests/nonchat_soft_budget_alert \
 	  tests/azure_verify tests/byok_verify \
 	  tests/azure_audio tests/tts_input_cap \
+	  tests/audio_translations \
 	  tests/web_search
 
 migrate:

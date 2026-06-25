@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "tts-input-guardrails",
+  "active_task": "audio-translations-endpoint",
   "active_milestone": "v42",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -214,6 +214,31 @@
         ],
         "snapshot_md5": "2d3fcc526ac893ceca08bf2132ac3c92"
       }
+    },
+    "audio-translations-endpoint": {
+      "title": "POST /v1/audio/translations (Whisper translate)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v42",
+      "depends_on": [],
+      "created": "2026-06-25T18:28:04+00:00",
+      "updated": "2026-06-25T18:40:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "526394095fcc24101f165fcb4641ba7b",
+        "tests": {
+          "apps/gateway/tests/audio_translations/test_audio_translations.py": "1cf5f83d6e3a8936fcc99f0bc7e6d3a6"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/audio_use_case.py",
+          "apps/gateway/src/gateway/proxy/api/audio_router.py",
+          "apps/gateway/tests/audio_translations/",
+          "apps/gateway/tests/audio_translations/Makefile"
+        ],
+        "snapshot_md5": "dcb82af55bb2944bb66eaef1a24ece46"
+      }
     }
   },
   "milestones": {
@@ -235,7 +260,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T18:27:51+00:00",
+  "updated": "2026-06-25T18:40:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

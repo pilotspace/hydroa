@@ -47,8 +47,8 @@ from gateway.core.error_catalog import (
     UPSTREAM_UNAVAILABLE,
 )
 from gateway.proxy.application.audio_duration import derive_duration_seconds
-from gateway.proxy.application.json_sanitize import sanitize_non_finite
 from gateway.proxy.application.governance import NonChatGovernance
+from gateway.proxy.application.json_sanitize import sanitize_non_finite
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so _fire_record_with_raw
 # cannot be made public there; the frozen contract mandates reusing this exact
@@ -99,6 +99,9 @@ _RESPONSE_FORMAT_MEDIA_TYPES: dict[str, str] = {
 
 # Passthrough fields forwarded from multipart form to upstream STT endpoint
 _STT_PASSTHROUGH_FIELDS = ("language", "prompt", "response_format", "temperature")
+# Translation passthrough fields — same as STT except `language` is dropped:
+# the /audio/translations endpoint always outputs English and has no language param.
+_TRANSLATION_PASSTHROUGH_FIELDS = ("prompt", "response_format", "temperature")
 
 
 class TranscriptionUseCase:
@@ -127,6 +130,7 @@ class TranscriptionUseCase:
         form: Any,  # starlette.datastructures.FormData
         registry: ProviderRegistry,
         usage_recorder: UsageRecorder,
+        upstream_path: str = "/audio/transcriptions",
     ) -> tuple[int, dict[str, Any]]:
         """Execute the STT transcription request pipeline.
 
@@ -178,7 +182,12 @@ class TranscriptionUseCase:
             )
         }
         data: dict[str, Any] = {"model": model_id}
-        for field_name in _STT_PASSTHROUGH_FIELDS:
+        passthrough = (
+            _TRANSLATION_PASSTHROUGH_FIELDS
+            if upstream_path == "/audio/translations"
+            else _STT_PASSTHROUGH_FIELDS
+        )
+        for field_name in passthrough:
             value = form.get(field_name)
             if value is not None:
                 data[field_name] = value
@@ -192,7 +201,7 @@ class TranscriptionUseCase:
         # Call upstream STT endpoint
         try:
             status, resp_body = await provider_adapter.post_multipart(
-                "/audio/transcriptions", files=files, data=data
+                upstream_path, files=files, data=data
             )
         except (UpstreamUnavailableError, CircuitOpenError):
             raise UPSTREAM_UNAVAILABLE.exc() from None
