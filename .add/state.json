@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "streaming-bff",
+  "active_milestone": "v40",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -162,6 +162,75 @@
         ],
         "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
       }
+    },
+    "streaming-bff": {
+      "title": "BFF SSE streaming passthrough",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v40",
+      "depends_on": [],
+      "created": "2026-06-25T14:33:03+00:00",
+      "updated": "2026-06-25T15:34:05+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "48f528cf5e9e28d2d960271ee333e0cf",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/api/gw/[...path]/route.ts",
+          "apps/dashboard/tests-bff/streaming-bff.test.ts"
+        ],
+        "snapshot_md5": "3caaaa33f037c5e763045d900dd542f5"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-25T15:31:22+00:00",
+            "reason": "scope_violation: task 'streaming-bff' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/streaming-bff.test.ts (1 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-25T15:32:08+00:00",
+            "reason": "scope_violation: task 'streaming-bff' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/streaming-bff.test.ts (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "chat-workspace-page": {
+      "title": "Chat workspace page (/app/chat)",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "v40",
+      "depends_on": [
+        "streaming-bff"
+      ],
+      "created": "2026-06-25T14:33:03+00:00",
+      "updated": "2026-06-25T14:33:03+00:00"
+    },
+    "chat-model-controls": {
+      "title": "Chat model picker + request controls",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "v40",
+      "depends_on": [
+        "chat-workspace-page"
+      ],
+      "created": "2026-06-25T14:33:03+00:00",
+      "updated": "2026-06-25T14:33:03+00:00"
+    },
+    "chat-cost-readout": {
+      "title": "Per-turn token + cost readout",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "v40",
+      "depends_on": [
+        "chat-workspace-page"
+      ],
+      "created": "2026-06-25T14:33:03+00:00",
+      "updated": "2026-06-25T14:33:03+00:00"
     }
   },
   "milestones": {
@@ -172,10 +241,18 @@
       "status": "done",
       "created": "2026-06-22T09:31:42+00:00",
       "updated": "2026-06-23T02:00:14+00:00"
+    },
+    "v40": {
+      "title": "Chat workspace + streaming",
+      "goal": "A signed-in user can hold a multi-turn, live-streaming conversation with any catalog model from an in-dashboard chat workspace that shows each turn's token cost.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-25T14:29:23+00:00",
+      "updated": "2026-06-25T14:29:23+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T05:30:32+00:00",
+  "updated": "2026-06-25T15:34:05+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
