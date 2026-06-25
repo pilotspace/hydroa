@@ -64,10 +64,12 @@ def upgrade() -> None:
         ),
     )
 
-    # Create index via raw SQL so we can specify DESC on created_at
-    op.execute(
-        "CREATE INDEX audit_events_tenant_created_idx "
-        "ON audit_events (tenant_id, created_at DESC)"
+    # Create index (tenant_id, created_at ASC) — ORM and migration must agree on direction
+    # so autogenerate stays clean. Newest-first ORDER BY in queries still works with ASC.
+    op.create_index(
+        "audit_events_tenant_created_idx",
+        "audit_events",
+        ["tenant_id", "created_at"],
     )
 
     # DB-enforced immutability: RULEs that silently no-op any UPDATE or DELETE.
@@ -88,5 +90,5 @@ def downgrade() -> None:
     # Rules must be dropped before the table (CASCADE would also drop them, but explicit is safer)
     op.execute("DROP RULE IF EXISTS audit_events_no_update ON audit_events")
     op.execute("DROP RULE IF EXISTS audit_events_no_delete ON audit_events")
-    op.execute("DROP INDEX IF EXISTS audit_events_tenant_created_idx")
+    op.drop_index("audit_events_tenant_created_idx", table_name="audit_events")
     op.drop_table("audit_events")
