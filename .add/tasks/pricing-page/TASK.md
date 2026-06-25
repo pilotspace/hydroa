@@ -180,4 +180,4 @@ Watch: 404s on /pricing · axe regressions.
 - [SPEC · open] real pricing $ figures once commercial model is set (evidence: placeholder tiers).
 
 ### Competency deltas
-- [UDD · open] marketing pages share a section/tier pattern — candidate for a reusable layout (evidence: landing+pricing repeat structure).
+- [UDD · folded] marketing pages share a section/tier pattern — candidate for a reusable layout (evidence: landing+pricing repeat structure). [folded foundation-version 35]

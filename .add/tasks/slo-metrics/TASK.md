@@ -210,4 +210,4 @@ Watch (reuse scenarios as monitors): availability dips · error_rate spikes.
 - [SPEC · open] operator-wide SLO (all tenants) for the ops view · per-model/per-deployment SLO breakdown · SLO target + burn-rate alerting.
 
 ### Competency deltas
-- [SDD · open] honest sourcing — report only what the store can prove (availability/error-rate from status); flag the gap (latency) rather than fabricate (mirrors the /status page honesty).
+- [SDD · folded] honest sourcing — report only what the store can prove (availability/error-rate from status); flag the gap (latency) rather than fabricate (mirrors the /status page honesty). [folded foundation-version 35]

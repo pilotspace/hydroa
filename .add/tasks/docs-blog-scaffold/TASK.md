@@ -177,4 +177,4 @@ Watch: 404s on /docs|/blog · axe regressions.
 - [SPEC · open] real docs content + MDX/content pipeline; real blog posts (evidence: scaffold-only "coming soon").
 
 ### Competency deltas
-- [UDD · open] a shared marketing section/card pattern now recurs across landing/pricing/legal/docs — candidate for one section primitive.
+- [UDD · folded] a shared marketing section/card pattern now recurs across landing/pricing/legal/docs — candidate for one section primitive. [folded foundation-version 35]

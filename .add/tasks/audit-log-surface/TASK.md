@@ -192,4 +192,4 @@ Watch (reuse scenarios as monitors): 403 rate · pagination errors.
 - [SPEC · open] audit export (CSV) · filter by action/actor/date-range · operator-wide (NULL-tenant) system audit view.
 
 ### Competency deltas
-- [SDD · open] read surfaces mirror an existing frozen envelope (alerts) for consistency — cheap and predictable.
+- [SDD · folded] read surfaces mirror an existing frozen envelope (alerts) for consistency — cheap and predictable. [folded foundation-version 35]

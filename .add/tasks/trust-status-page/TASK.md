@@ -180,4 +180,4 @@ Watch: 404s on /status · axe regressions.
 - [SPEC · open] live status — add a PUBLIC health-summary endpoint (BE) and wire /status to it (evidence: current page is static/presentational).
 
 ### Competency deltas
-- [DDD · open] "public health summary" is a new domain concept (a non-authed, coarse, cache-friendly view distinct from the gated /admin health) — name it before building the live wiring.
+- [DDD · folded] "public health summary" is a new domain concept (a non-authed, coarse, cache-friendly view distinct from the gated /admin health) — name it before building the live wiring. [folded foundation-version 35]

@@ -179,4 +179,4 @@ Watch: 404s on /legal/* · axe regressions.
 - [SPEC · open] replace template legal copy with counsel-reviewed text before public launch (evidence: placeholder notice).
 
 ### Competency deltas
-- [UDD · open] marketing pages now repeat a section/prose pattern — LegalPage wrapper is the first shared extraction.
+- [UDD · folded] marketing pages now repeat a section/prose pattern — LegalPage wrapper is the first shared extraction. [folded foundation-version 35]

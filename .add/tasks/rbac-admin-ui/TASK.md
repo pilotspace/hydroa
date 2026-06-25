@@ -223,5 +223,5 @@ Watch (reuse scenarios as monitors): 403 escalation-attempt rate · role-change 
 - [SPEC · open] CI check that ORM __table_args__ CHECK == latest migration (catch the stale-constraint drift class).
 
 ### Competency deltas
-- [DDD · open] role assignment (privilege grant) is a security surface distinct from team membership — separate endpoint + escalation guard (evidence: teams role is lead/member).
-- [ADD · open] a "pure FE" task can hide a missing BE security surface — ground BEFORE labelling risk (evidence: rbac-admin-ui mis-called non-security until ground found no role-mutation endpoint).
+- [DDD · folded] role assignment (privilege grant) is a security surface distinct from team membership — separate endpoint + escalation guard (evidence: teams role is lead/member). [folded foundation-version 35]
+- [ADD · folded] a "pure FE" task can hide a missing BE security surface — ground BEFORE labelling risk (evidence: rbac-admin-ui mis-called non-security until ground found no role-mutation endpoint). [folded foundation-version 35]

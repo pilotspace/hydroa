@@ -251,5 +251,5 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 - [SPEC · open] retention/purge of audit_events — owned by data-retention-controls (next security HARD-STOP).
 
 ### Competency deltas
-- [DDD · open] "audit event" is a distinct bounded concept from "alert event" (actor-attributed + immutable + compliance vs operational + deliverable + dedup'd) — separate module/table was correct (evidence: reuse-alert_events framing rejected at specify).
-- [ADD · open] subagent left no tmp scratch file this run (inline -m worked) — the explicit "no tmp/*.txt" constraint prevented the recurring scope_violation; keep it in every backend subagent prompt.
+- [DDD · folded] "audit event" is a distinct bounded concept from "alert event" (actor-attributed + immutable + compliance vs operational + deliverable + dedup'd) — separate module/table was correct (evidence: reuse-alert_events framing rejected at specify). [folded foundation-version 35]
+- [ADD · folded] subagent left no tmp scratch file this run (inline -m worked) — the explicit "no tmp/*.txt" constraint prevented the recurring scope_violation; keep it in every backend subagent prompt. [folded foundation-version 35]

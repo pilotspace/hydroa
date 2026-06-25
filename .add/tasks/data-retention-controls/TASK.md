@@ -278,5 +278,5 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 - [SPEC · open] per-tenant retention overrides (v1 is operator-wide age-scan).
 
 ### Competency deltas
-- [ADD · open] a later task can legitimately CHANGE-REQUEST a shipped task's frozen mechanism when a new requirement (audit purge) collides with it — surface the collision at the freeze, get explicit approval, implement via a NEW migration (never edit the shipped one), and prove the observable security property is preserved/strengthened (evidence: RULE→trigger here).
-- [DDD · open] "retention/purge" is an operator-wide lifecycle policy distinct from tenant-scoped CRUD — modelled as a periodic application sweeper, not an API (evidence: on-demand endpoint deferred).
+- [ADD · folded] a later task can legitimately CHANGE-REQUEST a shipped task's frozen mechanism when a new requirement (audit purge) collides with it — surface the collision at the freeze, get explicit approval, implement via a NEW migration (never edit the shipped one), and prove the observable security property is preserved/strengthened (evidence: RULE→trigger here). [folded foundation-version 35]
+- [DDD · folded] "retention/purge" is an operator-wide lifecycle policy distinct from tenant-scoped CRUD — modelled as a periodic application sweeper, not an API (evidence: on-demand endpoint deferred). [folded foundation-version 35]

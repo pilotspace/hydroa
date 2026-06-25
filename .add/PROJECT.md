@@ -3,12 +3,16 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 34
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 35
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
 
 ## Domain (DDD) — the language and the boundaries
+- (DDD) "audit event" is a distinct bounded concept from "alert event" (actor-attributed + immutable + compliance vs operational + deliverable + dedup'd) — separate module/table was correct (evidence: reuse-alert_events framing rejected at specify).  [folded foundation-version 35 · from audit-log-store]
+- (DDD) "retention/purge" is an operator-wide lifecycle policy distinct from tenant-scoped CRUD — modelled as a periodic application sweeper, not an API (evidence: on-demand endpoint deferred).  [folded foundation-version 35 · from data-retention-controls]
+- (DDD) role assignment (privilege grant) is a security surface distinct from team membership — separate endpoint + escalation guard (evidence: teams role is lead/member).  [folded foundation-version 35 · from rbac-admin-ui]
+- (DDD) "public health summary" is a new domain concept (a non-authed, coarse, cache-friendly view distinct from the gated /admin health) — name it before building the live wiring.  [folded foundation-version 35 · from trust-status-page]
 
 - Core concepts: Tenant · User · API key · Proxy request · Model catalog ·
   Pricing snapshot · Usage record · Budget · Markup (full list: `GLOSSARY.md`)
@@ -125,6 +129,8 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) read surfaces mirror an existing frozen envelope (alerts) for consistency — cheap and predictable.  [folded foundation-version 35 · from audit-log-surface]
+- (SDD) honest sourcing — report only what the store can prove (availability/error-rate from status); flag the gap (latency) rather than fabricate (mirrors the /status page honesty).  [folded foundation-version 35 · from slo-metrics]
 - (SDD) when a refute-read's worst-case rests on an unphysical assumption (a token deficit that "stays 1 forever" despite refill closing it each slice), FIX the underlying defect anyway if the fix is strictly-more-correct + harmless, but record the corrected severity rather than the reviewer's headline (evidence: acquire() actual-slept budgeting fix; 50000-iter case bounded to ~1 slice by refill). See the `add` skill's `deltas.md`.  [folded foundation-version 33 · from bandwidth-token-bucket]
 - (SDD) a subclass error (`UpstreamRateLimitedError(UpstreamUnavailableError)`) is the clean way to add a NEW HTTP mapping without disturbing existing `except` sites — mirrors the AllDeploymentsSaturatedError→429 precedent. Evidence: 0 regression across 1524 tests.  [folded foundation-version 32 · from upstream-ratelimit-passthrough]
 - (SDD) delegating D1 to web research (Tin) beat my fixed-number guess — the OpenRouter ratio formula scales with max_tokens and is the industry convention; surfacing "investigate latest docs" as a freeze option is worth repeating for provider-API-shaped decisions (evidence: ratio formula replaced low=1024/med=8000/high=16000).  [folded foundation-version 31 · from reasoning-passthrough]
@@ -326,6 +332,10 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+- (UDD) a shared marketing section/card pattern now recurs across landing/pricing/legal/docs — candidate for one section primitive.  [folded foundation-version 35 · from docs-blog-scaffold]
+- (UDD) marketing pages now repeat a section/prose pattern — LegalPage wrapper is the first shared extraction.  [folded foundation-version 35 · from legal-pages]
+- (UDD) marketing pages share a section/tier pattern — candidate for a reusable layout (evidence: landing+pricing repeat structure).  [folded foundation-version 35 · from pricing-page]
+- (UDD) honest placeholders for not-yet-available metrics (latency "not available yet") keep the UI truthful (mirrors /status + slo-metrics honesty).  [folded foundation-version 35 · from slo-dashboard]
 - (UDD) mirroring an APPROVED sibling component (RatelimitsPanel) collapses the UDD design loop to "reuse" — inherit its four-state recipe + a11y region pattern verbatim rather than re-deriving a design (evidence: this panel shipped with zero new design decisions beyond the frozen disabled-caption).  [folded foundation-version 34 · from bandwidth-panel]
 - (UDD) when a STATIC always-on hint already exists, a "saved" CONFIRMATION is a SEPARATE transient affordance (role=status) that must survive the save's own refetch-reseed but clear on the next user edit — gate it on user-edit handlers, NOT on a [data]-dep effect (evidence: refute attack-vector 1; reseed uses setGroups directly so saved survives).  [folded foundation-version 34 · from routing-editor-feedback]
 - (UDD) a localStorage seed must read in an effect (not a lazy useState initializer) to stay SSR-safe; the `react-hooks/set-state-in-effect` lint flags it → a single-line scoped disable directly above the setState (multi-line directive misses the target line) (evidence: directive on the comment-continuation line read as "unused").  [folded foundation-version 34 · from sso-login-polish]
@@ -442,6 +452,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-25 | fold all → foundation-version 35 (DDD 4 · SDD 2 · UDD 4 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 13 lessons open→folded; +13 routed bullets; 34→35 |
 | 2026-06-24 | fold all → foundation-version 34 (UDD 3 · TDD 3 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 7 lessons open→folded; +7 routed bullets; 33→34 |
 | 2026-06-24 | fold all → foundation-version 33 (SDD 1 · TDD 2 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 4 lessons open→folded; +4 routed bullets; 32→33 |
 | 2026-06-24 | fold all → foundation-version 32 (SDD 1 · TDD 1 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 3 lessons open→folded; +3 routed bullets; 31→32 |

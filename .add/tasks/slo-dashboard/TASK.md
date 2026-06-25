@@ -200,4 +200,4 @@ Watch (reuse scenarios as monitors): SLO page load errors · availability displa
 - [SPEC · open] time-series charts (availability/error-rate over time) once a latency_ms column + historical buckets exist · SLO target line + burn-rate · operator-wide SLO view.
 
 ### Competency deltas
-- [UDD · open] honest placeholders for not-yet-available metrics (latency "not available yet") keep the UI truthful (mirrors /status + slo-metrics honesty).
+- [UDD · folded] honest placeholders for not-yet-available metrics (latency "not available yet") keep the UI truthful (mirrors /status + slo-metrics honesty). [folded foundation-version 35]
