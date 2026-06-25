@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "conversations-backend",
+  "active_task": "chat-history-ui",
   "active_milestone": "v43",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -187,6 +187,31 @@
         ],
         "snapshot_md5": "7720755b2bb4edfdcd5c1c58b3c28353"
       }
+    },
+    "chat-history-ui": {
+      "title": "Dashboard chat history sidebar (list/new/resume/persist via BFF)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v43",
+      "depends_on": [],
+      "created": "2026-06-25T19:39:45+00:00",
+      "updated": "2026-06-25T19:54:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ec2ae7c36d43fdfc0dc747396b7d4248",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/hooks/use-chat-stream.ts",
+          "apps/dashboard/lib/conversations.ts",
+          "apps/dashboard/components/chat/ChatHistorySidebar.tsx",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/tests-bff/chat-history.test.tsx",
+          "apps/dashboard/tests-bff/mocks/handlers.ts"
+        ],
+        "snapshot_md5": "bea3016a22850f161d2b556375851629"
+      }
     }
   },
   "milestones": {
@@ -208,7 +233,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T19:38:59+00:00",
+  "updated": "2026-06-25T19:54:03+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

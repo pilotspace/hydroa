@@ -11,9 +11,10 @@
  * .add/design/captures/chat-workspace-page.png.
  */
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Send, Square } from "lucide-react";
 import { useChatStream, type ChatMessage, type Usage } from "@/lib/hooks/use-chat-stream";
+import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
 import { ModelPicker } from "@/components/chat/ModelPicker";
 import { ModelControls } from "@/components/chat/ModelControls";
 import { CostReadout } from "@/components/chat/CostReadout";
@@ -21,8 +22,18 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Empty, ErrorState } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
+import {
+  createConversation,
+  getConversation,
+  appendMessage,
+} from "@/lib/conversations";
 
 const DEFAULT_MODEL = "openai/gpt-4o";
+
+/** First ~40 chars of text, trimmed — used as a conversation title slug. */
+function slug(text: string): string {
+  return text.trim().slice(0, 40).trim();
+}
 
 export interface ChatWorkspaceProps {
   /** Default model until chat-model-controls supplies a live picker. */
@@ -30,7 +41,38 @@ export interface ChatWorkspaceProps {
 }
 
 export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspaceProps) {
-  const { status, messages, streamingText, usage, error, send, stop } = useChatStream();
+  // v43: conversation identity + sidebar refresh trigger
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  // Ref to the resolved conversation id (set synchronously on resume/new, or set
+  // after the createConversation promise resolves on the first turn).
+  const activeConvIdRef = useRef<string | null>(null);
+  // On the first turn we fire createConversation concurrently with the stream.
+  // onTurnComplete must await this promise so it appends to the right id even
+  // when the stream finishes before the create call resolves.
+  const pendingConvIdRef = useRef<Promise<string | null> | null>(null);
+
+  const onTurnComplete = useCallback(
+    async ({ assistant }: { user: string; assistant: string }) => {
+      // Resolve the conversation id — may be set already or still inflight.
+      let id = activeConvIdRef.current;
+      if (!id && pendingConvIdRef.current) {
+        id = await pendingConvIdRef.current;
+      }
+      if (!id) return;
+      try {
+        await appendMessage(id, "assistant", assistant);
+      } catch {
+        // best-effort: swallow — the on-screen turn is already visible
+      }
+      setRefreshKey((k) => k + 1);
+    },
+    [],
+  );
+
+  const { status, messages, streamingText, usage, error, send, stop, reset, load } =
+    useChatStream({ onTurnComplete });
+
   const [input, setInput] = useState("");
   const [model, setModel] = useState(defaultModel);
   const [system, setSystem] = useState("");
@@ -64,6 +106,28 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   function submit() {
     const text = input.trim();
     if (!text || isStreaming) return; // empty submit / mid-stream = no-op
+
+    // v43: best-effort persistence — create conversation on first turn, append user msg.
+    // Store a promise so onTurnComplete can await the conv id even if the stream
+    // resolves before the createConversation call does.
+    const persistPromise: Promise<string | null> = (async () => {
+      try {
+        let id = activeConvIdRef.current;
+        if (!id) {
+          const conv = await createConversation(slug(text));
+          id = conv.id;
+          activeConvIdRef.current = id;
+          setActiveConversationId(id);
+        }
+        await appendMessage(id, "user", text);
+        return id;
+      } catch {
+        // best-effort: swallow — streaming proceeds regardless
+        return activeConvIdRef.current;
+      }
+    })();
+    pendingConvIdRef.current = persistPromise;
+
     send({ model, text, system: system.trim() || undefined, temperature, webSearch });
     setInput("");
   }
@@ -80,10 +144,39 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     }
   }
 
+  // v43: sidebar callbacks
+  function handleNew() {
+    reset();
+    activeConvIdRef.current = null;
+    setActiveConversationId(null);
+  }
+
+  function handleSelect(id: string) {
+    void (async () => {
+      try {
+        const conv = await getConversation(id);
+        load(conv.messages.map((m) => ({ role: m.role, content: m.content })));
+        activeConvIdRef.current = id;
+        setActiveConversationId(id);
+      } catch {
+        // best-effort: if fetch fails just leave the current thread intact
+      }
+    })();
+  }
+
   const showEmpty = messages.length === 0 && !isStreaming && status !== "error";
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-muted/30">
+    <div className="flex h-full min-h-0 flex-row bg-muted/30">
+      {/* v43: conversation history sidebar */}
+      <ChatHistorySidebar
+        activeId={activeConversationId}
+        onSelect={handleSelect}
+        onNew={handleNew}
+        refreshKey={refreshKey}
+        streaming={isStreaming}
+      />
+      <div className="flex min-h-0 flex-1 flex-col bg-muted/30">
       <header className="flex items-center justify-between border-b border-border bg-background px-6 py-3">
         <h1 className="text-lg font-semibold text-foreground">Chat</h1>
         <div className="flex items-center gap-3">
@@ -164,6 +257,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
           </div>
         </div>
       </form>
+      </div>
     </div>
   );
 }

@@ -45,6 +45,8 @@ export interface UseChatStream {
   send(input: SendInput): void;
   stop(): void;
   reset(): void;
+  /** v43: Replace the current thread with `messages` (resume a persisted conversation). */
+  load(messages: ChatMessage[]): void;
 }
 
 /** A single SSE frame from the OpenAI-wire stream. */
@@ -65,7 +67,17 @@ function gatewayBase(): string {
   return "";
 }
 
-export function useChatStream(opts?: { gatewayPath?: string }): UseChatStream {
+export interface TurnCompletePayload {
+  user: string;
+  assistant: string;
+  usage?: Usage;
+}
+
+export function useChatStream(opts?: {
+  gatewayPath?: string;
+  /** v43: fired ONCE on the SUCCESS path when a non-empty assistant turn is committed. */
+  onTurnComplete?: (turn: TurnCompletePayload) => void;
+}): UseChatStream {
   const path = opts?.gatewayPath ?? "/api/gw/v1/chat/completions";
 
   const [status, setStatus] = useState<ChatStatus>("idle");
@@ -78,6 +90,8 @@ export function useChatStream(opts?: { gatewayPath?: string }): UseChatStream {
   const messagesRef = useRef<ChatMessage[]>([]);
   const partialRef = useRef("");
   const abortRef = useRef<AbortController | null>(null);
+  // v43: capture the user text of the current turn so onTurnComplete can report it.
+  const currentUserTextRef = useRef<string>("");
 
   // design-for-failure: unmounting mid-stream (route change / navigation) MUST
   // abort the in-flight fetch so the BFF closes and the gateway's v35
@@ -95,7 +109,7 @@ export function useChatStream(opts?: { gatewayPath?: string }): UseChatStream {
   }
 
   /** Append the accumulated partial as the assistant turn (if any) and go idle. */
-  function finishTurn(finalUsage: Usage | undefined): void {
+  function finishTurn(finalUsage: Usage | undefined, isAbort: boolean): void {
     const content = partialRef.current;
     if (content) commitMessages([...messagesRef.current, { role: "assistant", content }]);
     if (finalUsage) setUsage(finalUsage);
@@ -103,6 +117,11 @@ export function useChatStream(opts?: { gatewayPath?: string }): UseChatStream {
     setStreamingText("");
     abortRef.current = null;
     setStatus("idle");
+    // v43: fire onTurnComplete ONLY on the success path with a non-empty assistant message.
+    // NEVER fires on abort or error paths.
+    if (!isAbort && content && opts?.onTurnComplete) {
+      opts.onTurnComplete({ user: currentUserTextRef.current, assistant: content, usage: finalUsage });
+    }
   }
 
   async function runStream(wire: ChatMessage[], input: SendInput, controller: AbortController): Promise<void> {
@@ -182,11 +201,14 @@ export function useChatStream(opts?: { gatewayPath?: string }): UseChatStream {
       }
 
       controller.signal.removeEventListener("abort", onAbort);
-      finishTurn(localUsage);
+      // After the reader loop exits naturally (e.g. via reader.cancel() on abort),
+      // check the signal: if aborted, treat as abort path so onTurnComplete does NOT fire.
+      finishTurn(localUsage, controller.signal.aborted);
     } catch (err) {
       if (controller.signal.aborted) {
         // stop() / reset() — commit whatever streamed so far, then idle.
-        finishTurn(undefined);
+        // isAbort=true: onTurnComplete MUST NOT fire.
+        finishTurn(undefined, true);
         return;
       }
       // Genuine failure: preserve any partial as a stopped assistant turn, go error.
@@ -211,6 +233,8 @@ export function useChatStream(opts?: { gatewayPath?: string }): UseChatStream {
 
     setError(undefined);
     setUsage(undefined);
+    // v43: capture user text so onTurnComplete can report it.
+    currentUserTextRef.current = text;
 
     const next = [...messagesRef.current, { role: "user" as const, content: text }];
     commitMessages(next);
@@ -243,5 +267,16 @@ export function useChatStream(opts?: { gatewayPath?: string }): UseChatStream {
     setStatus("idle");
   }
 
-  return { status, messages, streamingText, usage, error, send, stop, reset };
+  /** v43: Replace the current thread with persisted messages (resume a conversation). */
+  function load(messages: ChatMessage[]): void {
+    messagesRef.current = messages;
+    setMessages(messages);
+    partialRef.current = "";
+    setStreamingText("");
+    setError(undefined);
+    abortRef.current = null;
+    setStatus("idle");
+  }
+
+  return { status, messages, streamingText, usage, error, send, stop, reset, load };
 }

@@ -136,6 +136,13 @@ export const bffHandlers = [
       data: [{ id: "openai/gpt-4o", name: "GPT-4o", context_length: 128000 }],
     })
   ),
+
+  // v43 conversation history sidebar: the ChatHistorySidebar fetches on mount,
+  // so every ChatWorkspace render needs this stubbed. Tests that assert specific
+  // conversation state override with their own server.use(...).
+  http.get(`${APP}/api/gw/v1/conversations`, () =>
+    HttpResponse.json({ data: [] })
+  ),
 ];
 
 export const defaultHandlers = [...gatewayHandlers, ...bffHandlers];
