@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "memory-backend",
+  "active_task": "memory-ui",
   "active_milestone": "v44",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -189,6 +189,32 @@
         ],
         "snapshot_md5": "2cafa2675e5161d4bbe29b1f29e5882d"
       }
+    },
+    "memory-ui": {
+      "title": "Dashboard /app/memory: add + list + semantic search via BFF",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v44",
+      "depends_on": [],
+      "created": "2026-06-25T20:33:28+00:00",
+      "updated": "2026-06-25T20:43:22+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "942d3cefbc1b6327bb6441942aaa139d",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/memories.ts",
+          "apps/dashboard/components/memory/MemoryWorkspace.tsx",
+          "apps/dashboard/app/(app)/app/memory/page.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/memory-workspace.test.tsx",
+          "apps/dashboard/tests-bff/nav-role-filter.test.tsx",
+          "apps/dashboard/tests-bff/mocks/handlers.ts"
+        ],
+        "snapshot_md5": "0b2d690e209ce6ec24ef802aafabd969"
+      }
     }
   },
   "milestones": {
@@ -210,7 +236,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T20:32:50+00:00",
+  "updated": "2026-06-25T20:43:22+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

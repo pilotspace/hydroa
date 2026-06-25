@@ -143,6 +143,13 @@ export const bffHandlers = [
   http.get(`${APP}/api/gw/v1/conversations`, () =>
     HttpResponse.json({ data: [] })
   ),
+
+  // v44 memory workspace: MemoryWorkspace fetches on mount, so any test that
+  // renders it needs this stubbed. Tests that assert specific memory state
+  // override with their own server.use(...).
+  http.get(`${APP}/api/gw/v1/memories`, () =>
+    HttpResponse.json({ data: [] })
+  ),
 ];
 
 export const defaultHandlers = [...gatewayHandlers, ...bffHandlers];
