@@ -105,6 +105,10 @@ from gateway.usage.application.recovery_sweep import (
     OpenRouterRecoverySweeper,
     should_start_recovery_sweep,
 )
+from gateway.usage.application.retention_sweep import (
+    RetentionSweeper,
+    should_start_retention_sweep,
+)
 from gateway.usage.infrastructure.alert_events_orm import (
     AlertEventRow as _AlertEventRow,  # noqa: F401 — registers alert_events ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
@@ -418,6 +422,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # RetentionSweeper — periodic bounded DELETE of aged time-series rows
+        # (data-retention-controls v38). Default-ON at configured defaults; started only
+        # when interval>0 AND at least one per-table window>0. Wired after recovery sweep.
+        app.state.retention_sweeper_task = None
+        if should_start_retention_sweep(_settings):
+            retention_sweeper = RetentionSweeper(
+                session_factory=_sessionmaker,
+                settings=_settings,
+            )
+            app.state.retention_sweeper = retention_sweeper
+            app.state.retention_sweeper_task = asyncio.create_task(
+                retention_sweeper.run_forever(
+                    interval_seconds=float(_settings.retention_check_interval_seconds)
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -445,6 +465,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             sweep_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await sweep_task
+
+        retention_task: asyncio.Task[None] | None = getattr(
+            app.state, "retention_sweeper_task", None
+        )
+        if retention_task is not None:
+            retention_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await retention_task
 
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
@@ -506,6 +534,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.health_checker_task = None
     app.state.drift_checker_task = None
     app.state.recovery_sweep_task = None
+    app.state.retention_sweeper_task = None
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings

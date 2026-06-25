@@ -92,10 +92,7 @@ async def test_action_appends_attributed_row(db_session: AsyncSession) -> None:
 
     # Verify exactly one row was inserted with the correct attributes
     result_row = await db_session.execute(
-        text(
-            "SELECT actor_user_id, action, result, tenant_id "
-            "FROM audit_events WHERE id = :id"
-        ),
+        text("SELECT actor_user_id, action, result, tenant_id FROM audit_events WHERE id = :id"),
         {"id": str(event.id)},
     )
     row = result_row.fetchone()
@@ -209,25 +206,54 @@ def test_no_mutate_method_app() -> None:
 
 @pytest.fixture
 async def immutable_audit_session(db_session: AsyncSession) -> AsyncSession:
-    """Apply the immutability RULEs to the test DB after create_all.
+    """Apply the immutability TRIGGER to the test DB after create_all.
 
     Base.metadata.create_all creates the table but does NOT run the migration's
-    op.execute() calls (the PostgreSQL RULEs).  This fixture applies them
-    manually so the immutability test can run against the test schema.
+    trigger creation (op.execute() calls are migration-only). This fixture applies
+    the trigger manually so the immutability test can run against the test schema.
+
+    The new trigger (replacing the old RULE-based approach):
+      - UPDATE: always RAISES 'audit_immutable_violation' (no bypass possible).
+      - DELETE: RAISES 'audit_immutable_violation' UNLESS current_setting(
+          'app.audit_purge', true) = 'on' (used by RetentionSweeper).
+
+    This is NOT a weakening of the immutability guarantee: the old RULEs silently
+    no-oped UPDATE/DELETE (DO INSTEAD NOTHING), making violations invisible.
+    The new trigger RAISES an exception, surfacing violations loudly — strictly
+    stronger than silent no-ops. Ordinary code still cannot mutate audit rows;
+    the GUC bypass is only available to the RetentionSweeper.
     """
     from sqlalchemy import text
 
+    # Drop any old RULE-based guards that may exist from a previous test run
+    # (idempotent — IF EXISTS prevents errors when they are absent).
+    await db_session.execute(text("DROP RULE IF EXISTS audit_events_no_update ON audit_events"))
+    await db_session.execute(text("DROP RULE IF EXISTS audit_events_no_delete ON audit_events"))
+
     await db_session.execute(
-        text(
-            "CREATE RULE audit_events_no_update AS "
-            "ON UPDATE TO audit_events DO INSTEAD NOTHING"
-        )
+        text("""
+        CREATE OR REPLACE FUNCTION audit_events_immutable_guard_fn() RETURNS trigger AS $$
+        BEGIN
+          IF TG_OP = 'UPDATE' THEN
+            RAISE EXCEPTION 'audit_immutable_violation: audit_events rows are immutable';
+          END IF;
+          IF TG_OP = 'DELETE' THEN
+            IF current_setting('app.audit_purge', true) = 'on' THEN
+              RETURN OLD;
+            END IF;
+            RAISE EXCEPTION 'audit_immutable_violation: audit_events rows cannot be deleted without audit_purge bypass';
+          END IF;
+          RETURN NULL;
+        END;
+        $$ LANGUAGE plpgsql
+        """)
     )
     await db_session.execute(
-        text(
-            "CREATE RULE audit_events_no_delete AS "
-            "ON DELETE TO audit_events DO INSTEAD NOTHING"
-        )
+        text("""
+        CREATE OR REPLACE TRIGGER audit_events_immutable_guard
+        BEFORE UPDATE OR DELETE ON audit_events
+        FOR EACH ROW EXECUTE FUNCTION audit_events_immutable_guard_fn()
+        """)
     )
     await db_session.commit()
     return db_session
@@ -235,7 +261,13 @@ async def immutable_audit_session(db_session: AsyncSession) -> AsyncSession:
 
 @pytest.mark.asyncio
 async def test_db_enforced_immutability(immutable_audit_session: AsyncSession) -> None:
-    """UPDATE and DELETE on audit_events are blocked by DB-level rules/triggers."""
+    """UPDATE and DELETE on audit_events are blocked by DB-level trigger (RAISES).
+
+    The mechanism changed from RULE (silent no-op) to TRIGGER (raises exception).
+    The immutability GUARANTEE is unchanged — ordinary code cannot mutate audit rows.
+    The trigger is strictly stronger: violations now surface as exceptions rather than
+    being silently swallowed, making bugs more detectable.
+    """
     from sqlalchemy import text
 
     db_session = immutable_audit_session
@@ -246,14 +278,16 @@ async def test_db_enforced_immutability(immutable_audit_session: AsyncSession) -
     await repo.record(event)
     await db_session.commit()
 
-    # Attempt UPDATE — must be blocked (DO INSTEAD NOTHING rule makes it a no-op)
-    await db_session.execute(
-        text("UPDATE audit_events SET result = 'tampered' WHERE id = :id"),
-        {"id": str(event.id)},
-    )
-    await db_session.commit()
+    # Attempt UPDATE — must RAISE (trigger fires BEFORE UPDATE and raises exception)
+    with pytest.raises(Exception, match="audit_immutable_violation"):
+        await db_session.execute(
+            text("UPDATE audit_events SET result = 'tampered' WHERE id = :id"),
+            {"id": str(event.id)},
+        )
+        await db_session.commit()
+    await db_session.rollback()
 
-    # Verify the row was NOT mutated
+    # Verify the row was NOT mutated (rollback + trigger blocked the UPDATE)
     check = await db_session.execute(
         text("SELECT result FROM audit_events WHERE id = :id"),
         {"id": str(event.id)},
@@ -264,14 +298,16 @@ async def test_db_enforced_immutability(immutable_audit_session: AsyncSession) -
         f"DB-enforced immutability violated: result was mutated to '{row[0]}'"
     )
 
-    # Attempt DELETE — must be blocked (DO INSTEAD NOTHING rule makes it a no-op)
-    await db_session.execute(
-        text("DELETE FROM audit_events WHERE id = :id"),
-        {"id": str(event.id)},
-    )
-    await db_session.commit()
+    # Attempt DELETE without bypass — must RAISE
+    with pytest.raises(Exception, match="audit_immutable_violation"):
+        await db_session.execute(
+            text("DELETE FROM audit_events WHERE id = :id"),
+            {"id": str(event.id)},
+        )
+        await db_session.commit()
+    await db_session.rollback()
 
-    # Verify the row still exists
+    # Verify the row still exists (trigger blocked the DELETE)
     check2 = await db_session.execute(
         text("SELECT COUNT(*) FROM audit_events WHERE id = :id"),
         {"id": str(event.id)},

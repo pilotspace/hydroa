@@ -53,6 +53,9 @@ class AlertEventRow(Base):
             "created_at",
             postgresql_where=sa_text("delivered_at IS NULL"),
         ),
+        # Retention sweep: age-based DELETE WHERE created_at < :cutoff needs this index
+        # to avoid a full-table scan. Added in migration f2a4c6e8b0d3.
+        Index("ix_alert_events_created_at", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
