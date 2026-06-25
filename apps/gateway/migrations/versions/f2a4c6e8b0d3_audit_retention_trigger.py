@@ -57,7 +57,8 @@ BEGIN
     IF current_setting('app.audit_purge', true) = 'on' THEN
       RETURN OLD;
     END IF;
-    RAISE EXCEPTION 'audit_immutable_violation: audit_events rows cannot be deleted without audit_purge bypass';
+    RAISE EXCEPTION 'audit_immutable_violation: audit_events rows cannot be '
+                    'deleted without audit_purge bypass';
   END IF;
   RETURN NULL;
 END;
