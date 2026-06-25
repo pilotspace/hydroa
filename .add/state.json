@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "artifacts-backend",
+  "active_task": "artifacts-ui",
   "active_milestone": "v45",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -190,6 +190,33 @@
         ],
         "snapshot_md5": "dd5590a0f1b20f398104f30555ba0099"
       }
+    },
+    "artifacts-ui": {
+      "title": "Dashboard /app/artifacts: upload + list + download + delete via BFF",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v45",
+      "depends_on": [],
+      "created": "2026-06-25T21:15:44+00:00",
+      "updated": "2026-06-25T21:29:36+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "eb3129ddd6c690ff1f3b11ae6878e12f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/artifacts.ts",
+          "apps/dashboard/components/artifacts/",
+          "apps/dashboard/app/(app)/app/artifacts/",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/app/api/gw/[...path]/route.ts",
+          "apps/dashboard/tests-bff/artifacts-workspace.test.tsx",
+          "apps/dashboard/tests-bff/nav-role-filter.test.tsx",
+          "apps/dashboard/tests-bff/mocks/handlers.ts"
+        ],
+        "snapshot_md5": "2b5a9d01181b0c2fa6e1aafc95497bbf"
+      }
     }
   },
   "milestones": {
@@ -211,7 +238,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T21:15:07+00:00",
+  "updated": "2026-06-25T21:29:36+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

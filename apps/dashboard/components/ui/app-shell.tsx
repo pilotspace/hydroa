@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BarChart3, Bell, Boxes, Brain, ClipboardList, GaugeCircle, HeartPulse, Hexagon, KeyRound, Menu, MessageSquare, Mic, Receipt, Settings, Users } from "lucide-react";
+import { Activity, BarChart3, Bell, Boxes, Brain, ClipboardList, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, Menu, MessageSquare, Mic, Receipt, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   Sidebar,
@@ -44,6 +44,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/app/chat", label: "Chat", icon: MessageSquare },
   { href: "/app/voice", label: "Voice", icon: Mic },
   { href: "/app/memory", label: "Memory", icon: Brain },
+  { href: "/app/artifacts", label: "Artifacts", icon: FolderArchive },
   { href: "/app/usage", label: "Usage", icon: BarChart3 },
   { href: "/app/spend", label: "Spend", icon: Receipt },
   { href: "/app/keys", label: "API Keys", icon: KeyRound },

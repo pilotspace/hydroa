@@ -224,6 +224,18 @@ async function proxyRequest(
     return new NextResponse(piped, { status: upstream.status, headers });
   }
 
+  // Binary passthrough: non-JSON, non-streaming responses with a body are
+  // forwarded verbatim (e.g. artifact downloads). The json() fallback below
+  // would coerce them to null — this branch prevents that.
+  const isBinaryPassthrough = !isJson && !shouldStream && upstream.body != null;
+  if (isBinaryPassthrough) {
+    const buf = await upstream.arrayBuffer();
+    const headers = new Headers(upstream.headers);
+    for (const name of HOP_BY_HOP_HEADERS) headers.delete(name);
+    headers.delete("set-cookie");
+    return new NextResponse(buf, { status: upstream.status, headers });
+  }
+
   // Proxy all non-streamable responses verbatim (buffered JSON — byte-identical
   // to before v40).
   let responseBody: unknown;

@@ -150,6 +150,13 @@ export const bffHandlers = [
   http.get(`${APP}/api/gw/v1/memories`, () =>
     HttpResponse.json({ data: [] })
   ),
+
+  // v45 artifacts workspace: ArtifactsWorkspace fetches on mount, so any test
+  // that renders it needs this stubbed. Tests that assert specific artifact
+  // state override with their own server.use(...).
+  http.get(`${APP}/api/gw/v1/artifacts`, () =>
+    HttpResponse.json({ data: [], limit: 50, offset: 0 })
+  ),
 ];
 
 export const defaultHandlers = [...gatewayHandlers, ...bffHandlers];
