@@ -437,12 +437,12 @@
     },
     "audit-log-surface": {
       "title": "Audit log read API + dashboard viewer",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v38",
       "depends_on": [],
       "created": "2026-06-25T03:52:54+00:00",
-      "updated": "2026-06-25T03:54:36+00:00",
+      "updated": "2026-06-25T04:14:52+00:00",
       "flag_verified": true,
       "tripwire": {
         "contract_md5": "eabd8809fa085d09532ce155dd105cab",
@@ -463,9 +463,20 @@
           "apps/dashboard/app/(app)/app/audit/",
           "apps/dashboard/components/",
           "apps/dashboard/lib/",
-          "apps/dashboard/tests/"
+          "apps/dashboard/tests/",
+          "apps/dashboard/tests-bff/"
         ],
-        "snapshot_md5": "08f415ade80cc36a3e04a47921f9a287"
+        "snapshot_md5": "247854dc4c389fde631aa10ccb81e560"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-25T04:14:41+00:00",
+            "reason": "scope_violation: task 'audit-log-surface' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/nav-role-filter.test.tsx \u00b7 tmp/commit-audit-log-surface.txt (2 total)",
+            "source": "scope"
+          }
+        ]
       }
     }
   },
@@ -488,7 +499,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T03:54:36+00:00",
+  "updated": "2026-06-25T04:14:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
