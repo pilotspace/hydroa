@@ -1,5 +1,10 @@
 # Releases
 
+## 0.3.0 — 2026-06-25
+milestones: v33, v34, v35, v36, v37, v38, v39
+waivers: none
+evidence: 7 milestones (v33-v39) gated PASS; gateway suite 1730 green @88.14% at v39 close; v39 live double-pass 13/13 x2 (run_id 1782402015/1782402020); 0 blockers/waivers; main HEAD 0ce2f8a.
+
 ## 0.2.0 — 2026-06-23
 milestones: v31, v30, v32
 waivers: none

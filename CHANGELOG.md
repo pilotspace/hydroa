@@ -3,6 +3,64 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic versioning.
 
+## [0.3.0] — 2026-06-25
+
+Third release. Adds headless agent authentication (OAuth 2.0 Device Authorization Grant,
+RFC 8628), hardens billing/metering across disconnects and streaming, completes the Helios
+agent-coding path, and ships enterprise governance (RBAC, audit, retention, SLO) plus a public
+marketing site. Bundles 7 closed milestones (v33–v39) since 0.2.0. No breaking changes — existing
+API-key, OIDC/SSO, session-JWT, billing, and routing behavior are unchanged.
+
+### Added
+
+**Headless agent authentication** (v39) — a new credential class
+- OAuth 2.0 Device Authorization Grant (RFC 8628): public `POST /oauth/device/authorize` +
+  `POST /oauth/token` (full §3.5 polling), authed `POST /oauth/device/{approve,deny}` (any tenant
+  member, bound to the verified JWT — never the request body).
+- Agent tokens are SHA-256-hashed at rest, plaintext returned once, fail-closed, expiry
+  server-enforced; refresh default-on 30d; default $100/mo per-token budget cap.
+- Accepted at both the in-process `/v1` handlers and the edge `/internal/authz` ext_authz gate;
+  byte-identical 401 for both credential classes (anti-enumeration). A coding agent can now
+  self-authenticate and make billable LLM requests with no browser.
+
+**Helios agent-coding integration readiness** (v34)
+- OpenAI-wire → native Helios path: reasoning, prompt-cache, parallel tool streaming,
+  disconnect-billing across all providers, and a concurrency load guard.
+
+**Enterprise governance & observability** (v38, v37)
+- RBAC roles (allowlist permission matrix, 6 tiers) + RBAC admin UI (`PUT /admin/users/{id}/role`,
+  escalation guard).
+- Append-only, trigger-immutable audit log + `GET /admin/audit`.
+- Active-by-default data-retention sweeper (audit retained to a floor).
+- SLO metrics + dashboard (`GET /admin/slo`, `/app/slo`).
+- Public marketing site (landing, pricing, legal, docs, blog, status).
+- Dashboard observability parity (v37): bandwidth panel, routing-editor weight guard + restart
+  affordance, SSO domain-seed with pre-flight messaging.
+
+**Per-key bandwidth pacing** (v36)
+- Per-key aggregate Redis token-bucket paces concurrent same-key throughput; bounded-wait →
+  503 + Retry-After / terminal SSE error frame. Default-off, fail-open.
+
+### Changed / Hardened
+
+**Billing trustworthiness** (v33)
+- Drift-threshold validation, non-finite passthrough sanitization, cost-basis-filtered
+  reconciliation, and provider-cost stamping on client disconnect (gated against double-counting).
+
+**Agent-loop error fidelity** (v35)
+- Upstream 429 surfaces as client 429 + Retry-After; any mid-stream failure (including graceful
+  peer close) emits a terminal SSE error frame + `[DONE]`.
+
+### Operator notes
+- v38 data-retention purge is **active-by-default on deploy** (audit retained to a floor).
+- v39 device-authorization + token endpoints are **public/pre-auth** (rate-limited and bounded);
+  monitor the `/oauth/*` and `/internal/authz` 401-rate split for probing.
+- The `operator` role holds `KEYS_MANAGE`.
+
+### Quality
+- Full gateway suite 1730 passed @ 88.14% at v39 close; all milestones gated PASS.
+- v39's three backend security HARD-STOPs reviewed + approved; v39 live double-pass 13/13 ×2.
+
 ## [0.2.0] — 2026-06-23
 
 Second release of the metered multi-tenant AI proxy. Hardens billing trustworthiness under
