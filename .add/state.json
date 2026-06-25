@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "audio-translations-endpoint",
+  "active_task": "voice-playground",
   "active_milestone": "v42",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -239,6 +239,31 @@
         ],
         "snapshot_md5": "dcb82af55bb2944bb66eaef1a24ece46"
       }
+    },
+    "voice-playground": {
+      "title": "Dashboard /app/voice \u2014 STT upload + TTS playback",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v42",
+      "depends_on": [],
+      "created": "2026-06-25T18:42:07+00:00",
+      "updated": "2026-06-25T18:56:35+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c9975f0a664903118a6f6e11b15375dd",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/api/gw/",
+          "apps/dashboard/app/(app)/app/voice/",
+          "apps/dashboard/components/voice/",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/voice-playground.test.tsx",
+          "apps/dashboard/tests-bff/nav-role-filter.test.tsx"
+        ],
+        "snapshot_md5": "880d9d03844ddd143d1fcf3b938f949b"
+      }
     }
   },
   "milestones": {
@@ -260,7 +285,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T18:40:00+00:00",
+  "updated": "2026-06-25T18:56:35+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

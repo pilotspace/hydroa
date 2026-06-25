@@ -98,11 +98,24 @@ async function proxyRequest(
   // Forward body for mutating methods
   let bodyText: string | null = null;
   const method = req.method;
+  const isJsonBody = !contentType || contentType.startsWith("application/json");
+  let bodyInit: BodyInit | undefined = undefined; // BodyInit covers string | ArrayBuffer
   if (method !== "GET" && method !== "HEAD" && method !== "DELETE") {
-    try {
-      bodyText = await req.text();
-    } catch {
-      bodyText = null;
+    if (isJsonBody) {
+      try {
+        bodyText = await req.text();
+        bodyInit = bodyText ?? undefined;
+      } catch {
+        bodyText = null;
+        bodyInit = undefined;
+      }
+    } else {
+      // binary / multipart (e.g. STT file upload): forward raw bytes — req.text() would UTF-8-decode & corrupt it.
+      try {
+        bodyInit = await req.arrayBuffer();
+      } catch {
+        bodyInit = undefined;
+      }
     }
   }
 
@@ -133,7 +146,7 @@ async function proxyRequest(
     upstream = await fetch(upstreamUrl, {
       method,
       headers: upstreamHeaders,
-      body: bodyText ?? undefined,
+      body: bodyInit,
       signal: controller.signal,
     });
   } catch (err) {

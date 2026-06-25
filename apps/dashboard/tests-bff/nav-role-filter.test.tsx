@@ -17,6 +17,8 @@
  * supersedes 11 → admin/owner/unknown now see 12.
  * UPDATED by chat-workspace-page (v40): a MEMBER-visible "Chat" link (/app/chat, NO minRole) is
  * added at the TOP of the nav → member now sees 5 (was 4); admin/owner/unknown now see 13 (was 12).
+ * UPDATED by voice-playground (v40): a MEMBER-visible "Voice" link (/app/voice, NO minRole) is
+ * added after Chat → member now sees 6 (was 5); admin/owner/unknown now see 14 (was 13).
  *
  * AppShell takes an optional `role` prop (presentational); DashboardShell ("use
  * client") feeds it from useCurrentUser().role. The nav filter is UX-only — no
@@ -40,8 +42,8 @@ import { DashboardShell } from "@/components/dashboard-shell";
 
 const APP = "http://localhost:3000";
 const ADMIN_ONLY = [/models/i, /teams/i, /members/i, /routing/i, /alerts/i, /audit/i, /health/i, /^slo$/i];
-const MEMBER_OK = [/^chat$/i, /usage/i, /spend/i, /api keys/i, /settings/i];
-const ALL_THIRTEEN = [/^chat$/i, /usage/i, /spend/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
+const MEMBER_OK = [/^chat$/i, /^voice$/i, /usage/i, /spend/i, /api keys/i, /settings/i];
+const ALL_FOURTEEN = [/^chat$/i, /^voice$/i, /usage/i, /spend/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
 
 function makeQueryClient() {
   return new QueryClient({
@@ -71,10 +73,10 @@ describe("AppShell — role-based nav visibility", () => {
     for (const re of MEMBER_OK) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
-    // exactly the 5 member-OK links (Chat + Usage + Spend + API Keys + Settings) —
+    // exactly the 6 member-OK links (Chat + Voice + Usage + Spend + API Keys + Settings) —
     // guards against an accidental extra/missing minRole tag silently dropping a
     // member-visible link.
-    expect(within(n).getAllByRole("link")).toHaveLength(5);
+    expect(within(n).getAllByRole("link")).toHaveLength(6);
   });
 
   it("test_admin_sees_all_links", () => {
@@ -84,10 +86,10 @@ describe("AppShell — role-based nav visibility", () => {
       </AppShell>,
     );
     const n = nav();
-    for (const re of ALL_THIRTEEN) {
+    for (const re of ALL_FOURTEEN) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
-    expect(within(n).getAllByRole("link")).toHaveLength(13);
+    expect(within(n).getAllByRole("link")).toHaveLength(14);
   });
 
   it("test_owner_sees_all_links", () => {
@@ -96,7 +98,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(13);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(14);
   });
 
   it("test_unknown_role_fails_open", () => {
@@ -105,7 +107,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(13);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(14);
     unmount();
 
     // no role prop at all → also fail-open (preserves the prior AppShell behavior)
@@ -114,7 +116,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(13);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(14);
   });
 });
 
@@ -145,10 +147,11 @@ describe("DashboardShell — wires role from useCurrentUser", () => {
     });
     expect(within(n).queryByRole("link", { name: /teams/i })).not.toBeInTheDocument();
     expect(within(n).queryByRole("link", { name: /routing/i })).not.toBeInTheDocument();
-    // member-OK links remain — exactly 5 after the role resolves to member
+    // member-OK links remain — exactly 6 after the role resolves to member
     expect(within(n).getByRole("link", { name: /^chat$/i })).toBeInTheDocument();
+    expect(within(n).getByRole("link", { name: /^voice$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /usage/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /settings/i })).toBeInTheDocument();
-    expect(within(n).getAllByRole("link")).toHaveLength(5);
+    expect(within(n).getAllByRole("link")).toHaveLength(6);
   });
 });
