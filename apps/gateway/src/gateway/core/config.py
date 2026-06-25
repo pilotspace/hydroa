@@ -505,6 +505,15 @@ class Settings(BaseSettings):
     # GATEWAY_COOLDOWN_WINDOW_S — failure counter expiry window (sliding; NX-set on first INCR).
     cooldown_window_s: int = Field(default=60, ge=1, le=3600)
 
+    # ── Memory domain (memory-store task) ────────────────────────────────────
+    # GATEWAY_MEMORY_EMBEDDING_MODEL — model id routed through the gateway's own embedding
+    # upstream to vectorize memory content. Empty (default) = embedding disabled; POST still
+    # returns 201 with embedding=NULL. Only populate when a real embedding model is available.
+    memory_embedding_model: str = Field(default="")  # GATEWAY_MEMORY_EMBEDDING_MODEL
+    # GATEWAY_MEMORY_SEARCH_DEFAULT_TOP_K — default number of results returned by
+    # POST /v1/memories/search when top_k is not supplied by the caller. Clamped 1..100.
+    memory_search_default_top_k: int = Field(default=5, ge=1, le=100)  # GATEWAY_MEMORY_SEARCH_DEFAULT_TOP_K
+
     # ── Model-group aliases → ordered Deployments (model-fallbacks v6 + deployment-model v8) ──
     # GATEWAY_MODEL_GROUPS — JSON dict mapping alias string to an ordered member list.
     # A member is EITHER a bare model-id string (v6 shape) OR a deployment object:
