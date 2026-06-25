@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "rbac-admin-ui",
+  "active_task": "slo-metrics",
   "active_milestone": "v38",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -513,6 +513,35 @@
         ],
         "snapshot_md5": "247854dc4c389fde631aa10ccb81e560"
       }
+    },
+    "slo-metrics": {
+      "title": "SLO metrics endpoint (availability/latency/error-rate)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-25T05:05:23+00:00",
+      "updated": "2026-06-25T05:20:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "61db6ab33c0b25c598fe3f2d662bc237",
+        "tests": {
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "a475ed5c76711b678d5bef3ee22a181c",
+          "apps/gateway/tests/credential_stub.py": "bcfeaf8d11069c18638703cb79b172bb",
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885",
+          "apps/gateway/tests/test_retention_sweep.py": "35c40926918f242cfdf41da2afa9d180",
+          "apps/gateway/tests/test_users_role.py": "d9ec07b0c8a9a92c59aafe08395379a2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/",
+          "apps/gateway/tests/"
+        ],
+        "snapshot_md5": "25a29e788a087b1a005f003473ab7889"
+      }
     }
   },
   "milestones": {
@@ -534,7 +563,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T05:05:11+00:00",
+  "updated": "2026-06-25T05:20:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
