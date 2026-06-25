@@ -7,7 +7,7 @@ Contract FROZEN @ audio-endpoints (TASK.md §3 DEPS FLOW).
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +31,31 @@ def get_provider_registry(request: Request) -> ProviderRegistry:
     return registry
 
 
+def _build_composite_authenticator(
+    request: Request,
+    session: AsyncSession,
+) -> Any:
+    """Build a per-request CompositeKeyAuthenticator (agent-token-authn-seam §3).
+
+    Shared by get_transcription_use_case and get_speech_use_case so /v1/audio/*
+    accepts both sk- API keys (delegated, byte-identical) and minted agent tokens.
+    One helper avoids duplicating the four-line construction in each function.
+    """
+    from gateway.agent_oauth.infrastructure.repository import SqlAlchemyAgentOAuthRepository
+    from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
+    from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
+
+    repo = SqlAlchemyApiKeyRepository(session)
+    authz_use_case = AuthzUseCase(repo, _hasher)
+    _settings = getattr(request.app.state, "settings", None)
+    return CompositeKeyAuthenticator(
+        api_key_authenticator=SqlAlchemyKeyAuthenticator(authz_use_case),
+        agent_token_repo=SqlAlchemyAgentOAuthRepository(session),
+        hasher=_hasher,
+        settings=_settings,
+    )
+
+
 def get_transcription_use_case(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -43,11 +68,7 @@ def get_transcription_use_case(
       NonChatGovernance wraps all five collaborators
       TranscriptionUseCase wraps governance + session
     """
-    from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
-
-    repo = SqlAlchemyApiKeyRepository(session)
-    authz_use_case = AuthzUseCase(repo, _hasher)
-    authenticator = SqlAlchemyKeyAuthenticator(authz_use_case)
+    authenticator = _build_composite_authenticator(request, session)
     model_checker = SqlAlchemyModelChecker(session)
     budget_guard = request.app.state.budget_guard
     rate_limiter = getattr(request.app.state, "rate_limiter", None)
@@ -67,7 +88,8 @@ def get_transcription_use_case(
         governance=governance,
         session=session,
         tenant_credential_resolver=tenant_credential_resolver,
-        # stt-duration-cap §3: bound the billed per_second duration (GATEWAY_STT_MAX_DURATION_SECONDS).
+        # stt-duration-cap §3: bound the billed per_second duration.
+        # env: GATEWAY_STT_MAX_DURATION_SECONDS
         max_duration_seconds=request.app.state.settings.stt_max_duration_seconds,
     )
 
@@ -80,11 +102,7 @@ def get_speech_use_case(
 
     Identical construction pattern to get_transcription_use_case; builds SpeechUseCase instead.
     """
-    from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
-
-    repo = SqlAlchemyApiKeyRepository(session)
-    authz_use_case = AuthzUseCase(repo, _hasher)
-    authenticator = SqlAlchemyKeyAuthenticator(authz_use_case)
+    authenticator = _build_composite_authenticator(request, session)
     model_checker = SqlAlchemyModelChecker(session)
     budget_guard = request.app.state.budget_guard
     rate_limiter = getattr(request.app.state, "rate_limiter", None)

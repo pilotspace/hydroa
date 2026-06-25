@@ -1,0 +1,107 @@
+"""SQLAlchemy ORM rows for the agent OAuth device-grant store.
+
+All timestamp columns are timestamptz (DateTime(timezone=True)) so create_all (test) and
+the migration (prod) agree, and tz-aware comparisons never hit the naive/aware asyncpg trap.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from gateway.core.db import Base
+from gateway.core.ids import uuid7
+
+
+class DeviceAuthorizationRow(Base):
+    """device_authorizations — a pending/approved/denied/consumed RFC 8628 request."""
+
+    __tablename__ = "device_authorizations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'denied', 'consumed')",
+            name="device_authorizations_status_check",
+        ),
+        CheckConstraint(
+            "interval_seconds > 0", name="device_authorizations_interval_positive_check"
+        ),
+        Index("ix_device_authorizations_user_code_hash", "user_code_hash"),
+        # Only ONE live pending authorization may hold a given user_code at a time.
+        Index(
+            "uq_device_authorizations_user_code_pending",
+            "user_code_hash",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+    device_code_hash: Mapped[str] = mapped_column(unique=True)
+    user_code_hash: Mapped[str]
+    status: Mapped[str] = mapped_column(server_default=text("'pending'"))
+    scope: Mapped[str] = mapped_column(server_default=text("'proxy'"))
+    interval_seconds: Mapped[int] = mapped_column(Integer)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True,
+        default=None,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        default=None,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+
+class AgentTokenRow(Base):
+    """agent_tokens — an issued opaque token (hashes at rest; one per authorization)."""
+
+    __tablename__ = "agent_tokens"
+    __table_args__ = (Index("ix_agent_tokens_access_token_hash", "access_token_hash"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+    authorization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("device_authorizations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,  # single mint per authorization (single-use device_code backstop)
+    )
+    access_token_hash: Mapped[str] = mapped_column(unique=True)
+    refresh_token_hash: Mapped[str | None] = mapped_column(unique=True, nullable=True, default=None)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    scope: Mapped[str] = mapped_column(server_default=text("'proxy'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    access_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    refresh_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )

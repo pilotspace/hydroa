@@ -629,6 +629,114 @@ class Settings(BaseSettings):
             )
         return self
 
+    # ── Agent OAuth device-authorization endpoint (device-authorization-endpoint task) ──
+    # GATEWAY_AGENT_OAUTH_VERIFICATION_URI — dashboard URL shown to the human approver.
+    # Empty string = unconfigured (verification_uri_complete is omitted from the 200 body).
+    agent_oauth_verification_uri: str = ""  # GATEWAY_AGENT_OAUTH_VERIFICATION_URI
+    # GATEWAY_AGENT_OAUTH_DEVICE_CODE_TTL_SECONDS — how long a pending device_code lives.
+    # Must be > 0; fails fast at boot when set to 0 or negative.
+    agent_oauth_device_code_ttl_seconds: int = 600  # GATEWAY_AGENT_OAUTH_DEVICE_CODE_TTL_SECONDS
+    # GATEWAY_AGENT_OAUTH_POLL_INTERVAL_SECONDS — minimum polling interval (RFC 8628 §3.5).
+    # Must be > 0; fails fast at boot when set to 0 or negative.
+    agent_oauth_poll_interval_seconds: int = 5  # GATEWAY_AGENT_OAUTH_POLL_INTERVAL_SECONDS
+    # GATEWAY_AGENT_OAUTH_DEFAULT_SCOPE — scope assigned when the caller omits it.
+    agent_oauth_default_scope: str = "proxy"  # GATEWAY_AGENT_OAUTH_DEFAULT_SCOPE
+    # GATEWAY_AGENT_OAUTH_AUTHORIZE_RPM — per-IP fixed-window rate limit (requests/60 s).
+    # Must be > 0; fails fast at boot when set to 0 or negative.
+    agent_oauth_authorize_rpm: int = 12  # GATEWAY_AGENT_OAUTH_AUTHORIZE_RPM
+    # GATEWAY_AGENT_OAUTH_APPROVE_RPM — per-USER fixed-window rate limit on approve/deny
+    # (requests/60 s). Bounds user_code enumeration by an authenticated actor. Must be > 0;
+    # fails fast at boot when set to 0 or negative. (device-approval-flow task §3)
+    agent_oauth_approve_rpm: int = 30  # GATEWAY_AGENT_OAUTH_APPROVE_RPM
+
+    # ── Agent OAuth token endpoint (agent-token-endpoint task) ──────────────────
+    # GATEWAY_AGENT_OAUTH_ACCESS_TOKEN_TTL_SECONDS — lifetime of a minted access token.
+    # Must be > 0; fails fast at boot when set to 0 or negative.
+    agent_oauth_access_token_ttl_seconds: int = 3600  # GATEWAY_AGENT_OAUTH_ACCESS_TOKEN_TTL_SECONDS
+    # GATEWAY_AGENT_OAUTH_REFRESH_TOKEN_TTL_SECONDS — lifetime of a minted refresh token.
+    # 0 = disabled (no refresh token issued); >=0. Set to 0 to opt out of refresh tokens.
+    agent_oauth_refresh_token_ttl_seconds: int = (
+        2592000  # GATEWAY_AGENT_OAUTH_REFRESH_TOKEN_TTL_SECONDS
+    )
+    # GATEWAY_AGENT_OAUTH_TOKEN_RPM — per-IP fixed-window rate limit for POST /oauth/token.
+    # Must be > 0; fails fast at boot when set to 0 or negative.
+    agent_oauth_token_rpm: int = 60  # GATEWAY_AGENT_OAUTH_TOKEN_RPM
+
+    # ── Agent OAuth data-plane budget cap (agent-token-authn-seam task) ────────
+    # GATEWAY_AGENT_OAUTH_DEFAULT_BUDGET_USD — default monthly spend cap applied to
+    # every agent token, mapped to AuthzResult.monthly_budget_usd so the existing
+    # per-key guard enforces it at usage:spend:key:{token_id}:{YYYYMM}.
+    # Must be > 0 (Decimal); fails loud at boot on zero, negative, or non-finite values.
+    agent_oauth_default_budget_usd: Decimal = Decimal(
+        "100.00"
+    )  # GATEWAY_AGENT_OAUTH_DEFAULT_BUDGET_USD
+
+    @field_validator("agent_oauth_default_budget_usd", mode="before")
+    @classmethod
+    def _validate_agent_oauth_budget(cls, v: object) -> object:
+        """Fail loud on a non-positive or non-finite default budget cap.
+
+        A zero or negative cap would immediately block every agent token (zero threshold
+        passes no spend), while a non-finite value would silently disable enforcement.
+        Rejecting at startup turns both into a clear boot error. Mirrors the
+        reconciliation_drift_threshold validator style (mode='before' to catch
+        inf/nan before Pydantic's Decimal coercion).
+        """
+        try:
+            d = Decimal(str(v))
+        except Exception:
+            return v  # not parseable — let Pydantic raise its normal decimal error
+        if not d.is_finite() or d <= 0:
+            raise ValueError(
+                "INVALID_AGENT_OAUTH_DEFAULT_BUDGET_USD: "
+                "GATEWAY_AGENT_OAUTH_DEFAULT_BUDGET_USD must be a finite, positive "
+                f"USD amount (> 0); got {v!r}"
+            )
+        return v
+
+    @field_validator(
+        "agent_oauth_device_code_ttl_seconds",
+        "agent_oauth_poll_interval_seconds",
+        "agent_oauth_authorize_rpm",
+        "agent_oauth_approve_rpm",
+        "agent_oauth_access_token_ttl_seconds",
+        "agent_oauth_token_rpm",
+    )
+    @classmethod
+    def _validate_agent_oauth_positive_knobs(cls, v: int) -> int:
+        """Fail loud on a non-positive agent OAuth knob (device-authorization-endpoint).
+
+        A zero or negative value is a misconfiguration, not a disable signal: all knobs
+        (ttl, interval, rpm) must be strictly positive for a functioning endpoint.
+        Rejecting at startup turns the silent-but-broken endpoint into a clear boot
+        error. Mirrors the reconciliation check_interval validator style.
+        """
+        if v <= 0:
+            raise ValueError(
+                "INVALID_AGENT_OAUTH_KNOB: agent_oauth_device_code_ttl_seconds, "
+                "agent_oauth_poll_interval_seconds, agent_oauth_authorize_rpm, "
+                "agent_oauth_access_token_ttl_seconds, and agent_oauth_token_rpm "
+                f"must each be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    @field_validator("agent_oauth_refresh_token_ttl_seconds")
+    @classmethod
+    def _validate_agent_oauth_refresh_ttl(cls, v: int) -> int:
+        """Fail loud on a negative refresh TTL (0 is valid — means disabled).
+
+        A negative value is a misconfiguration: 0 is the explicit disable sentinel.
+        Rejecting < 0 prevents a silent misconfiguration that would pass the start
+        guard but never correctly disable refresh tokens.
+        """
+        if v < 0:
+            raise ValueError(
+                "INVALID_AGENT_OAUTH_REFRESH_TTL: "
+                "GATEWAY_AGENT_OAUTH_REFRESH_TOKEN_TTL_SECONDS must be >= 0 "
+                f"(0 disables refresh tokens); got {v!r}"
+            )
+        return v
+
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":
         """If OIDC is enabled, required fields must be non-empty and domain_mapping valid JSON."""
