@@ -1043,3 +1043,118 @@ async def get_bandwidth(
         for row in rows
     ]
     return BandwidthResponse(enabled=rate > 0, rate_per_sec=rate, burst=burst, keys=items)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/slo — tenant-scoped availability/error-rate/volume (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+# Source: usage_records.status over a time window. NO stored latency → latency_ms is null
+# (honest: do not fabricate). SUCCESS = status < 500 (5xx = SLO breach; 4xx = caller's
+# fault, reported separately, NOT counted against availability). OPS_READ-gated.
+# Zero-div safe: total == 0 → availability 1.0, error_rate 0.0.
+_SLO_DEFAULT_WINDOW = 24
+_SLO_MIN_WINDOW = 1
+_SLO_MAX_WINDOW = 720
+_SLO_READ_TIMEOUT_SECONDS = 30.0
+
+
+class SloResponse(BaseModel):
+    """Per-tenant SLO metrics over a time window (FROZEN @ v1 — TASK.md §3).
+
+    Derived from usage_records.status — only metrics the DB can prove are reported.
+    latency_ms is null (no stored latency; see TASK.md §7 spec delta for future work).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    window_hours: int
+    total_requests: int
+    success_count: int  # status < 500
+    client_error_count: int  # 4xx (400-499)
+    server_error_count: int  # 5xx (500-599)
+    availability: float  # success_count / total_requests, or 1.0 if total == 0
+    error_rate: float  # server_error_count / total_requests, or 0.0 if total == 0
+    latency_ms: None = None  # HONEST omission — no stored latency (spec delta)
+
+
+def _parse_window_hours(raw: str | None) -> int:
+    """Parse window_hours: integer 1..720, default 24.
+
+    Manual parse (not FastAPI int coercion) so a bad value maps to the catalog
+    ERR_PAYLOAD_INVALID code (400) rather than FastAPI's own 422 shape.
+    """
+    if raw is None:
+        return _SLO_DEFAULT_WINDOW
+    try:
+        value = int(raw)
+    except (ValueError, TypeError):
+        raise PAYLOAD_INVALID.exc() from None
+    if value < _SLO_MIN_WINDOW or value > _SLO_MAX_WINDOW:
+        raise PAYLOAD_INVALID.exc()
+    return value
+
+
+@usage_router.get("/slo", response_model=SloResponse)
+async def get_slo(
+    request: Request,
+    identity: Annotated[Identity, Depends(_require_ops_read)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    window_hours: Annotated[str | None, Query()] = None,
+) -> SloResponse:
+    """Return per-tenant SLO metrics (availability/error-rate/volume) over a window.
+
+    Contract (FROZEN @ v1 — TASK.md §3):
+    - OPS_READ-gated: owner/admin/operator/billing_admin/viewer pass; member → 403.
+    - Tenant-scoped: WHERE tenant_id = :tid always applied.
+    - window_hours 1..720 (default 24); bad value → 400 ERR_PAYLOAD_INVALID.
+    - SUCCESS = status < 500; CLIENT = 4xx; SERVER = 5xx.
+    - availability = success / total (or 1.0 when total == 0) — zero-div safe.
+    - error_rate  = server_error / total (or 0.0 when total == 0) — zero-div safe.
+    - latency_ms is null — no stored latency (honest; see spec delta in TASK.md §7).
+    READ-ONLY — never writes a row.
+    """
+    hours = _parse_window_hours(window_hours)
+    tenant_id: uuid.UUID = identity.tenant_id
+
+    # Cutoff: naive UTC (create_all uses TIMESTAMP WITHOUT TIME ZONE; prod uses TIMESTAMPTZ
+    # but asyncpg sends the naive value correctly for both). Consistent with reconcile_window.
+    cutoff = datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - datetime.timedelta(
+        hours=hours
+    )
+
+    async with asyncio.timeout(_SLO_READ_TIMEOUT_SECONDS):
+        row = (
+            await session.execute(
+                text(
+                    "SELECT"
+                    "  COUNT(*) AS total,"
+                    "  SUM(CASE WHEN status < 500 THEN 1 ELSE 0 END) AS success,"
+                    "  SUM(CASE WHEN status >= 400 AND status < 500 THEN 1 ELSE 0 END)"
+                    "    AS client_error,"
+                    "  SUM(CASE WHEN status >= 500 THEN 1 ELSE 0 END) AS server_error"
+                    " FROM usage_records"
+                    " WHERE tenant_id = :tid"
+                    "   AND created_at >= :cutoff"
+                ),
+                {"tid": str(tenant_id), "cutoff": cutoff},
+            )
+        ).fetchone()
+
+    total = int(row[0]) if row and row[0] is not None else 0
+    success = int(row[1]) if row and row[1] is not None else 0
+    client_error = int(row[2]) if row and row[2] is not None else 0
+    server_error = int(row[3]) if row and row[3] is not None else 0
+
+    availability = success / total if total > 0 else 1.0
+    error_rate = server_error / total if total > 0 else 0.0
+
+    return SloResponse(
+        window_hours=hours,
+        total_requests=total,
+        success_count=success,
+        client_error_count=client_error,
+        server_error_count=server_error,
+        availability=availability,
+        error_rate=error_rate,
+        latency_ms=None,
+    )
