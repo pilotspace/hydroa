@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "artifacts-backend",
+  "active_milestone": "v45",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -162,6 +162,34 @@
         ],
         "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
       }
+    },
+    "artifacts-backend": {
+      "title": "gateway/artifacts domain: BYTEA file store + tenant isolation + size-cap",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v45",
+      "depends_on": [],
+      "created": "2026-06-25T20:47:32+00:00",
+      "updated": "2026-06-25T21:15:07+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "7e99844bb7288b0d089ae6428598ff1a",
+        "tests": {
+          "apps/gateway/tests/artifacts/test_artifacts.py": "74a2c8198e5a4d9abaa89bab9bd3136b"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/artifacts/",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/artifacts/",
+          "apps/gateway/tests/migrations/test_migrations.py"
+        ],
+        "snapshot_md5": "dd5590a0f1b20f398104f30555ba0099"
+      }
     }
   },
   "milestones": {
@@ -172,10 +200,18 @@
       "status": "done",
       "created": "2026-06-22T09:31:42+00:00",
       "updated": "2026-06-23T02:00:14+00:00"
+    },
+    "v45": {
+      "title": "Artifacts / files (tenant-scoped file store)",
+      "goal": "A user (and any API key holder) can upload, list, download, and delete files/artifacts via a tenant-scoped gateway store, surfaced in the dashboard \u2014 the third 'remote' platform capability.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-25T20:46:51+00:00",
+      "updated": "2026-06-25T20:46:51+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T20:44:38+00:00",
+  "updated": "2026-06-25T21:15:07+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

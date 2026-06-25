@@ -514,6 +514,11 @@ class Settings(BaseSettings):
     # POST /v1/memories/search when top_k is not supplied by the caller. Clamped 1..100.
     memory_search_default_top_k: int = Field(default=5, ge=1, le=100)  # GATEWAY_MEMORY_SEARCH_DEFAULT_TOP_K
 
+    # ── Artifact file store (artifacts-backend task) ──────────────────────────
+    # GATEWAY_ARTIFACT_MAX_BYTES — per-artifact size cap (decoded bytes). 0 = disabled (no limit).
+    # Default 10 MiB. Reject BEFORE insert (no partial write).
+    artifact_max_bytes: int = Field(default=10_485_760, ge=0)  # GATEWAY_ARTIFACT_MAX_BYTES
+
     # ── Model-group aliases → ordered Deployments (model-fallbacks v6 + deployment-model v8) ──
     # GATEWAY_MODEL_GROUPS — JSON dict mapping alias string to an ordered member list.
     # A member is EITHER a bare model-id string (v6 shape) OR a deployment object:

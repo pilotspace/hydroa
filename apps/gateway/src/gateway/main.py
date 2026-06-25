@@ -32,6 +32,10 @@ from gateway.memory.api.router import memories_router
 from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
     MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.artifacts.api.router import artifacts_router
+from gateway.artifacts.infrastructure.orm import (  # noqa: F401 — registers ArtifactRow on Base.metadata
+    ArtifactRow as _ArtifactRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import (
     admin_catalog_router,
@@ -851,6 +855,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(budget_router)
     app.include_router(conversations_router)
     app.include_router(memories_router)
+    app.include_router(artifacts_router)
 
     # RequestIdMiddleware must be added AFTER routers are included so it wraps
     # the full ASGI app and captures final status codes including those set by

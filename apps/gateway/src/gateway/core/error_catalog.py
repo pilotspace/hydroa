@@ -480,3 +480,12 @@ PROVIDER_UNAVAILABLE = ErrorSpec(
     "ERR_PROVIDER_UNAVAILABLE",
     "Provider '{provider}' is not configured or unavailable",
 )
+
+# ---------------------------------------------------------------------------
+# Artifact file store errors (artifacts-backend task)
+# ---------------------------------------------------------------------------
+
+#: Artifact: content_base64 field could not be decoded as valid base64.
+PAYLOAD_INVALID_BASE64 = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID_BASE64", "content_base64 is not valid base64"
+)
