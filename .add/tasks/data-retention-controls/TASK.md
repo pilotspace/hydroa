@@ -2,7 +2,7 @@
 
 slug: data-retention-controls · created: 2026-06-25 · stage: production
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -211,7 +211,7 @@ Tests live in: `apps/gateway/tests/` · MUST run red (missing implementation) be
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `apps/gateway/src/gateway/usage/application/` `apps/gateway/src/gateway/core/config.py` `apps/gateway/src/gateway/main.py` `apps/gateway/migrations/` `apps/gateway/tests/`
+Scope (may touch): `apps/gateway/src/gateway/usage/application/` `apps/gateway/src/gateway/usage/infrastructure/` `apps/gateway/src/gateway/core/config.py` `apps/gateway/src/gateway/main.py` `apps/gateway/migrations/` `apps/gateway/tests/`
 Strategy (ordered batches):
   1. RED tests `apps/gateway/tests/test_retention_sweep.py` (8 per §4) incl the trigger-bypass migration test.
   2. Settings knobs in core/config.py (defaults per §3; all gated, audit floor clamp helper).
