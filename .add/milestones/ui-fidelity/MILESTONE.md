@@ -50,30 +50,32 @@ Out:
   it; freeze before any surface is touched.
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] visual-language    depends-on: none             — Establish & FREEZE the elevated design language via the UDD loop (review → research → wireframe → render-capture-confirm). Refresh tokens + restyle shared primitives; Tin confirms a captured reference screen BEFORE build. FREEZES the visual contract.
-- [ ] landing-fidelity   depends-on: visual-language  — Apply the language to all (marketing) pages (landing hero/sections, pricing, docs, blog, legal, status) AND the (auth) login + signup screens.
-- [ ] admin-fidelity     depends-on: visual-language  — Apply the language to the (app) shell/nav + all 14 admin pages (cards, tables, panels, the four states).
+- [x] visual-language    depends-on: none             — Establish & FREEZE the elevated design language via the UDD loop (review → research → wireframe → render-capture-confirm). Refresh tokens + restyle shared primitives; Tin confirms a captured reference screen BEFORE build. FREEZES the visual contract. — gate PASS (commit 554eb4b)
+- [x] landing-fidelity   depends-on: visual-language  — Apply the language to all (marketing) pages (landing hero/sections, pricing, docs, blog, legal, status) AND the (auth) login + signup screens. — gate PASS (commit 1fff422)
+- [x] admin-fidelity     depends-on: visual-language  — Apply the language to the (app) shell/nav + all 14 admin pages (cards, tables, panels, the four states). — gate PASS
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A captured, Tin-confirmed visual-language reference exists, and the token layer + shared primitives realize it   (← visual-language)
-- [ ] Every (marketing) page and the (auth) login/signup screens render in the elevated language with the four-state + a11y bar intact and zero behavior change   (← landing-fidelity)
-- [ ] Every (app) page + shell renders in the elevated language with the four-state + a11y bar intact and zero behavior change   (← admin-fidelity)
+- [x] A captured, Tin-confirmed visual-language reference exists, and the token layer + shared primitives realize it   (← visual-language)   (verify: apps/dashboard/tests/design-system/visual-language.test.ts)
+- [x] Every (marketing) page and the (auth) login/signup screens render in the elevated language with the four-state + a11y bar intact and zero behavior change   (← landing-fidelity)   (verify: apps/dashboard/tests/design-system/landing-fidelity.test.tsx)
+- [x] Every (app) page + shell renders in the elevated language with the four-state + a11y bar intact and zero behavior change   (← admin-fidelity)   (verify: apps/dashboard/tests/design-system/admin-fidelity.test.tsx)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- dashboard : <token refresh + primitive restyle + per-surface application — filled at close>
-- gateway   : <expected untouched — presentation-only; confirm at close>
-- tooling / skill / book : <expected untouched>
+- dashboard : Aurora token refresh (tokens.json + globals.css: elevation/type/motion/radius + brand-gradient/soft-accent utilities) + restyled shared primitives (card·button·badge·sidebar·stat-card·app-shell·feature-card·auth-shell) + bespoke landing hero/CTA composition. 8 new design-system tests (501→514 suite).
+- gateway   : UNTOUCHED — presentation-only; no gateway file in any diff (confirmed: all edits under apps/dashboard + .add).
+- tooling / skill / book : UNTOUCHED — only .add/{tasks,milestones,design,state.json} bookkeeping written by the engine/loop.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- visual-language  : gate=PASS · tests=508 green (+7) · residue=none (DTCG shadow/easing realised in globals.css, recorded as _elevation_note) · commit 554eb4b
+- landing-fidelity : gate=PASS · tests=512 green (+4) · residue=none · real-app captures landing-fidelity.png + auth-fidelity.png · commit 1fff422
+- admin-fidelity   : gate=PASS · tests=514 green (+2) · residue=live-KPI data is browser-only (needs authed gateway) · real-app capture admin-fidelity.png
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which): EC1←visual-language row (captured reference + token/primitive realisation); EC2←landing-fidelity row (marketing+auth captures, four-state/a11y suites green); EC3←admin-fidelity row (app shell capture, shared-primitive uplift to all 14 pages, console-surfaces/shell suites green)
+- goal: Every dashboard surface — admin and public — renders at a higher, consistent visual fidelity from ONE confirmed Aurora language with no behavior/contract/data change — proven by 514/514 vitest green (0 behavioural test touched) + tsc clean + next build exit 0 + three real-app captures, achieved by editing the token graph + shared primitives only (no per-page rewrites).
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one

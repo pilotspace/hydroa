@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 36
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 37
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -335,6 +335,10 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+- (UDD) uplifting two shared primitives (StatCard + AppShell) propagates one consistent language to all 14 admin surfaces with no per-page edit — the cheapest path to the milestone's "consistent fidelity" goal (evidence: 514 green touching 2 files; the /app/usage capture shows the canvas+nav+card uplift on an untouched page).  [folded foundation-version 37 · from admin-fidelity]
+- (UDD) a frozen page §3 (structure: one h1, ordered anchors) and a visual uplift coexist cleanly — restyle = className + aria-hidden decorative layers, asserted by structure-invariant tests, so the freeze never blocks the polish (evidence: landing-page.test.tsx stayed green through the Aurora hero).  [folded foundation-version 37 · from landing-fidelity]
+- (UDD) the engine DTCG validator allows only color/dimension/number/fontFamily/fontWeight/duration — composite KINDS (box-shadow, cubic-bezier) are realised in globals.css (runtime source) + recorded as a token-graph note, not typed in tokens.json (evidence: `add.py check` 10 unknown_type FAILs → relocated → layer-valid PASS).  [folded foundation-version 37 · from visual-language]
+- (UDD) a token-led refresh propagates the elevated language to EVERY surface via the shared primitive kit + `@theme` utilities — 508/508 green touching only 4 primitives + globals.css + tokens.json, no per-page edits (evidence: full suite green pre-application-tasks).  [folded foundation-version 37 · from visual-language]
 - (UDD) a shared marketing section/card pattern now recurs across landing/pricing/legal/docs — candidate for one section primitive.  [folded foundation-version 35 · from docs-blog-scaffold]
 - (UDD) marketing pages now repeat a section/prose pattern — LegalPage wrapper is the first shared extraction.  [folded foundation-version 35 · from legal-pages]
 - (UDD) marketing pages share a section/tier pattern — candidate for a reusable layout (evidence: landing+pricing repeat structure).  [folded foundation-version 35 · from pricing-page]
@@ -455,6 +459,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-26 | fold all → foundation-version 37 (UDD 4 · TDD 3 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 10 lessons open→folded; +10 routed bullets; 36→37 |
 | 2026-06-25 | fold all → foundation-version 36 (SDD 3 · TDD 6 · ADD 6) | consolidate captured OBSERVE lessons into the versioned foundation | 15 lessons open→folded; +15 routed bullets; 35→36 |
 | 2026-06-25 | fold all → foundation-version 35 (DDD 4 · SDD 2 · UDD 4 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 13 lessons open→folded; +13 routed bullets; 34→35 |
 | 2026-06-24 | fold all → foundation-version 34 (UDD 3 · TDD 3 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 7 lessons open→folded; +7 routed bullets; 33→34 |
