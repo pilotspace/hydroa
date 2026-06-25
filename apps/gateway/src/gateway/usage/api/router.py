@@ -43,7 +43,7 @@ from gateway.core.error_catalog import (
     PAYLOAD_START_DATE_INVALID,
     PAYLOAD_WINDOW_INVALID,
 )
-from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
+from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission, require_permission
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
@@ -668,6 +668,99 @@ async def get_alerts(
     ]
 
     return AlertListResponse(items=items, total=total)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/audit — paginated audit-event history (FROZEN @ v1 — TASK.md §3)
+# ---------------------------------------------------------------------------
+_AUDIT_DEFAULT_LIMIT = 50
+_AUDIT_MAX_LIMIT = 100
+_AUDIT_READ_TIMEOUT_SECONDS = 30.0
+
+
+class AuditEventItem(BaseModel):
+    """One row in the paginated audit log."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    actor_email: str | None
+    action: str
+    target_type: str | None
+    target_id: str | None
+    result: str
+    metadata: dict[str, object]
+    created_at: str
+
+
+class AuditListResponse(BaseModel):
+    """Envelope: { items, total } — mirrors AlertListResponse shape."""
+
+    model_config = ConfigDict(frozen=True)
+
+    items: list[AuditEventItem]
+    total: int
+
+
+@usage_router.get("/audit", response_model=AuditListResponse)
+async def get_audit(
+    identity: Annotated[Identity, require_permission(Permission.AUDIT_READ)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[str | None, Query()] = None,
+    offset: Annotated[str | None, Query()] = None,
+) -> AuditListResponse:
+    """Return the caller's tenant audit event history (FROZEN @ v1 — TASK.md §3).
+
+    AUDIT_READ gated: owner/admin/operator pass; billing_admin/viewer/member → 403.
+    Tenant-scoped: only the caller's tenant rows. Newest-first (created_at DESC, id DESC),
+    paginated (limit 1..100 default 50, offset >=0 default 0). READ-ONLY.
+    """
+    from sqlalchemy import desc as sa_desc
+    from sqlalchemy import func, select
+
+    from gateway.audit.infrastructure.audit_events_orm import AuditEventRow
+
+    parsed_limit, parsed_offset = _parse_pagination(limit, offset)
+    tenant_id: uuid.UUID = identity.tenant_id
+
+    async with asyncio.timeout(_AUDIT_READ_TIMEOUT_SECONDS):
+        total_row = (
+            await session.execute(
+                select(func.count())
+                .select_from(AuditEventRow)
+                .where(AuditEventRow.tenant_id == tenant_id)
+            )
+        ).scalar()
+        total = int(total_row or 0)
+
+        rows = (
+            await session.execute(
+                select(AuditEventRow)
+                .where(AuditEventRow.tenant_id == tenant_id)
+                .order_by(sa_desc(AuditEventRow.created_at), sa_desc(AuditEventRow.id))
+                .limit(parsed_limit)
+                .offset(parsed_offset)
+            )
+        ).scalars().all()
+
+    items = [
+        AuditEventItem(
+            id=str(row.id),
+            actor_email=row.actor_email,
+            action=row.action,
+            target_type=row.target_type,
+            target_id=row.target_id,
+            result=row.result,
+            metadata=dict(row.event_metadata) if row.event_metadata else {},
+            created_at=(
+                row.created_at.isoformat()
+                if hasattr(row.created_at, "isoformat")
+                else str(row.created_at)
+            ),
+        )
+        for row in rows
+    ]
+    return AuditListResponse(items=items, total=total)
 
 
 # ---------------------------------------------------------------------------

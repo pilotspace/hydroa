@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.audit.domain.audit_event import AuditEvent
@@ -72,6 +72,34 @@ class AuditRepository:
         if before is not None:
             stmt = stmt.where(AuditEventRow.created_at < before)
 
+        result = await self._session.execute(stmt)
+        rows = result.scalars().all()
+        return [_row_to_event(r) for r in rows]
+
+
+    async def count_for_tenant(self, tenant_id: uuid.UUID) -> int:
+        """Return total count of audit events for a tenant (for pagination envelopes)."""
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(AuditEventRow)
+            .where(AuditEventRow.tenant_id == tenant_id)
+        )
+        return int(result.scalar() or 0)
+
+    async def list_for_tenant_paged(
+        self,
+        tenant_id: uuid.UUID,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[AuditEvent]:
+        """Return audit events for a tenant, newest-first, with offset-based pagination."""
+        stmt = (
+            select(AuditEventRow)
+            .where(AuditEventRow.tenant_id == tenant_id)
+            .order_by(desc(AuditEventRow.created_at), desc(AuditEventRow.id))
+            .limit(limit)
+            .offset(offset)
+        )
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
         return [_row_to_event(r) for r in rows]
