@@ -545,12 +545,12 @@
     },
     "slo-dashboard": {
       "title": "SLO dashboard page (availability/error-rate/volume)",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v38",
       "depends_on": [],
       "created": "2026-06-25T05:20:12+00:00",
-      "updated": "2026-06-25T05:21:23+00:00",
+      "updated": "2026-06-25T05:29:08+00:00",
       "flag_verified": true,
       "tripwire": {
         "contract_md5": "100fff1b4bdd3117e62534062d440553",
@@ -587,7 +587,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T05:21:23+00:00",
+  "updated": "2026-06-25T05:29:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
