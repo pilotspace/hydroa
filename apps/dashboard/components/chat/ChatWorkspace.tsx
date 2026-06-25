@@ -14,6 +14,8 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Send, Square } from "lucide-react";
 import { useChatStream, type ChatMessage } from "@/lib/hooks/use-chat-stream";
+import { ModelPicker } from "@/components/chat/ModelPicker";
+import { ModelControls } from "@/components/chat/ModelControls";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Empty, ErrorState } from "@/components/ui/states";
@@ -29,7 +31,9 @@ export interface ChatWorkspaceProps {
 export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspaceProps) {
   const { status, messages, streamingText, error, send, stop } = useChatStream();
   const [input, setInput] = useState("");
-  const [model] = useState(defaultModel);
+  const [model, setModel] = useState(defaultModel);
+  const [system, setSystem] = useState("");
+  const [temperature, setTemperature] = useState(1);
   const threadEndRef = useRef<HTMLDivElement>(null);
 
   const isStreaming = status === "streaming";
@@ -46,7 +50,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   function submit() {
     const text = input.trim();
     if (!text || isStreaming) return; // empty submit / mid-stream = no-op
-    send({ model, text });
+    send({ model, text, system: system.trim() || undefined, temperature });
     setInput("");
   }
 
@@ -79,12 +83,9 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
           >
             Session cost —
           </span>
-          {/* SLOT: chat-model-controls (picker) — static label until the picker ships */}
-          <span
-            data-slot="model-picker"
-            className="rounded-md border border-border px-3 py-1 text-xs font-medium text-foreground"
-          >
-            {model}
+          {/* SLOT: chat-model-controls (picker) */}
+          <span data-slot="model-picker">
+            <ModelPicker value={model} onChange={setModel} />
           </span>
         </div>
       </header>
@@ -123,8 +124,15 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
       </div>
 
       <form onSubmit={onSubmit} className="border-t border-border bg-background px-4 py-3">
-        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:ring-2 focus-within:ring-ring">
-          {/* SLOT: chat-model-controls (system + temperature) renders here */}
+        <div className="mx-auto flex max-w-3xl flex-col gap-2">
+          {/* SLOT: chat-model-controls (system + temperature) — collapsed by default */}
+          <ModelControls
+            system={system}
+            onSystemChange={setSystem}
+            temperature={temperature}
+            onTemperatureChange={setTemperature}
+          />
+          <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:ring-2 focus-within:ring-ring">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -145,6 +153,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
               Send
             </Button>
           )}
+          </div>
         </div>
       </form>
     </div>

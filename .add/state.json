@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "chat-workspace-page",
+  "active_task": "chat-model-controls",
   "active_milestone": "v40",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -228,14 +228,30 @@
     },
     "chat-model-controls": {
       "title": "Chat model picker + request controls",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v40",
       "depends_on": [
         "chat-workspace-page"
       ],
       "created": "2026-06-25T14:33:03+00:00",
-      "updated": "2026-06-25T14:33:03+00:00"
+      "updated": "2026-06-25T16:56:44+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "942a24b83e8ca85f8c9b29ec737ab335",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/chat/ModelPicker.tsx",
+          "apps/dashboard/components/chat/ModelControls.tsx",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/tests-bff/chat-model-controls.test.tsx",
+          "apps/dashboard/tests-bff/mocks/handlers.ts",
+          "apps/dashboard/tests-bff/mocks/onUnhandledRequest:\"error\""
+        ],
+        "snapshot_md5": "60cf5815d25b92d1599ecaf64408eb84"
+      }
     },
     "chat-cost-readout": {
       "title": "Per-turn token + cost readout",
@@ -268,7 +284,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T16:44:33+00:00",
+  "updated": "2026-06-25T16:56:44+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

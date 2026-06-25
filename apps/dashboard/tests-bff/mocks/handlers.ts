@@ -126,6 +126,16 @@ export const bffHandlers = [
   http.get(`${APP}/api/gw/admin/keys`, () =>
     HttpResponse.json([{ key_id: "kid-default", name: "default-key" }])
   ),
+
+  // Baseline catalog-model list (v40 chat-model-controls): the chat ModelPicker
+  // fetches this on mount, so every ChatWorkspace render needs it stubbed.
+  // Tests asserting specific picker behavior override with their own server.use(...).
+  http.get(`${APP}/api/gw/v1/models`, () =>
+    HttpResponse.json({
+      object: "list",
+      data: [{ id: "openai/gpt-4o", name: "GPT-4o", context_length: 128000 }],
+    })
+  ),
 ];
 
 export const defaultHandlers = [...gatewayHandlers, ...bffHandlers];
