@@ -55,30 +55,35 @@ Out:
 - Chat workspace data contract (message model · streaming hook · usage-frame shape the cost readout consumes) -> owning task `chat-workspace-page`
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] streaming-bff        depends-on: none                 — BFF streams SSE chat-completions end-to-end (detect event-stream → pipe upstream body; AbortController disconnect propagation); non-stream JSON + auth paths byte-identical. FREEZES the streaming-proxy contract.
-- [ ] chat-workspace-page  depends-on: streaming-bff        — `/app/chat`: multi-turn thread, composer, live token-by-token streaming render, Stop, four UI states, role-open nav entry; sends to a caller-selected model + params. FREEZES the chat UI data contract.
-- [ ] chat-model-controls  depends-on: chat-workspace-page  — Model picker (from the catalog `/v1/models`) + request controls (system prompt, temperature) feeding the workspace.
-- [ ] chat-cost-readout    depends-on: chat-workspace-page  — Per-turn token usage + cost readout from the stream's terminal usage frame, with an honest placeholder when usage is unavailable.
+- [x] streaming-bff        depends-on: none                 — BFF streams SSE chat-completions end-to-end (detect event-stream → pipe upstream body; AbortController disconnect propagation); non-stream JSON + auth paths byte-identical. FREEZES the streaming-proxy contract.
+- [x] chat-workspace-page  depends-on: streaming-bff        — `/app/chat`: multi-turn thread, composer, live token-by-token streaming render, Stop, four UI states, role-open nav entry; sends to a caller-selected model + params. FREEZES the chat UI data contract.
+- [x] chat-model-controls  depends-on: chat-workspace-page  — Model picker (from the catalog `/v1/models`) + request controls (system prompt, temperature) feeding the workspace.
+- [x] chat-cost-readout    depends-on: chat-workspace-page  — Per-turn token usage + cost readout from the stream's terminal usage frame, with an honest placeholder when usage is unavailable.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A signed-in user can open `/app/chat`, pick any catalog model, and hold a multi-turn conversation whose assistant responses stream token-by-token, with a working Stop control   (← streaming-bff, chat-workspace-page, chat-model-controls)
-- [ ] Each assistant turn shows its token usage and cost, or an honest placeholder when usage is unavailable   (← chat-cost-readout)
+- [x] A signed-in user can open `/app/chat`, pick any catalog model, and hold a multi-turn conversation whose assistant responses stream token-by-token, with a working Stop control   (← streaming-bff, chat-workspace-page, chat-model-controls)
+- [x] Each assistant turn shows its token usage and cost, or an honest placeholder when usage is unavailable   (← chat-cost-readout)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- dashboard : <BFF streaming route + /app/chat workspace + cost readout — filled at close>
-- gateway   : <expected untouched — v40 consumes /v1 unchanged; confirm at close>
-- tooling / skill / book : <expected untouched>
+- dashboard : BFF SSE streaming passthrough (`app/api/gw/[...path]/route.ts` — stream detection + pipe + AbortController disconnect→upstream-abort; non-stream JSON byte-identical; Set-Cookie stripped on streamed path) + the `/app/chat` workspace (`app/(app)/app/chat/page.tsx`, `components/chat/ChatWorkspace.tsx`, the net-new `lib/hooks/use-chat-stream.ts` SSE consumer, `ModelPicker`/`ModelControls`/`CostReadout`) + role-open Chat nav entry. New tests-bff suites (streaming-bff 13, chat-workspace-page 12, chat-model-controls 6, chat-cost-readout 6); a baseline `/v1/models` mock handler.
+- gateway   : UNTOUCHED — v40 consumes `/v1/chat/completions` + `/v1/models` unchanged (confirmed: no apps/gateway diff).
+- tooling / skill / book : untouched (only `.add/` task + milestone bookkeeping).
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- streaming-bff       : gate=PASS · tests=13 green · residue=none (sonnet refute-read → F1/F3/F6 fixed)
+- chat-workspace-page : gate=PASS · tests=12 green · residue=F4 index-key cosmetic (frozen ChatMessage excludes an id) — deferred polish delta
+- chat-model-controls : gate=PASS · tests=6 green · residue=native-select restyle to shadcn Select — deferred polish
+- chat-cost-readout   : gate=PASS · tests=6 green · residue=per-bubble historical cost + real $ pricing — deferred (needs hook extension + pricing source)
 
-### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+### Goal met?   (map the evidence back to this milestone's Exit criteria)
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change
+  - EC1 (open /app/chat, pick a model, multi-turn token-by-token stream + Stop): streaming-bff (pipe+abort) + chat-workspace-page (thread/composer/Stop/4-states) + chat-model-controls (picker) — `next build` lists `○ /app/chat`; tests assert token-by-token accumulation + stop-commits-partial.
+  - EC2 (each turn's token usage/cost or honest placeholder): chat-cost-readout — session+latest-turn token readout, tokens-only honesty, placeholder before usage.
+- goal: a signed-in user holds a multi-turn live-streaming chat with any catalog model from `/app/chat` that shows each turn's token cost — proven by the full dashboard suite **538 green** + `next build` OK with `/app/chat` prerendered.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one

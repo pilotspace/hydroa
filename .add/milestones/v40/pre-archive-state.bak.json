@@ -1,0 +1,127 @@
+{
+  "milestone": {
+    "title": "Chat workspace + streaming",
+    "goal": "A signed-in user can hold a multi-turn, live-streaming conversation with any catalog model from an in-dashboard chat workspace that shows each turn's token cost.",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-25T14:29:23+00:00",
+    "updated": "2026-06-25T17:04:09+00:00"
+  },
+  "tasks": {
+    "streaming-bff": {
+      "title": "BFF SSE streaming passthrough",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v40",
+      "depends_on": [],
+      "created": "2026-06-25T14:33:03+00:00",
+      "updated": "2026-06-25T15:34:05+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "48f528cf5e9e28d2d960271ee333e0cf",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/api/gw/[...path]/route.ts",
+          "apps/dashboard/tests-bff/streaming-bff.test.ts"
+        ],
+        "snapshot_md5": "3caaaa33f037c5e763045d900dd542f5"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-25T15:31:22+00:00",
+            "reason": "scope_violation: task 'streaming-bff' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/streaming-bff.test.ts (1 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-25T15:32:08+00:00",
+            "reason": "scope_violation: task 'streaming-bff' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/streaming-bff.test.ts (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "chat-workspace-page": {
+      "title": "Chat workspace page (/app/chat)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v40",
+      "depends_on": [
+        "streaming-bff"
+      ],
+      "created": "2026-06-25T14:33:03+00:00",
+      "updated": "2026-06-25T16:44:33+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2de640df12cdb0f5c02c8a3d0205cff3",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/hooks/use-chat-stream.ts",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/app/(app)/app/chat/page.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/chat-workspace-page.test.tsx",
+          "apps/dashboard/tests-bff/nav-role-filter.test.tsx"
+        ],
+        "snapshot_md5": "79ec43fb77dbf51b8ecefa33f7693fc0"
+      }
+    },
+    "chat-model-controls": {
+      "title": "Chat model picker + request controls",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v40",
+      "depends_on": [
+        "chat-workspace-page"
+      ],
+      "created": "2026-06-25T14:33:03+00:00",
+      "updated": "2026-06-25T16:56:44+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "942a24b83e8ca85f8c9b29ec737ab335",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/chat/ModelPicker.tsx",
+          "apps/dashboard/components/chat/ModelControls.tsx",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/tests-bff/chat-model-controls.test.tsx",
+          "apps/dashboard/tests-bff/mocks/handlers.ts",
+          "apps/dashboard/tests-bff/mocks/onUnhandledRequest:\"error\""
+        ],
+        "snapshot_md5": "60cf5815d25b92d1599ecaf64408eb84"
+      }
+    },
+    "chat-cost-readout": {
+      "title": "Per-turn token + cost readout",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v40",
+      "depends_on": [
+        "chat-workspace-page"
+      ],
+      "created": "2026-06-25T14:33:03+00:00",
+      "updated": "2026-06-25T17:03:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6868e609730d55919719d1f46840338c",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/chat/CostReadout.tsx",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/tests-bff/chat-cost-readout.test.tsx"
+        ],
+        "snapshot_md5": "13289c183ed478a56a7bc770d54ca4e6"
+      }
+    }
+  },
+  "archived_at": "2026-06-25T17:04:28+00:00"
+}
