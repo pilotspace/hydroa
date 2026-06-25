@@ -182,6 +182,12 @@ PAYLOAD_INPUT_REQUIRED = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "Field 'input' is required and non-empty"
 )
 
+#: Proxy: TTS ``input`` exceeds GATEWAY_TTS_MAX_INPUT_CHARACTERS (audio TTS endpoint).
+#: 413 Payload Too Large — rejected BEFORE governance/upstream/bill (no partial charge).
+PAYLOAD_INPUT_TOO_LONG = ErrorSpec(
+    413, "ERR_PAYLOAD_INPUT_TOO_LONG", "TTS input exceeds the maximum allowed length"
+)
+
 #: Proxy: ``prompt`` field missing or empty (images endpoint).
 PAYLOAD_PROMPT_REQUIRED = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "Field 'prompt' is required and non-empty"

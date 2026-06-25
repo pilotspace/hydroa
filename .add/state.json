@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "azure-audio-provider",
+  "active_task": "tts-input-guardrails",
   "active_milestone": "v42",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -187,6 +187,33 @@
         ],
         "snapshot_md5": "7a9027f35fe87cc107dd39dbc8ab4d46"
       }
+    },
+    "tts-input-guardrails": {
+      "title": "TTS input-length ceiling (reject before bill)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v42",
+      "depends_on": [],
+      "created": "2026-06-25T18:19:05+00:00",
+      "updated": "2026-06-25T18:27:51+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a82ec71888a7d743c779501b357c688a",
+        "tests": {
+          "apps/gateway/tests/tts_input_cap/test_tts_input_cap.py": "ac6835bd24e694512aa6b66441526e55"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/proxy/application/audio_use_case.py",
+          "apps/gateway/src/gateway/proxy/api/audio_deps.py",
+          "apps/gateway/tests/tts_input_cap/",
+          "apps/gateway/tests/tts_input_cap/Makefile"
+        ],
+        "snapshot_md5": "2d3fcc526ac893ceca08bf2132ac3c92"
+      }
     }
   },
   "milestones": {
@@ -208,7 +235,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T18:18:32+00:00",
+  "updated": "2026-06-25T18:27:51+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

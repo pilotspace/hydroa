@@ -348,6 +348,15 @@ class Settings(BaseSettings):
     # value fails fast at config load. (stt-duration-cap TASK.md §3, default frozen by Tin.)
     stt_max_duration_seconds: float = Field(default=14400.0, gt=0)
 
+    # ── TTS input-length ceiling (tts-input-guardrails task) ─────────────────────
+    # GATEWAY_TTS_MAX_INPUT_CHARACTERS — default-ON cap on the TTS `input` length.
+    # TTS bills per_character at-start (before streaming), so an unbounded input is a
+    # runaway-billing / abuse vector. Over-cap → 413 PAYLOAD_INPUT_TOO_LONG raised
+    # BEFORE governance/upstream/bill (no partial charge). DEFAULT-SAFE: 4096 mirrors
+    # OpenAI's documented limit; ge=0 with 0 ⇒ DISABLED (operator escape hatch). A
+    # within-cap request is byte-identical to today. (tts-input-guardrails TASK.md §3.)
+    tts_max_input_characters: int = Field(default=4096, ge=0)
+
     # ── Global back-pressure / concurrency cap (concurrency-load-guard task) ──────
     # GATEWAY_MAX_CONCURRENT_REQUESTS — per-worker global cap on simultaneous in-flight
     # HTTP requests. 0 (default) = disabled = today's unbounded behavior (opt-in, byte-

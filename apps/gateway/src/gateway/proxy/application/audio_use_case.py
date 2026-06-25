@@ -41,6 +41,7 @@ from gateway.core.error_catalog import (
     MODEL_UNKNOWN,
     PAYLOAD_FILE_REQUIRED,
     PAYLOAD_INPUT_REQUIRED,
+    PAYLOAD_INPUT_TOO_LONG,
     PAYLOAD_MODEL_REQUIRED,
     PAYLOAD_VOICE_REQUIRED,
     UPSTREAM_UNAVAILABLE,
@@ -283,11 +284,17 @@ class SpeechUseCase:
         governance: NonChatGovernance,
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
+        max_input_characters: int = 0,
     ) -> None:
         self._governance = governance
         self._session = session
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
+        # tts-input-guardrails §3: per_character billing happens at-start, so an
+        # unbounded `input` is a runaway-billing vector. >0 ⇒ reject over-cap input
+        # at Step 2.5 (before governance/upstream/bill); 0 ⇒ disabled. Default 0
+        # keeps legacy/test construction uncapped; prod injects the Settings value.
+        self._max_input_characters = max_input_characters
 
     async def execute(
         self,
@@ -322,6 +329,16 @@ class SpeechUseCase:
         input_text = body.get("input")
         if not input_text or not isinstance(input_text, str) or not input_text.strip():
             raise PAYLOAD_INPUT_REQUIRED.exc()
+
+        # Step 2.5: Enforce the TTS input-length ceiling BEFORE governance/upstream/bill
+        # (tts-input-guardrails §3). per_character billing fires at Step 7; rejecting here
+        # means an over-cap input is never billed and never reaches an upstream. len() is
+        # the same unit the bill uses (quantity=len(input_text)). 0 ⇒ cap disabled.
+        if (
+            self._max_input_characters > 0
+            and len(input_text) > self._max_input_characters
+        ):
+            raise PAYLOAD_INPUT_TOO_LONG.exc()
 
         # Step 3: Validate voice field
         voice = body.get("voice")

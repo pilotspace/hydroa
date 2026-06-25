@@ -45,7 +45,7 @@ test-fast:
 	  tests/anthropic_json_mode tests/gemini_json_mode \
 	  tests/gemini_embed_tokens tests/nonchat_soft_budget_alert \
 	  tests/azure_verify tests/byok_verify \
-	  tests/azure_audio \
+	  tests/azure_audio tests/tts_input_cap \
 	  tests/web_search
 
 migrate:
