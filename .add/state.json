@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "visual-language",
+  "active_task": "landing-fidelity",
   "active_milestone": "ui-fidelity",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -203,6 +203,29 @@
           }
         ]
       }
+    },
+    "landing-fidelity": {
+      "title": "Apply Aurora language to marketing + auth surfaces",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "ui-fidelity",
+      "depends_on": [],
+      "created": "2026-06-25T17:19:15+00:00",
+      "updated": "2026-06-25T17:28:06+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ec3bb37b01f1e68d5b5a534127e0e144",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/page.tsx",
+          "apps/dashboard/components/marketing/feature-card.tsx",
+          "apps/dashboard/components/ui/auth-shell.tsx",
+          "apps/dashboard/tests/design-system/landing-fidelity.test.tsx"
+        ],
+        "snapshot_md5": "7c322b56fef50866a9ac4de49f20f977"
+      }
     }
   },
   "milestones": {
@@ -224,7 +247,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T17:16:58+00:00",
+  "updated": "2026-06-25T17:28:06+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
