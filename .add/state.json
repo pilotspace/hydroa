@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "rbac-roles",
+  "active_task": "audit-log-store",
   "active_milestone": "v38",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -355,6 +355,43 @@
           }
         ]
       }
+    },
+    "audit-log-store": {
+      "title": "Append-only admin audit event store",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T17:31:20+00:00",
+      "updated": "2026-06-25T03:04:11+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "fcaa51758afc1b4380b02167fe717686",
+        "tests": {
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "a475ed5c76711b678d5bef3ee22a181c",
+          "apps/gateway/tests/credential_stub.py": "bcfeaf8d11069c18638703cb79b172bb",
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/audit/",
+          "apps/gateway/src/gateway/catalog/api/",
+          "apps/gateway/src/gateway/usage/api/",
+          "apps/gateway/src/gateway/budgets/api/",
+          "apps/gateway/src/gateway/teams/api/",
+          "apps/gateway/src/gateway/keys/api/",
+          "apps/gateway/src/gateway/proxy/api/",
+          "apps/gateway/src/gateway/auth/api/",
+          "apps/gateway/src/gateway/core/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/",
+          "apps/gateway/tests/"
+        ],
+        "snapshot_md5": "2e479be457cbb6d22f85365d5fe6c2a9"
+      }
     }
   },
   "milestones": {
@@ -376,7 +413,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-24T17:30:03+00:00",
+  "updated": "2026-06-25T03:04:11+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
