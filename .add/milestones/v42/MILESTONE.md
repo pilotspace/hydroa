@@ -37,30 +37,38 @@ Out:
 - [ ] voice-playground            depends-on: azure-audio-provider     — `/app/voice`: STT upload→transcript + TTS text→voice→inline playback, via the BFF; role-open nav entry.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] STT and TTS each work through MORE than one provider — a request routed to an Azure audio model reaches Azure (deployment-URL, OpenAI-wire) and returns a transcript / streamed audio; OpenAI paths unchanged   (← azure-audio-provider)
-- [ ] A TTS request whose `input` exceeds `GATEWAY_TTS_MAX_INPUT_CHARACTERS` is rejected with a clear 4xx BEFORE any upstream call or bill; within-cap is unaffected   (← tts-input-guardrails)
-- [ ] `POST /v1/audio/translations` transcribes-and-translates audio to English and bills per second   (← audio-translations-endpoint)
-- [ ] A signed-in user can, in `/app/voice`, upload audio to get a transcript and type text to hear synthesized speech   (← voice-playground)
+- [x] STT and TTS each work through MORE than one provider — a request routed to an Azure audio model reaches Azure (deployment-URL, OpenAI-wire) and returns a transcript / streamed audio; OpenAI paths unchanged   (← azure-audio-provider)
+- [x] A TTS request whose `input` exceeds `GATEWAY_TTS_MAX_INPUT_CHARACTERS` is rejected with a clear 4xx BEFORE any upstream call or bill; within-cap is unaffected   (← tts-input-guardrails)
+- [x] `POST /v1/audio/translations` transcribes-and-translates audio to English and bills per second   (← audio-translations-endpoint)
+- [x] A signed-in user can, in `/app/voice`, upload audio to get a transcript and type text to hear synthesized speech   (← voice-playground)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway : audio is now multi-PROVIDER and multi-ROUTE. azure_embeddings.py → `AzureOpenAIProvider` (back-compat alias) with REAL post_multipart (STT) + stream_bytes (TTS) over the v21 Azure deployment-URL + AAD/api-key (secret-hygiene from None, breaker, fail-closed). New default-ON `GATEWAY_TTS_MAX_INPUT_CHARACTERS` (4096; 0=off) + `PAYLOAD_INPUT_TOO_LONG` (413) rejecting over-cap TTS at SpeechUseCase Step 2.5 BEFORE governance/upstream/bill. New `POST /v1/audio/translations` reusing TranscriptionUseCase via an `upstream_path` param + `_TRANSLATION_PASSTHROUGH_FIELDS` (drops language); per_second billing. New tests/azure_audio (8) + tests/tts_input_cap (4) + tests/audio_translations (4) joined make test-fast (190 → 206 green).
+- dashboard : new `/app/voice` (VoicePlayground: STT upload→transcript + TTS text→inline <audio>, four states, WCAG-AA, all calls via the BFF) + role-open "Voice" nav. BFF (`/api/gw/[...path]`) gained a binary-body branch (req.arrayBuffer() for non-JSON) so multipart STT uploads forward un-mangled; JSON/stream/auth/disconnect path byte-identical (independent refute-read UPHELD 0.97). vitest 541 → 547 green; tsc 0; eslint 0.
+- tooling / skill / book : untouched (only `.add/` task + milestone bookkeeping).
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- azure-audio-provider : gate=PASS · tests=8 green (make test-fast 198) · residue=live-verify Azure audio shape + deployment_map mapping + optional file rename (deltas).
+- tts-input-guardrails : gate=PASS · tests=4 green (202) · residue=char-vs-byte cap unit (matches the per_character bill) (delta).
+- audio-translations-endpoint : gate=PASS · tests=4 green (206) · residue=live-verify translate field-set + DB-backed integration test (deltas).
+- voice-playground : gate=PASS · tests=6 green (dashboard 547) · residue=stream-vs-buffer huge uploads + friendly over-size error + live e2e audio + <audio> aria-label (deltas). Independent refute-read of the security-sensitive BFF change UPHELD all 3 claims (JSON byte-identical / auth+streaming+disconnect intact / no browser secret), 0.97, NO blockers.
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
+  - EC1 (STT+TTS via >1 provider): azure-audio-provider — real post_multipart/stream_bytes over the Azure deployment URL (8 oracle-stub tests assert the URL + auth + multipart); OpenAI audio byte-identical.
+  - EC2 (TTS over-cap → 4xx before bill): tts-input-guardrails — Step-2.5 413 with governance NOT called (test_over_cap_rejects_before_bill proves reject-before-bill); default-ON 4096, 0 disables.
+  - EC3 (translations → English, per_second): audio-translations-endpoint — `POST /v1/audio/translations` reuses the STT pipeline; tests pin the captured path + language-drop + pricing_unit="per_second".
+  - EC4 (/app/voice upload→transcript + text→speech): voice-playground — STT upload renders the transcript + TTS renders inline <audio> (6 vitest tests); enabled by the BFF binary-upload fix.
+- goal: a signed-in user can transcribe + synthesize voice through MORE than one provider (Azure OpenAI audio added), with a default-ON TTS input ceiling and an /app/voice surface — proven by gateway make test-fast 206 green + dashboard 547 green, additive (OpenAI audio + the JSON BFF path byte-identical), the one security-sensitive change (BFF) independently refute-verified.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [ ] v42 commits land on the v42 task branch (stacked on the v40/v41 stack): t1 azure-audio → t2 tts-cap → t3 translations → t4 voice-playground → .add close. (committed locally; PUSH/PR awaits Tin's go-ahead — outward act.)
+- [ ] open a PR to main; Tin reviews + merges (HTTPS push per [[git-push-https-gotcha]]); v40/v41/v42 are a stack — merge in order or retarget.
+- [ ] deploy notes: seed Azure audio + whisper-1/tts-1 catalog rows + deployment_map; GATEWAY_TTS_MAX_INPUT_CHARACTERS is ON by default (4096) — set 0 to disable; run the deferred live-verify of the Azure audio + translate request shapes.
+- [ ] v42 joins the releasable set (v33–v41 already pending); bundle into the next release cut when Tin calls it (release.md).
