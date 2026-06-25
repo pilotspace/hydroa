@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "chat-model-controls",
+  "active_task": "chat-cost-readout",
   "active_milestone": "v40",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -255,14 +255,27 @@
     },
     "chat-cost-readout": {
       "title": "Per-turn token + cost readout",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v40",
       "depends_on": [
         "chat-workspace-page"
       ],
       "created": "2026-06-25T14:33:03+00:00",
-      "updated": "2026-06-25T14:33:03+00:00"
+      "updated": "2026-06-25T17:03:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6868e609730d55919719d1f46840338c",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/chat/CostReadout.tsx",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/tests-bff/chat-cost-readout.test.tsx"
+        ],
+        "snapshot_md5": "13289c183ed478a56a7bc770d54ca4e6"
+      }
     }
   },
   "milestones": {
@@ -284,7 +297,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T16:56:44+00:00",
+  "updated": "2026-06-25T17:03:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

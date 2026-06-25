@@ -13,9 +13,10 @@
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Send, Square } from "lucide-react";
-import { useChatStream, type ChatMessage } from "@/lib/hooks/use-chat-stream";
+import { useChatStream, type ChatMessage, type Usage } from "@/lib/hooks/use-chat-stream";
 import { ModelPicker } from "@/components/chat/ModelPicker";
 import { ModelControls } from "@/components/chat/ModelControls";
+import { CostReadout } from "@/components/chat/CostReadout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Empty, ErrorState } from "@/components/ui/states";
@@ -29,14 +30,26 @@ export interface ChatWorkspaceProps {
 }
 
 export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspaceProps) {
-  const { status, messages, streamingText, error, send, stop } = useChatStream();
+  const { status, messages, streamingText, usage, error, send, stop } = useChatStream();
   const [input, setInput] = useState("");
   const [model, setModel] = useState(defaultModel);
   const [system, setSystem] = useState("");
   const [temperature, setTemperature] = useState(1);
+  const [sessionTokens, setSessionTokens] = useState(0);
+  const countedRef = useRef<Usage | undefined>(undefined);
   const threadEndRef = useRef<HTMLDivElement>(null);
 
   const isStreaming = status === "streaming";
+
+  // Accumulate the session token total — each completed turn's usage object is
+  // counted EXACTLY once (the identity guard survives StrictMode double-invoke
+  // and any re-render where `usage` is unchanged).
+  useEffect(() => {
+    if (usage && usage !== countedRef.current) {
+      countedRef.current = usage;
+      setSessionTokens((t) => t + usage.total_tokens);
+    }
+  }, [usage]);
 
   // Scroll-to-latest as the thread grows (design: scroll-to-latest affordance).
   // scrollIntoView is absent in jsdom and older engines — guard before calling.
@@ -73,16 +86,8 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
       <header className="flex items-center justify-between border-b border-border bg-background px-6 py-3">
         <h1 className="text-lg font-semibold text-foreground">Chat</h1>
         <div className="flex items-center gap-3">
-          {/* SLOT: chat-cost-readout (session) — honest placeholder; the real
-              per-turn / per-session token+cost readout ships in chat-cost-readout
-              (it reads useChatStream().usage). Never render a number here that
-              would misrepresent "session" scope. */}
-          <span
-            data-slot="session-cost"
-            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
-          >
-            Session cost —
-          </span>
+          {/* chat-cost-readout — live session token total + latest turn (tokens only). */}
+          <CostReadout sessionTokens={sessionTokens} lastTurn={usage} />
           {/* SLOT: chat-model-controls (picker) */}
           <span data-slot="model-picker">
             <ModelPicker value={model} onChange={setModel} />
