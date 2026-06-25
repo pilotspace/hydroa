@@ -715,50 +715,32 @@ async def get_audit(
     Tenant-scoped: only the caller's tenant rows. Newest-first (created_at DESC, id DESC),
     paginated (limit 1..100 default 50, offset >=0 default 0). READ-ONLY.
     """
-    from sqlalchemy import desc as sa_desc
-    from sqlalchemy import func, select
-
-    from gateway.audit.infrastructure.audit_events_orm import AuditEventRow
+    from gateway.audit.infrastructure.audit_repository import AuditRepository
 
     parsed_limit, parsed_offset = _parse_pagination(limit, offset)
     tenant_id: uuid.UUID = identity.tenant_id
+    repo = AuditRepository(session)
 
     async with asyncio.timeout(_AUDIT_READ_TIMEOUT_SECONDS):
-        total_row = (
-            await session.execute(
-                select(func.count())
-                .select_from(AuditEventRow)
-                .where(AuditEventRow.tenant_id == tenant_id)
-            )
-        ).scalar()
-        total = int(total_row or 0)
-
-        rows = (
-            await session.execute(
-                select(AuditEventRow)
-                .where(AuditEventRow.tenant_id == tenant_id)
-                .order_by(sa_desc(AuditEventRow.created_at), sa_desc(AuditEventRow.id))
-                .limit(parsed_limit)
-                .offset(parsed_offset)
-            )
-        ).scalars().all()
+        total = await repo.count_for_tenant(tenant_id)
+        events = await repo.list_for_tenant_paged(tenant_id, parsed_limit, parsed_offset)
 
     items = [
         AuditEventItem(
-            id=str(row.id),
-            actor_email=row.actor_email,
-            action=row.action,
-            target_type=row.target_type,
-            target_id=row.target_id,
-            result=row.result,
-            metadata=dict(row.event_metadata) if row.event_metadata else {},
+            id=str(e.id),
+            actor_email=e.actor_email,
+            action=e.action,
+            target_type=e.target_type,
+            target_id=e.target_id,
+            result=e.result,
+            metadata=e.metadata,
             created_at=(
-                row.created_at.isoformat()
-                if hasattr(row.created_at, "isoformat")
-                else str(row.created_at)
+                e.created_at.isoformat()
+                if hasattr(e.created_at, "isoformat")
+                else str(e.created_at)
             ),
         )
-        for row in rows
+        for e in events
     ]
     return AuditListResponse(items=items, total=total)
 
