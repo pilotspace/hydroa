@@ -1,0 +1,417 @@
+{
+  "milestone": {
+    "title": "Enterprise readiness",
+    "goal": "A prospective customer can discover and evaluate the product on a public marketing site, and an enterprise operator can run it with the audit trail, role-based access, compliance/SLA surfaces, and observability an enterprise deployment requires.",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-24T15:48:13+00:00",
+    "updated": "2026-06-25T05:30:12+00:00"
+  },
+  "tasks": {
+    "marketing-shell": {
+      "title": "Public marketing shell + root-route split",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T15:48:59+00:00",
+      "updated": "2026-06-24T16:25:34+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9aa424180ef00366cb7abe7bb941aae8",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/",
+          "apps/dashboard/components/",
+          "apps/dashboard/proxy.ts",
+          "apps/dashboard/next.config.ts",
+          "apps/dashboard/tests/",
+          "apps/dashboard/e2e-a11y/"
+        ],
+        "snapshot_md5": "3b2ad127ff5b3fd4fa5c2864db7a4d86"
+      }
+    },
+    "landing-page": {
+      "title": "Public landing page content",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:27:15+00:00",
+      "updated": "2026-06-24T16:36:27+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "27d032a700b0d583337b48da4a9bec94",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/page.tsx",
+          "apps/dashboard/components/marketing/",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "0d6f15acbb958468f71072a6a82dbbeb"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-24T16:35:52+00:00",
+            "reason": "scope_violation: task 'landing-page' touched outside its declared \u00a75 Scope \u2014 tmp/landing-page-commit.txt (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "pricing-page": {
+      "title": "Public pricing page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:36:39+00:00",
+      "updated": "2026-06-24T16:41:14+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c5361a6195f9f6ddfa70b77a5733a3f1",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/pricing/",
+          "apps/dashboard/components/marketing/",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "19576afd49b6b1d6ae6eaf468018dafc"
+      }
+    },
+    "legal-pages": {
+      "title": "Public legal pages (terms/privacy/security)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:41:32+00:00",
+      "updated": "2026-06-24T16:44:18+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "25f30370d1ed44dd9b0a0a15f885f0ef",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/legal/",
+          "apps/dashboard/components/marketing/",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "206309d0f9d19866e7acea3c2504d6f0"
+      }
+    },
+    "docs-blog-scaffold": {
+      "title": "Docs and blog index scaffold",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:44:31+00:00",
+      "updated": "2026-06-24T16:46:46+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8af99dc772b09b449220304d2be76ec2",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/docs/",
+          "apps/dashboard/app/(marketing)/blog/",
+          "apps/dashboard/components/marketing/",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "89150d7c7a85279e2ca9a64f414e5346"
+      }
+    },
+    "trust-status-page": {
+      "title": "Public trust and status page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:47:05+00:00",
+      "updated": "2026-06-24T16:50:43+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "cd0d71b563826d1c1ee317300356cb3f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(marketing)/status/",
+          "apps/dashboard/components/marketing/",
+          "apps/dashboard/components/marketing-shell.tsx",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "acb1c712b3b6f1ef64891f5db3bdb50f"
+      }
+    },
+    "rbac-roles": {
+      "title": "Enterprise RBAC role tiers + authorization matrix",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T16:56:03+00:00",
+      "updated": "2026-06-24T17:30:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c15301671a33d046ed8ca048c0bacd4a",
+        "tests": {
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "a475ed5c76711b678d5bef3ee22a181c",
+          "apps/gateway/tests/credential_stub.py": "bcfeaf8d11069c18638703cb79b172bb",
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/",
+          "apps/gateway/src/gateway/keys/api/deps.py",
+          "apps/gateway/src/gateway/catalog/api/",
+          "apps/gateway/src/gateway/usage/api/",
+          "apps/gateway/src/gateway/budgets/api/",
+          "apps/gateway/src/gateway/teams/api/",
+          "apps/gateway/src/gateway/proxy/api/routing_admin_router.py",
+          "apps/gateway/src/gateway/ops/api/",
+          "apps/gateway/src/gateway/core/",
+          "apps/gateway/migrations/",
+          "apps/gateway/tests/"
+        ],
+        "snapshot_md5": "2e479be457cbb6d22f85365d5fe6c2a9"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-24T17:29:53+00:00",
+            "reason": "scope_violation: task 'rbac-roles' touched outside its declared \u00a75 Scope \u2014 tmp/rbac-roles-commit.txt (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "audit-log-store": {
+      "title": "Append-only admin audit event store",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-24T17:31:20+00:00",
+      "updated": "2026-06-25T03:04:11+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "fcaa51758afc1b4380b02167fe717686",
+        "tests": {
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "a475ed5c76711b678d5bef3ee22a181c",
+          "apps/gateway/tests/credential_stub.py": "bcfeaf8d11069c18638703cb79b172bb",
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/audit/",
+          "apps/gateway/src/gateway/catalog/api/",
+          "apps/gateway/src/gateway/usage/api/",
+          "apps/gateway/src/gateway/budgets/api/",
+          "apps/gateway/src/gateway/teams/api/",
+          "apps/gateway/src/gateway/keys/api/",
+          "apps/gateway/src/gateway/proxy/api/",
+          "apps/gateway/src/gateway/auth/api/",
+          "apps/gateway/src/gateway/core/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/",
+          "apps/gateway/tests/"
+        ],
+        "snapshot_md5": "2e479be457cbb6d22f85365d5fe6c2a9"
+      }
+    },
+    "data-retention-controls": {
+      "title": "Tenant data retention & purge controls",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-25T03:05:17+00:00",
+      "updated": "2026-06-25T03:49:36+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "241d11781d77cd751da7b93209843d80",
+        "tests": {
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "a475ed5c76711b678d5bef3ee22a181c",
+          "apps/gateway/tests/credential_stub.py": "bcfeaf8d11069c18638703cb79b172bb",
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885",
+          "apps/gateway/tests/test_retention_sweep.py": "35c40926918f242cfdf41da2afa9d180"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/",
+          "apps/gateway/src/gateway/usage/infrastructure/",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/",
+          "apps/gateway/tests/"
+        ],
+        "snapshot_md5": "08f415ade80cc36a3e04a47921f9a287"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-25T03:49:04+00:00",
+            "reason": "scope_violation: task 'data-retention-controls' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/usage/infrastructure/alert_events_orm.py \u00b7 apps/gateway/src/gateway/usage/infrastructure/orm.py (2 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "audit-log-surface": {
+      "title": "Audit log read API + dashboard viewer",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-25T03:52:54+00:00",
+      "updated": "2026-06-25T04:14:52+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "eabd8809fa085d09532ce155dd105cab",
+        "tests": {
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "a475ed5c76711b678d5bef3ee22a181c",
+          "apps/gateway/tests/credential_stub.py": "bcfeaf8d11069c18638703cb79b172bb",
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885",
+          "apps/gateway/tests/test_retention_sweep.py": "35c40926918f242cfdf41da2afa9d180"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/api/",
+          "apps/gateway/src/gateway/audit/",
+          "apps/gateway/tests/",
+          "apps/dashboard/app/(app)/app/audit/",
+          "apps/dashboard/components/",
+          "apps/dashboard/lib/",
+          "apps/dashboard/tests/",
+          "apps/dashboard/tests-bff/"
+        ],
+        "snapshot_md5": "247854dc4c389fde631aa10ccb81e560"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-25T04:14:41+00:00",
+            "reason": "scope_violation: task 'audit-log-surface' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/nav-role-filter.test.tsx \u00b7 tmp/commit-audit-log-surface.txt (2 total)",
+            "source": "scope"
+          }
+        ]
+      }
+    },
+    "rbac-admin-ui": {
+      "title": "Dashboard role assignment UI for enterprise tiers",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-25T04:15:00+00:00",
+      "updated": "2026-06-25T05:05:11+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "159c450668f2e1d30102bb9294c5fdd2",
+        "tests": {
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "a475ed5c76711b678d5bef3ee22a181c",
+          "apps/gateway/tests/credential_stub.py": "bcfeaf8d11069c18638703cb79b172bb",
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885",
+          "apps/gateway/tests/test_retention_sweep.py": "35c40926918f242cfdf41da2afa9d180"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/",
+          "apps/gateway/src/gateway/core/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/",
+          "apps/dashboard/app/(app)/app/members/",
+          "apps/dashboard/components/",
+          "apps/dashboard/lib/",
+          "apps/dashboard/tests/",
+          "apps/dashboard/tests-bff/"
+        ],
+        "snapshot_md5": "247854dc4c389fde631aa10ccb81e560"
+      }
+    },
+    "slo-metrics": {
+      "title": "SLO metrics endpoint (availability/latency/error-rate)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-25T05:05:23+00:00",
+      "updated": "2026-06-25T05:20:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "61db6ab33c0b25c598fe3f2d662bc237",
+        "tests": {
+          "apps/gateway/tests/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/conftest.py": "a475ed5c76711b678d5bef3ee22a181c",
+          "apps/gateway/tests/credential_stub.py": "bcfeaf8d11069c18638703cb79b172bb",
+          "apps/gateway/tests/test_config.py": "6baaffaa66305b3dfed362c7b89180cf",
+          "apps/gateway/tests/test_health.py": "4ce5f5515e42b847857562690770b885",
+          "apps/gateway/tests/test_retention_sweep.py": "35c40926918f242cfdf41da2afa9d180",
+          "apps/gateway/tests/test_users_role.py": "d9ec07b0c8a9a92c59aafe08395379a2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/",
+          "apps/gateway/tests/"
+        ],
+        "snapshot_md5": "25a29e788a087b1a005f003473ab7889"
+      }
+    },
+    "slo-dashboard": {
+      "title": "SLO dashboard page (availability/error-rate/volume)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v38",
+      "depends_on": [],
+      "created": "2026-06-25T05:20:12+00:00",
+      "updated": "2026-06-25T05:29:08+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "100fff1b4bdd3117e62534062d440553",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(app)/app/slo/",
+          "apps/dashboard/components/",
+          "apps/dashboard/lib/",
+          "apps/dashboard/tests/",
+          "apps/dashboard/tests-bff/"
+        ],
+        "snapshot_md5": "3156f03eea9e17e8c19bb13bf8ed7cc2"
+      }
+    }
+  },
+  "archived_at": "2026-06-25T05:30:32+00:00"
+}
