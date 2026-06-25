@@ -29,32 +29,34 @@ Out:
 - web-search flag → native-tool translation + flag-strip + citation passthrough (the per-provider mapping + the OpenAI-response envelope for citations) -> owning task `websearch-grounding-passthrough`
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] websearch-grounding-passthrough  depends-on: none                         — gateway maps `web_search:true` → provider-native grounding tool (OpenAI/OpenRouter/Anthropic/Gemini), strips the raw flag, no-ops on non-grounding providers, default-OFF knob; Anthropic/Gemini response translators preserve citations. FREEZES the web-search flag + citation envelope.
-- [ ] chat-websearch-toggle             depends-on: websearch-grounding-passthrough — dashboard composer "Web search" toggle → additive `useChatStream.SendInput.webSearch?` → `web_search:true` on the chat POST body.
+- [x] websearch-grounding-passthrough  depends-on: none                         — gateway maps `web_search:true` → provider-native grounding tool (OpenAI/OpenRouter/Anthropic/Gemini), strips the raw flag, no-ops on non-grounding providers, default-OFF knob; Anthropic/Gemini response translators preserve citations. FREEZES the web-search flag + citation envelope.
+- [x] chat-websearch-toggle             depends-on: websearch-grounding-passthrough — dashboard composer "Web search" toggle → additive `useChatStream.SendInput.webSearch?` → `web_search:true` on the chat POST body.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] With the knob enabled, a chat request carrying `web_search:true` reaches each provider as that provider's NATIVE grounding tool (not a leaked raw flag), and grounding citations the provider returns survive into the OpenAI-shaped response   (← websearch-grounding-passthrough)
-- [ ] A user can flip a "Web search" toggle in `/app/chat` and the chat POST body carries `web_search:true`; with the knob off or flag absent, behavior is unchanged   (← chat-websearch-toggle)
+- [x] With the knob enabled, a chat request carrying `web_search:true` reaches each provider as that provider's NATIVE grounding tool (not a leaked raw flag), and grounding citations the provider returns survive into the OpenAI-shaped response   (← websearch-grounding-passthrough)
+- [x] A user can flip a "Web search" toggle in `/app/chat` and the chat POST body carries `web_search:true`; with the knob off or flag absent, behavior is unchanged   (← chat-websearch-toggle)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway : NEW `proxy/domain/web_search.py` (native tool map + citation normalizers) · `GATEWAY_WEB_SEARCH_ENABLED` knob · central knob-kill in `CompletionUseCase` + `deps.py` wire-up · per-provider injection in openrouter/openai/azure adapters (inject+strip) and anthropic/gemini request builders · anthropic/gemini non-stream citation passthrough into `response["grounding"]`. New `tests/web_search` (36) joined `make test-fast`. The raw `web_search` flag never reaches any upstream (security pin).
+- dashboard : `useChatStream.SendInput` gains additive `webSearch?` → `web_search:true` on the chat POST; `ModelControls` "Web search" checkbox; `ChatWorkspace` state wiring. New `tests-bff/chat-websearch-toggle.test.tsx` (3). Off-path byte-identical to v40.
+- tooling / skill / book : untouched (only `.add/` task + milestone bookkeeping).
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- websearch-grounding-passthrough : gate=PASS · tests=36 green (make test-fast 190) · residue=Anthropic/Gemini STREAM-citation + Gemini googleSearch+functionDeclarations limitation + live-verify of tool shapes (deltas). Independent sonnet refute-read: flag-strip security invariant PROVEN clean on every path (0.98); it caught + we fixed a deps wire-up BLOCKER (feature would've been dead), a groundingChunks-null crash, and 2 tautological tests.
+- chat-websearch-toggle : gate=PASS · tests=3 green (full dashboard suite 541) · residue=promote toggle to a visible composer affordance + rich citation rendering (deltas).
 
-### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+### Goal met?   (map the evidence back to this milestone's Exit criteria)
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change
+  - EC1 (flagged request → native tool, not a leaked flag; citations survive): websearch-grounding-passthrough — per-provider captured-body asserts + flag-absence security pins on complete()+stream() for all providers; Anthropic/Gemini non-stream citations → response["grounding"]; OpenAI/OpenRouter survive verbatim.
+  - EC2 (user toggles Web search; off ⇒ unchanged): chat-websearch-toggle — `test_toggle_on_sends_flag` (body.web_search===true) + `test_toggle_off_no_flag` (no key, v40 body intact) + full v40 suite green.
+- goal: a signed-in user toggles web search in `/app/chat` and the assistant answers with web-grounded info via each provider's native grounding — proven by gateway `make test-fast` 190 green + dashboard 541 green + `next build` OK, default-OFF so production is unaffected until the knob is enabled.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
-> The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
-> small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [ ] v41 commits land on `feat/v41-web-search` (stacked on v40): t1 gateway grounding → t2 dashboard toggle → .add close. (committed locally; PUSH/PR awaits Tin's go-ahead — outward act.)
+- [ ] open PR to main; Tin reviews + merges (HTTPS push per [[git-push-https-gotcha]]); v40 + v41 are a stack — merge v40 first or retarget.
+- [ ] enable `GATEWAY_WEB_SEARCH_ENABLED=true` in a deploy + run the deferred live-verify of the provider tool shapes before announcing the feature.
+- [ ] v41 joins the releasable set (v33–v40 already pending); bundle into the next release cut when Tin calls it (release.md).
