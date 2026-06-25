@@ -5,13 +5,17 @@ Two routers:
   internal_router — /internal/authz  (X-Api-Key or Authorization: Bearer authenticated, no JWT)
 """
 
+import asyncio
 import datetime as dt
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.error_catalog import (
     AUTH_FORBIDDEN,
     AUTH_KEY_INVALID_AUTHZ,
@@ -79,6 +83,7 @@ def _fmt_expires(ts: dt.datetime | None) -> str | None:
 
 @admin_router.post("", status_code=201, response_model=CreateKeyResponse)
 async def create_key(
+    request: Request,
     body: CreateKeyRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
     use_case: Annotated[CreateKeyUseCase, Depends(get_create_key_use_case)],
@@ -107,6 +112,26 @@ async def create_key(
         team_id=body.team_id,
         cache_enabled=body.cache_enabled,
     )
+
+    # Audit emit — fail-open fire-and-forget; key ID only, NEVER the secret material
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="key.create",
+                target_type="api_key",
+                target_id=str(result.key_id),
+                result="success",
+                metadata={"key_name": result.name},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return CreateKeyResponse(
         key_id=result.key_id,
         name=result.name,
@@ -275,6 +300,7 @@ async def patch_key(
 
 @admin_router.post("/{key_id}/rotate", status_code=201, response_model=RotateKeyResponse)
 async def rotate_key(
+    request: Request,
     key_id: uuid.UUID,
     body: RotateKeyRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
@@ -314,6 +340,28 @@ async def rotate_key(
     except KeyNotFoundError:
         raise KEY_NOT_FOUND.exc() from None
 
+    # Audit emit — fail-open fire-and-forget; key IDs only, NEVER the secret material
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="key.rotate",
+                target_type="api_key",
+                target_id=str(result.new_key_id),
+                result="success",
+                metadata={
+                    "superseded_key_id": str(result.superseded_key_id),
+                    "key_name": result.name,
+                },
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return RotateKeyResponse(
         new_key_id=result.new_key_id,
         superseded_key_id=result.superseded_key_id,
@@ -332,6 +380,7 @@ async def rotate_key(
 
 @admin_router.delete("/{key_id}", status_code=204)
 async def revoke_key(
+    request: Request,
     key_id: uuid.UUID,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
     use_case: Annotated[RevokeKeyUseCase, Depends(get_revoke_key_use_case)],
@@ -347,6 +396,25 @@ async def revoke_key(
         raise AUTH_FORBIDDEN.exc() from None
     except KeyNotFoundError:
         raise KEY_NOT_FOUND.exc() from None
+
+    # Audit emit — fail-open fire-and-forget
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="key.revoke",
+                target_type="api_key",
+                target_id=str(key_id),
+                result="success",
+                metadata={},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
 
 
 def _extract_raw_key(request: Request) -> str:

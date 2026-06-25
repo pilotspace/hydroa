@@ -15,9 +15,11 @@ SECURITY INVARIANTS:
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import urllib.parse
-from datetime import datetime
+import uuid as _uuid_mod
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -26,6 +28,8 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_FORBIDDEN_OWNER_REQUIRED,
@@ -36,7 +40,7 @@ from gateway.core.error_catalog import (
 )
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
-from gateway.tenants.domain.entities import Role
+from gateway.tenants.domain.entities import Identity, Role
 
 oidc_admin_router = APIRouter(prefix="/admin/oidc", tags=["oidc-admin"])
 
@@ -124,8 +128,8 @@ class OidcConfigResponse(BaseModel):
     updated_at: datetime
 
 
-async def _get_owner_tenant_id(request: Request, session: AsyncSession) -> str:
-    """Resolve the caller's tenant_id, enforcing owner role."""
+def _get_owner_identity(request: Request) -> Identity:
+    """Resolve the caller's full Identity, enforcing owner role."""
     token = get_bearer_token(request)
     tokens = request.app.state.token_service
     use_case = GetIdentityUseCase(tokens)
@@ -137,7 +141,12 @@ async def _get_owner_tenant_id(request: Request, session: AsyncSession) -> str:
     if identity.role != Role.OWNER:
         raise AUTH_FORBIDDEN_OWNER_REQUIRED.exc()
 
-    return str(identity.tenant_id)
+    return identity
+
+
+async def _get_owner_tenant_id(request: Request, session: AsyncSession) -> str:
+    """Resolve the caller's tenant_id, enforcing owner role."""
+    return str(_get_owner_identity(request).tenant_id)
 
 
 @oidc_admin_router.get("")
@@ -198,11 +207,8 @@ async def put_oidc_config(
     from gateway.auth.infrastructure.orm import OidcProviderConfigRow
 
     settings = request.app.state.settings
-    tenant_id_str = await _get_owner_tenant_id(request, session)
-
-    import uuid as _uuid
-
-    tenant_id = _uuid.UUID(tenant_id_str)
+    actor_identity = _get_owner_identity(request)
+    tenant_id = actor_identity.tenant_id
 
     # Check encryption key before anything else
     enc_key = settings.oidc_config_encryption_key
@@ -296,6 +302,29 @@ async def put_oidc_config(
 
     if row is None:
         raise INTERNAL_ERROR.exc()
+
+    # Audit emit — fail-open fire-and-forget; issuer + client_id only, NEVER client_secret
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=_uuid_mod.uuid4(),
+                tenant_id=tenant_id,
+                actor_user_id=actor_identity.user_id,
+                actor_email=actor_identity.email,
+                action="oidc.put",
+                target_type="oidc",
+                target_id="tenant_oidc_config",
+                result="success",
+                metadata={
+                    "issuer": body.issuer,
+                    "client_id": body.client_id,
+                    "enabled": body.enabled,
+                },
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
 
     # SECURITY: client_secret NEVER returned
     return {

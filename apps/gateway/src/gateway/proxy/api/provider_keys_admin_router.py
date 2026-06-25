@@ -22,11 +22,16 @@ SECURITY INVARIANTS:
 
 from __future__ import annotations
 
+import asyncio
+import uuid as _uuid_mod
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, SecretStr, ValidationError
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.error_catalog import (
     AUTH_FORBIDDEN_OWNER_REQUIRED,
     AUTH_TOKEN_INVALID,
@@ -47,7 +52,7 @@ from gateway.proxy.domain.provider_credentials import (
 )
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
-from gateway.tenants.domain.entities import Role
+from gateway.tenants.domain.entities import Identity, Role
 
 provider_keys_admin_router = APIRouter(prefix="/admin/provider-keys", tags=["provider-keys-admin"])
 
@@ -88,12 +93,13 @@ class ProviderKeyPutBody(BaseModel):
     enabled: bool = True
 
 
-def _require_owner_tenant_id(request: Request) -> UUID:
-    """Resolve the caller's tenant_id from the verified JWT, enforcing OWNER role.
+def _require_owner_identity(request: Request) -> Identity:
+    """Resolve the caller's full Identity from the verified JWT, enforcing OWNER role.
 
     Raises 401 ERR_AUTH_INVALID_TOKEN (missing/malformed/invalid token) or
     403 ERR_AUTH_FORBIDDEN (authenticated non-owner).
     """
+
     token = get_bearer_token(request)  # raises AUTH_TOKEN_MISSING (401) when absent
     use_case = GetIdentityUseCase(request.app.state.token_service)
     try:
@@ -102,7 +108,16 @@ def _require_owner_tenant_id(request: Request) -> UUID:
         raise AUTH_TOKEN_INVALID.exc() from exc
     if identity.role != Role.OWNER:
         raise AUTH_FORBIDDEN_OWNER_REQUIRED.exc()
-    return identity.tenant_id
+    return identity
+
+
+def _require_owner_tenant_id(request: Request) -> UUID:
+    """Resolve the caller's tenant_id from the verified JWT, enforcing OWNER role.
+
+    Raises 401 ERR_AUTH_INVALID_TOKEN (missing/malformed/invalid token) or
+    403 ERR_AUTH_FORBIDDEN (authenticated non-owner).
+    """
+    return _require_owner_identity(request).tenant_id
 
 
 def _build_credential(provider: str, body: ProviderKeyPutBody) -> ProviderCredential:
@@ -169,7 +184,8 @@ async def put_provider_key(
     provider: str, body: ProviderKeyPutBody, request: Request
 ) -> ProviderKeyStatus:
     """Create or replace (upsert) the caller-tenant's credential for *provider*."""
-    tenant_id = _require_owner_tenant_id(request)
+    identity = _require_owner_identity(request)
+    tenant_id = identity.tenant_id
     if provider not in BYOK_PROVIDERS:
         raise PROVIDER_UNKNOWN.exc()
 
@@ -196,6 +212,26 @@ async def put_provider_key(
     status = await _status_for(request, tenant_id, provider)
     if status is None:  # pragma: no cover — defensive: a row was just upserted
         raise INTERNAL_ERROR.exc()
+
+    # Audit emit — fail-open fire-and-forget; provider name only, NEVER secret material
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=_uuid_mod.uuid4(),
+                tenant_id=tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="provider_key.put",
+                target_type="provider",
+                target_id=provider,
+                result="success",
+                metadata={"provider": provider, "enabled": body.enabled},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return status
 
 

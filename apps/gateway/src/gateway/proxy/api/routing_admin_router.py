@@ -20,12 +20,17 @@ adopted by the live router only at the next gateway boot (the shipped boot-merge
 
 from __future__ import annotations
 
+import asyncio
 import re
+import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Body, Request
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.config import Settings
 from gateway.core.error_catalog import ROUTING_CONFIG_INVALID
 from gateway.proxy.application.routing_config_merge import (
@@ -167,7 +172,7 @@ async def get_routing_admin(
 async def put_routing_admin(
     request: Request,
     body: Annotated[dict[str, Any], Body(...)],
-    _identity: Annotated[Identity, require_permission(Permission.ROUTING_MANAGE)],
+    identity: Annotated[Identity, require_permission(Permission.ROUTING_MANAGE)],
 ) -> dict[str, Any]:
     """PUT /admin/routing — validate (Settings/Deployment parity) then persist; restart-to-apply.
 
@@ -185,4 +190,24 @@ async def put_routing_admin(
     # Persist ONLY recognised routing keys — never store arbitrary client-supplied keys in the row.
     persistable = {k: body[k] for k in _PERSISTABLE_KEYS if k in body}
     await RoutingConfigRepository(request.app.state.sessionmaker).upsert(persistable)
+
+    # Audit emit — fail-open fire-and-forget (NEVER in the action's own transaction)
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="routing.update",
+                target_type="routing",
+                target_id="singleton",
+                result="success",
+                metadata={"keys_updated": sorted(persistable.keys())},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return await _routing_response(request, effective)

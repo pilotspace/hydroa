@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.error_catalog import (
     MEMBER_EXISTS,
     MEMBER_NOT_FOUND,
@@ -184,6 +188,7 @@ async def delete_team(
 
 @teams_router.post("/{team_id}/members", status_code=201, response_model=AddMemberResponse)
 async def add_member(
+    request: Request,
     team_id: uuid.UUID,
     body: AddMemberRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
@@ -204,6 +209,28 @@ async def add_member(
         raise USER_NOT_FOUND.exc() from None
     except MemberExistsError:
         raise MEMBER_EXISTS.exc() from None
+
+    # Audit emit — fail-open fire-and-forget (role assignment; no secrets in metadata)
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="member.role_assign",
+                target_type="user",
+                target_id=str(member.user_id),
+                result="success",
+                metadata={
+                    "team_id": str(team_id),
+                    "assigned_role": member.role,
+                },
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
 
     return AddMemberResponse(
         team_id=member.team_id,
