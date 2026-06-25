@@ -1,0 +1,94 @@
+{
+  "root": "screen",
+  "capture": "../captures/chat-workspace-page.png",
+  "note": "v40 chat-workspace-page — confirmed by Tin 2026-06-25. Picker / cost-readout / system+temperature are SLOTS the sibling tasks (chat-model-controls, chat-cost-readout) fill; this task renders them.",
+  "elements": {
+    "screen": {
+      "type": "Screen",
+      "props": {
+        "bg": "{semantic.color.surface-muted}",
+        "padding": "{semantic.space.inset-none}"
+      },
+      "children": ["header", "thread", "composer"]
+    },
+    "header": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.none}",
+        "gap": "{semantic.space.gap-md}"
+      },
+      "children": ["title", "session_cost", "model_picker"]
+    },
+    "title": {
+      "type": "Heading",
+      "props": { "text": "Chat", "color": "{semantic.color.text}", "size": "{semantic.font.size.heading}", "level": "1" }
+    },
+    "session_cost": {
+      "type": "CostReadout",
+      "slot": "chat-cost-readout",
+      "props": { "scope": "session", "tokens": "3,412", "cost": "$0.011", "honest_placeholder": "—" }
+    },
+    "model_picker": {
+      "type": "ModelPicker",
+      "slot": "chat-model-controls",
+      "props": { "model": "openai/gpt-4o", "source": "GET /v1/models", "context": "128k" }
+    },
+    "thread": {
+      "type": "MessageThread",
+      "props": {
+        "overflow": "auto",
+        "states": ["loading", "empty", "error", "success"],
+        "scrollToLatest": true
+      },
+      "children": ["turn_user_1", "turn_assistant_1", "turn_user_2", "turn_assistant_streaming"]
+    },
+    "turn_user_1": {
+      "type": "MessageBubble",
+      "props": { "role": "user", "align": "end", "bg": "{semantic.color.primary}", "fg": "{semantic.color.on-primary}" }
+    },
+    "turn_assistant_1": {
+      "type": "MessageBubble",
+      "props": { "role": "assistant", "align": "start", "bg": "{semantic.color.surface}", "border": "{semantic.color.border}", "markdown": true, "code": true },
+      "children": ["turn_assistant_1_cost"]
+    },
+    "turn_assistant_1_cost": {
+      "type": "CostReadout",
+      "slot": "chat-cost-readout",
+      "props": { "scope": "turn", "tokens": "1,242", "cost": "$0.0041", "honest_placeholder": "—" }
+    },
+    "turn_user_2": {
+      "type": "MessageBubble",
+      "props": { "role": "user", "align": "end", "bg": "{semantic.color.primary}", "fg": "{semantic.color.on-primary}" }
+    },
+    "turn_assistant_streaming": {
+      "type": "MessageBubble",
+      "props": { "role": "assistant", "align": "start", "streaming": true, "caret": true }
+    },
+    "composer": {
+      "type": "Composer",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.card}",
+        "placeholder": "Message gpt-4o…",
+        "submit": "Enter; Shift+Enter = newline"
+      },
+      "children": ["composer_controls", "stop_button", "send_button"]
+    },
+    "composer_controls": {
+      "type": "ModelControls",
+      "slot": "chat-model-controls",
+      "props": { "fields": ["system", "temperature"], "temperature": "0.7" }
+    },
+    "stop_button": {
+      "type": "Button",
+      "props": { "label": "Stop", "variant": "outline", "intent": "destructive", "visibleWhen": "streaming" }
+    },
+    "send_button": {
+      "type": "Button",
+      "props": { "label": "Send", "variant": "primary", "visibleWhen": "idle" }
+    }
+  }
+}

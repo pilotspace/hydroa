@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "streaming-bff",
+  "active_task": "chat-workspace-page",
   "active_milestone": "v40",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -201,14 +201,30 @@
     },
     "chat-workspace-page": {
       "title": "Chat workspace page (/app/chat)",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v40",
       "depends_on": [
         "streaming-bff"
       ],
       "created": "2026-06-25T14:33:03+00:00",
-      "updated": "2026-06-25T14:33:03+00:00"
+      "updated": "2026-06-25T16:44:33+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2de640df12cdb0f5c02c8a3d0205cff3",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/hooks/use-chat-stream.ts",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/app/(app)/app/chat/page.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/chat-workspace-page.test.tsx",
+          "apps/dashboard/tests-bff/nav-role-filter.test.tsx"
+        ],
+        "snapshot_md5": "79ec43fb77dbf51b8ecefa33f7693fc0"
+      }
     },
     "chat-model-controls": {
       "title": "Chat model picker + request controls",
@@ -252,7 +268,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T15:34:05+00:00",
+  "updated": "2026-06-25T16:44:33+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
