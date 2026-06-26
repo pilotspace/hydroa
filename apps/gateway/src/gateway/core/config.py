@@ -523,6 +523,16 @@ class Settings(BaseSettings):
     # Default 10 MiB. Reject BEFORE insert (no partial write).
     artifact_max_bytes: int = Field(default=10_485_760, ge=0)  # GATEWAY_ARTIFACT_MAX_BYTES
 
+    # ── Realtime WebSocket voice endpoint (/v1/realtime) ─────────────────────
+    # GATEWAY_REALTIME_AUTH_TIMEOUT_SECONDS — how long the server waits for the
+    # first {"type":"auth"} frame before closing with code 4408.  ge=0 allows
+    # a zero timeout (immediate; useful in tests).  Default 10 s.
+    realtime_auth_timeout_seconds: float = Field(default=10.0, ge=0)
+    # GATEWAY_REALTIME_MAX_UTTERANCE_BYTES — per-turn audio buffer ceiling.
+    # A commit whose accumulated audio exceeds this limit → error "utterance_too_large"
+    # (no STT call, no billing).  0 = unlimited (operator opt-out).  Default 25 MiB.
+    realtime_max_utterance_bytes: int = Field(default=26_214_400, ge=0)  # 25 MiB
+
     # ── Model-group aliases → ordered Deployments (model-fallbacks v6 + deployment-model v8) ──
     # GATEWAY_MODEL_GROUPS — JSON dict mapping alias string to an ordered member list.
     # A member is EITHER a bare model-id string (v6 shape) OR a deployment object:
