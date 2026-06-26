@@ -1,0 +1,53 @@
+{{- if .Values.datastores.minio.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ai-proxy.minio.fullname" . }}-createbucket
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio-createbucket
+  annotations:
+    # Run after MinIO is installed/upgraded; idempotent so re-runs are safe.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      # Explicit labels (NOT the minio selectorLabels) — this Job is not part of the
+      # StatefulSet, and reusing them would emit a duplicate component key (invalid YAML).
+      labels:
+        app.kubernetes.io/name: {{ include "ai-proxy.fullname" . }}
+        app.kubernetes.io/component: minio-createbucket
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: createbucket
+          image: {{ .Values.datastores.minio.mcImage | quote }}
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-proxy.datastores.secretName" . }}
+                  key: minio-root-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-proxy.datastores.secretName" . }}
+                  key: minio-root-password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              # Design-for-failure (F6): bound the wait so a permanently-unreachable MinIO
+              # exits non-zero (triggering backoffLimit) instead of looping forever.
+              i=0; max=60
+              until mc alias set local "http://{{ include "ai-proxy.minio.fullname" . }}:{{ .Values.datastores.minio.apiPort }}" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do
+                i=$((i+1))
+                if [ "$i" -ge "$max" ]; then echo "timed out waiting for minio" >&2; exit 1; fi
+                echo "waiting for minio... ($i/$max)"; sleep 5
+              done
+              # Idempotent: --ignore-existing makes a re-run on an existing bucket a no-op success.
+              mc mb --ignore-existing "local/{{ .Values.gateway.objectStore.bucket | default "ai-proxy-artifacts" }}"
+{{- end -}}

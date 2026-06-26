@@ -90,7 +90,72 @@ gateway:
     runAsNonRoot: true
     runAsUser: 1000
 
+# ── Datastores — in-cluster Postgres/Redis/MinIO (external-ready) ───────────────
+# Each datastore is `enabled`-gated: flip to false + point the gateway conn-string
+# at a managed endpoint (values only, no template change). Credentials live in a
+# k8s Secret, never here (secure-by-default — mirrors gateway.jwtSecret).
+datastores:
+  # Credential Secret. DEFAULT create=false: a bare install REFERENCES an operator-
+  # provided Secret named `name` (so the default render still succeeds, like the
+  # gateway's existingSecret). e2e/kind sets create=true + the *Password/*User values.
+  secrets:
+    create: false
+    name: "ai-proxy-datastore-secrets"
+    postgresPassword: ""      # only consumed when create=true (no literal default)
+    minioRootUser: ""
+    minioRootPassword: ""
+
+  postgres:
+    enabled: true
+    image: postgres:16-alpine
+    user: gateway             # POSTGRES_USER (mirrors dev-compose)
+    database: gateway         # POSTGRES_DB
+    storage: 1Gi
+    storageClass: ""          # "" -> cluster default StorageClass (kind: standard)
+    # Design-for-failure: requests AND limits both set (parity with the gateway).
+    # Conservative kind-friendly defaults; operators size per-cluster.
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: "1",  memory: 512Mi }
+    # Pod-level hardening. Safe default (seccomp); operators can add runAsNonRoot/fsGroup
+    # per their StorageClass without a template change (the postgres image inits as root).
+    podSecurityContext:
+      seccompProfile: { type: RuntimeDefault }
+    probes:
+      readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+      liveness:  { initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 3, failureThreshold: 3 }
+
+  redis:
+    enabled: true
+    image: redis:7-alpine
+    storage: 256Mi
+    storageClass: ""
+    resources:
+      requests: { cpu: 50m,  memory: 64Mi }
+      limits:   { cpu: 500m, memory: 256Mi }
+    podSecurityContext:
+      seccompProfile: { type: RuntimeDefault }
+    probes:
+      readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+      liveness:  { initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 3, failureThreshold: 3 }
+
+  minio:
+    enabled: true
+    image: minio/minio
+    mcImage: minio/mc
+    apiPort: 9000
+    consolePort: 9001
+    storage: 2Gi
+    storageClass: ""
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: "1",  memory: 512Mi }
+    podSecurityContext:
+      seccompProfile: { type: RuntimeDefault }
+    probes:
+      readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+      liveness:  { initialDelaySeconds: 20, periodSeconds: 20, timeoutSeconds: 3, failureThreshold: 3 }
+
 # ── Typed placeholder blocks — owned & filled by sibling v53 tasks ──────────────
-datastores: {}   # datastore-statefulsets (Postgres/Redis/MinIO)
 envoy: {}        # envoy-edge-manifests
 dashboard: {}    # dashboard-chart

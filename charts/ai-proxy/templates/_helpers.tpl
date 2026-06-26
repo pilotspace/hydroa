@@ -48,3 +48,49 @@ whitespace-only ref does not pass as set. Call from the gateway Deployment.
 {{- fail "secret_ref_missing: set gateway.jwtSecret.existingSecret or gateway.jwtSecret.createSecret when gateway.env.environment is not dev/test" -}}
 {{- end -}}
 {{- end -}}
+
+{{/* ── Datastore helpers (v53 datastore-statefulsets) — additive, frozen helpers above untouched ── */}}
+
+{{- define "ai-proxy.postgres.fullname" -}}
+{{- printf "%s-postgres" (include "ai-proxy.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- define "ai-proxy.postgres.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ai-proxy.fullname" . }}
+app.kubernetes.io/component: postgres
+{{- end -}}
+
+{{- define "ai-proxy.redis.fullname" -}}
+{{- printf "%s-redis" (include "ai-proxy.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- define "ai-proxy.redis.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ai-proxy.fullname" . }}
+app.kubernetes.io/component: redis
+{{- end -}}
+
+{{- define "ai-proxy.minio.fullname" -}}
+{{- printf "%s-minio" (include "ai-proxy.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- define "ai-proxy.minio.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ai-proxy.fullname" . }}
+app.kubernetes.io/component: minio
+{{- end -}}
+
+{{/* The datastore credential Secret name — rendered when create=true, referenced otherwise. */}}
+{{- define "ai-proxy.datastores.secretName" -}}
+{{- .Values.datastores.secrets.name | trim -}}
+{{- end -}}
+
+{{/*
+Fail-closed datastore secret guard (chart_invalid -> datastore_secret_ref_missing) —
+mirrors the gateway's validateSecret. For ANY environment outside {dev, test}, when at
+least one datastore is enabled, the credential Secret name MUST be set (rendered or
+referenced). `trim` so whitespace does not pass as set. Evaluated from datastore-secret.yaml.
+*/}}
+{{- define "ai-proxy.datastores.validateSecret" -}}
+{{- $devEnvs := list "dev" "test" -}}
+{{- $name := .Values.datastores.secrets.name | trim -}}
+{{- $anyEnabled := or .Values.datastores.postgres.enabled .Values.datastores.redis.enabled .Values.datastores.minio.enabled -}}
+{{- if and (not (has .Values.gateway.env.environment $devEnvs)) $anyEnabled (not $name) -}}
+{{- fail "datastore_secret_ref_missing: set datastores.secrets.name (or datastores.secrets.create=true) when a datastore is enabled and gateway.env.environment is not dev/test" -}}
+{{- end -}}
+{{- end -}}

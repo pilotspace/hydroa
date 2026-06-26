@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "helm-chart-scaffold",
+  "active_task": "datastore-statefulsets",
   "active_milestone": "v53",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -312,6 +312,43 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "datastore-statefulsets": {
+      "title": "In-cluster Postgres/Redis/MinIO StatefulSets (external-ready)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v53",
+      "depends_on": [],
+      "created": "2026-06-26T12:53:52+00:00",
+      "updated": "2026-06-26T13:53:24+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8242e88dc9123cecfa57d6bb205fce96",
+        "tests": {
+          "tests/helm/test_datastore_statefulsets.py": "59aabc621cb57409cd409c569a7ccb62"
+        }
+      },
+      "scope": {
+        "declared": [
+          "charts/ai-proxy/values.yaml",
+          "charts/ai-proxy/datastores{}",
+          "charts/ai-proxy/templates/_helpers.tpl",
+          "charts/ai-proxy/templates/postgres-statefulset.yaml",
+          "charts/ai-proxy/templates/postgres-service.yaml",
+          "charts/ai-proxy/templates/redis-statefulset.yaml",
+          "charts/ai-proxy/templates/redis-service.yaml",
+          "charts/ai-proxy/templates/minio-statefulset.yaml",
+          "charts/ai-proxy/templates/minio-service.yaml",
+          "charts/ai-proxy/templates/minio-createbucket-job.yaml",
+          "charts/ai-proxy/templates/datastore-secret.yaml"
+        ],
+        "snapshot_md5": "58a0a49668aefabc34cf51a11d24db7d"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -350,7 +387,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T12:41:53+00:00",
+  "updated": "2026-06-26T13:53:24+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -995,6 +1032,6 @@
     "v53"
   ],
   "active_tasks": {
-    "v53": "helm-chart-scaffold"
+    "v53": "datastore-statefulsets"
   }
 }
