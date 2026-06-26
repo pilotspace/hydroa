@@ -234,8 +234,8 @@ Watch (reuse scenarios as monitors): OG/title correctness via a social-card vali
 - [SPEC · seeded] Marketing pages are `○` Static today (no revalidate); add `export const revalidate` if any becomes data-backed (e.g. status from a real feed) (evidence: status page is currently static placeholder).
 
 ### Competency deltas
-- [SDD · open] A shared `buildMetadata` helper + root-layout defaults gives consistent SEO with title-template inheritance — far better than per-page literal objects (no OG, drift); the title template (`%s · Hydroa`) means pages store just `"Pricing"` (evidence: 8 pages unified).
-- [TDD · open] Importing the ROOT layout in a test pulls `next/font/google` (`Inter`) which throws in jsdom — `vi.mock("next/font/google", ...)` per test that needs layout metadata (evidence: "Inter is not a function" → fixed).
+- [SDD · folded] A shared `buildMetadata` helper + root-layout defaults gives consistent SEO with title-template inheritance — far better than per-page literal objects (no OG, drift); the title template (`%s · Hydroa`) means pages store just `"Pricing"` (evidence: 8 pages unified). [folded foundation-version 37]
+- [TDD · folded] Importing the ROOT layout in a test pulls `next/font/google` (`Inter`) which throws in jsdom — `vi.mock("next/font/google", ...)` per test that needs layout metadata (evidence: "Inter is not a function" → fixed). [folded foundation-version 37]
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency

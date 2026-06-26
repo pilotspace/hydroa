@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 36
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 37
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -129,6 +129,12 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) When a task's drafted status code (422) collides with a shipped test (400), PRESERVE the shipped contract and reconcile the spec wording — never weaken the test for a cosmetic code (evidence: 400-preservation freeze flag honored).  [folded foundation-version 37 · from bff-input-validation]
+- (SDD) Next 16 special-file signature: error.tsx/global-error.tsx MUST be "use client" with `{error, reset}`; global-error renders its OWN html/body and can't use providers — keep it inline-styled/dependency-light (evidence: built + compiled into the route tree).  [folded foundation-version 37 · from failure-state-segments]
+- (SDD) A shared `buildMetadata` helper + root-layout defaults gives consistent SEO with title-template inheritance — far better than per-page literal objects (no OG, drift); the title template (`%s · Hydroa`) means pages store just `"Pricing"` (evidence: 8 pages unified).  [folded foundation-version 37 · from harden-marketing]
+- (SDD) A single error class must live in the LOWEST layer and be re-exported upward (BffError defined in resilient-fetch.ts, re-exported by bff-client.ts) — defining it in the consumer would force a circular import and break `instanceof` across the app (evidence: refute-read confirmed instanceof holds).  [folded foundation-version 37 · from resilient-bff-fetch]
+- (SDD) A static `next.config.ts` `headers()` is fully UNIT-testable by importing `nextConfig` and calling `headers()` (no running server needed for the red/green), while the RUNTIME emission is confirmed separately via a live `next start` + curl — the two together prove both the config shape AND that Next actually serves it (evidence: 4 unit tests + live curl on / and /login).  [folded foundation-version 37 · from security-headers-csp]
+- (SDD) CSP relaxations must be recorded at the freeze as an auditable decision with a named upgrade path (here: `'unsafe-inline'`→nonce SPEC delta) — never a silent permanent allowance (evidence: §3 Least-sure flag + the SPEC delta above).  [folded foundation-version 37 · from security-headers-csp]
 - (SDD) mint_token derives `scope` from the authorization row instead of taking the frozen §3 `scope` param — a benign, strictly-more-correct refinement of the port sketch (a token's scope is ALWAYS its authorization's scope; passing it invites mismatch). Recorded per the foundation "fix-if-strictly-more-correct, record the deviation" rule (evidence: ports.py mint_token signature vs §3 line 249).  [folded foundation-version 36 · from agent-oauth-grant-store]
 - (SDD) reusing the task-2 per-IP limiter keyed by `approve:{user_id}` for a per-USER limit is a clean primitive reuse (no new infra) — the limiter's key is just an opaque string (evidence: §0 reuse note).  [folded foundation-version 36 · from device-approval-flow]
 - (SDD) when reusing a primitive that doesn't fit (the per-UUID RedisLuaRateLimiter vs an unauthenticated caller), spec a NEW fit-for-purpose seam rather than forcing the old one — the per-IP limiter is the right call but should be Lua-atomic like its sibling (evidence: §0 GROUND limiter note + SPEC delta above).  [folded foundation-version 36 · from device-authorization-endpoint]
@@ -335,6 +341,11 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+- (UDD) The never-axe'd auth forms + new failure segments passed serious/critical on the first check — the shared primitives (labeled Input, ErrorState role=alert) carry a11y by construction (evidence: 0 violations surfaced).  [folded foundation-version 37 · from a11y-ci-coverage]
+- (UDD) Reusing the v13 `states.tsx` primitives made the failure segments a thin composition (one RouteError + thin wrappers) with no new visual language — the state-pattern investment pays off again (evidence: 7 files, ~all delegate to ErrorState/Loading).  [folded foundation-version 37 · from failure-state-segments]
+- (UDD) Owning the route entrance ONCE in the shared shell (keyed by activePath) beats wrapping N pages — uniform motion, zero per-page churn, re-triggers on nav via React key remount (evidence: 13 routes covered by one wrap).  [folded foundation-version 37 · from harden-admin]
+- (UDD) Sharing the entrance via AuthShell (one wrap) covers both auth pages with zero per-page churn — same shell-owns-motion pattern as the admin AppShell (evidence: 2 pages, 1 swap).  [folded foundation-version 37 · from harden-auth]
+- (UDD) The a11y guarantee (reduced-motion) belongs in a GLOBAL css net (covers everything unconditionally), while the per-component primitive (Reveal) is the opt-in polish — separating "guarantee" from "enhancement" keeps the invariant robust even if a component forgets the motion-safe gate (evidence: M1 net independent of M2 Reveal).  [folded foundation-version 37 · from motion-primitives]
 - (UDD) a shared marketing section/card pattern now recurs across landing/pricing/legal/docs — candidate for one section primitive.  [folded foundation-version 35 · from docs-blog-scaffold]
 - (UDD) marketing pages now repeat a section/prose pattern — LegalPage wrapper is the first shared extraction.  [folded foundation-version 35 · from legal-pages]
 - (UDD) marketing pages share a section/tier pattern — candidate for a reusable layout (evidence: landing+pricing repeat structure).  [folded foundation-version 35 · from pricing-page]
@@ -455,6 +466,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-26 | fold all → foundation-version 37 (SDD 6 · UDD 5 · TDD 7 · ADD 5) | consolidate captured OBSERVE lessons into the versioned foundation | 23 lessons open→folded; +23 routed bullets; 36→37 |
 | 2026-06-25 | fold all → foundation-version 36 (SDD 3 · TDD 6 · ADD 6) | consolidate captured OBSERVE lessons into the versioned foundation | 15 lessons open→folded; +15 routed bullets; 35→36 |
 | 2026-06-25 | fold all → foundation-version 35 (DDD 4 · SDD 2 · UDD 4 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 13 lessons open→folded; +13 routed bullets; 34→35 |
 | 2026-06-24 | fold all → foundation-version 34 (UDD 3 · TDD 3 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 7 lessons open→folded; +7 routed bullets; 33→34 |

@@ -198,5 +198,5 @@ Watch (reuse scenarios as monitors): auth submit failure-rate + that the generic
 - [SPEC · open] The OIDC callback route (`/auth/oidc/callback`, ƒ dynamic) has no Reveal/entrance — it's a transient redirect bounce; revisit if it ever renders a visible interstitial (evidence: only /login + /signup wrapped).
 
 ### Competency deltas
-- [UDD · open] Sharing the entrance via AuthShell (one wrap) covers both auth pages with zero per-page churn — same shell-owns-motion pattern as the admin AppShell (evidence: 2 pages, 1 swap).
-- [TDD · open] For "already-shipped" criteria (EC8), the verify net asserts the live surface (invalid-email inline error, in-flight disabled submit) rather than re-implementing — green-by-design tests still earn their keep as regression guards (evidence: 3 EC8 tests green pre-change, lock the behavior).
+- [UDD · folded] Sharing the entrance via AuthShell (one wrap) covers both auth pages with zero per-page churn — same shell-owns-motion pattern as the admin AppShell (evidence: 2 pages, 1 swap). [folded foundation-version 37]
+- [TDD · folded] For "already-shipped" criteria (EC8), the verify net asserts the live surface (invalid-email inline error, in-flight disabled submit) rather than re-implementing — green-by-design tests still earn their keep as regression guards (evidence: 3 EC8 tests green pre-change, lock the behavior). [folded foundation-version 37]

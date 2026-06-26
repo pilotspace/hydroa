@@ -200,5 +200,5 @@ Watch (reuse scenarios as monitors): per-route a11y in a real browser (jsdom can
 - [SPEC · open] EC5 real-browser axe/playwright in CI is org-billing-blocked (same as task 6) — the jsdom landmark/a11y net is the in-CI gate; per-route browser audit is the deferred half (evidence: 13 routes not browser-audited).
 
 ### Competency deltas
-- [UDD · open] Owning the route entrance ONCE in the shared shell (keyed by activePath) beats wrapping N pages — uniform motion, zero per-page churn, re-triggers on nav via React key remount (evidence: 13 routes covered by one wrap).
-- [TDD · open] A `data-slot` marker on a presentational primitive gives a clean, non-brittle test hook (vs matching Tailwind class strings) and doubles as a DS adoption marker (evidence: admin test asserts `[data-slot="reveal"]`, red before the wrap).
+- [UDD · folded] Owning the route entrance ONCE in the shared shell (keyed by activePath) beats wrapping N pages — uniform motion, zero per-page churn, re-triggers on nav via React key remount (evidence: 13 routes covered by one wrap). [folded foundation-version 37]
+- [TDD · folded] A `data-slot` marker on a presentational primitive gives a clean, non-brittle test hook (vs matching Tailwind class strings) and doubles as a DS adoption marker (evidence: admin test asserts `[data-slot="reveal"]`, red before the wrap). [folded foundation-version 37]

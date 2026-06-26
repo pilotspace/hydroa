@@ -262,9 +262,9 @@ Watch (reuse scenarios as monitors): rate of 400 ERR_BFF_PAYLOAD_INVALID + 413 E
 - [SPEC · seeded] Centralize the size guard into the shared validator (parseJsonBody could take a maxBytes) so future BFF routes inherit it instead of re-implementing (evidence: only the gw proxy has it today).
 
 ### Competency deltas
-- [TDD · open] Special/control characters in a test STRING literal get normalized away by the editor (U+0085/NBSP silently became plain ASCII → a green-looking but vacuous assert); build them with `String.fromCharCode(0x85)` so the bytes survive (evidence: test_sanitize_domain_c1_and_non_ascii failed-then-fixed).
-- [ADD · open] A security refute-read pays off on input-validation tasks even when tests are green — it found a contract-fidelity gap (C0-only vs the "no control chars" contract includes C1) that the happy tests missed; reserve it for logic/security tasks, skip it for pure static config (evidence: v50 task-2 skipped it, task-3 caught a real gap).
-- [SDD · open] When a task's drafted status code (422) collides with a shipped test (400), PRESERVE the shipped contract and reconcile the spec wording — never weaken the test for a cosmetic code (evidence: 400-preservation freeze flag honored).
+- [TDD · folded] Special/control characters in a test STRING literal get normalized away by the editor (U+0085/NBSP silently became plain ASCII → a green-looking but vacuous assert); build them with `String.fromCharCode(0x85)` so the bytes survive (evidence: test_sanitize_domain_c1_and_non_ascii failed-then-fixed). [folded foundation-version 37]
+- [ADD · folded] A security refute-read pays off on input-validation tasks even when tests are green — it found a contract-fidelity gap (C0-only vs the "no control chars" contract includes C1) that the happy tests missed; reserve it for logic/security tasks, skip it for pure static config (evidence: v50 task-2 skipped it, task-3 caught a real gap). [folded foundation-version 37]
+- [SDD · folded] When a task's drafted status code (422) collides with a shipped test (400), PRESERVE the shipped contract and reconcile the spec wording — never weaken the test for a cosmetic code (evidence: 400-preservation freeze flag honored). [folded foundation-version 37]
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency

@@ -221,5 +221,5 @@ Watch (reuse scenarios as monitors): new serious/critical violations as surfaces
 - [SPEC · seeded] As harden-marketing/admin/auth build new surfaces, add each to a11y-coverage.test.tsx so the net grows with the app.
 
 ### Competency deltas
-- [TDD · open] An a11y assertion helper must itself be proven to FAIL (render a known-bad node and assert it throws) — otherwise the surface "passes" could be vacuous; pair every "passes clean" with a "fails on real violation" test (evidence: test_helper_throws_on_serious anchors the 4 surface checks).
-- [UDD · open] The never-axe'd auth forms + new failure segments passed serious/critical on the first check — the shared primitives (labeled Input, ErrorState role=alert) carry a11y by construction (evidence: 0 violations surfaced).
+- [TDD · folded] An a11y assertion helper must itself be proven to FAIL (render a known-bad node and assert it throws) — otherwise the surface "passes" could be vacuous; pair every "passes clean" with a "fails on real violation" test (evidence: test_helper_throws_on_serious anchors the 4 surface checks). [folded foundation-version 37]
+- [UDD · folded] The never-axe'd auth forms + new failure segments passed serious/critical on the first check — the shared primitives (labeled Input, ErrorState role=alert) carry a11y by construction (evidence: 0 violations surfaced). [folded foundation-version 37]
