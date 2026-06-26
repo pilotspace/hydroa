@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "motion-primitives",
+  "active_task": "a11y-ci-coverage",
   "active_milestone": "v50",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -297,6 +297,27 @@
         ],
         "snapshot_md5": "c610c9eba25cab2f13a68cbbf514e84b"
       }
+    },
+    "a11y-ci-coverage": {
+      "title": "Automated WCAG axe coverage across key surfaces",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v50",
+      "depends_on": [],
+      "created": "2026-06-26T03:18:10+00:00",
+      "updated": "2026-06-26T03:22:26+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2011e1bcaddd9faba48bc36a8d5ac4cd",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/test-support/axe.ts",
+          "apps/dashboard/tests/a11y-coverage.test.tsx"
+        ],
+        "snapshot_md5": "52d2c5904c5f4769bd5b0b943aebb743"
+      }
     }
   },
   "milestones": {
@@ -318,7 +339,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T03:17:28+00:00",
+  "updated": "2026-06-26T03:22:26+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
