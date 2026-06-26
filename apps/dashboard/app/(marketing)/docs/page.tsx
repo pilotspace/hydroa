@@ -6,8 +6,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Documentation — Hydroa" };
+export const metadata = buildMetadata({
+  title: "Documentation",
+  description:
+    "Get started with Hydroa — authenticate, route requests across providers, and manage keys, budgets, and rate limits via the OpenAI-compatible API.",
+  path: "/docs",
+});
 
 /**
  * Public /docs index scaffold — the landing #docs teaser links here.

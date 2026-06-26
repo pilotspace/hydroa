@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "a11y-ci-coverage",
+  "active_task": "harden-marketing",
   "active_milestone": "v50",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -318,6 +318,36 @@
         ],
         "snapshot_md5": "52d2c5904c5f4769bd5b0b943aebb743"
       }
+    },
+    "harden-marketing": {
+      "title": "Apply SEO metadata, static rendering, motion + failure UX to marketing pages",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v50",
+      "depends_on": [],
+      "created": "2026-06-26T03:23:17+00:00",
+      "updated": "2026-06-26T03:33:47+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "16120b35b4aa2732bb58f379346c9b34",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/seo.ts",
+          "apps/dashboard/app/layout.tsx",
+          "apps/dashboard/app/(marketing)/page.tsx",
+          "apps/dashboard/app/(marketing)/pricing/page.tsx",
+          "apps/dashboard/app/(marketing)/docs/page.tsx",
+          "apps/dashboard/app/(marketing)/blog/page.tsx",
+          "apps/dashboard/app/(marketing)/status/page.tsx",
+          "apps/dashboard/app/(marketing)/legal/privacy/page.tsx",
+          "apps/dashboard/app/(marketing)/legal/security/page.tsx",
+          "apps/dashboard/app/(marketing)/legal/terms/page.tsx",
+          "apps/dashboard/tests/marketing-seo.test.tsx"
+        ],
+        "snapshot_md5": "bbd0e776937f546a67684f236b6aafc4"
+      }
     }
   },
   "milestones": {
@@ -339,7 +369,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T03:22:26+00:00",
+  "updated": "2026-06-26T03:33:47+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
