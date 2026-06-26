@@ -1,0 +1,120 @@
+{{- include "ai-proxy.gateway.validateSecret" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-proxy.gateway.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ai-proxy.gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-proxy.gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.gateway.podSecurityContext | nindent 8 }}
+      # Must exceed the in-app drain so the usage-flusher finishes before SIGKILL.
+      terminationGracePeriodSeconds: {{ add .Values.gateway.env.drainTimeoutSeconds 5 }}
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: GATEWAY_ENVIRONMENT
+              value: {{ .Values.gateway.env.environment | quote }}
+            - name: GATEWAY_DATABASE_URL
+            {{- if .Values.gateway.env.databaseUrlSecretRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.env.databaseUrlSecretRef.name }}
+                  key: {{ .Values.gateway.env.databaseUrlSecretRef.key }}
+            {{- else }}
+              value: {{ .Values.gateway.env.databaseUrl | quote }}
+            {{- end }}
+            - name: GATEWAY_REDIS_URL
+            {{- if .Values.gateway.env.redisUrlSecretRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.env.redisUrlSecretRef.name }}
+                  key: {{ .Values.gateway.env.redisUrlSecretRef.key }}
+            {{- else }}
+              value: {{ .Values.gateway.env.redisUrl | quote }}
+            {{- end }}
+            - name: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
+              value: {{ .Values.gateway.env.drainTimeoutSeconds | quote }}
+            - name: GATEWAY_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-proxy.gateway.jwtSecretName" . }}
+                  key: {{ .Values.gateway.jwtSecret.existingKey }}
+            - name: GATEWAY_OPENROUTER_BASE_URL
+              value: {{ .Values.gateway.upstreamBaseUrls.openrouter | quote }}
+            - name: GATEWAY_OPENAI_BASE_URL
+              value: {{ .Values.gateway.upstreamBaseUrls.openai | quote }}
+            - name: GATEWAY_ANTHROPIC_BASE_URL
+              value: {{ .Values.gateway.upstreamBaseUrls.anthropic | quote }}
+            - name: GATEWAY_GOOGLE_BASE_URL
+              value: {{ .Values.gateway.upstreamBaseUrls.google | quote }}
+            {{- if .Values.gateway.objectStore.enabled }}
+            - name: GATEWAY_OBJECT_STORE_ENABLED
+              value: "true"
+            - name: GATEWAY_OBJECT_STORE_ENDPOINT
+              value: {{ .Values.gateway.objectStore.endpoint | quote }}
+            - name: GATEWAY_OBJECT_STORE_BUCKET
+              value: {{ .Values.gateway.objectStore.bucket | quote }}
+            - name: GATEWAY_OBJECT_STORE_REGION
+              value: {{ .Values.gateway.objectStore.region | quote }}
+            - name: GATEWAY_OBJECT_STORE_ACCESS_KEY_ID
+              value: {{ .Values.gateway.objectStore.accessKeyId | quote }}
+            {{- if .Values.gateway.objectStore.secretRef.name }}
+            - name: GATEWAY_OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.objectStore.secretRef.name }}
+                  key: {{ .Values.gateway.objectStore.secretRef.key }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.gateway.realtimeRelay.provider }}
+            - name: GATEWAY_REALTIME_RELAY_PROVIDER
+              value: {{ .Values.gateway.realtimeRelay.provider | quote }}
+            - name: GATEWAY_REALTIME_RELAY_OPENAI_MODEL
+              value: {{ .Values.gateway.realtimeRelay.openaiModel | quote }}
+            - name: GATEWAY_REALTIME_RELAY_GEMINI_MODEL
+              value: {{ .Values.gateway.realtimeRelay.geminiModel | quote }}
+            {{- end }}
+            {{- range .Values.gateway.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            {{- range .Values.gateway.extraSecretEnv }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretRef.name }}
+                  key: {{ .secretRef.key }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            {{- toYaml .Values.gateway.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            {{- toYaml .Values.gateway.probes.readiness | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            {{- toYaml .Values.gateway.probes.startup | nindent 12 }}

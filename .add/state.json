@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "helm-chart-scaffold",
+  "active_milestone": "v53",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -269,6 +269,49 @@
           }
         ]
       }
+    },
+    "helm-chart-scaffold": {
+      "title": "Helm chart scaffold + values-schema contract",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v53",
+      "depends_on": [],
+      "created": "2026-06-26T11:48:51+00:00",
+      "updated": "2026-06-26T12:41:53+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8d12339a4759a33019bf273aaf112267",
+        "tests": {
+          "tests/helm/test_helm_chart_scaffold.py": "7ff45afce829913f8812fbe90de5f333"
+        }
+      },
+      "scope": {
+        "declared": [
+          "charts/ai-proxy/",
+          "tests/helm/"
+        ],
+        "snapshot_md5": "86b09c4c00e71b1be22a95bf8f9e8a90"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-26T12:38:29+00:00",
+            "reason": "tamper_detected:contract_tampered",
+            "source": "tamper"
+          },
+          {
+            "at": "2026-06-26T12:40:49+00:00",
+            "reason": "scope_violation: task 'helm-chart-scaffold' touched outside its declared \u00a75 Scope \u2014 .pytest_cache/v/cache/lastfailed (1 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -287,10 +330,27 @@
       "status": "done",
       "created": "2026-06-26T07:45:35+00:00",
       "updated": "2026-06-26T09:08:28+00:00"
+    },
+    "v53": {
+      "title": "Kubernetes deployment + full e2e validation",
+      "goal": "An operator stands up the entire ai-proxy production stack (gateway, Envoy edge, Postgres, Redis, object store) on a Kubernetes cluster from one env-parameterized Helm chart, proven by an automated end-to-end suite that drives the goal flow plus realtime-relay, artifacts, and admin surfaces against the live cluster.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-26T11:39:01+00:00",
+      "updated": "2026-06-26T11:48:51+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-06-26T11:48:51+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T10:35:49+00:00",
+  "updated": "2026-06-26T12:41:53+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -930,5 +990,11 @@
       ],
       "archived": "2026-06-26"
     }
-  ]
+  ],
+  "active_milestones": [
+    "v53"
+  ],
+  "active_tasks": {
+    "v53": "helm-chart-scaffold"
+  }
 }

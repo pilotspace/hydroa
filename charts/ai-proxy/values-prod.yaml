@@ -1,0 +1,14 @@
+# ── Production overlay — layered over values.yaml (`-f values.yaml -f values-prod.yaml`) ──
+# Demonstrates env-parameterization: swaps image tag, datastore endpoints, and the
+# secret reference WITHOUT editing any template. Real secrets live in the referenced
+# k8s Secrets, never here.
+image:
+  tag: "0.4.0-prod"
+
+gateway:
+  replicas: 3
+  env:
+    databaseUrl: "postgresql+asyncpg://gateway@ai-proxy-prod-postgres.internal:5432/gateway"
+    redisUrl: "redis://ai-proxy-prod-redis.internal:6379/0"
+  jwtSecret:
+    existingSecret: "ai-proxy-prod-secrets"

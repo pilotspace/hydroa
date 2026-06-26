@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ai-proxy.gateway.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  minAvailable: {{ .Values.gateway.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ai-proxy.gateway.selectorLabels" . | nindent 6 }}

@@ -1,0 +1,12 @@
+apiVersion: v2
+name: ai-proxy
+description: AI Proxy — production stack (gateway, Envoy edge, datastores, dashboard) on Kubernetes
+type: application
+# Chart version is independent of the app; appVersion tracks the released app (v0.4.0).
+version: 0.1.0
+appVersion: "0.4.0"
+maintainers:
+  - name: Pilotspace
+keywords:
+  - ai-proxy
+  - llm-gateway

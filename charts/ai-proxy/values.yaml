@@ -1,0 +1,96 @@
+# ── ai-proxy Helm chart — values.yaml (FROZEN SCHEMA, v53 helm-chart-scaffold) ──
+# This file IS the contract every sibling template consumes. Templates contain ZERO
+# hardcoded environment values — everything an operator changes lives here. The
+# `values-prod.yaml` overlay swaps env-specific inputs without touching a template.
+
+# Gateway container image (no secret; an env-specific input).
+image:
+  repository: ghcr.io/pilotspace/ai-proxy-gateway
+  tag: "0.4.0"
+  pullPolicy: IfNotPresent
+
+gateway:
+  replicas: 2
+
+  # Design-for-failure: requests AND limits both required (CLAUDE.md).
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  # Core gateway env (GATEWAY_* prefix). Connection strings are single values —
+  # point them in-cluster (default) OR at a managed endpoint with no template change.
+  # The defaults carry NO embedded credentials (M5: the chart ships no secret). When a
+  # connection string itself is secret (contains a password), set its *SecretRef below:
+  # the whole DSN is then sourced from a Secret (valueFrom) and the plain value is omitted.
+  env:
+    environment: production                                              # GATEWAY_ENVIRONMENT
+    databaseUrl: "postgresql+asyncpg://gateway@ai-proxy-postgres:5432/gateway"  # GATEWAY_DATABASE_URL
+    databaseUrlSecretRef:                                                # set name to source GATEWAY_DATABASE_URL from a Secret
+      name: ""
+      key: "url"
+    redisUrl: "redis://ai-proxy-redis:6379/0"                            # GATEWAY_REDIS_URL
+    redisUrlSecretRef:                                                   # set name to source GATEWAY_REDIS_URL from a Secret
+      name: ""
+      key: "url"
+    drainTimeoutSeconds: 10                                              # GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
+
+  # JWT signing secret — referenced, never inlined. Default = reference an existing
+  # Secret (operator/CI provisions it). Set createSecret=true + value to have the
+  # chart render the Secret (e.g. for local kind). secret_ref_missing fires only when
+  # environment=production AND neither existingSecret nor createSecret is set.
+  jwtSecret:
+    existingSecret: "ai-proxy-gateway-secrets"
+    existingKey: "jwt-secret"
+    createSecret: false
+    value: ""
+
+  # Object store for artifact bytes (v51). Disabled by default → honest-degrade to
+  # inline Postgres BYTEA. The secret access key is referenced, never inlined.
+  objectStore:
+    enabled: false
+    endpoint: ""               # GATEWAY_OBJECT_STORE_ENDPOINT
+    bucket: ""                 # GATEWAY_OBJECT_STORE_BUCKET
+    region: "us-east-1"        # GATEWAY_OBJECT_STORE_REGION
+    accessKeyId: ""            # GATEWAY_OBJECT_STORE_ACCESS_KEY_ID
+    secretRef:                 # GATEWAY_OBJECT_STORE_SECRET_ACCESS_KEY (from a Secret)
+      name: ""
+      key: "object-store-secret-key"
+
+  # Full-duplex realtime relay (v52). Empty provider = honest-degrade (close 4404).
+  realtimeRelay:
+    provider: ""                                  # GATEWAY_REALTIME_RELAY_PROVIDER ("" | openai | gemini)
+    openaiModel: "gpt-4o-realtime-preview"        # GATEWAY_REALTIME_RELAY_OPENAI_MODEL
+    geminiModel: "gemini-2.0-flash-exp"           # GATEWAY_REALTIME_RELAY_GEMINI_MODEL
+
+  # Upstream provider base URLs — override (e.g. point at an in-cluster stub) in e2e.
+  upstreamBaseUrls:
+    openrouter: "https://openrouter.ai/api/v1"                          # GATEWAY_OPENROUTER_BASE_URL
+    openai: "https://api.openai.com/v1"                                 # GATEWAY_OPENAI_BASE_URL
+    anthropic: "https://api.anthropic.com/v1"                           # GATEWAY_ANTHROPIC_BASE_URL
+    google: "https://generativelanguage.googleapis.com/v1beta"         # GATEWAY_GOOGLE_BASE_URL
+
+  # Escape hatch for the ~70 long-tail GATEWAY_* knobs without templating each:
+  extraEnv: []          # list of { name: GATEWAY_X, value: "..." }
+  extraSecretEnv: []    # list of { name: GATEWAY_X, secretRef: { name, key } }
+
+  # Probe timings (the three probes are always rendered; only timings are tunable).
+  probes:
+    liveness:  { initialDelaySeconds: 10, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+    readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+    startup:   { initialDelaySeconds: 5,  periodSeconds: 5,  timeoutSeconds: 3, failureThreshold: 30 }
+
+  pdb:
+    minAvailable: 1
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+
+# ── Typed placeholder blocks — owned & filled by sibling v53 tasks ──────────────
+datastores: {}   # datastore-statefulsets (Postgres/Redis/MinIO)
+envoy: {}        # envoy-edge-manifests
+dashboard: {}    # dashboard-chart
