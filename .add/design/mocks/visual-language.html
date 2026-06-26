@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aurora — visual-language reference (light · tight · refined)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  /* ============ TOKENS (Aurora · light/tight/refined) ============ */
+  :root{
+    --slate-50:#F8FAFC; --slate-100:#F1F5F9; --slate-200:#E2E8F0; --slate-300:#CBD5E1;
+    --slate-400:#94A3B8; --slate-500:#64748B; --slate-600:#475569; --slate-700:#334155;
+    --slate-800:#1E293B; --slate-900:#0F172A; --white:#fff;
+    --indigo-50:#EEF2FF; --indigo-100:#E0E7FF; --indigo-500:#6366F1; --indigo-600:#4F46E5; --indigo-700:#4338CA;
+    --violet-500:#7C3AED; --violet-400:#8B5CF6;
+    --emerald-600:#059669; --emerald-50:#ECFDF5; --amber-600:#D97706; --amber-50:#FFFBEB;
+    --red-600:#DC2626; --red-50:#FEF2F2;
+    --bg:var(--slate-50); --surface:var(--white); --text:var(--slate-900);
+    --text-muted:var(--slate-500); --border:var(--slate-200);
+    --accent:var(--indigo-600); --accent-hover:var(--indigo-700);
+    --brand-from:var(--indigo-600); --brand-to:var(--violet-500);
+    --shadow-sm:0 1px 2px rgba(15,23,42,.05);
+    --shadow-md:0 1px 2px rgba(15,23,42,.04),0 4px 10px -3px rgba(15,23,42,.08);
+    --shadow-lg:0 10px 28px -8px rgba(15,23,42,.12),0 2px 6px -2px rgba(15,23,42,.06);
+    --shadow-xl:0 28px 56px -20px rgba(30,27,75,.28),0 8px 20px -10px rgba(79,70,229,.18);
+    --glow:0 0 0 1px rgba(79,70,229,.10),0 24px 60px -24px rgba(79,70,229,.35);
+    --r-control:7px; --r-card:10px; --r-xl:14px; --r-2xl:20px;
+    --font:"Inter",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  .wrap{width:1320px;margin:0 auto}
+  svg{display:block}
+  .sec-label{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--slate-400);padding:24px 40px 10px;display:flex;align-items:center;gap:10px}
+  .sec-label::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,var(--slate-200),transparent)}
+  .btn{font-family:var(--font);font-weight:600;font-size:14px;border-radius:var(--r-control);padding:11px 18px;border:0;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:transform .15s cubic-bezier(.2,0,0,1),box-shadow .2s,background .2s}
+  .btn-grad{background:linear-gradient(135deg,var(--brand-from),var(--brand-to));color:#fff;box-shadow:var(--shadow-lg)}
+  .btn-solid{background:var(--accent);color:#fff;box-shadow:var(--shadow-sm)}
+  .btn-outline{background:var(--surface);color:var(--slate-700);border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+
+  /* ============ MARKETING HERO — light, two-column ============ */
+  .hero{position:relative;background:
+    radial-gradient(46% 70% at 8% -10%,rgba(79,70,229,.10),transparent 60%),
+    radial-gradient(40% 60% at 98% -4%,rgba(124,58,237,.10),transparent 55%),
+    var(--surface);
+    border-bottom:1px solid var(--border);border-radius:0 0 var(--r-2xl) var(--r-2xl);overflow:hidden;padding:30px 56px 60px}
+  .hero::after{content:"";position:absolute;inset:0;opacity:.5;pointer-events:none;
+    background-image:radial-gradient(rgba(15,23,42,.045) 1px,transparent 1px);background-size:22px 22px;
+    -webkit-mask-image:linear-gradient(180deg,#000,transparent 70%);mask-image:linear-gradient(180deg,#000,transparent 70%)}
+  .hero>*{position:relative}
+  .navbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:50px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.01em;color:var(--text)}
+  .brand .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--brand-from),var(--brand-to));box-shadow:var(--glow);display:grid;place-items:center;color:#fff}
+  .nav-links{display:flex;gap:28px;color:var(--slate-600);font-size:14px;font-weight:500;align-items:center}
+  .pill{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-sm);
+    color:var(--slate-600);font-size:13px;font-weight:500;padding:6px 13px;border-radius:999px}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:#10B981;box-shadow:0 0 0 3px rgba(16,185,129,.18)}
+  .herogrid{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
+  .eyebrow{display:inline-flex;align-items:center;gap:7px;color:var(--accent);background:var(--indigo-50);border:1px solid var(--indigo-100);
+    font-size:12.5px;font-weight:600;padding:5px 12px;border-radius:999px;margin-bottom:20px}
+  h1.hero-title{font-size:50px;line-height:55px;letter-spacing:-.032em;font-weight:800;margin:0 0 18px;color:var(--slate-900);max-width:660px;text-wrap:balance}
+  h1.hero-title .grad{background:linear-gradient(100deg,var(--indigo-600),var(--violet-500));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p.sub{font-size:17px;line-height:27px;color:var(--text-muted);max-width:500px;margin-bottom:28px}
+  .cta-row{display:flex;gap:12px;align-items:center}
+  .trust{display:flex;gap:26px;margin-top:34px;color:var(--slate-400);font-size:13px;font-weight:500;align-items:center;flex-wrap:wrap}
+  .trust b{color:var(--slate-700)}
+  /* floating product-preview card */
+  .peek{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--shadow-xl);
+    padding:18px;transform:rotate(.6deg)}
+  .peek::after{content:"";position:absolute;z-index:-1;inset:-36px -24px -44px;border-radius:32px;
+    background:radial-gradient(60% 60% at 50% 40%,rgba(124,58,237,.18),rgba(79,70,229,.10) 45%,transparent 70%);filter:blur(8px)}
+  .peek::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;background:linear-gradient(160deg,rgba(124,58,237,.35),transparent 40%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+  .peek .ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .peek .ph .t{font-size:13px;font-weight:600;color:var(--slate-700);display:flex;align-items:center;gap:8px}
+  .peek .ph .t .gd{width:7px;height:7px;border-radius:50%;background:#10B981;box-shadow:0 0 0 3px rgba(16,185,129,.18)}
+  .peek .big{font-size:30px;font-weight:800;letter-spacing:-.02em}
+  .peek .cap{font-size:12px;color:var(--slate-400);margin-bottom:8px}
+  .peek .tag{font-size:11px;font-weight:700;color:var(--emerald-600);background:var(--emerald-50);padding:2px 8px;border-radius:999px}
+  .peek .mini{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .peek .mc{border:1px solid var(--border);border-radius:9px;padding:10px 12px;background:var(--slate-50)}
+  .peek .mc .mk{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--slate-400)}
+  .peek .mc .mv{font-size:17px;font-weight:700;letter-spacing:-.01em;margin-top:3px}
+  .peek-float{position:absolute;left:14px;bottom:-18px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-lg);
+    border-radius:11px;padding:9px 13px;display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:var(--slate-700)}
+  .peek-float .av{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--brand-from),var(--brand-to));flex:none}
+
+  /* trusted-by strip */
+  .logos{margin-top:38px;padding-top:26px;border-top:1px solid var(--border);display:flex;align-items:center;gap:32px}
+  .logos .lbl{font-size:12px;font-weight:600;color:var(--slate-400);white-space:nowrap}
+  .logos .row{display:flex;gap:34px;align-items:center;opacity:.5}
+  .logos .wm{font-size:17px;font-weight:800;letter-spacing:-.02em;color:var(--slate-500);display:flex;align-items:center;gap:7px}
+  .logos .wm .m{width:16px;height:16px;border-radius:5px;background:var(--slate-400)}
+
+  /* section-depth band */
+  .band{background:linear-gradient(180deg,#FBFBFE,#F5F6FB);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding-bottom:6px;margin-top:6px}
+
+  /* ============ FEATURE CARDS ============ */
+  .features{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:22px 40px 6px}
+  .fcard{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:24px;box-shadow:var(--shadow-sm);transition:box-shadow .2s,transform .2s}
+  .fcard .ic{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;margin-bottom:15px;background:linear-gradient(160deg,var(--indigo-50),#fff);border:1px solid var(--indigo-100);color:var(--accent)}
+  .fcard h3{font-size:17px;font-weight:700;letter-spacing:-.01em;margin-bottom:7px}
+  .fcard p{font-size:14px;line-height:21px;color:var(--text-muted)}
+  .fcard .arrow{margin-top:14px;color:var(--accent);font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+
+  /* ============ ADMIN DASHBOARD PREVIEW ============ */
+  .app{display:grid;grid-template-columns:220px 1fr;margin:14px 40px 48px;background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--r-xl);overflow:hidden;box-shadow:var(--shadow-lg)}
+  .side{background:linear-gradient(180deg,#fff,var(--slate-50));border-right:1px solid var(--border);padding:18px 12px}
+  .side .brand{font-size:15px;margin:2px 8px 20px}
+  .navsec{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--slate-300);margin:14px 12px 6px}
+  .nav-item{display:flex;align-items:center;gap:11px;font-size:13.5px;font-weight:500;color:var(--slate-600);padding:8px 11px;border-radius:8px;margin-bottom:2px}
+  .nav-item svg{width:17px;height:17px;color:var(--slate-400)}
+  .nav-item.active{background:var(--indigo-50);color:var(--accent);font-weight:600;box-shadow:inset 0 0 0 1px var(--indigo-100)}
+  .nav-item.active svg{color:var(--accent)}
+  .main{background:var(--bg);padding:22px 24px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .topbar h2{font-size:23px;font-weight:700;letter-spacing:-.02em}
+  .topbar .crumb{font-size:13px;color:var(--text-muted);margin-bottom:3px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+  .stat{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:16px;box-shadow:var(--shadow-sm);overflow:hidden}
+  .stat .k{font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--slate-400)}
+  .stat .v{font-size:27px;font-weight:800;letter-spacing:-.02em;margin:7px 0 5px}
+  .delta{font-size:12px;font-weight:600;display:inline-flex;gap:4px;align-items:center;padding:2px 7px;border-radius:999px}
+  .delta.up{color:var(--emerald-600);background:var(--emerald-50)}
+  .delta.down{color:var(--red-600);background:var(--red-50)}
+  .spark{position:absolute;right:10px;bottom:10px;opacity:.9}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:var(--shadow-sm);overflow:hidden}
+  .panel .ph{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .panel .ph h3{font-size:15px;font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--slate-400);padding:10px 18px;background:var(--slate-50)}
+  td{padding:11px 18px;border-top:1px solid var(--slate-100);color:var(--slate-700)}
+  td.mono{font-variant-numeric:tabular-nums;color:var(--slate-900);font-weight:600}
+  .badge{font-size:12px;font-weight:600;padding:2px 9px 2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:6px}
+  .badge i{width:6px;height:6px;border-radius:50%;display:inline-block}
+  .b-ok{color:var(--emerald-600);background:var(--emerald-50)} .b-ok i{background:var(--emerald-600)}
+  .b-warn{color:var(--amber-600);background:var(--amber-50)} .b-warn i{background:var(--amber-600)}
+  .b-err{color:var(--red-600);background:var(--red-50)} .b-err i{background:var(--red-600)}
+  .keycell{display:flex;align-items:center;gap:9px}
+  .avatar{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--brand-from),var(--brand-to));display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700}
+  .states{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}
+  .state{border:1px solid var(--border);border-radius:var(--r-card);background:var(--surface);box-shadow:var(--shadow-sm);padding:16px;min-height:104px}
+  .state .lbl{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--slate-400);margin-bottom:11px}
+  .sk{height:9px;border-radius:5px;background:linear-gradient(90deg,var(--slate-100),var(--slate-200),var(--slate-100));margin-bottom:8px}
+  .sk.w70{width:70%}.sk.w90{width:90%}.sk.w50{width:50%}
+  .empty-ic{width:34px;height:34px;border-radius:9px;background:var(--indigo-50);color:var(--accent);display:grid;place-items:center;margin-bottom:10px}
+  .state.err{border-color:#FECACA;background:linear-gradient(0deg,var(--red-50),#fff)}
+  .state.ok{border-color:#A7F3D0;background:linear-gradient(0deg,var(--emerald-50),#fff)}
+  .muted{font-size:13px;color:var(--text-muted);line-height:19px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="navbar">
+      <div class="brand"><span class="logo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></span> Aurora&nbsp;Proxy</div>
+      <div class="nav-links"><span>Product</span><span>Pricing</span><span>Docs</span><span>Customers</span></div>
+      <span class="pill"><span class="dot"></span> 99.98% uptime</span>
+    </div>
+    <div class="herogrid">
+      <div>
+        <span class="eyebrow">✦ One API · every frontier model</span>
+        <h1 class="hero-title">Ship <span class="grad">production LLM features</span> with real cost control.</h1>
+        <p class="sub">Route to any model through one OpenAI-compatible endpoint. Per-request billing accuracy, budgets, and governance — built in.</p>
+        <div class="cta-row">
+          <button class="btn btn-grad">Start building free
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          <button class="btn btn-outline">Read the docs</button>
+        </div>
+        <div class="trust"><span><b>12,400+</b> developers</span><span><b>40ms</b> p50 overhead</span><span><b>SOC&nbsp;2</b> Type&nbsp;II</span></div>
+      </div>
+      <div class="peek">
+        <div class="ph"><span class="t"><span class="gd"></span> Live usage</span><span class="tag">▲ 12.4%</span></div>
+        <div class="cap">Requests · last 24h</div>
+        <div class="big">1.28M</div>
+        <svg viewBox="0 0 320 88" width="100%" height="88" preserveAspectRatio="none" style="margin-top:8px">
+          <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4F46E5" stop-opacity=".28"/><stop offset="1" stop-color="#4F46E5" stop-opacity="0"/></linearGradient></defs>
+          <g stroke="#EDF0F5" stroke-width="1"><line x1="0" y1="28" x2="320" y2="28"/><line x1="0" y1="52" x2="320" y2="52"/><line x1="0" y1="76" x2="320" y2="76"/></g>
+          <path d="M0 70 C40 66 56 40 88 44 C120 48 140 22 172 26 C204 30 224 54 256 40 C286 27 300 18 320 14 L320 88 L0 88 Z" fill="url(#g)"/>
+          <path d="M0 70 C40 66 56 40 88 44 C120 48 140 22 172 26 C204 30 224 54 256 40 C286 27 300 18 320 14" fill="none" stroke="#4F46E5" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <div class="mini">
+          <div class="mc"><div class="mk">Spend · MTD</div><div class="mv">$8,420</div></div>
+          <div class="mc"><div class="mk">Error rate</div><div class="mv">0.04%</div></div>
+        </div>
+        <div class="peek-float"><span class="av"></span> claude-opus-4.8 · 200 OK</div>
+      </div>
+    </div>
+    <div class="logos">
+      <span class="lbl">Trusted by teams at</span>
+      <div class="row">
+        <span class="wm"><span class="m"></span>Northwind</span>
+        <span class="wm"><span class="m"></span>Quantel</span>
+        <span class="wm"><span class="m"></span>Hyperplane</span>
+        <span class="wm"><span class="m"></span>Loopback</span>
+        <span class="wm"><span class="m"></span>Meridian</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <div class="band">
+  <div class="sec-label">Why teams choose Aurora</div>
+  <section class="features">
+    <div class="fcard"><div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></div><h3>Any model, one endpoint</h3><p>OpenAI, Anthropic, Gemini, Bedrock and more — swap models without touching client code.</p><div class="arrow">Explore models →</div></div>
+    <div class="fcard"><div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><h3>Accurate cost tracking</h3><p>Every request metered to the token against the served model. Budgets and hard limits enforced at the edge.</p><div class="arrow">See billing →</div></div>
+    <div class="fcard"><div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>Governance built in</h3><p>RBAC, audit trails, SSO, and per-key rate limits — enterprise controls from day one.</p><div class="arrow">View controls →</div></div>
+  </section>
+  </div>
+
+  <!-- ADMIN PREVIEW -->
+  <div class="sec-label">The admin console</div>
+  <section class="app">
+    <aside class="side">
+      <div class="brand"><span class="logo" style="width:26px;height:26px;border-radius:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></span> Aurora</div>
+      <div class="navsec">Overview</div>
+      <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> Dashboard</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7.5" cy="15.5" r="3.5"/><path d="m10 13 9-9 2 2-2 2 2 2-3 3-2-2"/></svg> API keys</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg> Usage</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.5A2.5 2.5 0 0 0 12 8c-1.4 0-2.5.9-2.5 2s1.1 2 2.5 2 2.5.9 2.5 2-1.1 2-2.5 2a2.5 2.5 0 0 1-2.5-1.5M12 6.5v11"/></svg> Spend</div>
+      <div class="navsec">Operate</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8l-9-5-9 5v8l9 5 9-5Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg> Models</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M18 6a3 3 0 0 1 0 6h-6"/></svg> Routing</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Health</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-8 0v2"/><circle cx="12" cy="7" r="4"/></svg> Members</div>
+    </aside>
+    <div class="main">
+      <div class="topbar"><div><div class="crumb">Acme Inc · Production</div><h2>Dashboard</h2></div><button class="btn btn-solid"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg> New API key</button></div>
+      <div class="stats">
+        <div class="stat"><div class="k">Requests · 24h</div><div class="v">1.28M</div><span class="delta up">▲ 12.4%</span>
+          <svg class="spark" width="70" height="26" viewBox="0 0 70 26" fill="none"><path d="M1 20 12 16 22 18 33 9 44 12 55 5 69 3" stroke="#4F46E5" stroke-width="2" stroke-linecap="round"/></svg></div>
+        <div class="stat"><div class="k">Spend · MTD</div><div class="v">$8,420</div><span class="delta up">▲ 6.1%</span>
+          <svg class="spark" width="70" height="26" viewBox="0 0 70 26" fill="none"><path d="M1 18 12 19 22 13 33 14 44 8 55 10 69 6" stroke="#059669" stroke-width="2" stroke-linecap="round"/></svg></div>
+        <div class="stat"><div class="k">Avg latency</div><div class="v">412ms</div><span class="delta down">▼ 3.2%</span>
+          <svg class="spark" width="70" height="26" viewBox="0 0 70 26" fill="none"><path d="M1 8 12 11 22 9 33 14 44 12 55 18 69 20" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/></svg></div>
+        <div class="stat"><div class="k">Error rate</div><div class="v">0.04%</div><span class="delta up">▲ 0.01%</span>
+          <svg class="spark" width="70" height="26" viewBox="0 0 70 26" fill="none"><path d="M1 21 12 20 22 22 33 19 44 21 55 18 69 20" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/></svg></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><h3>Recent activity</h3><span class="muted">Live · updated 2s ago</span></div>
+        <table>
+          <thead><tr><th>Key</th><th>Model</th><th>Tokens</th><th>Cost</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td><span class="keycell"><span class="avatar">PW</span>prod-web</span></td><td>claude-opus-4.8</td><td class="mono">18,204</td><td class="mono">$0.214</td><td><span class="badge b-ok"><i></i>200 OK</span></td></tr>
+            <tr><td><span class="keycell"><span class="avatar">MI</span>mobile-ios</span></td><td>gpt-5.1</td><td class="mono">9,510</td><td class="mono">$0.088</td><td><span class="badge b-ok"><i></i>200 OK</span></td></tr>
+            <tr><td><span class="keycell"><span class="avatar">BE</span>batch-etl</span></td><td>gemini-2.5-pro</td><td class="mono">241,860</td><td class="mono">$1.940</td><td><span class="badge b-warn"><i></i>429 Retry</span></td></tr>
+            <tr><td><span class="keycell"><span class="avatar">AN</span>analytics</span></td><td>llama-4-405b</td><td class="mono">3,002</td><td class="mono">$0.011</td><td><span class="badge b-err"><i></i>502 Upstream</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="states">
+        <div class="state"><div class="lbl">Loading</div><div class="sk w90"></div><div class="sk w70"></div><div class="sk w50"></div></div>
+        <div class="state"><div class="lbl">Empty</div><div class="empty-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 7h14l-1 13H6L5 7Z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></svg></div><div class="muted">No keys yet. Create one to start routing requests.</div></div>
+        <div class="state err"><div class="lbl">Error</div><div class="muted"><b style="color:var(--red-600)">Failed to load usage.</b><br>Retry or check upstream health.</div></div>
+        <div class="state ok"><div class="lbl">Success</div><div class="muted"><b style="color:var(--emerald-600)">Key created.</b><br>Copy it now — shown once.</div></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

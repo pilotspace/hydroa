@@ -673,6 +673,17 @@
       "archived": "2026-06-25"
     },
     {
+      "slug": "ui-fidelity",
+      "title": "UI visual fidelity",
+      "tasks": 3,
+      "task_slugs": [
+        "visual-language",
+        "landing-fidelity",
+        "admin-fidelity"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
       "slug": "v50",
       "title": "Production hardening \u2014 landing & admin UI",
       "tasks": 9,
