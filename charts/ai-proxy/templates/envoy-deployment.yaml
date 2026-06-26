@@ -1,0 +1,84 @@
+{{- include "ai-proxy.envoy.validateTLS" . -}}
+{{- if .Values.envoy.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-proxy.envoy.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: envoy
+spec:
+  replicas: {{ .Values.envoy.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ai-proxy.envoy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-proxy.envoy.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      volumes:
+        - name: config-template
+          configMap:
+            name: {{ include "ai-proxy.envoy.fullname" . }}
+        - name: config-generated
+          emptyDir: {}
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.envoy.tls.existingSecret }}
+            items:
+              - { key: tls.crt, path: server.crt }
+              - { key: tls.key, path: server.key }
+      # initContainer reproduces the proven compose boot: base64url(JWT secret) -> sed the
+      # JWKS placeholder into the generated config. The JWT secret stays out of the ConfigMap.
+      initContainers:
+        - name: jwks-substitute
+          image: {{ .Values.envoy.initImage | quote }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          env:
+            - name: GATEWAY_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-proxy.gateway.jwtSecretName" . }}
+                  key: {{ .Values.gateway.jwtSecret.existingKey }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              # busybox `base64` wraps at 76 cols; strip newlines so a >57-byte JWT secret stays a
+              # single-line base64url token and the inline JWKS JSON remains valid (design-for-failure).
+              B64=$(printf '%s' "$GATEWAY_JWT_SECRET" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+              sed "s|GATEWAY_JWT_SECRET_BASE64URL|$B64|g" \
+                /etc/envoy/template/envoy.yaml > /etc/envoy/generated/envoy.yaml
+          volumeMounts:
+            - { name: config-template, mountPath: /etc/envoy/template, readOnly: true }
+            - { name: config-generated, mountPath: /etc/envoy/generated }
+      containers:
+        - name: envoy
+          image: {{ .Values.envoy.image | quote }}
+          args: ["-c", "/etc/envoy/generated/envoy.yaml", "--log-level", "warn"]
+          ports:
+            - { name: https,  containerPort: {{ .Values.envoy.service.httpsPort }} }
+            - { name: http,   containerPort: {{ .Values.envoy.service.httpPort }} }
+            - { name: health, containerPort: {{ .Values.envoy.healthPort }} }
+            # admin :{{ .Values.envoy.adminPort }} is bound to 127.0.0.1 only — intentionally NOT a pod-network port.
+          volumeMounts:
+            - { name: config-generated, mountPath: /etc/envoy/generated, readOnly: true }
+            - { name: tls-certs, mountPath: /etc/envoy/certs, readOnly: true }
+          readinessProbe:
+            httpGet: { path: /ready, port: {{ .Values.envoy.healthPort }} }
+            {{- toYaml .Values.envoy.probes.readiness | nindent 12 }}
+          livenessProbe:
+            httpGet: { path: /ready, port: {{ .Values.envoy.healthPort }} }
+            {{- toYaml .Values.envoy.probes.liveness | nindent 12 }}
+          resources:
+            {{- toYaml .Values.envoy.resources | nindent 12 }}
+{{- end -}}

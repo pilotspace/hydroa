@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "datastore-statefulsets",
+  "active_task": "envoy-edge-manifests",
   "active_milestone": "v53",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -349,6 +349,40 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "envoy-edge-manifests": {
+      "title": "Envoy edge Deployment/Service/ConfigMap (TLS \u00b7 ext_authz \u00b7 WS-upgrade)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v53",
+      "depends_on": [],
+      "created": "2026-06-26T13:56:14+00:00",
+      "updated": "2026-06-26T15:24:52+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "dfa0a89b0dde973e862471b374be8bca",
+        "tests": {
+          "tests/helm/test_envoy_edge_manifests.py": "18fb69453f3c9b3109d3179aa249bf26"
+        }
+      },
+      "scope": {
+        "declared": [
+          "charts/ai-proxy/values.yaml",
+          "charts/ai-proxy/envoy{}",
+          "charts/ai-proxy/templates/_helpers.tpl",
+          "charts/ai-proxy/templates/envoy-configmap.yaml",
+          "charts/ai-proxy/templates/envoy-deployment.yaml",
+          "charts/ai-proxy/templates/envoy-service.yaml",
+          "charts/ai-proxy/templates/envoy-pdb.yaml",
+          "charts/ai-proxy/templates/envoy-networkpolicy.yaml"
+        ],
+        "snapshot_md5": "8954d9f1f828fee1b57805513297ff81"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -387,7 +421,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T13:53:24+00:00",
+  "updated": "2026-06-26T15:24:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1032,6 +1066,6 @@
     "v53"
   ],
   "active_tasks": {
-    "v53": "datastore-statefulsets"
+    "v53": "envoy-edge-manifests"
   }
 }

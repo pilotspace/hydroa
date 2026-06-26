@@ -156,6 +156,48 @@ datastores:
       readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
       liveness:  { initialDelaySeconds: 20, periodSeconds: 20, timeoutSeconds: 3, failureThreshold: 3 }
 
+# ── Envoy edge — TLS termination · JWT/JWKS · ext_authz · WS-upgrade ────────────
+# A fully Helm-templated Envoy config (faithful to infra/envoy/envoy-prod.yaml) rides
+# in a ConfigMap; an initContainer substitutes the JWKS placeholder at boot so the JWT
+# secret never lands in the ConfigMap. TLS cert/key come from a kubernetes.io/tls Secret.
+envoy:
+  enabled: true
+  # Digest-pinned (tag kept for readability) — immutable pulls. Override via values to bump.
+  image: envoyproxy/envoy:v1.29-latest@sha256:5a292b91adc87aa56146fb9ee52fc85c30570d0f175d95b48cde8035a2e641dd
+  initImage: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662   # jwks-substitute init
+  replicas: 2
+  service:
+    type: ClusterIP            # kind default; LoadBalancer | NodePort for cloud (values-only)
+    httpsPort: 8443
+    httpPort: 8080
+  tls:
+    existingSecret: "ai-proxy-edge-tls"     # kubernetes.io/tls Secret (server.crt/key); operator/kind-bootstrap provides
+    minimumProtocolVersion: TLSv1_2
+  adminPort: 9901              # bound to 127.0.0.1 ONLY — off-pod config_dump unreachable regardless of CNI
+  healthPort: 9902            # dedicated 0.0.0.0 health listener for kubelet probes (health_check filter, no admin surface)
+  jwt:
+    issuer: "ai-proxy"
+  rateLimit:                   # :8443 local_ratelimit token bucket
+    maxTokens: 50
+    tokensPerFill: 50
+    fillInterval: 1s
+  extAuthz:
+    timeout: 2s                # ext_authz http_service call timeout
+  upstream:
+    connectTimeout: 0.5s       # gateway_cluster connect_timeout
+  hsts:
+    maxAge: 63072000           # Strict-Transport-Security max-age (seconds)
+    includeSubDomains: true
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: "1",  memory: 256Mi }
+  probes:
+    readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+    liveness:  { initialDelaySeconds: 15, periodSeconds: 15, timeoutSeconds: 3, failureThreshold: 3 }
+  pdb:
+    minAvailable: 1
+  networkPolicy:
+    enabled: true              # restrict admin :9901 to node-level probes; ENFORCED in cloud, INERT in kind (kindnet ignores NP)
+
 # ── Typed placeholder blocks — owned & filled by sibling v53 tasks ──────────────
-envoy: {}        # envoy-edge-manifests
 dashboard: {}    # dashboard-chart

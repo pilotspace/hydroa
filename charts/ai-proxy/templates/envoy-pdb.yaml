@@ -1,0 +1,14 @@
+{{- if .Values.envoy.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ai-proxy.envoy.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: envoy
+spec:
+  minAvailable: {{ .Values.envoy.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ai-proxy.envoy.selectorLabels" . | nindent 6 }}
+{{- end -}}

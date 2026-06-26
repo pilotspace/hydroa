@@ -1,0 +1,220 @@
+{{- if .Values.envoy.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-proxy.envoy.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: envoy
+data:
+  # Fully Helm-templated Envoy config — faithful to infra/envoy/envoy-prod.yaml.
+  # The GATEWAY_JWT_SECRET_BASE64URL placeholder is substituted at boot by the
+  # Deployment's initContainer; the JWT secret never lands in this ConfigMap.
+  envoy.yaml: |
+    admin:
+      # Loopback ONLY — the admin API (incl. /config_dump, which would expose the substituted
+      # JWKS secret) is unreachable off-pod regardless of CNI/NetworkPolicy enforcement.
+      # Kubelet probes use the dedicated 0.0.0.0 health listener below, not this port.
+      address:
+        socket_address:
+          address: 127.0.0.1
+          port_value: {{ .Values.envoy.adminPort }}
+    static_resources:
+      listeners:
+        - name: listener_tls
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: {{ .Values.envoy.service.httpsPort }}
+          filter_chains:
+            - transport_socket:
+                name: envoy.transport_sockets.tls
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+                  common_tls_context:
+                    tls_params:
+                      tls_minimum_protocol_version: {{ .Values.envoy.tls.minimumProtocolVersion }}
+                    tls_certificates:
+                      - certificate_chain:
+                          filename: "/etc/envoy/certs/server.crt"
+                        private_key:
+                          filename: "/etc/envoy/certs/server.key"
+              filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: ingress_https
+                    use_remote_address: true
+                    upgrade_configs:
+                      - upgrade_type: websocket
+                    http_filters:
+                      - name: envoy.filters.http.local_ratelimit
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+                          stat_prefix: local_rate_limiter
+                          token_bucket:
+                            max_tokens: {{ .Values.envoy.rateLimit.maxTokens }}
+                            tokens_per_fill: {{ .Values.envoy.rateLimit.tokensPerFill }}
+                            fill_interval: {{ .Values.envoy.rateLimit.fillInterval }}
+                          filter_enabled:
+                            runtime_key: local_rate_limit_enabled
+                            default_value: { numerator: 100, denominator: HUNDRED }
+                          filter_enforced:
+                            runtime_key: local_rate_limit_enforced
+                            default_value: { numerator: 100, denominator: HUNDRED }
+                          response_headers_to_add:
+                            - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                              header: { key: x-ratelimit-limit, value: {{ .Values.envoy.rateLimit.maxTokens | quote }} }
+                      - name: envoy.filters.http.jwt_authn
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                          providers:
+                            gateway_jwt:
+                              issuer: {{ .Values.envoy.jwt.issuer | quote }}
+                              local_jwks:
+                                inline_string: '{"keys":[{"kty":"oct","alg":"HS256","use":"sig","k":"GATEWAY_JWT_SECRET_BASE64URL"}]}'
+                              forward: true
+                              payload_in_metadata: "jwt_payload"
+                          rules:
+                            - match: { path: "/admin/auth/signup" }
+                            - match: { path: "/admin/auth/login" }
+                            - match: { prefix: "/admin/" }
+                              requires: { provider_name: "gateway_jwt" }
+                            - match: { prefix: "/" }
+                      - name: envoy.filters.http.ext_authz
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                          http_service:
+                            server_uri:
+                              uri: "http://{{ include "ai-proxy.gateway.fullname" . }}:8000"
+                              cluster: "gateway_cluster"
+                              timeout: {{ .Values.envoy.extAuthz.timeout }}
+                            path_prefix: "/internal/authz"
+                            authorization_request:
+                              allowed_headers:
+                                patterns:
+                                  - exact: "authorization"
+                                  - exact: "x-api-key"
+                            authorization_response:
+                              allowed_upstream_headers:
+                                patterns:
+                                  - exact: "x-tenant-id"
+                                  - exact: "x-key-id"
+                          failure_mode_allow: false
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                    route_config:
+                      name: tls_route
+                      response_headers_to_add:
+                        - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                          header:
+                            key: Strict-Transport-Security
+                            value: "max-age={{ .Values.envoy.hsts.maxAge }}{{ if .Values.envoy.hsts.includeSubDomains }}; includeSubDomains{{ end }}"
+                      virtual_hosts:
+                        - name: local
+                          domains: ["*"]
+                          routes:
+                            - match: { prefix: "/internal/" }
+                              direct_response:
+                                status: 403
+                                body: { inline_string: "Forbidden" }
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  disabled: true
+                            - match: { prefix: "/v1/" }
+                              route: { cluster: gateway_cluster }
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  check_settings:
+                                    context_extensions: { route: "v1" }
+                            - match: { prefix: "/admin/" }
+                              route: { cluster: gateway_cluster }
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  disabled: true
+                            - match: { prefix: "/" }
+                              route: { cluster: gateway_cluster }
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  disabled: true
+        - name: listener_http_redirect
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: {{ .Values.envoy.service.httpPort }}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: ingress_http_redirect
+                    use_remote_address: true
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                    route_config:
+                      name: redirect_route
+                      virtual_hosts:
+                        - name: redirect
+                          domains: ["*"]
+                          routes:
+                            - match: { prefix: "/" }
+                              redirect:
+                                https_redirect: true
+                                port_redirect: {{ .Values.envoy.service.httpsPort }}
+        # Dedicated probe listener — 0.0.0.0 so the kubelet can reach it, but it carries ONLY the
+        # health_check filter (returns 200 on /ready, 503 while draining). No admin/config_dump,
+        # no ext_authz/jwt — nothing sensitive. This is what lets the admin port stay on 127.0.0.1.
+        - name: listener_health
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: {{ .Values.envoy.healthPort }}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: ingress_health
+                    http_filters:
+                      - name: envoy.filters.http.health_check
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.health_check.v3.HealthCheck
+                          pass_through_mode: false
+                          headers:
+                            - name: ":path"
+                              string_match: { exact: "/ready" }
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                    route_config:
+                      name: health_route
+                      virtual_hosts:
+                        - name: health
+                          domains: ["*"]
+                          routes:
+                            - match: { prefix: "/" }
+                              direct_response:
+                                status: 200
+                                body: { inline_string: "OK" }
+      clusters:
+        - name: gateway_cluster
+          connect_timeout: {{ .Values.envoy.upstream.connectTimeout }}
+          type: STRICT_DNS
+          lb_policy: ROUND_ROBIN
+          load_assignment:
+            cluster_name: gateway_cluster
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: {{ include "ai-proxy.gateway.fullname" . }}
+                          port_value: 8000
+{{- end -}}

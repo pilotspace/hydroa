@@ -94,3 +94,26 @@ referenced). `trim` so whitespace does not pass as set. Evaluated from datastore
 {{- fail "datastore_secret_ref_missing: set datastores.secrets.name (or datastores.secrets.create=true) when a datastore is enabled and gateway.env.environment is not dev/test" -}}
 {{- end -}}
 {{- end -}}
+
+{{/* ── Envoy edge helpers (v53 envoy-edge-manifests) — additive, frozen helpers above untouched ── */}}
+
+{{- define "ai-proxy.envoy.fullname" -}}
+{{- printf "%s-envoy" (include "ai-proxy.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- define "ai-proxy.envoy.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ai-proxy.fullname" . }}
+app.kubernetes.io/component: envoy
+{{- end -}}
+
+{{/*
+Fail-closed TLS guard (chart_invalid -> tls_secret_ref_missing) — mirrors the gateway/datastore
+secret guards. For ANY environment outside {dev, test}, when Envoy is enabled, the TLS Secret
+ref MUST be set. `trim` so whitespace does not pass as set. Evaluated from envoy-deployment.yaml.
+*/}}
+{{- define "ai-proxy.envoy.validateTLS" -}}
+{{- $devEnvs := list "dev" "test" -}}
+{{- $ref := .Values.envoy.tls.existingSecret | trim -}}
+{{- if and .Values.envoy.enabled (not (has .Values.gateway.env.environment $devEnvs)) (not $ref) -}}
+{{- fail "tls_secret_ref_missing: set envoy.tls.existingSecret (a kubernetes.io/tls Secret) when envoy.enabled and gateway.env.environment is not dev/test" -}}
+{{- end -}}
+{{- end -}}

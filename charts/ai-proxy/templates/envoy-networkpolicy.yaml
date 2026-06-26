@@ -1,0 +1,23 @@
+{{- if and .Values.envoy.enabled .Values.envoy.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-proxy.envoy.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: envoy
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ai-proxy.envoy.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  # Data plane only: ingress to 8443/8080 is allowed; the admin port 9901 is intentionally
+  # NOT listed, so pod-to-pod traffic to it is denied — `/config_dump` would otherwise expose
+  # the runtime config including the substituted JWKS secret. kubelet health probes originate
+  # from the node (not a pod) and are exempt from NetworkPolicy, so /ready :9901 still works.
+  # Egress is unrestricted (Envoy must still reach the gateway + DNS).
+  ingress:
+    - ports:
+        - { protocol: TCP, port: {{ .Values.envoy.service.httpsPort }} }
+        - { protocol: TCP, port: {{ .Values.envoy.service.httpPort }} }
+{{- end -}}
