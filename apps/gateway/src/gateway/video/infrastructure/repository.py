@@ -23,6 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.video.infrastructure.orm import VideoGenerationJobRow
 
+# Terminal statuses — a job in one of these states must not be re-transitioned.
+_TERMINAL_STATUSES = ("succeeded", "failed")
+_NONTERMINAL_STATUSES = ("queued", "running")
+
 
 class VideoJobRepository:
     """All video job persistence, scoped to a single SQLAlchemy session."""
@@ -140,3 +144,42 @@ class VideoJobRepository:
             values={"status": "failed", "error": error},
             allowed_from=("queued", "running"),
         )
+
+    async def increment_retry(self, job_id: uuid.UUID) -> int:
+        """Atomically increment retry_count for a non-terminal job and return the new value.
+
+        Only executes the UPDATE when status is in ('queued', 'running') — the same
+        guard that all other status transitions use. If the job is already terminal
+        (or missing), no row is updated and 0 is returned so the caller's ``> max_retries``
+        cap check is harmless (0 never exceeds a non-negative cap).
+
+        The caller must commit (or be inside an already-open transaction).
+        """
+        result = await self._session.execute(
+            update(VideoGenerationJobRow)
+            .where(
+                VideoGenerationJobRow.id == job_id,
+                VideoGenerationJobRow.status.in_(_NONTERMINAL_STATUSES),
+            )
+            .values(
+                retry_count=VideoGenerationJobRow.retry_count + 1,
+                updated_at=datetime.now(tz=UTC),
+            )
+            .returning(VideoGenerationJobRow.retry_count)
+        )
+        await self._session.flush()
+        row = result.fetchone()
+        return int(row[0]) if row is not None else 0
+
+    async def list_nonterminal_ids(self) -> list[uuid.UUID]:
+        """Return all job ids whose status is not yet terminal (queued or running).
+
+        Used by ``recover_orphans`` on startup to re-enqueue jobs that were in-flight
+        when the gateway last restarted. The query is intentionally un-scoped (no
+        tenant_id filter) because orphan recovery is operator-wide.
+        """
+        stmt = select(VideoGenerationJobRow.id).where(
+            VideoGenerationJobRow.status.in_(_NONTERMINAL_STATUSES)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())

@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "durable-video-queue",
+  "active_milestone": "v49",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -162,6 +162,32 @@
         ],
         "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
       }
+    },
+    "durable-video-queue": {
+      "title": "Redis-backed durable queue + worker + restart recovery for video jobs",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v49",
+      "depends_on": [],
+      "created": "2026-06-26T03:12:55+00:00",
+      "updated": "2026-06-26T03:45:27+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0c0fbebce4ea8b73ba5bf45a81e51d1a",
+        "tests": {
+          "apps/gateway/tests/video/test_video_durable_queue.py": "c91fae39e1b7255d1d427821438e225c"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/video/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/video/"
+        ],
+        "snapshot_md5": "421e8e9ed8a3ffd960304d1aa96f048d"
+      }
     }
   },
   "milestones": {
@@ -172,10 +198,18 @@
       "status": "done",
       "created": "2026-06-22T09:31:42+00:00",
       "updated": "2026-06-23T02:00:14+00:00"
+    },
+    "v49": {
+      "title": "Durable video-job processing (Redis queue + restart recovery)",
+      "goal": "A video-generation job survives a gateway restart: jobs are enqueued to the existing Redis, processed by an in-process worker, and any job orphaned by a restart is recovered and re-driven \u2014 with bounded retries and at-least-once idempotency \u2014 reusing the existing Redis with zero new infra.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-26T03:12:55+00:00",
+      "updated": "2026-06-26T03:12:55+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T02:59:50+00:00",
+  "updated": "2026-06-26T03:45:27+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

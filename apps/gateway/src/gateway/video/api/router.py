@@ -59,6 +59,7 @@ from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
+from gateway.video.application.worker import RedisVideoJobQueue
 from gateway.video.infrastructure.repository import VideoJobRepository
 
 video_router = APIRouter(tags=["video"])
@@ -301,25 +302,54 @@ async def create_video_job(
     )
     await session.commit()
 
-    # Spawn the background processing task
+    # Spawn the background processing task (durable queue or inline)
     video_generator = getattr(request.app.state, "video_generator", None)
     tasks_set: set[asyncio.Task[None]] = request.app.state.video_jobs_tasks
 
-    task: asyncio.Task[None] = asyncio.create_task(
-        _process_video_job(
-            job_id=row.id,
-            tenant_id=authz.tenant_id,
-            key_id=authz.key_id,
-            model=row.model,
-            prompt=row.prompt,
-            params=row.params,
-            sessionmaker=request.app.state.sessionmaker,
-            video_generator=video_generator,
-            timeout_seconds=settings.video_job_timeout_seconds,
-            tasks_set=tasks_set,
+    if settings.video_durable_queue_enabled:
+        # Durable path: enqueue to Redis so the VideoJobWorker picks it up.
+        # Fail-open: if the Redis enqueue raises (Redis down / network error),
+        # fall back to the v48 inline asyncio.create_task so no job is dropped.
+        _queue: RedisVideoJobQueue = request.app.state.video_job_queue
+        try:
+            await _queue.enqueue(row.id)
+        except Exception:
+            _log.warning(
+                "video enqueue failed; falling back to in-process task for job %s",
+                row.id,
+            )
+            task: asyncio.Task[None] = asyncio.create_task(
+                _process_video_job(
+                    job_id=row.id,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=row.model,
+                    prompt=row.prompt,
+                    params=row.params,
+                    sessionmaker=request.app.state.sessionmaker,
+                    video_generator=video_generator,
+                    timeout_seconds=settings.video_job_timeout_seconds,
+                    tasks_set=tasks_set,
+                )
+            )
+            tasks_set.add(task)
+    else:
+        # v48 inline path (default-OFF — unchanged)
+        task = asyncio.create_task(
+            _process_video_job(
+                job_id=row.id,
+                tenant_id=authz.tenant_id,
+                key_id=authz.key_id,
+                model=row.model,
+                prompt=row.prompt,
+                params=row.params,
+                sessionmaker=request.app.state.sessionmaker,
+                video_generator=video_generator,
+                timeout_seconds=settings.video_job_timeout_seconds,
+                tasks_set=tasks_set,
+            )
         )
-    )
-    tasks_set.add(task)
+        tasks_set.add(task)
 
     return VideoJobResponse(
         id=row.id,

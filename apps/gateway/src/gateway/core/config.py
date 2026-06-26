@@ -380,6 +380,20 @@ class Settings(BaseSettings):
     # video generator call. 0 = unlimited (no timeout). Default 300 s (5 minutes).
     # ge=0 so a negative value fails at config load.
     video_job_timeout_seconds: float = Field(default=300.0, ge=0)
+    # GATEWAY_VIDEO_DURABLE_QUEUE_ENABLED — when True, video generation jobs are
+    # enqueued to a Redis list (video:jobs:pending) and drained by an in-process
+    # VideoJobWorker rather than a fire-and-forget asyncio.create_task. Jobs survive
+    # gateway restarts; orphaned non-terminal rows are re-enqueued on startup.
+    # Default False = opt-in (byte-identical to v48: inline asyncio.create_task).
+    # Fail-open: if the Redis enqueue raises, the router falls back to the inline task.
+    video_durable_queue_enabled: bool = Field(default=False)
+    # GATEWAY_VIDEO_JOB_MAX_RETRIES — maximum number of times the durable worker will
+    # attempt a job before setting status=failed error=max_retries_exceeded. Each
+    # attempt increments retry_count on the row; when retry_count > this value the
+    # job is poisoned. Default 3. **0 = UNLIMITED** (the codebase convention for a
+    # 0-valued cap — matches video_job_timeout_seconds / *_max_bytes); a fresh job
+    # is therefore always attempted at least once.
+    video_job_max_retries: int = Field(default=3, ge=0)
 
     @field_validator("back_pressure_retry_after_seconds", mode="before")
     @classmethod
