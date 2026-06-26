@@ -34,27 +34,27 @@ Out:
 - [ ] realtime-voice   depends-on: none   — gateway WebSocket `/v1/realtime`: first-message sk- auth (+ expiry, timeout), then an audio→STT→chat→TTS→audio turn loop reusing v42 use-cases; size cap + error-frame + clean disconnect teardown. Starlette TestClient tests (stubbed use-cases). FREEZES the WS protocol.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] An API key holder can open a WebSocket to `/v1/realtime`, authenticate with their sk- key, stream an utterance, and receive a transcript + a reply + synthesized audio back over the same socket; a missing/invalid/expired token is rejected (close); an over-cap utterance and a provider failure each yield a clean error frame (never a hang or a crash); a client disconnect tears the session down cleanly   (← realtime-voice)
+- [x] An API key holder can open a WebSocket to `/v1/realtime`, authenticate with their sk- key, stream an utterance, and receive a transcript + a reply + synthesized audio back over the same socket; a missing/invalid/expired token is rejected (close); an over-cap utterance and a provider failure each yield a clean error frame (never a hang or a crash); a client disconnect tears the session down cleanly   (← realtime-voice)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway : NEW `proxy/api/realtime_ws.py` — a WebSocket endpoint `/v1/realtime` that carries an authenticated, turn-based voice conversation over ONE socket. First-message auth ({"type":"auth","token":"sk-..."} → KeyAuthenticator + the v44 tz-aware expiry gate → {"ready"}; bad/missing/expired/non-auth first frame → close 4401; auth timeout → close 4408; the token is read ONLY from the frame, never a URL/query param). Then a repeatable turn loop: binary audio → {"commit",models} → STT ({transcript}) → chat ({reply}) → TTS (binary frames) → {turn_done}, REUSING the v42 TranscriptionUseCase + the chat CompletionUseCase.complete + the v42 SpeechUseCase (the real use-cases run when the app.state test stubs are absent). Design-for-failure: the audio buffer is BOUNDED during accumulation (a never-committing streamer cannot exhaust memory) + a commit cap → utterance_too_large; every use-case call is wrapped → an {error} frame (stt/chat/tts_failed), socket stays usable, never a 500; WebSocketDisconnect at every await → clean teardown. Config (additive): GATEWAY_REALTIME_AUTH_TIMEOUT_SECONDS (10s), GATEWAY_REALTIME_MAX_UTTERANCE_BYTES (25 MiB; 0=unlimited). ZERO new dependency (Starlette WS is built in); no new provider; no migration. 12 DB-backed TestClient tests.
+- tooling / skill / book : untouched (only `.add/` bookkeeping).
+- dashboard : untouched — the live-voice UI is a DEFERRED delta (Next's BFF cannot proxy WebSockets; v42 /app/voice covers the non-realtime UI today).
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- realtime-voice : gate=PASS · tests=12 green (DB-backed TestClient WS — one per scenario + a multi-frame buffer-bound DoS test; make test-fast 228 unchanged, NO regression; pyright 0, ruff clean on the new file) · residue=I read the WS handler end-to-end and reviewed the auth-over-WS security surface directly (token frame-only, no-turn-before-auth, bounded auth wait, disconnect-guarded at every await) + ADDED a design-for-failure buffer bound beyond the contract. Deltas: provider full-duplex realtime relay (OpenAI Realtime / Gemini Live), the dashboard live-voice UI, the Envoy WS-upgrade edge config, conversation persistence.
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
+  - EC1 (an API key holder authenticates over a WS, streams an utterance, and gets transcript+reply+audio back; missing/invalid/expired token rejected; over-cap + provider failure → clean error frames; disconnect → clean teardown): realtime-voice — 12 tests incl. test_auth_then_one_turn / test_two_turns / the three 4401 close tests / test_auth_timeout_closes_4408 / test_over_cap_utterance + test_over_cap_streamed_across_many_frames / test_provider_error_frame / test_commit_no_audio / test_clean_disconnect / test_token_only_from_auth_frame.
+- goal: an API key holder holds a live, multi-turn voice conversation over a single WebSocket — audio in → transcript → reply → synthesized audio out — reusing the v42 STT/TTS + chat pipeline with ZERO new dependency. Proven by 12 DB-backed WS tests green (make test-fast 228 unchanged), a directly-reviewed auth-over-WS surface, and a memory-bound DoS hardening.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
-> The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
-> small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [ ] v47 commits land on the v40→v47 task stack (committed locally): t1 realtime-voice → .add close. PUSH/PR await Tin's go-ahead (outward act).
+- [ ] open a PR to main; Tin reviews + merges (HTTPS push per [[git-push-https-gotcha]]); v40–v47 are a stack — merge in order or retarget.
+- [ ] deploy note: NO migration, NO new infra/dep. Optionally set GATEWAY_REALTIME_AUTH_TIMEOUT_SECONDS / GATEWAY_REALTIME_MAX_UTTERANCE_BYTES. ⚠ EDGE: the deployed Envoy ext_authz is HTTP; exposing `/v1/realtime` publicly needs a WS-upgrade + per-message-auth edge config (a documented delta) — the gateway endpoint itself is correct + TestClient-verified.
+- [ ] v47 joins the releasable set (v33–v46 already pending); bundle into the next release cut when Tin calls it (release.md).
