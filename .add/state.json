@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "video-jobs-backend",
+  "active_task": "video-jobs-ui",
   "active_milestone": "v48",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -193,12 +193,28 @@
     },
     "video-jobs-ui": {
       "title": "Dashboard /app/video: submit a prompt, poll status, download the result",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v48",
       "depends_on": [],
       "created": "2026-06-26T02:18:36+00:00",
-      "updated": "2026-06-26T02:18:36+00:00"
+      "updated": "2026-06-26T02:57:45+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9cfba1f48265f812fc39928a54d16871",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/video.ts",
+          "apps/dashboard/components/video/",
+          "apps/dashboard/app/(app)/app/video/",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/video-workspace.test.tsx",
+          "apps/dashboard/tests-bff/nav-role-filter.test.tsx"
+        ],
+        "snapshot_md5": "1cc1e4aa03920dcf4c11022c511953b8"
+      }
     }
   },
   "milestones": {
@@ -220,7 +236,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T02:40:54+00:00",
+  "updated": "2026-06-26T02:57:45+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

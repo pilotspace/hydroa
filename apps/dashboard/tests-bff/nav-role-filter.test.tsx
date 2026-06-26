@@ -25,6 +25,8 @@
  * added near Memory → member now sees 8 (was 7); admin/owner/unknown now see 16 (was 15).
  * UPDATED by vision-workspace (v46): a MEMBER-visible "Vision" link (/app/vision, NO minRole) is
  * added after Artifacts → member now sees 9 (was 8); admin/owner/unknown now see 17 (was 16).
+ * UPDATED by video-workspace (v47): a MEMBER-visible "Video" link (/app/video, NO minRole) is
+ * added after Vision → member now sees 10 (was 9); admin/owner/unknown now see 18 (was 17).
  *
  * AppShell takes an optional `role` prop (presentational); DashboardShell ("use
  * client") feeds it from useCurrentUser().role. The nav filter is UX-only — no
@@ -48,8 +50,8 @@ import { DashboardShell } from "@/components/dashboard-shell";
 
 const APP = "http://localhost:3000";
 const ADMIN_ONLY = [/models/i, /teams/i, /members/i, /routing/i, /alerts/i, /audit/i, /health/i, /^slo$/i];
-const MEMBER_OK = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /usage/i, /spend/i, /api keys/i, /settings/i];
-const ALL_SEVENTEEN = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /usage/i, /spend/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
+const MEMBER_OK = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, /settings/i];
+const ALL_EIGHTEEN = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
 
 function makeQueryClient() {
   return new QueryClient({
@@ -79,10 +81,10 @@ describe("AppShell — role-based nav visibility", () => {
     for (const re of MEMBER_OK) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
-    // exactly the 9 member-OK links (Chat + Voice + Memory + Artifacts + Vision + Usage + Spend + API Keys + Settings) —
+    // exactly the 10 member-OK links (Chat + Voice + Memory + Artifacts + Vision + Video + Usage + Spend + API Keys + Settings) —
     // guards against an accidental extra/missing minRole tag silently dropping a
     // member-visible link.
-    expect(within(n).getAllByRole("link")).toHaveLength(9);
+    expect(within(n).getAllByRole("link")).toHaveLength(10);
   });
 
   it("test_admin_sees_all_links", () => {
@@ -92,10 +94,10 @@ describe("AppShell — role-based nav visibility", () => {
       </AppShell>,
     );
     const n = nav();
-    for (const re of ALL_SEVENTEEN) {
+    for (const re of ALL_EIGHTEEN) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
-    expect(within(n).getAllByRole("link")).toHaveLength(17);
+    expect(within(n).getAllByRole("link")).toHaveLength(18);
   });
 
   it("test_owner_sees_all_links", () => {
@@ -104,7 +106,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(17);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(18);
   });
 
   it("test_unknown_role_fails_open", () => {
@@ -113,7 +115,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(17);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(18);
     unmount();
 
     // no role prop at all → also fail-open (preserves the prior AppShell behavior)
@@ -122,7 +124,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(17);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(18);
   });
 });
 
@@ -153,14 +155,15 @@ describe("DashboardShell — wires role from useCurrentUser", () => {
     });
     expect(within(n).queryByRole("link", { name: /teams/i })).not.toBeInTheDocument();
     expect(within(n).queryByRole("link", { name: /routing/i })).not.toBeInTheDocument();
-    // member-OK links remain — exactly 8 after the role resolves to member
+    // member-OK links remain — exactly 10 after the role resolves to member
     expect(within(n).getByRole("link", { name: /^chat$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /^voice$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /^memory$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /^artifacts$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /^vision$/i })).toBeInTheDocument();
+    expect(within(n).getByRole("link", { name: /^video$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /usage/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /settings/i })).toBeInTheDocument();
-    expect(within(n).getAllByRole("link")).toHaveLength(9);
+    expect(within(n).getAllByRole("link")).toHaveLength(10);
   });
 });
