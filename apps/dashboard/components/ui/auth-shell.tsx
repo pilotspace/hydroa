@@ -31,8 +31,8 @@ export function AuthShell({ children, className }: AuthShellProps) {
         aria-hidden="true"
         className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-brand-from to-brand-to p-10 text-primary-foreground lg:flex"
       >
-        {/* Decorative soft sheen over the brand gradient (token-only, no raw units). */}
-        <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:radial-gradient(60%_50%_at_20%_15%,rgba(255,255,255,0.18),transparent_70%)]" />
+        {/* Decorative soft sheen over the brand gradient — Tailwind color utilities only (no raw color). */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-transparent" />
         <div className="relative flex items-center gap-2 text-lg font-semibold tracking-tight">
           <Hexagon className="size-6" />
           <span>Hydroa</span>
