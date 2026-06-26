@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "resilient-bff-fetch",
+  "active_task": "security-headers-csp",
   "active_milestone": "v50",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -199,6 +199,27 @@
           }
         ]
       }
+    },
+    "security-headers-csp": {
+      "title": "Security headers + CSP across all dashboard routes",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v50",
+      "depends_on": [],
+      "created": "2026-06-26T02:33:37+00:00",
+      "updated": "2026-06-26T02:44:12+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "585926c23d40c6326cd88bbcf3edb568",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/next.config.ts",
+          "apps/dashboard/tests-bff/security-headers.test.ts"
+        ],
+        "snapshot_md5": "c3372869d4de36c32d8532ec831247a1"
+      }
     }
   },
   "milestones": {
@@ -220,7 +241,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T02:29:59+00:00",
+  "updated": "2026-06-26T02:44:12+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
