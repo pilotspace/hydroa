@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "harden-admin",
+  "active_task": "harden-auth",
   "active_milestone": "v50",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -370,6 +370,27 @@
         ],
         "snapshot_md5": "1a0cf26ec416f9202e64834701ee284c"
       }
+    },
+    "harden-auth": {
+      "title": "Entrance motion + verified field-validation/resilient-submit/failure states on auth pages",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v50",
+      "depends_on": [],
+      "created": "2026-06-26T03:42:40+00:00",
+      "updated": "2026-06-26T03:46:41+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2f34f5ac09e6009e7df52a6577638ca2",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/auth-shell.tsx",
+          "apps/dashboard/tests/auth-hardening.test.tsx"
+        ],
+        "snapshot_md5": "06b51139c42595604be81c53050588b9"
+      }
     }
   },
   "milestones": {
@@ -391,7 +412,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T03:41:52+00:00",
+  "updated": "2026-06-26T03:46:41+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
