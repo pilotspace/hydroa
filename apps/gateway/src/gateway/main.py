@@ -17,25 +17,16 @@ from gateway.alerting.application.dispatcher import AlertDispatcher
 from gateway.alerting.application.health_checker import UpstreamHealthChecker
 from gateway.alerting.infrastructure.httpx_pinger import HttpxUpstreamPinger
 from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
+from gateway.artifacts.api.router import artifacts_router
+from gateway.artifacts.infrastructure.orm import (  # noqa: F401 — registers ArtifactRow on Base.metadata
+    ArtifactRow as _ArtifactRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.auth.api.oidc_admin_router import oidc_admin_router
 from gateway.auth.api.oidc_router import oidc_router
 from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
     OidcProviderConfigRow as _OidcProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.budgets.api.router import budget_router
-from gateway.conversations.api.router import conversations_router
-from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
-    ConversationMessageRow as _ConversationMessageRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
-    ConversationRow as _ConversationRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
-)
-from gateway.memory.api.router import memories_router
-from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
-    MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
-)
-from gateway.artifacts.api.router import artifacts_router
-from gateway.artifacts.infrastructure.orm import (  # noqa: F401 — registers ArtifactRow on Base.metadata
-    ArtifactRow as _ArtifactRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
-)
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import (
     admin_catalog_router,
@@ -44,10 +35,21 @@ from gateway.catalog.api.router import (
     internal_catalog_router,
 )
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
+from gateway.conversations.api.router import conversations_router
+from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
+    ConversationMessageRow as _ConversationMessageRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
+)
+from gateway.conversations.infrastructure.orm import (
+    ConversationRow as _ConversationRow,  # noqa: F401  # pyright: ignore[reportUnusedImport]  — side-effect import
+)
 from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
+from gateway.memory.api.router import memories_router
+from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
+    MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.observability.logging_config import configure_structlog
 from gateway.observability.metrics import MetricsRegistry, expose_metrics
 from gateway.observability.middleware import RequestIdMiddleware
@@ -129,6 +131,10 @@ from gateway.usage.infrastructure.alert_events_orm import (
 )
 from gateway.usage.infrastructure.orm import (
     UsageRecordRow as _UsageRecordRow,  # noqa: F401 — registers ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.video.api.router import video_router
+from gateway.video.infrastructure.orm import (  # noqa: F401 — registers VideoGenerationJobRow on Base.metadata
+    VideoGenerationJobRow as _VideoGenerationJobRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 
 internal_router = APIRouter(prefix="/internal")
@@ -513,6 +519,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(Exception):
                 await otel_flusher.flush_once()
 
+        # 2c. Cancel outstanding video generation job tasks
+        video_tasks: set[asyncio.Task[None]] = getattr(app.state, "video_jobs_tasks", set())
+        for _vt in list(video_tasks):
+            _vt.cancel()
+        if video_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.gather(*video_tasks, return_exceptions=True)
+
         # 3. Cancel the flusher background task
         flusher_task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)
         if flusher_task is not None:
@@ -550,6 +564,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.drift_checker_task = None
     app.state.recovery_sweep_task = None
     app.state.retention_sweeper_task = None
+
+    # Video generation seam — default: no provider (honest degradation).
+    # Tests override via app.state.video_generator = <stub>.
+    app.state.video_generator = None
+    # Tracked in-process asyncio.Task set for video jobs.
+    # The lifespan cancels any outstanding tasks on shutdown.
+    app.state.video_jobs_tasks: set[asyncio.Task[None]] = set()
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings
@@ -859,6 +880,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(conversations_router)
     app.include_router(memories_router)
     app.include_router(artifacts_router)
+    app.include_router(video_router)
 
     # RequestIdMiddleware must be added AFTER routers are included so it wraps
     # the full ASGI app and captures final status codes including those set by

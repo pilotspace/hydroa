@@ -375,6 +375,12 @@ class Settings(BaseSettings):
         default=1
     )  # GATEWAY_BACK_PRESSURE_RETRY_AFTER_SECONDS
 
+    # ── Video generation jobs (video-generation-jobs task) ───────────────────
+    # GATEWAY_VIDEO_JOB_TIMEOUT_SECONDS — per-job asyncio.wait_for timeout for the
+    # video generator call. 0 = unlimited (no timeout). Default 300 s (5 minutes).
+    # ge=0 so a negative value fails at config load.
+    video_job_timeout_seconds: float = Field(default=300.0, ge=0)
+
     @field_validator("back_pressure_retry_after_seconds", mode="before")
     @classmethod
     def _coerce_negative_retry_after(cls, v: object) -> object:

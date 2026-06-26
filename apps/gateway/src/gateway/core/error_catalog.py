@@ -500,3 +500,11 @@ PAYLOAD_INVALID_BASE64 = ErrorSpec(
 UNSUPPORTED_CONTENT_PART = ErrorSpec(
     400, "ERR_UNSUPPORTED_CONTENT_PART", "Unsupported or invalid content part"
 )
+
+# ---------------------------------------------------------------------------
+# Video generation job errors (video-generation-jobs task)
+# ---------------------------------------------------------------------------
+
+#: Requested video generation job not found, or belongs to another tenant.
+#: NEVER distinguish between "not found" and "belongs to another tenant" — no oracle.
+VIDEO_JOB_NOT_FOUND = ErrorSpec(404, "ERR_VIDEO_JOB_NOT_FOUND", "Video generation job not found")
