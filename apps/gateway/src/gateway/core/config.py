@@ -238,6 +238,10 @@ class Settings(BaseSettings):
     # GATEWAY_GOOGLE_DEFAULT_MAX_TOKENS — default max_tokens for Gemini requests
     # when the OpenAI caller omits max_tokens.
     google_default_max_tokens: int = 4096
+    # GATEWAY_GEMINI_INLINE_MAX_BYTES — maximum total decoded bytes for inline
+    # data (images/video) per request.  0 = unlimited.  Default 20 MiB matches
+    # the Gemini inline ceiling.
+    gemini_inline_max_bytes: int = Field(default=20_971_520, ge=0)  # 20 MiB
 
     # ── AWS Bedrock direct provider (bedrock-sigv4 task) ──────────────────────
     # Secret fields (bedrock_access_key_id, bedrock_secret_access_key,

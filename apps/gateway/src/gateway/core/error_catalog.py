@@ -489,3 +489,14 @@ PROVIDER_UNAVAILABLE = ErrorSpec(
 PAYLOAD_INVALID_BASE64 = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID_BASE64", "content_base64 is not valid base64"
 )
+
+# ---------------------------------------------------------------------------
+# Gemini multimodal / inline data errors
+# ---------------------------------------------------------------------------
+
+#: Gemini multimodal: a content part type is not text/image_url/video_url, or
+#: a non-data: URL was provided (SSRF guard), or base64 is malformed.
+#: 400 — caller-fixable; no echo of the bad URL (security).
+UNSUPPORTED_CONTENT_PART = ErrorSpec(
+    400, "ERR_UNSUPPORTED_CONTENT_PART", "Unsupported or invalid content part"
+)

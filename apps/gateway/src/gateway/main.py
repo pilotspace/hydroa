@@ -619,6 +619,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         backoff_base=settings.upstream_retry_backoff_base_s,
         retry_deadline_s=settings.upstream_retry_deadline_s,
         metrics_registry=app.state.metrics_registry,
+        max_inline_bytes=settings.gemini_inline_max_bytes,
     )
 
     # OpenAI direct adapter — UNCONDITIONAL (credential resolved per-request from contextvar).
