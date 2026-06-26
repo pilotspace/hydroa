@@ -569,6 +569,18 @@ class Settings(BaseSettings):
     # A commit whose accumulated audio exceeds this limit → error "utterance_too_large"
     # (no STT call, no billing).  0 = unlimited (operator opt-out).  Default 25 MiB.
     realtime_max_utterance_bytes: int = Field(default=26_214_400, ge=0)  # 25 MiB
+    # ── Full-duplex realtime relay (v52) — /v1/realtime/relay pump ──
+    # GATEWAY_REALTIME_RELAY_CONNECT_TIMEOUT_SECONDS — bounds the provider connect
+    # AND each provider send; a hang past this → close 4503 (provider unavailable).
+    realtime_relay_connect_timeout_seconds: float = Field(default=10.0, gt=0)
+    # GATEWAY_REALTIME_RELAY_IDLE_TIMEOUT_SECONDS — no client frame within this →
+    # close 4408 (idle). No send-queue knob: client→provider is a direct awaited relay.
+    realtime_relay_idle_timeout_seconds: float = Field(default=300.0, gt=0)
+    # GATEWAY_REALTIME_RELAY_PROVIDER — which realtime provider /v1/realtime/relay dials.
+    # "" = none configured → honest-degrade close 4404; else "openai" | "gemini".
+    realtime_relay_provider: str = Field(default="")
+    realtime_relay_openai_model: str = Field(default="gpt-4o-realtime-preview")
+    realtime_relay_gemini_model: str = Field(default="gemini-2.0-flash-exp")
 
     # ── Model-group aliases → ordered Deployments (model-fallbacks v6 + deployment-model v8) ──
     # GATEWAY_MODEL_GROUPS — JSON dict mapping alias string to an ordered member list.

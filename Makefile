@@ -49,7 +49,8 @@ test-fast:
 	  tests/audio_translations \
 	  tests/web_search \
 	  tests/gemini_multimodal \
-	  tests/objectstore
+	  tests/objectstore \
+	  tests/realtime_relay
 
 migrate:
 	cd $(GATEWAY) && uv run alembic upgrade head

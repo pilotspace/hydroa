@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 37
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 38
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -129,6 +129,8 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) when HONEST-DEGRADATION is a HARD invariant, even an UNREACHABLE corrupt-row state (s3 row with NULL object_key) must surface an honest 5xx, never a masking `or ""`/`or b""` that yields a misleading 404 or empty 200 (evidence: refute-read NIT → hardened the s3 object_key guard).  [folded foundation-version 38 · from artifacts-s3-persistence]
+- (SDD) the existing CircuitBreaker is IO-tier-agnostic — it dropped onto a brand-new object-store IO seam unchanged (guard/record_success/on_upstream_error), confirming the breaker is a reusable primitive, not completion-path-specific (evidence: reused verbatim, 0 edits) [object-store-port]  [folded foundation-version 38 · from object-store-port]
 - (SDD) When a task's drafted status code (422) collides with a shipped test (400), PRESERVE the shipped contract and reconcile the spec wording — never weaken the test for a cosmetic code (evidence: 400-preservation freeze flag honored).  [folded foundation-version 37 · from bff-input-validation]
 - (SDD) Next 16 special-file signature: error.tsx/global-error.tsx MUST be "use client" with `{error, reset}`; global-error renders its OWN html/body and can't use providers — keep it inline-styled/dependency-light (evidence: built + compiled into the route tree).  [folded foundation-version 37 · from failure-state-segments]
 - (SDD) A shared `buildMetadata` helper + root-layout defaults gives consistent SEO with title-template inheritance — far better than per-page literal objects (no OG, drift); the title template (`%s · Hydroa`) means pages store just `"Pricing"` (evidence: 8 pages unified).  [folded foundation-version 37 · from harden-marketing]
@@ -470,6 +472,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-26 | fold all → foundation-version 38 (SDD 2 · TDD 3 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 8 lessons open→folded; +8 routed bullets; 37→38 |
 <!-- NOTE: the v40–v49 program (this branch) and the v33–v50 line (main) folded the foundation
      CONCURRENTLY on separate branches; both reached "v37" via different lesson sets. The rows
      below from both histories are preserved verbatim (append-only) and reconciled at the
