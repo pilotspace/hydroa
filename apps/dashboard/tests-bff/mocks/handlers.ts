@@ -157,6 +157,21 @@ export const bffHandlers = [
   http.get(`${APP}/api/gw/v1/artifacts`, () =>
     HttpResponse.json({ data: [], limit: 50, offset: 0 })
   ),
+
+  // v46 vision workspace: VisionWorkspace fetches GET /v1/models on mount to
+  // filter for Gemini models. Any test that renders it needs this stubbed.
+  // Tests that assert specific model/completion behaviour override per-test.
+  // NOTE: the /v1/models handler above (gatewayHandlers) covers gateway-level
+  // tests; this covers BFF component tests that hit /api/gw/v1/models.
+  // The existing bffHandlers entry already covers /api/gw/v1/models (returns
+  // [{ id: "openai/gpt-4o" }]). Vision tests override that per-test with a
+  // gemini id. We add a default POST for chat/completions so unrelated tests
+  // that accidentally trigger it don't hit onUnhandledRequest:"error".
+  http.post(`${APP}/api/gw/v1/chat/completions`, () =>
+    HttpResponse.json({
+      choices: [{ message: { content: "" } }],
+    })
+  ),
 ];
 
 export const defaultHandlers = [...gatewayHandlers, ...bffHandlers];

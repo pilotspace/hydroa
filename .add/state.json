@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "gemini-multimodal",
+  "active_task": "vision-understanding-ui",
   "active_milestone": "v46",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -188,6 +188,31 @@
         ],
         "snapshot_md5": "429ad1444a9045bf8f7ffeed3a0ffe8a"
       }
+    },
+    "vision-understanding-ui": {
+      "title": "Dashboard /app/vision: image/video + prompt -> Gemini chat answer via BFF",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v46",
+      "depends_on": [],
+      "created": "2026-06-26T01:24:08+00:00",
+      "updated": "2026-06-26T01:33:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6f3e2738d119668a4e9331f8b459af21",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/vision.ts",
+          "apps/dashboard/components/vision/",
+          "apps/dashboard/app/(app)/app/vision/",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/vision-workspace.test.tsx",
+          "apps/dashboard/tests-bff/nav-role-filter.test.tsx"
+        ],
+        "snapshot_md5": "48ca268de5685d0a2c9c3fdce503dc25"
+      }
     }
   },
   "milestones": {
@@ -209,7 +234,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T01:23:15+00:00",
+  "updated": "2026-06-26T01:33:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
