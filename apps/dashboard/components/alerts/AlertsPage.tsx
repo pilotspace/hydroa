@@ -14,14 +14,14 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "@/lib/api-client";
+import { bffGet } from "@/lib/bff-client";
 import { Loading, ErrorState } from "@/components/ui";
 import { AlertsTable, AlertsData } from "./AlertsTable";
 
 export function AlertsPage() {
   const alertsQuery = useQuery<AlertsData>({
     queryKey: ["admin-alerts"],
-    queryFn: () => apiGet<AlertsData>("/admin/alerts"),
+    queryFn: () => bffGet<AlertsData>("/admin/alerts"),
   });
 
   return (

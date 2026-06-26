@@ -40,23 +40,12 @@ function appBase(): string {
   return "";
 }
 
-/** problem+json shape returned by the BFF/gateway for error responses */
-export interface ProblemDetail {
-  type?: string;
-  title: string;
-  status: number;
-  code?: string;
-}
-
-export class BffError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly problem: ProblemDetail
-  ) {
-    super(problem.title ?? `HTTP ${status}`);
-    this.name = "BffError";
-  }
-}
+// BffError / ProblemDetail are defined in the resilient-fetch core (the lowest
+// layer) and re-exported here so every existing `@/lib/bff-client` import keeps
+// resolving and there is ONE error class app-wide (instanceof holds).
+import { resilientFetch, BffError, type ProblemDetail } from "./resilient-fetch";
+export { BffError };
+export type { ProblemDetail };
 
 async function handleBffResponse<T>(res: Response, isAuthEndpoint = false): Promise<T> {
   if (res.status === 401 && !isAuthEndpoint) {
@@ -91,7 +80,7 @@ async function handleBffResponse<T>(res: Response, isAuthEndpoint = false): Prom
 
 /** GET /api/gw/<path> — no Authorization header; cookie sent via credentials */
 export async function bffGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${appBase()}/api/gw${path}`, {
+  const res = await resilientFetch(`${appBase()}/api/gw${path}`, {
     method: "GET",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -101,7 +90,7 @@ export async function bffGet<T>(path: string): Promise<T> {
 
 /** POST /api/gw/<path> — no Authorization header */
 export async function bffPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${appBase()}/api/gw${path}`, {
+  const res = await resilientFetch(`${appBase()}/api/gw${path}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -112,7 +101,7 @@ export async function bffPost<T>(path: string, body: unknown): Promise<T> {
 
 /** PUT /api/gw/<path> */
 export async function bffPut<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${appBase()}/api/gw${path}`, {
+  const res = await resilientFetch(`${appBase()}/api/gw${path}`, {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -123,7 +112,7 @@ export async function bffPut<T>(path: string, body: unknown): Promise<T> {
 
 /** PATCH /api/gw/<path> — same pattern as bffPut but method: "PATCH" */
 export async function bffPatch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${appBase()}/api/gw${path}`, {
+  const res = await resilientFetch(`${appBase()}/api/gw${path}`, {
     method: "PATCH",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -134,7 +123,7 @@ export async function bffPatch<T>(path: string, body: unknown): Promise<T> {
 
 /** DELETE /api/gw/<path> */
 export async function bffDelete(path: string): Promise<void> {
-  const res = await fetch(`${appBase()}/api/gw${path}`, {
+  const res = await resilientFetch(`${appBase()}/api/gw${path}`, {
     method: "DELETE",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -142,9 +131,19 @@ export async function bffDelete(path: string): Promise<void> {
   return handleBffResponse<void>(res);
 }
 
+/** GET /api/auth/<path> — direct auth-path read (suppresses the 401→/login redirect) */
+export async function bffAuthGet<T>(path: string): Promise<T> {
+  const res = await resilientFetch(`${appBase()}/api/auth/${path}`, {
+    method: "GET",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+  return handleBffResponse<T>(res, true);
+}
+
 /** POST /api/auth/<path> — used for login, signup, logout */
 export async function bffAuthPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${appBase()}/api/auth/${path}`, {
+  const res = await resilientFetch(`${appBase()}/api/auth/${path}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

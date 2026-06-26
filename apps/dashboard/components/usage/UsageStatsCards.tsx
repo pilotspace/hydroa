@@ -5,7 +5,7 @@
  * States: loading (animate-pulse), error (problem+json title), success
  */
 
-import { ApiError } from "@/lib/api-client";
+import { BffError } from "@/lib/bff-client";
 import { Loading, ErrorState, StatCard } from "@/components/ui";
 
 export interface UsageRecord {
@@ -27,7 +27,7 @@ export interface UsageData {
 }
 
 function getErrorTitle(err: unknown): string {
-  if (err instanceof ApiError) return err.problem.title;
+  if (err instanceof BffError) return err.problem.title;
   if (err instanceof Error) return err.message;
   return "An error occurred";
 }

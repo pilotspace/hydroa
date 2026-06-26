@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { resilientFetch, BffError } from "@/lib/resilient-fetch";
 
 function gatewayUrl(): string {
   return (
@@ -17,6 +18,13 @@ function gatewayUrl(): string {
     process.env.NEXT_PUBLIC_GATEWAY_URL ??
     "http://localhost:8080"
   );
+}
+
+/** Server-side upstream timeout (ms); env-overridable, read at call time. */
+function serverTimeoutMs(): number {
+  const raw = process.env.GATEWAY_PROXY_TIMEOUT_MS;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 15_000;
 }
 
 function buildClearCookieValue(): string {
@@ -77,11 +85,25 @@ async function proxyRequest(
     }
   }
 
-  const upstream = await fetch(upstreamUrl, {
-    method,
-    headers: upstreamHeaders,
-    body: upstreamBody ?? undefined,
-  });
+  let upstream: Response;
+  try {
+    upstream = await resilientFetch(
+      upstreamUrl,
+      {
+        method,
+        headers: upstreamHeaders,
+        body: upstreamBody ?? undefined,
+      },
+      { timeoutMs: serverTimeoutMs() }
+    );
+  } catch (err) {
+    // Transport-level failure (timeout / network / open circuit) → typed problem+json,
+    // never an unhandled 500.
+    if (err instanceof BffError) {
+      return NextResponse.json({ code: err.problem.code }, { status: err.status });
+    }
+    return NextResponse.json({ code: "ERR_BFF_NETWORK" }, { status: 502 });
+  }
 
   // On upstream 401: clear cookie, return ERR_AUTH_SESSION_EXPIRED
   if (upstream.status === 401) {

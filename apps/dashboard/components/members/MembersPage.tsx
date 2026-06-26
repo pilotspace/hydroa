@@ -22,7 +22,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPut, ApiError } from "@/lib/api-client";
+import { bffGet, bffPut, BffError } from "@/lib/bff-client";
 import { Loading, ErrorState } from "@/components/ui";
 
 // ---------------------------------------------------------------------------
@@ -75,12 +75,12 @@ export function MembersPage({ callerRole, callerUserId }: MembersPageProps) {
 
   const usersQuery = useQuery<UsersListResponse>({
     queryKey: ["admin-users"],
-    queryFn: () => apiGet<UsersListResponse>("/admin/users"),
+    queryFn: () => bffGet<UsersListResponse>("/admin/users"),
   });
 
   const assignRole = useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
-      apiPut<TenantUser>(`/admin/users/${userId}/role`, { role }),
+      bffPut<TenantUser>(`/admin/users/${userId}/role`, { role }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     },
@@ -102,7 +102,7 @@ export function MembersPage({ callerRole, callerUserId }: MembersPageProps) {
       ) : usersQuery.isError ? (
         <ErrorState
           title={
-            usersQuery.error instanceof ApiError
+            usersQuery.error instanceof BffError
               ? usersQuery.error.problem.title
               : usersQuery.error instanceof Error
               ? usersQuery.error.message

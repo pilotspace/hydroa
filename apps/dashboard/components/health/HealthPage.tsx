@@ -15,14 +15,14 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "@/lib/api-client";
+import { bffGet } from "@/lib/bff-client";
 import { Loading, ErrorState } from "@/components/ui";
 import { UpstreamsTable, UpstreamHealthData } from "./UpstreamsTable";
 
 export function HealthPage() {
   const healthQuery = useQuery<UpstreamHealthData>({
     queryKey: ["admin-upstream-health"],
-    queryFn: () => apiGet<UpstreamHealthData>("/admin/health/upstreams"),
+    queryFn: () => bffGet<UpstreamHealthData>("/admin/health/upstreams"),
   });
 
   return (

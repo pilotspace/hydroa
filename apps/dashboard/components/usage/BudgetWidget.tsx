@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { ApiError } from "@/lib/api-client";
+import { BffError } from "@/lib/bff-client";
 import { BudgetEditForm } from "./BudgetEditForm";
 import { Button, Loading, ErrorState, StatCard } from "@/components/ui";
 
@@ -18,7 +18,7 @@ export interface BudgetData {
 }
 
 function getErrorTitle(err: unknown): string {
-  if (err instanceof ApiError) return err.problem.title;
+  if (err instanceof BffError) return err.problem.title;
   if (err instanceof Error) return err.message;
   return "An error occurred";
 }

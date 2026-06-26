@@ -14,14 +14,14 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "@/lib/api-client";
+import { bffGet } from "@/lib/bff-client";
 import { Loading, ErrorState } from "@/components/ui";
 import { AuditTable, AuditData } from "./AuditTable";
 
 export function AuditPage() {
   const auditQuery = useQuery<AuditData>({
     queryKey: ["admin-audit"],
-    queryFn: () => apiGet<AuditData>("/admin/audit"),
+    queryFn: () => bffGet<AuditData>("/admin/audit"),
   });
 
   return (
