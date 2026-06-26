@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "artifacts-s3-live-verify",
-  "active_milestone": "v51",
+  "active_task": null,
+  "active_milestone": null,
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -290,7 +290,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T09:08:28+00:00",
+  "updated": "2026-06-26T10:35:49+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -914,6 +914,19 @@
         "harden-marketing",
         "harden-admin",
         "harden-auth"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v52",
+      "title": "Full-duplex realtime voice relay (provider-agnostic seam)",
+      "tasks": 5,
+      "task_slugs": [
+        "realtime-relay-port",
+        "openai-realtime-adapter",
+        "gemini-live-adapter",
+        "realtime-relay-endpoint",
+        "realtime-relay-live-verify"
       ],
       "archived": "2026-06-26"
     }
