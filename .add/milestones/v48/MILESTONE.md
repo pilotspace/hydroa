@@ -37,32 +37,34 @@ Out:
 - The `video_generation_jobs` schema + the `/v1/video` REST (create/poll/list) + the status machine + the provider seam + honest no-provider degradation + tenant isolation -> owning task `video-jobs-backend`
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] video-jobs-backend   depends-on: none                — `gateway/video/` domain: ORM + migration (on b3e5f9a7c1d4) + repository + `/v1/video/generations` (create/poll/list) auth'd via KeyAuthenticator; in-process async processing via a pluggable provider seam; result stored as a v45 artifact; honest no-provider degradation; per-job timeout; STRICT tenant isolation; DB-backed tests. FREEZES the schema + REST + status-machine + provider-seam contract.
-- [ ] video-jobs-ui        depends-on: video-jobs-backend  — dashboard `/app/video` (submit a prompt + list jobs + poll status + download the result via the artifacts path) over the BFF; role-open nav entry.
+- [x] video-jobs-backend   depends-on: none                — `gateway/video/` domain: ORM + migration (on b3e5f9a7c1d4) + repository + `/v1/video/generations` (create/poll/list) auth'd via KeyAuthenticator; in-process async processing via a pluggable provider seam; result stored as a v45 artifact; honest no-provider degradation; per-job timeout; STRICT tenant isolation; DB-backed tests. FREEZES the schema + REST + status-machine + provider-seam contract. (gate PASS, 16 tests)
+- [x] video-jobs-ui        depends-on: video-jobs-backend  — dashboard `/app/video` (submit a prompt + list jobs + poll status + download the result via the artifacts path) over the BFF; role-open nav entry. (gate PASS, 10 tests)
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] An API key holder can POST /v1/video/generations with a prompt+model and get a job id + status=queued back immediately; poll GET /v1/video/generations/{id} to watch it move to a terminal status; on success download the result video via /v1/artifacts/{result_artifact_id}; with no provider configured the job ends status=failed/error="no_video_provider_configured" (never a fake video); all tenant-scoped (cross-tenant id → 404); a provider error/timeout ends the job failed, never a crash   (← video-jobs-backend)
-- [ ] A signed-in user can, in `/app/video`, submit a prompt, see the job appear and update its status, and download the result when it succeeds (or see an honest failure reason)   (← video-jobs-ui)
+- [x] An API key holder can POST /v1/video/generations with a prompt+model and get a job id + status=queued back immediately; poll GET /v1/video/generations/{id} to watch it move to a terminal status; on success download the result video via /v1/artifacts/{result_artifact_id}; with no provider configured the job ends status=failed/error="no_video_provider_configured" (never a fake video); all tenant-scoped (cross-tenant id → 404); a provider error/timeout ends the job failed, never a crash   (← video-jobs-backend)
+- [x] A signed-in user can, in `/app/video`, submit a prompt, see the job appear and update its status, and download the result when it succeeds (or see an honest failure reason)   (← video-jobs-ui)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway : NEW `gateway/video/` domain — a tenant-scoped, API-key-authenticated `/v1/video/generations` ASYNC job lifecycle (create→poll→list). POST creates a `video_generation_jobs` row (status=queued) + spawns a tracked in-process asyncio task; the task drives running → a pluggable `VideoGenerator` seam (app.state.video_generator) under a per-job timeout → on success stores the video bytes as a v45 ARTIFACT and sets result_artifact_id (downloaded via the existing `/v1/artifacts/{id}`). HONEST DEGRADATION: no provider → status=failed/error="no_video_provider_configured" (never a fake video; the real Sora/Veo/Runway adapter is a credential-gated delta). Design-for-failure: per-job timeout, a fully-wrapped task (a raise never kills the loop), a fresh sessionmaker() session per status write, tasks cancelled on shutdown, IDEMPOTENT terminal-status transitions (a status guard). STRICT tenant isolation (cross-tenant id → 404; result artifact = job-owner tenant). Migration c1d4f7a9e2b5 (on the v45 head b3e5f9a7c1d4); `video_generation_jobs` registered in EXPECTED_TABLES. NEW error code ERR_VIDEO_JOB_NOT_FOUND; config GATEWAY_VIDEO_JOB_TIMEOUT_SECONDS (default 300). 16 DB-backed tests. ZERO new dependency.
+- dashboard : NEW `/app/video` workspace — a model+prompt form → submit → a job list that POLLS (~2s) ONLY while a job is non-terminal (idempotent start, stop-on-terminal, clear-on-unmount, soft-error-no-storm) → Download the result on success (reusing v45 downloadArtifact) → an honest failure reason (friendly note for "no_video_provider_configured"). Four states, WCAG-AA; a role-open "Video" nav entry; lib/video.ts BFF client (no tenant id from the FE). NO BFF change (reuses the v45 binary-passthrough). vitest 600 → 610; tsc 0; eslint 0.
+- tooling / skill / book : untouched (only `.add/` bookkeeping + the sanctioned EXPECTED_TABLES manifest edit).
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- video-jobs-backend : gate=PASS · tests=16 green (DB-backed; 6 migration tests green with the table registered; single linear head c1d4f7a9e2b5, offline --sql renders; make test-fast 206 unchanged — video tests are DB-backed) · residue=tenant-isolation + honest-degradation + design-for-failure (timeout / wrapped-task / fresh-session / idempotency-guard) verified by a full manual read of router + repository. KNOWN DEVIATION: missing model/prompt → 422 ERR_PAYLOAD_INVALID (Pydantic validators) vs the contract's named codes (which don't exist) — observable 422 preserved. Deltas: the real provider adapter (credential-gated), a durable external queue/worker, cancellation, webhooks, cost-estimation.
+- video-jobs-ui : gate=PASS · tests=10 green (full dashboard 610, +10; tsc 0; eslint 0) · residue=the poll design-for-failure (idempotent start / stop-on-terminal / clear-on-unmount / soft-error) reviewed directly by me. Deltas: a richer media preview, a model picker, streaming progress.
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
+  - EC1 (key holder submits → job id → polls to terminal → downloads on success; no-provider honest failure; tenant-scoped; error/timeout → failed never crash): video-jobs-backend — 16 DB-backed tests incl. submit-queued / succeeded-downloadable-exact-bytes / no-provider-honest-failure / provider-error / timeout / tenant-isolation-404 / idempotency.
+  - EC2 (user submits in /app/video, watches status, downloads on success or sees honest failure): video-jobs-ui — 10 tests over the EC1 API via the BFF, incl. submit / succeeded-download / failed-friendly-message / disabled / soft-error.
+- goal: an API key holder (and a dashboard user) can submit a text-to-video request, get a job id, poll it to a terminal status, and download the result video on success — reusing the v45 artifacts store + the existing event loop with ZERO new dependency, degrading HONESTLY when no provider is configured. Proven by 16 gateway + 10 dashboard tests green (206 no-DB gateway unchanged, 610 dashboard), strict tenant isolation, design-for-failure, and the real text-to-video provider adapter cleanly deferred as the credential-gated delta.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
-> The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
-> small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [ ] v48 commits land on the v40→v48 task stack (committed locally): t1 video-jobs-backend → t2 video-jobs-ui → .add close. PUSH/PR await Tin's go-ahead (outward act).
+- [ ] open a PR to main; Tin reviews + merges (HTTPS push per [[git-push-https-gotcha]]); v40–v48 are a stack — merge in order or retarget.
+- [ ] deploy note: run `alembic upgrade head` to apply c1d4f7a9e2b5 (creates video_generation_jobs). NO new infra/dep. Optionally set GATEWAY_VIDEO_JOB_TIMEOUT_SECONDS (default 300). ⚠ HONEST DEGRADATION: until a real text-to-video provider is wired into app.state.video_generator, every job ends "no_video_provider_configured" — the real adapter (Sora/Veo/Runway/Pika) needs an external API key + is the documented credential-gated delta. The /app/video surface works end-to-end against the lifecycle today.
+- [ ] v48 joins the releasable set (v33–v47 already pending); bundle into the next release cut when Tin calls it (release.md).
