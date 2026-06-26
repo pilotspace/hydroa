@@ -17,6 +17,7 @@
 import "@testing-library/jest-dom";
 import { beforeAll, afterAll, afterEach, vi } from "vitest";
 import { server } from "./mocks/server";
+import { __resetBreakers } from "@/lib/resilient-fetch";
 
 // ── in-memory Storage polyfill ────────────────────────────────────────────────
 class InMemoryStorage implements Storage {
@@ -43,6 +44,14 @@ afterAll(() => server.close());
 afterEach(() => {
   _localStorage.clear();
 });
+
+// ── circuit-breaker reset (per-runtime state; clear between tests) ────────────
+afterEach(() => {
+  __resetBreakers();
+});
+
+// Instant retry backoff in tests (avoids real latency / flaky waitFor timeouts).
+process.env.BFF_FETCH_BACKOFF_MS = "1";
 
 // ── next/navigation mock ──────────────────────────────────────────────────────
 vi.mock("next/navigation", () => {

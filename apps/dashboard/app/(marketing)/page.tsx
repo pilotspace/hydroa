@@ -2,8 +2,16 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FeatureCard } from "@/components/marketing/feature-card";
+import { Reveal } from "@/components/ui";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Hydroa — AI Proxy for Enterprise Teams" };
+export const metadata = buildMetadata({
+  title: "Hydroa — AI Proxy for Enterprise Teams",
+  description:
+    "One OpenAI-compatible endpoint for every provider — multi-provider routing, per-tenant cost tracking, key governance, and rate limiting for enterprise teams.",
+  path: "/",
+  absoluteTitle: true,
+});
 
 /**
  * Public landing page — the `/` entry point.
@@ -83,32 +91,51 @@ export default function MarketingRootPage() {
   return (
     <main id="main">
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
-      <section
+      {/* Reveal = progressive entrance (motion-safe); renders as the same
+          <section> with content always visible (reduced-motion safe via the net). */}
+      <Reveal
+        as="section"
         aria-labelledby="hero-heading"
-        className="flex min-h-[60vh] flex-col items-center justify-center gap-8 px-4 py-24 text-center"
+        className="relative isolate flex min-h-[68vh] flex-col items-center justify-center gap-8 overflow-hidden px-4 py-28 text-center"
       >
-        <Badge variant="secondary" className="px-3 py-1">
+        {/* Decorative Aurora backdrop — soft indigo→violet radial wash + dot grid. */}
+        <div
+          data-slot="hero-aurora"
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(60%_55%_at_50%_0%,var(--color-accent-soft),transparent_70%)]" />
+          <div className="absolute left-1/2 top-[-12%] size-[36rem] -translate-x-1/2 rounded-full bg-accent-soft opacity-60 blur-3xl" />
+          <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(to_right,var(--color-border)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-border)_1px,transparent_1px)] [background-size:40px_40px] [mask-image:radial-gradient(60%_50%_at_50%_30%,black,transparent)]" />
+        </div>
+        <Badge
+          variant="secondary"
+          className="border border-accent-soft-border bg-accent-soft px-3 py-1 text-primary"
+        >
           Multi-tenant AI proxy
         </Badge>
         <h1
           id="hero-heading"
-          className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl"
+          className="max-w-4xl text-balance text-4xl font-extrabold tracking-tighter text-foreground sm:text-5xl lg:text-hero"
         >
-          The AI Proxy Built for Enterprise Teams
+          The AI Proxy Built for{" "}
+          <span className="bg-gradient-to-r from-brand-from to-brand-to bg-clip-text text-transparent">
+            Enterprise Teams
+          </span>
         </h1>
-        <p className="max-w-2xl text-lg text-muted-foreground">
+        <p className="max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
           Hydroa routes, budgets, and monitors every AI request across your organisation —
           giving you control, cost visibility, and audit-ready logs from day one.
         </p>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Button asChild size="lg">
+          <Button asChild size="lg" className="shadow-md">
             <Link href="/signup">Get started</Link>
           </Button>
           <Button asChild variant="outline" size="lg">
             <Link href="/login">Log in</Link>
           </Button>
         </div>
-      </section>
+      </Reveal>
 
       {/* ── FEATURES (#product) ──────────────────────────────────────────── */}
       <section
@@ -226,7 +253,7 @@ export default function MarketingRootPage() {
       {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
       <section
         aria-labelledby="cta-heading"
-        className="border-t border-border bg-primary px-4 py-20 text-center sm:px-6 lg:px-8"
+        className="border-t border-border bg-gradient-to-br from-brand-from to-brand-to px-4 py-24 text-center shadow-lg sm:px-6 lg:px-8"
       >
         <div className="mx-auto max-w-2xl">
           <h2

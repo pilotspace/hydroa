@@ -11,7 +11,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "@/lib/api-client";
+import { bffGet } from "@/lib/bff-client";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { UsageStatsCards, UsageData } from "./UsageStatsCards";
 import { UsageTable } from "./UsageTable";
@@ -27,7 +27,7 @@ export function UsagePage() {
   // Usage query — middleware guarantees session cookie is present when this renders
   const usageQuery = useQuery<UsageData>({
     queryKey: ["admin-usage"],
-    queryFn: () => apiGet<UsageData>("/admin/usage"),
+    queryFn: () => bffGet<UsageData>("/admin/usage"),
   });
 
   // Models query — enabled only after usage data arrives so the catalog renders in
@@ -36,14 +36,14 @@ export function UsagePage() {
   // and not catalog price leaves ("0.000003", "0.000012") in the same commit.
   const modelsQuery = useQuery<ModelsData>({
     queryKey: ["v1-models"],
-    queryFn: () => apiGet<ModelsData>("/v1/models"),
+    queryFn: () => bffGet<ModelsData>("/v1/models"),
     enabled: !!usageQuery.data,
   });
 
   // Budget query
   const budgetQuery = useQuery<BudgetData>({
     queryKey: ["admin-budget"],
-    queryFn: () => apiGet<BudgetData>("/admin/budget"),
+    queryFn: () => bffGet<BudgetData>("/admin/budget"),
   });
 
   return (

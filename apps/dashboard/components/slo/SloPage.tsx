@@ -20,7 +20,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "@/lib/api-client";
+import { bffGet } from "@/lib/bff-client";
 import { Loading, ErrorState, StatCard } from "@/components/ui";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
@@ -71,7 +71,7 @@ export function SloPage() {
 
   const sloQuery = useQuery<SloData>({
     queryKey: ["admin-slo", windowHours],
-    queryFn: () => apiGet<SloData>(`/admin/slo?window_hours=${windowHours}`),
+    queryFn: () => bffGet<SloData>(`/admin/slo?window_hours=${windowHours}`),
   });
 
   return (

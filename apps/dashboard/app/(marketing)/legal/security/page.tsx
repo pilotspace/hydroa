@@ -1,6 +1,12 @@
 import { LegalPage, LegalSection } from "@/components/marketing/legal-page";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Security — Hydroa" };
+export const metadata = buildMetadata({
+  title: "Security",
+  description:
+    "Hydroa's security posture — encryption, key isolation, access controls, and the practices that protect your AI workloads.",
+  path: "/legal/security",
+});
 
 export default function SecurityPage() {
   return (

@@ -29,6 +29,7 @@ from gateway.proxy.application.use_cases import CompletionUseCase
 from gateway.proxy.domain.ports import CompletionUpstream, UsageRecorder, VectorCache
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.circuit_breaker_proxy import BoundCircuitBreakerUpstream
+from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
 from gateway.proxy.infrastructure.guardrail_evaluator import RegexGuardrailEvaluator
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
@@ -111,7 +112,17 @@ def get_completion_use_case(
     """Build CompletionUseCase with session-scoped adapters."""
     repo = SqlAlchemyApiKeyRepository(session)
     authz_use_case = AuthzUseCase(repo, _hasher)
-    authenticator = SqlAlchemyKeyAuthenticator(authz_use_case)
+    # agent-token-authn-seam §3: wrap in CompositeKeyAuthenticator so /v1/chat
+    # accepts both sk- API keys (delegated, byte-identical) and minted agent tokens.
+    _settings = getattr(request.app.state, "settings", None)
+    from gateway.agent_oauth.infrastructure.repository import SqlAlchemyAgentOAuthRepository
+
+    authenticator = CompositeKeyAuthenticator(
+        api_key_authenticator=SqlAlchemyKeyAuthenticator(authz_use_case),
+        agent_token_repo=SqlAlchemyAgentOAuthRepository(session),
+        hasher=_hasher,
+        settings=_settings,
+    )
     model_checker = SqlAlchemyModelChecker(session)
     budget_guard = request.app.state.budget_guard
     rate_limiter = getattr(request.app.state, "rate_limiter", None)
@@ -130,7 +141,6 @@ def get_completion_use_case(
     # what may be set on app.state. This enforces the §3 CONTRACT inviolable:
     # "otel_enabled=False → zero spans, zero behavior change."
     # Tests that need span capture must use a settings fixture with otel_enabled=True.
-    _settings = getattr(request.app.state, "settings", None)
     _otel_enabled: bool = getattr(_settings, "otel_enabled", False) if _settings else False
     span_emitter = getattr(request.app.state, "span_emitter", None) if _otel_enabled else None
     # Pre-first-byte streaming resilience flag (streaming-resilience v19) — default-off.

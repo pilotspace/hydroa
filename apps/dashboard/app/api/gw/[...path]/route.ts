@@ -48,6 +48,27 @@ function gatewayUrl(): string {
   );
 }
 
+/** Server-side upstream timeout (ms); env-overridable, read at call time. */
+function serverTimeoutMs(): number {
+  const raw = process.env.GATEWAY_PROXY_TIMEOUT_MS;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 15_000;
+}
+
+/**
+ * Max request body bytes forwarded upstream; env-overridable (GW_MAX_BODY_BYTES).
+ * Default 32 MiB — a coarse DoS guard that blocks pathological large bodies while
+ * admitting the platform's legitimate uploads that flow through this proxy:
+ * base64 artifacts (gateway cap 10 MiB → ~13.3 MiB encoded), Gemini inline media
+ * (20 MiB), and audio/realtime utterances (25 MiB). The gateway enforces the
+ * precise per-feature ceilings; this is the outer envelope.
+ */
+function maxBodyBytes(): number {
+  const raw = process.env.GW_MAX_BODY_BYTES;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 33_554_432;
+}
+
 function buildClearCookieValue(): string {
   const secure = process.env.NODE_ENV !== "development" ? "; Secure" : "";
   return `ai_proxy_session=; HttpOnly${secure}; SameSite=Strict; Path=/; Max-Age=0`;
@@ -95,12 +116,25 @@ async function proxyRequest(
     upstreamHeaders["Content-Type"] = contentType;
   }
 
-  // Forward body for mutating methods
+  // Forward body for mutating methods, fail-closed on oversized payloads. The
+  // Content-Length header is an early reject; the read byte length is the
+  // authoritative check (a lying/absent header can't smuggle a large body).
+  // JSON bodies are read as text (also reused for stream:true detection); binary
+  // / multipart (e.g. STT file upload) is forwarded as raw bytes — req.text()
+  // would UTF-8-decode & corrupt it.
+  const cap = maxBodyBytes();
   let bodyText: string | null = null;
   const method = req.method;
   const isJsonBody = !contentType || contentType.startsWith("application/json");
   let bodyInit: BodyInit | undefined = undefined; // BodyInit covers string | ArrayBuffer
   if (method !== "GET" && method !== "HEAD" && method !== "DELETE") {
+    const declared = Number(req.headers.get("content-length") ?? "");
+    if (Number.isFinite(declared) && declared > cap) {
+      return NextResponse.json(
+        { code: "ERR_BFF_PAYLOAD_TOO_LARGE" },
+        { status: 413 }
+      );
+    }
     if (isJsonBody) {
       try {
         bodyText = await req.text();
@@ -109,10 +143,23 @@ async function proxyRequest(
         bodyText = null;
         bodyInit = undefined;
       }
+      if (bodyText && new TextEncoder().encode(bodyText).length > cap) {
+        return NextResponse.json(
+          { code: "ERR_BFF_PAYLOAD_TOO_LARGE" },
+          { status: 413 }
+        );
+      }
     } else {
-      // binary / multipart (e.g. STT file upload): forward raw bytes — req.text() would UTF-8-decode & corrupt it.
+      // binary / multipart (e.g. STT file upload): forward raw bytes.
       try {
-        bodyInit = await req.arrayBuffer();
+        const buf = await req.arrayBuffer();
+        if (buf.byteLength > cap) {
+          return NextResponse.json(
+            { code: "ERR_BFF_PAYLOAD_TOO_LARGE" },
+            { status: 413 }
+          );
+        }
+        bodyInit = buf;
       } catch {
         bodyInit = undefined;
       }
@@ -133,13 +180,20 @@ async function proxyRequest(
 
   // Drive the upstream fetch with an explicit AbortController so a client
   // disconnect (req.signal) OR a response-stream cancel aborts the upstream and
-  // the gateway's v35 disconnect-billing fires (M2).
+  // the gateway's v35 disconnect-billing fires (M2). A server-side timeout bounds
+  // how long we wait for the upstream RESPONSE HEADERS, then is cleared once they
+  // arrive so a long-lived SSE/stream body is never killed mid-flight.
   const controller = new AbortController();
   if (req.signal.aborted) {
     controller.abort();
   } else {
     req.signal.addEventListener("abort", () => controller.abort());
   }
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, serverTimeoutMs());
 
   let upstream: Response;
   try {
@@ -150,14 +204,21 @@ async function proxyRequest(
       signal: controller.signal,
     });
   } catch (err) {
-    // Client disconnected before/while awaiting the upstream: the abort already
-    // propagated to the gateway (v35 disconnect-billing fires) and there is no
-    // client left to serve — return a graceful 499 instead of throwing a 500.
+    clearTimeout(timeout);
+    // The abort already propagated to the gateway (v35 disconnect-billing fires).
+    // Distinguish OUR header-phase timeout (504) from a client disconnect (499);
+    // any other transport error is a typed 502, never an unhandled 500.
+    if (timedOut) {
+      return NextResponse.json({ code: "ERR_BFF_TIMEOUT" }, { status: 504 });
+    }
     if (controller.signal.aborted) {
       return new NextResponse(null, { status: 499 });
     }
-    throw err; // genuine network error — preserve prior behavior
+    return NextResponse.json({ code: "ERR_BFF_NETWORK" }, { status: 502 });
   }
+  // Response headers arrived — stop the header-phase timeout so a streaming body
+  // can outlive it.
+  clearTimeout(timeout);
 
   // On upstream 401: clear cookie, return ERR_AUTH_SESSION_EXPIRED
   if (upstream.status === 401) {

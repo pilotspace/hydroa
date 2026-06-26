@@ -13,6 +13,13 @@ from prometheus_client import CollectorRegistry
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from gateway.agent_oauth.api.device_approval_router import agent_oauth_approval_router
+from gateway.agent_oauth.api.device_authorize_router import agent_oauth_device_router
+from gateway.agent_oauth.api.token_router import agent_oauth_token_router
+from gateway.agent_oauth.infrastructure.ip_rate_limiter import AgentOAuthIpRateLimiter
+from gateway.agent_oauth.infrastructure.orm import (  # noqa: F401 — registers agent OAuth tables on Base.metadata
+    AgentTokenRow as _AgentTokenRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.alerting.application.dispatcher import AlertDispatcher
 from gateway.alerting.application.health_checker import UpstreamHealthChecker
 from gateway.alerting.infrastructure.httpx_pinger import HttpxUpstreamPinger
@@ -755,6 +762,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # tests override via app.state.rate_limiter after app creation.
     app.state.rate_limiter = RedisLuaRateLimiter(redis=redis_client)
 
+    # Per-IP rate limiter for the device-authorization endpoint (fail-open on Redis outage).
+    # Built from the same redis_client; no IO at construction (safe without lifespan).
+    app.state.agent_oauth_ip_limiter = AgentOAuthIpRateLimiter(redis=redis_client)
+
     # Bandwidth pacing (stream-bandwidth-pacing, v36): per-key aggregate token-bucket.
     # rate==0 (default) → PassthroughBandwidthBucket → byte-identical (no pacing, no Redis).
     # Construction does NOT connect to Redis (safe without lifespan); tests override via app.state.
@@ -887,6 +898,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.oidc_config_resolver = None
 
     register_error_handlers(app)
+    app.include_router(agent_oauth_device_router)
+    app.include_router(agent_oauth_approval_router)
+    app.include_router(agent_oauth_token_router)
     app.include_router(oidc_router)
     app.include_router(oidc_admin_router)
     app.include_router(provider_keys_admin_router)

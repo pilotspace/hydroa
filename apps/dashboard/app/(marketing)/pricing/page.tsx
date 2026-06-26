@@ -8,8 +8,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Pricing — Hydroa" };
+export const metadata = buildMetadata({
+  title: "Pricing",
+  description:
+    "Simple, transparent pricing for the Hydroa AI proxy — per-tenant budgets, usage-based cost tracking, and no per-seat lock-in.",
+  path: "/pricing",
+});
 
 /**
  * Public /pricing page — the landing #pricing teaser and the shell footer

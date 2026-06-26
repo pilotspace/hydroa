@@ -73,6 +73,7 @@ export {
 export { themeScript } from "./theme-script";
 export { ThemeToggle } from "./theme-toggle";
 export { StatCard, type StatCardProps, type StatDelta } from "./stat-card";
+export { Reveal, type RevealProps } from "./motion";
 export {
   ChartCard,
   ChartContainer,

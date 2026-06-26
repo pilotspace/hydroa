@@ -17,6 +17,8 @@ from gateway.keys.application.use_cases import (
 )
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
+from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
+from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
 from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
@@ -104,3 +106,30 @@ def get_authz_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AuthzUseCase:
     return AuthzUseCase(SqlAlchemyApiKeyRepository(session), _hasher)
+
+
+def get_authz_authenticator(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CompositeKeyAuthenticator:
+    """Build a per-request CompositeKeyAuthenticator for the /internal/authz gate.
+
+    Widens the ext_authz path to accept both sk- API keys (delegated via
+    SqlAlchemyKeyAuthenticator/AuthzUseCase, byte-identical) and minted agent tokens
+    (resolved via SqlAlchemyAgentOAuthRepository). Mirrors proxy/api/deps.py wiring
+    exactly so the edge gate shares one credential-logic source with /v1 in-process.
+
+    Security: fail-closed — any resolution failure raises InvalidApiKeyError → 401.
+    Raw token never logged (enforced by CompositeKeyAuthenticator).
+    """
+    from gateway.agent_oauth.infrastructure.repository import SqlAlchemyAgentOAuthRepository
+
+    _settings = getattr(request.app.state, "settings", None)
+    return CompositeKeyAuthenticator(
+        api_key_authenticator=SqlAlchemyKeyAuthenticator(
+            AuthzUseCase(SqlAlchemyApiKeyRepository(session), _hasher)
+        ),
+        agent_token_repo=SqlAlchemyAgentOAuthRepository(session),
+        hasher=_hasher,
+        settings=_settings,
+    )

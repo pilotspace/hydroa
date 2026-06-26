@@ -17,7 +17,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Activity, CreditCard, Coins, Wallet } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import type { ColumnDef } from "@tanstack/react-table";
-import { apiGet } from "@/lib/api-client";
+import { bffGet } from "@/lib/bff-client";
 import { cn } from "@/lib/cn";
 import {
   Card,
@@ -120,16 +120,16 @@ export function OverviewPage() {
 
   const spendQuery = useQuery<SpendWindowResponse>({
     queryKey: ["overview-spend", range],
-    queryFn: () => apiGet<SpendWindowResponse>(`/admin/spend?window=${range}`),
+    queryFn: () => bffGet<SpendWindowResponse>(`/admin/spend?window=${range}`),
     placeholderData: keepPreviousData,
   });
   const usageQuery = useQuery<UsageData>({
     queryKey: ["admin-usage"],
-    queryFn: () => apiGet<UsageData>("/admin/usage"),
+    queryFn: () => bffGet<UsageData>("/admin/usage"),
   });
   const budgetQuery = useQuery<BudgetData>({
     queryKey: ["admin-budget"],
-    queryFn: () => apiGet<BudgetData>("/admin/budget"),
+    queryFn: () => bffGet<BudgetData>("/admin/budget"),
   });
 
   const isLoading = spendQuery.isLoading || usageQuery.isLoading || budgetQuery.isLoading;

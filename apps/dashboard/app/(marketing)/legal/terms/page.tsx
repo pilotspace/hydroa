@@ -1,6 +1,12 @@
 import { LegalPage, LegalSection } from "@/components/marketing/legal-page";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Terms of Service — Hydroa" };
+export const metadata = buildMetadata({
+  title: "Terms of Service",
+  description:
+    "The terms governing your use of the Hydroa AI proxy platform.",
+  path: "/legal/terms",
+});
 
 export default function TermsPage() {
   return (

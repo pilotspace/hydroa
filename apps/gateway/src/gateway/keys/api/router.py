@@ -25,7 +25,7 @@ from gateway.core.error_catalog import (
 )
 from gateway.core.ids import uuid7
 from gateway.keys.api.deps import (
-    get_authz_use_case,
+    get_authz_authenticator,
     get_create_key_use_case,
     get_identity,
     get_list_keys_use_case,
@@ -44,7 +44,6 @@ from gateway.keys.api.schemas import (
     RotateKeyResponse,
 )
 from gateway.keys.application.use_cases import (
-    AuthzUseCase,
     CreateKeyUseCase,
     ListKeysUseCase,
     RevokeKeyUseCase,
@@ -52,6 +51,7 @@ from gateway.keys.application.use_cases import (
     UpdateKeyUseCase,
 )
 from gateway.keys.domain.errors import ForbiddenError, InvalidApiKeyError, KeyNotFoundError
+from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
 from gateway.teams.api.deps import get_team_repository
 from gateway.teams.infrastructure.repository import SqlAlchemyTeamRepository
 from gateway.tenants.domain.entities import Identity
@@ -442,12 +442,14 @@ def _extract_raw_key(request: Request) -> str:
 async def authz(
     request: Request,
     response: Response,
-    use_case: Annotated[AuthzUseCase, Depends(get_authz_use_case)],
+    authenticator: Annotated[CompositeKeyAuthenticator, Depends(get_authz_authenticator)],
 ) -> AuthzResponse:
-    """Validate an API key from Authorization: Bearer or X-Api-Key header.
+    """Validate a credential from Authorization: Bearer or X-Api-Key header.
+
+    Accepts both sk- API keys (existing path, byte-identical) and minted agent tokens
+    (widened by CompositeKeyAuthenticator — closes the headless-agent edge gap).
 
     Priority: Authorization: Bearer is evaluated first; if present, X-Api-Key is ignored.
-    The Bearer value is the same raw key string as X-Api-Key ("sk-<hex>.<secret>").
 
     Returns 200 {tenant_id, key_id} on success.
     Response headers x-tenant-id and x-key-id are set for Envoy ext_authz
@@ -455,11 +457,12 @@ async def authz(
 
     Returns 401 ERR_AUTH_INVALID_KEY on any failure — IDENTICAL response body
     for all failure modes (malformed / unknown / revoked / wrong secret / missing header).
-    No detail is exposed that would help enumerate valid key_ids.
+    No detail is exposed that would help enumerate valid credential ids.
+    Raw token is NEVER logged.
     """
     raw_key = _extract_raw_key(request)
     try:
-        result = await use_case.execute(raw_key)
+        result = await authenticator.authenticate(raw_key)
     except InvalidApiKeyError:
         raise AUTH_KEY_INVALID_AUTHZ.exc() from None
     # Set response headers for Envoy ext_authz allowed_upstream_headers forwarding
@@ -478,7 +481,7 @@ async def authz_subpath(
     _subpath: str,
     request: Request,
     response: Response,
-    use_case: Annotated[AuthzUseCase, Depends(get_authz_use_case)],
+    authenticator: Annotated[CompositeKeyAuthenticator, Depends(get_authz_authenticator)],
 ) -> AuthzResponse:
     """Envoy ext_authz entry point: path_prefix appends the ORIGINAL request path.
 
@@ -488,4 +491,4 @@ async def authz_subpath(
     any subpath and delegates to the exact same authz semantics. Never reachable
     from outside: Envoy serves /internal/* as a 403 direct response at the edge.
     """
-    return await authz(request, response, use_case)
+    return await authz(request, response, authenticator)

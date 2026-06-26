@@ -175,7 +175,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T03:46:43+00:00",
+  "updated": "2026-06-26T03:48:48+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -659,6 +659,20 @@
       "archived": "2026-06-25"
     },
     {
+      "slug": "v39",
+      "title": "Headless agent authentication (OAuth device flow)",
+      "tasks": 6,
+      "task_slugs": [
+        "agent-oauth-grant-store",
+        "device-authorization-endpoint",
+        "device-approval-flow",
+        "agent-token-endpoint",
+        "agent-token-authn-seam",
+        "agent-oauth-harness-e2e"
+      ],
+      "archived": "2026-06-25"
+    },
+    {
       "slug": "v40",
       "title": "Chat workspace + streaming",
       "tasks": 4,
@@ -757,6 +771,34 @@
       "tasks": 1,
       "task_slugs": [
         "durable-video-queue"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "ui-fidelity",
+      "title": "UI visual fidelity",
+      "tasks": 3,
+      "task_slugs": [
+        "visual-language",
+        "landing-fidelity",
+        "admin-fidelity"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v50",
+      "title": "Production hardening \u2014 landing & admin UI",
+      "tasks": 9,
+      "task_slugs": [
+        "resilient-bff-fetch",
+        "security-headers-csp",
+        "bff-input-validation",
+        "failure-state-segments",
+        "motion-primitives",
+        "a11y-ci-coverage",
+        "harden-marketing",
+        "harden-admin",
+        "harden-auth"
       ],
       "archived": "2026-06-26"
     }

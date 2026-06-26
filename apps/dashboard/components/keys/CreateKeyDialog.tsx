@@ -10,7 +10,7 @@
 
 import { useState, FormEvent } from "react";
 import { z } from "zod";
-import { ApiError } from "@/lib/api-client";
+import { BffError } from "@/lib/bff-client";
 import { Input, Button } from "@/components/ui";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
@@ -54,7 +54,7 @@ export function CreateKeyDialog({ isOpen, onClose, onSubmit }: CreateKeyDialogPr
       setKeyName("");
       onClose();
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof BffError) {
         if (err.status === 422) {
           setNameError(err.problem.title ?? "Invalid key name");
         } else {

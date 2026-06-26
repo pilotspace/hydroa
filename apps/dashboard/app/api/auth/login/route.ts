@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { loginSchema, parseJsonBody } from "@/lib/bff-validation";
 
 function gatewayUrl(): string {
   return (
@@ -22,25 +23,9 @@ function buildSessionCookieValue(jwt: string): string {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  let body: Record<string, unknown>;
-  try {
-    body = (await req.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json(
-      { code: "ERR_BFF_PAYLOAD_INVALID" },
-      { status: 400 }
-    );
-  }
-
-  const email = body.email;
-  const password = body.password;
-
-  if (!email || !password || typeof email !== "string" || typeof password !== "string") {
-    return NextResponse.json(
-      { code: "ERR_BFF_PAYLOAD_INVALID" },
-      { status: 400 }
-    );
-  }
+  const parsed = await parseJsonBody(req, loginSchema);
+  if (!parsed.ok) return parsed.response;
+  const { email, password } = parsed.data;
 
   const upstream = await fetch(`${gatewayUrl()}/admin/auth/login`, {
     method: "POST",

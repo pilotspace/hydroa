@@ -61,11 +61,20 @@ def get_embeddings_use_case(
       NonChatGovernance wraps all five collaborators
       EmbeddingsUseCase wraps governance + session
     """
+    from gateway.agent_oauth.infrastructure.repository import SqlAlchemyAgentOAuthRepository
+    from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
     from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
 
     repo = SqlAlchemyApiKeyRepository(session)
     authz_use_case = AuthzUseCase(repo, _hasher)
-    authenticator = SqlAlchemyKeyAuthenticator(authz_use_case)
+    # agent-token-authn-seam §3: wrap so /v1/embeddings accepts both sk- keys and agent tokens.
+    _settings = getattr(request.app.state, "settings", None)
+    authenticator = CompositeKeyAuthenticator(
+        api_key_authenticator=SqlAlchemyKeyAuthenticator(authz_use_case),
+        agent_token_repo=SqlAlchemyAgentOAuthRepository(session),
+        hasher=_hasher,
+        settings=_settings,
+    )
     model_checker = SqlAlchemyModelChecker(session)
     budget_guard = request.app.state.budget_guard
     rate_limiter = getattr(request.app.state, "rate_limiter", None)

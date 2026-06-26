@@ -508,3 +508,41 @@ UNSUPPORTED_CONTENT_PART = ErrorSpec(
 #: Requested video generation job not found, or belongs to another tenant.
 #: NEVER distinguish between "not found" and "belongs to another tenant" — no oracle.
 VIDEO_JOB_NOT_FOUND = ErrorSpec(404, "ERR_VIDEO_JOB_NOT_FOUND", "Video generation job not found")
+
+# ---------------------------------------------------------------------------
+# Agent OAuth — device-authorization endpoint (device-authorization-endpoint task)
+# ---------------------------------------------------------------------------
+
+#: Per-IP fixed-window rate limit exceeded on POST /oauth/device/authorize.
+#: ``Retry-After`` header is always set by the caller (seconds to window reset).
+AGENT_OAUTH_RATE_LIMITED = ErrorSpec(
+    429, "ERR_AGENT_OAUTH_RATE_LIMITED", "Device-authorization rate limit exceeded"
+)
+
+#: Transient device_code hash collision (astronomically rare CSPRNG clash).
+#: Retryable — client should wait for ``Retry-After`` and re-submit.
+#: ``Retry-After`` header is always set by the caller (poll-interval seconds).
+AGENT_OAUTH_TEMPORARILY_UNAVAILABLE = ErrorSpec(
+    503,
+    "ERR_AGENT_OAUTH_TEMPORARILY_UNAVAILABLE",
+    "Device authorization temporarily unavailable — please retry",
+)
+
+# ---------------------------------------------------------------------------
+# Agent OAuth — device-approval-flow (device-approval-flow task)
+# ---------------------------------------------------------------------------
+
+#: user_code matches no pending authorization row.
+AGENT_OAUTH_AUTHORIZATION_NOT_FOUND = ErrorSpec(
+    404, "ERR_AGENT_OAUTH_AUTHORIZATION_NOT_FOUND", "Authorization not found"
+)
+
+#: Authorization exists but is not in 'pending' state (already approved/denied/consumed).
+AGENT_OAUTH_NOT_PENDING = ErrorSpec(
+    409, "ERR_AGENT_OAUTH_NOT_PENDING", "Authorization is not in pending state"
+)
+
+#: Authorization is pending but its expiry has passed.
+AGENT_OAUTH_EXPIRED = ErrorSpec(
+    410, "ERR_AGENT_OAUTH_EXPIRED", "Authorization has expired"
+)

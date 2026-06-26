@@ -1,7 +1,7 @@
 """conversations — tenant-scoped conversation and message store.
 
 Revision ID: c4d6e8f0a2b4
-Revises: f2a4c6e8b0d3
+Revises: b3d5f7a9c1e4
 Create Date: 2026-06-26
 
 Adds two tables:
@@ -19,7 +19,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "c4d6e8f0a2b4"
-down_revision = "f2a4c6e8b0d3"
+down_revision = "b3d5f7a9c1e4"
 branch_labels = None
 depends_on = None
 

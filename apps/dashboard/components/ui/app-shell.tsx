@@ -14,6 +14,7 @@ import {
   SidebarTrigger,
 } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
+import { Reveal } from "./motion";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "./dialog";
 
 /**
@@ -184,8 +185,12 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
             </SidebarFooter>
           </Sidebar>
 
-          <main id="main" className="flex-1 p-4 lg:p-8">
-            {children}
+          <main id="main" className="flex-1 bg-muted/30 p-4 lg:p-8">
+            {/* Reveal = a route-keyed, motion-safe entrance: it remounts on navigation
+                (key=activePath) so each admin route fades/slides in. Children render
+                unconditionally and the landmark is unchanged — reduced motion shows them
+                immediately (motion-safe variant + the global net). */}
+            <Reveal key={activePath ?? "shell"}>{children}</Reveal>
           </main>
         </div>
 

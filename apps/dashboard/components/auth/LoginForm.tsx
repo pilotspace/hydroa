@@ -13,7 +13,7 @@
 import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
-import { ApiError } from "@/lib/api-client";
+import { BffError } from "@/lib/bff-client";
 import { Button, Card, CardContent, Input } from "@/components/ui";
 
 const LoginSchema = z.object({
@@ -166,7 +166,7 @@ export function LoginForm() {
         } catch {
           problem = { title: "An error occurred" };
         }
-        throw new ApiError(res.status, {
+        throw new BffError(res.status, {
           title: problem.title ?? "An error occurred",
           status: res.status,
         });
@@ -175,7 +175,7 @@ export function LoginForm() {
       // No localStorage write — cookie is set server-side by the BFF
       router.push("/app/keys");
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof BffError) {
         setGlobalError(err.problem.title ?? "An error occurred");
       } else {
         setGlobalError("An unexpected error occurred");
