@@ -136,8 +136,12 @@ data:
                                 envoy.filters.http.ext_authz:
                                   "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
                                   disabled: true
+                            # Catch-all browser traffic. When the dashboard ships (dashboard.enabled),
+                            # the edge path-routes it to the standalone Next server; otherwise it falls
+                            # back to the gateway. ext_authz stays disabled either way (the dashboard owns
+                            # its cookie auth; /v1/ above keeps the ext_authz check for the API).
                             - match: { prefix: "/" }
-                              route: { cluster: gateway_cluster }
+                              route: { cluster: {{ if .Values.dashboard.enabled }}dashboard_cluster{{ else }}gateway_cluster{{ end }} }
                               typed_per_filter_config:
                                 envoy.filters.http.ext_authz:
                                   "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
@@ -217,4 +221,20 @@ data:
                         socket_address:
                           address: {{ include "ai-proxy.gateway.fullname" . }}
                           port_value: 8000
+        {{- if .Values.dashboard.enabled }}
+        # Browser traffic upstream — the standalone Next dashboard Service (v53 dashboard-chart).
+        - name: dashboard_cluster
+          connect_timeout: {{ .Values.envoy.upstream.connectTimeout }}
+          type: STRICT_DNS
+          lb_policy: ROUND_ROBIN
+          load_assignment:
+            cluster_name: dashboard_cluster
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: {{ include "ai-proxy.dashboard.fullname" . }}
+                          port_value: {{ .Values.dashboard.service.port }}
+        {{- end }}
 {{- end -}}

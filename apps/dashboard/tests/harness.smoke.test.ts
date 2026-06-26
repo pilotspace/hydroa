@@ -57,7 +57,7 @@ describe("harness smoke", () => {
     expect(router.push).toHaveBeenCalledWith("/nav-smoke-test");
   });
 
-  it("NEXT_PUBLIC_GATEWAY_URL env is set to http://gateway.test", () => {
-    expect(process.env.NEXT_PUBLIC_GATEWAY_URL).toBe("http://gateway.test");
+  it("GATEWAY_URL env is set to http://gateway.test", () => {
+    expect(process.env.GATEWAY_URL).toBe("http://gateway.test");
   });
 });

@@ -117,3 +117,19 @@ ref MUST be set. `trim` so whitespace does not pass as set. Evaluated from envoy
 {{- fail "tls_secret_ref_missing: set envoy.tls.existingSecret (a kubernetes.io/tls Secret) when envoy.enabled and gateway.env.environment is not dev/test" -}}
 {{- end -}}
 {{- end -}}
+
+{{/* ── Dashboard helpers (v53 dashboard-chart) — additive, frozen helpers above untouched ── */}}
+
+{{- define "ai-proxy.dashboard.fullname" -}}
+{{- printf "%s-dashboard" (include "ai-proxy.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- define "ai-proxy.dashboard.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ai-proxy.fullname" . }}
+app.kubernetes.io/component: dashboard
+{{- end -}}
+
+{{/* The BFF→gateway base URL: explicit dashboard.env.gatewayUrl, else the in-cluster gateway Service. */}}
+{{- define "ai-proxy.dashboard.gatewayUrl" -}}
+{{- $explicit := .Values.dashboard.env.gatewayUrl | trim -}}
+{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "http://%s:8000" (include "ai-proxy.gateway.fullname" .) }}{{- end -}}
+{{- end -}}

@@ -90,6 +90,6 @@ vi.mock("next/navigation", () => {
 });
 
 // ── env defaults ──────────────────────────────────────────────────────────────
-// lib/api-client will read process.env.NEXT_PUBLIC_GATEWAY_URL at runtime.
-// Set it before any test module is evaluated.
-process.env.NEXT_PUBLIC_GATEWAY_URL = "http://gateway.test";
+// Server-side BFF handlers read the non-public GATEWAY_URL. Set it before any
+// test module is evaluated; it also fixes the msw base URL the handlers match.
+process.env.GATEWAY_URL = "http://gateway.test";

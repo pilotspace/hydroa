@@ -34,6 +34,10 @@ const SECURITY_HEADERS: Array<{ key: string; value: string }> = [
 ];
 
 const nextConfig: NextConfig = {
+  // Ship the minimal self-contained server (`node server.js`) for the k8s image —
+  // the dashboard-chart Dockerfile copies .next/standalone + .next/static + public
+  // (no dev/build deps, no source). See charts/ai-proxy + apps/dashboard/Dockerfile.
+  output: "standalone",
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

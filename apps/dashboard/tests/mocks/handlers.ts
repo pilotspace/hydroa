@@ -2,7 +2,7 @@
  * Default msw handlers — baseline happy-path responses.
  * Individual tests override these via server.use(...) before rendering.
  *
- * Base URL: http://gateway.test  (matches NEXT_PUBLIC_GATEWAY_URL in setup.ts)
+ * Base URL: http://gateway.test  (matches GATEWAY_URL in setup.ts)
  */
 
 import { http, HttpResponse } from "msw";

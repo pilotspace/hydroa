@@ -1,0 +1,35 @@
+{{- if and .Values.dashboard.enabled .Values.dashboard.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-proxy.dashboard.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ai-proxy.dashboard.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  # Zero-trust: the dashboard is reachable ONLY through the Envoy edge (so the edge's
+  # rate-limit/jwt/ext_authz layer can't be bypassed by an in-cluster caller), and it may
+  # egress ONLY to the gateway (its BFF target) + DNS. It has no business touching the datastores.
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "ai-proxy.envoy.selectorLabels" . | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: {{ .Values.dashboard.service.port }} }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "ai-proxy.gateway.selectorLabels" . | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 8000 }
+    # DNS resolution (kube-dns) — no peer selector so it works across CNIs/namespaces.
+    - ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+{{- end -}}

@@ -1,0 +1,20 @@
+{{- if .Values.dashboard.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-proxy.dashboard.fullname" . }}
+  annotations:
+    # The in-cluster DNS the edge dials to path-route browser traffic to the dashboard.
+    ai-proxy.dev/cluster-dns: {{ printf "%s.%s.svc.cluster.local" (include "ai-proxy.dashboard.fullname" .) .Release.Namespace }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  type: {{ .Values.dashboard.service.type }}
+  selector:
+    {{- include "ai-proxy.dashboard.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.dashboard.service.port }}
+      targetPort: http
+{{- end -}}
