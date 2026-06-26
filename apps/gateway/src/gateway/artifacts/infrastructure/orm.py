@@ -45,7 +45,14 @@ class ArtifactRow(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[str] = mapped_column(Text, nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
-    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    # storage_backend dispatches the byte path: 'inline' (BYTEA, the v45 default) or
+    # 's3' (bytes live in the object store at object_key; content is NULL).
+    storage_backend: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'inline'")
+    )
+    object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # NULL when storage_backend='s3' — the bytes are in the object store, not the row.
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -56,6 +63,4 @@ class ArtifactRow(Base):
         nullable=True,
     )
 
-    __table_args__ = (
-        Index("ix_artifacts_tenant_created", "tenant_id", text("created_at DESC")),
-    )
+    __table_args__ = (Index("ix_artifacts_tenant_created", "tenant_id", text("created_at DESC")),)

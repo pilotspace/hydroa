@@ -32,24 +32,35 @@ class ArtifactRepository:
     async def create(
         self,
         *,
+        id: uuid.UUID,
         tenant_id: uuid.UUID,
         key_id: uuid.UUID,
         name: str,
         content_type: str,
         size_bytes: int,
-        content: bytes,
+        storage_backend: str,
+        object_key: str | None,
+        content: bytes | None,
     ) -> ArtifactRow:
-        """Insert a new artifact row and return it (with server defaults populated)."""
+        """Insert a new artifact row and return it (with server defaults populated).
+
+        ``id`` is supplied by the caller so the s3 object key is known BEFORE the
+        write. ``content`` holds the inline BYTEA for storage_backend='inline'; for
+        's3' it is None and the bytes live in the object store at ``object_key``.
+        """
         row = ArtifactRow(
+            id=id,
             tenant_id=tenant_id,
             key_id=key_id,
             name=name,
             content_type=content_type,
             size_bytes=size_bytes,
+            storage_backend=storage_backend,
+            object_key=object_key,
             content=content,
         )
         self._session.add(row)
-        await self._session.flush()  # populate server defaults (id, created_at)
+        await self._session.flush()  # populate server defaults (created_at)
         await self._session.refresh(row)
         return row
 

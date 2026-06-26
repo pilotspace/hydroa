@@ -490,6 +490,12 @@ PAYLOAD_INVALID_BASE64 = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID_BASE64", "content_base64 is not valid base64"
 )
 
+#: Object store (S3/MinIO) is unreachable or failed (timeout, transport, 5xx, breaker open).
+#: v51 object-store-port. 503 — transient; the caller may retry.
+OBJECT_STORE_UNAVAILABLE = ErrorSpec(
+    503, "ERR_OBJECT_STORE_UNAVAILABLE", "object store is unavailable"
+)
+
 # ---------------------------------------------------------------------------
 # Gemini multimodal / inline data errors
 # ---------------------------------------------------------------------------

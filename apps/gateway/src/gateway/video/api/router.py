@@ -232,14 +232,19 @@ async def _process_video_job(
         video_bytes, content_type = result
 
         # ── store as v45 artifact ────────────────────────────────────────
+        # Inline BYTEA (unchanged) — routing the video worker through the
+        # ObjectStore is tracked as a v51 spec delta, out of scope here.
         async with sessionmaker() as session:
             artifact_repo = ArtifactRepository(session)
             artifact = await artifact_repo.create(
+                id=uuid.uuid4(),
                 tenant_id=tenant_id,
                 key_id=key_id,
                 name=f"video-{job_id}",
                 content_type=content_type,
                 size_bytes=len(video_bytes),
+                storage_backend="inline",
+                object_key=None,
                 content=video_bytes,
             )
             artifact_id = artifact.id

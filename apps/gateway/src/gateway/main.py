@@ -57,6 +57,7 @@ from gateway.memory.api.router import memories_router
 from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
     MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.objectstore import build_object_store
 from gateway.observability.logging_config import configure_structlog
 from gateway.observability.metrics import MetricsRegistry, expose_metrics
 from gateway.observability.middleware import RequestIdMiddleware
@@ -526,9 +527,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await retention_task
 
-        video_worker_task: asyncio.Task[None] | None = getattr(
-            app.state, "video_worker_task", None
-        )
+        video_worker_task: asyncio.Task[None] | None = getattr(app.state, "video_worker_task", None)
         if video_worker_task is not None:
             video_worker_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -616,6 +615,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings
+    # ObjectStore for the artifacts byte path — None when unconfigured (honest-degrade
+    # to inline BYTEA, the v45 behavior). Tests override app.state.object_store.
+    app.state.object_store = build_object_store(settings)
     app.state.engine = engine
     app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     app.state.password_hasher = Argon2PasswordHasher()

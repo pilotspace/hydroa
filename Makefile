@@ -48,7 +48,8 @@ test-fast:
 	  tests/azure_audio tests/tts_input_cap \
 	  tests/audio_translations \
 	  tests/web_search \
-	  tests/gemini_multimodal
+	  tests/gemini_multimodal \
+	  tests/objectstore
 
 migrate:
 	cd $(GATEWAY) && uv run alembic upgrade head

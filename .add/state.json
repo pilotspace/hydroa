@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "artifacts-s3-live-verify",
+  "active_milestone": "v51",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -162,6 +162,113 @@
         ],
         "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
       }
+    },
+    "object-store-port": {
+      "title": "ObjectStore port + S3/MinIO adapter (design-for-failure)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v51",
+      "depends_on": [],
+      "created": "2026-06-26T08:00:57+00:00",
+      "updated": "2026-06-26T08:33:24+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "e2785a3c9a69939bb1e34704c7c9e69a",
+        "tests": {
+          "apps/gateway/tests/objectstore/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/objectstore/test_s3_object_store.py": "d2afff4f56132cd417751cd76255f694",
+          "apps/gateway/tests/objectstore/test_s3_object_store_live.py": "c12b86cc421c0f46a2e35db54c139408"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/objectstore/",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/pyproject.toml",
+          "infra/docker-compose.dev.yml",
+          "infra/.env.example"
+        ],
+        "snapshot_md5": "f429f41782010633cb6e02b209714d16"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-26T08:32:48+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/objectstore/test_s3_object_store.py",
+            "source": "tamper"
+          }
+        ]
+      }
+    },
+    "artifacts-s3-live-verify": {
+      "title": "Live MinIO round-trip verification",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v51",
+      "depends_on": [
+        "artifacts-s3-persistence"
+      ],
+      "created": "2026-06-26T08:00:57+00:00",
+      "updated": "2026-06-26T09:06:42+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "16033d4fb5897eb41e1e5fc1a716acb1",
+        "tests": {
+          "apps/gateway/tests/artifacts/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/artifacts/test_artifacts.py": "74a2c8198e5a4d9abaa89bab9bd3136b",
+          "apps/gateway/tests/artifacts/test_artifacts_s3.py": "7afac3487096fefe92e82345d1c6447e",
+          "apps/gateway/tests/artifacts/test_artifacts_s3_live.py": "f5d3913a317596c43a9b49293b05741d"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/tests/artifacts/test_artifacts_s3_live.py"
+        ],
+        "snapshot_md5": "e2da3b22c56afeb5022e34b403179d74"
+      }
+    },
+    "artifacts-s3-persistence": {
+      "title": "Persist artifact bytes via the ObjectStore (S3) with honest-degrade",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v51",
+      "depends_on": [
+        "object-store-port"
+      ],
+      "created": "2026-06-26T08:01:11+00:00",
+      "updated": "2026-06-26T09:00:55+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8ed584fdd7cf7edaa416f035e030a8c1",
+        "tests": {
+          "apps/gateway/tests/artifacts/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/artifacts/test_artifacts.py": "74a2c8198e5a4d9abaa89bab9bd3136b",
+          "apps/gateway/tests/artifacts/test_artifacts_s3.py": "7afac3487096fefe92e82345d1c6447e"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/artifacts/infrastructure/orm.py",
+          "apps/gateway/src/gateway/artifacts/infrastructure/repository.py",
+          "apps/gateway/src/gateway/artifacts/api/router.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/src/gateway/video/api/router.py"
+        ],
+        "snapshot_md5": "147b3c8f3f4c451a95e436e7cc784eda"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-26T08:59:48+00:00",
+            "reason": "scope_violation: task 'artifacts-s3-persistence' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/video/api/router.py (1 total)",
+            "source": "scope"
+          }
+        ]
+      }
     }
   },
   "milestones": {
@@ -172,10 +279,18 @@
       "status": "done",
       "created": "2026-06-22T09:31:42+00:00",
       "updated": "2026-06-23T02:00:14+00:00"
+    },
+    "v51": {
+      "title": "Artifacts on real object storage (MinIO)",
+      "goal": "An artifact's bytes are persisted to and served from a real self-hosted object store (MinIO), replacing inline Postgres BYTEA, with honest-degrade to inline storage when the store is unconfigured.",
+      "stage": "production",
+      "status": "done",
+      "created": "2026-06-26T07:45:35+00:00",
+      "updated": "2026-06-26T09:08:28+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T03:48:48+00:00",
+  "updated": "2026-06-26T09:08:28+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

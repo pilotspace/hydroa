@@ -46,6 +46,7 @@ from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_KEY_EXPIRED,
     AUTH_KEY_INVALID,
+    OBJECT_STORE_UNAVAILABLE,
     PAYLOAD_INPUT_TOO_LONG,
     PAYLOAD_INVALID_BASE64,
 )
@@ -55,6 +56,8 @@ from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
+from gateway.objectstore import ObjectStore
+from gateway.objectstore.errors import ObjectNotFoundError, ObjectStoreUnavailableError
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
 
 artifacts_router = APIRouter(tags=["artifacts"])
@@ -137,6 +140,11 @@ def _get_settings(request: Request) -> Settings:
     return settings
 
 
+def _get_object_store(request: Request) -> ObjectStore | None:
+    """The configured ObjectStore, or None (honest-degrade to inline BYTEA)."""
+    return getattr(request.app.state, "object_store", None)
+
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas (inline — no separate schemas.py)
 # ---------------------------------------------------------------------------
@@ -214,14 +222,42 @@ async def create_artifact(
     if settings.artifact_max_bytes > 0 and len(decoded) > settings.artifact_max_bytes:
         raise PAYLOAD_INPUT_TOO_LONG.exc() from None
 
-    row = await repo.create(
-        tenant_id=authz.tenant_id,
-        key_id=authz.key_id,
-        name=body.name,
-        content_type=body.content_type,
-        size_bytes=len(decoded),
-        content=decoded,
-    )
+    # Generate the id at the call site so the s3 object key is known BEFORE the write.
+    artifact_id = uuid.uuid4()
+    store = _get_object_store(request)
+    if store is not None:
+        # ATOMICITY: write the OBJECT first, then commit the row. A failed put → no
+        # row (503); a failed commit → orphan object (reaped by the sweep), never a
+        # row pointing at absent bytes.
+        object_key = f"artifacts/{authz.tenant_id}/{artifact_id}"
+        try:
+            await store.put(object_key, decoded, body.content_type)
+        except ObjectStoreUnavailableError:
+            raise OBJECT_STORE_UNAVAILABLE.exc() from None
+        row = await repo.create(
+            id=artifact_id,
+            tenant_id=authz.tenant_id,
+            key_id=authz.key_id,
+            name=body.name,
+            content_type=body.content_type,
+            size_bytes=len(decoded),
+            storage_backend="s3",
+            object_key=object_key,
+            content=None,
+        )
+    else:
+        # Honest-degrade: no object store configured → inline BYTEA (the v45 path).
+        row = await repo.create(
+            id=artifact_id,
+            tenant_id=authz.tenant_id,
+            key_id=authz.key_id,
+            name=body.name,
+            content_type=body.content_type,
+            size_bytes=len(decoded),
+            storage_backend="inline",
+            object_key=None,
+            content=decoded,
+        )
     await session.commit()
 
     return ArtifactCreateResponse(
@@ -276,6 +312,7 @@ async def list_artifacts(
 @artifacts_router.get("/v1/artifacts/{artifact_id}")
 async def download_artifact(
     artifact_id: uuid.UUID,
+    request: Request,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     repo: Annotated[ArtifactRepository, Depends(_get_repo)],
 ) -> Response:
@@ -283,17 +320,35 @@ async def download_artifact(
 
     Returns:
         200 with raw bytes, stored Content-Type, and attachment Content-Disposition.
-        404 for unknown, cross-tenant, or deleted artifacts.
+        404 for unknown, cross-tenant, deleted, or s3-object-vanished artifacts.
+        503 when an s3 row's object store is unavailable/unconfigured.
 
+    The row lookup is tenant-scoped, so the object_key (and therefore any store
+    call) is reached ONLY for a row the caller owns — no cross-tenant bytes.
     Content-Disposition is ALWAYS attachment — NEVER inline (XSS guard).
     """
     row = await repo.get_active(tenant_id=authz.tenant_id, artifact_id=artifact_id)
     if row is None:
         raise _not_found()
 
+    if row.storage_backend == "s3":
+        store = _get_object_store(request)
+        if store is None or row.object_key is None:
+            # The row exists but its bytes are unreachable (store unconfigured, or a
+            # corrupt s3 row with no key) — honest 503, never a 404 lie or empty 200.
+            raise OBJECT_STORE_UNAVAILABLE.exc() from None
+        try:
+            content = await store.get(row.object_key)
+        except ObjectNotFoundError:
+            raise _not_found() from None
+        except ObjectStoreUnavailableError:
+            raise OBJECT_STORE_UNAVAILABLE.exc() from None
+    else:
+        content = row.content or b""
+
     safe = _safe_filename(row.name)
     return Response(
-        content=row.content,
+        content=content,
         media_type=row.content_type,
         headers={"Content-Disposition": f'attachment; filename="{safe}"'},
     )
