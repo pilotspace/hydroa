@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "harden-marketing",
+  "active_task": "harden-admin",
   "active_milestone": "v50",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -348,6 +348,28 @@
         ],
         "snapshot_md5": "bbd0e776937f546a67684f236b6aafc4"
       }
+    },
+    "harden-admin": {
+      "title": "Apply motion + verify failure/loading/a11y states across admin routes",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v50",
+      "depends_on": [],
+      "created": "2026-06-26T03:35:37+00:00",
+      "updated": "2026-06-26T03:41:52+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "df504b3725005e477002f782a730d681",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/components/ui/motion.tsx",
+          "apps/dashboard/tests/admin-hardening.test.tsx"
+        ],
+        "snapshot_md5": "1a0cf26ec416f9202e64834701ee284c"
+      }
     }
   },
   "milestones": {
@@ -369,7 +391,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T03:33:47+00:00",
+  "updated": "2026-06-26T03:41:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

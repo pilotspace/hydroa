@@ -34,6 +34,7 @@ export function Reveal({
 }: RevealProps) {
   return (
     <Tag
+      data-slot="reveal"
       className={cn(
         "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-500",
         delay ? DELAY_CLASS[delay] : undefined,
