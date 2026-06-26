@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { signupSchema, parseJsonBody } from "@/lib/bff-validation";
 
 function gatewayUrl(): string {
   return (
@@ -22,31 +23,9 @@ function buildSessionCookieValue(jwt: string): string {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  let body: Record<string, unknown>;
-  try {
-    body = (await req.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json(
-      { code: "ERR_BFF_PAYLOAD_INVALID" },
-      { status: 400 }
-    );
-  }
-
-  const { tenant_name, email, password } = body;
-
-  if (
-    !tenant_name ||
-    !email ||
-    !password ||
-    typeof tenant_name !== "string" ||
-    typeof email !== "string" ||
-    typeof password !== "string"
-  ) {
-    return NextResponse.json(
-      { code: "ERR_BFF_PAYLOAD_INVALID" },
-      { status: 400 }
-    );
-  }
+  const parsed = await parseJsonBody(req, signupSchema);
+  if (!parsed.ok) return parsed.response;
+  const { tenant_name, email, password } = parsed.data;
 
   // Step 1: signup
   const signupRes = await fetch(`${gatewayUrl()}/admin/auth/signup`, {

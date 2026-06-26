@@ -27,6 +27,13 @@ function serverTimeoutMs(): number {
   return Number.isFinite(n) && n > 0 ? n : 15_000;
 }
 
+/** Max request body bytes forwarded upstream; env-overridable, default 1 MiB. */
+function maxBodyBytes(): number {
+  const raw = process.env.GW_MAX_BODY_BYTES;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 1_048_576;
+}
+
 function buildClearCookieValue(): string {
   const secure = process.env.NODE_ENV !== "development" ? "; Secure" : "";
   return `ai_proxy_session=; HttpOnly${secure}; SameSite=Strict; Path=/; Max-Age=0`;
@@ -74,14 +81,30 @@ async function proxyRequest(
     upstreamHeaders["Content-Type"] = contentType;
   }
 
-  // Forward body for mutating methods
+  // Forward body for mutating methods, fail-closed on oversized payloads. The
+  // Content-Length header is an early reject; the read byte length is the
+  // authoritative check (a lying/absent header can't smuggle a large body).
+  const cap = maxBodyBytes();
   let upstreamBody: BodyInit | null = null;
   const method = req.method;
   if (method !== "GET" && method !== "HEAD" && method !== "DELETE") {
+    const declared = Number(req.headers.get("content-length") ?? "");
+    if (Number.isFinite(declared) && declared > cap) {
+      return NextResponse.json(
+        { code: "ERR_BFF_PAYLOAD_TOO_LARGE" },
+        { status: 413 }
+      );
+    }
     try {
       upstreamBody = await req.text();
     } catch {
       upstreamBody = null;
+    }
+    if (upstreamBody && new TextEncoder().encode(upstreamBody).length > cap) {
+      return NextResponse.json(
+        { code: "ERR_BFF_PAYLOAD_TOO_LARGE" },
+        { status: 413 }
+      );
     }
   }
 
