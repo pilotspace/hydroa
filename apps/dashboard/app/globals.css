@@ -163,3 +163,22 @@
   --radius-lg: calc(var(--radius) + 4px);
   --font-sans: var(--font-sans);
 }
+
+/*
+ * Reduced-motion net (v50 motion-primitives). WCAG 2.2 §2.3.3: users who set
+ * `prefers-reduced-motion: reduce` get an essentially still UI — every
+ * animation/transition (tw-animate-css, utility classes, third-party) is
+ * collapsed to a near-instant duration. Content is never hidden; only motion is
+ * removed. !important is the standard a11y-reset practice to beat utility
+ * specificity; it shortens duration only, never changing behavior.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

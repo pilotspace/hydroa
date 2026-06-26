@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "failure-state-segments",
+  "active_task": "motion-primitives",
   "active_milestone": "v50",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -274,6 +274,29 @@
         ],
         "snapshot_md5": "d19569e8e84982869002a7bb820c8592"
       }
+    },
+    "motion-primitives": {
+      "title": "Progressive, reduced-motion-safe animation primitives",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v50",
+      "depends_on": [],
+      "created": "2026-06-26T03:11:16+00:00",
+      "updated": "2026-06-26T03:17:28+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9373acca2a428f53122abb45789694ac",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/motion.tsx",
+          "apps/dashboard/components/ui/index.ts",
+          "apps/dashboard/app/globals.css",
+          "apps/dashboard/tests/motion-primitives.test.tsx"
+        ],
+        "snapshot_md5": "c610c9eba25cab2f13a68cbbf514e84b"
+      }
     }
   },
   "milestones": {
@@ -295,7 +318,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T03:10:38+00:00",
+  "updated": "2026-06-26T03:17:28+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
