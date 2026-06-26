@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "bff-input-validation",
+  "active_task": "failure-state-segments",
   "active_milestone": "v50",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -247,6 +247,33 @@
         ],
         "snapshot_md5": "225e82d5715d71e03a0f97fe94d6d94d"
       }
+    },
+    "failure-state-segments": {
+      "title": "Graceful error/loading/not-found segments for app + marketing routes",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v50",
+      "depends_on": [],
+      "created": "2026-06-26T03:03:25+00:00",
+      "updated": "2026-06-26T03:10:38+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b99cfbd4f6ad46a58fb2fe32b2b85023",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/route-error.tsx",
+          "apps/dashboard/app/global-error.tsx",
+          "apps/dashboard/app/not-found.tsx",
+          "apps/dashboard/app/(app)/app/error.tsx",
+          "apps/dashboard/app/(app)/app/loading.tsx",
+          "apps/dashboard/app/(marketing)/error.tsx",
+          "apps/dashboard/app/(auth)/error.tsx",
+          "apps/dashboard/tests/failure-state-segments.test.tsx"
+        ],
+        "snapshot_md5": "d19569e8e84982869002a7bb820c8592"
+      }
     }
   },
   "milestones": {
@@ -268,7 +295,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T03:02:27+00:00",
+  "updated": "2026-06-26T03:10:38+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
