@@ -1,5 +1,10 @@
 # Releases
 
+## 0.4.0 — 2026-06-26
+milestones: v40, v41, v42, v43, v44, v45, v46, v47, v48, v49, ui-fidelity, v50
+waivers: none
+evidence: gateway: migration 6/6 on real DB, test-fast 228, merged-module routers 174; dashboard vitest 688/688 + tsc 0 + eslint 0; 0 blockers / 0 waivers
+
 ## 0.3.0 — 2026-06-25
 milestones: v33, v34, v35, v36, v37, v38, v39
 waivers: none

@@ -3,6 +3,53 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic versioning.
 
+## [0.4.0] — 2026-06-26
+
+Fourth release. Builds a full **AI Application Platform** on top of the hardened proxy core —
+chat, web search, voice, conversations, memory, files, vision, realtime voice, and video
+generation — then elevates the web UI to a single visual language and hardens the landing &
+admin surfaces for production. Bundles 12 closed milestones (v40–v50 + ui-fidelity) since 0.3.0.
+No breaking changes — existing API-key, agent-OAuth, OIDC/SSO, session-JWT, billing, and routing
+behavior are unchanged; every new capability is additive and gated.
+
+### Added
+
+**AI Application Platform** (v40–v49)
+- **Chat workspace + streaming** (v40) — server-sent-event chat through the BFF with a frozen
+  `useChatStream` client; model and cost controls in the dashboard.
+- **Web search augmentation** (v41) — native provider grounding with citation passthrough;
+  default-off, dashboard toggle.
+- **Voice breadth** (v42) — multi-provider STT/TTS (Azure audio), `/v1/audio/translations`,
+  TTS input cap (413), and a `/app/voice` playground; BFF binary-body passthrough.
+- **Remote conversations** (v43) — tenant-scoped `/v1/conversations` CRUD with chat history UI.
+- **Remote memory** (v44) — tenant-scoped semantic memory store (`/v1/memories`, cosine search).
+- **Artifacts / files** (v45) — tenant-scoped `/v1/artifacts` store with XSS-attachment guard
+  and size cap.
+- **Video & image understanding** (v46) — native Gemini multimodal: OpenAI content-part arrays
+  translate to `inlineData`, riding `/v1/chat/completions` (byte-identical back-compat).
+- **Realtime voice** (v47) — turn-based WebSocket `/v1/realtime` (auth on the first frame, token
+  never in the URL, bounded in-flight buffer as a DoS guard).
+- **Video generation** (v48) — async job lifecycle (`/v1/video/generations`) storing the result
+  as an artifact; **honest degradation** — with no provider configured a job fails explicitly
+  rather than returning a fake video.
+- **Durable video-job processing** (v49) — Redis-backed queue with startup orphan recovery and a
+  retry cap; default-off, fail-open to inline on Redis-down.
+
+**Web UI elevation & production hardening** (ui-fidelity, v50)
+- **Aurora design language** (ui-fidelity) — one elevated visual language (indigo/slate/Inter,
+  elevation, display type, brand gradient, motion) applied across admin, landing, and auth via a
+  token graph and shared primitives.
+- **Production hardening** (v50) — resilient BFF fetch (timeout → typed 504, client-disconnect
+  abort preserving disconnect-billing, body-size cap), static CSP + security headers, fail-closed
+  input validation, scoped failure-state segments (digest-only, no leak), reduced-motion-aware
+  entrance motion, and an accessibility regression net.
+
+### Notes
+
+- **Honest residue (no fake success):** real video-generation / realtime provider adapters
+  (external API keys), an S3 object store (new infra), and a full-duplex realtime relay remain
+  un-shipped by design and degrade explicitly rather than faking a result.
+
 ## [0.3.0] — 2026-06-25
 
 Third release. Adds headless agent authentication (OAuth 2.0 Device Authorization Grant,
