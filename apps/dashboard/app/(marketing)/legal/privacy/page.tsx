@@ -1,6 +1,12 @@
 import { LegalPage, LegalSection } from "@/components/marketing/legal-page";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Privacy Policy — Hydroa" };
+export const metadata = buildMetadata({
+  title: "Privacy Policy",
+  description:
+    "How Hydroa collects, uses, and protects your data when you use the AI proxy platform.",
+  path: "/legal/privacy",
+});
 
 export default function PrivacyPage() {
   return (

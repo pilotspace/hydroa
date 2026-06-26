@@ -2,8 +2,16 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FeatureCard } from "@/components/marketing/feature-card";
+import { Reveal } from "@/components/ui";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Hydroa — AI Proxy for Enterprise Teams" };
+export const metadata = buildMetadata({
+  title: "Hydroa — AI Proxy for Enterprise Teams",
+  description:
+    "One OpenAI-compatible endpoint for every provider — multi-provider routing, per-tenant cost tracking, key governance, and rate limiting for enterprise teams.",
+  path: "/",
+  absoluteTitle: true,
+});
 
 /**
  * Public landing page — the `/` entry point.
@@ -83,7 +91,10 @@ export default function MarketingRootPage() {
   return (
     <main id="main">
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
-      <section
+      {/* Reveal = progressive entrance (motion-safe); renders as the same
+          <section> with content always visible (reduced-motion safe via the net). */}
+      <Reveal
+        as="section"
         aria-labelledby="hero-heading"
         className="relative isolate flex min-h-[68vh] flex-col items-center justify-center gap-8 overflow-hidden px-4 py-28 text-center"
       >
@@ -124,7 +135,7 @@ export default function MarketingRootPage() {
             <Link href="/login">Log in</Link>
           </Button>
         </div>
-      </section>
+      </Reveal>
 
       {/* ── FEATURES (#product) ──────────────────────────────────────────── */}
       <section

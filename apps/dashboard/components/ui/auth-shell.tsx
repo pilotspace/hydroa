@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Hexagon } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Reveal } from "./motion";
 
 /**
  * AuthShell — the v23 enterprise split-screen frame for the public auth pages
@@ -49,9 +50,11 @@ export function AuthShell({ children, className }: AuthShellProps) {
         <p className="relative text-xs text-primary-foreground/80">© Hydroa. All rights reserved.</p>
       </div>
 
-      {/* Content column — the single <main> landmark; hosts the page heading + form. */}
+      {/* Content column — the single <main> landmark; hosts the page heading + form.
+          Reveal gives a motion-safe entrance shared by both auth pages; children
+          render unconditionally and the landmark/structure is unchanged. */}
       <main className="flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-sm space-y-6">{children}</div>
+        <Reveal className="w-full max-w-sm space-y-6">{children}</Reveal>
       </main>
     </div>
   );

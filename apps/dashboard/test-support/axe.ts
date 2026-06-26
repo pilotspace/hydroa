@@ -56,3 +56,28 @@ export const axeMatchers = {
     };
   },
 };
+
+/**
+ * The WCAG-AA bar the suite applies (previously inline, e.g. landing-page.test):
+ * assert ZERO `serious`/`critical` axe violations. `minor`/`moderate` do not
+ * fail. Forwards run `options` verbatim — silences NO rule by default. Throws an
+ * Error listing the blocking violations (reusing the shared formatter).
+ */
+const BLOCKING_IMPACTS = new Set<axeCore.ImpactValue>(["serious", "critical"]);
+
+export async function expectNoSeriousViolations(
+  container: axeCore.ElementContext,
+  options: axeCore.RunOptions = {},
+): Promise<void> {
+  const results = await axe(container, options);
+  const blocking = results.violations.filter(
+    (v) => v.impact != null && BLOCKING_IMPACTS.has(v.impact),
+  );
+  if (blocking.length > 0) {
+    throw new Error(
+      `expected no serious/critical a11y violations but found ${blocking.length}:\n${formatViolations(
+        blocking,
+      )}`,
+    );
+  }
+}

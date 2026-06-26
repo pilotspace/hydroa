@@ -7,7 +7,7 @@
  * States: loading (spinner), empty, error (problem+json title), success
  */
 
-import { ApiError } from "@/lib/api-client";
+import { BffError } from "@/lib/bff-client";
 
 export interface ModelEntry {
   id: string;
@@ -24,7 +24,7 @@ export interface ModelsData {
 }
 
 function getErrorTitle(err: unknown): string {
-  if (err instanceof ApiError) return err.problem.title;
+  if (err instanceof BffError) return err.problem.title;
   if (err instanceof Error) return err.message;
   return "An error occurred";
 }

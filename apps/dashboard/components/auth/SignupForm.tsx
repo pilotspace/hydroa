@@ -14,7 +14,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
-import { ApiError } from "@/lib/api-client";
+import { BffError } from "@/lib/bff-client";
 import { Button, Card, CardContent, Input } from "@/components/ui";
 
 const SignupSchema = z.object({
@@ -67,7 +67,7 @@ export function SignupForm() {
         } catch {
           problem = { title: "An error occurred", status: res.status };
         }
-        throw new ApiError(res.status, {
+        throw new BffError(res.status, {
           title: problem.title ?? "An error occurred",
           status: res.status,
         });
@@ -76,7 +76,7 @@ export function SignupForm() {
       // No localStorage write — cookie is set server-side by the BFF
       router.push("/app/keys");
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof BffError) {
         if (err.status === 409) {
           setFieldErrors({ email: "An account with this email already exists" });
         } else {

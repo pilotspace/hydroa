@@ -28,6 +28,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeDomain } from "@/lib/bff-validation";
 
 function gatewayUrl(): string {
   return (
@@ -41,8 +42,10 @@ const UPSTREAM_TIMEOUT_MS = 5000;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // Forward ONLY the documented `domain` param — drop everything else so no
-  // caller can smuggle a redirect target or other input to the gateway.
-  const domain = new URL(req.url).searchParams.get("domain");
+  // caller can smuggle a redirect target or other input to the gateway. The
+  // value is also bounded/charset-checked (sanitizeDomain); a bad value is
+  // dropped (treated as absent) so the relay stays fail-safe.
+  const domain = sanitizeDomain(new URL(req.url).searchParams.get("domain"));
   const upstreamUrl =
     `${gatewayUrl()}/auth/oidc/login` +
     (domain ? `?domain=${encodeURIComponent(domain)}` : "");

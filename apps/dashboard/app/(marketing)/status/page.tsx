@@ -1,6 +1,12 @@
 import { Badge } from "@/components/ui/badge";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata = { title: "System status — Hydroa" };
+export const metadata = buildMetadata({
+  title: "System status",
+  description:
+    "Live operational status and uptime for the Hydroa AI proxy — API, routing, and provider connectivity.",
+  path: "/status",
+});
 
 /**
  * Public /status — trust + component status + SLA statement.

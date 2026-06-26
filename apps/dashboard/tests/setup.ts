@@ -20,6 +20,7 @@
 import "@testing-library/jest-dom";
 import { beforeAll, afterAll, afterEach, vi } from "vitest";
 import { server } from "./mocks/server";
+import { __resetBreakers } from "@/lib/resilient-fetch";
 
 // ── in-memory Storage polyfill (replaces Node 25's partial localStorage) ─────
 class InMemoryStorage implements Storage {
@@ -61,6 +62,18 @@ afterAll(() => server.close());
 afterEach(() => {
   _localStorage.clear();
 });
+
+// ── circuit-breaker reset ─────────────────────────────────────────────────────
+// resilient-fetch's breaker is module-global (per-runtime in production). Each
+// test simulates a fresh runtime, so clear accumulated failure state between
+// tests — otherwise error-path tests can trip the circuit for later ones.
+afterEach(() => {
+  __resetBreakers();
+});
+
+// Make resilient-fetch retry backoff instant in tests so error-path cases don't
+// incur real backoff latency (which can exceed waitFor timeouts under coverage).
+process.env.BFF_FETCH_BACKOFF_MS = "1";
 
 // ── next/navigation mock ──────────────────────────────────────────────────────
 // Replaced at module-level so every test file that imports next/navigation

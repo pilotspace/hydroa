@@ -12,7 +12,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "@/lib/api-client";
+import { bffAuthGet } from "@/lib/bff-client";
 import { MembersPage } from "@/components/members/MembersPage";
 
 interface MeResponse {
@@ -25,7 +25,7 @@ interface MeResponse {
 export default function MembersRoute() {
   const meQuery = useQuery<MeResponse>({
     queryKey: ["current-user"],
-    queryFn: () => apiGet<MeResponse>("/api/auth/me"),
+    queryFn: () => bffAuthGet<MeResponse>("me"),
   });
 
   return (

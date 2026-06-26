@@ -2905,9 +2905,12 @@ def _tripwire_divergence(root: Path, slug: str, tw: dict) -> list[str]:
 # rewrite even races a clean re-snapshot), so they are pruned here too.
 _SCOPE_EXCLUDE_DIRS = (".git", ".add", "__pycache__", "node_modules", ".serena",
                        ".next", "coverage", "test-results",
-                       ".pytest_cache", ".ruff_cache", ".mypy_cache")  # Python tool caches —
+                       ".pytest_cache", ".ruff_cache", ".mypy_cache",  # Python tool caches —
                        # same regenerated-artifact class as .next/coverage (a pytest/ruff run
                        # during the verify gate re-creates them and races a clean re-snapshot)
+                       ".claude")  # Claude Code state incl. NESTED git worktrees
+                       # (.claude/worktrees/*) — a parallel worktree's uncommitted files are
+                       # NOT this task's touch; walking into them caused false scope_violations
 _SCOPE_EXCLUDE_FILES = (".DS_Store", ".coverage")      # plus *.pyc / *.tsbuildinfo by suffix
 _SCOPE_EXCLUDE_SUFFIXES = (".pyc", ".tsbuildinfo")
 

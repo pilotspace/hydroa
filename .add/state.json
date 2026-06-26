@@ -175,7 +175,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-25T17:35:34+00:00",
+  "updated": "2026-06-26T03:48:48+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -680,6 +680,23 @@
         "visual-language",
         "landing-fidelity",
         "admin-fidelity"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v50",
+      "title": "Production hardening \u2014 landing & admin UI",
+      "tasks": 9,
+      "task_slugs": [
+        "resilient-bff-fetch",
+        "security-headers-csp",
+        "bff-input-validation",
+        "failure-state-segments",
+        "motion-primitives",
+        "a11y-ci-coverage",
+        "harden-marketing",
+        "harden-admin",
+        "harden-auth"
       ],
       "archived": "2026-06-26"
     }

@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { resilientFetch, BffError } from "@/lib/resilient-fetch";
 
 function gatewayUrl(): string {
   return (
@@ -17,6 +18,20 @@ function gatewayUrl(): string {
     process.env.NEXT_PUBLIC_GATEWAY_URL ??
     "http://localhost:8080"
   );
+}
+
+/** Server-side upstream timeout (ms); env-overridable, read at call time. */
+function serverTimeoutMs(): number {
+  const raw = process.env.GATEWAY_PROXY_TIMEOUT_MS;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 15_000;
+}
+
+/** Max request body bytes forwarded upstream; env-overridable, default 1 MiB. */
+function maxBodyBytes(): number {
+  const raw = process.env.GW_MAX_BODY_BYTES;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 1_048_576;
 }
 
 function buildClearCookieValue(): string {
@@ -66,22 +81,52 @@ async function proxyRequest(
     upstreamHeaders["Content-Type"] = contentType;
   }
 
-  // Forward body for mutating methods
+  // Forward body for mutating methods, fail-closed on oversized payloads. The
+  // Content-Length header is an early reject; the read byte length is the
+  // authoritative check (a lying/absent header can't smuggle a large body).
+  const cap = maxBodyBytes();
   let upstreamBody: BodyInit | null = null;
   const method = req.method;
   if (method !== "GET" && method !== "HEAD" && method !== "DELETE") {
+    const declared = Number(req.headers.get("content-length") ?? "");
+    if (Number.isFinite(declared) && declared > cap) {
+      return NextResponse.json(
+        { code: "ERR_BFF_PAYLOAD_TOO_LARGE" },
+        { status: 413 }
+      );
+    }
     try {
       upstreamBody = await req.text();
     } catch {
       upstreamBody = null;
     }
+    if (upstreamBody && new TextEncoder().encode(upstreamBody).length > cap) {
+      return NextResponse.json(
+        { code: "ERR_BFF_PAYLOAD_TOO_LARGE" },
+        { status: 413 }
+      );
+    }
   }
 
-  const upstream = await fetch(upstreamUrl, {
-    method,
-    headers: upstreamHeaders,
-    body: upstreamBody ?? undefined,
-  });
+  let upstream: Response;
+  try {
+    upstream = await resilientFetch(
+      upstreamUrl,
+      {
+        method,
+        headers: upstreamHeaders,
+        body: upstreamBody ?? undefined,
+      },
+      { timeoutMs: serverTimeoutMs() }
+    );
+  } catch (err) {
+    // Transport-level failure (timeout / network / open circuit) → typed problem+json,
+    // never an unhandled 500.
+    if (err instanceof BffError) {
+      return NextResponse.json({ code: err.problem.code }, { status: err.status });
+    }
+    return NextResponse.json({ code: "ERR_BFF_NETWORK" }, { status: 502 });
+  }
 
   // On upstream 401: clear cookie, return ERR_AUTH_SESSION_EXPIRED
   if (upstream.status === 401) {

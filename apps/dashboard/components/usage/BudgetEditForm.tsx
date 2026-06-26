@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { apiPut, ApiError } from "@/lib/api-client";
+import { bffPut, BffError } from "@/lib/bff-client";
 import { Input, Button } from "@/components/ui";
 
 const BudgetEditSchema = z
@@ -30,7 +30,7 @@ interface BudgetPutResponse {
 }
 
 function getErrorTitle(err: unknown): string {
-  if (err instanceof ApiError) return err.problem.title;
+  if (err instanceof BffError) return err.problem.title;
   if (err instanceof Error) return err.message;
   return "An error occurred";
 }
@@ -43,7 +43,7 @@ export function BudgetEditForm({ currentValue, onCancel }: BudgetEditFormProps) 
 
   const mutation = useMutation({
     mutationFn: (body: { budget_usd_monthly: string | null }) =>
-      apiPut<BudgetPutResponse>("/admin/budget", body),
+      bffPut<BudgetPutResponse>("/admin/budget", body),
     onSuccess: (data) => {
       // Update the cache directly from the PUT response so the widget reflects
       // the new ceiling immediately without a re-fetch that could return stale data.

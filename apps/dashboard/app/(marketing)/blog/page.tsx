@@ -1,4 +1,11 @@
-export const metadata = { title: "Blog — Hydroa" };
+import { buildMetadata } from "@/lib/seo";
+
+export const metadata = buildMetadata({
+  title: "Blog",
+  description:
+    "Product updates, engineering notes, and best practices for running multi-provider AI infrastructure with Hydroa.",
+  path: "/blog",
+});
 
 /**
  * Public /blog index scaffold — structure ready for real posts.
