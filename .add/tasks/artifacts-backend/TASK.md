@@ -244,6 +244,7 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
 each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
 the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+- [SPEC · seeded] [→ v51/artifacts-s3-persistence] S3 / object-store backend (pre-signed URLs / CDN) for artifact bytes — the MVP stores size-capped BYTEA inline in Postgres; moving bytes to object storage is new infra and unblocks large/streamed/resumable uploads (evidence: v45 MILESTONE.md Out)
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency

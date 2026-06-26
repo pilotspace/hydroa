@@ -24,3 +24,36 @@ services:
       interval: 2s
       timeout: 2s
       retries: 15
+
+  # Object store for artifact bytes (v51). Local, S3-compatible — no cloud account.
+  # Point the gateway at it with:
+  #   GATEWAY_OBJECT_STORE_ENABLED=true
+  #   GATEWAY_OBJECT_STORE_ENDPOINT=http://localhost:9000
+  #   GATEWAY_OBJECT_STORE_BUCKET=artifacts
+  #   GATEWAY_OBJECT_STORE_ACCESS_KEY_ID=minioadmin
+  #   GATEWAY_OBJECT_STORE_SECRET_ACCESS_KEY=minioadmin
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
+    # No container healthcheck: the minio server image ships no curl/mc to probe with.
+    # Readiness is enforced by the minio-createbucket loop below (it blocks until the
+    # S3 API answers), which is the dependency the gateway/tests actually need.
+
+  # One-shot: create the artifacts bucket, then exit 0. Loops until MinIO answers.
+  minio-createbucket:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do echo 'waiting for minio'; sleep 1; done;
+      mc mb --ignore-existing local/artifacts;
+      mc anonymous set none local/artifacts;
+      exit 0;
+      "

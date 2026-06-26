@@ -8,6 +8,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    SecretStr,
     field_validator,
     model_validator,
 )
@@ -542,6 +543,22 @@ class Settings(BaseSettings):
     # GATEWAY_ARTIFACT_MAX_BYTES — per-artifact size cap (decoded bytes). 0 = disabled (no limit).
     # Default 10 MiB. Reject BEFORE insert (no partial write).
     artifact_max_bytes: int = Field(default=10_485_760, ge=0)  # GATEWAY_ARTIFACT_MAX_BYTES
+
+    # ── Object store (S3/MinIO) for artifact bytes (v51 object-store-port) ─────
+    # Unset/incomplete -> build_object_store() returns None -> artifacts honest-degrade
+    # to inline Postgres BYTEA (the v45 behavior). Set ALL of enabled/endpoint/bucket/
+    # access-key/secret-key to route bytes through the object store instead.
+    object_store_enabled: bool = False  # GATEWAY_OBJECT_STORE_ENABLED
+    object_store_endpoint: str = ""  # GATEWAY_OBJECT_STORE_ENDPOINT  e.g. http://localhost:9000
+    object_store_bucket: str = ""  # GATEWAY_OBJECT_STORE_BUCKET
+    object_store_region: str = "us-east-1"  # GATEWAY_OBJECT_STORE_REGION
+    object_store_access_key_id: str = ""  # GATEWAY_OBJECT_STORE_ACCESS_KEY_ID
+    # GATEWAY_OBJECT_STORE_SECRET_ACCESS_KEY — masked at rest; never logged/repr'd.
+    object_store_secret_access_key: SecretStr = SecretStr("")
+    # GATEWAY_OBJECT_STORE_TIMEOUT_SECONDS — per-op connect+read timeout. Never a hang.
+    object_store_timeout_seconds: float = Field(default=5.0, gt=0)
+    # GATEWAY_OBJECT_STORE_MAX_RETRIES — bounded retry for IDEMPOTENT reads only (0 = off).
+    object_store_max_retries: int = Field(default=2, ge=0)
 
     # ── Realtime WebSocket voice endpoint (/v1/realtime) ─────────────────────
     # GATEWAY_REALTIME_AUTH_TIMEOUT_SECONDS — how long the server waits for the

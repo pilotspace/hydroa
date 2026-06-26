@@ -286,6 +286,8 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
 each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
 the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+- [SPEC · open] real text-to-video provider adapter (Sora/Veo/Runway/Pika) behind the job seam — credential-gated on an external API key; today the job honest-degrades to error="no_video_provider_configured" rather than calling a real provider (evidence: v48 MILESTONE.md Out + the HONEST DEGRADATION invariant)
+- [SPEC · open] live-verify the real video-gen + realtime provider adapters once external API keys are configured — no adapter has yet been exercised against a live provider; every path today is stub / honest-degrade only, so the wire contract is unverified end-to-end (evidence: the v46–v48 credential-gated Out items)
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency

@@ -266,6 +266,8 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
 each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
 the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+- [SPEC · open] full-duplex / barge-in provider-realtime relay adapter (OpenAI Realtime, Gemini Live) — the MVP is turn-based (audio-in → transcript → reply → audio-out); a bidirectional stream pump to a provider realtime API is the scale delta, credential-gated on a provider key (evidence: v47 MILESTONE.md Out)
+- [SPEC · open] Envoy edge WebSocket-upgrade + per-message auth config to expose the /v1 realtime WS publicly — deploy-time delta; the gateway WS endpoint is TestClient-verified but the deployed edge ext_authz is HTTP-only and cannot yet upgrade/relay WS (evidence: v47 MILESTONE.md Out)
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
