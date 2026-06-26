@@ -106,6 +106,58 @@
         "fg": { "type": "token", "token": "color" },
         "ring": { "type": "token", "token": "color" }
       }
+    },
+    "MessageThread": {
+      "description": "Scrollable multi-turn chat thread (overflow-y-auto), rendering the four UI states (loading/empty/error/success) with a scroll-to-latest control. New @ v40 chat-workspace-page (ref: ChatGPT/Claude/Vercel AI thread layout).",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "gap": { "type": "token", "token": "dimension" }
+      }
+    },
+    "MessageBubble": {
+      "description": "A single chat turn — user (align end, primary fill) or assistant (align start, surface+border, markdown+code). Supports a streaming caret. New @ v40 chat-workspace-page.",
+      "hasChildren": true,
+      "props": {
+        "role": { "type": "enum", "values": ["user", "assistant", "system"] },
+        "bg": { "type": "token", "token": "color" },
+        "fg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" },
+        "streaming": { "type": "boolean" }
+      }
+    },
+    "Composer": {
+      "description": "Chat input — autosizing textarea + a Send/Stop action that toggles on streaming state, with a model-controls slot. New @ v40 chat-workspace-page.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" },
+        "ring": { "type": "token", "token": "color" }
+      }
+    },
+    "CostReadout": {
+      "description": "Per-turn / per-session token+cost readout pill; shows an honest placeholder when usage is absent. Slot filled by chat-cost-readout. New @ v40.",
+      "props": {
+        "scope": { "type": "enum", "values": ["turn", "session"] },
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" }
+      }
+    },
+    "ModelPicker": {
+      "description": "Catalog-model selector (source GET /v1/models). Slot filled by chat-model-controls. New @ v40.",
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" }
+      }
+    },
+    "ModelControls": {
+      "description": "Per-request controls (system prompt + temperature) feeding the composer. Slot filled by chat-model-controls. New @ v40.",
+      "props": {
+        "fg": { "type": "token", "token": "color" }
+      }
     }
   }
 }

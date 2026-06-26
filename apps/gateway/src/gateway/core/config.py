@@ -238,6 +238,10 @@ class Settings(BaseSettings):
     # GATEWAY_GOOGLE_DEFAULT_MAX_TOKENS — default max_tokens for Gemini requests
     # when the OpenAI caller omits max_tokens.
     google_default_max_tokens: int = 4096
+    # GATEWAY_GEMINI_INLINE_MAX_BYTES — maximum total decoded bytes for inline
+    # data (images/video) per request.  0 = unlimited.  Default 20 MiB matches
+    # the Gemini inline ceiling.
+    gemini_inline_max_bytes: int = Field(default=20_971_520, ge=0)  # 20 MiB
 
     # ── AWS Bedrock direct provider (bedrock-sigv4 task) ──────────────────────
     # Secret fields (bedrock_access_key_id, bedrock_secret_access_key,
@@ -316,6 +320,14 @@ class Settings(BaseSettings):
     # False = opt-in (byte-identical outbound request; recorder falls back to catalog).
     # provider-cost-reconciliation TASK.md §3 (knob frozen default-OFF, Tin 2026-06-17).
     openrouter_usage_accounting: bool = Field(default=False)
+
+    # GATEWAY_WEB_SEARCH_ENABLED — when True, a client-supplied web_search:true flag in
+    # the chat-completions body is translated into each provider's NATIVE web-search /
+    # grounding tool before the upstream call; when False (default), the flag is stripped
+    # centrally (before dispatch) so the outgoing upstream body is byte-identical to today.
+    # Non-grounding providers (bedrock/azure) inject nothing and never raise.
+    # web-search-grounding TASK.md §3 (knob frozen default-OFF).
+    web_search_enabled: bool = Field(default=False)
     # GATEWAY_OPENROUTER_COST_RECOVERY_ENABLED — when True, an OpenRouter stream aborted by
     # client disconnect schedules an inline fire-and-forget authoritative-cost recovery
     # (OpenRouterCostRecoveryService) from the disconnect handler. Default False = opt-in
@@ -340,6 +352,15 @@ class Settings(BaseSettings):
     # value fails fast at config load. (stt-duration-cap TASK.md §3, default frozen by Tin.)
     stt_max_duration_seconds: float = Field(default=14400.0, gt=0)
 
+    # ── TTS input-length ceiling (tts-input-guardrails task) ─────────────────────
+    # GATEWAY_TTS_MAX_INPUT_CHARACTERS — default-ON cap on the TTS `input` length.
+    # TTS bills per_character at-start (before streaming), so an unbounded input is a
+    # runaway-billing / abuse vector. Over-cap → 413 PAYLOAD_INPUT_TOO_LONG raised
+    # BEFORE governance/upstream/bill (no partial charge). DEFAULT-SAFE: 4096 mirrors
+    # OpenAI's documented limit; ge=0 with 0 ⇒ DISABLED (operator escape hatch). A
+    # within-cap request is byte-identical to today. (tts-input-guardrails TASK.md §3.)
+    tts_max_input_characters: int = Field(default=4096, ge=0)
+
     # ── Global back-pressure / concurrency cap (concurrency-load-guard task) ──────
     # GATEWAY_MAX_CONCURRENT_REQUESTS — per-worker global cap on simultaneous in-flight
     # HTTP requests. 0 (default) = disabled = today's unbounded behavior (opt-in, byte-
@@ -353,6 +374,26 @@ class Settings(BaseSettings):
     back_pressure_retry_after_seconds: int = Field(
         default=1
     )  # GATEWAY_BACK_PRESSURE_RETRY_AFTER_SECONDS
+
+    # ── Video generation jobs (video-generation-jobs task) ───────────────────
+    # GATEWAY_VIDEO_JOB_TIMEOUT_SECONDS — per-job asyncio.wait_for timeout for the
+    # video generator call. 0 = unlimited (no timeout). Default 300 s (5 minutes).
+    # ge=0 so a negative value fails at config load.
+    video_job_timeout_seconds: float = Field(default=300.0, ge=0)
+    # GATEWAY_VIDEO_DURABLE_QUEUE_ENABLED — when True, video generation jobs are
+    # enqueued to a Redis list (video:jobs:pending) and drained by an in-process
+    # VideoJobWorker rather than a fire-and-forget asyncio.create_task. Jobs survive
+    # gateway restarts; orphaned non-terminal rows are re-enqueued on startup.
+    # Default False = opt-in (byte-identical to v48: inline asyncio.create_task).
+    # Fail-open: if the Redis enqueue raises, the router falls back to the inline task.
+    video_durable_queue_enabled: bool = Field(default=False)
+    # GATEWAY_VIDEO_JOB_MAX_RETRIES — maximum number of times the durable worker will
+    # attempt a job before setting status=failed error=max_retries_exceeded. Each
+    # attempt increments retry_count on the row; when retry_count > this value the
+    # job is poisoned. Default 3. **0 = UNLIMITED** (the codebase convention for a
+    # 0-valued cap — matches video_job_timeout_seconds / *_max_bytes); a fresh job
+    # is therefore always attempted at least once.
+    video_job_max_retries: int = Field(default=3, ge=0)
 
     @field_validator("back_pressure_retry_after_seconds", mode="before")
     @classmethod
@@ -487,6 +528,30 @@ class Settings(BaseSettings):
     cooldown_ttl_s: int = Field(default=60, ge=1, le=3600)
     # GATEWAY_COOLDOWN_WINDOW_S — failure counter expiry window (sliding; NX-set on first INCR).
     cooldown_window_s: int = Field(default=60, ge=1, le=3600)
+
+    # ── Memory domain (memory-store task) ────────────────────────────────────
+    # GATEWAY_MEMORY_EMBEDDING_MODEL — model id routed through the gateway's own embedding
+    # upstream to vectorize memory content. Empty (default) = embedding disabled; POST still
+    # returns 201 with embedding=NULL. Only populate when a real embedding model is available.
+    memory_embedding_model: str = Field(default="")  # GATEWAY_MEMORY_EMBEDDING_MODEL
+    # GATEWAY_MEMORY_SEARCH_DEFAULT_TOP_K — default number of results returned by
+    # POST /v1/memories/search when top_k is not supplied by the caller. Clamped 1..100.
+    memory_search_default_top_k: int = Field(default=5, ge=1, le=100)  # GATEWAY_MEMORY_SEARCH_DEFAULT_TOP_K
+
+    # ── Artifact file store (artifacts-backend task) ──────────────────────────
+    # GATEWAY_ARTIFACT_MAX_BYTES — per-artifact size cap (decoded bytes). 0 = disabled (no limit).
+    # Default 10 MiB. Reject BEFORE insert (no partial write).
+    artifact_max_bytes: int = Field(default=10_485_760, ge=0)  # GATEWAY_ARTIFACT_MAX_BYTES
+
+    # ── Realtime WebSocket voice endpoint (/v1/realtime) ─────────────────────
+    # GATEWAY_REALTIME_AUTH_TIMEOUT_SECONDS — how long the server waits for the
+    # first {"type":"auth"} frame before closing with code 4408.  ge=0 allows
+    # a zero timeout (immediate; useful in tests).  Default 10 s.
+    realtime_auth_timeout_seconds: float = Field(default=10.0, ge=0)
+    # GATEWAY_REALTIME_MAX_UTTERANCE_BYTES — per-turn audio buffer ceiling.
+    # A commit whose accumulated audio exceeds this limit → error "utterance_too_large"
+    # (no STT call, no billing).  0 = unlimited (operator opt-out).  Default 25 MiB.
+    realtime_max_utterance_bytes: int = Field(default=26_214_400, ge=0)  # 25 MiB
 
     # ── Model-group aliases → ordered Deployments (model-fallbacks v6 + deployment-model v8) ──
     # GATEWAY_MODEL_GROUPS — JSON dict mapping alias string to an ordered member list.

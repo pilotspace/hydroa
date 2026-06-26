@@ -126,6 +126,52 @@ export const bffHandlers = [
   http.get(`${APP}/api/gw/admin/keys`, () =>
     HttpResponse.json([{ key_id: "kid-default", name: "default-key" }])
   ),
+
+  // Baseline catalog-model list (v40 chat-model-controls): the chat ModelPicker
+  // fetches this on mount, so every ChatWorkspace render needs it stubbed.
+  // Tests asserting specific picker behavior override with their own server.use(...).
+  http.get(`${APP}/api/gw/v1/models`, () =>
+    HttpResponse.json({
+      object: "list",
+      data: [{ id: "openai/gpt-4o", name: "GPT-4o", context_length: 128000 }],
+    })
+  ),
+
+  // v43 conversation history sidebar: the ChatHistorySidebar fetches on mount,
+  // so every ChatWorkspace render needs this stubbed. Tests that assert specific
+  // conversation state override with their own server.use(...).
+  http.get(`${APP}/api/gw/v1/conversations`, () =>
+    HttpResponse.json({ data: [] })
+  ),
+
+  // v44 memory workspace: MemoryWorkspace fetches on mount, so any test that
+  // renders it needs this stubbed. Tests that assert specific memory state
+  // override with their own server.use(...).
+  http.get(`${APP}/api/gw/v1/memories`, () =>
+    HttpResponse.json({ data: [] })
+  ),
+
+  // v45 artifacts workspace: ArtifactsWorkspace fetches on mount, so any test
+  // that renders it needs this stubbed. Tests that assert specific artifact
+  // state override with their own server.use(...).
+  http.get(`${APP}/api/gw/v1/artifacts`, () =>
+    HttpResponse.json({ data: [], limit: 50, offset: 0 })
+  ),
+
+  // v46 vision workspace: VisionWorkspace fetches GET /v1/models on mount to
+  // filter for Gemini models. Any test that renders it needs this stubbed.
+  // Tests that assert specific model/completion behaviour override per-test.
+  // NOTE: the /v1/models handler above (gatewayHandlers) covers gateway-level
+  // tests; this covers BFF component tests that hit /api/gw/v1/models.
+  // The existing bffHandlers entry already covers /api/gw/v1/models (returns
+  // [{ id: "openai/gpt-4o" }]). Vision tests override that per-test with a
+  // gemini id. We add a default POST for chat/completions so unrelated tests
+  // that accidentally trigger it don't hit onUnhandledRequest:"error".
+  http.post(`${APP}/api/gw/v1/chat/completions`, () =>
+    HttpResponse.json({
+      choices: [{ message: { content: "" } }],
+    })
+  ),
 ];
 
 export const defaultHandlers = [...gatewayHandlers, ...bffHandlers];

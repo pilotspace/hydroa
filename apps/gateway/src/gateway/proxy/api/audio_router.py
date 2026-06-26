@@ -1,4 +1,4 @@
-"""API router for POST /v1/audio/transcriptions (STT) and POST /v1/audio/speech (TTS).
+"""API router for audio endpoints: transcriptions, translations (STT) and speech (TTS).
 
 Contract FROZEN @ audio-endpoints (TASK.md §3 AUDIO ROUTER FLOW).
 
@@ -53,6 +53,31 @@ async def audio_transcriptions(
         form=form,
         registry=registry,
         usage_recorder=usage_recorder,
+    )
+    return JSONResponse(content=response_body, status_code=status)
+
+
+@audio_router.post("/v1/audio/translations")
+async def audio_translations(
+    request: Request,
+    use_case: Annotated[TranscriptionUseCase, Depends(get_transcription_use_case)],
+    registry: Annotated[ProviderRegistry, Depends(get_provider_registry)],
+    usage_recorder: Annotated[UsageRecorder, Depends(get_usage_recorder)],
+    raw_key: Annotated[str | None, Depends(get_raw_api_key)],
+) -> Any:
+    """POST /v1/audio/translations — STT translate-to-English via multipart/form-data.
+
+    Identical to /v1/audio/transcriptions except the upstream path is
+    /audio/translations and the `language` form field is not forwarded
+    (the Whisper translate endpoint always outputs English).
+    """
+    form = await request.form()
+    status, response_body = await use_case.execute(
+        raw_key=raw_key,
+        form=form,
+        registry=registry,
+        usage_recorder=usage_recorder,
+        upstream_path="/audio/translations",
     )
     return JSONResponse(content=response_body, status_code=status)
 

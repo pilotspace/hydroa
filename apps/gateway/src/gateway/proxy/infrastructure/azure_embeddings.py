@@ -1,21 +1,22 @@
-"""Infrastructure adapter: AzureEmbeddingsProvider — azure-embeddings §3 FROZEN @ v1.
+"""Infrastructure adapter: AzureOpenAIProvider — embeddings + audio (STT/TTS).
 
-Azure OpenAI speaks the OpenAI /v1/embeddings wire shape natively, so this adapter is a
-thin passthrough — the OpenAI-compatible sibling of OpenAIDirectProvider. It differs only
-in the two things Azure owns (azure_config.py):
+Azure OpenAI speaks the OpenAI wire shape natively over deployment-routed URLs.
+This adapter handles three modalities:
 
-  1. Deployment-based routing — the client ``model`` maps to an Azure deployment name and
-     the deployment is a URL PATH segment (AzureConfig.resolve_deployment + build_url).
-  2. The required ``api-version`` query parameter (baked into build_url).
+  1. Embeddings (post_json) — POST to /openai/deployments/{dep}/embeddings
+  2. STT transcription (post_multipart) — POST to /openai/deployments/{dep}/audio/transcriptions
+  3. TTS speech (stream_bytes) — POST to /openai/deployments/{dep}/audio/speech
 
-Unlike BedrockEmbeddingsProvider (Titan), there is ZERO body/response translation: the
-request payload is forwarded unchanged and ``resp.json()`` is returned unchanged, so the
-OpenAI-shaped ``usage`` bills directly in the application layer.
+All three differ from vanilla OpenAI only in two things Azure owns (azure_config.py):
 
-Auth seam: identical semantics to AzureCompletionUpstream._auth_headers — a Bearer token
-when an AzureADTokenProvider is injected, the static api-key otherwise. The SAME
-token_provider instance is shared with the chat adapter (one token cache); ``get_token`` is
-the single point AAD plugs in.
+  - Deployment-based routing: client ``model`` maps to an Azure deployment name
+    (URL path segment), via AzureConfig.resolve_deployment + build_url.
+  - The required ``api-version`` query parameter (baked into build_url).
+
+Auth seam: Bearer token when an AzureADTokenProvider is injected, the static api-key
+otherwise. Credentials are resolved per-request from the AzureCredential contextvar
+(task-3 BYOK). The SAME token_provider instance is shared with the chat adapter (one
+token cache); ``get_token`` is the single point AAD plugs in.
 
 Design-for-failure (CLAUDE.md): connect/non-stream timeouts; per-instance CircuitBreaker;
 5xx + Timeout/Network → UpstreamUnavailableError; AAD token failure fails CLOSED (raises
@@ -23,7 +24,10 @@ before the breaker guard / any POST — never a blank-auth request).
 
 Security: ``api_key`` (config) and the bearer token are SECRETS — they enter only the
 api-key / Authorization header, NEVER a log field, metric label, span attribute, URL, or
-exception message.
+exception message. Transport errors suppress the exception chain with ``from None`` to
+prevent crash reporters from walking ``__cause__.request.headers`` and surfacing the secret.
+
+Back-compat: ``AzureEmbeddingsProvider = AzureOpenAIProvider`` alias at module bottom.
 """
 
 from __future__ import annotations
@@ -45,10 +49,11 @@ if TYPE_CHECKING:
 
 _CONNECT_TIMEOUT = 10.0
 _NON_STREAM_TIMEOUT = 120.0
+_STREAM_READ_TIMEOUT = 300.0
 
 
-class AzureEmbeddingsProvider:
-    """Direct HTTP adapter for Azure OpenAI embedding deployments.
+class AzureOpenAIProvider:
+    """Azure OpenAI provider — embeddings + audio (STT/TTS).
 
     Implements the UpstreamProvider Protocol (post_json / post_multipart / stream_bytes).
     A single instance is created per create_app() call and stored in
@@ -183,24 +188,105 @@ class AzureEmbeddingsProvider:
         files: dict[str, Any],
         data: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        """Raise UpstreamUnavailableError — Azure images/audio out of scope for v21."""
-        raise UpstreamUnavailableError("azure-embeddings: unsupported modality")
+        """POST STT audio to an Azure deployment via multipart/form-data.
+
+        Implements audio transcription: POST /openai/deployments/{dep}/audio/transcriptions
+        The deployment is resolved from data["model"] via AzureConfig.resolve_deployment.
+        httpx sets the multipart boundary automatically — do NOT add a JSON content-type.
+
+        Args:
+            path:  Ignored — Azure URL is derived from data["model"] (deployment routing).
+            files: Multipart file fields (e.g. {"file": ("name", bytes, "audio/mpeg")}).
+            data:  Multipart form fields including "model" for deployment resolution.
+
+        Raises:
+            UpstreamUnavailableError: on 5xx, Timeout/Network, or AAD token failure.
+
+        Returns:
+            (status_code, json_body) — body is OpenAI-shaped transcription response.
+        """
+        cfg, cred = self._resolve_config_and_cred()
+        deployment = cfg.resolve_deployment(data["model"])
+        url = cfg.build_url(deployment, "audio/transcriptions")
+        auth = await self._auth_headers_for_credential(cred)
+
+        self._breaker.guard()
+        try:
+            resp = await self._client.post(url, files=files, data=data, headers=auth)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            self._breaker.on_upstream_error()
+            raise UpstreamUnavailableError(str(exc)) from None
+
+        status = resp.status_code
+        if status >= 500:
+            self._breaker.on_upstream_error()
+            raise UpstreamUnavailableError(f"Upstream returned {status}")
+
+        self._breaker.record_success()
+        return status, resp.json()
 
     def stream_bytes(
         self,
         path: str,
         payload: dict[str, Any],
     ) -> AsyncIterator[bytes]:
-        """Return an async generator that raises on first iteration.
+        """Stream TTS audio bytes from an Azure deployment.
 
-        Embeddings do not stream — never reached for embedding-modality models.
+        Implements audio speech: POST /openai/deployments/{dep}/audio/speech
+        The deployment is resolved from payload["model"] via AzureConfig.resolve_deployment.
+        The breaker is guarded synchronously before the inner generator is returned;
+        transport errors inside the generator are mapped to UpstreamUnavailableError
+        with suppressed chain (secret hygiene).
+
+        Args:
+            path:    Ignored — Azure URL is derived from payload["model"] (deployment routing).
+            payload: OpenAI TTS request (keys "model", "input", "voice", etc.).
+
+        Returns:
+            An async generator yielding raw audio bytes.
+
+        Raises:
+            UpstreamUnavailableError: on 5xx, Timeout/Network, or AAD token failure (inside gen).
         """
+        self._breaker.guard()
 
         async def _gen() -> AsyncIterator[bytes]:
-            raise UpstreamUnavailableError("azure-embeddings: unsupported modality")
-            yield b""  # pragma: no cover — unreachable; marks this an async generator
+            cfg, cred = self._resolve_config_and_cred()
+            deployment = cfg.resolve_deployment(payload["model"])
+            url = cfg.build_url(deployment, "audio/speech")
+            auth = await self._auth_headers_for_credential(cred)
+
+            try:
+                async with self._client.stream(
+                    "POST",
+                    url,
+                    json=payload,
+                    headers=auth,
+                    timeout=httpx.Timeout(
+                        connect=_CONNECT_TIMEOUT,
+                        read=_STREAM_READ_TIMEOUT,
+                        write=_NON_STREAM_TIMEOUT,
+                        pool=_CONNECT_TIMEOUT,
+                    ),
+                ) as response:
+                    if response.status_code >= 500:
+                        self._breaker.on_upstream_error()
+                        raise UpstreamUnavailableError(
+                            f"Upstream returned {response.status_code} on stream"
+                        )
+                    self._breaker.record_success()
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                self._breaker.on_upstream_error()
+                raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()
 
 
-__all__ = ["AzureEmbeddingsProvider"]
+# Back-compat alias: existing code and tests that import AzureEmbeddingsProvider
+# continue to work unchanged. main.py registers this class under "azure" in the
+# provider_registry — no changes needed there.
+AzureEmbeddingsProvider = AzureOpenAIProvider
+
+__all__ = ["AzureEmbeddingsProvider", "AzureOpenAIProvider"]

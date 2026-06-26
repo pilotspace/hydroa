@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>/app/chat — UDD mock (hi-fi v3)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Real dashboard tokens (apps/dashboard/app/globals.css :root) — identity unchanged */
+  :root{
+    --background:#f8fafc; --foreground:#0f172a; --card:#ffffff; --muted:#f1f5f9; --muted-foreground:#64748b;
+    --primary:#4f46e5; --primary-hover:#4338ca; --border:#e2e8f0; --input:#e2e8f0; --success:#059669;
+    --destructive:#dc2626; --ring:#6366f1; --sidebar:#ffffff; --sidebar-foreground:#334155;
+    --font-sans:"Inter",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+    --shadow-sm:0 1px 2px rgba(15,23,42,.05);
+    --shadow-md:0 6px 16px rgba(15,23,42,.07),0 2px 5px rgba(15,23,42,.04);
+    --shadow-lg:0 18px 44px rgba(15,23,42,.13),0 6px 14px rgba(15,23,42,.06);
+    --ring-soft:0 0 0 4px rgba(99,102,241,.15);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font-sans);background:var(--background);color:var(--foreground);
+    -webkit-font-smoothing:antialiased;font-size:14px;line-height:1.55;letter-spacing:-0.007em}
+  .app{display:flex;height:100vh;overflow:hidden}
+  ::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:99px;border:3px solid transparent;background-clip:content-box}
+
+  /* ── Sidebar ───────────────────────────────────────────── */
+  .sidebar{width:250px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 14px}
+  .brand{display:flex;align-items:center;gap:10px;padding:6px 8px 20px;font-weight:700;font-size:16px}
+  .brand .logo{width:29px;height:29px;border-radius:9px;background:linear-gradient(140deg,#818cf8,#4f46e5);color:#fff;display:grid;place-items:center;font-size:14px;box-shadow:0 4px 12px rgba(79,70,229,.4),inset 0 1px 0 rgba(255,255,255,.4)}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .sect{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:#94a3b8;padding:16px 10px 5px;font-weight:600}
+  .nav a{display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:9px;color:var(--sidebar-foreground);text-decoration:none;font-weight:500;font-size:13.5px;position:relative}
+  .nav a .ic{width:17px;height:17px;opacity:.78}
+  .nav a:hover{background:#f1f5f9}
+  .nav a.active{background:linear-gradient(90deg,#eef2ff,#f5f3ff);color:var(--primary);font-weight:600}
+  .nav a.active .ic{opacity:1}
+  .nav a.active::before{content:"";position:absolute;left:-14px;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:var(--primary)}
+  .nav a .tag{margin-left:auto;font-size:9.5px;font-weight:700;color:#fff;background:var(--primary);border-radius:99px;padding:2px 7px}
+  .spacer{flex:1}
+  .newchat{display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 2px 8px;padding:10px;border-radius:11px;border:1px dashed #c7d2fe;color:var(--primary);font-weight:600;font-size:13px;background:linear-gradient(180deg,#fff,#fafaff)}
+  .userchip{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+  .userchip .av{width:31px;height:31px;border-radius:50%;background:linear-gradient(140deg,#e0e7ff,#c7d2fe);color:var(--primary);display:grid;place-items:center;font-weight:700;font-size:12px}
+  .userchip .meta{font-size:12px;line-height:1.3}.userchip .meta b{font-weight:600}.userchip .meta span{color:var(--muted-foreground)}
+
+  /* ── Main ──────────────────────────────────────────────── */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;
+    background:
+      radial-gradient(900px 360px at 80% -8%, #eef2ff 0%, rgba(238,242,255,0) 62%),
+      radial-gradient(700px 300px at 8% 0%, #faf5ff 0%, rgba(250,245,255,0) 55%),
+      radial-gradient(rgba(99,102,241,.05) 1px, transparent 1px) 0 0/22px 22px,
+      var(--background)}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 30px;border-bottom:1px solid var(--border);
+    background:rgba(255,255,255,.72);backdrop-filter:saturate(180%) blur(10px);z-index:3}
+  .ttl{display:flex;align-items:center;gap:10px}
+  .topbar h1{font-size:16.5px;font-weight:600;display:flex;align-items:center;gap:9px;letter-spacing:-0.01em}
+  .topbar h1 .pulse{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 0 4px rgba(5,150,105,.14)}
+  .edit{color:#cbd5e1}
+  .topbar .sub{font-size:12px;color:var(--muted-foreground);margin-top:3px}
+  .tools{display:flex;align-items:center;gap:10px}
+  .sesscost{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted-foreground);border:1px solid var(--border);background:#fff;border-radius:99px;padding:6px 12px;box-shadow:var(--shadow-sm);font-variant-numeric:tabular-nums}
+  .sesscost b{color:var(--foreground);font-weight:650}
+  .picker{display:flex;align-items:center;gap:10px;border:1px solid var(--input);background:#fff;border-radius:11px;padding:7px 12px;font-size:13px;font-weight:600;justify-content:space-between;box-shadow:var(--shadow-sm)}
+  .picker .left{display:flex;align-items:center;gap:9px}
+  .picker .prov{width:21px;height:21px;border-radius:7px;background:linear-gradient(140deg,#1e293b,#0f172a);color:#fff;display:grid;place-items:center;font-size:10px;font-weight:700}
+  .picker .ctx{font-size:10.5px;color:#94a3b8;font-weight:500;border-left:1px solid var(--border);padding-left:9px}
+  .picker .chev{color:#94a3b8}
+
+  /* ── Thread ────────────────────────────────────────────── */
+  .threadwrap{flex:1;position:relative;min-height:0}
+  .thread{position:absolute;inset:0;overflow-y:auto;padding:24px 30px 16px}
+  .col{max-width:800px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+  .divider{display:flex;align-items:center;justify-content:center;margin:2px 0 -4px}
+  .divider span{font-size:11px;font-weight:600;color:#94a3b8;background:#fff;border:1px solid var(--border);border-radius:99px;padding:3px 12px;box-shadow:var(--shadow-sm)}
+  .turn{display:flex;gap:13px}
+  .turn.user{flex-direction:row-reverse}
+  .avatar{width:33px;height:33px;border-radius:10px;flex-shrink:0;display:grid;place-items:center;font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
+  .avatar.a{background:linear-gradient(140deg,#818cf8,#4f46e5);color:#fff;box-shadow:0 4px 12px rgba(79,70,229,.32)}
+  .avatar.u{background:linear-gradient(140deg,#e0e7ff,#c7d2fe);color:var(--primary)}
+  .stack{display:flex;flex-direction:column;gap:7px;max-width:80%}
+  .turn.user .stack{align-items:flex-end}
+  .who{font-size:11.5px;color:#94a3b8;font-weight:500;padding:0 4px;display:flex;gap:8px;align-items:center}
+  .bubble{border-radius:17px;padding:14px 17px;font-size:14.5px;line-height:1.6}
+  .turn.user .bubble{background:linear-gradient(140deg,#4f46e5,#4338ca);color:#fff;border-bottom-right-radius:5px;box-shadow:0 8px 22px rgba(79,70,229,.24),inset 0 1px 0 rgba(255,255,255,.15)}
+  .turn.assistant .bubble{background:linear-gradient(180deg,#ffffff,#fcfcff);border:1px solid #e9ecf5;border-bottom-left-radius:5px;box-shadow:var(--shadow-md)}
+  .turn.streaming .bubble{position:relative;overflow:hidden}
+  .turn.streaming .bubble::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(99,102,241,.07) 50%,transparent 70%);transform:translateX(-100%);animation:sweep 1.8s infinite}
+  @keyframes sweep{to{transform:translateX(100%)}}
+  .bubble p{margin:0 0 11px}.bubble p:last-child{margin:0}
+  .bubble h4{font-size:14.5px;font-weight:700;margin:1px 0 9px;letter-spacing:-0.01em}
+  .bubble ul{margin:0 0 11px;padding-left:19px}.bubble li{margin:4px 0}
+  .bubble strong{font-weight:650}
+  .bubble code{background:#f1f5f9;border:1px solid #e6ebf3;border-radius:6px;padding:1px 6px;font-family:var(--mono);font-size:12.5px;color:#4338ca}
+  .turn.user .bubble code{background:rgba(255,255,255,.18);border-color:transparent;color:#fff}
+  .code{margin:12px 0 3px;border:1px solid #e3e8f1;border-radius:13px;overflow:hidden;box-shadow:0 8px 20px rgba(15,23,42,.07);background:#fbfcfe}
+  .code .bar{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,#f8fafc,#f1f5f9);border-bottom:1px solid #e6ebf3;padding:8px 13px}
+  .code .bar .l{display:flex;align-items:center;gap:9px}
+  .code .bar .wd{display:flex;gap:5px}.code .bar .wd i{width:9px;height:9px;border-radius:50%}
+  .code .bar .wd i:nth-child(1){background:#f87171}.code .bar .wd i:nth-child(2){background:#fbbf24}.code .bar .wd i:nth-child(3){background:#34d399}
+  .code .bar .file{font-family:var(--mono);font-size:11.5px;color:#64748b;font-weight:500}
+  .code .bar .copy{display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b;font-weight:600}
+  .code .body{display:flex;font-family:var(--mono);font-size:12.8px;line-height:1.7}
+  .code .ln{padding:13px 0;background:#f6f8fc;color:#b6c0d4;text-align:right;user-select:none;border-right:1px solid #eef1f7;min-width:38px}
+  .code .ln span{display:block;padding:0 11px}
+  .code pre{margin:0;padding:13px 15px;overflow-x:auto;flex:1;color:#1e293b}
+  .tok-k{color:#7c3aed;font-weight:500}.tok-f{color:#2563eb}
+  .actions{display:flex;gap:5px;align-items:center;padding:1px 2px}
+  .act{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#64748b;border:1px solid transparent;border-radius:8px;padding:4px 8px;font-weight:500}
+  .act:hover{background:#fff;border-color:var(--border);box-shadow:var(--shadow-sm)}
+  .cost{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-radius:99px;padding:4px 12px;font-size:11.5px;color:var(--muted-foreground);box-shadow:var(--shadow-sm);font-variant-numeric:tabular-nums}
+  .cost b{color:var(--foreground);font-weight:650}.cost .arw{color:var(--success)}
+  .streamlbl{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:var(--primary);font-weight:600}
+  .dots3{display:inline-flex;gap:3px}.dots3 i{width:5px;height:5px;border-radius:50%;background:var(--primary);animation:bb 1.1s infinite}
+  .dots3 i:nth-child(2){animation-delay:.18s}.dots3 i:nth-child(3){animation-delay:.36s}
+  @keyframes bb{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+  .caret{display:inline-block;width:8px;height:16px;background:var(--primary);vertical-align:-3px;margin-left:2px;border-radius:2px;animation:blink 1s steps(2) infinite}
+  @keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+  /* scroll-to-latest */
+  .tolatest{position:absolute;right:24px;bottom:18px;display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--border);border-radius:99px;padding:7px 13px;font-size:12px;font-weight:600;color:#475569;box-shadow:var(--shadow-md)}
+
+  /* ── Composer ──────────────────────────────────────────── */
+  .composer{padding:6px 30px 20px;position:relative;z-index:2}
+  .composer::before{content:"";position:absolute;left:0;right:0;top:-36px;height:36px;background:linear-gradient(180deg,rgba(248,250,252,0),var(--background));pointer-events:none}
+  .cwrap{max-width:800px;margin:0 auto}
+  .chips{display:flex;gap:8px;margin:0 0 11px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:#475569;background:#fff;border:1px solid var(--border);border-radius:99px;padding:6px 12px;box-shadow:var(--shadow-sm)}
+  .chip svg{opacity:.7}
+  .box{border:1px solid var(--input);border-radius:20px;background:#fff;box-shadow:var(--shadow-lg);padding:9px}
+  .box:focus-within{border-color:var(--ring);box-shadow:var(--ring-soft),var(--shadow-lg)}
+  .ta{width:100%;border:none;outline:none;resize:none;font-family:inherit;font-size:14.5px;line-height:1.55;color:var(--foreground);padding:10px 12px 7px;min-height:28px;background:transparent}
+  .ta::placeholder{color:#94a3b8}
+  .barrow{display:flex;align-items:center;justify-content:space-between;padding:2px 5px}
+  .tool{display:inline-flex;align-items:center;gap:7px;height:33px;padding:0 11px;border-radius:9px;color:#64748b;font-size:12.5px;font-weight:500;border:1px solid var(--border);background:#fff}
+  .tool .t-val{color:var(--foreground);font-weight:600}
+  .righttools{display:flex;align-items:center;gap:11px}
+  .counter{font-size:11.5px;color:#94a3b8;font-variant-numeric:tabular-nums}
+  .stop{display:inline-flex;align-items:center;gap:8px;height:39px;padding:0 16px;border:1px solid var(--border);border-radius:12px;background:#fff;color:var(--destructive);font-weight:600;font-size:13.5px;box-shadow:var(--shadow-sm)}
+  .send{display:inline-flex;align-items:center;gap:8px;height:39px;padding:0 18px;border:none;border-radius:12px;background:linear-gradient(140deg,#5b54ea,#4338ca);color:#fff;font-weight:600;font-size:13.5px;box-shadow:0 8px 18px rgba(79,70,229,.34),inset 0 1px 0 rgba(255,255,255,.2)}
+  .footnote{text-align:center;margin-top:12px;font-size:11.5px;color:#94a3b8}
+  svg{display:block}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">◆</span> hydroa</div>
+    <nav class="nav">
+      <div class="sect">Workspace</div>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg> Usage</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Spend</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.5 12.5 7-7 3 3-7 7"/></svg> API Keys</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> Models</a>
+      <a href="#" class="active"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Chat <span class="tag">NEW</span></a>
+      <div class="sect">Account</div>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="newchat"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New chat</div>
+    <div class="userchip"><span class="av">TD</span><span class="meta"><b>Tin Dang</b><br><span>owner · acme</span></span></div>
+  </aside>
+
+  <!-- Main -->
+  <section class="main">
+    <header class="topbar">
+      <div>
+        <div class="ttl"><h1><span class="pulse"></span> Rate-limiter design</h1>
+        <svg class="edit" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
+        <div class="sub">Talk to any catalog model — responses stream live, token-by-token</div>
+      </div>
+      <div class="tools">
+        <div class="sesscost"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Session · <b>3,412</b> tok · <b>$0.011</b></div>
+        <div class="picker"><span class="left"><span class="prov">AI</span> openai / gpt-4o</span><span class="ctx">128k ctx</span><span class="chev">▾</span></div>
+      </div>
+    </header>
+
+    <div class="threadwrap">
+      <div class="thread">
+        <div class="col">
+          <div class="divider"><span>Today</span></div>
+
+          <!-- user -->
+          <div class="turn user">
+            <span class="avatar u">TD</span>
+            <div class="stack">
+              <div class="who">You · 10:42</div>
+              <div class="bubble"><p>Explain a token-bucket rate limiter, then show a tiny <code>Lua</code> sketch of the refill step.</p></div>
+            </div>
+          </div>
+
+          <!-- assistant complete -->
+          <div class="turn assistant">
+            <span class="avatar a">◆</span>
+            <div class="stack" style="max-width:84%">
+              <div class="who">gpt-4o · 0.9s</div>
+              <div class="bubble">
+                <h4>Token-bucket, in short</h4>
+                <p>A bucket refills with tokens at a steady <strong>rate</strong> up to a fixed <strong>capacity</strong>; each request spends one, so bursts are allowed up to the cap while the long-run average is bounded by the refill rate.</p>
+                <div class="code">
+                  <div class="bar">
+                    <span class="l"><span class="wd"><i></i><i></i><i></i></span><span class="file">ratelimiter.lua</span></span>
+                    <span class="copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy</span>
+                  </div>
+                  <div class="body">
+                    <div class="ln"><span>1</span><span>2</span><span>3</span><span>4</span></div>
+<pre><span class="tok-k">local function</span> <span class="tok-f">refill</span>(b, now)
+  b.tokens = <span class="tok-f">math.min</span>(b.cap, b.tokens + b.rate * (now - b.last))
+  b.last = now; <span class="tok-k">return</span> b.tokens
+<span class="tok-k">end</span></pre>
+                  </div>
+                </div>
+              </div>
+              <div class="actions">
+                <span class="cost"><span class="arw">▲</span> <b>1,242</b> tok · <b>$0.0041</b></span>
+                <span class="act"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy</span>
+                <span class="act"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 2v6h6M21 12a9 9 0 1 1-3-6.7L21 8"/></svg> Regenerate</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- user -->
+          <div class="turn user">
+            <span class="avatar u">TD</span>
+            <div class="stack">
+              <div class="who">You · 10:43</div>
+              <div class="bubble"><p>How would I make it <strong>per-API-key</strong> across many servers?</p></div>
+            </div>
+          </div>
+
+          <!-- assistant streaming -->
+          <div class="turn assistant streaming">
+            <span class="avatar a">◆</span>
+            <div class="stack" style="max-width:84%">
+              <div class="who">gpt-4o</div>
+              <div class="bubble">
+                <p>Keep one bucket per key in a shared store and make the spend atomic so concurrent servers can't double-spend — with Redis, run refill-and-take as a single Lua script keyed by <code>bucket:{key_id}</code><span class="caret"></span></p>
+              </div>
+              <div class="actions">
+                <span class="streamlbl"><span class="dots3"><i></i><i></i><i></i></span> streaming</span>
+                <span class="act">token-by-token · <strong style="color:#475569">Stop</strong> to cancel</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tolatest"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg> Latest</div>
+    </div>
+
+    <!-- Composer -->
+    <div class="composer">
+      <div class="cwrap">
+        <div class="chips">
+          <span class="chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg> Explain code</span>
+          <span class="chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg> Summarize</span>
+          <span class="chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.9 5.8H20l-5 3.6 1.9 5.8L12 14.6 6.1 18.2 8 12.4 3 8.8h6.1z"/></svg> Improve writing</span>
+        </div>
+        <div class="box">
+          <textarea class="ta" rows="1" placeholder="Message gpt-4o…">How would I make it per-API-key across many servers?</textarea>
+          <div class="barrow">
+            <span class="tool"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg> System &amp; temperature · <span class="t-val">0.7</span></span>
+            <div class="righttools">
+              <span class="counter">28 / 8,192 tokens</span>
+              <button class="stop"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg> Stop</button>
+              <button class="send">Send <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></button>
+            </div>
+          </div>
+        </div>
+        <div class="footnote">Enter to send · Shift+Enter for a newline — Stop aborts the turn and bills only what was generated.</div>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

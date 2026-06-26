@@ -1,0 +1,66 @@
+{
+  "milestone": {
+    "title": "Video generation (async jobs)",
+    "goal": "An API key holder can submit a text-to-video generation request, get a job id back immediately, poll the job's status, and download the resulting video when it succeeds \u2014 reusing the artifacts store for the result and an in-process job lifecycle, with the real video-gen provider as a credential-gated delta.",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-26T02:18:36+00:00",
+    "updated": "2026-06-26T02:59:50+00:00"
+  },
+  "tasks": {
+    "video-jobs-backend": {
+      "title": "Async video-generation job lifecycle: /v1/video/generations create+poll, result-as-artifact",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v48",
+      "depends_on": [],
+      "created": "2026-06-26T02:18:36+00:00",
+      "updated": "2026-06-26T02:40:54+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f01f019bb611346d9160bbac05781d61",
+        "tests": {
+          "apps/gateway/tests/video/test_video_jobs.py": "71f548d660a2f75efdf2db1db7126e82"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/video/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/video/",
+          "apps/gateway/tests/migrations/test_migrations.py"
+        ],
+        "snapshot_md5": "951646a8c14aa4f89628ef40a98524bc"
+      }
+    },
+    "video-jobs-ui": {
+      "title": "Dashboard /app/video: submit a prompt, poll status, download the result",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v48",
+      "depends_on": [],
+      "created": "2026-06-26T02:18:36+00:00",
+      "updated": "2026-06-26T02:57:45+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9cfba1f48265f812fc39928a54d16871",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/video.ts",
+          "apps/dashboard/components/video/",
+          "apps/dashboard/app/(app)/app/video/",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests-bff/video-workspace.test.tsx",
+          "apps/dashboard/tests-bff/nav-role-filter.test.tsx"
+        ],
+        "snapshot_md5": "1cc1e4aa03920dcf4c11022c511953b8"
+      }
+    }
+  },
+  "archived_at": "2026-06-26T02:59:50+00:00"
+}

@@ -182,6 +182,12 @@ PAYLOAD_INPUT_REQUIRED = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "Field 'input' is required and non-empty"
 )
 
+#: Proxy: TTS ``input`` exceeds GATEWAY_TTS_MAX_INPUT_CHARACTERS (audio TTS endpoint).
+#: 413 Payload Too Large — rejected BEFORE governance/upstream/bill (no partial charge).
+PAYLOAD_INPUT_TOO_LONG = ErrorSpec(
+    413, "ERR_PAYLOAD_INPUT_TOO_LONG", "TTS input exceeds the maximum allowed length"
+)
+
 #: Proxy: ``prompt`` field missing or empty (images endpoint).
 PAYLOAD_PROMPT_REQUIRED = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "Field 'prompt' is required and non-empty"
@@ -474,6 +480,34 @@ PROVIDER_UNAVAILABLE = ErrorSpec(
     "ERR_PROVIDER_UNAVAILABLE",
     "Provider '{provider}' is not configured or unavailable",
 )
+
+# ---------------------------------------------------------------------------
+# Artifact file store errors (artifacts-backend task)
+# ---------------------------------------------------------------------------
+
+#: Artifact: content_base64 field could not be decoded as valid base64.
+PAYLOAD_INVALID_BASE64 = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID_BASE64", "content_base64 is not valid base64"
+)
+
+# ---------------------------------------------------------------------------
+# Gemini multimodal / inline data errors
+# ---------------------------------------------------------------------------
+
+#: Gemini multimodal: a content part type is not text/image_url/video_url, or
+#: a non-data: URL was provided (SSRF guard), or base64 is malformed.
+#: 400 — caller-fixable; no echo of the bad URL (security).
+UNSUPPORTED_CONTENT_PART = ErrorSpec(
+    400, "ERR_UNSUPPORTED_CONTENT_PART", "Unsupported or invalid content part"
+)
+
+# ---------------------------------------------------------------------------
+# Video generation job errors (video-generation-jobs task)
+# ---------------------------------------------------------------------------
+
+#: Requested video generation job not found, or belongs to another tenant.
+#: NEVER distinguish between "not found" and "belongs to another tenant" — no oracle.
+VIDEO_JOB_NOT_FOUND = ErrorSpec(404, "ERR_VIDEO_JOB_NOT_FOUND", "Video generation job not found")
 
 # ---------------------------------------------------------------------------
 # Agent OAuth — device-authorization endpoint (device-authorization-endpoint task)

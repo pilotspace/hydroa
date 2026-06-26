@@ -470,8 +470,14 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+<!-- NOTE: the v40–v49 program (this branch) and the v33–v50 line (main) folded the foundation
+     CONCURRENTLY on separate branches; both reached "v37" via different lesson sets. The rows
+     below from both histories are preserved verbatim (append-only) and reconciled at the
+     v40–v49 ↔ main merge. The next `add.py fold` re-baselines from this merged record. -->
 | 2026-06-26 | fold v50 → foundation-version 37 (SDD 6 · UDD 5 · TDD 7 · ADD 5) | consolidate captured OBSERVE lessons into the versioned foundation | 23 lessons open→folded; +23 routed bullets; 36→37 |
-| 2026-06-26 | fold ui-fidelity → foundation-version 37 (UDD 4 · TDD 3 · ADD 3) — concurrent branch fold, reconciled into v37 at the v50↔main merge | consolidate captured OBSERVE lessons into the versioned foundation | 10 lessons open→folded; +10 routed bullets; 36→37 |
+| 2026-06-26 | fold ui-fidelity → foundation-version 37 (UDD 4 · TDD 3 · ADD 3) — concurrent branch fold, reconciled at the v50↔main merge | consolidate captured OBSERVE lessons into the versioned foundation | 10 lessons open→folded; +10 routed bullets; 36→37 |
+| 2026-06-26 | fold v40–v49 program → foundation-version 37 (TDD 1 · ADD 1) — concurrent branch fold, reconciled at the v40–v49↔main merge | consolidate captured OBSERVE lessons into the versioned foundation | 2 lessons open→folded; +2 routed bullets; 36→37 |
+| 2026-06-26 | fold v40–v49 program → foundation-version 36 (ADD 1) — concurrent branch fold | consolidate captured OBSERVE lessons into the versioned foundation | 1 lessons open→folded; +1 routed bullets; 35→36 |
 | 2026-06-25 | fold all → foundation-version 36 (SDD 3 · TDD 6 · ADD 6) | consolidate captured OBSERVE lessons into the versioned foundation | 15 lessons open→folded; +15 routed bullets; 35→36 |
 | 2026-06-25 | fold all → foundation-version 35 (DDD 4 · SDD 2 · UDD 4 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 13 lessons open→folded; +13 routed bullets; 34→35 |
 | 2026-06-24 | fold all → foundation-version 34 (UDD 3 · TDD 3 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 7 lessons open→folded; +7 routed bullets; 33→34 |

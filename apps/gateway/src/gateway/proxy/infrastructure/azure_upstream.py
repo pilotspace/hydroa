@@ -33,6 +33,7 @@ import httpx
 from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import AzureCredential, ProviderKeyMissing
+from gateway.proxy.domain.web_search import WEB_SEARCH_FLAG
 from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
@@ -142,9 +143,12 @@ class AzureCompletionUpstream:
         url = cfg.build_url(deployment, "chat/completions")
         auth = await self._auth_headers_for_credential(cred)
         headers = {**auth, "content-type": "application/json"}
+        # Azure is a non-grounding provider: strip the raw web_search flag so it never
+        # reaches upstream as an unknown field (would 400). No tool injection needed.
+        outbound = {k: v for k, v in payload.items() if k != WEB_SEARCH_FLAG}
 
         async def _do_request() -> httpx.Response:
-            return await self._client.post(url, json=payload, headers=headers)
+            return await self._client.post(url, json=outbound, headers=headers)
 
         return await execute_with_retry(
             _do_request,
@@ -176,6 +180,8 @@ class AzureCompletionUpstream:
         deployment = cfg.resolve_deployment(model)
         url = cfg.build_url(deployment, "chat/completions")
         self._breaker.guard()
+        # Azure is a non-grounding provider: strip web_search flag before it reaches upstream.
+        outbound = {k: v for k, v in payload.items() if k != WEB_SEARCH_FLAG}
 
         async def _gen() -> AsyncIterator[bytes]:
             # auth headers are awaited INSIDE the generator (the token fetch is async;
@@ -186,7 +192,7 @@ class AzureCompletionUpstream:
                 async with self._client.stream(
                     "POST",
                     url,
-                    json=payload,
+                    json=outbound,
                     headers=headers,
                     timeout=httpx.Timeout(
                         connect=_CONNECT_TIMEOUT,

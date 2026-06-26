@@ -28,15 +28,19 @@ Security:
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 import math
+import re
 import time
 from collections.abc import AsyncIterator, Iterable, Iterator
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.core.error_catalog import PAYLOAD_INPUT_TOO_LONG, UNSUPPORTED_CONTENT_PART
 from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
@@ -46,6 +50,11 @@ from gateway.proxy.domain.tool_translation import (
     dump_tool_arguments,
     load_tool_arguments,
     synthesize_tool_call_id,
+)
+from gateway.proxy.domain.web_search import (
+    WEB_SEARCH_FLAG,
+    _normalize_gemini_grounding,
+    native_web_search_tool,
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
@@ -199,10 +208,107 @@ def _assistant_tool_calls_to_parts(msg: dict[str, Any]) -> list[dict[str, Any]]:
     return parts
 
 
+# ---------------------------------------------------------------------------
+# Multimodal / inline-data helpers  (FROZEN CONTRACT v1)
+# ---------------------------------------------------------------------------
+
+_DATA_URL_RE = re.compile(r"^data:(?P<mime>[^;,]+);base64,(?P<b64>.*)$", re.DOTALL)
+
+
+def _data_url_to_inline(
+    url: str,
+    max_inline_bytes: int,
+    running_total: list[int],
+) -> dict[str, str]:
+    """Decode a data: URL into a Gemini inlineData dict.
+
+    Args:
+        url: Must match ``^data:<mime>;base64,<b64>$``.
+        max_inline_bytes: Running cap across the whole request (0 = unlimited).
+        running_total: Single-element list accumulating decoded byte count in-place.
+
+    Returns:
+        ``{"mimeType": "<mime>", "data": "<b64-string>"}`` — Gemini wants the
+        base64 STRING, not raw bytes.
+
+    Raises:
+        ValueError("only_data_url_supported"): URL does not match the data: pattern
+            (e.g. an https:// URL — SSRF guard; we never fetch remote URLs).
+        ValueError("invalid_data_url_base64"): The base64 payload is malformed.
+        ValueError("inline_too_large"): Adding this part would exceed max_inline_bytes.
+    """
+    m = _DATA_URL_RE.match(url)
+    if m is None:
+        raise ValueError("only_data_url_supported")
+    mime: str = m.group("mime")
+    b64: str = m.group("b64")
+    try:
+        decoded = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("invalid_data_url_base64") from exc
+    running_total[0] += len(decoded)
+    if max_inline_bytes > 0 and running_total[0] > max_inline_bytes:
+        raise ValueError("inline_too_large")
+    return {"mimeType": mime, "data": b64}
+
+
+def _content_to_gemini_parts(
+    content: object,
+    max_inline_bytes: int,
+    running_total: list[int],
+) -> list[dict[str, Any]]:
+    """Translate an OpenAI message ``content`` value into a list of Gemini parts.
+
+    - ``str``  → ``[{"text": content}]``  (byte-identical to the pre-multimodal path).
+    - ``list`` → each part dict translated by type:
+        - ``"text"``      → ``{"text": part["text"]}``
+        - ``"image_url"`` → ``{"inlineData": ...}`` via _data_url_to_inline
+        - ``"video_url"`` → ``{"inlineData": ...}`` via _data_url_to_inline
+        - anything else   → ``ValueError("unsupported_content_part")``
+    - any other type (None, int, …) → ``[{"text": str(content)}]``  (leniency parity).
+
+    Raises:
+        ValueError: forwarded from _data_url_to_inline, or "unsupported_content_part".
+    """
+    if isinstance(content, str):
+        return [{"text": content}]
+    if isinstance(content, list):
+        parts: list[dict[str, Any]] = []
+        for part in content:
+            t = part.get("type") if isinstance(part, dict) else None
+            if t == "text":
+                try:
+                    parts.append({"text": part["text"]})
+                except KeyError as exc:
+                    raise ValueError("unsupported_content_part") from exc
+            elif t == "image_url":
+                try:
+                    url: str = part["image_url"]["url"]
+                except KeyError as exc:
+                    raise ValueError("unsupported_content_part") from exc
+                parts.append(
+                    {"inlineData": _data_url_to_inline(url, max_inline_bytes, running_total)}
+                )
+            elif t == "video_url":
+                try:
+                    url = part["video_url"]["url"]
+                except KeyError as exc:
+                    raise ValueError("unsupported_content_part") from exc
+                parts.append(
+                    {"inlineData": _data_url_to_inline(url, max_inline_bytes, running_total)}
+                )
+            else:
+                raise ValueError("unsupported_content_part")
+        return parts
+    # Fallback: coerce via str() — preserves current leniency for None/int/etc.
+    return [{"text": str(content)}]
+
+
 def _openai_to_gemini_request(
     payload: dict[str, Any],
     *,
     default_max_tokens: int,
+    max_inline_bytes: int = 0,
 ) -> dict[str, Any]:
     """Translate an OpenAI chat-completions request body → Gemini generateContent body.
 
@@ -221,8 +327,14 @@ def _openai_to_gemini_request(
 
     Raises ValueError("tool_call_id_required") when a ``role:"tool"`` message lacks
     ``tool_call_id`` (no key to resolve the functionResponse name).
+    Raises ValueError("only_data_url_supported" | "invalid_data_url_base64" |
+    "unsupported_content_part" | "inline_too_large") from _content_to_gemini_parts
+    when content is a multimodal list with invalid / oversized parts.
     """
     messages: list[dict[str, Any]] = payload.get("messages", [])
+
+    # Single running_total shared across ALL messages so the size cap is per-request.
+    running_total: list[int] = [0]
 
     # First pass: map every assistant tool_call id → its function name (for the
     # functionResponse correlation, which Gemini keys by name, not id).
@@ -239,11 +351,19 @@ def _openai_to_gemini_request(
     for msg in messages:
         role = msg.get("role", "")
         if role == "system":
+            # systemInstruction is text-only — keep str() coercion unchanged.
             system_parts.append(str(msg.get("content", "")))
         elif role == "assistant" and msg.get("tool_calls"):
             contents.append({"role": "model", "parts": _assistant_tool_calls_to_parts(msg)})
         elif role == "assistant":
-            contents.append({"role": "model", "parts": [{"text": str(msg.get("content", ""))}]})
+            contents.append(
+                {
+                    "role": "model",
+                    "parts": _content_to_gemini_parts(
+                        msg.get("content", ""), max_inline_bytes, running_total
+                    ),
+                }
+            )
         elif role == "tool":
             tool_call_id = msg.get("tool_call_id")
             if not tool_call_id:
@@ -263,7 +383,14 @@ def _openai_to_gemini_request(
                 }
             )
         else:
-            contents.append({"role": "user", "parts": [{"text": str(msg.get("content", ""))}]})
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": _content_to_gemini_parts(
+                        msg.get("content", ""), max_inline_bytes, running_total
+                    ),
+                }
+            )
 
     _mt_raw = payload.get("max_tokens", default_max_tokens)
     base_max_tokens: int = int(_mt_raw) if _mt_raw is not None else default_max_tokens
@@ -308,6 +435,23 @@ def _openai_to_gemini_request(
     fcc = _tool_choice_to_gemini(payload.get("tool_choice"))
     if fcc is not None:
         result["toolConfig"] = {"functionCallingConfig": fcc}
+
+    # web-search-grounding: if the source payload has truthy web_search, append the
+    # Gemini native {"googleSearch":{}} as a SEPARATE sibling entry in result["tools"]
+    # (NOT inside functionDeclarations). The raw flag is NEVER copied into the Gemini
+    # body (it builds fresh), so it cannot leak.
+    #
+    # KNOWN LIMITATION (v41 delta): some Gemini model versions reject a request that
+    # carries BOTH googleSearch grounding AND functionDeclarations in the same `tools`
+    # array (returns 400). v41's chat surface never sends function tools, so this cannot
+    # arise from the product; a raw API caller combining both gets Gemini's own 400
+    # surfaced faithfully (v35 principle). We do NOT speculatively reject here because
+    # newer Gemini relaxes the constraint — tracked as a SPEC delta for live-verify.
+    if payload.get(WEB_SEARCH_FLAG):
+        gs_tool = native_web_search_tool("google")
+        if gs_tool is not None:
+            existing_tools = result.get("tools", [])
+            result["tools"] = [*list(existing_tools), gs_tool]
 
     return result
 
@@ -392,7 +536,7 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
     if cached_content_tokens is not None and cached_content_tokens > 0:
         usage_out["prompt_tokens_details"] = {"cached_tokens": cached_content_tokens}
 
-    return {
+    response: dict[str, Any] = {
         "id": "",
         "object": "chat.completion",
         "created": int(time.time()),
@@ -406,6 +550,18 @@ def _gemini_to_openai(body: dict[str, Any], *, model: str) -> dict[str, Any]:
         ],
         "usage": usage_out,
     }
+
+    # web-search-grounding citation passthrough (non-stream only).
+    # If the first candidate carries groundingMetadata, normalize it into
+    # response["grounding"]. Absent → do NOT add the field (no fabrication).
+    if candidates:
+        grounding_meta = candidates[0].get("groundingMetadata")
+        if isinstance(grounding_meta, dict):
+            grounding = _normalize_gemini_grounding(grounding_meta)
+            if grounding is not None:
+                response["grounding"] = grounding
+
+    return response
 
 
 def _gemini_error_to_openai(body: dict[str, Any]) -> dict[str, Any]:
@@ -644,12 +800,14 @@ class GeminiCompletionUpstream:
         backoff_base: float = 0.5,
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
+        max_inline_bytes: int = 0,
     ) -> None:
         self._default_max_tokens = default_max_tokens
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
+        self._max_inline_bytes = max_inline_bytes
 
         self._breaker = CircuitBreaker()
         self._client = httpx.AsyncClient(
@@ -676,6 +834,33 @@ class GeminiCompletionUpstream:
             "content-type": "application/json",
         }
 
+    @staticmethod
+    def _map_translation_error(exc: ValueError) -> None:
+        """Convert a translation-layer ValueError into the appropriate ProblemError.
+
+        Mirrors the call-site error-mapping pattern used for tool_call_id_required.
+        Called at the start of complete() and stream() before any upstream contact.
+
+        - "inline_too_large"           → 413 PAYLOAD_INPUT_TOO_LONG
+        - "only_data_url_supported"
+          "invalid_data_url_base64"
+          "unsupported_content_part"   → 400 UNSUPPORTED_CONTENT_PART
+        - anything else (e.g. "tool_call_id_required", ERR_UNSUPPORTED_RESPONSE_FORMAT)
+          → re-raise so the existing caller-level handling is undisturbed.
+        """
+        msg = str(exc)
+        if msg == "inline_too_large":
+            raise PAYLOAD_INPUT_TOO_LONG.exc(
+                detail="Inline data exceeds the per-request size limit"
+            ) from exc
+        if msg in (
+            "only_data_url_supported",
+            "invalid_data_url_base64",
+            "unsupported_content_part",
+        ):
+            raise UNSUPPORTED_CONTENT_PART.exc() from exc
+        raise  # re-raise — e.g. tool_call_id_required, ERR_UNSUPPORTED_RESPONSE_FORMAT
+
     async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """Forward a non-streaming chat request to the Gemini generateContent API.
 
@@ -687,12 +872,19 @@ class GeminiCompletionUpstream:
         - read/write timeout / network error → UpstreamUnavailableError (not retried)
 
         Request translation is pure and runs ONCE, outside the retry loop.
+        Translation ValueErrors (inline_too_large, only_data_url_supported, …) are
+        converted to ProblemError 4xx BEFORE any upstream contact.
         """
         model: str = payload["model"]
-        gemini_body = _openai_to_gemini_request(
-            payload,
-            default_max_tokens=self._default_max_tokens,
-        )
+        try:
+            gemini_body = _openai_to_gemini_request(
+                payload,
+                default_max_tokens=self._default_max_tokens,
+                max_inline_bytes=self._max_inline_bytes,
+            )
+        except ValueError as exc:
+            self._map_translation_error(exc)
+            raise  # unreachable — _map_translation_error always raises
 
         async def _do_request() -> httpx.Response:
             return await self._client.post(
@@ -724,15 +916,25 @@ class GeminiCompletionUpstream:
         Gemini SSE data: frames are translated LIVE via a stateful _GeminiSSEStepper —
         each OpenAI chunk is yielded as its source frame arrives (incremental delivery);
         finish() emits the terminal usage frame + [DONE].
+        Translation ValueErrors are converted to ProblemError 4xx before any bytes yield.
         """
         self._breaker.guard()
 
-        async def _gen() -> AsyncIterator[bytes]:
-            model: str = payload["model"]
+        # Translate BEFORE entering the async generator so errors surface as
+        # ProblemError (caught by the use-case pre-generator path → clean 4xx),
+        # not as mid-stream UpstreamUnavailableError.
+        try:
             gemini_body = _openai_to_gemini_request(
                 payload,
                 default_max_tokens=self._default_max_tokens,
+                max_inline_bytes=self._max_inline_bytes,
             )
+        except ValueError as exc:
+            self._map_translation_error(exc)
+            raise  # unreachable
+
+        async def _gen() -> AsyncIterator[bytes]:
+            model: str = payload["model"]
 
             try:
                 async with self._client.stream(
@@ -958,6 +1160,8 @@ class GoogleEmbeddingsProvider:
 __all__ = [
     "GeminiCompletionUpstream",
     "GoogleEmbeddingsProvider",
+    "_content_to_gemini_parts",
+    "_data_url_to_inline",
     "_gemini_embed_to_openai",
     "_gemini_error_to_openai",
     "_gemini_to_openai",

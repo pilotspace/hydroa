@@ -122,4 +122,7 @@ def get_speech_use_case(
         governance=governance,
         session=session,
         tenant_credential_resolver=tenant_credential_resolver,
+        # tts-input-guardrails: default-ON input ceiling from settings (0 ⇒ disabled).
+        # Mirrors the STT max_duration_seconds injection above.
+        max_input_characters=request.app.state.settings.tts_max_input_characters,
     )

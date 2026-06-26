@@ -13,17 +13,20 @@ from prometheus_client import CollectorRegistry
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from gateway.alerting.application.dispatcher import AlertDispatcher
-from gateway.alerting.application.health_checker import UpstreamHealthChecker
-from gateway.alerting.infrastructure.httpx_pinger import HttpxUpstreamPinger
-from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
 from gateway.agent_oauth.api.device_approval_router import agent_oauth_approval_router
 from gateway.agent_oauth.api.device_authorize_router import agent_oauth_device_router
 from gateway.agent_oauth.api.token_router import agent_oauth_token_router
 from gateway.agent_oauth.infrastructure.ip_rate_limiter import AgentOAuthIpRateLimiter
 from gateway.agent_oauth.infrastructure.orm import (  # noqa: F401 — registers agent OAuth tables on Base.metadata
     AgentTokenRow as _AgentTokenRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
-    DeviceAuthorizationRow as _DeviceAuthorizationRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.alerting.application.dispatcher import AlertDispatcher
+from gateway.alerting.application.health_checker import UpstreamHealthChecker
+from gateway.alerting.infrastructure.httpx_pinger import HttpxUpstreamPinger
+from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
+from gateway.artifacts.api.router import artifacts_router
+from gateway.artifacts.infrastructure.orm import (  # noqa: F401 — registers ArtifactRow on Base.metadata
+    ArtifactRow as _ArtifactRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.auth.api.oidc_admin_router import oidc_admin_router
 from gateway.auth.api.oidc_router import oidc_router
@@ -39,10 +42,21 @@ from gateway.catalog.api.router import (
     internal_catalog_router,
 )
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
+from gateway.conversations.api.router import conversations_router
+from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
+    ConversationMessageRow as _ConversationMessageRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
+)
+from gateway.conversations.infrastructure.orm import (
+    ConversationRow as _ConversationRow,  # noqa: F401  # pyright: ignore[reportUnusedImport]  — side-effect import
+)
 from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
+from gateway.memory.api.router import memories_router
+from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
+    MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.observability.logging_config import configure_structlog
 from gateway.observability.metrics import MetricsRegistry, expose_metrics
 from gateway.observability.middleware import RequestIdMiddleware
@@ -52,6 +66,7 @@ from gateway.proxy.api.concurrency_guard import GlobalBackPressureMiddleware
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
 from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
+from gateway.proxy.api.realtime_ws import realtime_router
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
@@ -123,6 +138,16 @@ from gateway.usage.infrastructure.alert_events_orm import (
 )
 from gateway.usage.infrastructure.orm import (
     UsageRecordRow as _UsageRecordRow,  # noqa: F401 — registers ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.video.api.router import video_router
+from gateway.video.application.worker import (
+    RedisVideoJobQueue,
+    VideoJobWorker,
+    recover_orphans,
+    should_start_video_worker,
+)
+from gateway.video.infrastructure.orm import (  # noqa: F401 — registers VideoGenerationJobRow on Base.metadata
+    VideoGenerationJobRow as _VideoGenerationJobRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 
 internal_router = APIRouter(prefix="/internal")
@@ -447,6 +472,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # VideoJobWorker — durable Redis-backed in-process worker (v48 durable-queue).
+        # Default-OFF: started only when video_durable_queue_enabled=True.
+        # recover_orphans() runs BEFORE run_forever so restart-orphaned rows are
+        # re-enqueued before the worker loop begins consuming.
+        app.state.video_worker_task = None
+        if should_start_video_worker(_settings):
+            _video_queue = RedisVideoJobQueue(_redis)
+            app.state.video_job_queue = _video_queue
+            await recover_orphans(_sessionmaker, _video_queue)
+            _video_worker = VideoJobWorker(
+                sessionmaker=_sessionmaker,
+                queue=_video_queue,
+                settings=_settings,
+                get_video_generator=lambda: getattr(app.state, "video_generator", None),
+            )
+            app.state.video_worker = _video_worker
+            app.state.video_worker_task = asyncio.create_task(_video_worker.run_forever())
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -483,6 +526,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await retention_task
 
+        video_worker_task: asyncio.Task[None] | None = getattr(
+            app.state, "video_worker_task", None
+        )
+        if video_worker_task is not None:
+            video_worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await video_worker_task
+
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
             await dispatcher.run_once()
@@ -506,6 +557,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if otel_flusher is not None:
             with contextlib.suppress(Exception):
                 await otel_flusher.flush_once()
+
+        # 2c. Cancel outstanding video generation job tasks
+        video_tasks: set[asyncio.Task[None]] = getattr(app.state, "video_jobs_tasks", set())
+        for _vt in list(video_tasks):
+            _vt.cancel()
+        if video_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.gather(*video_tasks, return_exceptions=True)
 
         # 3. Cancel the flusher background task
         flusher_task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)
@@ -544,6 +603,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.drift_checker_task = None
     app.state.recovery_sweep_task = None
     app.state.retention_sweeper_task = None
+
+    # Video generation seam — default: no provider (honest degradation).
+    # Tests override via app.state.video_generator = <stub>.
+    app.state.video_generator = None
+    # Tracked in-process asyncio.Task set for video jobs.
+    # The lifespan cancels any outstanding tasks on shutdown.
+    app.state.video_jobs_tasks: set[asyncio.Task[None]] = set()
+    # Durable video job worker task (v48 durable-queue). Default None (OFF).
+    # Set to the running asyncio.Task when video_durable_queue_enabled=True.
+    app.state.video_worker_task = None
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings
@@ -614,6 +683,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         backoff_base=settings.upstream_retry_backoff_base_s,
         retry_deadline_s=settings.upstream_retry_deadline_s,
         metrics_registry=app.state.metrics_registry,
+        max_inline_bytes=settings.gemini_inline_max_bytes,
     )
 
     # OpenAI direct adapter — UNCONDITIONAL (credential resolved per-request from contextvar).
@@ -852,9 +922,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(embeddings_router)
     app.include_router(images_router)
     app.include_router(audio_router)
+    app.include_router(realtime_router)
     app.include_router(usage_router)
     app.include_router(ops_router)
     app.include_router(budget_router)
+    app.include_router(conversations_router)
+    app.include_router(memories_router)
+    app.include_router(artifacts_router)
+    app.include_router(video_router)
 
     # RequestIdMiddleware must be added AFTER routers are included so it wraps
     # the full ASGI app and captures final status codes including those set by

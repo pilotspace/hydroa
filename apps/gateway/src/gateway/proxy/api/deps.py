@@ -187,6 +187,13 @@ def get_completion_use_case(
     bandwidth_max_wait_s: float = (
         float(getattr(_settings, "bandwidth_max_wait_seconds", 0.0)) if _settings else 0.0
     )
+    # web-search-grounding (v41): when GATEWAY_WEB_SEARCH_ENABLED is on, the use-case
+    # KEEPS the client's web_search flag so adapters can inject native grounding; when
+    # off (default) it strips the flag centrally → byte-identical to today. Wiring the
+    # knob here is what makes the feature reachable on the real request path.
+    web_search_enabled: bool = (
+        bool(getattr(_settings, "web_search_enabled", False)) if _settings else False
+    )
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -202,4 +209,5 @@ def get_completion_use_case(
         cost_recovery=cost_recovery,
         bandwidth_bucket=bandwidth_bucket,
         bandwidth_max_wait_s=bandwidth_max_wait_s,
+        web_search_enabled=web_search_enabled,
     )

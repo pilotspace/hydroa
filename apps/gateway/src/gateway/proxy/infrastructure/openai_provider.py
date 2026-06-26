@@ -26,6 +26,7 @@ import httpx
 from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
+from gateway.proxy.domain.web_search import WEB_SEARCH_FLAG, native_web_search_tool
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
@@ -96,6 +97,28 @@ class OpenAIDirectProvider:
             raise ProviderKeyMissing("openai")
         return {"Authorization": f"Bearer {cred.secret.get_secret_value()}"}
 
+    def _maybe_inject_web_search(self, payload: dict[str, object]) -> dict[str, object]:
+        """Inject the web_search_preview native tool when web_search flag is truthy.
+
+        Returns a shallow copy with:
+          - "web_search" key removed (NEVER reaches upstream).
+          - {"type":"web_search_preview"} appended to a copy of the tools list
+            when web_search was truthy (preserves any existing function tools).
+
+        When web_search is absent/falsy, returns a copy with the flag stripped but
+        tools untouched — byte-identical payload for the non-web-search case.
+        Non-destructive: the caller's dict is never mutated.
+        """
+        if WEB_SEARCH_FLAG not in payload:
+            return payload
+        outbound = {k: v for k, v in payload.items() if k != WEB_SEARCH_FLAG}
+        if payload.get(WEB_SEARCH_FLAG):
+            ws_tool = native_web_search_tool("openai")
+            if ws_tool is not None:
+                existing = list(outbound.get("tools", []))  # type: ignore[arg-type]
+                outbound["tools"] = [*existing, ws_tool]
+        return outbound
+
     # -- CompletionUpstream surface (chat dispatch) --------------------------
     # provider="openai" routes here via ProviderAwareCompletionUpstream.complete/stream.
     # Pinned to "/chat/completions"; mirrors post_json / stream_bytes exactly so the
@@ -116,11 +139,12 @@ class OpenAIDirectProvider:
         UpstreamUnavailableError and are NOT retried. With _max_retries=0 (default)
         this is exactly one attempt — byte-identical to the pre-retry behavior.
         """
+        outbound = self._maybe_inject_web_search(payload)
 
         async def _do_request() -> httpx.Response:
             return await self._client.post(
                 "/chat/completions",
-                json=payload,
+                json=outbound,
                 headers=self._auth_headers(),
             )
 
@@ -143,13 +167,14 @@ class OpenAIDirectProvider:
         BEFORE any byte is yielded (clean 502, never a leaked partial body).
         """
         self._breaker.guard()
+        outbound = self._maybe_inject_web_search(payload)
 
         async def _gen() -> AsyncIterator[bytes]:
             try:
                 async with self._client.stream(
                     "POST",
                     "/chat/completions",
-                    json=payload,
+                    json=outbound,
                     headers=self._auth_headers(),
                     timeout=httpx.Timeout(
                         connect=_CONNECT_TIMEOUT,

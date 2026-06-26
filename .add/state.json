@@ -673,6 +673,108 @@
       "archived": "2026-06-25"
     },
     {
+      "slug": "v40",
+      "title": "Chat workspace + streaming",
+      "tasks": 4,
+      "task_slugs": [
+        "streaming-bff",
+        "chat-workspace-page",
+        "chat-model-controls",
+        "chat-cost-readout"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v41",
+      "title": "Web search augmentation",
+      "tasks": 2,
+      "task_slugs": [
+        "websearch-grounding-passthrough",
+        "chat-websearch-toggle"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v42",
+      "title": "Voice breadth (multi-provider STT/TTS)",
+      "tasks": 4,
+      "task_slugs": [
+        "azure-audio-provider",
+        "tts-input-guardrails",
+        "audio-translations-endpoint",
+        "voice-playground"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v43",
+      "title": "Remote sessions / conversations",
+      "tasks": 2,
+      "task_slugs": [
+        "conversations-backend",
+        "chat-history-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v44",
+      "title": "Remote memory (tenant-scoped semantic memory store)",
+      "tasks": 2,
+      "task_slugs": [
+        "memory-backend",
+        "memory-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v45",
+      "title": "Artifacts / files (tenant-scoped file store)",
+      "tasks": 2,
+      "task_slugs": [
+        "artifacts-backend",
+        "artifacts-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v46",
+      "title": "Video & image understanding (Gemini multimodal)",
+      "tasks": 2,
+      "task_slugs": [
+        "gemini-multimodal",
+        "vision-understanding-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v47",
+      "title": "Realtime voice (turn-based WebSocket session)",
+      "tasks": 1,
+      "task_slugs": [
+        "realtime-voice"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v48",
+      "title": "Video generation (async jobs)",
+      "tasks": 2,
+      "task_slugs": [
+        "video-jobs-backend",
+        "video-jobs-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v49",
+      "title": "Durable video-job processing (Redis queue + restart recovery)",
+      "tasks": 1,
+      "task_slugs": [
+        "durable-video-queue"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
       "slug": "ui-fidelity",
       "title": "UI visual fidelity",
       "tasks": 3,

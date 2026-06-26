@@ -1,0 +1,63 @@
+{
+  "milestone": {
+    "title": "Remote sessions / conversations",
+    "goal": "A signed-in user (and any API key holder) can create, list, resume, and delete persistent conversation threads \u2014 messages survive reload/device via a tenant-scoped gateway store, surfaced in the dashboard chat.",
+    "stage": "production",
+    "status": "done",
+    "created": "2026-06-25T19:01:13+00:00",
+    "updated": "2026-06-25T19:55:24+00:00"
+  },
+  "tasks": {
+    "conversations-backend": {
+      "title": "gateway conversations domain (store + REST + tenant isolation)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v43",
+      "depends_on": [],
+      "created": "2026-06-25T19:02:02+00:00",
+      "updated": "2026-06-25T19:38:59+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "dcd67c73dc68955922b2ffd1219be453",
+        "tests": {
+          "apps/gateway/tests/conversations/test_conversations.py": "35c95e8c227ea3fac6f4039e3fe33ea8"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/conversations/",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/conversations/"
+        ],
+        "snapshot_md5": "7720755b2bb4edfdcd5c1c58b3c28353"
+      }
+    },
+    "chat-history-ui": {
+      "title": "Dashboard chat history sidebar (list/new/resume/persist via BFF)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v43",
+      "depends_on": [],
+      "created": "2026-06-25T19:39:45+00:00",
+      "updated": "2026-06-25T19:54:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ec2ae7c36d43fdfc0dc747396b7d4248",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/hooks/use-chat-stream.ts",
+          "apps/dashboard/lib/conversations.ts",
+          "apps/dashboard/components/chat/ChatHistorySidebar.tsx",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/tests-bff/chat-history.test.tsx",
+          "apps/dashboard/tests-bff/mocks/handlers.ts"
+        ],
+        "snapshot_md5": "bea3016a22850f161d2b556375851629"
+      }
+    }
+  },
+  "archived_at": "2026-06-25T19:55:58+00:00"
+}
