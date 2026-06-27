@@ -10,6 +10,9 @@ image:
   pullPolicy: IfNotPresent
 
 gateway:
+  # replicas:2 — on migrate-before-boot BOTH pods run `alembic upgrade head`; alembic serializes
+  # via a lock on alembic_version, so concurrent runs are safe (the loser sees head and exits 0).
+  # For a LARGE initial migration set `--set gateway.replicas=1` to avoid a lock-wait timeout. (F5)
   replicas: 2
 
   # Design-for-failure: requests AND limits both required (CLAUDE.md).
@@ -37,6 +40,20 @@ gateway:
       name: ""
       key: "url"
     drainTimeoutSeconds: 10                                              # GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
+
+  # Migrate-before-boot (v53): a gateway-pod initContainer runs `alembic upgrade head`
+  # (after a bounded wait for Postgres) so the gateway never serves an unmigrated DB.
+  # enabled=false → operator migrates out-of-band (the wait-for-db initContainer stays).
+  migrate:
+    enabled: true
+    waitForDb:
+      maxAttempts: 60          # ×2s ≈ 120s bounded wait; exhaustion → non-zero exit (no infinite hang)
+
+  # Container-level hardening (PSS-restricted floor) applied to the gateway container AND both
+  # migrate-before-boot initContainers. runAsUser/runAsNonRoot stay pod-level (podSecurityContext).
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities: { drop: ["ALL"] }
 
   # JWT signing secret — referenced, never inlined. Default = reference an existing
   # Secret (operator/CI provisions it). Set createSecret=true + value to have the

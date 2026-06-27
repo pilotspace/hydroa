@@ -20,10 +20,80 @@ spec:
         {{- toYaml .Values.gateway.podSecurityContext | nindent 8 }}
       # Must exceed the in-app drain so the usage-flusher finishes before SIGKILL.
       terminationGracePeriodSeconds: {{ add .Values.gateway.env.drainTimeoutSeconds 5 }}
+      {{- if or .Values.datastores.postgres.enabled .Values.gateway.migrate.enabled }}
+      # Migrate-before-boot: the gateway container starts ONLY after these succeed (initContainer
+      # semantics), so it never serves an unmigrated DB. Both run on the gateway image with the
+      # pod (non-root) + container (drop ALL) securityContexts.
+      initContainers:
+        # Bounded wait for the DB — parses host:port from GATEWAY_DATABASE_URL at runtime (so it
+        # targets the ACTUAL DB: in-cluster, external, or mixed), python (in the image), not nc/pg_isready.
+        - name: wait-for-db
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.gateway.containerSecurityContext | nindent 12 }}
+          env:
+            - name: GATEWAY_DATABASE_URL
+            {{- if .Values.gateway.env.databaseUrlSecretRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.env.databaseUrlSecretRef.name }}
+                  key: {{ .Values.gateway.env.databaseUrlSecretRef.key }}
+            {{- else }}
+              value: {{ .Values.gateway.env.databaseUrl | quote }}
+            {{- end }}
+          command:
+            - python
+            - -c
+            - |
+              import os, socket, sys, time
+              from urllib.parse import urlparse
+              raw = os.environ.get("GATEWAY_DATABASE_URL", "")
+              u = urlparse(raw.replace("+asyncpg", "", 1))  # strip the SQLAlchemy dialect suffix
+              host = u.hostname or "{{ include "ai-proxy.postgres.fullname" . }}"
+              port = u.port or 5432
+              attempts = {{ .Values.gateway.migrate.waitForDb.maxAttempts | int }}
+              for i in range(attempts):
+                  try:
+                      socket.create_connection((host, port), 2).close()
+                      print("db %s:%d reachable after %d attempt(s)" % (host, port, i + 1))
+                      sys.exit(0)
+                  except OSError:
+                      time.sleep(2)
+              print("db %s:%d unreachable after %d attempts" % (host, port, attempts), file=sys.stderr)
+              sys.exit(1)
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+        {{- if .Values.gateway.migrate.enabled }}
+        # alembic to head — GATEWAY_DATABASE_URL resolved IDENTICALLY to the gateway container.
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.gateway.containerSecurityContext | nindent 12 }}
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: GATEWAY_DATABASE_URL
+            {{- if .Values.gateway.env.databaseUrlSecretRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.env.databaseUrlSecretRef.name }}
+                  key: {{ .Values.gateway.env.databaseUrlSecretRef.key }}
+            {{- else }}
+              value: {{ .Values.gateway.env.databaseUrl | quote }}
+            {{- end }}
+            - name: GATEWAY_ENVIRONMENT
+              value: {{ .Values.gateway.env.environment | quote }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+        {{- end }}
+      {{- end }}
       containers:
         - name: gateway
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.gateway.containerSecurityContext | nindent 12 }}
           ports:
             - name: http
               containerPort: 8000

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "dashboard-chart",
+  "active_task": "migration-and-secrets",
   "active_milestone": "v53",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -431,6 +431,49 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "migration-and-secrets": {
+      "title": "Alembic migration Helm-hook Job (migrate-before-boot) + fail-fast Secret wiring",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v53",
+      "depends_on": [],
+      "created": "2026-06-26T16:36:31+00:00",
+      "updated": "2026-06-27T03:01:46+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "32473250a0f8fd390ca48141912e3419",
+        "tests": {
+          "tests/helm/test_migration_and_secrets.py": "1853459c92f05b8d1847c79bc1a05348"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/Dockerfile",
+          "charts/ai-proxy/values.yaml",
+          "charts/ai-proxy/gateway.migrate{enabled,waitForDb.maxAttempts}",
+          "charts/ai-proxy/gateway.containerSecurityContext",
+          "charts/ai-proxy/templates/gateway-deployment.yaml",
+          "charts/ai-proxy/templates/initContainers: [wait-for-db, migrate]",
+          "charts/ai-proxy/templates/securityContext"
+        ],
+        "snapshot_md5": "31cc5230a2253a738dd2ff43f9a18714"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-27T03:01:06+00:00",
+            "reason": "scope_violation: task 'migration-and-secrets' touched outside its declared \u00a75 Scope \u2014 tmp/v53_t5_render_check.py (1 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -469,7 +512,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T16:32:58+00:00",
+  "updated": "2026-06-27T03:01:46+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1114,6 +1157,6 @@
     "v53"
   ],
   "active_tasks": {
-    "v53": "dashboard-chart"
+    "v53": "migration-and-secrets"
   }
 }

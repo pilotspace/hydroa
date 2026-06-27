@@ -31,6 +31,10 @@ COPY --from=builder /app/.venv /app/.venv
 
 # Copy application source
 COPY src/ ./src/
+# Migration assets — the gateway-pod `migrate` initContainer runs `alembic upgrade head`
+# from /app (alembic.ini script_location = migrations). Without these the init cannot migrate.
+COPY migrations/ ./migrations/
+COPY alembic.ini ./
 COPY pyproject.toml uv.lock ./
 
 # Install the project package itself into the existing venv (no deps re-install)
