@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "ci-e2e-pipeline",
-  "active_milestone": "v53",
+  "active_task": null,
+  "active_milestone": null,
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -269,405 +269,6 @@
           }
         ]
       }
-    },
-    "helm-chart-scaffold": {
-      "title": "Helm chart scaffold + values-schema contract",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-26T11:48:51+00:00",
-      "updated": "2026-06-26T12:41:53+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "8d12339a4759a33019bf273aaf112267",
-        "tests": {
-          "tests/helm/test_helm_chart_scaffold.py": "7ff45afce829913f8812fbe90de5f333"
-        }
-      },
-      "scope": {
-        "declared": [
-          "charts/ai-proxy/",
-          "tests/helm/"
-        ],
-        "snapshot_md5": "86b09c4c00e71b1be22a95bf8f9e8a90"
-      },
-      "heal": {
-        "attempts": 2,
-        "history": [
-          {
-            "at": "2026-06-26T12:38:29+00:00",
-            "reason": "tamper_detected:contract_tampered",
-            "source": "tamper"
-          },
-          {
-            "at": "2026-06-26T12:40:49+00:00",
-            "reason": "scope_violation: task 'helm-chart-scaffold' touched outside its declared \u00a75 Scope \u2014 .pytest_cache/v/cache/lastfailed (1 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "datastore-statefulsets": {
-      "title": "In-cluster Postgres/Redis/MinIO StatefulSets (external-ready)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-26T12:53:52+00:00",
-      "updated": "2026-06-26T13:53:24+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "8242e88dc9123cecfa57d6bb205fce96",
-        "tests": {
-          "tests/helm/test_datastore_statefulsets.py": "59aabc621cb57409cd409c569a7ccb62"
-        }
-      },
-      "scope": {
-        "declared": [
-          "charts/ai-proxy/values.yaml",
-          "charts/ai-proxy/datastores{}",
-          "charts/ai-proxy/templates/_helpers.tpl",
-          "charts/ai-proxy/templates/postgres-statefulset.yaml",
-          "charts/ai-proxy/templates/postgres-service.yaml",
-          "charts/ai-proxy/templates/redis-statefulset.yaml",
-          "charts/ai-proxy/templates/redis-service.yaml",
-          "charts/ai-proxy/templates/minio-statefulset.yaml",
-          "charts/ai-proxy/templates/minio-service.yaml",
-          "charts/ai-proxy/templates/minio-createbucket-job.yaml",
-          "charts/ai-proxy/templates/datastore-secret.yaml"
-        ],
-        "snapshot_md5": "58a0a49668aefabc34cf51a11d24db7d"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "envoy-edge-manifests": {
-      "title": "Envoy edge Deployment/Service/ConfigMap (TLS \u00b7 ext_authz \u00b7 WS-upgrade)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-26T13:56:14+00:00",
-      "updated": "2026-06-26T15:24:52+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "dfa0a89b0dde973e862471b374be8bca",
-        "tests": {
-          "tests/helm/test_envoy_edge_manifests.py": "18fb69453f3c9b3109d3179aa249bf26"
-        }
-      },
-      "scope": {
-        "declared": [
-          "charts/ai-proxy/values.yaml",
-          "charts/ai-proxy/envoy{}",
-          "charts/ai-proxy/templates/_helpers.tpl",
-          "charts/ai-proxy/templates/envoy-configmap.yaml",
-          "charts/ai-proxy/templates/envoy-deployment.yaml",
-          "charts/ai-proxy/templates/envoy-service.yaml",
-          "charts/ai-proxy/templates/envoy-pdb.yaml",
-          "charts/ai-proxy/templates/envoy-networkpolicy.yaml"
-        ],
-        "snapshot_md5": "8954d9f1f828fee1b57805513297ff81"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "dashboard-chart": {
-      "title": "Next.js dashboard chart: standalone Dockerfile + Deployment/Service (BFF\u2192gateway in-cluster)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-26T15:28:20+00:00",
-      "updated": "2026-06-26T16:32:58+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "baaa73c70a2a02debb1e5459f19f795a",
-        "tests": {
-          "tests/helm/test_dashboard_chart.py": "3cc5a057f630d5ac05eadf9fec5bb0c8"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/next.config.ts",
-          "apps/dashboard/Dockerfile",
-          "apps/dashboard/app/api/health/route.ts",
-          "charts/ai-proxy/values.yaml",
-          "charts/ai-proxy/dashboard{}",
-          "charts/ai-proxy/templates/_helpers.tpl",
-          "charts/ai-proxy/templates/dashboard-deployment.yaml",
-          "charts/ai-proxy/templates/dashboard-service.yaml",
-          "charts/ai-proxy/templates/dashboard-pdb.yaml",
-          "charts/ai-proxy/templates/dashboard-networkpolicy.yaml",
-          "apps/dashboard/.dockerignore",
-          "charts/ai-proxy/templates/envoy-configmap.yaml",
-          "apps/dashboard/app/api/gw/[...path]/route.ts",
-          "apps/dashboard/app/api/auth/login/route.ts",
-          "apps/dashboard/app/api/auth/signup/route.ts",
-          "apps/dashboard/app/api/auth/me/route.ts",
-          "apps/dashboard/app/api/auth/oidc/login/route.ts",
-          "apps/dashboard/app/auth/oidc/callback/route.ts",
-          "apps/dashboard/tests/setup.ts",
-          "apps/dashboard/tests-bff/setup.ts",
-          "apps/dashboard/tests/mocks/handlers.ts",
-          "apps/dashboard/tests/harness.smoke.test.ts"
-        ],
-        "snapshot_md5": "95894f967b65285ed91eeaf16c794856"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "migration-and-secrets": {
-      "title": "Alembic migration Helm-hook Job (migrate-before-boot) + fail-fast Secret wiring",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-26T16:36:31+00:00",
-      "updated": "2026-06-27T03:01:46+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "32473250a0f8fd390ca48141912e3419",
-        "tests": {
-          "tests/helm/test_migration_and_secrets.py": "1853459c92f05b8d1847c79bc1a05348"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/Dockerfile",
-          "charts/ai-proxy/values.yaml",
-          "charts/ai-proxy/gateway.migrate{enabled,waitForDb.maxAttempts}",
-          "charts/ai-proxy/gateway.containerSecurityContext",
-          "charts/ai-proxy/templates/gateway-deployment.yaml",
-          "charts/ai-proxy/templates/initContainers: [wait-for-db, migrate]",
-          "charts/ai-proxy/templates/securityContext"
-        ],
-        "snapshot_md5": "31cc5230a2253a738dd2ff43f9a18714"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-27T03:01:06+00:00",
-            "reason": "scope_violation: task 'migration-and-secrets' touched outside its declared \u00a75 Scope \u2014 tmp/v53_t5_render_check.py (1 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "kind-bootstrap": {
-      "title": "kind bootstrap harness: build+load both images, helm install, whole-stack Ready + LLM upstream stub",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-27T03:15:19+00:00",
-      "updated": "2026-06-27T05:17:23+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "d101f1f803e3682751f0ea24a62b176f",
-        "tests": {
-          "tests/kind/test_kind_bootstrap.py": "dd1f873d1e34a299ed8fc7bd1b14d4ce",
-          "tests/helm/test_envoy_edge_manifests.py": "3d0827fcd4d2b7a3b33606d7f7420a09",
-          "tests/helm/test_dashboard_chart.py": "3239c4eda30d40af1d72b3674841b1dd"
-        }
-      },
-      "scope": {
-        "declared": [
-          ".add/tasks/kind-bootstrap/Makefile",
-          "infra/kind/cluster.yaml",
-          "infra/kind/upstream-stub.yaml",
-          "infra/kind/edge-nodeport.yaml",
-          "charts/ai-proxy/values.yaml",
-          "charts/ai-proxy/values-kind.yaml",
-          "charts/ai-proxy/templates/envoy-configmap.yaml",
-          "charts/ai-proxy/templates/envoy-deployment.yaml",
-          "tests/kind/test_kind_bootstrap.py",
-          "tests/helm/test_envoy_edge_manifests.py",
-          "tests/helm/test_dashboard_chart.py"
-        ],
-        "snapshot_md5": "9bb6185590094c3e8177055f29629387"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-27T05:16:24+00:00",
-            "reason": "tamper_detected:contract_tampered,build_tampered:tests/kind/test_kind_bootstrap.py",
-            "source": "tamper"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "e2e-core-flow": {
-      "title": "Automated e2e through the Envoy edge on live kind: signup \u2192 login \u2192 proxied completion (stub upstream) \u2192 accurate usage+cost row",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-27T05:31:16+00:00",
-      "updated": "2026-06-27T07:07:39+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "a421fdd062f89bddf8642c1e600d34f1",
-        "tests": {
-          "apps/gateway/tests/kind_e2e/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/kind_e2e/conftest.py": "9bbe038e5a0d39c43d23ce10b1abe254",
-          "apps/gateway/tests/kind_e2e/test_e2e_kind_core_flow.py": "7f0195358dbb06cceb622b3e543bbb3e"
-        }
-      },
-      "scope": {
-        "declared": [
-          "scripts/e2e_kind.sh",
-          "scripts/Makefile",
-          "apps/gateway/pyproject.toml",
-          "apps/gateway/tests/kind_e2e/",
-          "charts/ai-proxy/values.yaml",
-          "charts/ai-proxy/values-kind.yaml",
-          "charts/ai-proxy/templates/gateway-secret.yaml",
-          "charts/ai-proxy/templates/gateway-deployment.yaml",
-          "tests/kind/test_kind_bootstrap.py"
-        ],
-        "snapshot_md5": "4e0522047b19b74ca243302958fc61bb"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-27T07:03:41+00:00",
-            "reason": "scope_violation: task 'e2e-core-flow' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/3741475758087320593 \u00b7 tests/kind/test_kind_bootstrap.py (4 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "e2e-platform-features": {
-      "title": "Extend the live kind e2e: realtime-relay WS round-trip + artifact object-store round-trip (MinIO) + key admin surfaces through the Envoy edge",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-27T07:14:01+00:00",
-      "updated": "2026-06-27T08:53:31+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "58a121c48b3a8c4f5feb1f2c90efa5d2",
-        "tests": {
-          "apps/gateway/tests/kind_e2e/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/kind_e2e/conftest.py": "62aca1c9e8cd269fc340d16e412ea5da",
-          "apps/gateway/tests/kind_e2e/test_e2e_kind_core_flow.py": "7f0195358dbb06cceb622b3e543bbb3e",
-          "apps/gateway/tests/kind_e2e/test_e2e_kind_platform.py": "3d8aa628a49a3da08760209b83a22df6"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/tests/kind_e2e/",
-          "charts/ai-proxy/values-kind.yaml",
-          "charts/ai-proxy/templates/envoy-configmap.yaml",
-          "apps/gateway/pyproject.toml",
-          "tests/kind/test_kind_bootstrap.py",
-          "apps/gateway/tests/realtime_relay/test_carveout_invariant.py",
-          "apps/gateway/tests/realtime_relay/make allowlist",
-          "apps/gateway/tests/realtime_relay/websockets"
-        ],
-        "snapshot_md5": "fbee231993418e5d45ac42eb83f97c88"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "e2e-ui": {
-      "title": "Browser-driven dashboard UI e2e through the Envoy edge against the live kind cluster (login + a real authenticated surface)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-27T09:00:45+00:00",
-      "updated": "2026-06-27T10:09:10+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "a97c682a64b592761a20cb00598efc0e",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/e2e-kind/",
-          "apps/dashboard/playwright.kind.config.ts",
-          "apps/dashboard/package.json",
-          "scripts/e2e_kind_ui.sh",
-          "scripts/Makefile",
-          "scripts/test:kind",
-          "scripts/kind-e2e-ui"
-        ],
-        "snapshot_md5": "65eeb8002b8896717ac660c8cb0bdaec"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "ci-e2e-pipeline": {
-      "title": "Wire kind-up + the full e2e (API + UI) into a CI workflow + author the real-cloud (values-prod) deploy runbook (the HARD-STOP boundary)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v53",
-      "depends_on": [],
-      "created": "2026-06-27T10:13:39+00:00",
-      "updated": "2026-06-27T11:12:15+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "2ba8eb47a5395a6bcad68ebc7fcfb3d3",
-        "tests": {
-          "tests/ci_pipeline/test_kind_ci_pipeline.py": "158fb2820eabbdd8e43a0cf30289b37f"
-        }
-      },
-      "scope": {
-        "declared": [
-          ".github/workflows/kind-e2e.yml",
-          ".github/workflows/Makefile",
-          "docs/runbooks/cloud-deploy.md",
-          "tests/ci_pipeline/"
-        ],
-        "snapshot_md5": "f8c3e3cf274bfac7b5d027c78023146f"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "milestones": {
@@ -686,27 +287,10 @@
       "status": "done",
       "created": "2026-06-26T07:45:35+00:00",
       "updated": "2026-06-26T09:08:28+00:00"
-    },
-    "v53": {
-      "title": "Kubernetes deployment + full e2e validation",
-      "goal": "An operator stands up the entire ai-proxy production stack (gateway, Envoy edge, Postgres, Redis, object store) on a Kubernetes cluster from one env-parameterized Helm chart, proven by an automated end-to-end suite that drives the goal flow plus realtime-relay, artifacts, and admin surfaces against the live cluster.",
-      "stage": "production",
-      "status": "active",
-      "created": "2026-06-26T11:39:01+00:00",
-      "updated": "2026-06-26T11:48:51+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-06-26T11:48:51+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-27T11:12:15+00:00",
+  "updated": "2026-06-27T12:05:16+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1345,12 +929,26 @@
         "realtime-relay-live-verify"
       ],
       "archived": "2026-06-26"
+    },
+    {
+      "slug": "v53",
+      "title": "Kubernetes deployment + full e2e validation",
+      "tasks": 10,
+      "task_slugs": [
+        "helm-chart-scaffold",
+        "datastore-statefulsets",
+        "envoy-edge-manifests",
+        "dashboard-chart",
+        "migration-and-secrets",
+        "kind-bootstrap",
+        "e2e-core-flow",
+        "e2e-platform-features",
+        "e2e-ui",
+        "ci-e2e-pipeline"
+      ],
+      "archived": "2026-06-27"
     }
   ],
-  "active_milestones": [
-    "v53"
-  ],
-  "active_tasks": {
-    "v53": "ci-e2e-pipeline"
-  }
+  "active_milestones": [],
+  "active_tasks": {}
 }

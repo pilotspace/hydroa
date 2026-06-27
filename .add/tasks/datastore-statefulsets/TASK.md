@@ -354,6 +354,6 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [TDD · open] A passing render-test that only asserts a key's PRESENCE (not its non-empty VALUE) waved through a passwordless-datastore defect (evidence: refute-read F1 — create=true+empty-creds; closed by a fail-closed guard + value-non-empty assertions).
-- [SDD · open] A frozen default can collide with a SIBLING task's frozen invariant — task-2's create=true default broke task-1's "no populated Secret by default"; caught at tests phase, fixed via CR-1 (evidence: the secure-by-default flip mirroring gateway jwtSecret).
-- [ADD · open] An adversarial refute-read at verify earned its keep: 1 HIGH security defect + 1 invalid-YAML correctness bug + a design-for-failure timeout gap, none caught by green tests (evidence: F1/F2/F6 → heal cycle tests→build→verify).
+- [TDD · folded] A passing render-test that only asserts a key's PRESENCE (not its non-empty VALUE) waved through a passwordless-datastore defect (evidence: refute-read F1 — create=true+empty-creds; closed by a fail-closed guard + value-non-empty assertions). [folded foundation-version 39]
+- [SDD · folded] A frozen default can collide with a SIBLING task's frozen invariant — task-2's create=true default broke task-1's "no populated Secret by default"; caught at tests phase, fixed via CR-1 (evidence: the secure-by-default flip mirroring gateway jwtSecret). [folded foundation-version 39]
+- [ADD · folded] An adversarial refute-read at verify earned its keep: 1 HIGH security defect + 1 invalid-YAML correctness bug + a design-for-failure timeout gap, none caught by green tests (evidence: F1/F2/F6 → heal cycle tests→build→verify). [folded foundation-version 39]
