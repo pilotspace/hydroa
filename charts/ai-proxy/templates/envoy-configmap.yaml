@@ -123,6 +123,19 @@ data:
                                 envoy.filters.http.ext_authz:
                                   "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
                                   disabled: true
+                            # Realtime relay WS: ext_authz is DISABLED here (must precede /v1/ —
+                            # first-match-wins). The relay authenticates IN-BAND over the WS (v52
+                            # auth-over-WS: first frame {"type":"auth","token":"sk-…"} → close 4401 on
+                            # a bad token before any provider session, 4404 when no provider). A browser
+                            # cannot set an Authorization header on a WS handshake, so edge ext_authz
+                            # would 401 the upgrade and make the relay unreachable. The gateway is the
+                            # sole authenticator on this path; every OTHER /v1/ path keeps ext_authz.
+                            - match: { prefix: "/v1/realtime/" }
+                              route: { cluster: gateway_cluster }
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  disabled: true
                             - match: { prefix: "/v1/" }
                               route: { cluster: gateway_cluster }
                               typed_per_filter_config:

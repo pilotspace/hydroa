@@ -21,7 +21,10 @@ verify=False) — never the gateway ClusterIP — so TLS + jwt_authn + ext_authz
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import os
+import ssl
 import subprocess
 import uuid
 from decimal import Decimal
@@ -29,6 +32,8 @@ from typing import Any
 
 import httpx
 import pytest
+import websockets
+from websockets.exceptions import ConnectionClosed
 
 # ── Frozen contract constants (§3) ────────────────────────────────────────────
 EDGE_URL = os.environ.get("KIND_EDGE_URL", "https://127.0.0.1:8443")
@@ -60,6 +65,18 @@ V1_PATH = "/v1/chat/completions"
 BYOK_PROVIDER = "openrouter"  # the provider every kind model routes to (values-kind.yaml)
 PROVIDER_KEYS_PATH = f"/admin/provider-keys/{BYOK_PROVIDER}"
 DUMMY_PROVIDER_SECRET = "sk-kind-e2e-dummy-not-a-real-key"  # noqa: S105 — throwaway test value
+
+# ── Platform-features (task 8) constants — frozen §3 ──────────────────────────
+# Realtime relay (v52) honest-degrade probe through the edge.
+WS_URL = os.environ.get("KIND_WS_URL", "wss://127.0.0.1:8443/v1/realtime/relay")
+WS_RECV_TIMEOUT_S = 15.0  # bounded wait for the relay's close frame
+RELAY_CLOSE_NO_PROVIDER = 4404  # honest-degrade: valid key, no provider configured in kind
+RELAY_CLOSE_BAD_AUTH = 4401  # auth-over-WS rejected the token
+# Artifacts (v51) object-store round-trip.
+ARTIFACTS_PATH = "/v1/artifacts"
+ART_BYTES = b"e2e-kind-artifact-bytes\n"  # the round-trip payload
+ART_CONTENT_TYPE = "text/plain"
+OBJ_BUCKET = "ai-proxy-artifacts"  # values-kind objectStore.bucket / createbucket-job default
 
 # Bounded waits everywhere (design-for-failure) — the flusher is a 1 s background task.
 USAGE_POLL_TIMEOUT_S = float(os.environ.get("KIND_E2E_POLL_TIMEOUT", "30"))
@@ -114,6 +131,29 @@ def read_tenant_markup_pct(key_id: str) -> Decimal:
     raw = psql_scalar(sql)
     assert raw, f"no markup_pct row for key {key_id} — did signup/key-create succeed?"
     return Decimal(raw)
+
+
+def read_tenant_id(key_id: str) -> str:
+    """The tenant_id that owns the given API key (for the M2 object_key assertion)."""
+    kid = uuid.UUID(str(key_id))  # validate → no injection surface before interpolation
+    raw = psql_scalar(f"SELECT tenant_id FROM api_keys WHERE id = '{kid}'")  # noqa: S608 — validated UUID
+    assert raw, f"no api_keys row for key {key_id}"
+    return raw
+
+
+def read_artifact_storage(artifact_id: str) -> tuple[str, str]:
+    """(storage_backend, object_key) for an artifact via psql — the M2 MinIO proof.
+
+    storage_backend='s3' + object_key set ⟹ the bytes live in MinIO, not inline BYTEA.
+    """
+    aid = uuid.UUID(str(artifact_id))  # validate before interpolation
+    raw = psql_scalar(
+        "SELECT storage_backend || '|' || COALESCE(object_key, '') "  # noqa: S608 — validated UUID
+        f"FROM artifacts WHERE id = '{aid}'"
+    )
+    assert raw, f"no artifacts row for id {artifact_id} — did POST /v1/artifacts succeed?"
+    backend, _, object_key = raw.partition("|")
+    return backend, object_key
 
 
 # ── HTTP helpers through the edge (mirror tests/edge/test_e2e_edge.py shapes) ──
@@ -191,6 +231,69 @@ async def poll_usage_record(
                     return rec
         await asyncio.sleep(USAGE_POLL_INTERVAL_S)
     return None
+
+
+def _unverified_ssl() -> ssl.SSLContext:
+    """SSL context that skips verification — the kind edge cert is self-signed (test-only)."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+async def ws_relay_close_code(token: str) -> int:
+    """Connect the relay WS through the edge, send the auth frame, return the server's CLOSE code.
+
+    The relay closes the WS (4404 no-provider / 4401 bad-token) rather than replying, so `recv`
+    raises ConnectionClosed carrying the code. Exercises Envoy WS-upgrade + TLS + auth-over-WS
+    end-to-end. Bounded by WS_RECV_TIMEOUT_S (design-for-failure — never an unbounded wait).
+    """
+    async with websockets.connect(WS_URL, ssl=_unverified_ssl(), open_timeout=HTTP_TIMEOUT_S) as ws:
+        await ws.send(json.dumps({"type": "auth", "token": token}))
+        try:
+            msg = await asyncio.wait_for(ws.recv(), timeout=WS_RECV_TIMEOUT_S)
+        except ConnectionClosed as exc:
+            # Prefer the non-deprecated source (Frame on `rcvd`); fall back to the legacy attr.
+            rcvd = getattr(exc, "rcvd", None)
+            code = getattr(rcvd, "code", None)
+            if code is None:
+                code = getattr(exc, "code", None)
+            assert code is not None, f"relay closed with no code: {exc!r}"
+            return int(code)
+        raise AssertionError(
+            f"relay did NOT close after auth (expected an honest-degrade close): got {msg!r}"
+        )
+
+
+async def create_artifact(
+    client: httpx.AsyncClient, api_key: str, *, name: str, content_type: str, data: bytes
+) -> dict[str, Any]:
+    resp = await client.post(
+        f"{EDGE_URL}{ARTIFACTS_PATH}",
+        json={
+            "name": name,
+            "content_type": content_type,
+            "content_base64": base64.b64encode(data).decode(),
+        },
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 201, (
+        f"artifact create failed ({resp.status_code}): {resp.text[:400]!r}"
+    )
+    body: dict[str, Any] = resp.json()
+    assert "id" in body, f"unexpected artifact response: {body}"
+    return body
+
+
+async def get_artifact(client: httpx.AsyncClient, api_key: str, artifact_id: str) -> httpx.Response:
+    return await client.get(
+        f"{EDGE_URL}{ARTIFACTS_PATH}/{artifact_id}",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+
+
+async def admin_get(client: httpx.AsyncClient, jwt: str, path: str) -> httpx.Response:
+    return await client.get(f"{EDGE_URL}{path}", headers={"Authorization": f"Bearer {jwt}"})
 
 
 @pytest.fixture

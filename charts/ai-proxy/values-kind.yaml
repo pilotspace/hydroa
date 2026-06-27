@@ -57,6 +57,19 @@ gateway:
     # it in any real cluster; rotate to a freshly-generated key per environment. Local kind ONLY.
     # Without it the BYOK store raises ERR_PROVIDER_KEY_ENCRYPTION_UNAVAILABLE and /v1 500s.
     value: "ykjz8nXk81rGbmRCVIhK0HDxss5FYDHQxLqa4C_81N4="
+  # Object store ON (the "external-ready" pattern, values-only — no template edit): persist artifact
+  # bytes to the in-cluster MinIO StatefulSet (ai-proxy-minio:9000) instead of inline Postgres BYTEA.
+  # The createbucket post-install Job makes `bucket`; the secret access key comes from the same
+  # chart-minted datastore Secret as MinIO's root creds (NOT a literal — SECRETS-NEVER-IN-CHART).
+  objectStore:
+    enabled: true
+    endpoint: "http://ai-proxy-minio:9000"
+    bucket: "ai-proxy-artifacts"
+    region: "us-east-1"
+    accessKeyId: "kind-local-minio"          # mirrors datastores.secrets.minioRootUser (FAKE — kind only)
+    secretRef:
+      name: "ai-proxy-datastore-secrets"
+      key: "minio-root-password"
 
 datastores:
   secrets:

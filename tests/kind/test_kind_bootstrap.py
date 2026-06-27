@@ -123,8 +123,11 @@ def test_kind_overlay_only_authorized_template_edit():
     values.yaml already defines (without it, liveness kills envoy during cold-start DNS warming). Two more
     were authorized by task-7's v2 change-request (Tin, "Extend task 7"): gateway-deployment.yaml +
     gateway-secret.yaml wire GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY (env-agnostic, mirrors jwtSecret) — the
-    BYOK-only gateway 500s every /v1 completion without it, which the task-7 live e2e first surfaced. No
-    OTHER template may change."""
+    BYOK-only gateway 500s every /v1 completion without it, which the task-7 live e2e first surfaced.
+    envoy-configmap.yaml also carries task-8's v2 change-request (Tin, "Extend task 8 + fix envoy"): a
+    /v1/realtime/ ext_authz carve-out so the header-less relay WS handshake reaches the gateway's in-band
+    auth (a browser cannot set an Authorization header on a WS upgrade) — the task-8 live e2e surfaced it.
+    No OTHER template may change."""
     proc = subprocess.run(
         ["git", "status", "--porcelain", "--", "charts/ai-proxy/templates"],
         cwd=str(REPO), capture_output=True, text=True,
@@ -132,7 +135,7 @@ def test_kind_overlay_only_authorized_template_edit():
     assert proc.returncode == 0, f"git status failed: {proc.stderr}"
     changed = [ln[3:] for ln in proc.stdout.splitlines() if ln.strip()]
     allowed = {
-        "charts/ai-proxy/templates/envoy-configmap.yaml",      # v2: FQDN cluster addresses
+        "charts/ai-proxy/templates/envoy-configmap.yaml",      # v2: FQDN cluster addresses; task-8 v2: /v1/realtime/ ext_authz carve-out
         "charts/ai-proxy/templates/envoy-deployment.yaml",     # v3: startupProbe wiring
         "charts/ai-proxy/templates/gateway-deployment.yaml",   # task-7 v2: enc-key env (GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY)
         "charts/ai-proxy/templates/gateway-secret.yaml",       # task-7 v2: enc-key stringData (render-safe)

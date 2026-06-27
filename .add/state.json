@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "e2e-core-flow",
+  "active_task": "e2e-platform-features",
   "active_milestone": "v53",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -570,6 +570,43 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "e2e-platform-features": {
+      "title": "Extend the live kind e2e: realtime-relay WS round-trip + artifact object-store round-trip (MinIO) + key admin surfaces through the Envoy edge",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v53",
+      "depends_on": [],
+      "created": "2026-06-27T07:14:01+00:00",
+      "updated": "2026-06-27T08:53:31+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "58a121c48b3a8c4f5feb1f2c90efa5d2",
+        "tests": {
+          "apps/gateway/tests/kind_e2e/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/kind_e2e/conftest.py": "62aca1c9e8cd269fc340d16e412ea5da",
+          "apps/gateway/tests/kind_e2e/test_e2e_kind_core_flow.py": "7f0195358dbb06cceb622b3e543bbb3e",
+          "apps/gateway/tests/kind_e2e/test_e2e_kind_platform.py": "3d8aa628a49a3da08760209b83a22df6"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/tests/kind_e2e/",
+          "charts/ai-proxy/values-kind.yaml",
+          "charts/ai-proxy/templates/envoy-configmap.yaml",
+          "apps/gateway/pyproject.toml",
+          "tests/kind/test_kind_bootstrap.py",
+          "apps/gateway/tests/realtime_relay/test_carveout_invariant.py",
+          "apps/gateway/tests/realtime_relay/make allowlist",
+          "apps/gateway/tests/realtime_relay/websockets"
+        ],
+        "snapshot_md5": "fbee231993418e5d45ac42eb83f97c88"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -608,7 +645,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-27T07:07:39+00:00",
+  "updated": "2026-06-27T08:53:31+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1253,6 +1290,6 @@
     "v53"
   ],
   "active_tasks": {
-    "v53": "e2e-core-flow"
+    "v53": "e2e-platform-features"
   }
 }
