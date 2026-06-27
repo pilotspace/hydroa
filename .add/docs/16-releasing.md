@@ -1,6 +1,6 @@
 # 16 · Releasing
 
-[← 15 Foundations & Lineage](./15-foundations-and-lineage.md) · [Contents](./README.md) · Next: [Appendix A Templates →](./appendix-a-templates.md)
+[← 15 Foundations & Lineage](./15-foundations-and-lineage.md) · [Contents](./README.md) · Next: [17 Components →](./17-components.md)
 
 ---
 
@@ -11,8 +11,8 @@ them *ship*. This chapter names the act every project eventually performs and th
 now, never formalized: bundling closed milestones into a versioned, user-facing release whose notes
 are evidence-backed, whose risk is disclosed, and whose behaviour is then watched.
 
-Releasing is the **fifth scope level** — after the task, the milestone, the foundation/setup level,
-and stage graduation. Like every scope level it runs the same shape: **gather → propose → the human
+Releasing is the **fifth scope level** — after setup, intake, the milestone loop, and stage graduation.
+Like every scope level it runs the same shape: **gather → propose → the human
 confirms → the engine records and enforces a floor.** And like graduation, it ends with an outward
 act the human owns. The operational recipe lives in the `release.md` skill guide; this chapter is the
 *why* behind it.
@@ -179,4 +179,4 @@ the risk, record the marker, and let a person make the outward call.
 
 ---
 
-[← 15 Foundations & Lineage](./15-foundations-and-lineage.md) · [Contents](./README.md) · Next: [Appendix A Templates →](./appendix-a-templates.md)
+[← 15 Foundations & Lineage](./15-foundations-and-lineage.md) · [Contents](./README.md) · Next: [17 Components →](./17-components.md)

@@ -17,185 +17,115 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-# --- constants ---------------------------------------------------------------
+try:                       # component-aware-add registry parse (Python 3.11+ stdlib)
+    import tomllib
+except ModuleNotFoundError:   # < 3.11: the registry is unsupported → degrade to opt-out
+    tomllib = None
 
-ROOT_DIRNAME = ".add"
-STATE_FILE = "state.json"
-MILESTONE_FILE = "MILESTONE.md"
-# The project GOAL (v20) is read live from PROJECT.md — never copied into state.json
-# (single-source; the foundation is the truth). A missing/blank source degrades to
-# this sentinel so the read-only orientation surfaces never blank or crash.
-GOAL_UNSET = "(unset — add a 'goal:' line to PROJECT.md)"
-STAGES = ("prototype", "poc", "mvp", "production")
-# v22 stage-graduation: the read-only cue `status` shows when the MVP is covered.
-# Worded as the ACTION (never a file) so it stands before graduate.md exists.
-GRADUATION_CUE = "MVP covered → propose graduation"
-# release-altitude: the read-only cue `status` shows when ≥1 closed milestone is
-# unreleased. The 5th scope level (release.md). `{n}` is filled at print time; the
-# wording matches SKILL.md's "Beyond the bundle" cross-ref byte-for-byte.
-RELEASABLE_CUE = "releasable: {n} milestone(s) closed since last release"
-# the append-only release ledger lives at the PROJECT ROOT (the dir containing .add/),
-# a sibling of CHANGELOG.md — NOT inside .add/. The ledger IS the attribution source:
-# a milestone is "released" iff its slug appears on a `milestones:` row.
-RELEASES_FILE = "RELEASES.md"
-PHASES = ("ground", "specify", "scenarios", "contract", "tests", "build", "verify", "observe", "done")
-GATES = ("none", "PASS", "RISK-ACCEPTED", "HARD-STOP")
-# heal-then-escalate (verify-integrity): the bounded self-heal loop cap. A CONFIRMED cheat
-# (mechanical tripwire divergence, or an agent-reported semantic refute-read finding) returns
-# the task to BUILD for an honest redo; after HEAL_CAP such attempts the next confirmed cheat
-# forces a HARD-STOP escalation to the human. MONOTONIC — attempts never auto-resets (a gamed
-# green is never auto-passed; the loop is never unbounded).
-HEAL_CAP = 3
+# --- constants (moved to add_engine/constants.py — engine-modularization) ----
+from add_engine.constants import *  # noqa: F401,F403  (public constants via __all__)
+from add_engine.constants import (  # the _-prefixed names (import * skips them)
+    _GITIGNORE_BODY, _GUIDE_BEGIN, _GUIDE_END,
+    _RULE_REF_LINE, _FALLBACK_TASK, _FALLBACK_TASK_FAST,
+    _DEFAULT_WIDTH,
+    _DELTA_RE, _EVIDENCE_RE, _SPEC_DELTA_RE,   # shared delta regexes (taskdoc + deltas-web lint)
+    _AUTONOMY_LEVELS,   # shared (autonomy resolvers + _AUTONOMY_ORDER/cmd_autonomy)
+)
+
+# --- terminal-render primitives (moved to add_engine/render.py) -------------
+from add_engine.render import (
+    _bar, _phase_track, _use_ascii, _color_enabled, _term_width, _colorize, _clip, _wrap,
+)
+
+# --- milestone-doc readers (moved to add_engine/milestones.py) --------------
+from add_engine.milestones import (
+    _has_production_roadmap, _project_goal, _milestone_doc, _exit_criteria,
+    _exit_criteria_cited, _stage_criteria, _all_milestones_done,
+)
+
+# --- component/federation subsystem (moved to add_engine/components.py) ------
+from add_engine.components import (
+    _confined, _components, _cite_region, _contracts, _federation,
+    _contract_snapshot, _in_scope,
+)
+
+# --- update-nudge version helpers (moved to add_engine/version.py) ----------
+from add_engine.version import (
+    _read_json_safe, _version_gt, _fetch_latest_version,
+)
+
+# --- changelog/RELEASES render helpers (moved to add_engine/release.py) -----
+from add_engine.release import (
+    _releases_path, _closed_milestones, _key_decisions_for,
+    _build_in_flight, _render_changelog_block, _render_releases_row,
+)
+
+# --- TASK.md structural readers (moved to add_engine/taskdoc.py) ------------
+from add_engine.taskdoc import (
+    _task_header, _count_test_defs, _primary_test_files, _tests_count,
+    _declared_test_files, _declared_tests_count, _tests_info, _task_prose,
+    _phase_spans, _raw_phase_bodies, _spec_delta_entries,
+)
+
+# --- autonomy-level resolvers (moved to add_engine/autonomy.py) -------------
+from add_engine.autonomy import (
+    _autonomy_level, _effective_autonomy, _project_autonomy, _project_autonomy_token,
+)
 
 
 def _phase_index(name: str) -> int:
     """Ordinal of a phase in PHASES; used to enforce forward-skip rules."""
     return PHASES.index(name)
 
-# `add.py guide` copy: per-phase (concrete next action, book chapter to read).
-# Keep the action wording aligned with each phase's EXIT line in the TASK template.
-PHASE_GUIDE = {
-    "ground":    ("gather the real codebase the task touches — files, symbols, signatures, conventions, and the anchor points the contract will cite; defer to PROJECT.md/CONVENTIONS.md and gather only the task delta",
-                  "02-the-flow.md"),
-    "specify":   ("state every rule — Must / Reject (+ named code) / After; rank assumptions lowest-confidence first and flag the biggest risk",
-                  "03-step-1-specify.md"),
-    "scenarios": ("write one Given/When/Then per Must AND per Reject; every result observable",
-                  "04-step-2-scenarios.md"),
-    "contract":  ("freeze the shape — signature, fields, error codes; names match the glossary",
-                  "05-step-3-contract.md"),
-    "tests":     ("write one failing test per scenario; run them RED for the right reason",
-                  "06-step-4-tests.md"),
-    "build":     ("write the minimum code to pass the tests; change no test and no contract",
-                  "07-step-5-build.md"),
-    "verify":    ("run the suite + non-functional checks, then record the gate",
-                  "08-step-6-verify.md"),
-    "observe":   ("note what to watch + the spec delta for the next loop",
-                  "09-the-loop.md"),
-    "done":      ("this task is done — pick the next feature",
-                  "02-the-flow.md"),
-}
-# Phase -> who owns it, for the `--json` autonomy signal. An autonomous harness may run a
-# phase only when owner=="ai" (stop is false); every other phase is a checkpoint. The map
-# follows the book's who-does-what table (Verify is "human only"); `tests`/`build`/`observe`
-# are AI-led. A phase missing here is `unmapped_phase` (fail closed) — never defaulted.
-PHASE_OWNER = {
-    "ground": "ai",
-    "specify": "human", "scenarios": "human", "contract": "seam",
-    "tests": "ai", "build": "ai", "verify": "human", "observe": "ai", "done": "human",
-}
-SETUP_FILES = ("PROJECT.md", "CONVENTIONS.md", "GLOSSARY.md", "MODEL_REGISTRY.md", "dependencies.allowlist", "DESIGN.md", "SOUL.md")
-
-# Scaffolded into .add/.gitignore at init so the engine's transient LOCAL artifacts
-# never reach git. Bare-filename patterns match at any depth under .add/ (tasks/,
-# milestones/, archive/). These are working state, not records: scope-snapshot.json
-# is the tests->build touch baseline the verify scope-gate reads from disk (the
-# durable scope declaration is the state.json anchor); pre-archive-state.bak.json is
-# archive-milestone's pre-delete recovery net — needed on disk, never in history;
-# .update-cache.json is the update-nudge's once-a-day registry throttle. All stay on
-# disk; git-ignoring them is hygiene, never deletion.
-_GITIGNORE_BODY = """\
-# ADD engine transient artifacts — local working state, never committed.
-# (Scaffolded by `add.py init`; edit freely — init never clobbers an existing copy.)
-scope-snapshot.json
-pre-archive-state.bak.json
-.update-cache.json
-"""
-
-# Guideline-injection targets + version-stable markers. NEVER change these marker
-# strings: a re-run finds the old block by exact match, so changing them would
-# orphan every block written by a prior version (see TASK guideline-inject).
-GUIDELINE_FILES = ("AGENTS.md", "CLAUDE.md")
-_GUIDE_BEGIN = "<!-- ADD:BEGIN — managed by `add.py sync-guidelines`; do not edit inside -->"
-_GUIDE_END = "<!-- ADD:END -->"
-
-# Minimal embedded fallback so the tool still works if templates/ is missing
-# (circuit breaker: never hard-fail just because a template file was deleted).
-_FALLBACK_TASK = """# TASK: {title}
-
-slug: {slug} · created: {date} · stage: {stage}
-autonomy: auto
-phase: ground
-
-## 0 · GROUND
-Touches (files · symbols · signatures):
-Honors (patterns / conventions):
-Anchors the contract cites:
-
-## 1 · SPECIFY
-Feature:
-Framings weighed:
-Must:
-Reject:
-After:
-Assumptions — lowest-confidence first:
-  ⚠ <most likely wrong> — lowest confidence because <why>; if wrong: <cost>
-
-## 2 · SCENARIOS
-## 3 · CONTRACT
-Status: DRAFT
-## 4 · TESTS
-## 5 · BUILD
-## 6 · VERIFY
-### GATE RECORD
-Outcome:
-## 7 · OBSERVE
-### Spec delta
-### Competency deltas
-"""
+# --- low-level IO (moved to add_engine/io_state.py — engine-modularization) -
+from add_engine.io_state import (  # re-exported as module globals: callers use bare
+    _now, _atomic_write, _atomic_write_bytes, _atomic_write_many,  # names so patches
+    find_root, _require_root, _migrate_state, _state_text_or_die,  # on add.<name>
+    _die,                                                          # still resolve;
+    _CONFLICT_MARKER_RE,                                            # conflict-marker re
+    _load_state_for_json,                                          # --json state loader
+    _md5_text, _md5_file,                                          # md5 hashing helpers
+)
 
 
-# --- low-level IO (designed for failure: atomic, no silent clobber) ----------
+# --- active milestone/task accessors (moved to add_engine/accessors.py) -------
+from add_engine.accessors import (
+    _active_milestone, _active_task, _set_active_milestone,
+    _set_active_task, _activate_milestone, _deactivate_milestone,
+)
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+# --- state load/save (KEPT in add.py: write-path pinned by add._atomic_write tests) -
 
-
-def _atomic_write(path: Path, text: str) -> None:
-    """Write via a temp file in the same dir, then atomically replace.
-
-    Avoids a half-written file if the process dies mid-write.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+def load_state(root: Path) -> dict:
+    """Load + parse state.json, failing CLOSED. A git-conflicted file dies with a merge-specific
+    'state_conflicted'; any other corrupt/unreadable file dies with a clean 'state_invalid'
+    message (never a raw traceback), so every command that loads state degrades gracefully
+    (design-for-failure). The parsed state is forward-migrated to the multi-active schema."""
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
+        return _migrate_state(json.loads(_state_text_or_die(root)))
+    except (json.JSONDecodeError, OSError) as e:
+        _die(f"state_invalid: {root / STATE_FILE} is corrupt or unreadable "
+             f"({e.__class__.__name__}) — restore it from git or a backup")
 
 
-def _atomic_write_many(writes: list[tuple[Path, str]]) -> None:
-    """Two-phase commit across several files — design-for-failure for a multi-file write.
-
-    Phase 1 STAGES every (path, text) to a sibling temp file; the realistic IO failures
-    (disk full, permission denied) surface HERE, before any visible file changes — and on any
-    failure every staged temp is removed, so NOTHING is committed. Phase 2 then `os.replace`s
-    each staged temp into place (same-dir renames are atomic and effectively never fail once the
-    temp is written). This narrows the partial-write window of N independent `_atomic_write`s to
-    the rename loop, honouring a caller's "any failure -> write nothing" across the whole set.
-    """
-    staged: list[tuple[str, Path]] = []
+def save_state(root: Path, state: dict) -> None:
+    state["updated"] = _now()
     try:
-        for path, text in writes:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(text)
-            staged.append((tmp, path))
-        for tmp, path in staged:                  # phase 2: commit via atomic renames
-            os.replace(tmp, path)
-    finally:
-        for tmp, _ in staged:                     # leftover temps (a failed/aborted stage) never persist
-            if os.path.exists(tmp):
-                os.unlink(tmp)
+        _atomic_write(root / STATE_FILE, json.dumps(state, indent=2) + "\n")
+    except OSError as e:
+        # Fail CLOSED like load_state: a named, recoverable error — never a raw traceback. The
+        # atomic temp+replace leaves the prior state.json byte-unchanged, so it is safe to retry.
+        _die(f"state_write_failed: could not write {root / STATE_FILE} "
+             f"({e.__class__.__name__}) — the prior state.json is intact; "
+             "free disk / fix permissions and re-run")
 
 
 def _templates_dir() -> Path:
@@ -205,13 +135,14 @@ def _templates_dir() -> Path:
 def _render_template(name: str, **subs: str) -> str:
     """Load templates/<name>.tmpl and substitute {{key}} tokens.
 
-    Falls back to a built-in minimal template only for TASK.md.
+    Falls back to a built-in minimal template for TASK.md and the fast-lane TASK.fast.md.
     """
     tmpl = _templates_dir() / f"{name}.tmpl"
+    _fallbacks = {"TASK.md": _FALLBACK_TASK, "TASK.fast.md": _FALLBACK_TASK_FAST}
     if tmpl.exists():
         text = tmpl.read_text(encoding="utf-8")
-    elif name == "TASK.md":
-        text = _FALLBACK_TASK.replace("{title}", "{{title}}").replace(
+    elif name in _fallbacks:
+        text = _fallbacks[name].replace("{title}", "{{title}}").replace(
             "{slug}", "{{slug}}").replace("{date}", "{{date}}").replace("{stage}", "{{stage}}")
     else:
         text = ""
@@ -219,202 +150,96 @@ def _render_template(name: str, **subs: str) -> str:
         text = text.replace("{{" + key + "}}", val)
     return text
 
+# --- state/markdown predicates (moved to add_engine/predicates.py) -----------
+from add_engine.predicates import (
+    _phase_owner, _setup_locked, _milestone_confirmed, _section_unfilled,
+    _task_done,
+)
 
-# --- state -------------------------------------------------------------------
-
-def find_root(start: Path | None = None) -> Path | None:
-    """Walk up from cwd to find a .add/ project root."""
-    cur = (start or Path.cwd()).resolve()
-    for d in (cur, *cur.parents):
-        if (d / ROOT_DIRNAME / STATE_FILE).exists():
-            return d / ROOT_DIRNAME
-    return None
-
-
-def _require_root() -> Path:
-    root = find_root()
-    if root is None:
-        _die("no .add/ project found. Run `add.py init` first.")
-    return root
+# --- git-native identity/actor seam (moved to add_engine/identity.py) --------
+from add_engine import identity            # qualified calls: identity._whoami(...)
+from add_engine.identity import (          # re-exported for `add.<name>` attr compat
+    _git_config, _os_user, _whoami, _actor_stamp,
+    _render_actor_line, _parse_actor_arg, _actor_matches,
+)
 
 
-def load_state(root: Path) -> dict:
-    """Load + parse state.json, failing CLOSED. A corrupt or unreadable state file
-    dies with a clean 'state_invalid' message (never a raw traceback), so every
-    command that loads state degrades gracefully (design-for-failure)."""
-    try:
-        return json.loads((root / STATE_FILE).read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
-        _die(f"state_invalid: {root / STATE_FILE} is corrupt or unreadable "
-             f"({e.__class__.__name__}) — restore it from git or a backup")
-
-
-def _load_state_for_json() -> tuple[Path, dict]:
-    """Fail-closed state load for `--json` paths: a missing project or unparseable
-    state.json -> `no_state` on stderr + exit 1, with EMPTY stdout (never a partial
-    JSON object a harness might parse). Built from State only — reads no docs/ chapter."""
-    root = find_root()
-    if root is None:
-        _die("no_state")
-    try:
-        return root, json.loads((root / STATE_FILE).read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        _die("no_state")
-
-
-def _phase_owner(phase: str) -> str:
-    """Map a phase to its owner (human|seam|ai); `unmapped_phase` if absent (fail closed)."""
-    owner = PHASE_OWNER.get(phase)
-    if owner is None:
-        _die("unmapped_phase")
-    return owner
-
-
-def save_state(root: Path, state: dict) -> None:
-    state["updated"] = _now()
-    _atomic_write(root / STATE_FILE, json.dumps(state, indent=2) + "\n")
-
-
-def _setup_locked(state: dict) -> bool:
-    """True when the project's setup is locked — i.e. the build-boundary gate is OPEN.
-
-    A state with NO "setup" key is GRANDFATHERED-locked: plain `init` and every legacy
-    project are never gated (the lock is opt-in via `init --await-lock`). The gate is
-    therefore active in exactly one case: "setup" present AND locked is False."""
-    return ("setup" not in state) or (state["setup"].get("locked") is True)
-
-
-def _die(msg: str, code: int = 1) -> None:
-    print(f"add: error: {msg}", file=sys.stderr)
-    raise SystemExit(code)
-
-
-# --- guideline injection (dynamic-by-reference; designed for failure) --------
-#
-# Inject one stable, marker-delimited ADD block into the project root's AGENTS.md
-# and CLAUDE.md. The block is DYNAMIC-BY-REFERENCE: it tells the agent to run
-# `add.py status` and read PROJECT.md — it never embeds live state (slug, phase,
-# gate). Auto-updated context files measurably hurt (ETH-Zurich: ~3% lower success,
-# 20%+ more cost), so the stable pointer is the whole point.
-
-def _guideline_block() -> str:
-    """The canonical ADD block (markers + body, no trailing newline).
-
-    Agent-agnostic by design (v14 agent-portability): the routing steps depend
-    only on the CLI and plain files, so any agent — Claude, Cursor, Copilot,
-    Codex — can follow them. Claude additionally gets the `add` skill."""
-    return (
-        f"{_GUIDE_BEGIN}\n"
-        "## ADD — how to work in this repo\n"
-        "\n"
-        "This project uses **ADD (AI-Driven Development)**: you, the AI, drive the build;\n"
-        "the human owns direction and verification. The loop below works for any agent —\n"
-        "Claude, Cursor, Copilot, Codex — through the CLI alone. Before you change code:\n"
-        "\n"
-        "1. Run `python3 .add/tooling/add.py status` — where the project is and what's\n"
-        "   next (the resume point; read it first every session).\n"
-        "2. Read `.add/PROJECT.md` — the foundation (domain · spec · UI/UX) every task\n"
-        "   builds on.\n"
-        "3. Run `python3 .add/tooling/add.py guide` — it names the phase and the exact\n"
-        "   phase-guide file to read (the `guide  :` line). Work ONLY that phase — each\n"
-        "   guide ends with its exit gate and the command to move on.\n"
-        "\n"
-        "The flow: INTAKE sizes a request into a milestone; each task runs the\n"
-        "**specification bundle** — Spec+Scenarios+Contract+Tests as one bundle,\n"
-        "ONE human approval at the frozen contract — then a self-driving build→verify\n"
-        "run. Non-negotiable for every agent:\n"
-        "Never weaken a test or edit a frozen contract to make a build pass; a security\n"
-        "finding is always HARD-STOP — never auto-passed.\n"
-        "\n"
-        "On Claude Code the `add` skill drives this loop automatically; other agents\n"
-        "follow the three steps. The book is in `.add/docs/`. This block is generated\n"
-        "by `add.py sync-guidelines`; edit outside the markers, not inside.\n"
-        f"{_GUIDE_END}"
-    )
-
-
-def _inject_block(path: Path) -> str:
-    """Write the ADD block into `path`. Returns created|updated|unchanged.
-
-    - unchanged: on-disk block already matches -> no write, no .bak (idempotent).
-    - updated:   existing content changes -> back up the original to <path>.bak first.
-    - created:   file did not exist -> write the block, no .bak.
-    User content outside the markers is always preserved.
-    """
-    block = _guideline_block()
-    if path.exists():
-        current = path.read_text(encoding="utf-8")
-        begin = current.find(_GUIDE_BEGIN)
-        if begin != -1:
-            end = current.find(_GUIDE_END, begin)
-            if end != -1:                      # replace only the marked region
-                end += len(_GUIDE_END)
-                new = current[:begin] + block + current[end:]
-            else:                              # begin without end: corrupt — append fresh
-                print(f"add: warning: {path.name}: found an ADD:BEGIN with no ADD:END "
-                      "— appending a fresh block; review the result", file=sys.stderr)
-                new = current.rstrip("\n") + "\n\n" + block + "\n"
-        else:                                  # no block yet — append, keep user content
-            new = current.rstrip("\n") + "\n\n" + block + "\n"
-        if new == current:
-            return "unchanged"
-        _atomic_write(Path(str(path) + ".bak"), current)   # rollback path before mutate
-        _atomic_write(path, new)
-        return "updated"
-    _atomic_write(path, block + "\n")
-    return "created"
-
-
-def _inject_guidelines(project_root: Path) -> list[tuple[str, str]]:
-    """Inject the block into each guideline file under `project_root`.
-
-    Symlink-dedup: targets resolving (os.path.realpath) to the same inode are
-    written once, against the REAL file (never replacing the symlink with a
-    regular file). Per-target OSError is isolated (warn+skip) so one unwritable
-    file never aborts the run or `init`.
-    """
-    results: list[tuple[str, str]] = []
-    seen: set[str] = set()
-    for name in GUIDELINE_FILES:
-        target = project_root / name
-        real = os.path.realpath(target)
-        if real in seen:
+def _my_work(state: dict, me: dict) -> list[dict]:
+    """The "my work" lens (multi-active-UX): across ALL active milestones, the NOT-done tasks
+    whose owner OR assignee is `me`. Returns ordered rows {slug, milestone, phase, role} with
+    role in {owner, assignee, both}, sorted by active-milestone order then slug. PURE · no I/O."""
+    active = list(state.get("active_milestones") or [])
+    active_set = set(active)
+    tasks = state.get("tasks") if isinstance(state.get("tasks"), dict) else {}
+    rows: list[dict] = []
+    for slug, t in tasks.items():
+        if not isinstance(t, dict) or t.get("milestone") not in active_set or _task_done(t):
             continue
-        seen.add(real)
-        write_target = Path(real) if target.is_symlink() else target
-        try:
-            action = _inject_block(write_target)
-        except (OSError, UnicodeDecodeError) as exc:
-            # design for failure: an unwritable target OR a non-UTF-8 existing file
-            # (e.g. a UTF-16 CLAUDE.md from a Windows editor) must not crash init or
-            # abort the other target — warn and skip this one.
-            print(f"add: warning: could not sync {name} — {exc}; skipped",
-                  file=sys.stderr)
-            action = "skipped"
-        results.append((name, action))
-    return results
+        owns = identity._actor_matches(t.get("owner"), me)
+        assigned = identity._actor_matches(t.get("assignee"), me)
+        if not (owns or assigned):
+            continue
+        role = "both" if owns and assigned else ("owner" if owns else "assignee")
+        rows.append({"slug": slug, "milestone": t.get("milestone"),
+                     "phase": t.get("phase"), "role": role})
+    order = {m: i for i, m in enumerate(active)}
+    rows.sort(key=lambda r: (order.get(r["milestone"], len(order)), r["slug"]))
+    return rows
 
 
-# --- commands ----------------------------------------------------------------
-
-_INIT_EXCLUDE = {
-    ".add", "AGENTS.md", "CLAUDE.md", ".git",
-    ".gitignore", ".gitattributes", ".github", ".editorconfig",  # VCS/CI/editor scaffolding — no domain signal
-    "LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING",            # legal boilerplate — no domain signal
-}  # README/docs/source are NOT excluded: they carry domain content adopt.md maps -> brownfield
+# A git conflict marker BEGINS a line with 7 of `<`, `=`, or `>` (`(?m)^…`). An unresolved
+# merge writes these into state.json, making it invalid JSON; the line-anchor keeps a
+# legitimate value (always on an INDENTED JSON line) from false-tripping the guard.
 
 
-def _is_brownfield(base: Path) -> bool:
-    """True when `base` already holds project content beyond the tool's own scaffolding.
+def _stamp_gate_record(root: Path, state: dict, slug: str, outcome: str) -> None:
+    """Write-back (gate-record-writeback): mirror the resolved gate verdict into the task's
+    §6 `### GATE RECORD`, so the file and state.json never silently diverge (Finding C). Runs
+    for EVERY task — the write is ADDITIVE and never refuses, so (unlike the two refusal gates)
+    it needs no `--await-confirm` opt-in to protect the census. GRANDFATHER is the safety: a
+    GATE RECORD line is rewritten ONLY while it still holds a `<…>` placeholder; a resolved
+    (hand-filled) line is byte-untouched. No GATE RECORD block / no placeholder line / an
+    unreadable file -> silent no-op, the file stays byte-identical. Called AFTER save_state —
+    state is the source of truth; the file only mirrors it, so a write fault never loses a verdict."""
+    f = root / "tasks" / slug / "TASK.md"
+    try:
+        text = f.read_text(encoding="utf-8")
+    except OSError:
+        return                                   # unreadable -> no-op (never blocks the gate)
+    if "### GATE RECORD" not in text:
+        return                                   # nothing to mirror into
+    actor = identity._actor_stamp(state)
+    today = date.today().isoformat()
+    # each rule matches ONLY a line still carrying a `<…>` placeholder -> grandfather a resolved line.
+    rules = [
+        (r"(?m)^(Outcome:[ \t]*)<[^>\n]*>.*$", f"Outcome: {outcome}"),
+        (r"(?m)^Reviewed by:[ \t]*.*<[^>\n]*>.*$",
+         f"Reviewed by: {actor['name']} · date: {today}"),
+    ]
+    if outcome == "RISK-ACCEPTED":
+        w = ((state.get("tasks") or {}).get(slug) or {}).get("waiver") or {}
+        rules.append((r"(?m)^If RISK-ACCEPTED ->.*<[^>\n]*>.*$",
+                      f"If RISK-ACCEPTED -> owner: {w.get('owner', '?')} · "
+                      f"ticket: {w.get('ticket', '?')} · expires: {w.get('expires', '?')}"))
+    new = text
+    for pat, repl in rules:
+        new = re.sub(pat, repl, new, count=1)
+    # component-aware-add (per-component-verify): record WHICH green-bar a bound task gated
+    # against, right after the Outcome line. Unbound / no green_bar -> no line (byte-identical).
+    _bar = _task_green_bar(root, slug)
+    if _bar:
+        _line = f"component: {_task_component(root, slug)} · expected green-bar: {_bar}"
+        if _line not in new:
+            new = re.sub(r"(?m)^(Outcome:.*$)", lambda m: m.group(1) + "\n" + _line, new, count=1)
+    if new != text:                              # no-op = no write (mtime stable)
+        _atomic_write(f, new)
 
-    Judgment-free: a mechanical fact (does the dir hold a non-excluded entry?), so the
-    autonomous-onboarding flow knows to map existing code into the living documentation. INTERPRETING
-    that code stays with the AI (skill/add/adopt.md) — the engine only detects + signals."""
-    if not base.is_dir():
-        return False
-    return any(child.name not in _INIT_EXCLUDE for child in base.iterdir())
 
-
+# --- guidelines / CLAUDE.md-injection subsystem (moved to add_engine/guidelines.py) -
+from add_engine.guidelines import (
+    _guideline_block, _inject_block, _rule_file_mode, _strip_inline_block,
+    _insert_rule_reference, _ensure_claude_reference, _inject_guidelines, _is_brownfield,
+)
 def cmd_init(args: argparse.Namespace) -> None:
     base = Path(args.dir).resolve()
     root = base / ROOT_DIRNAME
@@ -453,6 +278,8 @@ def cmd_init(args: argparse.Namespace) -> None:
         "stage": args.stage,
         "active_task": None,
         "active_milestone": None,
+        "active_milestones": [],
+        "active_tasks": {},
         "tasks": {},
         "milestones": {},
         "created": _now(),
@@ -464,7 +291,7 @@ def cmd_init(args: argparse.Namespace) -> None:
         state["setup"] = {"locked": False, "locked_at": None, "locked_by": None, "layers": []}
     save_state(root, state)
     # zero-config: give any agent a stable pointer into the ADD runtime.
-    for name, action in _inject_guidelines(base):
+    for name, action in _inject_guidelines(base, getattr(args, "rule_file", False)):
         if action != "unchanged":
             print(f"{action:>9}  {name}")
     print(f"initialised ADD project '{state['project']}' (stage: {state['stage']}) at {root}")
@@ -476,11 +303,15 @@ def cmd_init(args: argparse.Namespace) -> None:
     else:
         print("next: open Claude Code, run `/add`, and say what you want to build —")
         print("      the `add` skill sizes it into a milestone and drives the build with you.")
+    # setup hygiene (both branches): the .add/ folder IS the shared project state — commit it
+    # so the team shares one source of truth; its transient working files are already gitignored.
+    print("tip:  commit the .add/ folder to git so your team shares the ADD state "
+          "(its transient files are already .gitignored).")
 
 
 def cmd_sync_guidelines(args: argparse.Namespace) -> None:
     project_root = _require_root().parent
-    for name, action in _inject_guidelines(project_root):
+    for name, action in _inject_guidelines(project_root, getattr(args, "rule_file", False)):
         print(f"{action:>9}  {name}")
 
 
@@ -499,9 +330,15 @@ def cmd_new_task(args: argparse.Namespace) -> None:
         _die(f"task '{slug}' already exists (use --force to overwrite TASK.md)")
 
     # link to a milestone (explicit, or the active one) — validate before any write
-    milestone = getattr(args, "milestone", None) or state.get("active_milestone")
+    milestone = getattr(args, "milestone", None) or _active_milestone(state)
     if milestone and milestone not in state.get("milestones", {}):
         _die("unknown_milestone")
+    # confirm-parent gate (OPT-IN): a task may not be detailed before its parent milestone is
+    # human-confirmed — but ONLY when the milestone opted in via `new-milestone --await-confirm`.
+    # validate-then-write — refuse BEFORE any scaffold/state mutation. A milestone with no
+    # `confirmed` key (non-flag + pre-existing) is grandfathered (mirrors the setup-lock).
+    if milestone and not _milestone_confirmed(state, milestone):
+        _die(f"milestone_unconfirmed: confirm it first — add.py milestone-confirm {milestone}")
     depends_on = _parse_deps(getattr(args, "depends_on", None))
 
     # SEED (--from-delta): resolve a prior task's FIRST open SPEC delta into THIS task.
@@ -509,16 +346,25 @@ def cmd_new_task(args: argparse.Namespace) -> None:
     # seeded flip NOW (before any write); the slug-free check above has already passed, so
     # the only writes below are the new TASK.md, then the prior flip, then state.
     from_delta = getattr(args, "from_delta", None)
+    match = getattr(args, "match", None)
+    if match and not from_delta:                            # --match targets the PRIOR's delta
+        _die("match_requires_from_delta: --match needs --from-delta <prior> (it selects the "
+             "prior task's open SPEC delta to seed)")
     feature_override = prior_md = flipped_prior = None
     if from_delta:
         prior = _resolve_task(state, from_delta)            # unknown prior -> _die
         prior_md = root / "tasks" / prior / "TASK.md"
         prior_text = prior_md.read_text(encoding="utf-8")
-        delta_text = _first_open_spec_text(prior_text)
-        if delta_text is None:
+        status, idx, delta_text = _select_spec_delta(prior_text, match)
+        if status == "no_open":
             _die(f"no_open_spec_delta: task '{prior}' has no open SPEC delta to seed")
+        if status == "no_match":
+            _die(f"no_matching_spec_delta: no open SPEC delta in '{prior}' matches --match '{match}'")
+        if status == "ambiguous":
+            _die(f"ambiguous_spec_match: --match '{match}' matches multiple open SPEC deltas in "
+                 f"'{prior}' — narrow it")
         feature_override = f"{delta_text} (from {prior} spec-delta)"
-        flipped_prior = _resolve_spec_delta(prior_text, "seeded", pointer=slug)
+        flipped_prior = _resolve_spec_delta(prior_text, "seeded", pointer=slug, line_index=idx)
 
     (tdir / "tests").mkdir(parents=True, exist_ok=True)
     (tdir / "src").mkdir(parents=True, exist_ok=True)
@@ -526,20 +372,31 @@ def cmd_new_task(args: argparse.Namespace) -> None:
     # inherit the project's DECLARED autonomy default (task init-auto-default) — fail-SAFE:
     # absent -> auto, garbled -> conservative; the posture is project-scoped, not hardcoded.
     autonomy = _project_autonomy(root)
+    # fast lane (fast-new-task-flag): --fast scaffolds the MINIMAL template instead of the full one.
+    # The human opts in explicitly (the engine never guesses ceremony); the freeze floor is held by
+    # the freeze-before-build gate's fast arm (cmd_advance), so the lighter shape never drops the trust seam.
+    fast = bool(getattr(args, "fast", False))
     rendered = _render_template(
-        "TASK.md", title=title, slug=slug, date=date.today().isoformat(),
+        "TASK.fast.md" if fast else "TASK.md",
+        title=title, slug=slug, date=date.today().isoformat(),
         stage=state["stage"], autonomy=autonomy)
     if feature_override:                                     # pre-fill §1 from the seeded delta
         rendered = re.sub(r"(?m)^Feature:.*$",
                           lambda _m: f"Feature: {feature_override}", rendered, count=1)
-    _atomic_write(task_md, rendered)
+    seed_writes: list[tuple[Path, str]] = [(task_md, rendered)]
     if flipped_prior is not None:                           # consume the source delta -> seeded
-        _atomic_write(prior_md, flipped_prior)
+        seed_writes.append((prior_md, flipped_prior))
+    _atomic_write_many(seed_writes)                         # new TASK.md + consumed source as one commit
     if _project_autonomy_token(root) == "?":
         print("warning: garbled_project_autonomy — PROJECT.md declares an unrecognized "
               f"autonomy token; new task seeded fail-safe '{autonomy}' "
               "(fix it with `add.py autonomy set <level> --project`)", file=sys.stderr)
 
+    # F8 (force-preserve-heal): a --force overwrite RE-CREATES the record; capture the prior
+    # MONOTONIC heal counter first so it survives. Else a task that accrued heal attempts (or
+    # was HARD-STOP escalated) could launder the cap (HEAL_CAP) to zero by re-creating itself —
+    # a zero-human cap bypass (the same invariant _heal_or_escalate guards: "never auto-resets").
+    prior_heal = state["tasks"].get(slug, {}).get("heal") if args.force else None
     state["tasks"][slug] = {
         "title": title,
         "phase": "ground",
@@ -549,14 +406,23 @@ def cmd_new_task(args: argparse.Namespace) -> None:
         "created": _now(),
         "updated": _now(),
     }
+    if prior_heal is not None:
+        state["tasks"][slug]["heal"] = prior_heal   # monotonic — survives the --force re-create
     if from_delta:
         state["tasks"][slug]["from_delta"] = from_delta     # lineage: seeded from <prior>
-    state["active_task"] = slug
+    if fast:
+        state["tasks"][slug]["fast"] = True                 # durable lane marker (absent == not-fast)
+    _set_active_task(state, slug, milestone)
     save_state(root, state)
     print(f"created task '{slug}' -> {task_md}")
     if milestone:
         print(f"linked to milestone '{milestone}'" +
               (f", depends-on {depends_on}" if depends_on else ""))
+    elif fast:
+        # blessed milestone-free fast lane (standalone-fast-task): a --fast task with no owning
+        # milestone is a DELIBERATE low-ceremony lane, not an orphan to nag — AFFIRM it.
+        print(f"standalone fast task '{slug}' — milestone-free by design (low-ceremony lane); "
+              f"attach later with `add.py set-milestone {slug} --milestone <id>` if it grows")
     else:
         # warn-never-block: the task is created (escape hatch), but nudge back toward the
         # intake -> milestone flow. Speaks of STRUCTURE (not attached), never the act.
@@ -579,11 +445,19 @@ def cmd_drop_delta(args: argparse.Namespace) -> None:
     state = load_state(root)
     slug = _resolve_task(state, args.slug)                  # unknown task -> _die
     task_md = root / "tasks" / slug / "TASK.md"
-    new_text = _resolve_spec_delta(task_md.read_text(encoding="utf-8"), "dropped")
-    if new_text is None:
+    text = task_md.read_text(encoding="utf-8")
+    match = getattr(args, "match", None)
+    status, idx, _disp = _select_spec_delta(text, match)
+    if status == "no_open":
         _die(f"no_open_spec_delta: task '{slug}' has no open SPEC delta to drop")
+    if status == "no_match":
+        _die(f"no_matching_spec_delta: no open SPEC delta in '{slug}' matches --match '{match}'")
+    if status == "ambiguous":
+        _die(f"ambiguous_spec_match: --match '{match}' matches multiple open SPEC deltas in "
+             f"'{slug}' — narrow it")
+    new_text = _resolve_spec_delta(text, "dropped", line_index=idx)
     _atomic_write(task_md, new_text)
-    print(f"dropped the first open SPEC delta in '{slug}' -> [SPEC · dropped]")
+    print(f"dropped the {'matched' if match else 'first'} open SPEC delta in '{slug}' -> [SPEC · dropped]")
     print(_next_footer(root, state))
 
 
@@ -591,16 +465,6 @@ def _parse_deps(raw: str | None) -> list[str]:
     if not raw:
         return []
     return [d.strip() for d in raw.split(",") if d.strip()]
-
-
-def _task_done(t: dict) -> bool:
-    # Matrix 3: a task is done when Verify reads PASS *or a signed RISK-ACCEPTED*.
-    # Both completing gates advance phase to "done" (cmd_gate), and a waiver is
-    # signed at gate time — so a verdict gate is enough here; we need not re-read
-    # the waiver. HARD-STOP never reaches "done". A bare `phase done` (escape
-    # hatch, gate still "none") deliberately does NOT count: completion needs a
-    # recorded verdict, not just a phase marker.
-    return t.get("phase") == "done" and t.get("gate") in ("PASS", "RISK-ACCEPTED")
 
 
 def _archived_task_slugs(state: dict) -> set[str]:
@@ -618,12 +482,82 @@ def _archived_task_slugs(state: dict) -> set[str]:
 
 
 def _resolve_task(state: dict, slug: str | None) -> str:
-    slug = slug or state.get("active_task")
+    slug = slug or _active_task(state)
     if not slug:
         _die("no task specified and no active task set")
     if slug not in state["tasks"]:
         _die(f"unknown task '{slug}'")
     return slug
+
+
+def _build_entry(root: Path, state: dict, slug: str) -> None:
+    """The shared tests->build entry guards + snapshots (task phase-build-guard, F4).
+
+    Extracted VERBATIM from cmd_advance's `nxt == "build"` block so BOTH `advance` and the
+    `phase build` admin override run the identical gate stack — the freeze gate, the
+    build-expectations gate, the unflagged-freeze check + flag stamp, the tamper tripwire, and
+    the §5 scope snapshot. validate-then-write: every `_die` precedes the first state mutation,
+    so a refused entry leaves the task byte-unchanged. The heal loop sets phase=build DIRECTLY
+    and never routes here, so it stays exempt.
+    """
+    # the OPTED-IN crossing guards (fast-lane + flow-enforcement): a task whose PARENT
+    # milestone opted into --await-confirm is held to the trust floor at tests->build. A
+    # task under a plain / no milestone is never gated (every existing advance-to-build flow
+    # stays green). validate-then-write — every refusal runs BEFORE the tripwire/scope
+    # snapshots below, writing nothing; the task stays at `tests`.
+    _ms = state["tasks"][slug].get("milestone")
+    _optin = bool(_ms) and (state.get("milestones") or {}).get(_ms, {}).get("await_confirm") is True
+    raw3 = _raw_phase_bodies(root, slug).get(3, "")
+    # freeze-before-build gate (fast-lane): "collapse-never-skip" made REAL — the freeze is
+    # engine-enforced for an opted-in milestone OR any --fast task (the fast arm, fast-new-task-flag:
+    # a fast task is held to the floor under ANY milestone, so the lighter lane never drops the
+    # trust seam). PRECEDES build-expectations: you freeze §3 before pre-declaring §6's outcomes.
+    _freeze_gated = _optin or state["tasks"][slug].get("fast") is True
+    if _freeze_gated and not _contract_frozen(raw3):
+        _die("contract_not_frozen: freeze §3 before crossing into build — approve "
+             f"the contract in {slug}'s TASK.md (Status: FROZEN @ vN)")
+    # build-expectations gate (flow-enforcement): an opted-in task may not enter build until
+    # its §6 `### Build expectations` are pre-declared — so verify checks the build is RIGHT,
+    # not just green. Same opt-in switch as the contract-fill gate, one level out.
+    if _optin:
+        if _section_unfilled(_raw_phase_bodies(root, slug).get(6, ""), "### Build expectations"):
+            _die("build_expectations_unfilled: fill the §6 '### Build expectations' block "
+                 f"of {slug}'s TASK.md before crossing into build")
+    if _contract_frozen(raw3):
+        if not _flag_well_formed(raw3):
+            _die("unflagged_freeze: a frozen §3 must surface a well-formed "
+                 "'Least-sure flag surfaced at freeze:' unit (>=1 [part] tag "
+                 "+ substantive content; bare 'none' only as 'none material — "
+                 "biggest risk: X') before crossing into build")
+        state["tasks"][slug]["flag_verified"] = True
+    # tamper tripwire (verify-integrity): snapshot the red test files + the frozen
+    # §3 md5s so the verify gate can prove the green was EARNED, not edited into
+    # place. UNCONDITIONAL overwrite — a legit change-request that re-crosses
+    # tests->build re-snapshots cleanly. Co-witnessed by flag_verified (above).
+    state["tasks"][slug]["tripwire"] = _tripwire_snapshot(root, slug, raw3)
+    # §5 scope gate (build-scope-lock): when the task declares its Scope, freeze
+    # the project tree into a sidecar (payload) + a state.json anchor (md5 of the
+    # sidecar bytes). Same UNCONDITIONAL-overwrite semantics as the tripwire.
+    # UNDECLARED (no Scope line) takes no snapshot — grandfathered, never retro-red
+    # — and CLEANS UP a previous declaration's leftovers (v3): a declared->
+    # undeclared re-cross pops the stale anchor + unlinks the stale sidecar, so
+    # "UNDECLARED is never refused" holds on every path.
+    declared = _declared_scope(root, slug)
+    side = root / "tasks" / slug / "scope-snapshot.json"
+    if declared is not None:
+        payload = json.dumps({"version": 1,
+                              "files": _scope_walk(root.parent.resolve())},
+                             sort_keys=True)
+        _atomic_write(side, payload)   # temp+replace, like save_state — a crash can't leave a
+                                       # torn sidecar (payload verbatim, no newline → md5 anchor holds)
+        state["tasks"][slug]["scope"] = {"declared": declared,
+                                         "snapshot_md5": _md5_text(payload)}
+    else:
+        state["tasks"][slug].pop("scope", None)
+        try:
+            side.unlink()
+        except OSError:
+            pass
 
 
 def cmd_phase(args: argparse.Namespace) -> None:
@@ -632,10 +566,18 @@ def cmd_phase(args: argparse.Namespace) -> None:
     slug = _resolve_task(state, args.slug)
     if args.phase not in PHASES:
         _die(f"phase must be one of: {', '.join(PHASES)}")
+    # phase-build-guard (F4): the admin override is NOT a backdoor around the tests->build gate
+    # stack — setting a task to build runs the SAME _build_entry guards `advance` runs (freeze
+    # gate · build-expectations · flag check · tamper tripwire · scope snapshot), so verify's
+    # _tamper_guard is armed and a freeze-gated DRAFT §3 is refused. Other targets are unchanged.
+    # validate-then-write: a refusal raises BEFORE the phase is set, so nothing moves. The heal
+    # loop sets phase=build directly (never via cmd_phase) and so stays exempt.
+    if args.phase == "build":
+        _build_entry(root, state, slug)
     state["tasks"][slug]["phase"] = args.phase
     state["tasks"][slug]["updated"] = _now()
-    _sync_task_marker(root, slug, args.phase)
-    save_state(root, state)
+    save_state(root, state)                    # F12: durable state FIRST (source of truth) — may _die
+    _sync_task_marker(root, slug, args.phase)  # then mirror into TASK.md (best-effort) — no split-brain
     print(f"task '{slug}' phase -> {args.phase}")
     print(_next_footer(root, state))
 
@@ -653,52 +595,81 @@ def cmd_advance(args: argparse.Namespace) -> None:
     # into build/verify/observe/done is refused until `add.py lock`.
     if not _setup_locked(state) and nxt in ("build", "verify", "observe", "done"):
         _die("setup_unlocked: lock the foundation first — add.py lock")
+    # intra-milestone cross-component HOLD (cross-component-milestone): a consumer of a DECLARED
+    # contract may not enter §3 (scenarios->contract) until its producer froze — proven by the
+    # snapshot the producer's contract->tests crossing writes (task 3). This orders a BE→FE slice
+    # inside ONE milestone (the FE stays downstream of the frozen endpoint). Validate-before-write:
+    # the HARD-STOP precedes the phase bump, so the task stays at `scenarios`. Undeclared id / no
+    # `consumes:` header -> no hold (byte-identical; a typo'd id is a cmd_check registry finding).
+    if nxt == "contract":
+        _cid = _task_consumes(root, slug)
+        _cmap = _contracts(root)
+        if _cid and _cid in _cmap and not _contract_snapshot(root, _cid).exists():
+            _die(f"producer_contract_unfrozen: the producer '{_cmap[_cid].get('producer', '?')}' of "
+                 f"contract '{_cid}' must freeze its contract before you write §3 — wait for "
+                 f".add/contracts/{_cid}.json")
     # flag-first freeze guard (task unflagged-freeze): a FROZEN §3 may not cross
     # into build without a WELL-FORMED lowest-confidence flag. On pass, stamp the
     # verified marker so `audit` enforces the flag on THIS record only (open/new
     # freezes — the unmarked predecessors are never retro-redded). REFUSE writes
     # nothing (fail-closed); below the build boundary the flag is never checked.
     if nxt == "build":
-        raw3 = _raw_phase_bodies(root, slug).get(3, "")
-        if _contract_frozen(raw3):
-            if not _flag_well_formed(raw3):
-                _die("unflagged_freeze: a frozen §3 must surface a well-formed "
-                     "'Least-sure flag surfaced at freeze:' unit (>=1 [part] tag "
-                     "+ substantive content; bare 'none' only as 'none material — "
-                     "biggest risk: X') before crossing into build")
-            state["tasks"][slug]["flag_verified"] = True
-        # tamper tripwire (verify-integrity): snapshot the red test files + the frozen
-        # §3 md5s so the verify gate can prove the green was EARNED, not edited into
-        # place. UNCONDITIONAL overwrite — a legit change-request that re-crosses
-        # tests->build re-snapshots cleanly. Co-witnessed by flag_verified (above).
-        state["tasks"][slug]["tripwire"] = _tripwire_snapshot(root, slug, raw3)
-        # §5 scope gate (build-scope-lock): when the task declares its Scope, freeze
-        # the project tree into a sidecar (payload) + a state.json anchor (md5 of the
-        # sidecar bytes). Same UNCONDITIONAL-overwrite semantics as the tripwire.
-        # UNDECLARED (no Scope line) takes no snapshot — grandfathered, never retro-red
-        # — and CLEANS UP a previous declaration's leftovers (v3): a declared->
-        # undeclared re-cross pops the stale anchor + unlinks the stale sidecar, so
-        # "UNDECLARED is never refused" holds on every path.
-        declared = _declared_scope(root, slug)
-        side = root / "tasks" / slug / "scope-snapshot.json"
-        if declared is not None:
-            payload = json.dumps({"version": 1,
-                                  "files": _scope_walk(root.parent.resolve())},
-                                 sort_keys=True)
-            side.write_text(payload, encoding="utf-8")
-            state["tasks"][slug]["scope"] = {"declared": declared,
-                                             "snapshot_md5": _md5_text(payload)}
-        else:
-            state["tasks"][slug].pop("scope", None)
+        # the tests->build entry guards + snapshots now live in the shared _build_entry helper
+        # (task phase-build-guard, F4) so `advance` and the `phase build` admin override run the
+        # IDENTICAL gate stack. Behavior here is byte-unchanged — this is a pure extraction.
+        _build_entry(root, state, slug)
+    # cross-component contract artifact (cross-component-contract): the contract->tests crossing
+    # is the producer's freeze-approval moment. A `produces:` task WRITES the immutable snapshot;
+    # a `consumes:` task PINS the live hash — a missing/unreadable snapshot HARD-STOPS here (the
+    # phase stays at `contract`, nothing pinned), so a consumer never builds against a guessed
+    # shape. No role / no contracts ⇒ neither branch is taken (byte-identical).
+    if nxt == "tests":
+        _prod = _task_produces(root, slug)
+        if _prod:
+            raw3c = _raw_phase_bodies(root, slug).get(3, "")
+            vm = re.search(r"FROZEN @ (v\d+)", raw3c)
+            snap = {"id": _prod, "producer": (_contracts(root).get(_prod) or {}).get("producer", "?"),
+                    "task": slug, "version": vm.group(1) if vm else "?",
+                    "frozen": date.today().isoformat(), "hash": _contract_body_hash(raw3c)}
+            sp = _contract_snapshot(root, _prod)
+            cur_snap = None
+            if sp.exists():
+                try:
+                    cur_snap = json.loads(sp.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    cur_snap = None
+            # idempotent: re-write only when the shape-hash or version actually changed (so a
+            # no-op re-cross leaves the file — and its `frozen` date — byte-identical).
+            if not (cur_snap and cur_snap.get("hash") == snap["hash"]
+                    and cur_snap.get("version") == snap["version"]):
+                sp.parent.mkdir(parents=True, exist_ok=True)
+                _atomic_write(sp, json.dumps(snap, sort_keys=True))
+        _cons = _task_consumes(root, slug)
+        if _cons:
+            sp = _contract_snapshot(root, _cons)
             try:
-                side.unlink()
-            except OSError:
-                pass
+                pinned = json.loads(sp.read_text(encoding="utf-8")).get("hash")
+            except (OSError, ValueError, AttributeError):
+                pinned = None
+            if not pinned:        # absent / unreadable / valid-JSON-but-no-hash all fail loud
+                _die(f"contract_snapshot_missing: no readable hashed .add/contracts/{_cons}.json — the "
+                     f"producer of '{_cons}' must freeze its contract first "
+                     "(never build against a guessed shape)")
+            state["tasks"][slug]["contract_pin"] = {"id": _cons, "hash": pinned}
     state["tasks"][slug]["phase"] = nxt
     state["tasks"][slug]["updated"] = _now()
-    _sync_task_marker(root, slug, nxt)
-    save_state(root, state)
+    save_state(root, state)             # F12: durable state FIRST (source of truth) — may _die
+    _sync_task_marker(root, slug, nxt)  # then mirror into TASK.md (best-effort) — no split-brain
     print(f"task '{slug}' phase {cur} -> {nxt}")
+    if nxt == "observe":
+        # OBSERVE is where this loop's lessons get captured (TASK.md §7) — suggest routing
+        # them into PROJECT.md right away (a per-task fold is engine-legal; otherwise the
+        # lessons sit unconsolidated until milestone close). Additive: fires only at this
+        # one transition, and the human still decides whether/when to run it. The verb word
+        # is interpolated via _FOLD_VERB so the domain wording-lint sees no bare slang.
+        print("  note: record the lessons this loop taught the foundation in §7 "
+              "OBSERVE, then update PROJECT.md when ready:")
+        print(f"    add.py {_FOLD_VERB} --task {slug}   (review first: add.py deltas)")
     print(_next_footer(root, state))
 
 
@@ -716,51 +687,24 @@ _RISK_HIGH_RE = re.compile(r"(?:^|·)[ \t]*risk:[ \t]*high\b", re.MULTILINE)
 
 # the explicit 3-mode autonomy dial (task explicit-autonomy-dial): an ordered ladder
 # manual < conservative < auto, declared as a per-task `autonomy:` header token.
-_AUTONOMY_LEVELS = ("manual", "conservative", "auto")
 # anchored to a DECLARATION position — line-start `autonomy:` OR the inline slug-line form
 # `… · autonomy: conservative` (the `·`-preceded shape) — never a title/prose substring; the
 # value stops at space/`<`/`#`/`|` so an unfilled `<manual | … >` placeholder captures nothing
 # and reads as UNSET.
-_AUTONOMY_LINE_RE = re.compile(r"(?:^|·)[ \t]*autonomy:[ \t]*([^\s<#|]+)", re.MULTILINE)
 
-
-def _autonomy_level(hdr: str):
-    """The declared autonomy rung from a TASK.md header region (HTML comments
-    already stripped by _task_header). Returns a member of _AUTONOMY_LEVELS, or
-    None when no `autonomy:` line is present (UNSET — an unfilled `<…>` placeholder,
-    whose value the regex declines, counts as unset), or "?" when a REAL token outside
-    the set was written (unknown). PURE."""
-    m = _AUTONOMY_LINE_RE.search(hdr)
-    if not m:
-        return None
-    tok = m.group(1).strip().lower()
-    return tok if tok in _AUTONOMY_LEVELS else "?"
+# component-aware-add: a task binds to a registered component via a `component: <name>`
+# header token — the SAME anchored grammar as autonomy (line-start or the `·`-inline
+# slug-line form), and an unfilled `<name>` placeholder captures nothing (reads UNBOUND).
+_COMPONENT_LINE_RE = re.compile(r"(?:^|·)[ \t]*component:[ \t]*([^\s<#|]+)", re.MULTILINE)
+# cross-component-contract: a task's role in a cross-component seam — same anchored grammar.
+_PRODUCES_LINE_RE = re.compile(r"(?:^|·)[ \t]*produces:[ \t]*([^\s<#|]+)", re.MULTILINE)
+_CONSUMES_LINE_RE = re.compile(r"(?:^|·)[ \t]*consumes:[ \t]*([^\s<#|]+)", re.MULTILINE)
 
 
 def _autonomy_lowered(hdr: str) -> bool:
     """True iff the declared rung is high-risk-safe (manual or conservative). A
     high-risk scope must be lowered to one of these; `auto` and UNSET are not."""
     return _autonomy_level(hdr) in ("manual", "conservative")
-
-
-def _task_header(root: Path, slug: str) -> str:
-    """The TASK.md header region — where declared tokens (risk · autonomy)
-    live — with HTML comments stripped. Missing file -> '' (no tokens)."""
-    try:
-        text = (root / "tasks" / slug / "TASK.md").read_text(encoding="utf-8")
-    except OSError:
-        return ""
-    return re.sub(r"<!--.*?-->", "", text.split("\n## ", 1)[0], flags=re.S)
-
-
-def _effective_autonomy(root: Path, state: dict, slug: str) -> str:
-    """The autonomy rung that governs `slug` right now: the task's own declared rung,
-    falling back to the project default when the task line is UNSET (None) or an
-    unrecognized token ("?") — the same fail-safe chain cmd_new_task seeds from
-    (_project_autonomy: absent -> auto, garbled -> conservative). PURE. `state` is unused
-    today; it is kept in the signature beside _driver_stop for symmetry."""
-    lvl = _autonomy_level(_task_header(root, slug))
-    return lvl if lvl in _AUTONOMY_LEVELS else _project_autonomy(root)
 
 
 def _driver_stop(root: Path, state: dict, slug: str, phase: str) -> bool:
@@ -821,6 +765,22 @@ def cmd_gate(args: argparse.Namespace) -> None:
         # §5 scope gate (build-scope-lock): touched ⊆ declared, or a named refusal —
         # same placement discipline as the tripwire (before the waiver, never on HARD-STOP).
         _scope_guard(root, state, slug)
+        # consumer-stale gate (consumer-stale-gate): a `consumes:` task whose pinned producer
+        # contract hash has drifted from the live snapshot built against an out-of-date shape —
+        # refuse the completing outcome (same before-the-waiver discipline). Re-pin to recover.
+        _consumer_stale_guard(root, state, slug)
+        # per-component verify (component-aware-add): a component-bound task with a declared
+        # green_bar must CITE that bar in its §6 evidence before a completing outcome — the
+        # engine never runs the suite, it checks the right bar was recorded. Unbound / no
+        # green_bar -> _bar is None -> this is skipped (byte-identical). HARD-STOP never here.
+        _bar = _task_green_bar(root, slug)
+        # the cite must live in the user-authored Build-expectations evidence region (_cite_region,
+        # v3): excludes the §6 checklist boilerplate + the GATE RECORD template/stamp, works for both
+        # the standard and fast-lane §6 shapes. Unbound / no green_bar -> _bar None -> skipped.
+        if _bar and _bar not in _cite_region(_raw_phase_bodies(root, slug).get(6, "")):
+            _die(f"component_green_bar_uncited: task '{slug}' is bound to component "
+                 f"'{_task_component(root, slug)}'; its §6 Build-expectations must cite the "
+                 f"green-bar '{_bar}' — record the evidence that bar was met before PASS")
     if args.outcome == "RISK-ACCEPTED":
         # A waiver must be SIGNED: owner, ticket, expiry (glossary). Stored in state
         # so a later `check` can read/expire it. Refuse a partial waiver outright.
@@ -833,11 +793,17 @@ def cmd_gate(args: argparse.Namespace) -> None:
         }
     if completing:
         state["tasks"][slug]["phase"] = "done"
-        _sync_task_marker(root, slug, "done")
     state["tasks"][slug]["gate"] = args.outcome
+    state["tasks"][slug]["gate_actor"] = identity._actor_stamp(state)   # WHO recorded the verdict (every outcome)
     state["tasks"][slug]["updated"] = _now()
-    save_state(root, state)
+    save_state(root, state)                                # F12: durable state FIRST (source of truth) — may _die
+    if completing:
+        _sync_task_marker(root, slug, "done")             # then mirror the phase into TASK.md — no split-brain
+    _stamp_gate_record(root, state, slug, args.outcome)   # mirror the verdict into §6 (Finding C)
     print(f"task '{slug}' gate -> {args.outcome}")
+    _gbar = _task_green_bar(root, slug)                   # per-component-verify: surface the bound bar
+    if _gbar:
+        print(f"component: {_task_component(root, slug)} · expected green-bar: {_gbar}")
     # the engine-sourced next step (next-footer-engine): a completing gate hands off to the
     # state arm; HARD-STOP routes to "resolve HARD-STOP …" — converging the old bespoke line.
     print(_next_footer(root, state))
@@ -917,6 +883,45 @@ def cmd_autonomy(args: argparse.Namespace) -> None:
     _print_autonomy(root, state, slug)
 
 
+def cmd_todo(args: argparse.Namespace) -> None:
+    """Capture / list / close a lightweight backlog todo (task: todo-capture).
+
+    A todo is a JOTTED IDEA, not a task — it carries no spec/contract/gate. It lets you
+    record an intent without sizing it. Promote one to a real task with
+    `add.py new-task <slug> --fast` when you decide to build it. Stored in state["todos"]
+    as {id (1-based = max+1), text, created, status:"open"|"done"}.
+    """
+    root = _require_root()                                   # reused -> "no .add/ project found …"
+    state = load_state(root)
+    todos = state.get("todos")
+    if not isinstance(todos, list):                          # absent / corrupt -> fresh list (drift-safe)
+        todos = state["todos"] = []
+    done_id = getattr(args, "done", None)
+    if done_id is not None:                                  # --done <id> : close an OPEN todo
+        for t in todos:
+            if isinstance(t, dict) and t.get("id") == done_id and t.get("status") == "open":
+                t["status"] = "done"
+                save_state(root, state)
+                print(f"todo #{done_id} done")
+                return
+        _die(f"todo_unknown: no open todo #{done_id}")
+    if args.text is not None:                                # capture attempt (text positional present)
+        text = args.text.strip()
+        if not text:
+            _die("todo_empty: a todo needs text")
+        new_id = max((t.get("id", 0) for t in todos if isinstance(t, dict)), default=0) + 1
+        todos.append({"id": new_id, "text": text, "created": _now(), "status": "open"})
+        save_state(root, state)
+        print(f"captured todo #{new_id}: {text}")
+        return
+    open_todos = [t for t in todos if isinstance(t, dict) and t.get("status") == "open"]
+    if not open_todos:                                       # bare `todo` -> list OPEN todos
+        print("no open todos")
+        return
+    for t in open_todos:
+        print(f"#{t.get('id')}  {t.get('text')}")
+
+
 def cmd_reopen(args: argparse.Namespace) -> None:
     """Return an already-`done` task to an earlier phase with a never-silent record.
 
@@ -951,8 +956,8 @@ def cmd_reopen(args: argparse.Namespace) -> None:
     t["phase"] = target
     t["gate"] = "none"
     t["updated"] = now
-    _sync_task_marker(root, slug, target)
-    save_state(root, state)
+    save_state(root, state)                # F12: durable state FIRST (source of truth) — may _die
+    _sync_task_marker(root, slug, target)  # then mirror into TASK.md (best-effort) — no split-brain
     print(f"task '{slug}' reopened: done -> {target} (reason recorded); gate reset to none")
     print(_next_footer(root, state))
 
@@ -1002,7 +1007,8 @@ def cmd_lock(args: argparse.Namespace) -> None:
     who = args.by or getpass.getuser()
     when = _now()
     # ONE atomic write — no partial lock state.
-    state["setup"] = {"locked": True, "locked_at": when, "locked_by": who, "layers": layers}
+    state["setup"] = {"locked": True, "locked_at": when, "locked_by": who, "layers": layers,
+                      "actor": identity._actor_stamp(state)}   # structured actor alongside the free-text locked_by
     save_state(root, state)
     if getattr(args, "json", False):
         print(json.dumps(
@@ -1013,13 +1019,90 @@ def cmd_lock(args: argparse.Namespace) -> None:
         print(_next_footer(root, state))
 
 
-def _has_production_roadmap(state: dict) -> bool:
-    """True iff ≥1 milestone in state has stage == "production" (STATUS-AGNOSTIC).
-    The single source of the stage-graduation floor (v22 graduate-guide): the guard counts
-    that a production-roadmap RECORD exists — it never judges whether those milestones are
-    done/good/sufficient (gather-not-judge). An archived-out-of-state roadmap falls to --force."""
-    return any(m.get("stage") == "production"
-               for m in state.get("milestones", {}).values())
+def cmd_whoami(args: argparse.Namespace) -> None:
+    """Show / set / unset the git-native ACTOR — the identity every human-owned stamp reads.
+    No flags: print the resolved actor (override -> git -> os). --name/--email: store an
+    override. --unset: clear it. Validates before mutating (a reject leaves state unchanged)."""
+    root = _require_root()
+    state = load_state(root)
+    if args.unset:
+        if "actor_override" not in state:
+            _die("no_actor_override")
+        del state["actor_override"]
+        save_state(root, state)
+    elif args.name is not None:
+        if not args.name.strip():
+            _die("actor_name_blank")
+        state["actor_override"] = {"name": args.name, "email": args.email or None}
+        save_state(root, state)
+    who = identity._whoami(state)
+    if getattr(args, "json", False):
+        print(json.dumps(who, separators=(",", ":")))
+        return
+    email = f" <{who['email']}>" if who.get("email") else ""
+    print(f"actor : {who['name']}{email} (source: {who['source']})")
+
+
+def _ownership_record(state: dict, slug: str) -> dict | None:
+    """Resolve the record a slug names for ownership — a TASK first, else a MILESTONE
+    (tasks win, matching cmd_use/report precedent). None if neither exists."""
+    rec = state.get("tasks", {}).get(slug)
+    if rec is not None:
+        return rec
+    return state.get("milestones", {}).get(slug)
+
+
+def cmd_assign(args: argparse.Namespace) -> None:
+    """Assign an OWNER (accountable) and/or ASSIGNEE (working it) to a task or milestone
+    (ownership-assignment). No role flag -> set BOTH to the resolved self (_whoami); --owner/
+    --assignee "Name <email>" -> set that role only (partial update). Descriptive, never a gate.
+    Validate-before-mutate: a reject leaves state.json byte-identical (no partial write)."""
+    root = _require_root()
+    state = load_state(root)
+    rec = _ownership_record(state, args.slug)
+    if rec is None:
+        _die("unknown_slug")
+    # parse + validate ALL flags BEFORE the first write — a blank name is rejected on the
+    # PARSED name (so "<>" or " <a@x.io>", whose name parses empty, is caught like "   ").
+    parsed_owner = identity._parse_actor_arg(args.owner) if args.owner is not None else None
+    parsed_assignee = identity._parse_actor_arg(args.assignee) if args.assignee is not None else None
+    if parsed_owner is not None and not parsed_owner["name"].strip():
+        _die("owner_name_blank")
+    if parsed_assignee is not None and not parsed_assignee["name"].strip():
+        _die("assignee_name_blank")
+    if parsed_owner is None and parsed_assignee is None:
+        who = identity._whoami(state)
+        rec["owner"] = dict(who)
+        rec["assignee"] = dict(who)
+    else:
+        if parsed_owner is not None:
+            rec["owner"] = parsed_owner
+        if parsed_assignee is not None:
+            rec["assignee"] = parsed_assignee
+    save_state(root, state)
+    parts = [f"{role}: {rec[role]['name']}" for role in ("owner", "assignee") if role in rec]
+    print(f"assigned {args.slug} -> " + " · ".join(parts))
+
+
+def cmd_unassign(args: argparse.Namespace) -> None:
+    """Clear the OWNER and/or ASSIGNEE of a task or milestone (ownership-assignment). No role
+    flag -> clear BOTH; --owner/--assignee -> clear that role only. Reject not_assigned if the
+    targeted role(s) are already absent. Validate-before-mutate (a reject changes nothing)."""
+    root = _require_root()
+    state = load_state(root)
+    rec = _ownership_record(state, args.slug)
+    if rec is None:
+        _die("unknown_slug")
+    if args.owner or args.assignee:
+        roles = [r for r in ("owner", "assignee") if getattr(args, r)]
+    else:
+        roles = ["owner", "assignee"]
+    if not all(r in rec for r in roles):   # every targeted role must exist (frozen: "both must exist")
+        _die("not_assigned")
+    for r in roles:
+        rec.pop(r, None)
+    save_state(root, state)
+    print(f"unassigned {args.slug} ({', '.join(roles)})")
 
 
 def cmd_stage(args: argparse.Namespace) -> None:
@@ -1047,6 +1130,38 @@ def cmd_stage(args: argparse.Namespace) -> None:
     print(_next_footer(root, state))
 
 
+def _done_resume(root: Path, state: dict, slug: str) -> tuple[str, str, str]:
+    """At a DONE task, what should the agent do NEXT? Classify from the task's
+    milestone exit-criteria tally (_exit_criteria) so the orient surfaces (status,
+    guide) STEER into the loop instead of always saying "start the next feature".
+
+    Returns (headline, next_step, chapter) where chapter is a docs/ filename:
+      LOOP-JUNCTURE  total>0 and met<total -> name the unmet goal, route to the loop
+      GOAL-MET       total>0 and met==total -> point at milestone-done
+      PLAIN          no criteria / no milestone / any read error -> today's "next feature"
+    PURE and fail-closed (design-for-failure): a missing milestone or unreadable
+    MILESTONE.md degrades to PLAIN — it never raises into a status/guide print path."""
+    PLAIN = ("this task is done",
+             "start the next feature -> add.py new-task <slug>",
+             "02-the-flow.md")
+    try:
+        ms = ((state.get("tasks") or {}).get(slug) or {}).get("milestone")
+        if not ms:
+            return PLAIN
+        met, total = _exit_criteria(root, ms)
+    except Exception:                       # noqa: BLE001 — never break orient output
+        return PLAIN
+    if total > 0 and met < total:
+        return (f"milestone '{ms}' goal not met ({met}/{total} exit criteria)",
+                "propose the next tasks from open deltas / the unscaffolded plan -> add.py deltas",
+                "09-the-loop.md")
+    if total > 0 and met == total:
+        return (f"milestone '{ms}' goal met ({met}/{total})",
+                f"close it -> add.py milestone-done {ms}",
+                "09-the-loop.md")
+    return PLAIN
+
+
 def cmd_status(args: argparse.Namespace) -> None:
     if getattr(args, "json", False):
         root, state = _load_state_for_json()
@@ -1057,20 +1172,26 @@ def cmd_status(args: argparse.Namespace) -> None:
             members = [t for t in tasks.values() if t.get("milestone") == mslug]
             ms_list.append({"slug": mslug, "status": m.get("status", "active"),
                             "done": sum(1 for t in members if _task_done(t)),
-                            "total": len(members)})
+                            "total": len(members),
+                            "owner": m.get("owner"), "assignee": m.get("assignee")})
         grad_ready, grad_met, grad_total = _graduation_ready(root, state)
         print(json.dumps({
             "project": state.get("project"), "stage": state.get("stage"),
-            "active_task": state.get("active_task"),
+            "actor": identity._whoami(state),
+            "active_task": _active_task(state),
+            "active_milestones": list(state.get("active_milestones") or []),
+            "active_tasks": dict(state.get("active_tasks") or {}),
             "milestones": ms_list,
             "tasks": [{"slug": s, "phase": t.get("phase"), "gate": t.get("gate"),
-                       "milestone": t.get("milestone")} for s, t in tasks.items()],
+                       "milestone": t.get("milestone"),
+                       "owner": t.get("owner"), "assignee": t.get("assignee")}
+                      for s, t in tasks.items()],
             "graduation_ready": grad_ready,
             "stage_criteria": {"met": grad_met, "total": grad_total}}))
         return
     root = _require_root()
     state = load_state(root)
-    active = state.get("active_task")
+    active = _active_task(state)
     tasks = state.get("tasks", {})
     # Compute once: True when setup is present AND locked is False (the lock-gate window).
     # Reuses the canonical helper — do NOT write a parallel predicate.
@@ -1079,12 +1200,17 @@ def cmd_status(args: argparse.Namespace) -> None:
     # project autonomy default (task init-auto-default): the posture new tasks INHERIT,
     # read LIVE from PROJECT.md so the human sees the project-wide throttle every session.
     print(f"project autonomy: {_project_autonomy(root)}   (default — new tasks inherit)")
+    # git-native actor (user-identity): who ADD sees you as this session — the identity every
+    # human-owned stamp records. Always present (the resolver is TOTAL). Read-only, no write.
+    _who = identity._whoami(state)
+    _who_email = f" <{_who['email']}>" if _who.get("email") else ""
+    print(f"actor   : {_who['name']}{_who_email} (source: {_who['source']})")
     print(f"stage   : {state.get('stage', '(unknown)')}")
     # project GOAL + active-milestone goal (v20) — the loop's orientation anchor, read
     # LIVE from PROJECT.md / MILESTONE.md (never state.json). Additive: every existing
     # line stays put. A missing source degrades to a sentinel — one never blanks the other.
     print(f"goal    : {_project_goal(root)}")
-    _active_ms = state.get("active_milestone")
+    _active_ms = _active_milestone(state)
     if _active_ms:
         print(f"m-goal  : {_milestone_doc(root, _active_ms)[1]}   (← {_active_ms})")
         # goal-ready (task goal-auto-ready-gate): is the active milestone's goal AUTO-READY
@@ -1112,13 +1238,13 @@ def cmd_status(args: argparse.Namespace) -> None:
 
     # milestone rollup (only when milestones are in use)
     milestones = state.get("milestones") or {}
-    active_ms = state.get("active_milestone")
+    active_ms = _active_milestone(state)
     if milestones:
         print("milestones:")
         for mslug, m in milestones.items():
             members = [t for t in tasks.values() if t.get("milestone") == mslug]
             done = sum(1 for t in members if _task_done(t))
-            mark = "*" if mslug == active_ms else " "
+            mark = "*" if mslug in (state.get("active_milestones") or []) else " "
             print(f"  {mark} {mslug:<20} {done}/{len(members)} tasks done"
                   f"   status={m.get('status', 'active')}")
         # graduation cue (v22): project-global + read-only. Fires only when every milestone
@@ -1143,12 +1269,49 @@ def cmd_status(args: argparse.Namespace) -> None:
     _rel = _releasable(root, state)
     if _rel:
         print(f"  → {RELEASABLE_CUE.format(n=len(_rel))}")
+    # loose-task release cue (loose-task-release): a SEPARATE additive line — done milestone-free
+    # tasks not yet attributed to a RELEASES.md `loose tasks:` row. Peer to the milestone cue (its
+    # constant is untouched); fires even with zero releasable milestones. Fail-open ledger read.
+    _loose = _releasable_loose_tasks(root, state)
+    if _loose:
+        print(f"  → releasable: {len(_loose)} loose task(s) since last release")
 
-    print(f"active  : {active or '(none)'}")
+    # fast-lane marker (fast-new-task-flag): tag an ACTIVE fast task so the lane is visible at a
+    # glance. Presentation-only, existence-gated — a plain/absent active task is byte-unchanged.
+    _fast_mark = " · fast" if active and tasks.get(active, {}).get("fast") is True else ""
+    print(f"active  : {active or '(none)'}{_fast_mark}")
+    # parallel streams (parallel-status-view): when >=2 milestones are active, render each as its
+    # own stream (active task + phase) so a user working N fronts reads them all at once. ADDITIVE —
+    # the N<=1 output above is byte-identical (the standing additive-cue convention); presentation
+    # only, no command DECISION changes. Reads the SET/map via the task-2 seam shape.
+    _ams = state.get("active_milestones") or []
+    if len(_ams) >= 2:
+        _primary = _active_milestone(state)
+        _order = ([_primary] if _primary in _ams else []) + [m for m in _ams if m != _primary]
+        _atasks = state.get("active_tasks") or {}
+        print(f"streams : {len(_ams)} active milestones")
+        for _m in _order:
+            _tk = _atasks.get(_m)
+            _ph = (tasks.get(_tk) or {}).get("phase", "-") if _tk else "-"
+            _mk = "▸" if _m == _primary else " "
+            _tag = "  (primary)" if _m == _primary else ""
+            # per-stream owner (per-stream-owner): the milestone's lead, present-only — a stream
+            # whose milestone has no owner (or a blank-name owner) renders byte-identically
+            # (additive-cue convention). Guard on the name like `_fmt_ownership`, so a hand-edited
+            # blank-name record never emits an `owner:` fragment.
+            _owner_rec = (milestones.get(_m) or {}).get("owner") or {}
+            _so = _fmt_actor(_owner_rec) if _owner_rec.get("name") else ""
+            _own_frag = f"  · owner: {_so}" if _so else ""
+            print(f"  {_mk} {_m:<20} task={_tk or '(none)'}  phase={_ph}{_tag}{_own_frag}")
     # surface the active task's autonomy level (task explicit-autonomy-dial) so the human
     # reads the throttle every session; "unset" when no explicit `autonomy:` line is present.
     if active and active in tasks:
         print(f"autonomy: {_autonomy_level(_task_header(root, active)) or 'unset'}")
+        # owner/assignee of the active task (ownership-assignment) — present-only, never a
+        # placeholder; an unassigned active task adds no line (additive-cue convention).
+        _own = _fmt_ownership(tasks[active])
+        if _own:
+            print(f"owned   : {_own}")
         # grounded (task ground-bundle-wiring): does the active task's §0 GROUND map cite the
         # anchors §3 names? measure-not-block, human-readable only (never the JSON surface). A
         # pre-ground / legacy task (no §0) -> _task_grounded None -> NO line, so the surface is
@@ -1199,8 +1362,16 @@ def cmd_status(args: argparse.Namespace) -> None:
     elif active and active in tasks:
         ph = tasks[active]["phase"]
         if ph == "done":
+            # loop-aware resume (loop-aware-orient): a done task is NOT always "start the
+            # next feature" — if its milestone goal is unmet we are at the loop juncture, so
+            # STEER into the loop; if met, point at the close. PLAIN stays byte-identical.
+            _hl, _nxt, _chap = _done_resume(root, state, active)
             print(f"\nresume  : task '{active}' is done ({tasks[active]['gate']}).")
-            print("          start the next feature: add.py new-task <slug>")
+            if _chap == "02-the-flow.md":
+                print("          start the next feature: add.py new-task <slug>")
+            else:
+                print(f"          {_hl} — {_nxt}")
+                print(f"          (the loop: .add/docs/{_chap})")
         else:
             print(f"\nresume  : task '{active}' is at phase '{ph}'.")
             print(f"          read .add/tasks/{active}/TASK.md and continue that phase.")
@@ -1237,7 +1408,7 @@ def cmd_guide(args: argparse.Namespace) -> None:
     """
     if getattr(args, "json", False):
         json_root, state = _load_state_for_json()
-        slug = args.slug or state.get("active_task")
+        slug = args.slug or _active_task(state)
         if not slug:
             print(json.dumps({"task": None, "phase": None, "owner": "human", "stop": True,
                               "next_step": "start your first feature -> add.py new-task <slug>",
@@ -1250,6 +1421,10 @@ def cmd_guide(args: argparse.Namespace) -> None:
         phase = t.get("phase")
         owner = _phase_owner(phase)            # _die unmapped_phase before any stdout
         action, chapter = PHASE_GUIDE[phase]   # phase is mapped, so PHASE_GUIDE has it too
+        if phase == "done":                    # loop-aware-orient: steer the --json surface too
+            _hl, _nxt, _chap = _done_resume(json_root, state, slug)
+            if _chap != "02-the-flow.md":      # loop juncture / goal met; PLAIN stays unchanged
+                action, chapter = _nxt, _chap
         print(json.dumps({"task": slug, "phase": phase, "owner": owner,
                           "stop": owner != "ai", "next_step": action,
                           "chapter": f".add/docs/{chapter}", "gate": t.get("gate"),
@@ -1257,7 +1432,7 @@ def cmd_guide(args: argparse.Namespace) -> None:
         return
     root = _require_root()
     state = load_state(root)
-    slug = args.slug or state.get("active_task")
+    slug = args.slug or _active_task(state)
     if not slug:
         print("active : (none)")
         print('next   : start your first feature -> add.py new-task <slug> --title "..."')
@@ -1270,6 +1445,10 @@ def cmd_guide(args: argparse.Namespace) -> None:
     if entry is None:           # corrupted/hand-edited state.json — fail clean, not KeyError
         _die(f"task '{slug}' has unknown phase '{phase}' (state.json corrupted?)")
     action, chapter = entry
+    if phase == "done":                        # loop-aware-orient: steer at the loop juncture
+        _hl, _nxt, _chap = _done_resume(root, state, slug)
+        if _chap != "02-the-flow.md":          # loop juncture / goal met; PLAIN stays unchanged
+            action, chapter = _nxt, _chap
     # the guide names the driver too (task gate-owner-marker) — the SAME _driver_stop the
     # footer renders, on the next-step line. Computed AFTER the unknown-phase guard above,
     # so a bad phase fails clean and never reaches the marker (it invents no default).
@@ -1286,7 +1465,10 @@ def cmd_guide(args: argparse.Namespace) -> None:
     if phase == "verify":
         print("then   : add.py gate PASS | RISK-ACCEPTED | HARD-STOP")
     elif phase == "done":
-        print("then   : start the next feature -> add.py new-task <slug>")
+        if chapter != "02-the-flow.md":        # loop juncture / goal met -> the steered command
+            print(f"then   : {action}")
+        else:
+            print("then   : start the next feature -> add.py new-task <slug>")
     else:
         print("then   : add.py advance")
 
@@ -1722,6 +1904,41 @@ def _missing_captures(root: Path) -> list[str]:
             if not any((cap_dir / f"{n}.{ext}").is_file() for ext in _CAPTURE_EXTS)]
 
 
+def cmd_federate(args: argparse.Namespace) -> None:
+    """Multi-repo federation: pull a producer repo's published, immutable contract snapshot into
+    this repo. Mono vs multi-repo differ ONLY in snapshot-transport — this lands the byte-copy at
+    the SAME local `.add/contracts/<id>.json` the monorepo path (tasks 3/4) already reads, so a
+    `consumes: <id>` task then holds/pins identically. Designed-for-failure: unknown / missing /
+    invalid / version-mismatched sources HARD-STOP and land NOTHING (never build blind)."""
+    root = find_root()
+    if root is None:
+        _die("no_project")
+    fid = args.id
+    fed = _federation(root)
+    if fid not in fed:
+        _die(f"federation_unknown: no [federation.{fid}] in components.toml — declare the producer "
+             f"repo's published snapshot source before pulling")
+    source = (root.parent / fed[fid]["source"])
+    try:
+        raw = source.read_bytes()       # bytes — the landed snapshot must be a byte-for-byte copy
+    except OSError:
+        _die(f"federation_source_missing: cannot read the producer snapshot at '{fed[fid]['source']}' "
+             f"(resolved {source}) — publish/commit it in the producer repo first")
+    try:
+        snap = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+        snap = None
+    if not isinstance(snap, dict) or snap.get("id") != fid or not snap.get("hash"):
+        _die(f"federation_snapshot_invalid: the source for '{fid}' is not a valid contract snapshot "
+             f"(needs JSON with matching id + a hash) — refusing to land a guessed shape")
+    pin = fed[fid]["pin"]
+    if pin and snap.get("version") != pin:
+        _die(f"federation_version_mismatch: [federation.{fid}] pins '{pin}' but the source is "
+             f"'{snap.get('version')}' — bump the pin or wait for the producer to publish {pin}")
+    _atomic_write_bytes(_contract_snapshot(root, fid), raw)
+    print(f"federated '{fid}' {snap.get('version', '?')} {snap['hash']} from {fed[fid]['source']}")
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     """Read-only integrity check of the .add project. Exit 1 if anything fails."""
     as_json = getattr(args, "json", False)
@@ -1732,7 +1949,7 @@ def cmd_check(args: argparse.Namespace) -> None:
         if root is None:
             _die("no_project")
         try:
-            state = json.loads((root / STATE_FILE).read_text(encoding="utf-8"))
+            state = json.loads(_state_text_or_die(root))
         except (json.JSONDecodeError, OSError):
             _die("state_invalid")
 
@@ -1744,6 +1961,7 @@ def cmd_check(args: argparse.Namespace) -> None:
     milestones = state.get("milestones") if isinstance(state.get("milestones"), dict) else {}
     archived_slugs = _archived_task_slugs(state)   # archived deps still resolve
     warnings: list[tuple[str, str]] = []  # (name, reason) — nudges that NEVER feed `failed`
+    infos: list[tuple[str, str]] = []     # (name, reason) — affirmations; NEVER feed `warned`/`failed`
     for slug, t in tasks.items():
         task_md = root / "tasks" / slug / "TASK.md"
         checks.append((task_md.exists(), f"task '{slug}' has TASK.md", "file missing"))
@@ -1755,6 +1973,10 @@ def cmd_check(args: argparse.Namespace) -> None:
         if ms is not None:
             checks.append((ms in milestones, f"task '{slug}' milestone resolves",
                            f"unknown milestone {ms!r}"))
+        elif t.get("fast"):
+            # blessed milestone-free fast lane (standalone-fast-task): a --fast task with no
+            # milestone is DELIBERATE — a soft INFO affirmation, never a WARN/orphan nudge.
+            infos.append((f"task '{slug}'", "— standalone fast lane (milestone-free by design)"))
         else:
             # warn-never-block: a task outside a milestone is a structural nudge back toward
             # the intake flow — NOT a failure. Names structure, never the act of intake.
@@ -1770,6 +1992,29 @@ def cmd_check(args: argparse.Namespace) -> None:
         if _alvl is None and t.get("phase") not in ("done", "observe"):
             warnings.append((f"task '{slug}'", "has no explicit autonomy level (implicit_autonomy) "
                              "— run `add.py autonomy set <level>` to set it"))
+        # per-component-verify: a bound task whose component declares no green_bar can't be
+        # gated on a bar — surface it (WARN, never red). Unbound / "?" -> silent.
+        _tc = _task_component(root, slug)
+        if _tc and _tc != "?" and not (_components(root).get(_tc) or {}).get("green_bar"):
+            warnings.append((f"task '{slug}'", f"component_green_bar_unset — bound component '{_tc}' "
+                             "declares no green_bar; the per-component gate cannot check a bar"))
+        # cross-component-contract: a consumer whose pinned hash drifted from the live snapshot
+        # (the producer re-froze a CHANGED shape) — the §7-stale cue. Degrade-safe (unreadable
+        # snapshot ⇒ no finding here; the missing-snapshot HARD-STOP lives at the advance crossing).
+        _pin = t.get("contract_pin")
+        if _pin:
+            try:
+                _live = json.loads(_contract_snapshot(root, _pin["id"]).read_text(encoding="utf-8")).get("hash")
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                _live = None
+            if _live is None:                # missing / corrupt / hash-less ⇒ SURFACE, never mask
+                warnings.append((f"task '{slug}'", f"contract_snapshot_unreadable — pinned contract "
+                                 f"'{_pin.get('id')}' snapshot is missing or corrupt; re-publish the "
+                                 "producer contract (cannot confirm the pin is current)"))
+            elif _live != _pin.get("hash"):
+                warnings.append((f"task '{slug}'", f"contract_consumer_stale — pinned contract "
+                                 f"'{_pin.get('id')}' changed shape since pin; re-pin (re-cross contract→tests) "
+                                 "after reviewing the producer's new frozen shape"))
         for dep in t.get("depends_on") or []:
             checks.append((dep in tasks or dep in archived_slugs,
                            f"task '{slug}' dep '{dep}' resolves", "unknown task"))
@@ -1832,7 +2077,7 @@ def cmd_check(args: argparse.Namespace) -> None:
     # zero-criteria milestone is shaping's nudge, not this one's. LIVE-ONLY: the OPEN active
     # milestone only — a done-but-not-yet-archived one (still the active pointer until
     # archive clears it) and closed/archived predecessors are never retro-flagged (Must #4).
-    _active_ms = state.get("active_milestone")
+    _active_ms = _active_milestone(state)
     if _active_ms in milestones and milestones[_active_ms].get("status") != "done":
         _cited, _total = _exit_criteria_cited(root, _active_ms)
         if _total >= 1 and _cited < _total:
@@ -1847,7 +2092,7 @@ def cmd_check(args: argparse.Namespace) -> None:
     # FROZEN AND its §0 GROUND map is ungrounded (the precise "froze without grounding" gap, so
     # no nag during pre-freeze drafting). A pre-ground / legacy task (no §0 -> _grounded_state
     # None) is EXEMPT, never retro-flagged. Rides the existing `warnings` array — no new key.
-    _at = state.get("active_task")
+    _at = _active_task(state)
     if _at in tasks:
         _raw = _raw_phase_bodies(root, _at)
         if _contract_frozen(_raw.get(3, "")) and _grounded_state(_raw) is False:
@@ -1883,6 +2128,26 @@ def cmd_check(args: argparse.Namespace) -> None:
     checks.append((cycle is None, "task dependencies are acyclic",
                    f"cycle: {' -> '.join(cycle)}" if cycle else ""))
 
+    # component registry (component-aware-add): a malformed .add/components.toml, a root
+    # escaping the project, or a task binding an unregistered component are integrity FAILS
+    # — fail-closed RED (like wave_ledger_malformed), loud but never a crash (the readers
+    # themselves degrade-safe). Silent when there is no components.toml.
+    for _ccode, _cdetail in _component_findings(root):
+        checks.append((False, f"component registry ({_ccode})", _cdetail))
+    # cross-component-contract: a [contract.<id>] naming an unregistered producer is an
+    # integrity FAIL (same fail-closed RED discipline; the readers stay degrade-safe).
+    for _ccode, _cdetail in _contract_findings(root):
+        checks.append((False, f"contract registry ({_ccode})", _cdetail))
+    # multirepo-federation: a declared [federation.<id>] whose producer-repo source is unreadable
+    # is a BROKEN JOIN — surface it EARLY as a WARN (never red alone; `federate pull` is where it
+    # HARD-STOPs). Silent when no federation is declared (opt-in / byte-identical).
+    for _fid, _fspec in _federation(root).items():
+        if not (root.parent / _fspec["source"]).is_file():
+            warnings.append((f"federation '{_fid}'",
+                             f"federation_source_unreadable — the producer snapshot at "
+                             f"'{_fspec['source']}' is missing/unreadable; `federate pull {_fid}` "
+                             "will hard-stop until the producer repo publishes it"))
+
     # UDD foundation (udd-check-lint): lint a project's named set under .add/design/ —
     # composes the token + catalog/tree validators + the cross-file prop-token resolution.
     # Silent when absent; read-only; fail-closed on malformed JSON.
@@ -1901,10 +2166,15 @@ def cmd_check(args: argparse.Namespace) -> None:
     passed = sum(1 for ok, _, _ in checks if ok)
     failed = len(checks) - passed
     if as_json:
+        # `infos`/`informed` are ADDITIVE (standalone-fast-task) — affirmations that never feed
+        # `warned`/`failed`; existing keys are untouched so prior consumers keep working.
         print(json.dumps({"passed": passed, "failed": failed,
                           "warned": len(warnings),
                           "warnings": [{"name": name, "reason": reason}
                                        for name, reason in warnings],
+                          "informed": len(infos),
+                          "infos": [{"name": name, "reason": reason}
+                                    for name, reason in infos],
                           "checks": [{"ok": ok, "name": desc,
                                       "reason": reason if not ok else ""}
                                      for ok, desc, reason in checks]}))
@@ -1913,12 +2183,101 @@ def cmd_check(args: argparse.Namespace) -> None:
             print(f"PASS  {desc}" if ok else f"FAIL  {desc}: {reason}")
         for name, reason in warnings:
             print(f"WARN  {name} {reason}")
+        for name, reason in infos:
+            print(f"INFO  {name} {reason}")
         summary = f"check: {passed} passed, {failed} failed"
         if warnings:
             summary += f" ({len(warnings)} warnings)"   # frozen §3: summary gains "(N warnings)"
         print(summary)
     if failed:
         raise SystemExit(1)
+
+
+def _doctor_findings(root: Path) -> list[str]:
+    """Read-only diagnosis of state.json: each item is "<problem> — fix: <fix>".
+
+    Reads the RAW text with its OWN try/except — NEVER through the dying load_state — so a
+    conflicted/corrupt state is REPORTED, not aborted on (the proactive counterpart to the
+    merge-guard load guard, which fails fast at the first problem). Reports the FIRST blocking
+    class then stops (can't parse deeper): missing/unreadable file -> conflict markers -> bad
+    JSON. On a PARSEABLE state (normalized through `_migrate_state` so the canonical multi-active
+    shape is judged) it appends EVERY referential violation. PURE: reads only, returns the list."""
+    try:
+        text = (root / STATE_FILE).read_text(encoding="utf-8")
+    except OSError:
+        return ["state.json missing/unreadable — fix: restore it from git/backup"]
+    if _CONFLICT_MARKER_RE.search(text):
+        return ["state.json has unresolved git merge markers — fix: resolve "
+                "<<<<<<< / ======= / >>>>>>> (or git checkout --ours/--theirs), then re-run doctor"]
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return ["state.json is not valid JSON — fix: restore it from git/backup"]
+
+    state = _migrate_state(parsed)
+    findings: list[str] = []
+    milestones = state.get("milestones") if isinstance(state.get("milestones"), dict) else {}
+    tasks = state.get("tasks") if isinstance(state.get("tasks"), dict) else {}
+
+    active_ms = state.get("active_milestones") if isinstance(state.get("active_milestones"), list) else []
+    active_tasks = state.get("active_tasks") if isinstance(state.get("active_tasks"), dict) else {}
+    for am in active_ms:
+        if am not in milestones:
+            findings.append(f"active milestone '{am}' has no record — fix: deactivate it or "
+                            "recreate the milestone")
+    for ms, t in active_tasks.items():
+        if not t:
+            continue
+        if t not in tasks:
+            findings.append(f"active task '{t}' (milestone '{ms}') has no record — fix: use a "
+                            "real task or clear the active pointer")
+        elif (tasks[t].get("milestone") if isinstance(tasks[t], dict) else None) != ms:
+            findings.append(f"active task '{t}' is mislabeled under '{ms}' — fix: re-use it "
+                            "under its own milestone")
+    for slug, t in tasks.items():
+        m = t.get("milestone") if isinstance(t, dict) else None
+        if m is not None and m not in milestones:
+            findings.append(f"task '{slug}' references missing milestone '{m}' — fix: set its "
+                            "milestone to a real one (or none)")
+    return findings
+
+
+def cmd_doctor(args: argparse.Namespace) -> None:
+    """Read-only `add.py doctor`: PASS + exit 0 on a healthy state, else report each problem +
+    fix to stdout and exit non-zero. NEVER mutates state (detect, never auto-resolve)."""
+    root = find_root()
+    if root is None:
+        _die("no_project")
+    findings = _doctor_findings(root)
+    if not findings:
+        print("doctor: PASS — state.json is healthy (parseable · conflict-free · references intact)")
+        return
+    print(f"doctor: {len(findings)} problem(s):")
+    for f in findings:
+        print(f"  ✗ {f}")
+    raise SystemExit(1)
+
+
+def cmd_mine(args: argparse.Namespace) -> None:
+    """Read-only `add.py mine`: across all active milestones, the not-done tasks owned-by or
+    assigned-to the resolved actor (`_whoami`, or `--actor "Name <email>"`). Text or `--json`.
+    An empty queue is a plain exit-0 line, not an error. NEVER writes state."""
+    root = find_root()
+    if root is None:
+        _die("no_project")
+    state = load_state(root)
+    me = identity._parse_actor_arg(args.actor) if getattr(args, "actor", None) else identity._whoami(state)
+    rows = _my_work(state, me)
+    if getattr(args, "json", False):
+        print(json.dumps({"actor": me, "tasks": rows}))
+        return
+    who = _fmt_actor(me) or me.get("name", "you")
+    if not rows:
+        print(f"mine: no open tasks for {who} across active milestones")
+        return
+    print(f"mine: {who} — {len(rows)} open task(s) across active milestones:")
+    for r in rows:
+        print(f"  {r['slug']:<24} [{r['milestone']}]  phase={r['phase']}  ({r['role']})")
 
 
 # ---------------------------------------------------------------------------
@@ -2075,15 +2434,62 @@ def cmd_new_milestone(args: argparse.Namespace) -> None:
     _atomic_write(mfile, _render_template(
         "MILESTONE.md", title=title, goal=args.goal or "<goal>",
         stage=args.stage, date=date.today().isoformat()))
-    state["milestones"][slug] = {
+    # confirm-parent gate (OPT-IN, mirrors `init --await-lock`): `--await-confirm` seeds the
+    # milestone UNCONFIRMED so new-task is held until `add.py milestone-confirm`. WITHOUT the flag
+    # NO `confirmed` key is written → grandfathered-confirmed → no gate (so the existing engine
+    # tests stay byte-green). The guided skill flow passes the flag at the human-review point.
+    await_confirm = bool(getattr(args, "await_confirm", False))
+    record = {
         "title": title, "goal": args.goal or "", "stage": args.stage,
         "status": "active", "created": _now(), "updated": _now(),
     }
-    state["active_milestone"] = slug
+    if await_confirm:
+        # `await_confirm` is the STABLE opt-in marker (set ONLY here, at creation). `confirmed`
+        # alone is NOT a reliable opt-in signal: milestone-confirm stamps confirmed:true on a plain
+        # milestone too, so a later build-entry gate must key on `await_confirm`, not `confirmed`.
+        record.update(confirmed=False, confirmed_at=None, confirmed_by=None, await_confirm=True)
+    state["milestones"][slug] = record
+    _set_active_milestone(state, slug)
     save_state(root, state)
     print(f"created milestone '{slug}' -> {mfile}")
-    print("active milestone set.")
+    print("active milestone set." + ("" if not await_confirm else
+          "  (unconfirmed — show the MILESTONE.md, then: add.py milestone-confirm " + slug + ")"))
     print(_next_footer(root, state))   # converges the old "Decompose it into tasks: …" hint
+
+
+def cmd_milestone_confirm(args: argparse.Namespace) -> None:
+    """The human gate that opens new-task for a milestone (confirm-parent). Mirrors `cmd_lock`
+    one level down: the human reviews the filled MILESTONE.md, then RECORDS confirmation here.
+    The engine never self-confirms. Validate-then-write; re-confirm is an idempotent note."""
+    root = _require_root()
+    state = load_state(root)
+    slug = args.slug
+    if slug not in state.get("milestones", {}):
+        _die("unknown_milestone")
+    m = state["milestones"][slug]
+    if m.get("confirmed") is True:
+        print(f"milestone '{slug}' already confirmed (by {m.get('confirmed_by', '?')}).")
+        return
+    # contract-fill gate (flow-enforcement, OPTED-IN only): a milestone that opted into
+    # --await-confirm (carries a `confirmed` key) may not be confirmed until its cross-task
+    # `## Shared / risky contracts` section is filled — so "confirmed" MEANS the contracts
+    # were present at confirm time. A grandfathered no-key milestone keeps the plain stamp
+    # (gate skipped — keeps the census + existing flows green). Validate-then-write.
+    if "confirmed" in m:
+        mfile = root / "milestones" / slug / MILESTONE_FILE
+        md = mfile.read_text(encoding="utf-8") if mfile.exists() else ""
+        if _section_unfilled(md, "## Shared / risky contracts"):
+            _die("milestone_contracts_unfilled: fill the '## Shared / risky contracts' "
+                 f"section of {slug}'s MILESTONE.md before confirming")
+    who = getattr(args, "by", None) or getpass.getuser()
+    m["confirmed"] = True
+    m["confirmed_at"] = _now()
+    m["confirmed_by"] = who
+    m["actor"] = identity._actor_stamp(state)   # structured actor alongside the free-text confirmed_by
+    m["updated"] = _now()
+    save_state(root, state)
+    print(f"confirmed milestone '{slug}' (by {who}) — new-task is now open for it.")
+    print(_next_footer(root, state))
 
 
 def cmd_ready(args: argparse.Namespace) -> None:
@@ -2128,7 +2534,11 @@ def cmd_ready(args: argparse.Namespace) -> None:
     for slug in ready:
         deps = tasks[slug].get("depends_on") or []
         suffix = f"  (after {', '.join(deps)})" if deps else ""
-        print(f"  {slug}{suffix}")
+        # cross-active legibility (cross-active-waves): name the stream each ready task belongs
+        # to, present-only — a milestone-less task gets no bracket (byte-identical).
+        _ms = tasks[slug].get("milestone")
+        ms_frag = f"  [{_ms}]" if _ms else ""
+        print(f"  {slug}{ms_frag}{suffix}")
 
 
 def _wave_schedule(state: dict, mslug: str) -> dict:
@@ -2222,36 +2632,17 @@ def _wave_schedule(state: dict, mslug: str) -> dict:
             "tiers": tiers, "blocked": blocked_sorted}
 
 
-def cmd_waves(args: argparse.Namespace) -> None:
-    """READ-ONLY DAG scheduler: print the active milestone's topological waves, critical
-    path, advisory tier hint, and blocked set. Writes nothing; emits no `next:` footer."""
-    is_json = getattr(args, "json", False)
-    if is_json:
-        _, state = _load_state_for_json()
-    else:
-        state = load_state(_require_root())
-    mslug = getattr(args, "milestone", None) or state.get("active_milestone")
-    if not mslug:
-        _die("no_active_milestone: no active milestone and no --milestone given")
-    if mslug not in (state.get("milestones") or {}):
-        _die(f"unknown_milestone: '{mslug}' is not a milestone in this project")
-    sched = _wave_schedule(state, mslug)
-    if "cycle" in sched:
-        _die(f"dependency_cycle: not-done deps form a cycle "
-             f"({' -> '.join(sched['cycle'])}) — no valid schedule")
-
-    if is_json:
-        print(json.dumps({"milestone": mslug, **sched}))
-        return
-
-    print(f"milestone: {mslug}")
+def _wave_block_lines(state: dict, mslug: str, sched: dict) -> list[str]:
+    """The exact text lines `waves` renders for ONE milestone's schedule (cross-active-waves
+    extracts this so a single target stays byte-identical and N targets each get a block)."""
+    lines = [f"milestone: {mslug}"]
     if not sched["waves"]:
         if sched["blocked"]:
             for s in sched["blocked"]:
-                print(f"blocked: {s} (waiting on {', '.join(sched['blocked'][s])})")
+                lines.append(f"blocked: {s} (waiting on {', '.join(sched['blocked'][s])})")
         else:
-            print("all tasks done — nothing to schedule")
-        return
+            lines.append("all tasks done — nothing to schedule")
+        return lines
     scheduled_set = {x for w in sched["waves"] for x in w}
     for i, wave in enumerate(sched["waves"], start=1):
         parts = []
@@ -2259,14 +2650,62 @@ def cmd_waves(args: argparse.Namespace) -> None:
             md = sorted(d for d in (state["tasks"][s].get("depends_on") or [])
                         if d in scheduled_set)
             parts.append(f"{s} (deps: {', '.join(md)})" if md else s)
-        print(f"wave {i}: {', '.join(parts)}")
+        lines.append(f"wave {i}: {', '.join(parts)}")
     crit = sched["critical_path"]
-    print(f"critical path: {' → '.join(crit)}  ({sched['critical_path_len']} tasks)")
+    lines.append(f"critical path: {' → '.join(crit)}  ({sched['critical_path_len']} tasks)")
     tops = [s for s, tier in sched["tiers"].items() if tier == "top"]
     mids = [s for s, tier in sched["tiers"].items() if tier == "mid"]
-    print(f"tier hint: top → {', '.join(tops)}; mid → {', '.join(mids) or '(none)'}")
+    lines.append(f"tier hint: top → {', '.join(tops)}; mid → {', '.join(mids) or '(none)'}")
     for s in sched["blocked"]:
-        print(f"blocked: {s} (waiting on {', '.join(sched['blocked'][s])})")
+        lines.append(f"blocked: {s} (waiting on {', '.join(sched['blocked'][s])})")
+    return lines
+
+
+def cmd_waves(args: argparse.Namespace) -> None:
+    """READ-ONLY DAG scheduler: print the topological waves, critical path, advisory tier hint,
+    and blocked set. With no --milestone it spans EVERY active milestone (cross-active-waves);
+    a single target / --milestone renders byte-identically. Writes nothing; no `next:` footer."""
+    is_json = getattr(args, "json", False)
+    if is_json:
+        _, state = _load_state_for_json()
+    else:
+        state = load_state(_require_root())
+    mslug_arg = getattr(args, "milestone", None)
+    if mslug_arg:
+        targets = [mslug_arg]                          # explicit single target — unchanged
+    else:
+        primary = _active_milestone(state)             # the SCALAR is the gate (test relies on it)
+        if not primary:
+            _die("no_active_milestone: no active milestone and no --milestone given")
+        # additively widen to the other active milestones (cross-active); primary first
+        targets = [primary] + [m for m in (state.get("active_milestones") or [])
+                               if m != primary]
+    scheds = []
+    for t in targets:
+        if t not in (state.get("milestones") or {}):
+            _die(f"unknown_milestone: '{t}' is not a milestone in this project")
+        sched = _wave_schedule(state, t)
+        if "cycle" in sched:
+            _die(f"dependency_cycle: not-done deps form a cycle "
+                 f"({' -> '.join(sched['cycle'])}) — no valid schedule")
+        scheds.append(sched)
+
+    if is_json:
+        if len(targets) == 1:
+            print(json.dumps({"milestone": targets[0], **scheds[0]}))   # unchanged shape
+        else:
+            print(json.dumps({"streams": [{"milestone": t, **s}
+                                          for t, s in zip(targets, scheds)]}))
+        return
+
+    if len(targets) == 1:
+        print("\n".join(_wave_block_lines(state, targets[0], scheds[0])))   # byte-identical
+        return
+    print(f"active streams: {len(targets)}")
+    for i, (t, s) in enumerate(zip(targets, scheds)):
+        if i:
+            print()
+        print("\n".join(_wave_block_lines(state, t, s)))
 
 
 def cmd_milestone_done(args: argparse.Namespace) -> None:
@@ -2296,6 +2735,10 @@ def cmd_milestone_done(args: argparse.Namespace) -> None:
         _die(f"milestone_goal_unmet: milestone '{slug}' has {met}/{total} exit criteria met "
              f"— check the remaining boxes in MILESTONE.md (the goal-gate holds the loop "
              f"open) or propose the next tasks (add.py deltas)")
+    # Stamp WHO closed it BEFORE rendering the retro, so the persisted exit report records
+    # the closer (identity-in-status: the retro IS the report `report <ms>` re-renders, so both
+    # must reflect the same final state). In-memory only here — save_state below commits it.
+    state["milestones"][slug]["done_actor"] = identity._actor_stamp(state)
     # Fail-closed: render+persist the exit report (RETRO.md) BEFORE committing the
     # status flip, so a write failure rolls back naturally (status never commits ->
     # no done-without-retro state). The retro step is read-only on state.json.
@@ -2311,11 +2754,15 @@ def cmd_milestone_done(args: argparse.Namespace) -> None:
     print(f"milestone '{slug}' -> done ({len(members)} tasks complete{tail}).")
     print(f"wrote {retro_path.relative_to(root.parent)}  (milestone exit report)")
     # fold-pressure nudge: milestone close is the natural fold point for open deltas (v11)
-    open_deltas = sum(len(v) for v in _collect_open_deltas(root).values())
+    by_comp = _collect_open_deltas(root)
+    open_deltas = sum(len(v) for v in by_comp.values())
     if open_deltas:
         noun = "delta" if open_deltas == 1 else "deltas"
-        print(f"note: {open_deltas} open {noun} to consolidate into the foundation "
-              f"— review with: add.py deltas")
+        print(f"note: {open_deltas} open {noun} ready to {_FOLD_VERB} into the foundation:")
+        for comp in _COMPETENCY_ORDER:
+            for e in by_comp[comp]:
+                print(f"    ({comp}) {e['text']}  [{e['task']}]")
+        print(f"  run: add.py {_FOLD_VERB}   (review first: add.py deltas)")
     # SPEC-delta nudge (project-wide): the close is also a natural prompt to RESOLVE the
     # forward hand-offs (seed/drop) so none is orphaned at the eventual compaction.
     open_spec = len(_collect_open_spec_deltas(root))
@@ -2369,10 +2816,9 @@ def cmd_archive_milestone(args: argparse.Namespace) -> None:
     del state["milestones"][slug]
     for s in members:
         del tasks[s]
-    if state.get("active_milestone") == slug:
-        state["active_milestone"] = None
-    if state.get("active_task") in members:
-        state["active_task"] = None
+    _deactivate_milestone(state, slug)   # drop from the active SET + pop its task entry, repointing the primary focus
+    if _active_task(state) in members:   # N<=1 oracle: a NON-primary archive (new-milestone replace-to-focus leaves
+        state["active_task"] = None      # active_task pointing at m1's task while primary is m2) would dangle at a deleted task
     save_state(root, state)
     print(f"archived milestone '{slug}' ({len(members)} tasks) — removed from active state.")
     print("files on disk are untouched; see `add.py status` for the archived rollup.")
@@ -2422,10 +2868,15 @@ def cmd_compact(args: argparse.Namespace) -> None:
     # hand-off that resolves into a task, not a foundation lesson — an open one ANYWHERE would
     # be orphaned at the next compaction. Deliberately broader than the member-scoped competency
     # guard above. Still validate-before-move: refuses BEFORE the first rename.
+    # --force overrides THIS guard ONLY (never a structural reject above) — the escape hatch
+    # for a settled milestone blocked by an unrelated open SPEC delta elsewhere. Bypass is
+    # loud (warns + records `force_bypassed_spec_deltas`), never silent.
+    forced = getattr(args, "force", False)
     spec_offenders = sorted({d["task"] for d in _collect_open_spec_deltas(root)})
-    if spec_offenders:
+    if spec_offenders and not forced:
         _die("open_spec_deltas_unresolved: resolve every open SPEC delta first "
-             "(`add.py deltas`; seed with `new-task --from-delta`, or `drop-delta`) — "
+             "(`add.py deltas`; seed with `new-task --from-delta`, or `drop-delta`; "
+             "or re-run with --force to compact past them) — "
              "open in: " + " · ".join(spec_offenders))
     # every precondition passed — move (same-filesystem renames, never a delete)
     def _files(d: Path) -> int:
@@ -2443,7 +2894,12 @@ def cmd_compact(args: argparse.Namespace) -> None:
         moved.append((f"tasks/{t}/", n))
     # state write is the LAST step: additive stamp only — task_slugs untouched
     entry["compacted"] = date.today().isoformat()
+    if spec_offenders:                       # forced is implied (un-forced would have _die'd)
+        entry["force_bypassed_spec_deltas"] = spec_offenders
     save_state(root, state)
+    if spec_offenders:
+        print("⚠ --force bypassed open SPEC delta(s) in: " + " · ".join(spec_offenders) +
+              " — recorded as force_bypassed_spec_deltas; resolve them before the next release.")
     total = sum(n for _, n in moved)
     print(f"compacted milestone '{slug}' -> .add/archive/{slug}/ "
           f"({len(members)} task dirs, {total} files moved)")
@@ -2472,16 +2928,54 @@ def cmd_set_milestone(args: argparse.Namespace) -> None:
     print(_next_footer(root, state))
 
 
+def cmd_activate(args: argparse.Namespace) -> None:
+    """Add a milestone to the active working SET and focus it — how a user works N milestones
+    in parallel. Idempotent (re-activating just refocuses). Validates before mutating."""
+    root = _require_root()
+    state = load_state(root)
+    slug = args.slug
+    if slug not in state.get("milestones", {}):
+        _die("unknown_milestone")
+    if state["milestones"][slug].get("status") == "done":
+        _die("milestone_done")
+    _activate_milestone(state, slug)
+    save_state(root, state)
+    print(f"activated '{slug}' — active: {', '.join(state['active_milestones'])}")
+    print(_next_footer(root, state))
+
+
+def cmd_deactivate(args: argparse.Namespace) -> None:
+    """Remove a milestone from the active working SET (its files + status are untouched);
+    repoints the primary focus to a remaining member. Validates before mutating."""
+    root = _require_root()
+    state = load_state(root)
+    slug = args.slug
+    if slug not in (state.get("active_milestones") or []):
+        _die("milestone_not_active")
+    _deactivate_milestone(state, slug)
+    save_state(root, state)
+    remaining = state.get("active_milestones") or []
+    print(f"deactivated '{slug}' — active: {', '.join(remaining) if remaining else '(none)'}")
+    print(_next_footer(root, state))
+
+
 def cmd_use(args: argparse.Namespace) -> None:
     """Set the active task to an EXISTING task (switch focus) without scaffolding a new
     one or hand-editing state.json. advance/gate/phase still take an explicit slug; `use`
-    just moves the default focus, closing the only gap that forced manual state edits."""
+    just moves the default focus, closing the only gap that forced manual state edits.
+    Milestone-aware: focuses the task's OWN milestone (activating it into the set) so the
+    active task is switched WITHIN that milestone, not mislabeled under a stale primary."""
     root = _require_root()
     state = load_state(root)
     slug = args.slug
     if slug not in state.get("tasks", {}):
         _die("unknown_task")
-    state["active_task"] = slug
+    ms = state["tasks"][slug].get("milestone")
+    if ms is not None and ms in state.get("milestones", {}):
+        _activate_milestone(state, ms)        # focus the task's milestone (adds to the set if needed)
+        _set_active_task(state, slug, ms)
+    else:
+        _set_active_task(state, slug)         # milestone-less task: scalar only (back-compat)
     save_state(root, state)
     print(f"active task -> '{slug}' (phase={state['tasks'][slug]['phase']})")
     print(_next_footer(root, state))
@@ -2547,165 +3041,14 @@ def _sync_task_marker(root: Path, slug: str, phase: str) -> None:
 # state.json; prose (observe delta, deltas) is parsed from each TASK.md and
 # fails CLOSED to `(unknown)` rather than omitting silently.
 
-_DEFAULT_WIDTH = 72       # fixed width for the persisted/canonical render (RETRO.md)
 # Two glyph tiers. Alignment is correct only with ASCII in column-positioned
 # cells (every ASCII char is 1 display cell); Unicode glyphs sit at line-END
 # (the PROGRESS track) or in non-aligned rows, where width can't break columns.
 _UNICODE = {"reached": "●", "current": "◉", "pending": "○", "h": "═", "rule": "─", "bullet": "•"}
 _ASCII = {"reached": "#", "current": ">", "pending": ".", "h": "=", "rule": "-", "bullet": "*"}
 _GATE_SHORT = {"PASS": "PASS", "RISK-ACCEPTED": "RISK", "HARD-STOP": "STOP", "none": "—"}
-_ANSI = {"green": "\x1b[32m", "yellow": "\x1b[33m", "red": "\x1b[31m",
-         "dim": "\x1b[2m", "reset": "\x1b[0m"}
-
-
-def _bar(num: int, den: int, cells: int, g: dict) -> str:
-    """A progress bar; 0/0 -> all-empty (no divide-by-zero)."""
-    filled = 0 if den <= 0 else round(num / den * cells)
-    filled = max(0, min(cells, filled))
-    return g["reached"] * filled + g["pending"] * (cells - filled)
-
-
-def _phase_track(phase: str, g: dict) -> str:
-    """Compact 9-cell pipeline (no labels — a single legend explains it):
-    reached · current · pending. A done task -> all reached."""
-    try:
-        ci = PHASES.index(phase)
-    except ValueError:
-        ci = 0
-    cells = []
-    for i in range(len(PHASES)):
-        if phase == "done" or i < ci:
-            cells.append(g["reached"])
-        elif i == ci:
-            cells.append(g["current"])
-        else:
-            cells.append(g["pending"])
-    return "".join(cells)
-
-
-def _use_ascii() -> bool:
-    """ASCII tier when the terminal can't render Unicode (non-UTF-8 / dumb)."""
-    enc = (getattr(sys.stdout, "encoding", "") or "").lower()
-    return ("utf" not in enc) or (os.environ.get("TERM") == "dumb")
-
-
-def _color_enabled() -> bool:
-    """Color only on an interactive tty, honoring NO_COLOR and TERM."""
-    return (sys.stdout.isatty() and not os.environ.get("NO_COLOR")
-            and os.environ.get("TERM", "") not in ("dumb", ""))
-
-
-def _term_width() -> int:
-    try:
-        import shutil
-        return min(max(shutil.get_terminal_size().columns, 64), 100)
-    except Exception:
-        return _DEFAULT_WIDTH
-
-
-def _colorize(s: str) -> str:
-    """Apply ANSI to status tokens — redundant to the text, never the sole signal.
-    Applied ONLY to tty stdout; the persisted RETRO.md string stays plain."""
-    c = _ANSI
-    s = re.sub(r"\bDONE\b", c["green"] + "DONE" + c["reset"], s)
-    s = re.sub(r"\bBLOCKED\b", c["red"] + "BLOCKED" + c["reset"], s)
-    s = re.sub(r"\bPASS\b", c["green"] + "PASS" + c["reset"], s)
-    s = re.sub(r"\bRISK\b", c["yellow"] + "RISK" + c["reset"], s)
-    s = re.sub(r"\bSTOP\b", c["red"] + "STOP" + c["reset"], s)
-    return s
-
-
-def _project_goal(root: Path) -> str:
-    """The project GOAL — the value of the first `goal:` line in PROJECT.md, else
-    GOAL_UNSET. Read-only and fail-closed: a missing/unreadable foundation or a
-    blank value degrades to the sentinel (orientation never raises). Mirrors how
-    _milestone_doc reads the milestone goal — the foundation is the single source."""
-    f = root / "PROJECT.md"
-    try:
-        for line in f.read_text(encoding="utf-8").splitlines():
-            if line.startswith("goal:"):
-                return line.split(":", 1)[1].strip() or GOAL_UNSET
-    except OSError:
-        pass
-    return GOAL_UNSET
-
-
-def _project_autonomy_token(root: Path):
-    """The RAW autonomy declaration in PROJECT.md — a recognized rung, None when no
-    declaration line is present, or "?" for a real-but-unrecognized token. Uses the
-    anchored _autonomy_level (a title/prose substring is never a declaration) with
-    HTML comments stripped. Unreadable foundation -> None. Read-only and PURE."""
-    try:
-        text = (root / "PROJECT.md").read_text(encoding="utf-8")
-    except OSError:
-        return None
-    return _autonomy_level(re.sub(r"<!--.*?-->", "", text, flags=re.S))
-
-
-def _project_autonomy(root: Path) -> str:
-    """The autonomy rung a new task INHERITS from the project default. Fail-SAFE:
-    no declaration -> "auto" (the method default; v7: absent = auto); an unrecognized
-    token -> "conservative" (NEVER silently "auto"); an unreadable foundation -> "auto".
-    Read-only and PURE — mirrors _project_goal; the seed source for cmd_new_task."""
-    tok = _project_autonomy_token(root)
-    return "auto" if tok is None else ("conservative" if tok == "?" else tok)
-
-
-def _milestone_doc(root: Path, mslug: str) -> tuple[str, str]:
-    """(title, goal) from MILESTONE.md; ('(unknown)','(unknown)') if the doc is gone."""
-    f = root / "milestones" / mslug / MILESTONE_FILE
-    if not f.exists():
-        return "(unknown)", "(unknown)"
-    title, goal = "(unknown)", "(unknown)"
-    for line in f.read_text(encoding="utf-8").splitlines():
-        if line.startswith("# MILESTONE:"):
-            title = line.split(":", 1)[1].strip() or "(unknown)"
-        elif line.startswith("goal:"):
-            goal = line.split(":", 1)[1].strip() or "(unknown)"
-            break
-    return title, goal
-
-
-def _exit_criteria(root: Path, mslug: str) -> tuple[int, int]:
-    """(met, total) checkbox tally inside MILESTONE.md's 'Exit criteria' section."""
-    f = root / "milestones" / mslug / MILESTONE_FILE
-    if not f.exists():
-        return 0, 0
-    m = re.search(r"## Exit criteria.*?(?=\n## |\Z)", f.read_text(encoding="utf-8"), re.S)
-    if not m:
-        return 0, 0
-    sec = m.group(0)
-    met = len(re.findall(r"- \[x\]", sec))
-    total = met + len(re.findall(r"- \[ \]", sec))
-    return met, total
-
-
 # A non-empty `(verify: <citation>)` on an exit-criterion line — at least one non-whitespace
 # char inside, so a bare `(verify:)`/`(verify: )` does NOT count (the mid-text substring trap).
-_VERIFY_CITE_RE = re.compile(r"\(verify:\s*\S.*?\)", re.I)
-
-
-def _exit_criteria_cited(root: Path, mslug: str) -> tuple[int, int]:
-    """(cited, total) over MILESTONE.md's 'Exit criteria' section. total = every
-    `- [ ]`/`- [x]` criterion line; cited = those carrying a NON-EMPTY
-    `(verify: <citation>)`. Read-only and PURE; missing file/section -> (0, 0).
-    Mirrors _exit_criteria (the checkbox tally) — an ADDITIVE classification beside
-    it; it never touches `milestone_goal_unmet`."""
-    f = root / "milestones" / mslug / MILESTONE_FILE
-    if not f.exists():
-        return 0, 0
-    m = re.search(r"## Exit criteria.*?(?=\n## |\Z)", f.read_text(encoding="utf-8"), re.S)
-    if not m:
-        return 0, 0
-    cited = total = 0
-    for ln in m.group(0).splitlines():
-        if re.match(r"\s*- \[[ x]\]", ln):
-            total += 1
-            if _VERIFY_CITE_RE.search(ln):
-                cited += 1
-    return cited, total
-
-
 def _goal_auto_ready(root: Path, mslug: str) -> bool:
     """True iff the milestone goal is AUTO-READY: its Exit criteria has >= 1 criterion
     AND every one cites a verifier (cited == total) — so the engine can self-verify the
@@ -2713,32 +3056,6 @@ def _goal_auto_ready(root: Path, mslug: str) -> bool:
     auto-ready (you cannot self-verify against nothing). PURE."""
     cited, total = _exit_criteria_cited(root, mslug)
     return total >= 1 and cited == total
-
-
-def _stage_criteria(root: Path) -> tuple[int, int]:
-    """(met, total) checkbox tally inside PROJECT.md's 'Stage goal criteria' section — the
-    PROJECT.md analog of _exit_criteria (v22): the human's stage-covered affirmation. Read-only
-    and fail-closed to (0, 0): a missing file, a missing section, or any read error never raises
-    and never fabricates a cue (so an unreadable foundation withholds graduation, design-for-failure)."""
-    try:
-        text = (root / "PROJECT.md").read_text(encoding="utf-8")
-    except OSError:
-        return 0, 0
-    m = re.search(r"## Stage goal criteria.*?(?=\n## |\Z)", text, re.S)
-    if not m:
-        return 0, 0
-    sec = m.group(0)
-    met = len(re.findall(r"- \[x\]", sec))
-    total = met + len(re.findall(r"- \[ \]", sec))
-    return met, total
-
-
-def _all_milestones_done(state: dict) -> bool:
-    """True when the project HAS milestones and EVERY one is status=done (v22). Archived
-    milestones are absent from state['milestones'] (removed by the archive lifecycle), so they
-    do not count; a project with zero milestones is not 'covered' and returns False."""
-    ms = state.get("milestones") or {}
-    return bool(ms) and all(m.get("status") == "done" for m in ms.values())
 
 
 def _graduation_ready(root: Path, state: dict) -> tuple[bool, int, int]:
@@ -2750,93 +3067,6 @@ def _graduation_ready(root: Path, state: dict) -> tuple[bool, int, int]:
     return ready, met, total
 
 
-def _count_test_defs(f: Path) -> int:
-    """`def test_` occurrences in one file — the ONE counting regex (primary and
-    §4-declared fallback share it by construction). OSError -> 0, fail-closed."""
-    try:
-        return len(re.findall(r"^\s*def test_", f.read_text(encoding="utf-8"), re.M))
-    except OSError:
-        return 0
-
-
-def _primary_test_files(root: Path, slug: str) -> list[Path]:
-    """The PRIMARY test set — *.py directly in the task's tests/ dir (the stable
-    path). A list so the tamper tripwire can hash exactly what the engine counts."""
-    d = root / "tasks" / slug / "tests"
-    if not d.is_dir():
-        return []
-    return sorted(d.glob("*.py"))
-
-
-def _tests_count(root: Path, slug: str) -> int:
-    return sum(_count_test_defs(f) for f in _primary_test_files(root, slug))
-
-
-def _confined(p: Path, rootp: Path) -> bool:
-    """True only if p resolves (symlinks followed) inside rootp; errors -> False.
-    The v2 confinement check — no read is attempted on a path that fails it."""
-    try:
-        return p.resolve().is_relative_to(rootp)
-    except OSError:
-        return False
-
-
-def _declared_test_files(root: Path, slug: str) -> list[Path]:
-    """Resolve the §4 'Tests live in:' declared path(s) to a deduped file list. PURE.
-    Tokens are the backticked spans on the FIRST declaring line of the raw §4 body.
-    Resolution: './…' -> task dir · contains '/' -> project root (parent of .add) ·
-    bare name -> sibling of the previous resolved token (else task dir). A directory
-    token yields the *.py files directly inside it; resolved files are deduped.
-    v2 confinement: every path must resolve inside the project root — '..' traversal,
-    absolute tokens, and symlink escapes are all dropped, fail-closed."""
-    body = _raw_phase_bodies(root, slug).get(4, "")
-    m = re.search(r"^\s*Tests live in:.*$", body, re.M)
-    if not m:
-        return []
-    tdir = root / "tasks" / slug
-    rootp = root.parent.resolve()
-    files: list[Path] = []
-    prev_dir = None
-    for tok in re.findall(r"`([^`]+)`", m.group(0)):
-        tok = tok.strip()
-        if tok.startswith("./"):
-            p = tdir / tok[2:]
-        elif "/" in tok:
-            p = root.parent / tok
-        else:
-            p = (prev_dir or tdir) / tok
-        try:
-            if not _confined(p, rootp):
-                continue
-            if p.is_dir():
-                cand, prev_dir = sorted(f for f in p.glob("*.py")
-                                        if _confined(f, rootp)), p
-            elif p.is_file() and p.suffix == ".py":
-                cand, prev_dir = [p], p.parent
-            else:
-                continue
-        except OSError:
-            continue
-        files.extend(f for f in cand if f not in files)
-    return files
-
-
-def _declared_tests_count(root: Path, slug: str) -> int:
-    """Count tests at the §4 'Tests live in:' declared path(s). PURE, fail-closed 0."""
-    return sum(_count_test_defs(f) for f in _declared_test_files(root, slug))
-
-
-def _tests_info(root: Path, slug: str) -> tuple[int, bool]:
-    """(count, declared). The tests/ dir count ALWAYS wins when > 0; otherwise the
-    §4-declared fallback — flagged True only when it supplied a non-zero count, so
-    a true zero stays a bare, honest 0."""
-    primary = _tests_count(root, slug)
-    if primary > 0:
-        return primary, False
-    declared = _declared_tests_count(root, slug)
-    return (declared, True) if declared > 0 else (0, False)
-
-
 def _resolved_test_files(root: Path, slug: str) -> list[Path]:
     """The file set the engine treats as this task's tests — the PRIMARY set wins
     when it yields any test defs, else the §4-declared set (mirrors _tests_info's
@@ -2845,19 +3075,6 @@ def _resolved_test_files(root: Path, slug: str) -> list[Path]:
     if sum(_count_test_defs(f) for f in primary) > 0:
         return primary
     return _declared_test_files(root, slug)
-
-
-def _md5_text(s: str) -> str:
-    return hashlib.md5(s.encode("utf-8")).hexdigest()
-
-
-def _md5_file(p: Path) -> str | None:
-    """md5 of a file's bytes; None on ANY read error (fail-closed — a tracked file
-    that cannot be read counts as DIVERGED at the gate, never a crash)."""
-    try:
-        return hashlib.md5(p.read_bytes()).hexdigest()
-    except OSError:
-        return None
 
 
 def _tripwire_snapshot(root: Path, slug: str, raw3: str) -> dict:
@@ -2904,15 +3121,122 @@ def _tripwire_divergence(root: Path, slug: str, tw: dict) -> list[str]:
 # consuming projects (`.next/`, `coverage/`, `tsconfig.tsbuildinfo`, whose `incremental`
 # rewrite even races a clean re-snapshot), so they are pruned here too.
 _SCOPE_EXCLUDE_DIRS = (".git", ".add", "__pycache__", "node_modules", ".serena",
-                       ".next", "coverage", "test-results",
-                       ".pytest_cache", ".ruff_cache", ".mypy_cache",  # Python tool caches —
-                       # same regenerated-artifact class as .next/coverage (a pytest/ruff run
-                       # during the verify gate re-creates them and races a clean re-snapshot)
-                       ".claude")  # Claude Code state incl. NESTED git worktrees
-                       # (.claude/worktrees/*) — a parallel worktree's uncommitted files are
-                       # NOT this task's touch; walking into them caused false scope_violations
-_SCOPE_EXCLUDE_FILES = (".DS_Store", ".coverage")      # plus *.pyc / *.tsbuildinfo by suffix
+                       ".next", "coverage", "test-results")
+_SCOPE_EXCLUDE_FILES = (".DS_Store",)                  # plus *.pyc / *.tsbuildinfo by suffix
 _SCOPE_EXCLUDE_SUFFIXES = (".pyc", ".tsbuildinfo")
+
+
+# ── component registry (component-aware-add): declared components + task binding ─────
+# OPT-IN + DEGRADE-SAFE: with no .add/components.toml every reader is byte-identical to
+# pre-component ADD. A read NEVER raises (absent/unreadable/malformed → {} / dropped
+# cover); the loud surface is _component_findings, consumed by the scope gate (cmd_check).
+def _component_root(root: Path, name: str) -> str | None:
+    """Project-root-relative path (trailing '/') of component `name`'s root, or None
+    when the name is absent OR the root escapes the project (fail-closed — grants no
+    scope cover, mirroring _declared_scope's _confined drop). PURE."""
+    spec = _components(root).get(name)
+    if not spec:
+        return None
+    rootp = root.parent.resolve()
+    p = root.parent / spec["root"]
+    if not _confined(p, rootp):
+        return None
+    try:
+        return str(p.resolve().relative_to(rootp)).rstrip("/") + "/"
+    except (OSError, ValueError):
+        return None
+
+
+def _task_component(root: Path, slug: str):
+    """The component a task binds to via its `component:` header token (anchored like
+    autonomy). None = no line / unfilled `<…>` placeholder; "?" = a real token absent
+    from the registry; otherwise the component name. PURE."""
+    m = _COMPONENT_LINE_RE.search(_task_header(root, slug))
+    if not m:
+        return None
+    tok = m.group(1).strip()
+    return tok if tok in _components(root) else "?"
+
+
+def _task_green_bar(root: Path, slug: str) -> str | None:
+    """The green_bar phrase of the task's bound component (per-component-verify), else
+    None — unbound, "?", or no green_bar declared all yield None. PURE."""
+    comp = _task_component(root, slug)
+    if not comp or comp == "?":
+        return None
+    return (_components(root).get(comp) or {}).get("green_bar") or None
+
+
+def _component_findings(root: Path) -> list[tuple[str, str]]:
+    """The loud gate surface for the registry — the codes a degrade-safe read passes
+    over silently. Consumed by cmd_check (the scope_violation surface). [] when clean."""
+    findings: list[tuple[str, str]] = []
+    try:
+        raw = (root / "components.toml").read_bytes()
+    except OSError:
+        return findings                       # absent/unreadable = opt-out, nothing to report
+    data = None
+    if tomllib is None:
+        findings.append(("components_malformed", "components.toml present but tomllib unavailable (Python < 3.11)"))
+    else:
+        try:
+            data = tomllib.loads(raw.decode("utf-8"))
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError, ValueError) as e:
+            findings.append(("components_malformed", f"components.toml: {e}"))
+    if data is not None:
+        rootp = root.parent.resolve()
+        for name, spec in (data.get("component") or {}).items():
+            if name == "?":
+                findings.append(("components_malformed", "component name '?' is reserved (the unknown-binding sentinel)"))
+                continue
+            if not isinstance(spec, dict) or not isinstance(spec.get("root"), str):
+                findings.append(("components_malformed", f"[component.{name}] missing required `root`"))
+                continue
+            if not _confined(root.parent / spec["root"], rootp):
+                findings.append(("component_root_outside", f"[component.{name}] root {spec['root']!r} escapes the project"))
+    known = set(_components(root))
+    try:
+        task_dirs = sorted(p for p in (root / "tasks").iterdir() if p.is_dir())
+    except OSError:
+        task_dirs = []                       # unreadable tasks/ degrades safe — never crash a read
+    for d in task_dirs:
+        tc = _task_component(root, d.name)
+        if tc is not None and tc not in known:      # "?" or a stale name
+            findings.append(("component_unknown", f"task {d.name} binds an unregistered component"))
+    return findings
+
+
+# ── cross-component contracts (cross-component-contract) ──────────────────────────────────
+# OPT-IN + DEGRADE-SAFE, like the component readers: no [contract.*] / no produces|consumes
+# header ⇒ every path below is byte-identical to pre-contract ADD. A read NEVER raises.
+def _task_produces(root: Path, slug: str) -> str | None:
+    m = _PRODUCES_LINE_RE.search(_task_header(root, slug))
+    return m.group(1).strip() if m else None
+
+
+def _task_consumes(root: Path, slug: str) -> str | None:
+    m = _CONSUMES_LINE_RE.search(_task_header(root, slug))
+    return m.group(1).strip() if m else None
+
+
+def _contract_body_hash(raw3: str) -> str:
+    """md5 of the §3 contract SHAPE — the first ```fenced``` block, whitespace-normalized. The
+    version stamp + freeze flags are excluded (fallback strips Status:/flag/change-request lines)
+    so a pure version bump does NOT churn pinned consumers stale. PURE."""
+    m = re.search(r"```(.*?)```", raw3, re.DOTALL)
+    body = m.group(1) if m else re.sub(r"(?m)^(Status:|.*surfaced at freeze:|v\d+ CHANGE REQUEST).*$", "", raw3)
+    return _md5_text(re.sub(r"\s+", " ", body).strip())
+
+
+def _contract_findings(root: Path) -> list[tuple[str, str]]:
+    """The loud gate surface for cross-component contracts — [] when clean / opted-out."""
+    findings: list[tuple[str, str]] = []
+    known = set(_components(root))
+    for cid, spec in _contracts(root).items():
+        if spec["producer"] not in known:
+            findings.append(("contract_producer_unknown",
+                             f"[contract.{cid}] producer {spec['producer']!r} is not a declared component"))
+    return findings
 
 
 def _declared_scope(root: Path, slug: str) -> list[str] | None:
@@ -2924,11 +3248,19 @@ def _declared_scope(root: Path, slug: str) -> list[str] | None:
     root, fail-closed — with ONE divergence: a directory token covers its WHOLE
     subtree (containment, judged by _in_scope). None = no Scope line (UNDECLARED,
     grandfathered — never retro-red); [] = a line whose every token was dropped
-    (a garbage declaration grants NO cover)."""
+    (a garbage declaration grants NO cover).
+
+    component-aware-add: when the task binds a known `component:` (_task_component),
+    that component's root subtree (_component_root) is APPENDED to the resolved tokens
+    (dedup) — composing with the explicit declaration, never redrawing token resolution.
+    A bound task with NO Scope line returns [component_root] (not None); an UNBOUND task
+    is byte-identical to before."""
+    comp = _task_component(root, slug)
+    croot = _component_root(root, comp) if comp and comp != "?" else None
     body = _raw_phase_bodies(root, slug).get(5, "")
     m = re.search(r"^\s*Scope \(may touch\):.*$", body, re.M)
     if not m:
-        return None
+        return [croot] if croot else None
     tdir = root / "tasks" / slug
     rootp = root.parent.resolve()
     out: list[str] = []
@@ -2954,19 +3286,9 @@ def _declared_scope(root: Path, slug: str) -> list[str] | None:
             continue
         if rel not in out:
             out.append(rel)
+    if croot and croot not in out:        # component-aware-add: compose, never redraw
+        out.append(croot)
     return out
-
-
-def _in_scope(rel: str, declared: list[str]) -> bool:
-    """True when rel falls under any declared token — exact match for a file
-    token, whole-subtree prefix containment for a directory token ('…/')."""
-    for tok in declared:
-        if tok.endswith("/"):
-            if rel.startswith(tok) or rel == tok.rstrip("/"):
-                return True
-        elif rel == tok:
-            return True
-    return False
 
 
 def _scope_walk(rootp: Path) -> dict[str, str]:
@@ -3099,6 +3421,28 @@ def _heal_or_escalate(root: Path, state: dict, slug: str, *, reason: str, source
     raise SystemExit(3)                       # redo signal (distinct from _die's 1, argparse's 2)
 
 
+def _consumer_stale_guard(root: Path, state: dict, slug: str) -> None:
+    """Refuse a COMPLETING gate when a `consumes:` task's pinned producer contract hash is STALE
+    (the producer re-froze a CHANGED shape since the pin) — the consumer built against an
+    out-of-date contract (consumer-stale-gate, the gate twin of cmd_check's contract_consumer_stale
+    warning). Recoverable, not a cheat: re-pin by re-crossing contract->tests after reviewing the
+    new frozen shape. Degrade-safe — an unreadable/missing live snapshot is NOT decided here (it
+    stays a cmd_check warning + the advance-time contract_snapshot_missing HARD-STOP); only a
+    CONFIRMED hash drift blocks. Placed with the other completing guards, BEFORE the waiver write,
+    so a stale pin is never launderable through RISK-ACCEPTED; HARD-STOP never reaches here."""
+    pin = state["tasks"][slug].get("contract_pin")
+    if not pin:
+        return
+    try:
+        live = json.loads(_contract_snapshot(root, pin["id"]).read_text(encoding="utf-8")).get("hash")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return  # unreadable -> surfaced by cmd_check, not confirmable as stale here
+    if live is not None and live != pin.get("hash"):
+        _die(f"contract_consumer_stale: task '{slug}' pinned contract '{pin['id']}' changed shape "
+             "since the pin (the producer re-froze) — re-pin by re-crossing contract->tests after "
+             "reviewing the producer's new frozen shape; never complete against a stale contract")
+
+
 def _tamper_guard(root: Path, state: dict, slug: str) -> None:
     """HARD-STOP a COMPLETING gate when the tripwire shows tampering — the method's
     first mechanical cheat block (verify-integrity). Tri-state, co-witnessed by
@@ -3125,89 +3469,6 @@ def _tamper_guard(root: Path, state: dict, slug: str) -> None:
                           reason="tamper_detected:" + ",".join(diffs), source="tamper")
 
 
-def _task_prose(root: Path, slug: str) -> tuple[str, list[str]]:
-    """(observe_delta, [delta lines]) from the task's TASK.md §7 — captured at FULL
-    fidelity: both fields wrap across physical lines in real files, so continuation
-    lines are JOINED. Scoped to the OBSERVE section so we read the FIELD, not §1 prose
-    that names it. Fail-closed to '(unknown)' on a missing file / `<...>` placeholder."""
-    f = root / "tasks" / slug / "TASK.md"
-    if not f.exists():
-        return "(unknown)", []
-    text = f.read_text(encoding="utf-8")
-    m7 = re.search(r"##\s*7\s*·\s*OBSERVE.*\Z", text, re.S)
-    section = m7.group(0) if m7 else text
-    lines = section.splitlines()
-    # observe: prefer the first OPEN SPEC delta from the "### Spec delta" block; fall
-    # back to the legacy "Spec delta for the next loop:" free-text field (archived
-    # tasks predate the block); else "(unknown)".
-    observe = "(unknown)"
-    for unit in _spec_delta_entries(section):
-        m = _SPEC_DELTA_RE.match(unit[0])
-        if m.group(2) != "open":
-            continue
-        tail = " ".join([m.group(3).strip(), *unit[1:]]).strip()
-        em = _EVIDENCE_RE.match(tail)
-        first = (em.group(1).strip() if em else tail)
-        if first and not first.startswith("<"):
-            observe = first
-            break
-    if observe == "(unknown)":
-        for i, ln in enumerate(lines):
-            m = re.match(r"\s*Spec delta for the next loop:\s*(.*)", ln)
-            if not m:
-                continue
-            parts = [m.group(1).strip()]
-            for nxt in lines[i + 1:]:
-                t = nxt.strip()
-                if not t or t.startswith("#") or t.startswith("- ") or t.startswith("Watch"):
-                    break
-                parts.append(t)
-            joined = " ".join(p for p in parts if p).strip()
-            if joined and not joined.startswith("<"):
-                observe = joined
-            break
-
-    # deltas: each "- [COMP · status] ..." plus its indented continuation lines
-    deltas, i = [], 0
-    while i < len(lines):
-        m = _DELTA_RE.match(lines[i])
-        if not m:
-            i += 1
-            continue
-        parts, j = [m.group(3).strip()], i + 1
-        while j < len(lines):
-            t = lines[j].strip()
-            if not t or t.startswith("#") or _DELTA_RE.match(lines[j]):
-                break
-            parts.append(t)
-            j += 1
-        deltas.append(f"{m.group(1)} · {m.group(2)} · {' '.join(parts).strip()}")
-        i = j
-    return observe, deltas
-
-
-def _clip(s: str, maxlen: int) -> str:
-    """Trim a string to fit a fixed-width frame, ellipsizing if it overruns."""
-    return s if len(s) <= maxlen else s[:maxlen - 1].rstrip() + "…"
-
-
-def _wrap(text: str, width: int, label: str) -> list[str]:
-    """Wrap `text` to `width`; the first line carries `label`, continuations are
-    blank-indented to the same width (so a multi-line goal shows 'goal' once)."""
-    cont = " " * len(label)
-    lines, cur = [], ""
-    for w in text.split():
-        if cur and len(cur) + 1 + len(w) > width:
-            lines.append(cur)
-            cur = w
-        else:
-            cur = f"{cur} {w}".strip()
-    if cur:
-        lines.append(cur)
-    lines = lines or ["(unknown)"]
-    return [(label if i == 0 else cont) + ln for i, ln in enumerate(lines)]
-
-
 def report_data(root: Path, state: dict, mslug: str) -> dict:
     """The single source of FACTS for a milestone report — pure, NO writes.
     Both the text dashboard (render_report) and `report --json` render from this,
@@ -3232,6 +3493,9 @@ def report_data(root: Path, state: dict, mslug: str) -> dict:
             "phase_index": PHASES.index(phase) if phase in PHASES else 0,
             "done": _task_done(t),
             "gate": gate,
+            "gate_actor": t.get("gate_actor"),   # WHO recorded the verdict (None when unstamped)
+            "owner": t.get("owner"),             # WHO is accountable (None when unassigned)
+            "assignee": t.get("assignee"),       # WHO is working it (None when unassigned)
             "tests": n_tests,
             "tests_declared": t_declared,
             "observe": observe,
@@ -3247,7 +3511,10 @@ def report_data(root: Path, state: dict, mslug: str) -> dict:
 
     return {
         "milestone": {"slug": mslug, "title": title, "goal": goal,
-                      "status": ms.get("status", "active")},
+                      "status": ms.get("status", "active"),
+                      "done_actor": ms.get("done_actor"),    # WHO closed it (None when unstamped/open)
+                      "owner": ms.get("owner"),              # WHO is accountable for the milestone
+                      "assignee": ms.get("assignee")},       # WHO is working it (None when unassigned)
         "summary": {
             "tasks_done": sum(1 for r in task_rows if r["done"]),
             "tasks_total": len(task_rows),
@@ -3281,43 +3548,6 @@ def _clean_phase_body(body: str) -> str:
     meaningful = [ln for ln in lines
                   if ln.strip() and not re.fullmatch(r"\s*<.*>\s*", ln)]
     return "\n".join(lines) if meaningful else "(empty)"
-
-
-def _phase_spans(text: str) -> dict[int, str]:
-    """Split a TASK.md into RAW §1–§7 bodies keyed by section number — the ONE
-    canonical heading scan (`^##\\s*<n>\\s*·`, case/locale-proof); a body runs from
-    its heading to the next `## `/`---`/EOF. RAW = byte-faithful lines, no cleaning:
-    the decision-marker extractor (decide-digest) depends on byte-verbatim text.
-    KNOWN LIMIT: a §body containing a line-start `## ` or bare `---` truncates early —
-    today's TASK.md bodies don't (box-chars ─═, `### ` sub-heads)."""
-    lines = text.splitlines()
-    head = re.compile(r"^##\s*(\d+)\s*·")
-    starts: dict[int, int] = {}
-    for idx, ln in enumerate(lines):
-        m = head.match(ln)
-        if m:
-            n = int(m.group(1))
-            if 0 <= n <= 7 and n not in starts:
-                starts[n] = idx
-    out: dict[int, str] = {}
-    for n, idx in starts.items():
-        body_lines = []
-        for ln in lines[idx + 1:]:
-            if re.match(r"^##\s", ln) or re.match(r"^---\s*$", ln):
-                break
-            body_lines.append(ln)
-        out[n] = "\n".join(body_lines)
-    return out
-
-
-def _raw_phase_bodies(root: Path, slug: str) -> dict[int, str]:
-    """RAW §bodies for one task (byte-faithful, for marker extraction). PURE.
-    Missing/unreadable TASK.md -> {} (fail-closed, like task_phases)."""
-    f = root / "tasks" / slug / "TASK.md"
-    try:
-        return _phase_spans(f.read_text(encoding="utf-8"))
-    except OSError:
-        return {}
 
 
 def task_phases(root: Path, slug: str) -> list[dict]:
@@ -3429,6 +3659,24 @@ def render_task_detail(root: Path, state: dict, mslug: str, slug: str, *,
     return "\n".join(L)
 
 
+def _fmt_actor(actor: dict | None) -> str:
+    """Format a recorded actor stamp `{name,email,source}` as `name [<email>]` for the
+    report surface — "" when absent (user-identity: present-only render, no placeholder)."""
+    if not actor:
+        return ""
+    email = f" <{actor['email']}>" if actor.get("email") else ""
+    return f"{actor.get('name', '')}{email}"
+
+
+def _fmt_ownership(rec: dict) -> str:
+    """Format a record's owner/assignee as `owner: <name> · assignee: <name>` for the
+    surface (ownership-assignment) — present-only: each role appears only when set, and
+    "" when neither is. Reuses _fmt_actor to render each `{name,email,source}` actor."""
+    bits = [f"{role}: {_fmt_actor(rec[role])}" for role in ("owner", "assignee")
+            if rec.get(role) and rec[role].get("name")]   # skip a hand-edited blank-name record
+    return " · ".join(bits)
+
+
 def render_report(root: Path, state: dict, mslug: str, *,
                   width: int = _DEFAULT_WIDTH, ascii: bool = False) -> str:
     """Format the FACTS (report_data) as the text DASHBOARD — verdict-first header,
@@ -3463,6 +3711,13 @@ def render_report(root: Path, state: dict, mslug: str, *,
     L.append(f" {'GATES':<9} {gate_txt:<18} {'WAIVERS':<9} {waiver_txt}")
     L.append("")
     L.extend(_wrap(m["goal"], W - 7, " goal  "))
+    # who closed the milestone (user-identity) — present-only, never a placeholder
+    if m.get("done_actor"):
+        L.append(f" closed by {_fmt_actor(m['done_actor'])}")
+    # who owns/works the milestone (ownership-assignment) — present-only
+    _ms_own = _fmt_ownership(m)
+    if _ms_own:
+        L.append(f" owned by {_ms_own}")
     L.append("")
     if d["tasks"]:
         L.append(f" {'TASK':<27} {'PHASE':<9} {'GATE':<4} {'TESTS':<5} PROGRESS")
@@ -3477,6 +3732,21 @@ def render_report(root: Path, state: dict, mslug: str, *,
                  f"{g['pending']} pending   spec→…→done")
         if any(r.get("tests_declared") for r in d["tasks"]):
             L.append(" † counted at the §4-declared path")
+        # who recorded each verdict (user-identity) — present-only audit trail
+        gated = [r for r in d["tasks"] if r.get("gate_actor")]
+        if gated:
+            L.append("")
+            L.append(" GATED BY")
+            for r in gated:
+                short = _GATE_SHORT.get(r["gate"], r["gate"])
+                L.append(f"   {_clip(r['slug'], 24):<24} {short:<4} {_fmt_actor(r['gate_actor'])}")
+        # who owns/works each task (ownership-assignment) — present-only, mirror of GATED BY
+        owned = [r for r in d["tasks"] if r.get("owner") or r.get("assignee")]
+        if owned:
+            L.append("")
+            L.append(" OWNED BY")
+            for r in owned:
+                L.append(f"   {_clip(r['slug'], 24):<24} {_fmt_ownership(r)}")
     else:
         L.append(" (no tasks yet)")
     L.append("")
@@ -3770,7 +4040,7 @@ def _decide_next_pair(state: dict, d: dict) -> tuple[str, bool]:
             return (f"goal not met ({met}/{total} exit criteria) — propose next tasks "
                     f"from open deltas / the unscaffolded plan (add.py deltas)"), True
         return f"consolidate learnings + archive-milestone {ms}", True
-    active = state.get("active_task")
+    active = _active_task(state)
     order = sorted(rows, key=lambda r: 0 if r["slug"] == active else 1)  # stable
     for r in order:
         if r["done"]:
@@ -3812,7 +4082,7 @@ def _next_footer(root: Path, state: dict) -> str:
     The fail-soft line carries NO marker — never assert a driver that could not be computed.
     """
     try:
-        slug = state.get("active_task")
+        slug = _active_task(state)
         t = (state.get("tasks") or {}).get(slug) if slug else None
         if t and t.get("gate", "none") == "none" and t.get("phase") != "done":
             phase = t.get("phase")
@@ -3821,7 +4091,7 @@ def _next_footer(root: Path, state: dict) -> str:
                        if phase == "verify" else "add.py advance")
             marker = _driver_marker(_driver_stop(root, state, slug, phase))
             return f"next: {command} — {why}{marker}"
-        mslug = state.get("active_milestone")
+        mslug = _active_milestone(state)
         if mslug:
             d = report_data(root, state, mslug)
             text, human_stop = _decide_next_pair(state, d)
@@ -3866,10 +4136,6 @@ _DELTA_STATUSES = ("open", "folded", "rejected")
 # un-stripped lines directly; callers that pre-strip their input
 # (e.g. _collect_open_deltas, _lint_task_deltas) match the same way (\s*
 # matches zero). Anchored at line-start via re.match.
-_DELTA_RE = re.compile(
-    r"\s*-\s*\[\s*(DDD|SDD|UDD|TDD|ADD)\s*·\s*(open|folded|rejected)\s*\]\s*(.+)$"
-)
-_EVIDENCE_RE = re.compile(r"^(.*?)\s*\(evidence:\s*(.*?)\)\s*$")
 
 # SPEC-delta track — a SEPARATE resolution lifecycle from the competency deltas
 # above. SPEC shares the "- [TAG · status]" LINE shape but its statuses are
@@ -3878,9 +4144,6 @@ _EVIDENCE_RE = re.compile(r"^(.*?)\s*\(evidence:\s*(.*?)\)\s*$")
 # tag to its legal status set so the ONE lint can reject a cross-set pairing
 # ([SPEC · folded], [SDD · seeded]) without a parallel grammar.
 _SPEC_STATUSES = ("open", "seeded", "dropped")
-_SPEC_DELTA_RE = re.compile(
-    r"\s*-\s*\[\s*(SPEC)\s*·\s*(open|seeded|dropped)\s*\]\s*(.+)$"
-)
 _STATUS_SETS = {**{c: _DELTA_STATUSES for c in _COMPETENCY_ORDER}, "SPEC": _SPEC_STATUSES}
 
 # Broad structural tag detector: finds ANY "- [tok · tok]" line (valid OR malformed).
@@ -4036,32 +4299,6 @@ def _collect_open_deltas(root: Path) -> dict[str, list[dict]]:
     return by_comp
 
 
-def _spec_delta_entries(text: str) -> list[list[str]]:
-    """Group a "### Spec delta" block into entries (tag line + continuation lines).
-
-    Same grouping discipline as _collect_open_deltas' competency pass, keyed on
-    _SPEC_DELTA_RE: a tag line starts an entry; a non-"- " line continues it; a
-    blank/comment or a new "- " item ends it. Returns [] when the block is absent."""
-    bm = re.search(r"###\s*Spec delta\s*\n(.*?)(?=\n##|\Z)", text, re.S)
-    if not bm:
-        return []
-    entries: list[list[str]] = []
-    current: list[str] | None = None
-    for line in bm.group(1).splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("<!--"):
-            current = None
-            continue
-        if _SPEC_DELTA_RE.match(stripped):
-            current = [stripped]
-            entries.append(current)
-        elif current is not None and not stripped.startswith("-"):
-            current.append(stripped)         # genuine wrap of the current entry
-        else:
-            current = None                   # a new / malformed list item ends the run
-    return entries
-
-
 def _collect_open_spec_deltas(root: Path) -> list[dict]:
     """Scan every .add/tasks/*/TASK.md "### Spec delta" block for OPEN SPEC deltas.
 
@@ -4098,40 +4335,61 @@ def _collect_open_spec_deltas(root: Path) -> list[dict]:
 _SPEC_OPEN_TOKEN_RE = re.compile(r"(\[\s*SPEC\s*·\s*)open(\s*\])")
 
 
-def _resolve_spec_delta(text: str, new_status: str, pointer: str | None = None) -> str | None:
-    """Flip the FIRST `[SPEC · open]` line in `text` to `new_status`; return the new text.
+def _resolve_spec_delta(text: str, new_status: str, pointer: str | None = None,
+                        line_index: int | None = None) -> str | None:
+    """Flip ONE `[SPEC · open]` line in `text` to `new_status`; return the new text.
 
-    PURE — no IO. Only the status token changes (+ a trailing ` [→ <pointer>]` provenance
-    stamp when seeding); the entry's text and `(evidence: …)` are byte-preserved. Returns
-    None when there is NO open SPEC delta — the caller then refuses and writes nothing
-    (validate-all-then-write). Mirrors the `_autonomy_decl_line` pure-transform pattern."""
+    PURE — no IO. With `line_index` (a splitlines(keepends=True) index, as `_select_spec_delta`
+    returns) flip THAT line; without it, flip the FIRST open delta (back-compat). Only the status
+    token changes (+ a trailing ` [→ <pointer>]` provenance stamp when seeding); the entry's text
+    and `(evidence: …)` are byte-preserved. Returns None when there is NO open SPEC delta to flip —
+    the caller then refuses and writes nothing. Mirrors the `_autonomy_decl_line` pure-transform."""
     lines = text.splitlines(keepends=True)
-    for i, ln in enumerate(lines):
+    target = line_index
+    if target is None:                             # back-compat: the FIRST open delta
+        for i, ln in enumerate(lines):
+            m = _SPEC_DELTA_RE.match(ln.rstrip("\n"))
+            if m and m.group(2) == "open":
+                target = i
+                break
+        if target is None:
+            return None
+    ln = lines[target]
+    eol = ln[len(ln.rstrip("\n")):]                # preserve the exact line ending
+    body = _SPEC_OPEN_TOKEN_RE.sub(rf"\g<1>{new_status}\g<2>", ln.rstrip("\n"), count=1)
+    if pointer:
+        body = f"{body} [→ {pointer}]"
+    lines[target] = body + eol
+    return "".join(lines)
+
+
+def _select_spec_delta(text: str, match: str | None = None) -> tuple[str, int | None, str | None]:
+    """Pick the open SPEC delta to resolve (delta-match-selector). PURE — no IO.
+
+    `match=None` -> the FIRST open delta. `match=<substr>` -> the UNIQUE open delta whose display
+    text (status token + `(evidence: …)` excluded) contains <substr>, case-insensitive. Returns
+    (status, line_index, display_text) where status is one of: "ok" (line_index/display set),
+    "no_open" (no open delta at all), "no_match" (--match hit zero), "ambiguous" (--match hit >1).
+    line_index is a splitlines(keepends=True) index, the same `_resolve_spec_delta` flips."""
+    opens: list[tuple[int, str]] = []
+    for i, ln in enumerate(text.splitlines(keepends=True)):
         m = _SPEC_DELTA_RE.match(ln.rstrip("\n"))
         if not m or m.group(2) != "open":
             continue
-        eol = ln[len(ln.rstrip("\n")):]            # preserve the exact line ending
-        body = _SPEC_OPEN_TOKEN_RE.sub(rf"\g<1>{new_status}\g<2>", ln.rstrip("\n"), count=1)
-        if pointer:
-            body = f"{body} [→ {pointer}]"
-        lines[i] = body + eol
-        return "".join(lines)
-    return None
-
-
-def _first_open_spec_text(text: str) -> str | None:
-    """The first OPEN SPEC delta's text (evidence stripped) in `text`, or None.
-
-    Used to pre-fill a seeded task's §1 Feature line from the SAME in-memory text the
-    flip operates on (one read, consistent selection)."""
-    for unit in _spec_delta_entries(text):
-        m = _SPEC_DELTA_RE.match(unit[0])
-        if m.group(2) != "open":
-            continue
-        tail = " ".join([m.group(3).strip(), *unit[1:]]).strip()
-        em = _EVIDENCE_RE.match(tail)
-        return em.group(1).strip() if em else tail
-    return None
+        tail = m.group(3).strip()
+        cut = tail.find("(evidence:")             # exclude the evidence tail even if its paren is unclosed
+        opens.append((i, (tail[:cut].strip() if cut != -1 else tail)))
+    if not opens:
+        return ("no_open", None, None)
+    if match is None:
+        return ("ok", opens[0][0], opens[0][1])
+    needle = match.lower()
+    hits = [(i, d) for i, d in opens if needle in d.lower()]
+    if not hits:
+        return ("no_match", None, None)
+    if len(hits) > 1:
+        return ("ambiguous", None, None)
+    return ("ok", hits[0][0], hits[0][1])
 
 
 # ── add.py fold — mechanized competency-lesson consolidation ────────────────────────────────
@@ -4301,13 +4559,9 @@ def cmd_fold(args: argparse.Namespace) -> None:
     proj_text = _prepend_key_decision_row(proj_text, row)
     proj_text = re.sub(r"foundation-version:\s*\d+", f"foundation-version: {new_v}", proj_text, count=1)
 
-    # ── all bodies built; commit via a two-phase write (stage every temp, then rename-all). A
-    #    phase-1 temp-write failure — the REALISTIC one (disk-full / permission) — leaves NOTHING
-    #    written. A phase-2 mid-rename failure (near-impossible on same-dir renames) can leave the
-    #    foundation advanced while a TASK.md stays unflipped; files are ordered foundation-FIRST so
-    #    the lesson then stays visibly `open` and a re-run re-transcribes (DUPLICATING, never
-    #    losing — manual fixup), rather than a silently-flipped-but-untranscribed loss. A true
-    #    all-or-nothing N-file commit is the multi-file-commit follow-up task. ────────────────────
+    # ── all bodies built; commit ALL via the all-or-nothing multi-file primitive: a stage failure
+    #    (disk-full / permission) writes nothing, and a mid-commit rename failure rolls back every
+    #    already-committed file — so the foundation never advances while a TASK.md stays unflipped. ─
     writes: list[tuple[Path, str]] = [(project_md, proj_text)]
     touched = ["PROJECT.md"]
     if conv_text != conventions_text:
@@ -4372,6 +4626,15 @@ def _audit_findings(root: Path, state: dict) -> tuple[int, list[dict]]:
         elif gate != "none" and outcomes[0] != gate:
             f(slug, "gate_record_mismatch",
               f"§6 records {outcomes[0]} but state.json records {gate}")
+        elif gate == "none":
+            # F13 ungated_verdict: §6 carries a verdict the engine never gated.
+            # cmd_gate is the ONLY writer of `gate` (it also marks done), so a
+            # done/observe task at gate=="none" reached its verdict without the
+            # engine — a hand-stamped §6 or an `advance` past verify. Constraint 4
+            # requires a RECORDED outcome; a §6 verdict without one is not trusted.
+            f(slug, "ungated_verdict",
+              f"§6 records {outcomes[0]} but state.json recorded no gate (gate=none) — "
+              f"the verdict was written without the engine gate")
         sec = _AUDIT_SECURITY_RE.search(s6)
         marked = bool(sec and ("NOTE" in sec.group(0) or "⚠" in sec.group(0)))
         rev = _AUDIT_REVIEWED_RE.search(s6)
@@ -4557,12 +4820,6 @@ def cmd_graduation_report(args: argparse.Namespace) -> None:
     print("\n".join(L))
 
 
-def _releases_path(root: Path) -> Path:
-    """The append-only release ledger — at the PROJECT ROOT (root IS the .add dir, so its
-    parent), a sibling of CHANGELOG.md. NOT inside .add/."""
-    return root.parent / RELEASES_FILE
-
-
 def _released_milestones(root: Path) -> set[str]:
     """Slugs already attributed to a release — the union of every `milestones:` row in
     RELEASES.md. Fail-OPEN: a missing/unreadable/malformed ledger yields the empty set, so
@@ -4583,21 +4840,6 @@ def _released_milestones(root: Path) -> set[str]:
     return out
 
 
-def _closed_milestones(state: dict) -> list[dict]:
-    """Every CLOSED milestone (its milestone-done gate passed): LIVE done milestones
-    (status == 'done', still in state) + ARCHIVED milestones (all were PASS-done before
-    archive — see _archived_task_slugs). Each: {slug, title, tier}."""
-    out: list[dict] = []
-    for slug, m in (state.get("milestones") or {}).items():
-        if m.get("status") == "done":
-            out.append({"slug": slug, "title": m.get("title", slug), "tier": "live"})
-    for rec in state.get("archived") or []:
-        if rec.get("slug"):
-            out.append({"slug": rec["slug"], "title": rec.get("title", rec["slug"]),
-                        "tier": "archived"})
-    return out
-
-
 def _releasable(root: Path, state: dict) -> list[dict]:
     """Closed milestones NOT yet attributed to any RELEASES.md row — the cut's candidate
     bundle. Drives BOTH the `→ releasable: N` status cue and release-report. READ-ONLY."""
@@ -4605,19 +4847,38 @@ def _releasable(root: Path, state: dict) -> list[dict]:
     return [m for m in _closed_milestones(state) if m["slug"] not in released]
 
 
-def _key_decisions_for(root: Path, slug: str) -> list[str]:
-    """Best-effort §Key-Decisions rows from PROJECT.md that NAME this milestone slug — the
-    consolidated decisions the changelog can cite. Fail-open: a missing section / unreadable
-    foundation / no slug match -> [] (a gather never raises). READ-ONLY."""
+def _released_loose_tasks(root: Path) -> set[str]:
+    """Slugs already attributed to a release as LOOSE tasks — the union of every
+    `loose tasks:` row in RELEASES.md. The exact parallel of _released_milestones:
+    fail-OPEN (a missing/unreadable/malformed ledger yields the empty set, so every
+    done loose task reads as still-releasable). READ-ONLY."""
     try:
-        text = (root / "PROJECT.md").read_text(encoding="utf-8")
+        text = _releases_path(root).read_text(encoding="utf-8")
     except OSError:
-        return []
-    m = re.search(r"^#{1,6}[^\n]*key decision[^\n]*$(.*?)(?=^#{1,6}\s|\Z)", text, re.S | re.M | re.I)
-    if not m:
-        return []
-    return [st.lstrip("-* ").strip() for st in (ln.strip() for ln in m.group(1).splitlines())
-            if st.startswith(("-", "*")) and slug in st]
+        return set()                         # no ledger -> nothing released yet
+    out: set[str] = set()
+    for line in text.splitlines():
+        st = line.strip()
+        if st.lower().startswith("loose tasks:"):
+            for tok in re.split(r"[,\s]+", st.split(":", 1)[1]):
+                tok = tok.strip()
+                if tok and tok.lower() != "none":
+                    out.add(tok)
+    return out
+
+
+def _releasable_loose_tasks(root: Path, state: dict) -> list[dict]:
+    """Done milestone-free tasks NOT yet attributed to any RELEASES.md `loose tasks:` row —
+    the loose half of the cut's candidate bundle, peer to _releasable. A loose task is a
+    first-class releasable item: milestone-free (a standalone, fast OR full) AND done (a
+    completing gate). Drives the loose status cue + release_data["loose"]. READ-ONLY."""
+    released = _released_loose_tasks(root)
+    out: list[dict] = []
+    for slug, t in (state.get("tasks") or {}).items():
+        if (isinstance(t, dict) and t.get("milestone") is None and _task_done(t)
+                and slug not in released):
+            out.append({"slug": slug, "title": t.get("title", slug)})
+    return out
 
 
 def release_data(root: Path, state: dict) -> dict:
@@ -4682,15 +4943,19 @@ def release_data(root: Path, state: dict) -> dict:
                 monitors.append({"slug": slug, "watch": st})
                 break
 
+    # loose — done milestone-free tasks not yet attributed (the cut's loose bundle, peer to releasable)
+    loose = _releasable_loose_tasks(root, state)
+
     return {
         "releasable": releasable,
         "changed": changed,
         "waivers": waivers,
         "blockers": blockers,
         "monitors": monitors,
+        "loose": loose,
         "summary": {
             "releasable": len(releasable), "changed": len(changed), "waivers": len(waivers),
-            "blockers": len(blockers), "monitors": len(monitors),
+            "blockers": len(blockers), "monitors": len(monitors), "loose": len(loose),
         },
     }
 
@@ -4734,14 +4999,6 @@ def cmd_release_report(args: argparse.Namespace) -> None:
     print("\n".join(L))
 
 
-def _build_in_flight(state: dict) -> bool:
-    """release_tests_red proxy (PURE): is any ACTIVE task mid-build without a recorded green gate
-    — phase ∈ {build, verify} AND gate == 'none'? The tool-agnostic engine never runs the suite,
-    so an entered-but-ungated build is the recorded-evidence stand-in for 'the suite is red'."""
-    return any(t.get("phase") in ("build", "verify") and t.get("gate") == "none"
-               for t in (state.get("tasks") or {}).values())
-
-
 def _prepend_block(existing: str, header: str, block: str) -> str:
     """Newest-first prepend: insert `block` directly under the top H1 `header`, creating the
     header when `existing` is empty / headerless. Existing content is preserved VERBATIM
@@ -4752,32 +5009,6 @@ def _prepend_block(existing: str, header: str, block: str) -> str:
         after = existing.split(header, 1)[1].lstrip("\n")
         return f"{header}\n\n{block}{after}"
     return f"{block}{existing}"               # no recognized header -> block goes on top, verbatim tail
-
-
-def _render_changelog_block(version: str, day: str, bundle: list[dict],
-                            changed_by_slug: dict) -> str:
-    """A CHANGELOG block: `## <version> — <date>` + one bullet per bundled milestone (title +
-    carried-delta / key-decision counts from release_data['changed'])."""
-    lines = [f"## {version} — {day}", ""]
-    if bundle:
-        for m in bundle:
-            c = changed_by_slug.get(m["slug"], {})
-            lines.append(f"- {m['title']} — {c.get('carried_deltas', 0)} carried · "
-                         f"{len(c.get('key_decisions', []))} key decision(s)")
-    else:
-        lines.append("- (no milestone bundled)")
-    return "\n".join(lines) + "\n\n"
-
-
-def _render_releases_row(version: str, day: str, bundle: list[dict],
-                         waiver_slugs: list[str], evidence: str | None) -> str:
-    """One append-only RELEASES.md row — the attribution source (`milestones:` membership)."""
-    ms = ", ".join(m["slug"] for m in bundle) if bundle else "none"
-    wv = ", ".join(waiver_slugs) if waiver_slugs else "none"
-    return (f"## {version} — {day}\n"
-            f"milestones: {ms}\n"
-            f"waivers: {wv}\n"
-            f"evidence: {evidence or 'recorded by add.py release'}\n\n")
 
 
 def cmd_release(args: argparse.Namespace) -> None:
@@ -4803,9 +5034,11 @@ def cmd_release(args: argparse.Namespace) -> None:
         _die("release_tests_red: a build is in flight without a recorded green gate — finish and "
              "gate it first, or pass --force to override.")
     bundle = _releasable(root, state)
-    if not forced and not bundle:
+    loose_bundle = _releasable_loose_tasks(root, state)
+    if not forced and not bundle and not loose_bundle:
         _die("release_no_closed_milestone: nothing closed-and-unreleased to bundle — the cut "
-             "would be a no-op. Close a milestone first, or pass --force to override.")
+             "would be a no-op. Close a milestone (or a standalone task) first, or pass --force "
+             "to override.")
     if not forced and d["waivers"] and not disclosed:
         _die("release_undisclosed_waiver: a RISK-ACCEPTED waiver rides into this release — pass "
              "--with-waivers to disclose it in the notes, or --force to override.")
@@ -4822,24 +5055,19 @@ def cmd_release(args: argparse.Namespace) -> None:
                             _render_changelog_block(args.version, day, bundle, changed_by_slug))
     new_rel = _prepend_block(rel_before, "# Releases",
                              _render_releases_row(args.version, day, bundle, waiver_slugs,
-                                                  getattr(args, "evidence", None)))
-    _atomic_write(changelog_path, new_cl)
-    try:
-        _atomic_write(releases_path, new_rel)         # the attribution commit point
+                                                  getattr(args, "evidence", None),
+                                                  identity._render_actor_line(state), loose_bundle))
+    try:                                              # CHANGELOG + RELEASES as one all-or-nothing commit
+        _atomic_write_many([(changelog_path, new_cl), (releases_path, new_rel)])
     except OSError as e:
-        if cl_before is not None:                     # ROLLBACK (design-for-failure)
-            _atomic_write(changelog_path, cl_before)
-        else:
-            try:
-                changelog_path.unlink()
-            except OSError:
-                pass
-        _die(f"release_write_failed: the ledger write failed ({e}); CHANGELOG was rolled back — "
-             "nothing was recorded. Retry the release.")
+        _die(f"release_write_failed: the ledger write failed ({e}); nothing was recorded — both "
+             "files were rolled back to their prior content. Retry the release.")
 
     # NO save_state — attribution lives in RELEASES.md (the cue re-reads it), never state.json
     ms = ", ".join(m["slug"] for m in bundle) if bundle else "none"
-    print(f"released {args.version} — recorded {len(bundle)} milestone(s): {ms}")
+    lt = ", ".join(t["slug"] for t in loose_bundle) if loose_bundle else "none"
+    print(f"released {args.version} — recorded {len(bundle)} milestone(s): {ms} "
+          f"+ {len(loose_bundle)} loose task(s): {lt}")
     print("  CHANGELOG.md + RELEASES.md updated (project root). The engine records; "
           "you run the tag / publish / deploy.")
     if forced:
@@ -4932,13 +5160,13 @@ def cmd_report(args: argparse.Namespace) -> None:
         else:
             _die(f"unknown_milestone: '{name}' is not a milestone")
     elif getattr(args, "decide", False):          # bare --decide -> the ACTIVE TASK
-        slug = state.get("active_task")
+        slug = _active_task(state)
         if not slug or slug not in tasks:
             _die("no_active_task — name one: add.py report <milestone> <task> --decide")
         drill_task = slug
         mslug = tasks[slug].get("milestone") or ""
     else:                                         # no positional -> active milestone
-        mslug = state.get("active_milestone")
+        mslug = _active_milestone(state)
         if not mslug:
             _die("no_active_milestone: no milestone given and none is active; "
                  "try `add.py report <milestone>`")
@@ -5000,6 +5228,9 @@ def build_parser() -> argparse.ArgumentParser:
     pi.add_argument("--force", action="store_true", help="reset state.json if present")
     pi.add_argument("--await-lock", dest="await_lock", action="store_true",
                     help="seed an unlocked setup; gates new-task/advance/gate until `add.py lock`")
+    pi.add_argument("--rule-file", dest="rule_file", action="store_true",
+                    help="write the ADD block to .claude/rules/add-workflows.md and reference it "
+                         "from CLAUDE.md (auto-on for ccsk projects with a .ccsk/ dir)")
     pi.set_defaults(func=cmd_init)
 
     pl = sub.add_parser("lock",
@@ -5011,6 +5242,33 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--json", action="store_true", help="emit one JSON object instead of text")
     pl.set_defaults(func=cmd_lock)
 
+    pwho = sub.add_parser("whoami",
+                          help="show / set the git-native actor (git config -> OS user; --name to override)")
+    # --name (set) and --unset (clear) are mutually exclusive — argparse rejects the
+    # contradiction (exit 2) before any state read, so neither silently wins.
+    pwho_mut = pwho.add_mutually_exclusive_group()
+    pwho_mut.add_argument("--name", default=None, help="set an actor override (name)")
+    pwho_mut.add_argument("--unset", action="store_true", help="clear the actor override")
+    pwho.add_argument("--email", default=None, help="set the override email (with --name)")
+    pwho.add_argument("--json", action="store_true", help="emit one JSON object instead of text")
+    pwho.set_defaults(func=cmd_whoami)
+
+    pas = sub.add_parser("assign",
+                         help="assign an owner/assignee to a task or milestone (no flag = self)")
+    pas.add_argument("slug")
+    pas.add_argument("--owner", default=None, metavar="\"Name <email>\"",
+                     help="set the accountable owner (default with no flag: self)")
+    pas.add_argument("--assignee", default=None, metavar="\"Name <email>\"",
+                     help="set the working assignee (default with no flag: self)")
+    pas.set_defaults(func=cmd_assign)
+
+    pun = sub.add_parser("unassign",
+                         help="clear the owner/assignee of a task or milestone (no flag = both)")
+    pun.add_argument("slug")
+    pun.add_argument("--owner", action="store_true", help="clear only the owner")
+    pun.add_argument("--assignee", action="store_true", help="clear only the assignee")
+    pun.set_defaults(func=cmd_unassign)
+
     pn = sub.add_parser("new-task", help="scaffold a new task (TASK.md + tests/ + src/)")
     pn.add_argument("slug")
     pn.add_argument("--title", default=None)
@@ -5018,14 +5276,23 @@ def build_parser() -> argparse.ArgumentParser:
     pn.add_argument("--depends-on", dest="depends_on", default=None,
                     help="comma-separated task slugs this task depends on")
     pn.add_argument("--from-delta", dest="from_delta", default=None, metavar="PRIOR",
-                    help="SEED PRIOR's first open SPEC delta into this task (pre-fills §1 "
+                    help="SEED PRIOR's open SPEC delta into this task (pre-fills §1 "
                          "Feature, flips the source -> [SPEC · seeded] [→ this])")
+    pn.add_argument("--match", default=None, metavar="SUBSTR",
+                    help="with --from-delta: target the UNIQUE open SPEC delta whose text "
+                         "contains SUBSTR (case-insensitive) instead of the first")
     pn.add_argument("--force", action="store_true", help="overwrite TASK.md if present")
+    pn.add_argument("--fast", action="store_true",
+                    help="opt into the fast lane: scaffold the minimal TASK.fast.md template + "
+                         "hold the task to the freeze floor under any milestone")
     pn.set_defaults(func=cmd_new_task)
 
     pdd = sub.add_parser("drop-delta",
-                         help="dismiss a task's first open SPEC delta -> [SPEC · dropped]")
-    pdd.add_argument("slug", help="task whose first open SPEC delta to drop")
+                         help="dismiss a task's open SPEC delta -> [SPEC · dropped]")
+    pdd.add_argument("slug", help="task whose open SPEC delta to drop")
+    pdd.add_argument("--match", default=None, metavar="SUBSTR",
+                     help="target the UNIQUE open SPEC delta whose text contains SUBSTR "
+                          "(case-insensitive) instead of the first")
     pdd.set_defaults(func=cmd_drop_delta)
 
     pm = sub.add_parser("new-milestone", help="scaffold a milestone (SDD living doc)")
@@ -5034,7 +5301,17 @@ def build_parser() -> argparse.ArgumentParser:
     pm.add_argument("--goal", default=None, help="one-sentence outcome")
     pm.add_argument("--stage", default="mvp", choices=STAGES)
     pm.add_argument("--force", action="store_true", help="overwrite MILESTONE.md if present")
+    pm.add_argument("--await-confirm", action="store_true",
+                    help="opt into the confirm-parent gate: seed the milestone unconfirmed so "
+                         "new-task is held until `milestone-confirm` (mirrors `init --await-lock`); "
+                         "the guided skill flow passes this at the human-review point")
     pm.set_defaults(func=cmd_new_milestone)
+
+    pmc = sub.add_parser("milestone-confirm",
+                         help="confirm a milestone (the human gate that opens new-task for it)")
+    pmc.add_argument("slug")
+    pmc.add_argument("--by", default=None, help="free-text confirmer name (defaults to the OS user)")
+    pmc.set_defaults(func=cmd_milestone_confirm)
 
     pr = sub.add_parser("ready", help="list tasks whose dependencies are satisfied")
     pr.add_argument("--json", action="store_true", help="machine-readable JSON output")
@@ -5060,6 +5337,16 @@ def build_parser() -> argparse.ArgumentParser:
     pu.add_argument("slug")
     pu.set_defaults(func=cmd_use)
 
+    pac = sub.add_parser("activate",
+                         help="add a milestone to the active working SET and focus it (parallel milestones)")
+    pac.add_argument("slug")
+    pac.set_defaults(func=cmd_activate)
+
+    pdac = sub.add_parser("deactivate",
+                          help="remove a milestone from the active working SET (its files stay on disk)")
+    pdac.add_argument("slug")
+    pdac.set_defaults(func=cmd_deactivate)
+
     pam = sub.add_parser("archive-milestone",
                          help="collapse a done milestone out of active state (files stay on disk)")
     pam.add_argument("slug")
@@ -5069,6 +5356,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="heavy archive: move an archived milestone's files into "
                               ".add/archive/<slug>/ (recoverable reverse move)")
     pco.add_argument("slug")
+    pco.add_argument("--force", action="store_true",
+                     help="compact past an unrelated open SPEC delta (the open_spec_deltas_unresolved "
+                          "guard ONLY; never a structural reject) — bypass is warned + recorded")
     pco.set_defaults(func=cmd_compact)
 
     pp = sub.add_parser("phase", help="set a task's phase explicitly")
@@ -5097,6 +5387,13 @@ def build_parser() -> argparse.ArgumentParser:
     pan.add_argument("--yes", action="store_true",
                      help="confirm a RAISE toward auto (a human-owned trust escalation)")
     pan.set_defaults(func=cmd_autonomy, _opt_positionals=("a1", "a2"))
+
+    pto = sub.add_parser("todo", help="capture / list / close a lightweight backlog todo (jot an idea)")
+    pto.add_argument("text", nargs="?", default=None,
+                     help="todo text to capture; omit to LIST open todos")
+    pto.add_argument("--done", type=int, default=None, metavar="ID",
+                     help="close an open todo by id")
+    pto.set_defaults(func=cmd_todo)
 
     pr = sub.add_parser("reopen", help="return a done task to an earlier phase with a recorded reason")
     pr.add_argument("slug", nargs="?", default=None)
@@ -5127,6 +5424,25 @@ def build_parser() -> argparse.ArgumentParser:
     pck.add_argument("--json", action="store_true", help="machine-readable JSON output")
     pck.set_defaults(func=cmd_check)
 
+    pfed = sub.add_parser("federate", help="multi-repo: pull a producer repo's published, immutable "
+                                           "contract snapshot into this repo (fail-loud)")
+    pfedsub = pfed.add_subparsers(dest="action", required=True)
+    pfedpull = pfedsub.add_parser("pull", help="land [federation.<id>].source at the local "
+                                               ".add/contracts/<id>.json (hard-stops on a bad source)")
+    pfedpull.add_argument("id", help="the contract id declared under [federation.<id>]")
+    pfedpull.set_defaults(func=cmd_federate)
+
+    pdoc = sub.add_parser("doctor", help="read-only diagnosis of state.json integrity + "
+                                         "referential consistency (run after a git merge)")
+    pdoc.set_defaults(func=cmd_doctor)
+
+    pmine = sub.add_parser("mine", help="read-only: my not-done tasks (owner or assignee) "
+                                        "across all active milestones")
+    pmine.add_argument("--actor", default=None, metavar="\"Name <email>\"",
+                       help="inspect another actor's queue instead of your own")
+    pmine.add_argument("--json", action="store_true", help="emit one JSON object instead of text")
+    pmine.set_defaults(func=cmd_mine)
+
     pwv = sub.add_parser("wave-verify",
                          help="read-only merge-time gate: every WAVE.md roster echo must match "
                               "base (refuses unverified_fork_base) — run before the first merge-back")
@@ -5136,6 +5452,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     psg = sub.add_parser("sync-guidelines",
                          help="(re)write the ADD guideline block into AGENTS.md + CLAUDE.md")
+    psg.add_argument("--rule-file", dest="rule_file", action="store_true",
+                     help="relocate CLAUDE.md's block to .claude/rules/add-workflows.md + reference "
+                          "it (auto-on for ccsk projects)")
     psg.set_defaults(func=cmd_sync_guidelines)
 
     pgd = sub.add_parser("guide", help="print the one concrete next step for the active task")
@@ -5247,48 +5566,11 @@ def _rebind_optional_positionals(parser: argparse.ArgumentParser,
 # silently does nothing and nothing is lost. It NEVER changes a command's stdout or exit.
 _UPDATE_CACHE = ".update-cache.json"
 _UPDATE_TTL = timedelta(hours=24)          # hit the registry at most once / day
-_REGISTRY_LATEST = "https://registry.npmjs.org/@pilotspace/add/latest"
-
-
-def _read_json_safe(path: Path):
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
 def _write_json_safe(path: Path, obj) -> None:
     try:
         path.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
     except OSError:
         pass
-
-
-def _version_gt(a: str, b: str) -> bool:
-    """True if version a is newer than b (dotted numeric; prerelease suffix dropped)."""
-    def key(v: str):
-        out = []
-        for part in str(v).split("."):
-            part = part.split("-", 1)[0]
-            out.append((0, int(part)) if part.isdigit() else (1, part))
-        return out
-    try:
-        return key(a) > key(b)
-    except Exception:
-        return False
-
-
-def _fetch_latest_version(timeout: float = 1.5):
-    """GET the registry's latest version. Returns a string, or None on ANY failure
-    (offline, timeout, bad payload) — the caller treats None as 'unknown, skip'."""
-    try:
-        req = urllib.request.Request(_REGISTRY_LATEST, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        v = data.get("version")
-        return v if isinstance(v, str) and v else None
-    except Exception:
-        return None
 
 
 def _cached_latest(add_dir: Path):

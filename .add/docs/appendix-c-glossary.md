@@ -16,11 +16,19 @@
 
 **Co-specification** — how a spec is made in ADD: the AI and the human **brainstorm the shape together** (diverge), the AI **drafts** it, and the human **validates with the AI's advice** (validate). The AI's decisive advice is the *lowest-confidence flag*. It replaces dictation-by-one-side — the human owns the decision, the AI owns surfacing what it does not yet know. See [03 Specify](./03-step-1-specify.md).
 
+**Component** — a declared part of a multi-part codebase that owns a source `root` and its own `green-bar` (suite + checks), named in `.add/components.toml` under `[component.<name>]`. A task binds to one with a `component:` header line, which adds that root to its §5 Scope and holds it to that component's green bar at verify. Declared, never inferred; a project with no components is byte-identical to a single-codebase project. See [17 Components](./17-components.md).
+
+**Cross-component contract** — the frozen, machine-checkable interface between a producer component and its consumers, declared under `[contract.<id>]` (producer + consumers). A task names its role with a `produces: <id>` or `consumes: <id>` header. On the producer's freeze the engine writes an immutable snapshot at `.add/contracts/<id>.json`; a consumer pins its hash and is flagged `contract_consumer_stale` if the producer later re-freezes a changed shape. Inside one milestone a `consumes:` task is HELD from writing its §3 until the producer's snapshot exists — the intra-milestone BE→FE ordering. See [17 Components](./17-components.md).
+
+**Federation (multi-repo)** — the transport that carries a frozen cross-component contract between separate repositories. A consumer repo declares `[federation.<id>]` with a `source` (and optional `pin`); `add.py federate pull <id>` validates the producer repo's published snapshot and lands a byte-for-byte copy locally, where it behaves exactly as in a monorepo. Fail-loud: an unknown id, unreadable source, invalid snapshot, or version mismatch HARD-STOPS and lands nothing. Each repo keeps its own git-native `state.json`; only the immutable snapshot crosses. See [17 Components](./17-components.md).
+
 **Disposable code** — the view that code is one regenerable implementation of the artifacts, not a durable asset to be preserved.
 
 **Evidence bundle** — the proof attached to a change (passing tests, clean security scan, no coverage loss) that justifies trusting it and may unlock more AI autonomy.
 
 **Foundation version** — a monotonic integer marker in `PROJECT.md` that advances by one each time confirmed lessons learned are consolidated into the foundation. It makes the living documentation's evolution auditable: a rising version with fewer new deltas per milestone is the signal that a competency is converging rather than drifting. Bumped only by the retrospective consolidation (see the `add` skill's `fold.md`).
+
+**Fast lane** — the collapsed, opt-in task path for small, low-risk work. `add.py new-task <slug> --fast` scaffolds a minimal `TASK.fast.md` (sections {0,1,3,4,5,6}; scenarios and observe dropped) and the specification bundle is approved in one freeze. It runs the SAME flow with fewer sections — it never drops the trust floor: a `--fast` task is held to a frozen contract, a red test before build, and a recorded verify gate under any milestone. Collapse, never skip; the human opts in (the engine never auto-classifies a task as small). See the `add` skill's `phases/fast-lane.md`.
 
 **Gate** — a checkpoint with an explicit pass/fail exit. Its outcome is `PASS`, `RISK-ACCEPTED`, or `HARD-STOP`.
 
@@ -76,7 +84,7 @@
 
 **Baseline approval** (formerly "the lock-down") — the single human gate ending autonomous setup: an explicit yes that freezes the foundation, first scope, and first contract together; runs as `add.py lock --by <name>`.
 
-**Scope level** (formerly "altitude") — the granularity a decision lives at: intake level (request → versioned scope) · milestone level · setup/foundation level · task level · release level (≥1 closed milestone → a versioned, watched cut; see **Release scope level**). (A cross-stage decision lives one level out, at the **stage-graduation** loop — which `graduate.md` also numbers as a scope level; see **Stage graduation**.) One ⚠-assumption notation is shared across every scope level.
+**Scope level** (formerly "altitude") — the granularity a decision lives at, as one ordered ladder of five: **setup/foundation** · **intake** (request → versioned scope) · **the milestone loop** (the task is its inner unit) · **stage graduation** (changes rigor, not version; see **Stage graduation**) · **release** (≥1 closed milestone → a versioned, watched cut; see **Release scope level**). One ⚠-assumption notation is shared across every scope level.
 
 **Autonomy level** (formerly "autonomy dial") — the explicit per-task setting (`autonomy: manual | conservative | auto`, an ordered ladder manual < conservative < auto) choosing who resolves Verify: `auto` auto-PASSes on complete evidence, `conservative` keeps a human at the gate, `manual` is the strict floor (the human owns the gate; nothing auto-resolves). A high-risk scope refuses an unguarded `auto` — it must be lowered to `manual` or `conservative`. New tasks seed a visible, overridable `autonomy: auto`; a live task with no level warns (`implicit_autonomy`), a token outside the set is rejected (`unknown_autonomy_level`).
 
@@ -126,9 +134,9 @@
 
 **Newest-first append-only** — every append-only foundation sequence prepends the newest record at the top; the rolled-up settled line anchors at the bottom (the oldest end), so compaction collapses upward.
 
-**Wireframe** — the Stage-A low-fidelity, *structural* map of one screen: its regions and the component **slots** inside them, derived from `prototypes/<name>.json` *before* any color, type, or spacing — it answers "what goes where", not "what it looks like". Beat 3 of the UDD **design-definition loop**; the low-fi half of the two-stage fidelity that ends in a confirmed capture. See the `add` skill's `udd-wireframe.md` (Stage A).
+**Wireframe** — the Stage-A low-fidelity, *structural* map of one screen: its regions and the component **slots** inside them, derived from `prototypes/<name>.json` *before* any color, type, or spacing — it answers "what goes where", not "what it looks like". Beat 3 of the UDD **design-definition loop**; the low-fi half of the two-stage fidelity that ends in a confirmed capture. See the `udd-wireframe.md` template (`tooling/templates/`, Stage A).
 
-**Design mock** — the Stage-B high-fidelity, **self-contained** HTML render of a screen: the `catalog.json` components as a reusable token-bound kit, bound to `tokens.json` and populated with mock data, openable offline and screenshot-able. The human-facing *visible* evidence the human confirms (the frozen `prototypes/<name>.json` tree is its machine-checkable twin). Beat 4's hi-fi artifact; the recipe lives in the `add` skill's `udd-wireframe.md` (Stage B).
+**Design mock** — the Stage-B high-fidelity, **self-contained** HTML render of a screen: the `catalog.json` components as a reusable token-bound kit, bound to `tokens.json` and populated with mock data, openable offline and screenshot-able. The human-facing *visible* evidence the human confirms (the frozen `prototypes/<name>.json` tree is its machine-checkable twin). Beat 4's hi-fi artifact; the recipe lives in the `udd-wireframe.md` template (`tooling/templates/`, Stage B).
 
 **Capture** — the real rendered image (PNG/SVG) of a design mock: the **design-confirm evidence** artifact. Captures live at `.add/design/captures/<name>.<ext>` (one per prototype) and are attached or mentioned in the feature's `TASK.md`; `@json-render/image` (Satori → PNG/SVG, no browser) is the named default capture engine, otherwise the self-contained mock is screenshot headless. The engine never renders — it only MEASURES presence: `add.py check` raises a never-red `missing_capture` WARN for a prototype with no capture.
 
