@@ -115,13 +115,16 @@ def test_kind_overlay_points_upstream_at_stub():
         )
 
 
-# ── overlay-only EXCEPT the two authorized envoy-template fixes (v2 FQDN, v3 startupProbe) ─────────
+# ── overlay-only EXCEPT the authorized chart-template fixes (envoy FQDN/startupProbe + enc-key wiring) ─
 def test_kind_overlay_only_authorized_template_edit():
-    """kind-bootstrap is overlay-only with exactly TWO authorized chart-template edits, both forced
-    by the live kind run: (v2) envoy-configmap.yaml gains FQDN cluster addresses (short names never
-    resolve under envoy's c-ares); (v3) envoy-deployment.yaml renders the startupProbe values.yaml
-    already defines (without it, liveness kills envoy during cold-start DNS warming). No OTHER
-    template may change."""
+    """kind-bootstrap is overlay-only EXCEPT for a small, explicitly-authorized set of chart-template
+    edits. Two were forced by the live kind run: (v2) envoy-configmap.yaml gains FQDN cluster addresses
+    (short names never resolve under envoy's c-ares); (v3) envoy-deployment.yaml renders the startupProbe
+    values.yaml already defines (without it, liveness kills envoy during cold-start DNS warming). Two more
+    were authorized by task-7's v2 change-request (Tin, "Extend task 7"): gateway-deployment.yaml +
+    gateway-secret.yaml wire GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY (env-agnostic, mirrors jwtSecret) — the
+    BYOK-only gateway 500s every /v1 completion without it, which the task-7 live e2e first surfaced. No
+    OTHER template may change."""
     proc = subprocess.run(
         ["git", "status", "--porcelain", "--", "charts/ai-proxy/templates"],
         cwd=str(REPO), capture_output=True, text=True,
@@ -129,12 +132,14 @@ def test_kind_overlay_only_authorized_template_edit():
     assert proc.returncode == 0, f"git status failed: {proc.stderr}"
     changed = [ln[3:] for ln in proc.stdout.splitlines() if ln.strip()]
     allowed = {
-        "charts/ai-proxy/templates/envoy-configmap.yaml",     # v2: FQDN cluster addresses
-        "charts/ai-proxy/templates/envoy-deployment.yaml",    # v3: startupProbe wiring
+        "charts/ai-proxy/templates/envoy-configmap.yaml",      # v2: FQDN cluster addresses
+        "charts/ai-proxy/templates/envoy-deployment.yaml",     # v3: startupProbe wiring
+        "charts/ai-proxy/templates/gateway-deployment.yaml",   # task-7 v2: enc-key env (GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY)
+        "charts/ai-proxy/templates/gateway-secret.yaml",       # task-7 v2: enc-key stringData (render-safe)
     }
     unexpected = [c for c in changed if c not in allowed]
     assert not unexpected, (
-        f"only the v2/v3-authorized envoy-configmap.yaml + envoy-deployment.yaml edits are allowed; "
+        f"only the authorized envoy (v2/v3) + gateway enc-key (task-7 v2) template edits are allowed; "
         f"unexpected template changes:\n{unexpected}"
     )
 

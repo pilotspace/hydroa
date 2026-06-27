@@ -16,7 +16,7 @@ _ENVFLAG := $(if $(wildcard $(_ENVFILE)),--env-file $(_ENVFILE),)
 
 .PHONY: install lint typecheck allowlist allowlist-node test test-fast migrate migrate-check ci \
 	edge edge-up edge-sync edge-dashboard edge-smoke edge-down edge-logs edge-ps \
-	kind-preflight kind-load kind-up kind-wait kind-diag kind-smoke kind-down
+	kind-preflight kind-load kind-up kind-wait kind-diag kind-smoke kind-e2e kind-down
 
 install:
 	cd $(GATEWAY) && uv sync
@@ -176,6 +176,11 @@ kind-smoke:
 	@code=$$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:$(KIND_EDGE_PORT)/api/health 2>/dev/null || echo 000); \
 	  if [ "$$code" != "000" ]; then echo "✅ edge reachable through TLS (HTTP $$code)"; \
 	  else echo "❌ edge unreachable at https://127.0.0.1:$(KIND_EDGE_PORT)"; exit 1; fi
+
+# Live core-flow e2e (v53 task 7): up (idempotent) → seed pricing → drive the edge →
+# assert an accurate, non-zero usage+cost row. Leaves the cluster up; add --down to remove.
+kind-e2e:
+	./scripts/e2e_kind.sh
 
 # Idempotent teardown — success even if the cluster is already absent.
 kind-down:

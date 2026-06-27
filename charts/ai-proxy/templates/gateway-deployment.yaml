@@ -125,6 +125,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-proxy.gateway.jwtSecretName" . }}
                   key: {{ .Values.gateway.jwtSecret.existingKey }}
+            # BYOK provider-credential encryption key. optional:true so a deployment whose
+            # external Secret predates this key still BOOTS (completions then 500 with a clear
+            # ERR_PROVIDER_KEY_ENCRYPTION_UNAVAILABLE) rather than failing pod startup outright.
+            - name: GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-proxy.gateway.jwtSecretName" . }}
+                  key: {{ .Values.gateway.providerKeyEncryption.existingKey }}
+                  optional: true
             - name: GATEWAY_OPENROUTER_BASE_URL
               value: {{ .Values.gateway.upstreamBaseUrls.openrouter | quote }}
             - name: GATEWAY_OPENAI_BASE_URL

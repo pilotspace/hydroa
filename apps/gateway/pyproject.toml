@@ -165,9 +165,10 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "e2e: end-to-end tests requiring the infra/docker-compose.e2e.yml stack (excluded by default)",
+    "kind_e2e: live e2e against a kind cluster — run via `make kind-e2e` (excluded by default)",
     "integration: tests requiring real Postgres (localhost:5433) and/or Redis (localhost:6380)",
 ]
-addopts = "--cov=gateway --cov-report=term-missing --cov-fail-under=80 -m 'not e2e'"
+addopts = "--cov=gateway --cov-report=term-missing --cov-fail-under=80 -m 'not e2e and not kind_e2e'"
 
 [tool.coverage.run]
 source = ["src/gateway"]

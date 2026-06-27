@@ -65,6 +65,17 @@ gateway:
     createSecret: false
     value: ""
 
+  # Provider-credential encryption key (Fernet, urlsafe-base64 32-byte). BYOK provider
+  # secrets are encrypted at rest with GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY. Lives in the
+  # SAME Secret as jwtSecret (rendered on the createSecret path; reference an external
+  # Secret in production). The env is `optional: true`, so a deployment whose external
+  # Secret lacks this key still BOOTS — but every /v1 completion then 500s with
+  # ERR_PROVIDER_KEY_ENCRYPTION_UNAVAILABLE (the gateway is BYOK-only). Operators MUST
+  # add this key to their gateway Secret to serve completions.
+  providerKeyEncryption:
+    existingKey: "provider-key-encryption-key"
+    value: ""
+
   # Object store for artifact bytes (v51). Disabled by default → honest-degrade to
   # inline Postgres BYTEA. The secret access key is referenced, never inlined.
   objectStore:

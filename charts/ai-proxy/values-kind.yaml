@@ -50,6 +50,13 @@ gateway:
     createSecret: true                       # chart mints ai-proxy-gateway-secrets for kind
     existingKey: "jwt-secret"
     value: "kind-local-insecure-jwt-secret"  # FAKE — local kind only, never a real secret
+  providerKeyEncryption:
+    existingKey: "provider-key-encryption-key"
+    # PUBLICLY-KNOWN throwaway Fernet key (urlsafe-base64 32-byte). It is a VALID Fernet key by
+    # necessity (Fernet init fails at boot otherwise) but is committed in the open → NEVER reuse
+    # it in any real cluster; rotate to a freshly-generated key per environment. Local kind ONLY.
+    # Without it the BYOK store raises ERR_PROVIDER_KEY_ENCRYPTION_UNAVAILABLE and /v1 500s.
+    value: "ykjz8nXk81rGbmRCVIhK0HDxss5FYDHQxLqa4C_81N4="
 
 datastores:
   secrets:
