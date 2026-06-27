@@ -1,0 +1,20 @@
+{{- if .Values.datastores.minio.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-proxy.minio.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "ai-proxy.minio.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: api
+      port: {{ .Values.datastores.minio.apiPort }}
+      targetPort: api
+    - name: console
+      port: {{ .Values.datastores.minio.consolePort }}
+      targetPort: console
+{{- end -}}

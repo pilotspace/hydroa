@@ -1,0 +1,20 @@
+{{- if .Values.envoy.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-proxy.envoy.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: envoy
+spec:
+  type: {{ .Values.envoy.service.type }}
+  selector:
+    {{- include "ai-proxy.envoy.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: {{ .Values.envoy.service.httpsPort }}
+      targetPort: https
+    - name: http
+      port: {{ .Values.envoy.service.httpPort }}
+      targetPort: http
+{{- end -}}

@@ -3,12 +3,13 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 38
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 39
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
 
 ## Domain (DDD) — the language and the boundaries
+- (DDD) Environment assumptions decay: "kindnet ignores NetworkPolicy" was true once, false in kind v0.32/k8s v1.36 — assumptions about external tooling behavior must be RE-VALIDATED live each milestone, not carried forward (evidence: NP enforcement broke the edge despite the documented assumption).  [folded foundation-version 39 · from kind-bootstrap]
 - (DDD) "audit event" is a distinct bounded concept from "alert event" (actor-attributed + immutable + compliance vs operational + deliverable + dedup'd) — separate module/table was correct (evidence: reuse-alert_events framing rejected at specify).  [folded foundation-version 35 · from audit-log-store]
 - (DDD) "retention/purge" is an operator-wide lifecycle policy distinct from tenant-scoped CRUD — modelled as a periodic application sweeper, not an API (evidence: on-demand endpoint deferred).  [folded foundation-version 35 · from data-retention-controls]
 - (DDD) role assignment (privilege grant) is a security surface distinct from team membership — separate endpoint + escalation guard (evidence: teams role is lead/member).  [folded foundation-version 35 · from rbac-admin-ui]
@@ -129,6 +130,8 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) A frozen default can collide with a SIBLING task's frozen invariant — task-2's create=true default broke task-1's "no populated Secret by default"; caught at tests phase, fixed via CR-1 (evidence: the secure-by-default flip mirroring gateway jwtSecret).  [folded foundation-version 39 · from datastore-statefulsets]
+- (SDD) a Helm chart guard that claims to mirror an app-side validator MUST mirror its exact predicate — exact-string `=="production"` silently under-guarded vs the app's `not in {dev,test}` (evidence: refute-read F2; fixed + test_secret_guard_fires_for_any_non_dev_env).  [folded foundation-version 39 · from helm-chart-scaffold]
 - (SDD) when HONEST-DEGRADATION is a HARD invariant, even an UNREACHABLE corrupt-row state (s3 row with NULL object_key) must surface an honest 5xx, never a masking `or ""`/`or b""` that yields a misleading 404 or empty 200 (evidence: refute-read NIT → hardened the s3 object_key guard).  [folded foundation-version 38 · from artifacts-s3-persistence]
 - (SDD) the existing CircuitBreaker is IO-tier-agnostic — it dropped onto a brand-new object-store IO seam unchanged (guard/record_success/on_upstream_error), confirming the breaker is a reusable primitive, not completion-path-specific (evidence: reused verbatim, 0 edits) [object-store-port]  [folded foundation-version 38 · from object-store-port]
 - (SDD) When a task's drafted status code (422) collides with a shipped test (400), PRESERVE the shipped contract and reconcile the spec wording — never weaken the test for a cosmetic code (evidence: 400-preservation freeze flag honored).  [folded foundation-version 37 · from bff-input-validation]
@@ -472,6 +475,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-06-27 | fold all → foundation-version 39 (DDD 1 · SDD 2 · TDD 11 · ADD 11) | consolidate captured OBSERVE lessons into the versioned foundation | 25 lessons open→folded; +25 routed bullets; 38→39 |
 | 2026-06-26 | fold all → foundation-version 38 (SDD 2 · TDD 3 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 8 lessons open→folded; +8 routed bullets; 37→38 |
 <!-- NOTE: the v40–v49 program (this branch) and the v33–v50 line (main) folded the foundation
      CONCURRENTLY on separate branches; both reached "v37" via different lesson sets. The rows

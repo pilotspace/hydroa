@@ -1,0 +1,19 @@
+{{- if .Values.datastores.postgres.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-proxy.postgres.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  # Headless: stable per-pod DNS for the StatefulSet; the gateway DSN dials this name.
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "ai-proxy.postgres.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+{{- end -}}

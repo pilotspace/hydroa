@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-proxy.gateway.fullname" . }}
+  annotations:
+    # Surfaced for sibling components (envoy/dashboard) — the in-cluster DNS to dial.
+    ai-proxy.dev/cluster-dns: {{ include "ai-proxy.gateway.serviceDNS" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "ai-proxy.gateway.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

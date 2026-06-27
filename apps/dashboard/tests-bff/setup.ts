@@ -82,8 +82,7 @@ vi.mock("next/headers", () => {
 });
 
 // ── env defaults ──────────────────────────────────────────────────────────────
-// BFF route handlers read GATEWAY_URL (server-side). Set before module eval.
+// BFF route handlers read GATEWAY_URL (server-side, non-public). Set before module eval.
 process.env.GATEWAY_URL = "http://gateway.test";
-process.env.NEXT_PUBLIC_GATEWAY_URL = "http://gateway.test";
 // Same-origin base for bff-client.ts component tests
 process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";

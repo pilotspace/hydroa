@@ -290,7 +290,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-26T10:35:49+00:00",
+  "updated": "2026-06-27T12:05:16+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -929,6 +929,26 @@
         "realtime-relay-live-verify"
       ],
       "archived": "2026-06-26"
+    },
+    {
+      "slug": "v53",
+      "title": "Kubernetes deployment + full e2e validation",
+      "tasks": 10,
+      "task_slugs": [
+        "helm-chart-scaffold",
+        "datastore-statefulsets",
+        "envoy-edge-manifests",
+        "dashboard-chart",
+        "migration-and-secrets",
+        "kind-bootstrap",
+        "e2e-core-flow",
+        "e2e-platform-features",
+        "e2e-ui",
+        "ci-e2e-pipeline"
+      ],
+      "archived": "2026-06-27"
     }
-  ]
+  ],
+  "active_milestones": [],
+  "active_tasks": {}
 }

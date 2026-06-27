@@ -1,0 +1,67 @@
+{{- if .Values.datastores.postgres.enabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ai-proxy.postgres.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: {{ include "ai-proxy.postgres.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ai-proxy.postgres.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-proxy.postgres.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.datastores.postgres.podSecurityContext | nindent 8 }}
+      containers:
+        - name: postgres
+          image: {{ .Values.datastores.postgres.image | quote }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.datastores.postgres.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.datastores.postgres.database | quote }}
+            # Credential from the datastore Secret — never a literal (secret_literal_forbidden).
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-proxy.datastores.secretName" . }}
+                  key: pg-password
+            # Subdir so the PVC root (lost+found on some StorageClasses) is not $PGDATA.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          # Design-for-failure: durability (PVC below) + health gating.
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.datastores.postgres.user | quote }}, "-d", {{ .Values.datastores.postgres.database | quote }}]
+            {{- toYaml .Values.datastores.postgres.probes.readiness | nindent 12 }}
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.datastores.postgres.user | quote }}, "-d", {{ .Values.datastores.postgres.database | quote }}]
+            {{- toYaml .Values.datastores.postgres.probes.liveness | nindent 12 }}
+          resources:
+            {{- toYaml .Values.datastores.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.datastores.postgres.storageClass }}
+        storageClassName: {{ .Values.datastores.postgres.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.datastores.postgres.storage | quote }}
+{{- end -}}

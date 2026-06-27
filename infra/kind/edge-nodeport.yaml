@@ -1,0 +1,23 @@
+# Edge NodePort for kind  ·  v53 task 6 kind-bootstrap
+#
+# Harness-applied (NOT part of the Helm chart — the chart's envoy Service stays ClusterIP, the
+# cloud-portable default). Pins NodePort 30443 → the envoy https port so kind's extraPortMappings
+# (host 8443 → node 30443, infra/kind/cluster.yaml) routes DETERMINISTICALLY to the edge. Selects
+# the same envoy pods the chart Service does (ai-proxy.envoy.selectorLabels).
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-proxy-edge-nodeport
+  labels:
+    app.kubernetes.io/name: ai-proxy
+    app.kubernetes.io/component: envoy
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ai-proxy
+    app.kubernetes.io/component: envoy
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+      nodePort: 30443

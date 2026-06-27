@@ -1,0 +1,19 @@
+# Keep the Docker build context (and the builder layer) free of secrets + bulk.
+# The runtime image already copies only .next/standalone + .next/static, but a leaked
+# .env in the builder layer is visible via `docker history` — exclude it at the source.
+.env
+.env.*
+.git
+.next
+node_modules
+coverage
+tests
+tests-bff
+e2e-a11y
+test-support
+playwright.config.ts
+vitest.config.ts
+*.tsbuildinfo
+.DS_Store
+Dockerfile
+.dockerignore

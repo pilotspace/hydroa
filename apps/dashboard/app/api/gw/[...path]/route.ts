@@ -41,11 +41,9 @@ const HOP_BY_HOP_HEADERS = [
 ];
 
 function gatewayUrl(): string {
-  return (
-    process.env.GATEWAY_URL ??
-    process.env.NEXT_PUBLIC_GATEWAY_URL ??
-    "http://localhost:8080"
-  );
+  // Server-side only: read the non-public GATEWAY_URL. A NEXT_PUBLIC_-prefixed var would be
+  // inlined into the client bundle, leaking the in-cluster gateway address to browsers.
+  return process.env.GATEWAY_URL ?? "http://localhost:8080";
 }
 
 /** Server-side upstream timeout (ms); env-overridable, read at call time. */

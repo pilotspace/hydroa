@@ -1,0 +1,199 @@
+{{- include "ai-proxy.gateway.validateSecret" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-proxy.gateway.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ai-proxy.gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-proxy.gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.gateway.podSecurityContext | nindent 8 }}
+      # Must exceed the in-app drain so the usage-flusher finishes before SIGKILL.
+      terminationGracePeriodSeconds: {{ add .Values.gateway.env.drainTimeoutSeconds 5 }}
+      {{- if or .Values.datastores.postgres.enabled .Values.gateway.migrate.enabled }}
+      # Migrate-before-boot: the gateway container starts ONLY after these succeed (initContainer
+      # semantics), so it never serves an unmigrated DB. Both run on the gateway image with the
+      # pod (non-root) + container (drop ALL) securityContexts.
+      initContainers:
+        # Bounded wait for the DB — parses host:port from GATEWAY_DATABASE_URL at runtime (so it
+        # targets the ACTUAL DB: in-cluster, external, or mixed), python (in the image), not nc/pg_isready.
+        - name: wait-for-db
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.gateway.containerSecurityContext | nindent 12 }}
+          env:
+            - name: GATEWAY_DATABASE_URL
+            {{- if .Values.gateway.env.databaseUrlSecretRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.env.databaseUrlSecretRef.name }}
+                  key: {{ .Values.gateway.env.databaseUrlSecretRef.key }}
+            {{- else }}
+              value: {{ .Values.gateway.env.databaseUrl | quote }}
+            {{- end }}
+          command:
+            - python
+            - -c
+            - |
+              import os, socket, sys, time
+              from urllib.parse import urlparse
+              raw = os.environ.get("GATEWAY_DATABASE_URL", "")
+              u = urlparse(raw.replace("+asyncpg", "", 1))  # strip the SQLAlchemy dialect suffix
+              host = u.hostname or "{{ include "ai-proxy.postgres.fullname" . }}"
+              port = u.port or 5432
+              attempts = {{ .Values.gateway.migrate.waitForDb.maxAttempts | int }}
+              for i in range(attempts):
+                  try:
+                      socket.create_connection((host, port), 2).close()
+                      print("db %s:%d reachable after %d attempt(s)" % (host, port, i + 1))
+                      sys.exit(0)
+                  except OSError:
+                      time.sleep(2)
+              print("db %s:%d unreachable after %d attempts" % (host, port, attempts), file=sys.stderr)
+              sys.exit(1)
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+        {{- if .Values.gateway.migrate.enabled }}
+        # alembic to head — GATEWAY_DATABASE_URL resolved IDENTICALLY to the gateway container.
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.gateway.containerSecurityContext | nindent 12 }}
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: GATEWAY_DATABASE_URL
+            {{- if .Values.gateway.env.databaseUrlSecretRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.env.databaseUrlSecretRef.name }}
+                  key: {{ .Values.gateway.env.databaseUrlSecretRef.key }}
+            {{- else }}
+              value: {{ .Values.gateway.env.databaseUrl | quote }}
+            {{- end }}
+            - name: GATEWAY_ENVIRONMENT
+              value: {{ .Values.gateway.env.environment | quote }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.gateway.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: GATEWAY_ENVIRONMENT
+              value: {{ .Values.gateway.env.environment | quote }}
+            - name: GATEWAY_DATABASE_URL
+            {{- if .Values.gateway.env.databaseUrlSecretRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.env.databaseUrlSecretRef.name }}
+                  key: {{ .Values.gateway.env.databaseUrlSecretRef.key }}
+            {{- else }}
+              value: {{ .Values.gateway.env.databaseUrl | quote }}
+            {{- end }}
+            - name: GATEWAY_REDIS_URL
+            {{- if .Values.gateway.env.redisUrlSecretRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.env.redisUrlSecretRef.name }}
+                  key: {{ .Values.gateway.env.redisUrlSecretRef.key }}
+            {{- else }}
+              value: {{ .Values.gateway.env.redisUrl | quote }}
+            {{- end }}
+            - name: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
+              value: {{ .Values.gateway.env.drainTimeoutSeconds | quote }}
+            - name: GATEWAY_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-proxy.gateway.jwtSecretName" . }}
+                  key: {{ .Values.gateway.jwtSecret.existingKey }}
+            # BYOK provider-credential encryption key. optional:true so a deployment whose
+            # external Secret predates this key still BOOTS (completions then 500 with a clear
+            # ERR_PROVIDER_KEY_ENCRYPTION_UNAVAILABLE) rather than failing pod startup outright.
+            - name: GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-proxy.gateway.jwtSecretName" . }}
+                  key: {{ .Values.gateway.providerKeyEncryption.existingKey }}
+                  optional: true
+            - name: GATEWAY_OPENROUTER_BASE_URL
+              value: {{ .Values.gateway.upstreamBaseUrls.openrouter | quote }}
+            - name: GATEWAY_OPENAI_BASE_URL
+              value: {{ .Values.gateway.upstreamBaseUrls.openai | quote }}
+            - name: GATEWAY_ANTHROPIC_BASE_URL
+              value: {{ .Values.gateway.upstreamBaseUrls.anthropic | quote }}
+            - name: GATEWAY_GOOGLE_BASE_URL
+              value: {{ .Values.gateway.upstreamBaseUrls.google | quote }}
+            {{- if .Values.gateway.objectStore.enabled }}
+            - name: GATEWAY_OBJECT_STORE_ENABLED
+              value: "true"
+            - name: GATEWAY_OBJECT_STORE_ENDPOINT
+              value: {{ .Values.gateway.objectStore.endpoint | quote }}
+            - name: GATEWAY_OBJECT_STORE_BUCKET
+              value: {{ .Values.gateway.objectStore.bucket | quote }}
+            - name: GATEWAY_OBJECT_STORE_REGION
+              value: {{ .Values.gateway.objectStore.region | quote }}
+            - name: GATEWAY_OBJECT_STORE_ACCESS_KEY_ID
+              value: {{ .Values.gateway.objectStore.accessKeyId | quote }}
+            {{- if .Values.gateway.objectStore.secretRef.name }}
+            - name: GATEWAY_OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.objectStore.secretRef.name }}
+                  key: {{ .Values.gateway.objectStore.secretRef.key }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.gateway.realtimeRelay.provider }}
+            - name: GATEWAY_REALTIME_RELAY_PROVIDER
+              value: {{ .Values.gateway.realtimeRelay.provider | quote }}
+            - name: GATEWAY_REALTIME_RELAY_OPENAI_MODEL
+              value: {{ .Values.gateway.realtimeRelay.openaiModel | quote }}
+            - name: GATEWAY_REALTIME_RELAY_GEMINI_MODEL
+              value: {{ .Values.gateway.realtimeRelay.geminiModel | quote }}
+            {{- end }}
+            {{- range .Values.gateway.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            {{- range .Values.gateway.extraSecretEnv }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretRef.name }}
+                  key: {{ .secretRef.key }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            {{- toYaml .Values.gateway.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            {{- toYaml .Values.gateway.probes.readiness | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            {{- toYaml .Values.gateway.probes.startup | nindent 12 }}

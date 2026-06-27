@@ -1,0 +1,54 @@
+{{- if .Values.datastores.redis.enabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ai-proxy.redis.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  serviceName: {{ include "ai-proxy.redis.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ai-proxy.redis.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-proxy.redis.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.datastores.redis.podSecurityContext | nindent 8 }}
+      containers:
+        - name: redis
+          image: {{ .Values.datastores.redis.image | quote }}
+          # No-auth in-cluster (the gateway redisUrl is password-free); AOF for durability.
+          args: ["--appendonly", "yes"]
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            {{- toYaml .Values.datastores.redis.probes.readiness | nindent 12 }}
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            {{- toYaml .Values.datastores.redis.probes.liveness | nindent 12 }}
+          resources:
+            {{- toYaml .Values.datastores.redis.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.datastores.redis.storageClass }}
+        storageClassName: {{ .Values.datastores.redis.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.datastores.redis.storage | quote }}
+{{- end -}}

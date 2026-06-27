@@ -14,8 +14,9 @@ GATEWAY_JWT_SECRET ?= e2e-test-secret-change-me
 _ENVFILE := $(GATEWAY)/.env
 _ENVFLAG := $(if $(wildcard $(_ENVFILE)),--env-file $(_ENVFILE),)
 
-.PHONY: install lint typecheck allowlist allowlist-node test test-fast migrate migrate-check ci \
-	edge edge-up edge-sync edge-dashboard edge-smoke edge-down edge-logs edge-ps
+.PHONY: install lint typecheck allowlist allowlist-node test test-fast migrate migrate-check ci ci-e2e \
+	edge edge-up edge-sync edge-dashboard edge-smoke edge-down edge-logs edge-ps \
+	kind-preflight kind-load kind-up kind-wait kind-diag kind-smoke kind-e2e kind-e2e-ui kind-down
 
 install:
 	cd $(GATEWAY) && uv sync
@@ -101,3 +102,101 @@ edge-logs:
 
 edge-ps:
 	docker compose -f $(COMPOSE_E2E) ps
+
+# === kind local Kubernetes (production-shaped stack, zero cloud creds) =======
+# Quickstart:  make kind-up      # cluster + build/load both images + helm install + wait Ready
+#              make kind-smoke   # prove the Envoy edge answers through TLS from the host
+#              make kind-down    # delete the cluster
+# CLOUD-READY, KIND-VALIDATED: the real-cloud apply is a documented runbook (ci-e2e-pipeline),
+# never executed here — this harness only ever targets the local kind context.
+KIND_CLUSTER     ?= ai-proxy
+KIND_EDGE_PORT   ?= 8443
+KIND_WAIT_TIMEOUT ?= 300s
+KIND_DIR         := infra/kind
+GW_IMG           := ai-proxy-gateway:kind-local
+DASH_IMG         := ai-proxy-dashboard:kind-local
+
+# Fail fast with a clear message if any required tool is missing (design-for-failure).
+kind-preflight:
+	@command -v kind    >/dev/null 2>&1 || { echo "❌ kind not on PATH (brew install kind)"; exit 1; }
+	@command -v kubectl >/dev/null 2>&1 || { echo "❌ kubectl not on PATH"; exit 1; }
+	@command -v helm    >/dev/null 2>&1 || { echo "❌ helm not on PATH"; exit 1; }
+	@command -v openssl >/dev/null 2>&1 || { echo "❌ openssl not on PATH (needed for the self-signed edge cert)"; exit 1; }
+	@docker info >/dev/null 2>&1        || { echo "❌ docker daemon not reachable — is Docker running?"; exit 1; }
+
+# Build BOTH images and load them into the cluster (no registry push).
+kind-load:
+	docker build -t $(GW_IMG)   $(GATEWAY)
+	docker build -t $(DASH_IMG) $(DASHBOARD)
+	kind load docker-image $(GW_IMG)   --name $(KIND_CLUSTER)
+	kind load docker-image $(DASH_IMG) --name $(KIND_CLUSTER)
+
+# Reproducible, idempotent bring-up: ensure cluster -> build/load -> mint TLS -> apply test-only
+# stub + edge NodePort -> helm upgrade --install with the kind overlay -> bounded wait Ready.
+kind-up: kind-preflight
+	@kind get clusters | grep -qx $(KIND_CLUSTER) \
+	  || kind create cluster --name $(KIND_CLUSTER) --config $(KIND_DIR)/cluster.yaml
+	@$(MAKE) --no-print-directory kind-load
+	@# Self-signed TLS for the edge — the kubernetes.io/tls Secret the chart references. Test-only.
+	@tmp=$$(mktemp -d); \
+	  openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj "/CN=ai-proxy.local" \
+	    -keyout $$tmp/tls.key -out $$tmp/tls.crt >/dev/null 2>&1; \
+	  kubectl create secret tls ai-proxy-edge-tls --cert=$$tmp/tls.crt --key=$$tmp/tls.key \
+	    --dry-run=client -o yaml | kubectl apply -f -; \
+	  rm -rf $$tmp
+	kubectl apply -f $(KIND_DIR)/upstream-stub.yaml
+	kubectl apply -f $(KIND_DIR)/edge-nodeport.yaml
+	helm upgrade --install ai-proxy charts/ai-proxy -f charts/ai-proxy/values-kind.yaml \
+	  --timeout $(KIND_WAIT_TIMEOUT)
+	@$(MAKE) --no-print-directory kind-wait
+	@echo "✅ kind stack Ready — edge https://127.0.0.1:$(KIND_EDGE_PORT) | next: 'make kind-smoke'"
+
+# Bounded per-workload wait; on ANY breach dump diagnostics and fail (never hang, never false-green).
+kind-wait:
+	@for d in gateway dashboard envoy upstream-stub; do \
+	  echo "⏳ rollout deploy/ai-proxy-$$d"; \
+	  kubectl rollout status deploy/ai-proxy-$$d --timeout=$(KIND_WAIT_TIMEOUT) \
+	    || { $(MAKE) --no-print-directory kind-diag; exit 1; }; \
+	done
+	@for s in postgres redis minio; do \
+	  echo "⏳ rollout statefulset/ai-proxy-$$s"; \
+	  kubectl rollout status statefulset/ai-proxy-$$s --timeout=$(KIND_WAIT_TIMEOUT) \
+	    || { $(MAKE) --no-print-directory kind-diag; exit 1; }; \
+	done
+
+# Diagnostics on a not-ready failure (Reject kind_stack_not_ready).
+kind-diag:
+	@echo "🔎 ===== kind diagnostics (stack not Ready) ====="
+	-kubectl get pods -o wide
+	-kubectl get events --sort-by=.lastTimestamp | tail -n 30
+	-for p in $$(kubectl get pods -o name); do echo "--- $$p ---"; kubectl describe $$p | sed -n '/Events:/,$$p'; done
+
+# Prove the Envoy edge answers through TLS from the host (self-signed -> -k). Non-000 = edge up.
+kind-smoke:
+	@code=$$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:$(KIND_EDGE_PORT)/api/health 2>/dev/null || echo 000); \
+	  if [ "$$code" != "000" ]; then echo "✅ edge reachable through TLS (HTTP $$code)"; \
+	  else echo "❌ edge unreachable at https://127.0.0.1:$(KIND_EDGE_PORT)"; exit 1; fi
+
+# Live core-flow e2e (v53 task 7): up (idempotent) → seed pricing → drive the edge →
+# assert an accurate, non-zero usage+cost row. Leaves the cluster up; add --down to remove.
+kind-e2e:
+	./scripts/e2e_kind.sh
+
+# Live browser UI e2e (v53 task 9): up (idempotent) → ensure Chromium → drive the dashboard UI
+# through the edge (real login → real authed surface). Leaves the cluster up; add --down to remove.
+kind-e2e-ui:
+	./scripts/e2e_kind_ui.sh
+
+# The whole pipeline locally (v53 task 10): ONE kind-up, then BOTH e2e suites against the live
+# cluster (API then browser). This is what the kind-e2e CI workflow runs on a runner; it is also
+# the proof surface for the milestone's e2e exit criterion when Actions billing blocks the runner.
+# `kind-up` is a prerequisite so the cluster exists once; each script then runs with --no-up.
+ci-e2e: kind-up
+	./scripts/e2e_kind.sh --no-up
+	./scripts/e2e_kind_ui.sh --no-up
+	@echo "✅ ci-e2e: full kind pipeline green (API + UI e2e)"
+
+# Idempotent teardown — success even if the cluster is already absent.
+kind-down:
+	-kind delete cluster --name $(KIND_CLUSTER)
+	@echo "✅ kind cluster '$(KIND_CLUSTER)' removed"

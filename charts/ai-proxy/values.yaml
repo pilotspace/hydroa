@@ -1,0 +1,277 @@
+# ── ai-proxy Helm chart — values.yaml (FROZEN SCHEMA, v53 helm-chart-scaffold) ──
+# This file IS the contract every sibling template consumes. Templates contain ZERO
+# hardcoded environment values — everything an operator changes lives here. The
+# `values-prod.yaml` overlay swaps env-specific inputs without touching a template.
+
+# Gateway container image (no secret; an env-specific input).
+image:
+  repository: ghcr.io/pilotspace/ai-proxy-gateway
+  tag: "0.4.0"
+  pullPolicy: IfNotPresent
+
+gateway:
+  # replicas:2 — on migrate-before-boot BOTH pods run `alembic upgrade head`; alembic serializes
+  # via a lock on alembic_version, so concurrent runs are safe (the loser sees head and exits 0).
+  # For a LARGE initial migration set `--set gateway.replicas=1` to avoid a lock-wait timeout. (F5)
+  replicas: 2
+
+  # Design-for-failure: requests AND limits both required (CLAUDE.md).
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  # Core gateway env (GATEWAY_* prefix). Connection strings are single values —
+  # point them in-cluster (default) OR at a managed endpoint with no template change.
+  # The defaults carry NO embedded credentials (M5: the chart ships no secret). When a
+  # connection string itself is secret (contains a password), set its *SecretRef below:
+  # the whole DSN is then sourced from a Secret (valueFrom) and the plain value is omitted.
+  env:
+    environment: production                                              # GATEWAY_ENVIRONMENT
+    databaseUrl: "postgresql+asyncpg://gateway@ai-proxy-postgres:5432/gateway"  # GATEWAY_DATABASE_URL
+    databaseUrlSecretRef:                                                # set name to source GATEWAY_DATABASE_URL from a Secret
+      name: ""
+      key: "url"
+    redisUrl: "redis://ai-proxy-redis:6379/0"                            # GATEWAY_REDIS_URL
+    redisUrlSecretRef:                                                   # set name to source GATEWAY_REDIS_URL from a Secret
+      name: ""
+      key: "url"
+    drainTimeoutSeconds: 10                                              # GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
+
+  # Migrate-before-boot (v53): a gateway-pod initContainer runs `alembic upgrade head`
+  # (after a bounded wait for Postgres) so the gateway never serves an unmigrated DB.
+  # enabled=false → operator migrates out-of-band (the wait-for-db initContainer stays).
+  migrate:
+    enabled: true
+    waitForDb:
+      maxAttempts: 60          # ×2s ≈ 120s bounded wait; exhaustion → non-zero exit (no infinite hang)
+
+  # Container-level hardening (PSS-restricted floor) applied to the gateway container AND both
+  # migrate-before-boot initContainers. runAsUser/runAsNonRoot stay pod-level (podSecurityContext).
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities: { drop: ["ALL"] }
+
+  # JWT signing secret — referenced, never inlined. Default = reference an existing
+  # Secret (operator/CI provisions it). Set createSecret=true + value to have the
+  # chart render the Secret (e.g. for local kind). secret_ref_missing fires only when
+  # environment=production AND neither existingSecret nor createSecret is set.
+  jwtSecret:
+    existingSecret: "ai-proxy-gateway-secrets"
+    existingKey: "jwt-secret"
+    createSecret: false
+    value: ""
+
+  # Provider-credential encryption key (Fernet, urlsafe-base64 32-byte). BYOK provider
+  # secrets are encrypted at rest with GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY. Lives in the
+  # SAME Secret as jwtSecret (rendered on the createSecret path; reference an external
+  # Secret in production). The env is `optional: true`, so a deployment whose external
+  # Secret lacks this key still BOOTS — but every /v1 completion then 500s with
+  # ERR_PROVIDER_KEY_ENCRYPTION_UNAVAILABLE (the gateway is BYOK-only). Operators MUST
+  # add this key to their gateway Secret to serve completions.
+  providerKeyEncryption:
+    existingKey: "provider-key-encryption-key"
+    value: ""
+
+  # Object store for artifact bytes (v51). Disabled by default → honest-degrade to
+  # inline Postgres BYTEA. The secret access key is referenced, never inlined.
+  objectStore:
+    enabled: false
+    endpoint: ""               # GATEWAY_OBJECT_STORE_ENDPOINT
+    bucket: ""                 # GATEWAY_OBJECT_STORE_BUCKET
+    region: "us-east-1"        # GATEWAY_OBJECT_STORE_REGION
+    accessKeyId: ""            # GATEWAY_OBJECT_STORE_ACCESS_KEY_ID
+    secretRef:                 # GATEWAY_OBJECT_STORE_SECRET_ACCESS_KEY (from a Secret)
+      name: ""
+      key: "object-store-secret-key"
+
+  # Full-duplex realtime relay (v52). Empty provider = honest-degrade (close 4404).
+  realtimeRelay:
+    provider: ""                                  # GATEWAY_REALTIME_RELAY_PROVIDER ("" | openai | gemini)
+    openaiModel: "gpt-4o-realtime-preview"        # GATEWAY_REALTIME_RELAY_OPENAI_MODEL
+    geminiModel: "gemini-2.0-flash-exp"           # GATEWAY_REALTIME_RELAY_GEMINI_MODEL
+
+  # Upstream provider base URLs — override (e.g. point at an in-cluster stub) in e2e.
+  upstreamBaseUrls:
+    openrouter: "https://openrouter.ai/api/v1"                          # GATEWAY_OPENROUTER_BASE_URL
+    openai: "https://api.openai.com/v1"                                 # GATEWAY_OPENAI_BASE_URL
+    anthropic: "https://api.anthropic.com/v1"                           # GATEWAY_ANTHROPIC_BASE_URL
+    google: "https://generativelanguage.googleapis.com/v1beta"         # GATEWAY_GOOGLE_BASE_URL
+
+  # Escape hatch for the ~70 long-tail GATEWAY_* knobs without templating each:
+  extraEnv: []          # list of { name: GATEWAY_X, value: "..." }
+  extraSecretEnv: []    # list of { name: GATEWAY_X, secretRef: { name, key } }
+
+  # Probe timings (the three probes are always rendered; only timings are tunable).
+  probes:
+    liveness:  { initialDelaySeconds: 10, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+    readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+    startup:   { initialDelaySeconds: 5,  periodSeconds: 5,  timeoutSeconds: 3, failureThreshold: 30 }
+
+  pdb:
+    minAvailable: 1
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+
+# ── Datastores — in-cluster Postgres/Redis/MinIO (external-ready) ───────────────
+# Each datastore is `enabled`-gated: flip to false + point the gateway conn-string
+# at a managed endpoint (values only, no template change). Credentials live in a
+# k8s Secret, never here (secure-by-default — mirrors gateway.jwtSecret).
+datastores:
+  # Credential Secret. DEFAULT create=false: a bare install REFERENCES an operator-
+  # provided Secret named `name` (so the default render still succeeds, like the
+  # gateway's existingSecret). e2e/kind sets create=true + the *Password/*User values.
+  secrets:
+    create: false
+    name: "ai-proxy-datastore-secrets"
+    postgresPassword: ""      # only consumed when create=true (no literal default)
+    minioRootUser: ""
+    minioRootPassword: ""
+
+  postgres:
+    enabled: true
+    image: postgres:16-alpine
+    user: gateway             # POSTGRES_USER (mirrors dev-compose)
+    database: gateway         # POSTGRES_DB
+    storage: 1Gi
+    storageClass: ""          # "" -> cluster default StorageClass (kind: standard)
+    # Design-for-failure: requests AND limits both set (parity with the gateway).
+    # Conservative kind-friendly defaults; operators size per-cluster.
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: "1",  memory: 512Mi }
+    # Pod-level hardening. Safe default (seccomp); operators can add runAsNonRoot/fsGroup
+    # per their StorageClass without a template change (the postgres image inits as root).
+    podSecurityContext:
+      seccompProfile: { type: RuntimeDefault }
+    probes:
+      readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+      liveness:  { initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 3, failureThreshold: 3 }
+
+  redis:
+    enabled: true
+    image: redis:7-alpine
+    storage: 256Mi
+    storageClass: ""
+    resources:
+      requests: { cpu: 50m,  memory: 64Mi }
+      limits:   { cpu: 500m, memory: 256Mi }
+    podSecurityContext:
+      seccompProfile: { type: RuntimeDefault }
+    probes:
+      readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+      liveness:  { initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 3, failureThreshold: 3 }
+
+  minio:
+    enabled: true
+    image: minio/minio
+    mcImage: minio/mc
+    apiPort: 9000
+    consolePort: 9001
+    storage: 2Gi
+    storageClass: ""
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: "1",  memory: 512Mi }
+    podSecurityContext:
+      seccompProfile: { type: RuntimeDefault }
+    probes:
+      readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+      liveness:  { initialDelaySeconds: 20, periodSeconds: 20, timeoutSeconds: 3, failureThreshold: 3 }
+
+# ── Envoy edge — TLS termination · JWT/JWKS · ext_authz · WS-upgrade ────────────
+# A fully Helm-templated Envoy config (faithful to infra/envoy/envoy-prod.yaml) rides
+# in a ConfigMap; an initContainer substitutes the JWKS placeholder at boot so the JWT
+# secret never lands in the ConfigMap. TLS cert/key come from a kubernetes.io/tls Secret.
+envoy:
+  enabled: true
+  # Digest-pinned (tag kept for readability) — immutable pulls. Override via values to bump.
+  image: envoyproxy/envoy:v1.29-latest@sha256:5a292b91adc87aa56146fb9ee52fc85c30570d0f175d95b48cde8035a2e641dd
+  initImage: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662   # jwks-substitute init
+  replicas: 2
+  service:
+    type: ClusterIP            # kind default; LoadBalancer | NodePort for cloud (values-only)
+    httpsPort: 8443
+    httpPort: 8080
+  tls:
+    existingSecret: "ai-proxy-edge-tls"     # kubernetes.io/tls Secret (server.crt/key); operator/kind-bootstrap provides
+    minimumProtocolVersion: TLSv1_2
+  adminPort: 9901              # bound to 127.0.0.1 ONLY — off-pod config_dump unreachable regardless of CNI
+  healthPort: 9902            # dedicated 0.0.0.0 health listener for kubelet probes (health_check filter, no admin surface)
+  jwt:
+    issuer: "ai-proxy"
+  rateLimit:                   # :8443 local_ratelimit token bucket
+    maxTokens: 50
+    tokensPerFill: 50
+    fillInterval: 1s
+  extAuthz:
+    timeout: 2s                # ext_authz http_service call timeout
+  upstream:
+    connectTimeout: 0.5s       # gateway_cluster connect_timeout
+  hsts:
+    maxAge: 63072000           # Strict-Transport-Security max-age (seconds)
+    includeSubDomains: true
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: "1",  memory: 256Mi }
+  probes:
+    readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+    liveness:  { initialDelaySeconds: 15, periodSeconds: 15, timeoutSeconds: 3, failureThreshold: 3 }
+    # startup gates liveness until envoy first answers :9902/ready. The health listener binds only
+    # AFTER STRICT_DNS cluster warming completes; on a COLD cluster (CoreDNS still coming up) that
+    # exceeds the liveness budget, so without this the kubelet kills envoy mid-warming → CrashLoop.
+    # 30 × 5s = 150s budget, matching the gateway/dashboard startup defaults (v53 cold-cluster fix).
+    startup:   { initialDelaySeconds: 5,  periodSeconds: 5,  timeoutSeconds: 3, failureThreshold: 30 }
+  pdb:
+    minAvailable: 1
+  networkPolicy:
+    enabled: true              # restrict admin :9901 to node-level probes; ENFORCED in cloud, INERT in kind (kindnet ignores NP)
+
+# ── Next.js dashboard — standalone Node server fronted by the edge (v53 dashboard-chart) ──
+# Its own image (separate from the gateway image{} above). The BFF reaches the gateway over
+# the IN-CLUSTER Service (server-to-server, never the public edge — matches CSP connect-src
+# 'self'). Needs NO secret of its own (the BFF forwards the browser's JWT cookie).
+dashboard:
+  enabled: true
+  image:                                            # the dashboard's OWN image
+    repository: ghcr.io/pilotspace/ai-proxy-dashboard
+    tag: "0.4.0"
+    pullPolicy: IfNotPresent
+  replicas: 2
+  service:
+    type: ClusterIP
+    port: 3000
+  env:
+    gatewayUrl: ""             # "" -> in-cluster gateway Service (http://ai-proxy-gateway:8000); set to point at a managed gateway
+    proxyTimeoutMs: 15000      # GATEWAY_PROXY_TIMEOUT_MS — BFF upstream timeout (design-for-failure)
+    maxBodyBytes: 33554432     # GW_MAX_BODY_BYTES — 32 MiB BFF body cap (DoS guard)
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1",  memory: 512Mi }
+  probes:
+    liveness:  { initialDelaySeconds: 10, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+    readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+    startup:   { initialDelaySeconds: 5,  periodSeconds: 5,  timeoutSeconds: 3, failureThreshold: 30 }
+  pdb:
+    minAvailable: 1
+  # The dashboard never calls the k8s API → don't mount a service-account token.
+  automountServiceAccountToken: false
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000            # the node image's non-root `node` user
+    runAsGroup: 1000           # explicit non-root group
+    fsGroup: 1000              # emptyDir volumes owned by this group (writable under a read-only rootfs)
+    seccompProfile: { type: RuntimeDefault }
+  containerSecurityContext:     # container-level hardening (PSS-restricted floor)
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true   # immutable container FS; writable paths provided via emptyDir below
+    runAsNonRoot: true             # mirror the pod-level guarantee at the container
+    capabilities: { drop: ["ALL"] }
+    seccompProfile: { type: RuntimeDefault }
+  networkPolicy:
+    enabled: true              # ingress ONLY from envoy; egress ONLY to gateway + DNS (zero-trust); enforced on a NP-capable CNI

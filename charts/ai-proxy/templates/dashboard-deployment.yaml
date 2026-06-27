@@ -1,0 +1,65 @@
+{{- if .Values.dashboard.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-proxy.dashboard.fullname" . }}
+  labels:
+    {{- include "ai-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  replicas: {{ .Values.dashboard.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ai-proxy.dashboard.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-proxy.dashboard.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: {{ .Values.dashboard.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.dashboard.podSecurityContext | nindent 8 }}
+      containers:
+        - name: dashboard
+          image: "{{ .Values.dashboard.image.repository }}:{{ .Values.dashboard.image.tag }}"
+          imagePullPolicy: {{ .Values.dashboard.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.dashboard.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.dashboard.service.port }}
+          env:
+            # Server-to-server BFF target — the IN-CLUSTER gateway Service, never the public edge.
+            - name: GATEWAY_URL
+              value: {{ include "ai-proxy.dashboard.gatewayUrl" . | quote }}
+            - name: GATEWAY_PROXY_TIMEOUT_MS
+              value: {{ .Values.dashboard.env.proxyTimeoutMs | int | quote }}
+            # `int` avoids Helm rendering a large YAML number in scientific notation (3.3e+07).
+            - name: GW_MAX_BODY_BYTES
+              value: {{ .Values.dashboard.env.maxBodyBytes | int | quote }}
+            - name: PORT
+              value: {{ .Values.dashboard.service.port | quote }}
+            - name: HOSTNAME
+              value: "0.0.0.0"
+          resources:
+            {{- toYaml .Values.dashboard.resources | nindent 12 }}
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            {{- toYaml .Values.dashboard.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            {{- toYaml .Values.dashboard.probes.readiness | nindent 12 }}
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            {{- toYaml .Values.dashboard.probes.startup | nindent 12 }}
+          # Writable paths for the Next standalone server under a read-only rootfs:
+          # /tmp (temp files) + /app/.next/cache (ISR/fetch + image-opt cache, not in the standalone copy).
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: next-cache, mountPath: /app/.next/cache }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: next-cache
+          emptyDir: {}
+{{- end -}}
