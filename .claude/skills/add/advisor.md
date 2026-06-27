@@ -10,16 +10,15 @@ engine never spawns; this is your judgment to make per step.
 
 Spawn a subagent when the piece is **separable and worth the round-trip**:
 
-- **Broad / expensive sweep** — gather a wide map cheaply, return a compact result (the `0-ground`
-  broad sweep is the canonical case).
-- **Independent adversarial review** — a fresh context argues *against* your result (the `6-verify`
-  earned-green refute-read), so the check is not graded by the author.
+- **Broad / expensive sweep** — gather a wide map cheaply, return a compact result.
+- **Independent adversarial review** — a fresh context argues *against* your result (the
+  `6-verify` earned-green refute-read), so the check is not graded by the author.
 - **A well-scoped delegable batch** — a self-contained slice with a clear contract and return shape.
 - **Context offload** — work that would bloat your context but compresses to a small verdict.
 
 Do **not** spawn when the work is narrow and cheap enough to do in-context: a small sweep, a
-two-file read, a quick edit. A spawn costs a round-trip and a fresh context — pay it only when
-the piece is big or independent enough to earn it. When in doubt, do it in-context.
+two-file read, a quick edit. A spawn costs a round-trip — pay it only when the piece is big or
+independent enough to earn it. When in doubt, do it in-context.
 
 ## The plan-following prompt template
 
@@ -54,10 +53,10 @@ Do NOT run add.py or write any shared state — you propose, the orchestrator re
 
 ## Choosing the model — vendor-neutral tiers
 
-Reuse `streams.md`'s tiers, never a new vocabulary: **mid** (Claude Code: `sonnet`) for ordinary,
-well-scoped pieces with a clear contract; **top** (Claude Code: `opus`) for complex, ambiguous, or
-cross-cutting pieces. The tier maps to the runner's model id through the same adapter `streams.md`
-defines. A stronger model never buys back a human gate: high-risk scope still escalates.
+Pick the tier from `streams.md`'s vocabulary: **mid** for an ordinary, well-scoped piece; **top**
+for a complex, ambiguous, or cross-cutting one. The tier→model-id mapping and the spawn adapter
+live there — one home, not repeated here. A stronger model never buys back a human gate: high-risk
+scope still escalates.
 
 ## The hard rule — you delegate, you do not abdicate
 
