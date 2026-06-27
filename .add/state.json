@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "migration-and-secrets",
+  "active_task": "kind-bootstrap",
   "active_milestone": "v53",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -474,6 +474,55 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "kind-bootstrap": {
+      "title": "kind bootstrap harness: build+load both images, helm install, whole-stack Ready + LLM upstream stub",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v53",
+      "depends_on": [],
+      "created": "2026-06-27T03:15:19+00:00",
+      "updated": "2026-06-27T05:17:23+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "d101f1f803e3682751f0ea24a62b176f",
+        "tests": {
+          "tests/kind/test_kind_bootstrap.py": "dd1f873d1e34a299ed8fc7bd1b14d4ce",
+          "tests/helm/test_envoy_edge_manifests.py": "3d0827fcd4d2b7a3b33606d7f7420a09",
+          "tests/helm/test_dashboard_chart.py": "3239c4eda30d40af1d72b3674841b1dd"
+        }
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/kind-bootstrap/Makefile",
+          "infra/kind/cluster.yaml",
+          "infra/kind/upstream-stub.yaml",
+          "infra/kind/edge-nodeport.yaml",
+          "charts/ai-proxy/values.yaml",
+          "charts/ai-proxy/values-kind.yaml",
+          "charts/ai-proxy/templates/envoy-configmap.yaml",
+          "charts/ai-proxy/templates/envoy-deployment.yaml",
+          "tests/kind/test_kind_bootstrap.py",
+          "tests/helm/test_envoy_edge_manifests.py",
+          "tests/helm/test_dashboard_chart.py"
+        ],
+        "snapshot_md5": "9bb6185590094c3e8177055f29629387"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-27T05:16:24+00:00",
+            "reason": "tamper_detected:contract_tampered,build_tampered:tests/kind/test_kind_bootstrap.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -512,7 +561,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-27T03:01:46+00:00",
+  "updated": "2026-06-27T05:17:23+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1157,6 +1206,6 @@
     "v53"
   ],
   "active_tasks": {
-    "v53": "migration-and-secrets"
+    "v53": "kind-bootstrap"
   }
 }

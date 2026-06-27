@@ -1,0 +1,166 @@
+---
+# TEST-ONLY in-cluster LLM upstream stub  ·  v53 task 6 kind-bootstrap
+#
+# Harness-applied (NOT part of the Helm chart — the prod chart stays test-free). Answers the
+# OpenAI chat-completions wire shape so a real proxied completion through the gateway succeeds
+# with ZERO provider keys. The gateway's upstreamBaseUrls (values-kind.yaml) point here.
+# Stdlib-only server, embedded in a ConfigMap; runs on a stock python:3.12-slim base image.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-proxy-upstream-stub-src
+  labels:
+    app.kubernetes.io/name: ai-proxy
+    app.kubernetes.io/component: upstream-stub
+data:
+  stub.py: |
+    """Minimal OpenAI-wire chat-completions stub (stdlib only). Test fixture, not production."""
+    import json
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    MODEL = "kind-stub-model"
+
+    def _completion(stream_id="stub-1"):
+        return {
+            "id": "chatcmpl-" + stream_id,
+            "object": "chat.completion",
+            "created": 0,
+            "model": MODEL,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "Hello from the kind upstream stub."},
+                "finish_reason": "stop",
+            }],
+            "usage": {"prompt_tokens": 9, "completion_tokens": 7, "total_tokens": 16},
+        }
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):  # quiet
+            pass
+
+        def _health(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+
+        def do_GET(self):
+            # readiness/liveness + a models probe
+            if self.path.rstrip("/") in ("", "/health", "/v1/models"):
+                return self._health()
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                body = json.loads(raw or b"{}")
+            except Exception:
+                body = {}
+            if not self.path.rstrip("/").endswith("/chat/completions"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            if body.get("stream"):
+                # Stream OpenAI-style SSE chunks then [DONE].
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                base = {"id": "chatcmpl-stub", "object": "chat.completion.chunk",
+                        "created": int(time.time()), "model": MODEL}
+                for piece in ("Hello", " from", " the", " kind", " stub."):
+                    chunk = dict(base, choices=[{"index": 0, "delta": {"content": piece},
+                                                 "finish_reason": None}])
+                    self.wfile.write(b"data: " + json.dumps(chunk).encode() + b"\n\n")
+                done = dict(base, choices=[{"index": 0, "delta": {},
+                                            "finish_reason": "stop"}],
+                            usage={"prompt_tokens": 9, "completion_tokens": 7, "total_tokens": 16})
+                self.wfile.write(b"data: " + json.dumps(done).encode() + b"\n\n")
+                self.wfile.write(b"data: [DONE]\n\n")
+                return
+            payload = json.dumps(_completion()).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    if __name__ == "__main__":
+        ThreadingHTTPServer(("0.0.0.0", 8080), H).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-proxy-upstream-stub
+  labels:
+    app.kubernetes.io/name: ai-proxy
+    app.kubernetes.io/component: upstream-stub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-proxy
+      app.kubernetes.io/component: upstream-stub
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-proxy
+        app.kubernetes.io/component: upstream-stub
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: stub
+          image: python:3.12-slim
+          command: ["python", "/src/stub.py"]
+          ports:
+            - { name: http, containerPort: 8080 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: src, mountPath: /src, readOnly: true }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits:   { cpu: 250m, memory: 128Mi }
+      volumes:
+        - name: src
+          configMap:
+            name: ai-proxy-upstream-stub-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-proxy-upstream-stub
+  labels:
+    app.kubernetes.io/name: ai-proxy
+    app.kubernetes.io/component: upstream-stub
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ai-proxy
+    app.kubernetes.io/component: upstream-stub
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

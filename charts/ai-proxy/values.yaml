@@ -211,6 +211,11 @@ envoy:
   probes:
     readiness: { initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
     liveness:  { initialDelaySeconds: 15, periodSeconds: 15, timeoutSeconds: 3, failureThreshold: 3 }
+    # startup gates liveness until envoy first answers :9902/ready. The health listener binds only
+    # AFTER STRICT_DNS cluster warming completes; on a COLD cluster (CoreDNS still coming up) that
+    # exceeds the liveness budget, so without this the kubelet kills envoy mid-warming → CrashLoop.
+    # 30 × 5s = 150s budget, matching the gateway/dashboard startup defaults (v53 cold-cluster fix).
+    startup:   { initialDelaySeconds: 5,  periodSeconds: 5,  timeoutSeconds: 3, failureThreshold: 30 }
   pdb:
     minAvailable: 1
   networkPolicy:

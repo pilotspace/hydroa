@@ -25,6 +25,9 @@ VALUES = CHART / "values.yaml"
 RELEASE = "ai-proxy"
 ENVOY = "ai-proxy-envoy"
 GATEWAY_SVC = "ai-proxy-gateway"
+# The envoy STRICT_DNS cluster must dial the gateway by FQDN — envoy's c-ares resolver does not
+# apply the k8s resolv.conf search domains, so a bare service name never resolves (v53 kind-bootstrap).
+GATEWAY_FQDN = "ai-proxy-gateway.default.svc.cluster.local"
 
 HELM = shutil.which("helm")
 
@@ -183,7 +186,7 @@ def test_magic_numbers_values_driven():
     drl = next(f for f in dhcm["http_filters"] if f["name"].endswith("local_ratelimit"))
     assert drl["typed_config"]["token_bucket"]["max_tokens"] == 50
     ep = gateway_endpoint(default_cfg)
-    assert ep["address"] == GATEWAY_SVC and ep["port_value"] == 8000, ep
+    assert ep["address"] == GATEWAY_FQDN and ep["port_value"] == 8000, ep
 
 
 # ── M4 ──────────────────────────────────────────────────────────────────────────
@@ -296,8 +299,9 @@ def test_chart_invalid_fails():
 def test_upstream_host_match():
     cfg, _ = envoy_config(docs(template()))
     ep = gateway_endpoint(cfg)
-    assert ep["address"] == GATEWAY_SVC, f"upstream must be the gateway Service, not {ep['address']!r}"
+    assert ep["address"] == GATEWAY_FQDN, f"upstream must be the gateway Service FQDN, not {ep['address']!r}"
     assert ep["address"] != "gateway", "must not dial the literal compose host"
+    assert ep["address"].startswith(GATEWAY_SVC + "."), "FQDN must be built from the gateway Service name"
 
 
 # ── admin_port_network_restricted (M6 hardening — gate-driven v2) ─────────────────

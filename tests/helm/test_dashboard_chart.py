@@ -187,7 +187,9 @@ def test_edge_route_split():
     dc = cluster(cfg, "dashboard_cluster")
     assert dc is not None, "expected a dashboard_cluster when dashboard.enabled"
     host, port = cluster_host(dc)
-    assert host == DASH and port == 3000, (host, port)
+    # FQDN: envoy's c-ares resolver does not apply k8s search domains, so the cluster must dial the
+    # dashboard Service by its fully-qualified name (v53 kind-bootstrap fix).
+    assert host == f"{DASH}.default.svc.cluster.local" and port == 3000, (host, port)
     routes = tls_routes(cfg)
     assert routes["/"]["route"]["cluster"] == "dashboard_cluster", routes["/"]["route"]
     assert route_ext_authz(routes["/"]).get("disabled") is True, "dashboard `/` keeps ext_authz disabled"

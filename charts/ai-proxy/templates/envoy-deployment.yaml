@@ -73,6 +73,14 @@ spec:
           volumeMounts:
             - { name: config-generated, mountPath: /etc/envoy/generated, readOnly: true }
             - { name: tls-certs, mountPath: /etc/envoy/certs, readOnly: true }
+          # startupProbe SUPPRESSES liveness until envoy first answers /ready — the health listener
+          # binds only after STRICT_DNS cluster warming completes, which on a COLD cluster (CoreDNS
+          # still coming up) exceeds the liveness budget. Without this gate the kubelet kills envoy
+          # mid-warming → CrashLoopBackOff. Mirrors the gateway/dashboard templates; values already
+          # define envoy.probes.startup (v53 kind-bootstrap, cold-cluster fix).
+          startupProbe:
+            httpGet: { path: /ready, port: {{ .Values.envoy.healthPort }} }
+            {{- toYaml .Values.envoy.probes.startup | nindent 12 }}
           readinessProbe:
             httpGet: { path: /ready, port: {{ .Values.envoy.healthPort }} }
             {{- toYaml .Values.envoy.probes.readiness | nindent 12 }}

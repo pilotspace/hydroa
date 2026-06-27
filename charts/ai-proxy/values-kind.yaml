@@ -1,0 +1,66 @@
+# ai-proxy — kind (local) overlay  ·  v53 task 6 kind-bootstrap
+#
+# Overrides ONLY environment-specific inputs of the FROZEN values.yaml schema so the chart
+# installs on a local kind cluster with NO cloud credentials and NO registry push:
+#   - both app images are LOCAL (built + `kind load`ed) with pullPolicy:Never
+#   - the JWT + datastore Secrets are chart-minted with OBVIOUSLY-FAKE test creds
+#     (SECRETS-NEVER-IN-CHART preserved: these are throwaway local-only values, never real)
+#   - the gateway's upstream base URLs point at the in-cluster TEST LLM stub (no provider keys)
+#   - TLS uses a self-signed Secret the harness mints (ai-proxy-edge-tls)
+# Swapping any datastore at a managed endpoint stays a values change (external-ready) — this
+# overlay is the SAME shape an operator would use, with managed conn-strings instead of fakes.
+# This overlay is values-only; the v2–v4 envoy-template/values fixes (FQDN, dns_lookup_family,
+# startupProbe) are separate authorized chart corrections, not overlay edits.
+#
+# NetworkPolicy is DISABLED for the kind proof (envoy + dashboard) below: kindnet in this kind
+# version ENFORCES NP (the original "kindnet ignores NP" assumption was wrong), and the prod NPs
+# block the legit edge→upstream path under enforcement (envoy→ClusterIP cx_connect_fail → 503/403).
+# Prod keeps NP enabled; NP-correctness-under-enforcement is a REQUIRED cloud-runbook fix (delta).
+
+image:
+  repository: ai-proxy-gateway
+  tag: kind-local
+  pullPolicy: Never            # use the kind-loaded image; never pull from a registry
+
+dashboard:
+  image:
+    repository: ai-proxy-dashboard
+    tag: kind-local
+    pullPolicy: Never
+  networkPolicy:
+    enabled: false             # kindnet enforces NP here; the prod dashboard NP blocks envoy→dashboard
+
+gateway:
+  env:
+    # GATEWAY_ENVIRONMENT=production keeps the kind proof faithful to the real posture; all
+    # required secrets are supplied below, so the fail-fast guards are satisfied (not weakened).
+    environment: production
+    # Source the DSN (with password) from the chart-minted datastore Secret, exactly as prod does.
+    databaseUrlSecretRef:
+      name: ai-proxy-datastore-secrets
+      key: url
+    # redisUrl default (redis://ai-proxy-redis:6379/0) is in-cluster + passwordless → no secretRef.
+  # Point every upstream at the in-cluster stub so a real proxied completion needs ZERO provider keys.
+  upstreamBaseUrls:
+    openrouter: "http://ai-proxy-upstream-stub:8080/v1"
+    openai: "http://ai-proxy-upstream-stub:8080/v1"
+    anthropic: "http://ai-proxy-upstream-stub:8080/v1"
+    google: "http://ai-proxy-upstream-stub:8080/v1"
+  jwtSecret:
+    createSecret: true                       # chart mints ai-proxy-gateway-secrets for kind
+    existingKey: "jwt-secret"
+    value: "kind-local-insecure-jwt-secret"  # FAKE — local kind only, never a real secret
+
+datastores:
+  secrets:
+    create: true                             # chart mints ai-proxy-datastore-secrets (+ the DSN url key)
+    name: "ai-proxy-datastore-secrets"
+    postgresPassword: "kind-local-pg-pass"   # FAKE — local kind only
+    minioRootUser: "kind-local-minio"        # FAKE — local kind only
+    minioRootPassword: "kind-local-minio-pass"  # FAKE — local kind only
+
+envoy:
+  tls:
+    existingSecret: "ai-proxy-edge-tls"      # the harness mints a self-signed kubernetes.io/tls Secret
+  networkPolicy:
+    enabled: false             # kindnet enforces NP here; the ingress-only envoy NP breaks the edge path

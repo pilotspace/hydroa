@@ -211,6 +211,10 @@ data:
         - name: gateway_cluster
           connect_timeout: {{ .Values.envoy.upstream.connectTimeout }}
           type: STRICT_DNS
+          # V4_ONLY: the default AUTO attempts AAAA/IPv6 lookups that leave this cluster host-less on
+          # an IPv4-only k8s cluster (proven in kind: 0 resolved hosts → 503). k8s Services are V4
+          # ClusterIP, so V4_ONLY resolves correctly everywhere. (v53 kind cold-cluster fix.)
+          dns_lookup_family: V4_ONLY
           lb_policy: ROUND_ROBIN
           load_assignment:
             cluster_name: gateway_cluster
@@ -219,13 +223,19 @@ data:
                   - endpoint:
                       address:
                         socket_address:
-                          address: {{ include "ai-proxy.gateway.fullname" . }}
+                          # FQDN (not the short name): envoy's c-ares resolver does NOT apply the
+                          # resolv.conf search domains glibc uses, so a bare service name never
+                          # resolves in k8s and the STRICT_DNS cluster never initializes (the edge
+                          # then hangs in INITIALIZING and no listener binds). v53 kind-bootstrap.
+                          address: {{ include "ai-proxy.gateway.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
                           port_value: 8000
         {{- if .Values.dashboard.enabled }}
         # Browser traffic upstream — the standalone Next dashboard Service (v53 dashboard-chart).
         - name: dashboard_cluster
           connect_timeout: {{ .Values.envoy.upstream.connectTimeout }}
           type: STRICT_DNS
+          # V4_ONLY (see gateway_cluster note) — default AUTO resolves nothing on IPv4 k8s.
+          dns_lookup_family: V4_ONLY
           lb_policy: ROUND_ROBIN
           load_assignment:
             cluster_name: dashboard_cluster
@@ -234,7 +244,9 @@ data:
                   - endpoint:
                       address:
                         socket_address:
-                          address: {{ include "ai-proxy.dashboard.fullname" . }}
+                          # FQDN (see gateway_cluster note above) — short names never resolve under
+                          # envoy's c-ares in k8s.
+                          address: {{ include "ai-proxy.dashboard.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
                           port_value: {{ .Values.dashboard.service.port }}
         {{- end }}
 {{- end -}}
