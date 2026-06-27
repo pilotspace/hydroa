@@ -1,5 +1,12 @@
 # Releases
 
+## 0.5.0 — 2026-06-27
+milestones: v51, v52, v53
+loose tasks: none
+waivers: none
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: 3 milestones (v51-v53) gated PASS; v53 live make ci-e2e green (kind 10/10 Ready -> API e2e 9 + UI e2e 3 through the edge), 85 helm+kind + 7 ci_pipeline tests green; pre-merge security review MERGE-WITH-NITS no-blockers (0.96); 0 blockers / 0 waivers; foundation v39; pre-publish on branch chore/release-0.5.0
+
 ## 0.4.0 — 2026-06-26
 milestones: v40, v41, v42, v43, v44, v45, v46, v47, v48, v49, ui-fidelity, v50
 waivers: none

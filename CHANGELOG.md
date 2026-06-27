@@ -3,6 +3,58 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic versioning.
 
+## [0.5.0] — 2026-06-27
+
+Fifth release. Makes three previously-deferred capabilities **real** and puts the whole stack on
+**Kubernetes**: artifact bytes now persist to a real object store, realtime voice gains a
+provider-agnostic full-duplex relay, and the entire platform deploys from one env-parameterized
+Helm chart proven by an automated end-to-end suite. Bundles 3 closed milestones (v51–v53) since
+0.4.0. No breaking changes — every capability is additive and gated; existing API-key, agent-OAuth,
+OIDC/SSO, session-JWT, billing, and routing behavior is unchanged.
+
+### Added
+
+- **Artifacts on real object storage** (v51) — artifact bytes persist to an S3-compatible object
+  store (MinIO) behind a provider-agnostic `ObjectStore` port, with **honest degradation**
+  (explicit `ERR_OBJECT_STORE_UNAVAILABLE` + circuit breaker, never a silent inline fallback that
+  masks an outage). Default-off; inline-BYTEA remains the zero-config path.
+- **Full-duplex realtime voice relay** (v52) — a provider-agnostic relay seam
+  (`/v1/realtime/relay`) bridges a client WebSocket to a provider realtime session bidirectionally
+  (dict frames = control, binary = audio) through a breaker + timeout pump, with in-band
+  auth-over-WS (token never in the URL or a header; honest `4404` close when no provider is
+  configured). Extends v47's turn-based realtime.
+- **Kubernetes deployment + full e2e validation** (v53) — one env-parameterized **Helm chart**
+  (`charts/ai-proxy/`) stands up the entire stack (Next.js dashboard · gateway · Envoy edge ·
+  Postgres · Redis · MinIO) with external-ready datastores, migrate-before-boot init containers,
+  fail-closed secret/TLS guards, default-on NetworkPolicies, and PSS-restricted pods. A
+  reproducible **kind** harness (`make kind-up`) plus an automated **e2e suite** drive the goal
+  flow + dashboard UI + realtime relay + artifacts + admin surfaces through the live Envoy edge; a
+  kind-in-CI workflow and a `make ci-e2e` local mirror run the whole pipeline on demand.
+
+### Changed
+
+- **Realtime edge auth** (v53) — the Envoy edge gains a `/v1/realtime/` ext_authz carve-out so the
+  gateway is the sole authenticator of WebSocket handshakes (a browser cannot set an `Authorization`
+  header on a WS upgrade); every other `/v1/` path keeps edge ext_authz unchanged.
+- **Container images** (v53) — the gateway image now carries `migrations/` + `alembic.ini` so an
+  init container runs `alembic upgrade head` before the gateway serves an unmigrated DB; the
+  dashboard ships as an `output:'standalone'` Next.js server image. The dashboard BFF resolves the
+  gateway via a server-side in-cluster URL only (the `NEXT_PUBLIC_GATEWAY_URL` fallback was removed
+  so the in-cluster address can never be inlined into the client bundle).
+
+### Notes
+
+- **No breaking changes.** All three milestones are additive and default-off / zero-config-safe.
+- **Deployment is kind-validated; the real-cloud apply is a documented HARD-STOP runbook**
+  (`docs/runbooks/cloud-deploy.md`) — human-run, never executed by CI. Two pre-apply gates must
+  pass first: validate the production NetworkPolicies under a real enforcing CNI (the kind overlay
+  disables them because kindnet enforces NP in a way that blocks the edge path), and confirm the
+  provider-key encryption key is set (boot-time fail-fast is a tracked follow-up).
+- **CI**: the new `kind-e2e` workflow is committed but cannot run on a hosted runner until the org's
+  GitHub Actions billing is restored; the contemporaneous proof is the locally-green `make ci-e2e`
+  (kind stack Ready → API e2e + UI e2e through the live edge).
+- 0 open security HARD-STOPs · 0 RISK-ACCEPTED waivers. Foundation consolidated to version 39.
+
 ## [0.4.0] — 2026-06-26
 
 Fourth release. Builds a full **AI Application Platform** on top of the hardened proxy core —
