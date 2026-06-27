@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:a11y": "playwright test"
+    "test:a11y": "playwright test",
+    "test:kind": "playwright test --config playwright.kind.config.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.16",

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "e2e-platform-features",
+  "active_task": "e2e-ui",
   "active_milestone": "v53",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -607,6 +607,37 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "e2e-ui": {
+      "title": "Browser-driven dashboard UI e2e through the Envoy edge against the live kind cluster (login + a real authenticated surface)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v53",
+      "depends_on": [],
+      "created": "2026-06-27T09:00:45+00:00",
+      "updated": "2026-06-27T10:09:10+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a97c682a64b592761a20cb00598efc0e",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/e2e-kind/",
+          "apps/dashboard/playwright.kind.config.ts",
+          "apps/dashboard/package.json",
+          "scripts/e2e_kind_ui.sh",
+          "scripts/Makefile",
+          "scripts/test:kind",
+          "scripts/kind-e2e-ui"
+        ],
+        "snapshot_md5": "65eeb8002b8896717ac660c8cb0bdaec"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -645,7 +676,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-27T08:53:31+00:00",
+  "updated": "2026-06-27T10:09:10+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1290,6 +1321,6 @@
     "v53"
   ],
   "active_tasks": {
-    "v53": "e2e-platform-features"
+    "v53": "e2e-ui"
   }
 }

@@ -16,7 +16,7 @@ _ENVFLAG := $(if $(wildcard $(_ENVFILE)),--env-file $(_ENVFILE),)
 
 .PHONY: install lint typecheck allowlist allowlist-node test test-fast migrate migrate-check ci \
 	edge edge-up edge-sync edge-dashboard edge-smoke edge-down edge-logs edge-ps \
-	kind-preflight kind-load kind-up kind-wait kind-diag kind-smoke kind-e2e kind-down
+	kind-preflight kind-load kind-up kind-wait kind-diag kind-smoke kind-e2e kind-e2e-ui kind-down
 
 install:
 	cd $(GATEWAY) && uv sync
@@ -181,6 +181,11 @@ kind-smoke:
 # assert an accurate, non-zero usage+cost row. Leaves the cluster up; add --down to remove.
 kind-e2e:
 	./scripts/e2e_kind.sh
+
+# Live browser UI e2e (v53 task 9): up (idempotent) → ensure Chromium → drive the dashboard UI
+# through the edge (real login → real authed surface). Leaves the cluster up; add --down to remove.
+kind-e2e-ui:
+	./scripts/e2e_kind_ui.sh
 
 # Idempotent teardown — success even if the cluster is already absent.
 kind-down:
