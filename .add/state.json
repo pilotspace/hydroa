@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "e2e-ui",
+  "active_task": "ci-e2e-pipeline",
   "active_milestone": "v53",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -638,6 +638,36 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "ci-e2e-pipeline": {
+      "title": "Wire kind-up + the full e2e (API + UI) into a CI workflow + author the real-cloud (values-prod) deploy runbook (the HARD-STOP boundary)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v53",
+      "depends_on": [],
+      "created": "2026-06-27T10:13:39+00:00",
+      "updated": "2026-06-27T11:12:15+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2ba8eb47a5395a6bcad68ebc7fcfb3d3",
+        "tests": {
+          "tests/ci_pipeline/test_kind_ci_pipeline.py": "158fb2820eabbdd8e43a0cf30289b37f"
+        }
+      },
+      "scope": {
+        "declared": [
+          ".github/workflows/kind-e2e.yml",
+          ".github/workflows/Makefile",
+          "docs/runbooks/cloud-deploy.md",
+          "tests/ci_pipeline/"
+        ],
+        "snapshot_md5": "f8c3e3cf274bfac7b5d027c78023146f"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -676,7 +706,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-27T10:09:10+00:00",
+  "updated": "2026-06-27T11:12:15+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1321,6 +1351,6 @@
     "v53"
   ],
   "active_tasks": {
-    "v53": "e2e-ui"
+    "v53": "ci-e2e-pipeline"
   }
 }

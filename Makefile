@@ -14,7 +14,7 @@ GATEWAY_JWT_SECRET ?= e2e-test-secret-change-me
 _ENVFILE := $(GATEWAY)/.env
 _ENVFLAG := $(if $(wildcard $(_ENVFILE)),--env-file $(_ENVFILE),)
 
-.PHONY: install lint typecheck allowlist allowlist-node test test-fast migrate migrate-check ci \
+.PHONY: install lint typecheck allowlist allowlist-node test test-fast migrate migrate-check ci ci-e2e \
 	edge edge-up edge-sync edge-dashboard edge-smoke edge-down edge-logs edge-ps \
 	kind-preflight kind-load kind-up kind-wait kind-diag kind-smoke kind-e2e kind-e2e-ui kind-down
 
@@ -186,6 +186,15 @@ kind-e2e:
 # through the edge (real login → real authed surface). Leaves the cluster up; add --down to remove.
 kind-e2e-ui:
 	./scripts/e2e_kind_ui.sh
+
+# The whole pipeline locally (v53 task 10): ONE kind-up, then BOTH e2e suites against the live
+# cluster (API then browser). This is what the kind-e2e CI workflow runs on a runner; it is also
+# the proof surface for the milestone's e2e exit criterion when Actions billing blocks the runner.
+# `kind-up` is a prerequisite so the cluster exists once; each script then runs with --no-up.
+ci-e2e: kind-up
+	./scripts/e2e_kind.sh --no-up
+	./scripts/e2e_kind_ui.sh --no-up
+	@echo "✅ ci-e2e: full kind pipeline green (API + UI e2e)"
 
 # Idempotent teardown — success even if the cluster is already absent.
 kind-down:

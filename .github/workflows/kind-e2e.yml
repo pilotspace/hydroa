@@ -1,0 +1,76 @@
+# kind-in-CI end-to-end pipeline  ·  v53 task 10 (ci-e2e-pipeline)
+#
+# Stands up the WHOLE production-shaped stack on a local kind cluster on the runner and drives both
+# e2e suites (API + browser) through the Envoy edge — the CI form of `make ci-e2e`. It is the
+# automated proof of the milestone's e2e exit criterion on a runner.
+#
+# Heavy + opt-in by design: it is NOT in the fast `ci.yml` lane (which keeps lint/typecheck/unit
+# fast). It triggers on-demand (workflow_dispatch) or only when deploy-shaped paths change.
+#
+# NOTE (operational): the org's GitHub Actions billing is currently blocked, so this workflow is
+# authored + committed but cannot be observed green on a hosted runner until billing is restored.
+# The local `make ci-e2e` is the contemporaneous proof surface (see the task's freeze flag). The
+# runner specifics (image build time, disk, the 45-min budget) are best-effort and may need tuning.
+name: kind-e2e
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "charts/**"
+      - "infra/kind/**"
+      - "scripts/e2e_kind*.sh"
+      - "apps/**"
+      - "Makefile"
+      - ".github/workflows/kind-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  kind-e2e:
+    runs-on: ubuntu-latest
+    # Bounded — a hung cluster must never wedge the runner (design-for-failure). Covers two image
+    # builds + load + helm install + whole-stack rollout wait + both e2e suites.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # Toolchains the e2e harness shells out to: uv (gateway pytest) + node (dashboard Playwright).
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # kind + helm BINARIES only — `make kind-up` owns cluster creation (its infra/kind/cluster.yaml
+      # provides the host:8443 -> NodePort mapping the host e2e needs). Do NOT let an action
+      # pre-create a cluster, or that port mapping is lost. kubectl/docker/openssl are preinstalled.
+      - name: Install kind
+        run: |
+          curl -fsSLo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      # Chromium WITH system deps — a fresh runner lacks the shared libs the bare browser needs
+      # (the local e2e_kind_ui.sh installs chromium without --with-deps; this pre-install covers it).
+      - name: Install Playwright Chromium
+        working-directory: apps/dashboard
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # The whole pipeline: one kind-up (build+load both images, helm install, wait Ready) then the
+      # API e2e then the browser e2e — all through the live Envoy edge.
+      - name: Run the full kind e2e (API + UI)
+        run: make ci-e2e
+
+      # Always tear the cluster down — even on failure/timeout — so the runner is never left dirty.
+      - name: Tear down the kind cluster
+        if: always()
+        run: make kind-down
