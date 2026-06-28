@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "model-catalog-paging-search",
+  "active_task": "responsive-app-shell",
   "active_milestone": "v54",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -311,6 +311,32 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "responsive-app-shell": {
+      "title": "Full-height sidebar + responsive AppShell across breakpoints",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v54",
+      "depends_on": [],
+      "created": "2026-06-28T07:37:33+00:00",
+      "updated": "2026-06-28T08:18:47+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "e8db01fc38934e00d35ea46de68b706e",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests/design-system/app-shell-sidebar.test.tsx"
+        ],
+        "snapshot_md5": "5c4bdffc76be749dd6e7909a6b0d6af9"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -349,7 +375,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-28T07:28:44+00:00",
+  "updated": "2026-06-28T08:18:47+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1012,7 +1038,7 @@
     "v54"
   ],
   "active_tasks": {
-    "v54": "model-catalog-paging-search"
+    "v54": "responsive-app-shell"
   },
   "todos": [
     {
