@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Syntax highlighting for chat code blocks (rehype-highlight → highlight.js classes). */
+@import "highlight.js/styles/github.css";
 
 /*
  * Design-system token layer (v13 design-system-foundation).

@@ -16,7 +16,11 @@
     "@radix-ui/react-slot",
     "@radix-ui/react-label",
     "recharts",
-    "tw-animate-css"
+    "tw-animate-css",
+    "react-markdown",
+    "remark-gfm",
+    "rehype-highlight",
+    "highlight.js"
   ],
   "devDependencies": [
     "typescript",

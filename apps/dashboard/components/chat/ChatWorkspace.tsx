@@ -16,6 +16,7 @@ import { Send, Square } from "lucide-react";
 import { useChatStream, type ChatMessage, type Usage } from "@/lib/hooks/use-chat-stream";
 import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
 import { ModelPicker } from "@/components/chat/ModelPicker";
+import { MessageMarkdown } from "@/components/chat/MessageMarkdown";
 import { ModelControls } from "@/components/chat/ModelControls";
 import { CostReadout } from "@/components/chat/CostReadout";
 import { Button } from "@/components/ui/button";
@@ -268,13 +269,18 @@ function MessageBubble({ message, streaming = false }: { message: ChatMessage; s
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm",
+          "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm",
+          // User text is literal (preserve newlines); assistant text is Markdown.
           isUser
-            ? "bg-primary text-primary-foreground"
+            ? "whitespace-pre-wrap bg-primary text-primary-foreground"
             : "border border-border bg-background text-foreground",
         )}
       >
-        {message.content}
+        {isUser ? (
+          message.content
+        ) : (
+          <MessageMarkdown content={message.content} />
+        )}
         {streaming ? (
           <span
             className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-current align-middle"
