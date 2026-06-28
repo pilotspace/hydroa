@@ -41,3 +41,24 @@ and a **brand gradient** — plus motion + richer surface layering.
 
 ## Light-only (Tin 2026-06-25)
 Dark `.dark` block stays coherent with every new token but is not a verified deliverable.
+
+## Identity correction — "Classic Blue" (Tin 2026-06-28, shipped v54)
+The indigo `#4F46E5` accent above was SUPERSEDED by the v54 "Classic Blue luxury rebrand"
+(commit `d1e7e72`): primary is now `#0F4C81` (Classic Blue) over slate neutrals + Inter, with a
+`#0F4C81 → #2563eb` brand gradient. The shipped `app/globals.css` + `tmp/governance-mocks/keys.html`
+are the live identity reference. Mocks bind to THIS palette, not the indigo above. Identity stays
+human-owned (Tin's rebrand) — design mocks REUSE it, never invent a new brand value.
+
+## Design intake — per-feature axes (design.md beat 0)
+> Project default = the shipped Aurora Classic-Blue system. Per-screen overrides recorded as the
+> `prototypes/<name>.json` note. Each row = the four axes (FIDELITY · CONCEPT · LAYOUT · VISUAL).
+
+- **chat-playground** (program "AI feature depth" · milestone chat-playground · Tin 2026-06-28 via AskUserQuestion):
+  - FIDELITY — **production** hi-fi (this is a build target, not a sketch).
+  - CONCEPT — a **Console-grade LLM playground** (OpenAI Playground / Anthropic Console feel): dense,
+    parameter-rich, a working surface an operator runs real work on — explicitly NOT a CRUD form
+    (the thin first mocks were rejected for that, `captures/aifeature-*.png`).
+  - LAYOUT — **3-pane**: sessions rail · conversation (top bar + thread + composer) · parameters/inspector panel.
+  - VISUAL — REUSE the shipped Classic-Blue identity (no new brand value); Console density (tighter
+    rhythm, smaller controls, more info per screen than the dashboard pages).
+  - Capture (design-confirm): `captures/chat-playground.png` · render tree: `prototypes/chat-playground.json`.

@@ -94,7 +94,7 @@ describe("chat-model-controls", () => {
     const user = userEvent.setup();
     render(<ChatWorkspace />);
 
-    await user.click(screen.getByRole("button", { name: /model settings/i }));
+    // The inspector's Parameters tab (default) shows the System prompt control directly.
     await user.type(screen.getByRole("textbox", { name: /system prompt/i }), "Be terse");
     await sendHi(user);
 
@@ -120,7 +120,7 @@ describe("chat-model-controls", () => {
     const user = userEvent.setup();
     render(<ChatWorkspace />);
 
-    await user.click(screen.getByRole("button", { name: /model settings/i }));
+    // The inspector's Parameters tab (default) shows the Temperature control directly.
     fireEvent.change(screen.getByRole("slider", { name: /temperature/i }), { target: { value: "0.2" } });
     await sendHi(user);
 

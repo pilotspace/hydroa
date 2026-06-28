@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "governance-pages-redesign",
-  "active_milestone": "v54",
+  "active_task": "chat-playground-shell",
+  "active_milestone": "chat-playground",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -469,6 +469,58 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "ai-feature-pages-redesign": {
+      "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-06-28T14:01:49+00:00",
+      "updated": "2026-06-28T14:46:39+00:00"
+    },
+    "chat-playground-shell": {
+      "title": "Chat playground \u2014 3-pane Console shell + design system",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "chat-playground",
+      "depends_on": [],
+      "created": "2026-06-28T14:53:10+00:00",
+      "updated": "2026-06-28T16:08:50+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0bdb51902453220e4c2b3c0535bed353",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/chat/",
+          "apps/dashboard/tests-bff/chat-playground-shell.test.tsx",
+          "apps/dashboard/tests-bff/chat-workspace-page.test.tsx",
+          "apps/dashboard/tests-bff/chat-cost-readout.test.tsx",
+          "apps/dashboard/tests-bff/chat-model-controls.test.tsx",
+          "apps/dashboard/tests-bff/chat-history.test.tsx",
+          "apps/dashboard/tests-bff/chat-websearch-toggle.test.tsx",
+          "apps/dashboard/tests-bff/chat-visual-parity.test.tsx",
+          "apps/dashboard/tests/chat-message-markdown.test.tsx"
+        ],
+        "snapshot_md5": "be05db2fc918159d36d06d0f20c47a4c"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-28T16:08:31+00:00",
+            "reason": "scope_violation: task 'chat-playground-shell' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/next-env.d.ts (1 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -492,11 +544,33 @@
       "title": "UI refinement \u2014 polished, responsive, scalable app pages",
       "goal": "Every authenticated dashboard page meets a refreshed UI standard: visually polished, structurally consistent, responsive across screen sizes, and usable at scale.",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-28T06:55:05+00:00",
-      "updated": "2026-06-28T06:57:35+00:00",
+      "updated": "2026-06-28T14:47:36+00:00",
       "confirmed": true,
       "confirmed_at": "2026-06-28T06:57:35+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "chat-playground": {
+      "title": "Chat \u2014 Console-grade playground",
+      "goal": "The Chat workspace becomes a true Console-grade playground: full sampling-parameter control, tool/function calling, multimodal attachments, rich per-run metadata + cost, and first-class conversation management \u2014 a surface an operator runs real LLM work on.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-28T14:48:43+00:00",
+      "updated": "2026-06-28T14:53:10+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-06-28T14:53:10+00:00",
       "confirmed_by": "tindang",
       "await_confirm": true,
       "actor": {
@@ -507,7 +581,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-28T13:59:53+00:00",
+  "updated": "2026-06-28T16:08:50+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1167,10 +1241,12 @@
     }
   ],
   "active_milestones": [
-    "v54"
+    "v54",
+    "chat-playground"
   ],
   "active_tasks": {
-    "v54": "governance-pages-redesign"
+    "v54": "ai-feature-pages-redesign",
+    "chat-playground": "chat-playground-shell"
   },
   "todos": [
     {

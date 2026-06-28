@@ -86,7 +86,7 @@ export function ChatHistorySidebar({
 
   return (
     <aside
-      className="flex h-full min-h-0 w-64 flex-shrink-0 flex-col border-r border-border bg-background"
+      className="hidden h-full min-h-0 w-64 flex-shrink-0 flex-col border-r border-border bg-background md:flex"
       aria-label="Conversation history"
     >
       {/* Header with New button */}

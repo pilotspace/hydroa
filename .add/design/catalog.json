@@ -158,6 +158,52 @@
       "props": {
         "fg": { "type": "token", "token": "color" }
       }
+    },
+    "SessionsRail": {
+      "description": "Left rail listing conversations grouped by recency — search + New + per-item (title, model badge, timestamp, active state). Restyles the v40 ChatHistorySidebar into the playground's session list. New @ chat-playground (ref: OpenAI Playground / ChatGPT conversation sidebar).",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "accent": { "type": "token", "token": "color" }
+      }
+    },
+    "InspectorPanel": {
+      "description": "Right-side tabbed control surface (Parameters / Tools / Code) — the playground's parameter rail. Owns the relocated ModelControls + the new sampling/tools/code slots. New @ chat-playground (ref: OpenAI Playground right rail · Anthropic Console).",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "tabs": { "type": "enum", "values": ["parameters", "tools", "code"] }
+      }
+    },
+    "ParameterField": {
+      "description": "A labelled sampling control — label + slider (track/fill/thumb) + a numeric value box; also tag-input (stop sequences) and segmented variants. New @ chat-playground (ref: OpenAI Playground parameters: temperature/top_p/max_tokens/penalties/seed).",
+      "props": {
+        "label": { "type": "string" },
+        "control": { "type": "enum", "values": ["slider", "number", "tags", "segmented", "toggle"] },
+        "value": { "type": "string" },
+        "accent": { "type": "token", "token": "color" },
+        "track": { "type": "token", "token": "color" }
+      }
+    },
+    "ToolCallCard": {
+      "description": "Renders an assistant tool/function call inline in the thread — function badge + call id, JSON arguments, the tool result panel, then the final answer. New @ chat-playground (ref: OpenAI tool_calls · Anthropic Console tool use).",
+      "hasChildren": true,
+      "props": {
+        "fn": { "type": "string" },
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "resultBg": { "type": "token", "token": "color" }
+      }
+    },
+    "ConversationTopBar": {
+      "description": "Conversation column header — editable title + model selector + Fork/Export/View-code actions + running CostReadout chip. New @ chat-playground (ref: OpenAI Playground top bar).",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" }
+      }
     }
   }
 }

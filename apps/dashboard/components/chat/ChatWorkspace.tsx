@@ -12,14 +12,15 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Bot, Check, Copy, RefreshCw, Send, Square, User } from "lucide-react";
+import { Bot, Check, Copy, Paperclip, RefreshCw, Send, Square, User } from "lucide-react";
 import { useChatStream, type ChatMessage, type TurnMeta, type Usage } from "@/lib/hooks/use-chat-stream";
 import { bffGet } from "@/lib/bff-client";
 import type { ModelsData } from "@/components/models/ModelCatalogTable";
 import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
 import { ModelPicker } from "@/components/chat/ModelPicker";
 import { MessageMarkdown } from "@/components/chat/MessageMarkdown";
-import { ModelControls } from "@/components/chat/ModelControls";
+import { InspectorPanel } from "@/components/chat/InspectorPanel";
+import { ConversationTopBar } from "@/components/chat/ConversationTopBar";
 import { CostReadout } from "@/components/chat/CostReadout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -132,6 +133,8 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   const [temperature, setTemperature] = useState(1);
   const [webSearch, setWebSearch] = useState(false);
   const [sessionTokens, setSessionTokens] = useState(0);
+  // The conversation title shown in the top bar (null → a fresh, unsaved chat).
+  const [activeTitle, setActiveTitle] = useState<string | null>(null);
   const countedRef = useRef<Usage | undefined>(undefined);
   const threadEndRef = useRef<HTMLDivElement>(null);
 
@@ -277,6 +280,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     reset();
     activeConvIdRef.current = null;
     setActiveConversationId(null);
+    setActiveTitle(null);
   }
 
   function handleSelect(id: string) {
@@ -286,6 +290,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
         load(conv.messages.map((m) => ({ role: m.role, content: m.content })));
         activeConvIdRef.current = id;
         setActiveConversationId(id);
+        setActiveTitle(conv.title ?? "Untitled");
       } catch {
         // best-effort: if fetch fails just leave the current thread intact
       }
@@ -304,18 +309,13 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
         refreshKey={refreshKey}
         streaming={isStreaming}
       />
+      {/* CONVERSATION column — top bar + streaming thread + composer. */}
       <div className="flex min-h-0 flex-1 flex-col bg-muted/30">
-      <header className="flex items-center justify-between border-b border-border bg-background px-6 py-3">
-        <h1 className="text-lg font-semibold text-foreground">Chat</h1>
-        <div className="flex items-center gap-3">
-          {/* chat-cost-readout — live session token total + latest turn (tokens only). */}
-          <CostReadout sessionTokens={sessionTokens} lastTurn={usage} />
-          {/* SLOT: chat-model-controls (picker) */}
-          <span data-slot="model-picker">
-            <ModelPicker value={model} onChange={setModel} />
-          </span>
-        </div>
-      </header>
+      <ConversationTopBar
+        title={activeTitle ?? "New chat"}
+        modelPicker={<ModelPicker value={model} onChange={setModel} />}
+        costReadout={<CostReadout sessionTokens={sessionTokens} lastTurn={usage} />}
+      />
 
       <div
         className="min-h-0 flex-1 overflow-y-auto px-4 py-6"
@@ -367,15 +367,6 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
 
       <form onSubmit={onSubmit} className="border-t border-border bg-background px-4 py-3">
         <div className="mx-auto flex max-w-3xl flex-col gap-2">
-          {/* SLOT: chat-model-controls (system + temperature) — collapsed by default */}
-          <ModelControls
-            system={system}
-            onSystemChange={setSystem}
-            temperature={temperature}
-            onTemperatureChange={setTemperature}
-            webSearch={webSearch}
-            onWebSearchChange={setWebSearch}
-          />
           {/* Quick-action chips — design parity; prefill the composer when idle+empty. */}
           {input.trim() === "" && !isStreaming ? (
             <div className="flex flex-wrap gap-1.5">
@@ -392,6 +383,17 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
             </div>
           ) : null}
           <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:ring-2 focus-within:ring-ring">
+          {/* Scaffold: image attach ships in chat-attachments. */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled
+            aria-label="Attach image"
+            className="size-9 shrink-0 text-muted-foreground"
+          >
+            <Paperclip className="size-4" aria-hidden="true" />
+          </Button>
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -421,6 +423,16 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
         </div>
       </form>
       </div>
+
+      {/* INSPECTOR panel — Parameters / Tools / Code (collapses below xl). */}
+      <InspectorPanel
+        system={system}
+        onSystemChange={setSystem}
+        temperature={temperature}
+        onTemperatureChange={setTemperature}
+        webSearch={webSearch}
+        onWebSearchChange={setWebSearch}
+      />
     </div>
   );
 }

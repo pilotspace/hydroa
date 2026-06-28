@@ -1,0 +1,98 @@
+{
+  "root": "screen",
+  "capture": "../captures/chat-playground.png",
+  "note": "chat-playground 3-pane Console shell — program 'AI feature depth', milestone chat-playground, task chat-playground-shell. Design-confirmed direction by Tin 2026-06-28 (design.md loop; intake recorded in DESIGN.md '## Design intake'). FIDELITY=production · CONCEPT=Console-grade LLM playground (OpenAI Playground / Anthropic Console) · LAYOUT=3-pane · VISUAL=shipped Classic-Blue (reused, not invented). SLOTS the sibling tasks fill: parameters (chat-parameters-panel), tools (chat-tools-functions), attachments (chat-attachments), per-turn metadata+cost (chat-run-metadata-cost), session rename/fork/export (chat-conversation-mgmt). The shell task owns the regions; new capability is scaffolded here.",
+  "elements": {
+    "screen": {
+      "type": "Screen",
+      "props": { "bg": "{semantic.color.surface-muted}", "layout": "3-pane" },
+      "children": ["sessions", "conversation", "inspector"]
+    },
+    "sessions": {
+      "type": "SessionsRail",
+      "props": { "bg": "{semantic.color.surface}", "border": "{semantic.color.border}", "accent": "{semantic.color.accent}", "ariaLabel": "Conversation history", "groupedBy": "recency" },
+      "children": ["sessions_search", "session_active", "session_others"]
+    },
+    "sessions_search": { "type": "Field", "props": { "placeholder": "Search conversations", "border": "{semantic.color.border}" } },
+    "session_active": { "type": "Badge", "props": { "label": "Refactor async pipeline · gpt-4o · 2h", "variant": "secondary", "state": "active" } },
+    "session_others": { "type": "Text", "props": { "text": "6 more conversations (model badge + timestamp each)", "color": "{semantic.color.text-muted}" } },
+    "conversation": {
+      "type": "Screen",
+      "props": { "bg": "{semantic.color.surface-muted}", "layout": "column-fill-height" },
+      "children": ["topbar", "thread", "composer"]
+    },
+    "topbar": {
+      "type": "ConversationTopBar",
+      "props": { "bg": "{semantic.color.surface}", "border": "{semantic.color.border}" },
+      "children": ["conv_title", "model_picker", "topbar_actions", "session_cost"]
+    },
+    "conv_title": { "type": "Heading", "props": { "text": "Refactor async pipeline", "editable": true, "color": "{semantic.color.text}", "size": "{semantic.font.size.heading}", "level": "1" } },
+    "model_picker": { "type": "ModelPicker", "slot": "chat-model-controls", "props": { "model": "openai/gpt-4o", "source": "GET /admin/catalog/models", "context": "128k" } },
+    "topbar_actions": { "type": "Button", "slot": "chat-conversation-mgmt", "props": { "label": "Fork · Export · View code", "variant": "ghost", "scaffold": true } },
+    "session_cost": { "type": "CostReadout", "slot": "chat-cost-readout", "props": { "scope": "session", "tokens": "1,204", "cost": "$0.0142", "honest_placeholder": "—" } },
+    "thread": {
+      "type": "MessageThread",
+      "props": { "overflow": "auto", "role": "log", "ariaLabel": "Conversation", "states": ["loading", "empty", "error", "success"], "scrollToLatest": true },
+      "children": ["system_block", "turn_user_1", "turn_assistant_1", "turn_user_2", "turn_assistant_tool"]
+    },
+    "system_block": { "type": "MessageBubble", "props": { "role": "system", "pinned": true, "editable": true, "bg": "{semantic.color.surface}", "border": "{semantic.color.border}" } },
+    "turn_user_1": {
+      "type": "MessageBubble",
+      "props": { "role": "user", "bg": "{semantic.color.surface}", "border": "{semantic.color.border}" },
+      "children": ["attachment_chip"]
+    },
+    "attachment_chip": { "type": "Badge", "slot": "chat-attachments", "props": { "label": "pipeline-diagram.png · PNG 248 KB", "variant": "secondary", "kind": "image" } },
+    "turn_assistant_1": {
+      "type": "MessageBubble",
+      "props": { "role": "assistant", "markdown": true, "code": true, "bg": "{semantic.color.surface}", "border": "{semantic.color.border}" },
+      "children": ["turn_meta_1"]
+    },
+    "turn_meta_1": { "type": "CostReadout", "slot": "chat-run-metadata-cost", "props": { "scope": "turn", "model": "gpt-4o", "finish_reason": "stop", "tokens": "412", "latency": "1.3s", "cost": "$0.0041", "actions": ["copy", "regenerate", "edit"] } },
+    "turn_user_2": { "type": "MessageBubble", "props": { "role": "user", "bg": "{semantic.color.surface}", "border": "{semantic.color.border}" } },
+    "turn_assistant_tool": {
+      "type": "ToolCallCard",
+      "slot": "chat-tools-functions",
+      "props": { "fn": "get_weather", "callId": "call_7cXp2mBqN", "bg": "{semantic.color.warning}", "border": "{semantic.color.warning}", "resultBg": "{semantic.color.success}" }
+    },
+    "composer": {
+      "type": "Composer",
+      "props": { "bg": "{semantic.color.surface}", "border": "{semantic.color.border}", "radius": "{semantic.radius.card}", "placeholder": "Message the model…", "submit": "Cmd+Enter = run; Shift+Enter = newline" },
+      "children": ["attach_button", "stop_button", "run_button"]
+    },
+    "attach_button": { "type": "Button", "slot": "chat-attachments", "props": { "label": "Attach image", "variant": "ghost", "icon": "paperclip", "scaffold": true } },
+    "stop_button": { "type": "Button", "props": { "label": "Stop", "variant": "outline", "intent": "destructive", "visibleWhen": "streaming" } },
+    "run_button": { "type": "Button", "props": { "label": "Run", "variant": "primary", "visibleWhen": "idle", "shortcut": "Cmd+Enter" } },
+    "inspector": {
+      "type": "InspectorPanel",
+      "props": { "bg": "{semantic.color.surface}", "border": "{semantic.color.border}", "tabs": "parameters" },
+      "children": ["insp_model", "insp_system", "insp_sampling", "insp_response", "insp_tools"]
+    },
+    "insp_model": { "type": "ModelPicker", "slot": "chat-model-controls", "props": { "model": "openai/gpt-4o", "context": "128k · vision · tools · streaming" } },
+    "insp_system": { "type": "ModelControls", "slot": "chat-model-controls", "props": { "fields": ["system"], "presets": true } },
+    "insp_sampling": {
+      "type": "InspectorPanel",
+      "props": { "section": "Sampling" },
+      "children": ["p_temp", "p_topp", "p_maxtok", "p_freq", "p_pres", "p_seed", "p_stop"]
+    },
+    "p_temp": { "type": "ParameterField", "slot": "chat-model-controls", "props": { "label": "Temperature", "control": "slider", "value": "0.7", "accent": "{semantic.color.accent}", "track": "{semantic.color.border}" } },
+    "p_topp": { "type": "ParameterField", "slot": "chat-parameters-panel", "props": { "label": "Top P", "control": "slider", "value": "1.0" } },
+    "p_maxtok": { "type": "ParameterField", "slot": "chat-parameters-panel", "props": { "label": "Max tokens", "control": "slider", "value": "2048" } },
+    "p_freq": { "type": "ParameterField", "slot": "chat-parameters-panel", "props": { "label": "Frequency penalty", "control": "slider", "value": "0.0" } },
+    "p_pres": { "type": "ParameterField", "slot": "chat-parameters-panel", "props": { "label": "Presence penalty", "control": "slider", "value": "0.0" } },
+    "p_seed": { "type": "ParameterField", "slot": "chat-parameters-panel", "props": { "label": "Seed", "control": "number", "value": "" } },
+    "p_stop": { "type": "ParameterField", "slot": "chat-parameters-panel", "props": { "label": "Stop sequences", "control": "tags", "value": "\\n\\n" } },
+    "insp_response": {
+      "type": "InspectorPanel",
+      "props": { "section": "Response" },
+      "children": ["p_format", "p_stream", "p_websearch"]
+    },
+    "p_format": { "type": "ParameterField", "slot": "chat-parameters-panel", "props": { "label": "Format", "control": "segmented", "value": "Text|JSON" } },
+    "p_stream": { "type": "ParameterField", "slot": "chat-parameters-panel", "props": { "label": "Stream tokens", "control": "toggle", "value": "on" } },
+    "p_websearch": { "type": "ParameterField", "slot": "chat-model-controls", "props": { "label": "Web search", "control": "toggle", "value": "off" } },
+    "insp_tools": {
+      "type": "ToolCallCard",
+      "slot": "chat-tools-functions",
+      "props": { "section": "Tools", "fn": "get_weather", "schemaPreview": true, "toolChoice": "auto", "addTool": true }
+    }
+  }
+}
