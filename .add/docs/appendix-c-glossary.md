@@ -46,6 +46,8 @@
 
 **Onboarding** (formerly "on-ramp") — the path a new user walks from install to their first milestone: install → `/add` → describe the goal → the agent runs intake (sizing the request into a milestone the human confirms) → the specification bundle → the self-driving run. The AI-first entry to the method; the human talks to the agent rather than hand-typing `add.py`.
 
+**Decisions (ADR)** — the engine-harvested record in a task's §7 OBSERVE: one actor-tagged line per key decision, gathered at the gate from the stamps already in the task — §1 framing `[AI]` (the choice + the rejected alternatives), §3 freeze `[human]`, §5 strategy-actually-used `[AI]`, §6 gate `[human|AI]`. *Harvested, never authored* — the engine invents no decision content, only mirrors what the task recorded — and scoped to the §7 OBSERVE placeholder alone. The durable who-decided-what trail that separates human direction from AI building; `add.py audit` flags a done task whose block never harvested (`adr_record_missing`).
+
 **Decision point** (formerly "seam") — a place where the flow stops for human judgment: the contract-freeze approval (the one approval), an escalated verify gate, intake confirmation, milestone close. The machine layer keeps the legacy name: the `--json` owner enum `seam`, the decide-digest key `seam`, and the `seam-audit` CI job.
 
 **The decision arc** — the three engine-sourced lines a gate report opens with at every **decision point**: `goal:` the milestone goal the work serves · `done:` the achievement, the proven progress toward it (the gate reports render this line as `done`) · `plan:` what comes next. What `done` reports adapts per gate (verify: tests + evidence · milestone close: exit-criteria met · intake: the request sized) while the three-part shape stays constant. Rendered first, above the report's summary, so the human confirms with sight of the whole trajectory, not a local snapshot. Engine-sourced like all evidence — goal · done · plan are pulled from `add.py` output, never re-typed. Presentation only: it never adds a gate or changes a `PASS` / `RISK-ACCEPTED` / `HARD-STOP` / freeze outcome. The report it opens is the chat report a person reads at a decision point — distinct from the three Test/Quality/Risk reports a verify gate produces ([11 Governance](./11-governance.md)). See the `add` skill's `report-template.md`.
@@ -83,6 +85,10 @@
 **Stage-goal-criteria** — the human-authored `[x]` checklist in `PROJECT.md` that defines "MVP covered" for this project; when every milestone is `done` and these are all checked, `add.py status` prints the graduation cue. Authored by the human (judgment), never inferred by the engine.
 
 **Baseline approval** (formerly "the lock-down") — the single human gate ending autonomous setup: an explicit yes that freezes the foundation, first scope, and first contract together; runs as `add.py lock --by <name>`.
+
+**Queued milestone** — a milestone created non-active: its status is `queued` (the milestone status enum is **active · queued · done**). It is recorded with its `MILESTONE.md` on disk but does not hold the active focus; `add.py new-milestone --queued <slug>` creates it, and `add.py activate <slug>` promotes it queued→active one at a time. A queued milestone is not `done`, so it does not satisfy the graduation gate.
+
+**Roadmap** — the multi-milestone intake artifact: when a request decomposes into N>1 milestones of the same line, the AI proposes the ordered roadmap and, on human confirm, creates all N — the first active, the rest **queued** — then promotes each with `activate` as it is started. Distinct from `split_required` (which spans different buckets). Lives in the `add` skill's `intake.md`.
 
 **Scope level** (formerly "altitude") — the granularity a decision lives at, as one ordered ladder of five: **setup/foundation** · **intake** (request → versioned scope) · **the milestone loop** (the task is its inner unit) · **stage graduation** (changes rigor, not version; see **Stage graduation**) · **release** (≥1 closed milestone → a versioned, watched cut; see **Release scope level**). One ⚠-assumption notation is shared across every scope level.
 
@@ -134,13 +140,15 @@
 
 **Newest-first append-only** — every append-only foundation sequence prepends the newest record at the top; the rolled-up settled line anchors at the bottom (the oldest end), so compaction collapses upward.
 
+**Design intake** — beat 0 of the UDD **design-definition loop**: the agent interviews the human on four design **axes** *before* reading the domain, so the look is directed not guessed. **Fidelity** (lo-fi wireframe · hi-fi mockup · production — how far the design renders), **Concept** (idea · mood · direction), **Layout** (structure · grid · hierarchy), and **Visual design** (color · type · spacing · imagery — surfaced for the human, never auto-picked). Recorded as project defaults in `DESIGN.md`'s `## Design intake` and per-screen overrides in the prototype note. Fidelity is recorded intent, not an engine gate.
+
 **Wireframe** — the Stage-A low-fidelity, *structural* map of one screen: its regions and the component **slots** inside them, derived from `prototypes/<name>.json` *before* any color, type, or spacing — it answers "what goes where", not "what it looks like". Beat 3 of the UDD **design-definition loop**; the low-fi half of the two-stage fidelity that ends in a confirmed capture. See the `udd-wireframe.md` template (`tooling/templates/`, Stage A).
 
 **Design mock** — the Stage-B high-fidelity, **self-contained** HTML render of a screen: the `catalog.json` components as a reusable token-bound kit, bound to `tokens.json` and populated with mock data, openable offline and screenshot-able. The human-facing *visible* evidence the human confirms (the frozen `prototypes/<name>.json` tree is its machine-checkable twin). Beat 4's hi-fi artifact; the recipe lives in the `udd-wireframe.md` template (`tooling/templates/`, Stage B).
 
 **Capture** — the real rendered image (PNG/SVG) of a design mock: the **design-confirm evidence** artifact. Captures live at `.add/design/captures/<name>.<ext>` (one per prototype) and are attached or mentioned in the feature's `TASK.md`; `@json-render/image` (Satori → PNG/SVG, no browser) is the named default capture engine, otherwise the self-contained mock is screenshot headless. The engine never renders — it only MEASURES presence: `add.py check` raises a never-red `missing_capture` WARN for a prototype with no capture.
 
-**Design-confirm** — the human touchpoint closing the UDD **design-definition loop** (`review-domain → research-components → wireframe → render-capture-confirm`, beat 4 of the `add` skill's `design.md`): approving the captured screen image **before build**, show-before-ask, so the implementation matches the layout the human has already seen instead of discovering it.
+**Design-confirm** — the human touchpoint closing the UDD **design-definition loop** (`design-intake → review-domain → research-components → wireframe → render-capture-confirm`, the final beat of the `add` skill's `design.md`): approving the captured screen image **before build**, show-before-ask, so the implementation matches the layout the human has already seen instead of discovering it.
 
 ---
 

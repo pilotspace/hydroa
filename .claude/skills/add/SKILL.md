@@ -15,7 +15,7 @@ user-invocable: true
 when_to_use: "Invoke in any repo with a `.add/` directory, or when the user wants spec/tests-first feature work, resumes ADD work, or asks to start/advance a task."
 category: workflows
 keywords: [add, aidd, ai-driven-development, spec-first, tdd, contract, scenarios, verify, milestone, task-orchestration]
-argument-hint: "status | init | continue | [describe new short goals or expectation]"
+argument-hint: "status | init | continue | --todo <text> | [describe new short goals or expectation]"
 license: MIT
 metadata:
   author: add
@@ -31,6 +31,10 @@ result through passing evidence rather than a plausible-looking diff.
 **One file = one task.** Each feature is one `.add/tasks/<slug>/TASK.md` — a §0 ground
 preamble plus seven step sections, filled top to bottom. The Python tool tracks where you
 are so context never rots across sessions.
+
+**The `--todo` fast-path.** When the skill ARGUMENTS begin with `--todo`, skip orienting: route to
+`add.py todo` and print its output — `--todo <text>` captures · `--todo` lists open todos ·
+`--todo --done <id>` closes (engine errors surfaced verbatim) — then STOP.
 
 ## Always start here (orient — do not skip)
 
@@ -123,8 +127,8 @@ once the human confirms, rewrites `SOUL.md` (the human is the only writer) — `
 - **Small, low-risk task**, less ceremony → the **fast lane**: `new-task --fast` scaffolds the minimal
   `TASK.fast.md`, bundle approved in one freeze — `phases/fast-lane.md`. Floor held (frozen contract ·
   red test · verify gate; `--fast` is freeze-gated under any milestone). Collapse, never skip; opt-in.
-- **UI feature** at specify → the **design-definition loop** (UDD): review the domain → research and
-  reuse components → wireframe → a real captured screen the human confirms **before** build — `design.md`.
+- **UI feature** at specify → the **design-definition loop** (UDD): intake the design axes → review the
+  domain → research and reuse components → wireframe → a captured screen the human confirms **before** build — `design.md`.
   Tool-agnostic; the engine never renders.
 - Tasks all done but the milestone **goal** unmet → `milestone-done` holds it open; the loop turns open
   deltas + extras into the next tasks (you propose, the human confirms) until the goal is met — `loop.md`.
