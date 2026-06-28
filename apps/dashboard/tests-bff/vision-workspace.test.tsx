@@ -19,7 +19,7 @@ import { VisionWorkspace } from "@/components/vision/VisionWorkspace";
 import { askVision } from "@/lib/vision";
 
 // ── URL constants ─────────────────────────────────────────────────────────────
-const URL_MODELS = "http://localhost:3000/api/gw/v1/models";
+const URL_MODELS = "http://localhost:3000/api/gw/admin/catalog/models";
 const URL_CHAT = "http://localhost:3000/api/gw/v1/chat/completions";
 
 // ── helpers ───────────────────────────────────────────────────────────────────

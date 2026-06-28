@@ -4,7 +4,9 @@
  * components/vision/VisionWorkspace.tsx — v46 vision workspace.
  *
  * Surfaces:
- *   - Model select: fetches GET /v1/models, keeps ONLY Gemini ids (case-insensitive).
+ *   - Model select: fetches GET /admin/catalog/models (the JWT/control-plane twin of
+ *     /v1/models — a session cookie can't reach /v1/* through the edge ext_authz, which
+ *     would 401 and log the user out), keeps ONLY Gemini ids (case-insensitive).
  *     If the filtered list is empty → renders "No Gemini model available" and
  *     DISABLES the Ask flow (vision is Gemini-only in v46).
  *   - File input: <input type="file" accept="image/*,video/*">; on change →
@@ -74,7 +76,7 @@ export function VisionWorkspace() {
   useEffect(() => {
     let active = true;
 
-    bffGet<ModelsData>("/v1/models")
+    bffGet<ModelsData>("/admin/catalog/models")
       .then((res) => {
         if (!active) return;
         const all = res.data?.map((m) => m.id) ?? [];

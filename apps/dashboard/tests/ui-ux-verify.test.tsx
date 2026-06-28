@@ -123,7 +123,7 @@ function useUsageHappyHandlers() {
     http.get("http://localhost:3000/api/gw/admin/usage", () =>
       HttpResponse.json(USAGE_DATA),
     ),
-    http.get("http://localhost:3000/api/gw/v1/models", () =>
+    http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
       HttpResponse.json(MODELS_RESPONSE),
     ),
     http.get("http://localhost:3000/api/gw/admin/budget", () =>
