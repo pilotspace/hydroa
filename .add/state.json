@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "responsive-app-shell",
+  "active_task": "aurora-polish-tokens",
   "active_milestone": "v54",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -337,6 +337,46 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "aurora-polish-tokens": {
+      "title": "Aurora token + primitive visual uplift (app pages)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v54",
+      "depends_on": [],
+      "created": "2026-06-28T08:21:01+00:00",
+      "updated": "2026-06-28T09:27:12+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "828e16ec877c800c3bf8aaa3f73c971f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/design/tokens.json",
+          "apps/dashboard/app/globals.css",
+          "apps/dashboard/components/ui/sidebar.tsx",
+          "apps/dashboard/tests/design-system/tokens.test.ts",
+          "apps/dashboard/tests/design-system/aurora-classic-blue.test.ts",
+          "apps/dashboard/tests/design-system/enterprise-ext.test.tsx"
+        ],
+        "snapshot_md5": "add5e621efdaf99df4f9975bae284113"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-28T09:20:58+00:00",
+            "reason": "scope_violation: task 'aurora-polish-tokens' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/palettepreview/page.tsx \u00b7 apps/dashboard/next-env.d.ts \u00b7 apps/dashboard/tests/design-system/enterprise-ext.test.tsx \u00b7 tmp/shellcaps/palette_final.png (4 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -375,7 +415,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-28T08:18:47+00:00",
+  "updated": "2026-06-28T09:27:12+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1038,7 +1078,7 @@
     "v54"
   ],
   "active_tasks": {
-    "v54": "responsive-app-shell"
+    "v54": "aurora-polish-tokens"
   },
   "todos": [
     {

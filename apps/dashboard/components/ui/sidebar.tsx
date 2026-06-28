@@ -52,7 +52,12 @@ export function SidebarBrand({
   return (
     <div className={cn("flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground", className)}>
       {icon ? (
-        <span className="text-sidebar-ring" aria-hidden="true">
+        // Brand mark — a Classic-Blue gradient tile (token utilities only, no raw hex → R3-safe).
+        // The deep→bright blue gradient is the shared, always-present brand moment app-wide.
+        <span
+          className="inline-flex size-7 items-center justify-center rounded-md bg-gradient-to-br from-brand-from to-brand-to text-white shadow-sm"
+          aria-hidden="true"
+        >
           {icon}
         </span>
       ) : null}
