@@ -23,6 +23,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getPlaygroundToken, invalidatePlaygroundToken } from "@/lib/playground-token";
 
 // A response is streamed when its upstream Content-Type matches this allowlist
 // (startsWith), or the request asked stream:true and the upstream is not JSON.
@@ -104,6 +105,19 @@ async function proxyRequest(
   const pathSegments = resolvedParams.path;
   const pathStr = pathSegments.join("/");
 
+  // CONTROL-PLANE (/admin/*) uses the session JWT directly. DATA-PLANE (/v1/*)
+  // needs an sk-/agent key the cookie can't carry, so the BFF does a SERVER-SIDE
+  // token exchange: mint (and cache) a short-lived, spend-capped playground key
+  // and forward THAT. The key never reaches the browser. On a mint miss we fall
+  // through with the JWT — the data plane rejects it inline (no logout), the same
+  // honest degrade as before this wiring.
+  const isDataPlane = pathStr === "v1" || pathStr.startsWith("v1/");
+  let upstreamToken = token;
+  if (isDataPlane) {
+    const playgroundKey = await getPlaygroundToken(token, gatewayUrl());
+    if (playgroundKey) upstreamToken = playgroundKey;
+  }
+
   // Forward query string
   const { searchParams } = new URL(req.url);
   const queryString = searchParams.toString();
@@ -111,7 +125,7 @@ async function proxyRequest(
 
   // Build upstream headers — attach Bearer, forward Content-Type if present
   const upstreamHeaders: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${upstreamToken}`,
   };
   const contentType = req.headers.get("content-type");
   if (contentType) {
@@ -237,6 +251,11 @@ async function proxyRequest(
     );
     res.headers.set("Set-Cookie", buildClearCookieValue());
     return res;
+  }
+  // A DATA-PLANE 401 means the minted playground key was rejected (expired/revoked
+  // mid-flight). Drop it so the next request re-mints; the cookie stays intact.
+  if (upstream.status === 401 && isDataPlane) {
+    invalidatePlaygroundToken(token);
   }
 
   // 204 No Content
