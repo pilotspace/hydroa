@@ -537,7 +537,9 @@ class Settings(BaseSettings):
     memory_embedding_model: str = Field(default="")  # GATEWAY_MEMORY_EMBEDDING_MODEL
     # GATEWAY_MEMORY_SEARCH_DEFAULT_TOP_K — default number of results returned by
     # POST /v1/memories/search when top_k is not supplied by the caller. Clamped 1..100.
-    memory_search_default_top_k: int = Field(default=5, ge=1, le=100)  # GATEWAY_MEMORY_SEARCH_DEFAULT_TOP_K
+    memory_search_default_top_k: int = Field(
+        default=5, ge=1, le=100
+    )  # GATEWAY_MEMORY_SEARCH_DEFAULT_TOP_K
 
     # ── Artifact file store (artifacts-backend task) ──────────────────────────
     # GATEWAY_ARTIFACT_MAX_BYTES — per-artifact size cap (decoded bytes). 0 = disabled (no limit).
@@ -828,6 +830,43 @@ class Settings(BaseSettings):
                 "INVALID_AGENT_OAUTH_REFRESH_TTL: "
                 "GATEWAY_AGENT_OAUTH_REFRESH_TOKEN_TTL_SECONDS must be >= 0 "
                 f"(0 disables refresh tokens); got {v!r}"
+            )
+        return v
+
+    # ── Dashboard playground token (playground-token-exchange task) ─────────────
+    # The dashboard BFF exchanges a browser session (JWT) for a SHORT-LIVED,
+    # spend-capped sk- key it uses SERVER-SIDE to reach the /v1 data plane (the
+    # browser never sees a key). These bound the blast radius of that minted key.
+    # GATEWAY_PLAYGROUND_TOKEN_TTL_SECONDS — lifetime of a minted playground key.
+    # Must be > 0; fails fast at boot on 0 or negative.
+    playground_token_ttl_seconds: int = 1800  # GATEWAY_PLAYGROUND_TOKEN_TTL_SECONDS
+    # GATEWAY_PLAYGROUND_TOKEN_BUDGET_USD — hard monthly spend cap on a playground
+    # key, enforced by the existing per-key budget guard. Must be > 0 (Decimal).
+    playground_token_budget_usd: Decimal = Decimal("5.00")  # GATEWAY_PLAYGROUND_TOKEN_BUDGET_USD
+
+    @field_validator("playground_token_ttl_seconds")
+    @classmethod
+    def _validate_playground_ttl(cls, v: int) -> int:
+        """Fail loud on a non-positive playground TTL (a short positive lifetime is the point)."""
+        if v <= 0:
+            raise ValueError(
+                "INVALID_PLAYGROUND_TOKEN_TTL: GATEWAY_PLAYGROUND_TOKEN_TTL_SECONDS "
+                f"must be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    @field_validator("playground_token_budget_usd", mode="before")
+    @classmethod
+    def _validate_playground_budget(cls, v: object) -> object:
+        """Fail loud on a non-positive/non-finite playground cap (mirrors the agent-token cap)."""
+        try:
+            d = Decimal(str(v))
+        except Exception:
+            return v
+        if not d.is_finite() or d <= 0:
+            raise ValueError(
+                "INVALID_PLAYGROUND_TOKEN_BUDGET_USD: GATEWAY_PLAYGROUND_TOKEN_BUDGET_USD "
+                f"must be a finite, positive USD amount (> 0); got {v!r}"
             )
         return v
 
