@@ -106,9 +106,11 @@ const resp = await client.chat.completions.create({
 console.log(resp.choices[0].message.content);
 ```
 
-The SDK’s `embeddings`, `images`, and `audio` helpers work the same way. Errors
-arrive as the SDK’s `APIError` carrying the [problem+json](#error-envelope) `code`
-and `status`. An **agent token** works identically — just pass it as `api_key`.
+The SDK’s `embeddings`, `images`, and `audio` helpers work the same way (with an
+`sk-` key). Errors arrive as the SDK’s `APIError` carrying the
+[problem+json](#error-envelope) `code` and `status`. An **agent token** works the
+same way **for chat completions only** — pass it as `api_key`; every other `/v1/*`
+surface requires an `sk-` key (see the [auth table](#authentication)).
 
 ---
 
@@ -175,6 +177,15 @@ The `model` string maps to a provider via the **catalog** (synced from
 OpenRouter). Examples in the live catalog (339 models): `google/gemini-2.5-pro`,
 `google/gemini-2.5-flash-lite`, `anthropic/claude-*`, `openai/gpt-*`,
 `meta-llama/llama-3.1-8b-instruct`.
+
+> **Discovering models.** The OpenAI-style `GET /v1/models` is **not reachable by an
+> API client through the edge**: the `/v1` plane admits only `sk-`/agent tokens (not a
+> JWT — so the handler, which requires a JWT, `401`s), while a browser session JWT is
+> rejected by the edge `ext_authz` before it arrives. Get the catalog out-of-band
+> instead — the dashboard **`/app/models`**, or any tenant role via **`GET
+> /admin/catalog/models`** (the JWT-plane twin; same tenant-priced list). `client.models.list()`
+> in an OpenAI SDK pointed at the edge will therefore fail — list models with your JWT
+> on the `/admin` plane.
 
 An operator can also define **model groups** (an alias → ordered deployments)
 with a routing strategy (`ordered`, `simple-shuffle`, `least-busy`, `latency`) and
