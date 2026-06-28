@@ -39,4 +39,18 @@ describe("MessageMarkdown", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toContain("plain");
   });
+
+  it("neutralizes javascript: link URLs — no dangerous href", () => {
+    // react-markdown's defaultUrlTransform strips non-safe protocols at the HAST
+    // layer before our custom `a` renderer runs. Lock that contract so a future
+    // library downgrade can't silently reintroduce a javascript:-URL XSS.
+    const { container } = render(
+      <MessageMarkdown content={"[click me](javascript:alert(1))"} />,
+    );
+    const anchor = container.querySelector("a");
+    expect(anchor).not.toBeNull();
+    // The dangerous scheme is removed (href empty), not passed through.
+    expect(anchor?.getAttribute("href") ?? "").not.toMatch(/javascript:/i);
+    expect(anchor).toHaveTextContent("click me");
+  });
 });
