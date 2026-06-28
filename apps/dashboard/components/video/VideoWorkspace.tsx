@@ -28,6 +28,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorState, Loading } from "@/components/ui/states";
 import { createVideoJob, listVideoJobs, type VideoJob } from "@/lib/video";
@@ -240,14 +241,13 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
               <label htmlFor="video-model" className="text-sm font-medium text-foreground">
                 Model
               </label>
-              <input
+              <Input
                 id="video-model"
                 type="text"
                 aria-label="Model"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="e.g. google/veo-2"
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
 

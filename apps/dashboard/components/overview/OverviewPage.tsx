@@ -19,6 +19,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } fro
 import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet } from "@/lib/bff-client";
 import { cn } from "@/lib/cn";
+import { Loading, ErrorState } from "@/components/ui/states";
 import {
   Card,
   CardContent,
@@ -137,17 +138,22 @@ export function OverviewPage() {
 
   if (isLoading) {
     return (
-      <div role="status" aria-busy="true" className="flex min-h-64 items-center justify-center text-muted-foreground">
-        <span className="size-5 animate-spin rounded-full border-2 border-muted border-t-foreground" aria-hidden="true" />
-        <span className="sr-only">Loading overview…</span>
+      <div className="flex min-h-64 items-center justify-center">
+        <Loading label="Loading overview…" />
       </div>
     );
   }
   if (isError) {
     return (
-      <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-        Failed to load overview metrics. Please try again.
-      </div>
+      <ErrorState
+        title="Failed to load overview metrics."
+        description="Please try again."
+        onRetry={() => {
+          void spendQuery.refetch();
+          void usageQuery.refetch();
+          void budgetQuery.refetch();
+        }}
+      />
     );
   }
 
