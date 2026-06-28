@@ -185,7 +185,15 @@ export function ModelsPage() {
       {!isLoading && !isError && models.length > 0 && (
         <Card>
           <CardContent className="p-0">
-            <DataTable columns={columns} data={models} />
+            <DataTable
+              columns={columns}
+              data={models}
+              searchable
+              searchPlaceholder="Search models…"
+              searchKeys={["name", "id"]}
+              searchEmptyMessage="No models match your search"
+              pageSizeOptions={[25, 50, 100]}
+            />
           </CardContent>
         </Card>
       )}

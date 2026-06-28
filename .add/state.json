@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "model-catalog-paging-search",
+  "active_milestone": "v54",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -269,6 +269,48 @@
           }
         ]
       }
+    },
+    "model-catalog-paging-search": {
+      "title": "Paginate the Models catalog + fuzzy-search filter",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v54",
+      "depends_on": [],
+      "created": "2026-06-28T06:57:35+00:00",
+      "updated": "2026-06-28T07:28:44+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "fcb29621308a7e1113f2716c9ab5aacf",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/data-table.tsx",
+          "apps/dashboard/components/models/ModelsPage.tsx",
+          "apps/dashboard/lib/fuzzy.ts",
+          "apps/dashboard/package.json",
+          "apps/dashboard/package-lock.json",
+          "apps/dashboard/tests/design-system/allowlist.json",
+          "apps/dashboard/tests-bff/model-catalog-paging-search.test.tsx",
+          "apps/dashboard/tests/fuzzy.test.ts"
+        ],
+        "snapshot_md5": "f4b7cea33e571ec8f97a99487d4d8822"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-28T07:26:18+00:00",
+            "reason": "tamper_detected:contract_tampered",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -287,10 +329,27 @@
       "status": "done",
       "created": "2026-06-26T07:45:35+00:00",
       "updated": "2026-06-26T09:08:28+00:00"
+    },
+    "v54": {
+      "title": "UI refinement \u2014 polished, responsive, scalable app pages",
+      "goal": "Every authenticated dashboard page meets a refreshed UI standard: visually polished, structurally consistent, responsive across screen sizes, and usable at scale.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-28T06:55:05+00:00",
+      "updated": "2026-06-28T06:57:35+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-06-28T06:57:35+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-27T12:05:16+00:00",
+  "updated": "2026-06-28T07:28:44+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -949,6 +1008,30 @@
       "archived": "2026-06-27"
     }
   ],
-  "active_milestones": [],
-  "active_tasks": {}
+  "active_milestones": [
+    "v54"
+  ],
+  "active_tasks": {
+    "v54": "model-catalog-paging-search"
+  },
+  "todos": [
+    {
+      "id": 1,
+      "text": "fix sidebar full height",
+      "created": "2026-06-28T06:35:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 2,
+      "text": "paging model catalog with fuzzy search",
+      "created": "2026-06-28T06:35:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 3,
+      "text": "upgrade UI of each page",
+      "created": "2026-06-28T06:35:36+00:00",
+      "status": "open"
+    }
+  ]
 }

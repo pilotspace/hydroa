@@ -21,6 +21,7 @@
     "remark-gfm",
     "rehype-highlight",
     "highlight.js",
+    "fuse.js",
     "server-only"
   ],
   "devDependencies": [
