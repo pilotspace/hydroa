@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BffError, type ProblemDetail } from "@/lib/bff-client";
+import { isSupported } from "@/lib/chat/param-capabilities";
 
 export type ChatRole = "user" | "assistant" | "system";
 export interface ChatMessage {
@@ -44,6 +45,9 @@ export interface TurnMeta {
   usage?: Usage;
 }
 
+/** Response format selector — "text" (default) sends no key; "json_object" adds it + a hint. */
+export type ResponseFormat = "text" | "json_object";
+
 export interface SendInput {
   model: string;
   text: string;
@@ -51,7 +55,19 @@ export interface SendInput {
   temperature?: number;
   /** v41: opt into provider-native web-search grounding for this turn. */
   webSearch?: boolean;
+  /** chat-parameters-panel: OpenAI-compatible sampling controls (pass-through; each
+   *  included in the request body ONLY when set + valid — omitted-when-unset). */
+  topP?: number;
+  maxTokens?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  seed?: number;
+  stop?: string[];
+  responseFormat?: ResponseFormat;
 }
+
+/** Injected (merged with any user system prompt) when responseFormat === "json_object". */
+const JSON_HINT = "Respond only with valid JSON.";
 
 export interface UseChatStream {
   status: ChatStatus;
@@ -179,6 +195,24 @@ export function useChatStream(opts?: {
           // v41: opt-in web-search grounding. Omitted entirely when off ⇒ body
           // byte-identical to v40 (the gateway only injects on a truthy flag).
           ...(input.webSearch ? { web_search: true } : {}),
+          // chat-parameters-panel: each sampling key is included ONLY when set + valid
+          // (ChatWorkspace validates before send) AND honored by the model's provider
+          // (isSupported) — omitted-when-unset keeps the off/default path byte-identical,
+          // and a provider-dropped param (penalties/seed on Claude etc.) never ships as a
+          // silent no-op. Canonical OpenAI keys; pure pass-through (no gateway change).
+          ...(input.topP !== undefined ? { top_p: input.topP } : {}),
+          ...(input.maxTokens !== undefined ? { max_tokens: input.maxTokens } : {}),
+          ...(input.frequencyPenalty !== undefined && isSupported(input.model, "frequencyPenalty")
+            ? { frequency_penalty: input.frequencyPenalty }
+            : {}),
+          ...(input.presencePenalty !== undefined && isSupported(input.model, "presencePenalty")
+            ? { presence_penalty: input.presencePenalty }
+            : {}),
+          ...(input.seed !== undefined && isSupported(input.model, "seed") ? { seed: input.seed } : {}),
+          ...(input.stop && input.stop.length > 0 ? { stop: input.stop } : {}),
+          ...(input.responseFormat === "json_object" && isSupported(input.model, "responseFormat")
+            ? { response_format: { type: "json_object" } }
+            : {}),
         }),
         signal: controller.signal,
       });
@@ -290,8 +324,18 @@ export function useChatStream(opts?: {
     const next = [...messagesRef.current, { role: "user" as const, content: text }];
     commitMessages(next);
     commitMeta([...metaRef.current, { at: Date.now() }]);
-    const wire: ChatMessage[] = input.system
-      ? [{ role: "system", content: input.system }, ...next]
+    // chat-parameters-panel: when JSON is requested, merge a fixed "reply in JSON"
+    // hint into the (single) system message so providers that 400 a json_object
+    // request lacking "json" in the prompt still succeed. Text/unset ⇒ no hint ⇒
+    // the system message is byte-identical to today (the user prompt, or absent).
+    const jsonOn = input.responseFormat === "json_object" && isSupported(input.model, "responseFormat");
+    const effectiveSystem = jsonOn
+      ? input.system
+        ? `${input.system}\n\n${JSON_HINT}`
+        : JSON_HINT
+      : input.system;
+    const wire: ChatMessage[] = effectiveSystem
+      ? [{ role: "system", content: effectiveSystem }, ...next]
       : next;
 
     const controller = new AbortController();

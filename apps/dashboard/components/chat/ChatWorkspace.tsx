@@ -19,7 +19,7 @@ import type { ModelsData } from "@/components/models/ModelCatalogTable";
 import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
 import { ModelPicker } from "@/components/chat/ModelPicker";
 import { MessageMarkdown } from "@/components/chat/MessageMarkdown";
-import { InspectorPanel } from "@/components/chat/InspectorPanel";
+import { InspectorPanel, EMPTY_SAMPLING, type SamplingState } from "@/components/chat/InspectorPanel";
 import { ConversationTopBar } from "@/components/chat/ConversationTopBar";
 import { CostReadout } from "@/components/chat/CostReadout";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,24 @@ const DEFAULT_MODEL = "openai/gpt-4o";
 /** First ~40 chars of text, trimmed — used as a conversation title slug. */
 function slug(text: string): string {
   return text.trim().slice(0, 40).trim();
+}
+
+/**
+ * Spread the live sampling state into a send() input. Each field is passed as-is;
+ * useChatStream omits any key that is unset/invalid OR not honored by the model's
+ * provider, so the off/default path stays byte-identical and a dropped param never
+ * ships. (chat-parameters-panel)
+ */
+function samplingToInput(s: SamplingState) {
+  return {
+    topP: s.topP,
+    maxTokens: s.maxTokens,
+    frequencyPenalty: s.frequencyPenalty,
+    presencePenalty: s.presencePenalty,
+    seed: s.seed,
+    stop: s.stop,
+    responseFormat: s.responseFormat,
+  };
 }
 
 /** Composer quick-action chips (design parity) — each prefills the input. */
@@ -132,6 +150,13 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   const [system, setSystem] = useState("");
   const [temperature, setTemperature] = useState(1);
   const [webSearch, setWebSearch] = useState(false);
+  // chat-parameters-panel: live sampling controls — in-memory, persists across
+  // turns + inspector tab switches. A shallow patch keeps unrelated fields intact.
+  const [sampling, setSampling] = useState<SamplingState>(EMPTY_SAMPLING);
+  const onSampling = useCallback(
+    (patch: Partial<SamplingState>) => setSampling((s) => ({ ...s, ...patch })),
+    [],
+  );
   const [sessionTokens, setSessionTokens] = useState(0);
   // The conversation title shown in the top bar (null → a fresh, unsaved chat).
   const [activeTitle, setActiveTitle] = useState<string | null>(null);
@@ -210,9 +235,10 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
         system: system || undefined,
         temperature,
         webSearch,
+        ...samplingToInput(sampling),
       });
     },
-    [isStreaming, messages, load, send, model, system, temperature, webSearch],
+    [isStreaming, messages, load, send, model, system, temperature, webSearch, sampling],
   );
 
   // Accumulate the session token total — each completed turn's usage object is
@@ -259,7 +285,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     })();
     pendingConvIdRef.current = persistPromise;
 
-    send({ model, text, system: system.trim() || undefined, temperature, webSearch });
+    send({ model, text, system: system.trim() || undefined, temperature, webSearch, ...samplingToInput(sampling) });
     setInput("");
   }
 
@@ -426,6 +452,9 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
 
       {/* INSPECTOR panel — Parameters / Tools / Code (collapses below xl). */}
       <InspectorPanel
+        model={model}
+        sampling={sampling}
+        onSampling={onSampling}
         system={system}
         onSystemChange={setSystem}
         temperature={temperature}

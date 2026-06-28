@@ -20,22 +20,35 @@ import { Code2, SlidersHorizontal, Wrench } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty } from "@/components/ui/states";
 import { ModelControls, type ModelControlsProps } from "@/components/chat/ModelControls";
+import { ParamNumber, ParamSegmented, ParamSlider, ParamTags } from "@/components/chat/ParameterField";
+import { isSupported, providerLabel, type CapKey } from "@/lib/chat/param-capabilities";
+import type { ResponseFormat } from "@/lib/hooks/use-chat-stream";
 
-/** A read-only scaffold row standing in for a not-yet-wired sampling parameter. */
-function ScaffoldParam({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="rounded-md border border-border bg-muted/40 px-1.5 py-0.5 tabular-nums text-muted-foreground">
-        {value}
-      </span>
-    </div>
-  );
+/** The live sampling state lifted to ChatWorkspace (in-memory, persists across turns + tab switches). */
+export interface SamplingState {
+  topP?: number;
+  maxTokens?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  seed?: number;
+  stop: string[];
+  responseFormat: ResponseFormat;
 }
 
-export type InspectorPanelProps = ModelControlsProps;
+export const EMPTY_SAMPLING: SamplingState = { stop: [], responseFormat: "text" };
 
-export function InspectorPanel(props: InspectorPanelProps) {
+export type InspectorPanelProps = ModelControlsProps & {
+  /** The selected model id — drives provider-aware capability gating of the controls. */
+  model: string;
+  sampling: SamplingState;
+  onSampling: (patch: Partial<SamplingState>) => void;
+};
+
+export function InspectorPanel({ model, sampling, onSampling, ...props }: InspectorPanelProps) {
+  // A control the provider can't honor is disabled + annotated, never silently sent.
+  const gate = (key: CapKey) =>
+    isSupported(model, key) ? {} : { disabled: true, note: `Ignored by ${providerLabel(model)}` };
+
   return (
     <aside
       className="hidden h-full min-h-0 w-80 flex-shrink-0 flex-col border-l border-border bg-background xl:flex"
@@ -63,24 +76,70 @@ export function InspectorPanel(props: InspectorPanelProps) {
         >
           <ModelControls {...props} />
 
-          {/* Scaffold: the sampling slots chat-parameters-panel wires live. */}
-          <fieldset
-            disabled
-            className="mt-6 flex flex-col gap-2.5 border-t border-border pt-4"
-            aria-label="Advanced sampling (configured in a later step)"
-          >
-            <legend className="mb-1 text-xs font-medium text-foreground">
-              Sampling
-              <span className="ml-1 font-normal text-muted-foreground">— more controls coming</span>
-            </legend>
-            <ScaffoldParam label="Top P" value="1.0" />
-            <ScaffoldParam label="Max tokens" value="2048" />
-            <ScaffoldParam label="Frequency penalty" value="0.0" />
-            <ScaffoldParam label="Presence penalty" value="0.0" />
-            <ScaffoldParam label="Seed" value="—" />
-            <ScaffoldParam label="Stop sequences" value="none" />
-            <ScaffoldParam label="Response format" value="Text" />
-          </fieldset>
+          {/* Live sampling controls (chat-parameters-panel). Each value is sent on the next
+              run only when set + valid + honored by the model's provider; unset/default ⇒
+              omitted (byte-identical off path). Provider-unsupported controls are gated. */}
+          <div className="mt-6 flex flex-col gap-4 border-t border-border pt-4">
+            <span className="text-xs font-medium text-foreground">Sampling</span>
+            <ParamSlider
+              label="Top P"
+              value={sampling.topP}
+              defaultPos={1}
+              min={0}
+              max={1}
+              step={0.05}
+              onValue={(n) => onSampling({ topP: n })}
+            />
+            <ParamNumber
+              label="Max tokens"
+              value={sampling.maxTokens}
+              min={1}
+              placeholder="auto"
+              onValue={(n) => onSampling({ maxTokens: n })}
+            />
+            <ParamSlider
+              label="Frequency penalty"
+              value={sampling.frequencyPenalty}
+              defaultPos={0}
+              min={-2}
+              max={2}
+              step={0.1}
+              onValue={(n) => onSampling({ frequencyPenalty: n })}
+              {...gate("frequencyPenalty")}
+            />
+            <ParamSlider
+              label="Presence penalty"
+              value={sampling.presencePenalty}
+              defaultPos={0}
+              min={-2}
+              max={2}
+              step={0.1}
+              onValue={(n) => onSampling({ presencePenalty: n })}
+              {...gate("presencePenalty")}
+            />
+            <ParamNumber
+              label="Seed"
+              value={sampling.seed}
+              placeholder="—"
+              onValue={(n) => onSampling({ seed: n })}
+              {...gate("seed")}
+            />
+            <ParamTags
+              label="Stop sequences"
+              values={sampling.stop}
+              onValues={(v) => onSampling({ stop: v })}
+            />
+            <ParamSegmented<ResponseFormat>
+              label="Response format"
+              value={sampling.responseFormat}
+              options={[
+                { value: "text", label: "Text" },
+                { value: "json_object", label: "JSON" },
+              ]}
+              onValue={(v) => onSampling({ responseFormat: v })}
+              {...gate("responseFormat")}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="tools" className="min-h-0 flex-1 overflow-y-auto p-4">
