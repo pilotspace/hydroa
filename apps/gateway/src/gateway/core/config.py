@@ -843,6 +843,12 @@ class Settings(BaseSettings):
     # GATEWAY_PLAYGROUND_TOKEN_BUDGET_USD — hard monthly spend cap on a playground
     # key, enforced by the existing per-key budget guard. Must be > 0 (Decimal).
     playground_token_budget_usd: Decimal = Decimal("5.00")  # GATEWAY_PLAYGROUND_TOKEN_BUDGET_USD
+    # GATEWAY_PLAYGROUND_TOKEN_MINT_RATE_PER_MINUTE — per-user ceiling on how many
+    # playground keys may be minted in a 60-second window. The BFF caches the minted key
+    # for its whole TTL, so a legitimate session mints rarely; this bounds a caller who
+    # bypasses that cache to flood the mint endpoint (DB-row sprawl + audit-log dilution).
+    # Must be > 0; enforced fail-open (a Redis outage never blocks a real session).
+    playground_token_mint_rate_per_minute: int = 10  # GATEWAY_PLAYGROUND_TOKEN_MINT_RATE_PER_MINUTE
 
     @field_validator("playground_token_ttl_seconds")
     @classmethod
@@ -867,6 +873,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 "INVALID_PLAYGROUND_TOKEN_BUDGET_USD: GATEWAY_PLAYGROUND_TOKEN_BUDGET_USD "
                 f"must be a finite, positive USD amount (> 0); got {v!r}"
+            )
+        return v
+
+    @field_validator("playground_token_mint_rate_per_minute")
+    @classmethod
+    def _validate_playground_mint_rate(cls, v: int) -> int:
+        """Fail loud on a non-positive mint rate (a positive per-minute ceiling is the point)."""
+        if v <= 0:
+            raise ValueError(
+                "INVALID_PLAYGROUND_TOKEN_MINT_RATE: GATEWAY_PLAYGROUND_TOKEN_MINT_RATE_PER_MINUTE "
+                f"must be a positive integer (> 0); got {v!r}"
             )
         return v
 

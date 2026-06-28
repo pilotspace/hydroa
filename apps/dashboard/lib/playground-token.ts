@@ -12,21 +12,34 @@
  * the full token (with its claims) is not held as a map key.
  */
 
+// Build-time guard: throws if this module is ever pulled into a Client Component
+// bundle (security review F2). Keeps the mint logic + the resolved key server-only.
+import "server-only";
+
 interface MintedToken {
   key: string;
   expiresAtMs: number;
 }
 
 const SAFETY_MARGIN_MS = 60_000; // re-mint this long before the real expiry
-const FALLBACK_TTL_MS = 25 * 60_000; // used only if expires_at is missing/unparseable
+// Used only if expires_at is missing/unparseable. Deliberately BELOW the gateway's
+// default 30-min (1800 s) playground TTL so an absent expiry errs toward an early
+// re-mint (never serving a key past its real expiry) — a conservative floor, not a match.
+const FALLBACK_TTL_MS = 25 * 60_000;
 const MAX_ENTRIES = 500; // coarse bound on the in-memory cache
 
 // cacheKey -> a resolved token OR an in-flight mint promise (dedupes concurrent mints).
 const cache = new Map<string, MintedToken | Promise<MintedToken | null>>();
 
-function cacheKeyFor(jwt: string): string {
+/**
+ * The cache key is the JWT's opaque signature segment — unique per user/issuance and
+ * claim-free. Returns null for a non-3-segment (malformed) token so we NEVER hold a
+ * claim-bearing raw token as a map key (security review N2); such a token would fail
+ * auth at the gateway anyway, so the caller mints once without caching.
+ */
+function cacheKeyFor(jwt: string): string | null {
   const parts = jwt.split(".");
-  return parts.length === 3 ? parts[2] : jwt;
+  return parts.length === 3 && parts[2] ? parts[2] : null;
 }
 
 function evictIfNeeded(): void {
@@ -70,6 +83,12 @@ async function mint(jwt: string, gatewayUrl: string): Promise<MintedToken | null
  */
 export async function getPlaygroundToken(jwt: string, gatewayUrl: string): Promise<string | null> {
   const key = cacheKeyFor(jwt);
+  // Malformed token (no opaque signature segment): mint once WITHOUT caching — we never
+  // hold a claim-bearing raw token as a cache key (N2). The gateway rejects it anyway.
+  if (key === null) {
+    const tok = await mint(jwt, gatewayUrl);
+    return tok?.key ?? null;
+  }
   const now = Date.now();
   const existing = cache.get(key);
   if (existing) {
@@ -102,7 +121,8 @@ export async function getPlaygroundToken(jwt: string, gatewayUrl: string): Promi
 
 /** Drop the cached token for a session — e.g. after a data-plane 401, force a re-mint. */
 export function invalidatePlaygroundToken(jwt: string): void {
-  cache.delete(cacheKeyFor(jwt));
+  const key = cacheKeyFor(jwt);
+  if (key !== null) cache.delete(key);
 }
 
 /** Test-only: clear the in-memory cache between cases. */

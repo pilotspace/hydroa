@@ -21,6 +21,7 @@ from gateway.core.error_catalog import (
     AUTH_KEY_INVALID_AUTHZ,
     KEY_NOT_FOUND,
     PAYLOAD_EXPIRES_AT_INVALID,
+    RATE_LIMITED,
     TEAM_NOT_FOUND,
 )
 from gateway.core.ids import uuid7
@@ -52,6 +53,10 @@ from gateway.keys.application.use_cases import (
     UpdateKeyUseCase,
 )
 from gateway.keys.domain.errors import ForbiddenError, InvalidApiKeyError, KeyNotFoundError
+from gateway.keys.infrastructure.mint_rate_limiter import (
+    MintRateLimitedError,
+    PlaygroundMintRateLimiter,
+)
 from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
 from gateway.teams.api.deps import get_team_repository
 from gateway.teams.infrastructure.repository import SqlAlchemyTeamRepository
@@ -155,6 +160,7 @@ async def create_key(
 # Defensive defaults if settings are not attached to app.state (mirrors deps.py).
 _DEFAULT_PLAYGROUND_TTL_SECONDS = 1800
 _DEFAULT_PLAYGROUND_BUDGET_USD = Decimal("5.00")
+_DEFAULT_PLAYGROUND_MINT_RATE = 10  # mints per 60s window per user
 
 
 @admin_router.post("/playground-token", status_code=201, response_model=PlaygroundTokenResponse)
@@ -177,6 +183,24 @@ async def issue_playground_token(
         getattr(settings, "playground_token_ttl_seconds", _DEFAULT_PLAYGROUND_TTL_SECONDS)
     )
     budget_usd = getattr(settings, "playground_token_budget_usd", _DEFAULT_PLAYGROUND_BUDGET_USD)
+
+    # Per-user mint rate limit (security review F1): the BFF caches the minted key for its
+    # whole TTL, so a legitimate session mints rarely. A caller bypassing that cache to
+    # flood this endpoint (DB-row sprawl + audit-log dilution + spend-amplification window)
+    # is bounded here. Fail-open on Redis outage — a real session is never hard-blocked.
+    limiter: PlaygroundMintRateLimiter | None = getattr(
+        request.app.state, "playground_mint_limiter", None
+    )
+    if limiter is not None:
+        rate = int(
+            getattr(
+                settings, "playground_token_mint_rate_per_minute", _DEFAULT_PLAYGROUND_MINT_RATE
+            )
+        )
+        try:
+            await limiter.check(user_id=str(identity.user_id), limit=rate)
+        except MintRateLimitedError as exc:
+            raise RATE_LIMITED.exc(headers={"Retry-After": str(exc.retry_after)}) from None
 
     key_id: uuid.UUID = uuid7()
     expires_at = datetime.now(UTC) + dt.timedelta(seconds=ttl_seconds)

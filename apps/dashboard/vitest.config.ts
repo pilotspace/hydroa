@@ -56,6 +56,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      // `server-only`'s default export throws on import; under Next it resolves to a
+      // no-op via the `react-server` export condition. vitest has no such condition, so
+      // alias it to that same empty module — server-only modules stay importable in tests.
+      "server-only": path.resolve(__dirname, "node_modules/server-only/empty.js"),
     },
   },
 });

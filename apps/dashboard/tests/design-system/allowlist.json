@@ -20,7 +20,8 @@
     "react-markdown",
     "remark-gfm",
     "rehype-highlight",
-    "highlight.js"
+    "highlight.js",
+    "server-only"
   ],
   "devDependencies": [
     "typescript",

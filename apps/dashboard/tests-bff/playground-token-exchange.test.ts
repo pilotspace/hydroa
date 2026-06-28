@@ -134,6 +134,33 @@ describe("BFF playground token exchange", () => {
     expect(mintCount).toBe(2);
   });
 
+  it("test_malformed_jwt_is_not_cached", async () => {
+    // A malformed (non-3-segment) token has no opaque signature segment to key on, so it
+    // must NEVER be cached — otherwise its claim-bearing raw value would be a map key
+    // (security review N2). Observable: each request re-mints (no cache reuse).
+    let mintCount = 0;
+    server.use(
+      http.post(`${GW}/admin/keys/playground-token`, () => {
+        mintCount += 1;
+        return HttpResponse.json({ key: PLAYGROUND_KEY, expires_at: futureIso(30) }, { status: 201 });
+      }),
+      http.post(`${GW}/v1/chat/completions`, () => HttpResponse.json({ ok: true })),
+    );
+
+    const malformed = "header.payload"; // only 2 segments
+    const reqFor = () =>
+      new NextRequest("http://localhost:3000/api/gw/v1/chat/completions", {
+        method: "POST",
+        headers: { Cookie: `ai_proxy_session=${malformed}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
+      });
+
+    await proxyPost(reqFor(), { params: Promise.resolve({ path: ["v1", "chat", "completions"] }) });
+    await proxyPost(reqFor(), { params: Promise.resolve({ path: ["v1", "chat", "completions"] }) });
+
+    expect(mintCount).toBe(2); // not cached → minted each time
+  });
+
   it("test_mint_failure_degrades_to_jwt_no_logout", async () => {
     let forwardedAuth: string | null = null;
     server.use(

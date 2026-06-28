@@ -12,7 +12,9 @@ Contract pinned here:
   - No JWT → 401 (it is a /admin/* JWT-plane route).
 """
 
+import base64
 import datetime as dt
+import json
 import re
 import uuid
 from typing import Any
@@ -36,6 +38,13 @@ async def _signup_and_login(client: httpx.AsyncClient, *, tenant: str, email: st
     lr = await client.post(LOGIN, json={"email": email, "password": "correct horse batt"})
     assert lr.status_code == 200, lr.text
     return lr.json()["access_token"]
+
+
+def _tenant_from_jwt(token: str) -> str:
+    """Decode the unverified JWT payload to read the caller's tenant_id claim."""
+    payload = token.split(".")[1]
+    payload += "=" * (-len(payload) % 4)
+    return json.loads(base64.urlsafe_b64decode(payload))["tenant_id"]
 
 
 async def test_owner_mints_playground_token(
@@ -77,7 +86,9 @@ async def test_playground_token_resolves_on_data_plane(client: httpx.AsyncClient
 
     authz = await client.post(INTERNAL_AUTHZ, headers={"Authorization": f"Bearer {key}"})
     assert authz.status_code == 200, authz.text
-    assert authz.json().get("tenant_id"), "authz must resolve the minted key to a tenant"
+    # The minted key resolves to the MINTING user's tenant — not merely "some" tenant.
+    # (Guards against a future cross-tenant attribution regression — security review N3.)
+    assert authz.json()["tenant_id"] == _tenant_from_jwt(token)
 
 
 async def test_any_role_can_mint_playground_token(client: httpx.AsyncClient, app: Any) -> None:
@@ -106,6 +117,30 @@ async def test_any_role_can_mint_playground_token(client: httpx.AsyncClient, app
     )
     assert resp.status_code == 201, resp.text
     assert _KEY_RE.match(resp.json()["key"])
+
+
+async def test_playground_mint_is_rate_limited_per_user(
+    client: httpx.AsyncClient, app: Any
+) -> None:
+    """A direct caller flooding the mint endpoint is bounded per-user (security review F1).
+
+    The BFF caches the minted key for its whole TTL, so a legitimate session mints at most
+    a couple of times per window. A caller bypassing that cache to mint unbounded keys
+    (DB-row sprawl + audit-log dilution + a transient spend-amplification window) is rejected
+    with 429 + Retry-After once the per-user, per-minute budget is spent.
+    """
+    # Tighten the per-user window so the budget is reachable within two calls.
+    app.state.settings.playground_token_mint_rate_per_minute = 1
+    token = await _signup_and_login(client, tenant="PgRL", email="owner@pgrl.io")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = await client.post(PLAYGROUND_TOKEN, headers=headers, json={})
+    assert first.status_code == 201, first.text
+
+    second = await client.post(PLAYGROUND_TOKEN, headers=headers, json={})
+    assert second.status_code == 429, second.text
+    retry_after = second.headers.get("Retry-After")
+    assert retry_after is not None and int(retry_after) > 0, "429 must carry a positive Retry-After"
 
 
 async def test_playground_token_requires_jwt(client: httpx.AsyncClient) -> None:
