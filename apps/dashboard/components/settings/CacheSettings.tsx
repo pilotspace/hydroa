@@ -13,7 +13,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bffGet, bffPut, BffError } from "@/lib/bff-client";
-import { Switch, Button, Loading, ErrorState } from "@/components/ui";
+import { Switch, Button, Loading, ErrorState, Success } from "@/components/ui";
 
 interface CacheConfig {
   enabled: boolean;
@@ -39,6 +39,17 @@ export function CacheSettings() {
   const [enabled, setEnabled] = useState(false);
   const [semanticEnabled, setSemanticEnabled] = useState(false);
   const [mutError, setMutError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  // Editing after a save clears the confirmation so it never lingers over unsaved changes.
+  const onToggleEnabled = (v: boolean) => {
+    setEnabled(v);
+    setSaved(false);
+  };
+  const onToggleSemantic = (v: boolean) => {
+    setSemanticEnabled(v);
+    setSaved(false);
+  };
 
   // Seed/reseed local editable state from server data via React's "adjust state
   // during render" guard (no setState in an effect): fires only when the query
@@ -55,6 +66,7 @@ export function CacheSettings() {
     mutationFn: (body: CacheConfig) => bffPut<CacheConfig>("/admin/cache", body),
     onSuccess: (resp) => {
       setMutError(null);
+      setSaved(true);
       queryClient.setQueryData<CacheConfig>(["admin-cache"], resp);
       setEnabled(resp.enabled);
       setSemanticEnabled(resp.semantic_enabled);
@@ -83,7 +95,7 @@ export function CacheSettings() {
             id="cache-enabled"
             aria-label="Enable response cache"
             checked={enabled}
-            onCheckedChange={setEnabled}
+            onCheckedChange={onToggleEnabled}
           />
         </div>
 
@@ -95,7 +107,7 @@ export function CacheSettings() {
             id="semantic-cache-enabled"
             aria-label="Enable semantic cache"
             checked={semanticEnabled}
-            onCheckedChange={setSemanticEnabled}
+            onCheckedChange={onToggleSemantic}
           />
         </div>
       </div>
@@ -105,6 +117,8 @@ export function CacheSettings() {
           {mutError}
         </p>
       )}
+
+      {saved && !mutError && <Success title="Saved." />}
 
       <div>
         <Button
