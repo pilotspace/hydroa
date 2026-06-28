@@ -26,13 +26,15 @@
  * shorter interval and verify polling behaviour with real timers.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorState, Loading } from "@/components/ui/states";
 import { createVideoJob, listVideoJobs, type VideoJob } from "@/lib/video";
 import { downloadArtifact } from "@/lib/artifacts";
 import { BffError } from "@/lib/bff-client";
+import { useCatalogModels, narrowModels } from "@/lib/hooks/use-catalog-models";
 
 // ── constants ──────────────────────────────────────────────────────────────────
 
@@ -83,6 +85,14 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
   // ── form fields ──────────────────────────────────────────────────────────────
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
+
+  // Autocomplete suggestions from the configured catalog (video-gen models first);
+  // free-text preserved so a catalog-omitted model (e.g. "google/veo-2") still works.
+  const catalogModels = useCatalogModels();
+  const videoSuggestions = useMemo(
+    () => narrowModels(catalogModels, /veo|video|sora|gen/i),
+    [catalogModels],
+  );
 
   // ── job list ─────────────────────────────────────────────────────────────────
   const [jobs, setJobs] = useState<VideoJob[]>([]);
@@ -240,15 +250,20 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
               <label htmlFor="video-model" className="text-sm font-medium text-foreground">
                 Model
               </label>
-              <input
+              <Input
                 id="video-model"
                 type="text"
                 aria-label="Model"
+                list="video-model-options"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="e.g. google/veo-2"
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
+              <datalist id="video-model-options">
+                {videoSuggestions.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
             </div>
 
             {/* ── Prompt textarea ─────────────────────────────────────────── */}

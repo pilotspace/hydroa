@@ -14,6 +14,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "./mocks/server";
 
 // ── mock lib/video ─────────────────────────────────────────────────────────────
 vi.mock("@/lib/video", () => ({
@@ -112,7 +114,7 @@ describe("VideoWorkspace", () => {
     );
 
     // Fill in model + prompt
-    const modelInput = screen.getByRole("textbox", { name: /model/i });
+    const modelInput = screen.getByRole("combobox", { name: /model/i });
     const promptInput = screen.getByRole("textbox", { name: /prompt/i });
     await user.type(modelInput, "google/veo-2");
     await user.type(promptInput, "A cat chasing a laser pointer");
@@ -263,7 +265,7 @@ describe("VideoWorkspace", () => {
     const generateBtn = screen.getByRole("button", { name: /generate/i });
 
     // Only model filled → still disabled
-    const modelInput = screen.getByRole("textbox", { name: /model/i });
+    const modelInput = screen.getByRole("combobox", { name: /model/i });
     await user.type(modelInput, "google/veo-2");
     expect(generateBtn).toBeDisabled();
 
@@ -282,7 +284,7 @@ describe("VideoWorkspace", () => {
     expect(alert).toBeInTheDocument();
 
     // No crash — form still accessible
-    expect(screen.getByRole("textbox", { name: /model/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /model/i })).toBeInTheDocument();
   });
 
   // ── bff_error_soft_keeps_last_good_list ───────────────────────────────────
@@ -298,7 +300,7 @@ describe("VideoWorkspace", () => {
     );
 
     // No crash — form still mounted
-    expect(screen.getByRole("textbox", { name: /model/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /model/i })).toBeInTheDocument();
   });
 
   // ── polling_stops_when_all_jobs_terminal ──────────────────────────────────
@@ -342,5 +344,30 @@ describe("VideoWorkspace", () => {
       },
       { timeout: POLL_MS * 10 },
     );
+  });
+
+  // ── model field autocompletes from the catalog (video-gen models) ─────────
+  it("model_field_suggests_catalog_video_models", async () => {
+    mockListVideoJobs.mockResolvedValue({ jobs: [] });
+    server.use(
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
+        HttpResponse.json({
+          object: "list",
+          data: [{ id: "google/veo-2" }, { id: "openai/gpt-4o" }],
+        }),
+      ),
+    );
+
+    render(<VideoWorkspace pollIntervalMs={POLL_MS} />);
+
+    // The model field is now a combobox backed by a catalog-driven datalist.
+    expect(await screen.findByRole("combobox", { name: /model/i })).toBeInTheDocument();
+    await waitFor(() => {
+      const opts = Array.from(
+        document.querySelectorAll("#video-model-options option"),
+      ).map((o) => (o as HTMLOptionElement).value);
+      expect(opts).toContain("google/veo-2"); // video model suggested
+      expect(opts).not.toContain("openai/gpt-4o"); // chat model filtered out
+    });
   });
 });

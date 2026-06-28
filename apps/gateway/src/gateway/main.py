@@ -53,6 +53,7 @@ from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
+from gateway.keys.infrastructure.mint_rate_limiter import PlaygroundMintRateLimiter
 from gateway.memory.api.router import memories_router
 from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
     MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -768,6 +769,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Per-IP rate limiter for the device-authorization endpoint (fail-open on Redis outage).
     # Built from the same redis_client; no IO at construction (safe without lifespan).
     app.state.agent_oauth_ip_limiter = AgentOAuthIpRateLimiter(redis=redis_client)
+
+    # Per-user rate limiter for the playground-token mint (security review F1): bounds a
+    # caller who bypasses the BFF cache to flood POST /admin/keys/playground-token.
+    # Same redis_client; no IO at construction; fail-open on Redis outage.
+    app.state.playground_mint_limiter = PlaygroundMintRateLimiter(redis=redis_client)
 
     # Bandwidth pacing (stream-bandwidth-pacing, v36): per-key aggregate token-bucket.
     # rate==0 (default) → PassthroughBandwidthBucket → byte-identical (no pacing, no Redis).

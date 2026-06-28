@@ -40,6 +40,7 @@
     /* status */
     --success: #059669;             /* emerald-600 */
     --warning: #f59e0b;             /* amber-500 */
+    --warning-foreground: #92400e;  /* amber-800 — readable text on a warning surface */
     --destructive: #dc2626;         /* red-600 */
     --destructive-foreground: #ffffff;
 
@@ -101,6 +102,7 @@
     --secondary-foreground: #f8fafc;
     --success: #34d399;
     --warning: #fbbf24;
+    --warning-foreground: #fcd34d;  /* amber-300 — readable on a dark warning surface */
     --destructive: #ef4444;
     --destructive-foreground: #ffffff;
     --border: #1e293b;
@@ -168,6 +170,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);

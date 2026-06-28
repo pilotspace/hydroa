@@ -21,9 +21,12 @@
  * the role selector, WCAG-AA compliant.
  */
 
+import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet, bffPut, BffError } from "@/lib/bff-client";
 import { Loading, ErrorState } from "@/components/ui";
+import { DataTable } from "@/components/ui/data-table";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,7 +74,7 @@ export interface MembersPageProps {
 
 export function MembersPage({ callerRole, callerUserId }: MembersPageProps) {
   const queryClient = useQueryClient();
-  const assignable = assignableRoles(callerRole);
+  const assignable = React.useMemo(() => assignableRoles(callerRole), [callerRole]);
 
   const usersQuery = useQuery<UsersListResponse>({
     queryKey: ["admin-users"],
@@ -87,6 +90,51 @@ export function MembersPage({ callerRole, callerUserId }: MembersPageProps) {
   });
 
   const users = usersQuery.data?.users ?? [];
+
+  const columns = React.useMemo<ColumnDef<TenantUser>[]>(
+    () => [
+      {
+        accessorKey: "email",
+        header: "Email",
+        cell: ({ row }) => <span className="text-foreground">{row.original.email}</span>,
+      },
+      {
+        accessorKey: "role",
+        header: "Current Role",
+        cell: ({ row }) => (
+          <span className="capitalize text-muted-foreground">{row.original.role}</span>
+        ),
+      },
+      {
+        id: "assign",
+        header: "Assign Role",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const user = row.original;
+          const isSelf = callerUserId ? user.id === callerUserId : false;
+          if (isSelf) {
+            return <span className="text-xs italic text-muted-foreground">(your account)</span>;
+          }
+          return (
+            <select
+              aria-label={`Assign role to ${user.email}`}
+              defaultValue={user.role}
+              disabled={assignable.length === 0 || assignRole.isPending}
+              onChange={(e) => assignRole.mutate({ userId: user.id, role: e.target.value })}
+              className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            >
+              {assignable.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          );
+        },
+      },
+    ],
+    [assignable, callerUserId, assignRole],
+  );
 
   return (
     <section aria-labelledby="members-heading" className="flex flex-col gap-6">
@@ -109,74 +157,13 @@ export function MembersPage({ callerRole, callerUserId }: MembersPageProps) {
               : "Failed to load members"
           }
         />
-      ) : users.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No members yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full text-sm">
-            <thead className="border-b border-border bg-muted/50">
-              <tr>
-                <th
-                  scope="col"
-                  className="px-4 py-3 text-left font-medium text-muted-foreground"
-                >
-                  Email
-                </th>
-                <th
-                  scope="col"
-                  className="px-4 py-3 text-left font-medium text-muted-foreground"
-                >
-                  Current Role
-                </th>
-                <th
-                  scope="col"
-                  className="px-4 py-3 text-left font-medium text-muted-foreground"
-                >
-                  Assign Role
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {users.map((user) => {
-                const isSelf = callerUserId ? user.id === callerUserId : false;
-                return (
-                  <tr key={user.id} className="bg-card hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 text-foreground">{user.email}</td>
-                    <td className="px-4 py-3 text-muted-foreground capitalize">
-                      {user.role}
-                    </td>
-                    <td className="px-4 py-3">
-                      {isSelf ? (
-                        <span className="text-xs text-muted-foreground italic">
-                          (your account)
-                        </span>
-                      ) : (
-                        <select
-                          aria-label={`Assign role to ${user.email}`}
-                          defaultValue={user.role}
-                          disabled={assignable.length === 0 || assignRole.isPending}
-                          onChange={(e) => {
-                            assignRole.mutate({
-                              userId: user.id,
-                              role: e.target.value,
-                            });
-                          }}
-                          className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                        >
-                          {assignable.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          data={users}
+          ariaLabel="Members"
+          emptyMessage="No members yet."
+        />
       )}
     </section>
   );

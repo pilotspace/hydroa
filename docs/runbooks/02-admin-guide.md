@@ -22,6 +22,15 @@ Two ways to do all of it:
 > login are exempt. Full matrix:
 > [Multi-tenant guide → Roles & permissions](./04-multi-tenant-guide.md#roles--permissions).
 
+> **`operator` and the legacy guard.** Several write endpoints (`/admin/keys`,
+> `/admin/models`, `/admin/cache`, `/admin/guardrails`, `/admin/teams`) and catalog
+> sync share a dependency historically named `require_owner_or_admin` — but it is
+> implemented as a **permission** check (`keys_manage` / `catalog_sync`), not a literal
+> owner/admin check. Because the matrix grants **`operator`** those permissions,
+> operator can use these endpoints too. The tables below list the **permission**, not
+> the old name — `keys_manage`, `catalog_sync`, and `routing_manage` all resolve to
+> **owner / admin / operator**.
+
 - [0. Set `$E` and a JWT](#0-set-e-and-a-jwt)
 - [1. Onboard a tenant (signup → login → me)](#1-onboard-a-tenant)
 - [2. API keys (create / list / rotate / revoke)](#2-api-keys)
@@ -158,7 +167,7 @@ The catalog is the list of callable models, synced from OpenRouter. Trigger a sy
 and you can enable/disable individual models per tenant.
 
 ```bash
-# Sync (owner/admin). Verified live: returned 339 models.
+# Sync (owner/admin/operator — `catalog_sync`). Verified live: returned 339 models.
 curl -s -X POST $E/admin/catalog/sync -H "authorization: Bearer $JWT"
 # → {"synced":339,"synced_at":"2026-06-27T16:33:34Z"}
 
@@ -266,7 +275,7 @@ Attach a key to a team by setting `team_id` on the key (§2).
 ## 8. Routing configuration
 
 Routing decides which deployment serves a model alias, and how the proxy retries
-and cools down failing upstreams. **Owner/admin (`routing_manage`).**
+and cools down failing upstreams. **owner / admin / operator (`routing_manage`).**
 
 ```bash
 # Effective config + live cooldown gate states
@@ -293,8 +302,9 @@ config.
 
 ## 9. Guardrails & cache
 
-**Guardrails** (`PUT /admin/guardrails`, owner/admin) — prompt-injection detection
-and PII masking, each with a `block`/`audit` (or `mask`/`audit`) mode:
+**Guardrails** (`PUT /admin/guardrails`, `keys_manage` — owner/admin/operator) —
+prompt-injection detection and PII masking, each with a `block`/`audit` (or
+`mask`/`audit`) mode:
 
 ```bash
 curl -s -X PUT $E/admin/guardrails -H "authorization: Bearer $JWT" \
@@ -307,8 +317,8 @@ Custom-pattern rules (ReDoS-guarded): ≤ 8 patterns, name `^[A-Z][A-Z0-9_]{0,31
 ≤ 256 bytes, valid regex, no backreferences / nested quantifiers. First violation
 → `422`, no write.
 
-**Cache toggle** (`PUT /admin/cache`, owner/admin) — exact-match and semantic
-response caching per tenant:
+**Cache toggle** (`PUT /admin/cache`, `keys_manage` — owner/admin/operator) —
+exact-match and semantic response caching per tenant:
 
 ```bash
 curl -s -X PUT $E/admin/cache -H "authorization: Bearer $JWT" \
@@ -416,17 +426,17 @@ but this surface is operator-only). Details:
 | POST | `/admin/auth/signup` | public | create tenant + owner |
 | POST | `/admin/auth/login` | public | mint session JWT |
 | GET | `/admin/auth/me` | any | decode identity |
-| GET/POST/PATCH/DELETE | `/admin/keys[...]` | owner/admin (GET any) | API key lifecycle |
-| POST | `/admin/keys/{id}/rotate` | owner/admin | atomic rotate |
+| GET/POST/PATCH/DELETE | `/admin/keys[...]` | `keys_manage` (GET any) | API key lifecycle |
+| POST | `/admin/keys/{id}/rotate` | `keys_manage` | atomic rotate |
 | GET/PUT | `/admin/budget` | `budgets_manage` (GET any) | tenant monthly ceiling |
-| GET/PUT | `/admin/models[/{id}]` | owner/admin | catalog + per-tenant toggles |
-| POST | `/admin/catalog/sync` | owner/admin | sync from OpenRouter |
+| GET/PUT | `/admin/models[/{id}]` | `keys_manage` | catalog + per-tenant toggles |
+| POST | `/admin/catalog/sync` | `catalog_sync` | sync from OpenRouter |
 | GET/PUT/DELETE | `/admin/provider-keys[/{provider}]` | **owner** | BYOK provider creds |
 | GET/PUT | `/admin/users[/{id}/role]` | `members_manage` | members & roles |
-| GET/POST/PATCH/DELETE | `/admin/teams[...]` | owner/admin | teams & members |
+| GET/POST/PATCH/DELETE | `/admin/teams[...]` | `keys_manage` | teams & members |
 | GET/PUT | `/admin/routing` | `routing_manage` | routing config (restart-to-apply) |
-| GET/PUT | `/admin/guardrails` | owner/admin (GET any) | injection / PII policy |
-| GET/PUT | `/admin/cache` | owner/admin (GET any) | cache toggles |
+| GET/PUT | `/admin/guardrails` | `keys_manage` (GET any) | injection / PII policy |
+| GET/PUT | `/admin/cache` | `keys_manage` (GET any) | cache toggles |
 | GET/PUT | `/admin/oidc` | **owner** | per-tenant SSO config |
 | GET | `/admin/usage` | any | totals + recent records |
 | GET | `/admin/spend` | any | windowed spend |

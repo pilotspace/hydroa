@@ -226,6 +226,30 @@ describe("Overview — four-state pattern", () => {
     render(<OverviewPage />, { wrapper: Wrapper });
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
+
+  it("test_error_state_retry_refetches_and_recovers", async () => {
+    const user = userEvent.setup();
+    let spendCalls = 0;
+    server.use(
+      http.get(`${APP}/api/gw/admin/spend`, ({ request }) => {
+        spendCalls += 1;
+        if (spendCalls === 1) return HttpResponse.json({ title: "boom" }, { status: 500 });
+        const w = new URL(request.url).searchParams.get("window") ?? "month";
+        return HttpResponse.json(spendFor(w));
+      }),
+      http.get(`${APP}/api/gw/admin/usage`, () => HttpResponse.json(USAGE)),
+      http.get(`${APP}/api/gw/admin/budget`, () => HttpResponse.json(BUDGET)),
+    );
+    render(<OverviewPage />, { wrapper: Wrapper });
+
+    // Error surfaces with a Retry affordance (shared ErrorState onRetry).
+    const retry = await screen.findByRole("button", { name: /retry/i });
+    await user.click(retry);
+
+    // Retry refetches; the page recovers to its KPI content.
+    expect(await screen.findByText("Total Requests")).toBeInTheDocument();
+    expect(spendCalls).toBeGreaterThanOrEqual(2);
+  });
 });
 
 // ── ROUTE GATE ────────────────────────────────────────────────────────────────

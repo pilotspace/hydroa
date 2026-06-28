@@ -90,6 +90,16 @@ export const gatewayHandlers = [
   http.get(`${GATEWAY}/admin/catalog/models`, () =>
     HttpResponse.json({ object: "list", data: [] })
   ),
+
+  // BFF server-side token exchange: any /v1 request through the proxy first mints a
+  // short-lived playground sk- key here. Default stub so /v1 proxy tests don't need
+  // to register it; tests asserting mint behavior override with their own server.use.
+  http.post(`${GATEWAY}/admin/keys/playground-token`, () =>
+    HttpResponse.json(
+      { key: "sk-testpg.defaultsecret", expires_at: new Date(Date.now() + 1_800_000).toISOString() },
+      { status: 201 }
+    )
+  ),
 ];
 
 /** Same-origin BFF route handlers (for component/hook tests using bff-client.ts) */

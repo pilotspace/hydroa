@@ -141,6 +141,8 @@ describe("SettingsPage — cache tab", () => {
         "false",
       ),
     );
+    // A successful save surfaces an explicit confirmation (no more silent success).
+    expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
 
   it("test_member_cannot_save_cache", async () => {

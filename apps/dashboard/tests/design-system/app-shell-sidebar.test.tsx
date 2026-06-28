@@ -274,6 +274,21 @@ describe("AppShell — responsive mobile sheet", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("test_mobile_sheet_exposes_logout", async () => {
+    // Below the lg breakpoint the desktop rail (which holds the footer logout) is
+    // hidden — so the mobile sheet must carry its own logout, or mobile users have
+    // no way to sign out at all.
+    const user = userEvent.setup();
+    render(
+      <AppShell role="owner">
+        <Body />
+      </AppShell>,
+    );
+    await user.click(screen.getByRole("button", { name: /open navigation/i }));
+    const dialog = screen.getByRole("dialog", { name: /navigation/i });
+    expect(within(dialog).getByRole("button", { name: /log ?out/i })).toBeInTheDocument();
+  });
 });
 
 // ── THEME TOGGLE ──────────────────────────────────────────────────────────────

@@ -221,6 +221,17 @@ class CreateKeyResponse(BaseModel):
     cache_enabled: bool = False
 
 
+class PlaygroundTokenResponse(BaseModel):
+    """POST /admin/keys/playground-token — a short-lived, spend-capped sk- key for the
+    dashboard BFF's server-side /v1 calls. The secret is shown EXACTLY ONCE; the browser
+    never receives it (the BFF caches it server-side until expires_at)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str  # plaintext "sk-<hex>.<secret>" — shown ONCE, BFF-side only
+    expires_at: str | None = None
+
+
 class RotateKeyResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
