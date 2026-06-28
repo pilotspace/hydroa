@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Send, Square } from "lucide-react";
+import { Bot, Check, Copy, RefreshCw, Send, Square, User } from "lucide-react";
 import { useChatStream, type ChatMessage, type Usage } from "@/lib/hooks/use-chat-stream";
 import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
 import { ModelPicker } from "@/components/chat/ModelPicker";
@@ -34,6 +34,32 @@ const DEFAULT_MODEL = "openai/gpt-4o";
 /** First ~40 chars of text, trimmed — used as a conversation title slug. */
 function slug(text: string): string {
   return text.trim().slice(0, 40).trim();
+}
+
+/** Composer quick-action chips (design parity) — each prefills the input. */
+const QUICK_ACTIONS: ReadonlyArray<{ label: string; prompt: string }> = [
+  { label: "Explain code", prompt: "Explain this code:\n\n" },
+  { label: "Summarize", prompt: "Summarize the following:\n\n" },
+  { label: "Improve writing", prompt: "Improve the writing of:\n\n" },
+];
+
+/**
+ * Initials from an email local-part — real identity for the user avatar, no
+ * fabrication. "ada.lovelace@x" → "AL"; "ada@x" → "AD". Null when unknown.
+ */
+function initialsFromEmail(email: string | null | undefined): string | null {
+  if (!email) return null;
+  const local = email.split("@")[0] ?? "";
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  const s = parts[0] ?? local;
+  return (s.slice(0, 2) || s.slice(0, 1)).toUpperCase() || null;
+}
+
+/** Coarse token estimate (~4 chars/token) — labeled as an estimate, never billed. */
+function estimateTokens(text: string): number {
+  const t = text.trim();
+  return t ? Math.max(1, Math.ceil(t.length / 4)) : 0;
 }
 
 export interface ChatWorkspaceProps {
@@ -83,7 +109,46 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   const countedRef = useRef<Usage | undefined>(undefined);
   const threadEndRef = useRef<HTMLDivElement>(null);
 
+  // Real user initials for the avatar — a lightweight /api/auth/me read (same
+  // cookie-auth pattern as the sidebar; no react-query so the bare component
+  // works standalone). Honest degrade: a generic glyph until/if it resolves.
+  const [userInitials, setUserInitials] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u: { email?: string | null } | null) => {
+        if (alive && u) setUserInitials(initialsFromEmail(u.email));
+      })
+      .catch(() => {
+        /* honest degrade — keep the generic avatar */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const isStreaming = status === "streaming";
+
+  // Regenerate the assistant reply for a turn: truncate the thread to just
+  // before that user message and re-send it with the live model settings. Uses
+  // the hook's synchronous messagesRef seam (load → send composes correctly).
+  const regenerateFrom = useCallback(
+    (assistantIndex: number) => {
+      if (isStreaming) return;
+      const userMsg = messages[assistantIndex - 1];
+      if (!userMsg || userMsg.role !== "user") return;
+      load(messages.slice(0, assistantIndex - 1));
+      send({
+        model,
+        text: userMsg.content,
+        system: system || undefined,
+        temperature,
+        webSearch,
+      });
+    },
+    [isStreaming, messages, load, send, model, system, temperature, webSearch],
+  );
 
   // Accumulate the session token total — each completed turn's usage object is
   // counted EXACTLY once (the identity guard survives StrictMode double-invoke
@@ -204,12 +269,25 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
             />
           ) : null}
 
+          {messages.length > 0 ? <DayDivider label="Today" /> : null}
+
           {messages.map((m, i) => (
-            <MessageBubble key={i} message={m} />
+            <MessageRow
+              key={i}
+              message={m}
+              userInitials={userInitials}
+              onRegenerate={
+                m.role === "assistant" && !isStreaming ? () => regenerateFrom(i) : undefined
+              }
+            />
           ))}
 
           {isStreaming ? (
-            <MessageBubble message={{ role: "assistant", content: streamingText }} streaming />
+            <MessageRow
+              message={{ role: "assistant", content: streamingText }}
+              userInitials={userInitials}
+              streaming
+            />
           ) : null}
 
           {status === "error" && error ? (
@@ -234,6 +312,21 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
             webSearch={webSearch}
             onWebSearchChange={setWebSearch}
           />
+          {/* Quick-action chips — design parity; prefill the composer when idle+empty. */}
+          {input.trim() === "" && !isStreaming ? (
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_ACTIONS.map((qa) => (
+                <button
+                  key={qa.label}
+                  type="button"
+                  onClick={() => setInput(qa.prompt)}
+                  className="rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {qa.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:ring-2 focus-within:ring-ring">
           <Textarea
             value={input}
@@ -256,6 +349,11 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
             </Button>
           )}
           </div>
+          {/* Footer hint + live token estimate (design parity). */}
+          <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+            <span>Enter to send · Shift+Enter for newline</span>
+            {input.trim() ? <span>~{estimateTokens(input)} tokens</span> : <span aria-hidden="true" />}
+          </div>
         </div>
       </form>
       </div>
@@ -263,29 +361,125 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   );
 }
 
-function MessageBubble({ message, streaming = false }: { message: ChatMessage; streaming?: boolean }) {
+/** A day separator that groups the thread (design parity). */
+function DayDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 py-1 text-xs text-muted-foreground">
+      <span className="h-px flex-1 bg-border" />
+      <span className="font-medium">{label}</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+/** Round avatar: real user initials, or a role glyph (honest fallback). */
+function Avatar({ isUser, initials }: { isUser: boolean; initials: string | null }) {
+  return (
+    <div
+      className={cn(
+        "flex size-8 shrink-0 select-none items-center justify-center rounded-full text-xs font-semibold",
+        isUser
+          ? "bg-primary text-primary-foreground"
+          : "border border-border bg-muted text-muted-foreground",
+      )}
+    >
+      {isUser ? (
+        initials ?? <User className="size-4" aria-hidden="true" />
+      ) : (
+        <Bot className="size-4" aria-hidden="true" />
+      )}
+    </div>
+  );
+}
+
+/** Copy-to-clipboard button with a transient "Copied" state. */
+function CopyTurnButton({ getText }: { getText: () => string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label="Copy"
+      onClick={() => {
+        const text = getText();
+        if (!text || !navigator.clipboard) return;
+        void navigator.clipboard.writeText(text).then(
+          () => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          },
+          () => {},
+        );
+      }}
+      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {copied ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+/**
+ * One conversation turn: avatar + role label + bubble, with per-turn Copy /
+ * Regenerate actions on completed assistant replies (design parity). User text
+ * is literal; assistant text is Markdown. Per-turn latency/cost is intentionally
+ * NOT shown — the SSE seam carries only one latest usage, and fabricating
+ * per-turn numbers would be dishonest.
+ */
+function MessageRow({
+  message,
+  userInitials,
+  streaming = false,
+  onRegenerate,
+}: {
+  message: ChatMessage;
+  userInitials: string | null;
+  streaming?: boolean;
+  onRegenerate?: () => void;
+}) {
   const isUser = message.role === "user";
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+    <div
+      data-role={message.role}
+      className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}
+    >
+      <Avatar isUser={isUser} initials={userInitials} />
       <div
-        className={cn(
-          "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm",
-          // User text is literal (preserve newlines); assistant text is Markdown.
-          isUser
-            ? "whitespace-pre-wrap bg-primary text-primary-foreground"
-            : "border border-border bg-background text-foreground",
-        )}
+        className={cn("flex min-w-0 max-w-[85%] flex-col gap-1", isUser ? "items-end" : "items-start")}
       >
-        {isUser ? (
-          message.content
-        ) : (
-          <MessageMarkdown content={message.content} />
-        )}
-        {streaming ? (
-          <span
-            className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-current align-middle"
-            aria-hidden="true"
-          />
+        <span className="px-1 text-xs font-medium text-muted-foreground">
+          {isUser ? "You" : "Assistant"}
+        </span>
+        <div
+          className={cn(
+            "rounded-2xl px-4 py-2.5 text-sm",
+            isUser
+              ? "whitespace-pre-wrap bg-primary text-primary-foreground"
+              : "border border-border bg-background text-foreground",
+          )}
+        >
+          {isUser ? message.content : <MessageMarkdown content={message.content} />}
+          {streaming ? (
+            <span
+              className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-current align-middle"
+              aria-hidden="true"
+            />
+          ) : null}
+        </div>
+        {!isUser && !streaming ? (
+          <div className="flex items-center gap-1 px-1">
+            <CopyTurnButton getText={() => message.content} />
+            {onRegenerate ? (
+              <button
+                type="button"
+                aria-label="Regenerate"
+                onClick={onRegenerate}
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <RefreshCw className="size-3" aria-hidden="true" />
+                Regenerate
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>
