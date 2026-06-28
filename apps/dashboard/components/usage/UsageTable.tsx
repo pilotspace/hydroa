@@ -10,6 +10,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { UsageRecord, UsageData } from "./UsageStatsCards";
 import { DataTable } from "@/components/ui";
+import { formatTimestamp } from "@/lib/format";
 
 const COLUMNS: ColumnDef<UsageRecord>[] = [
   { accessorKey: "model_id", header: "Model" },
@@ -17,7 +18,11 @@ const COLUMNS: ColumnDef<UsageRecord>[] = [
   { accessorKey: "completion_tokens", header: "Completion Tokens" },
   { accessorKey: "cost_usd", header: "Cost (USD)" },
   { accessorKey: "status", header: "Status" },
-  { accessorKey: "created_at", header: "Date" },
+  {
+    accessorKey: "created_at",
+    header: "Date",
+    cell: ({ row }) => formatTimestamp(row.original.created_at),
+  },
 ];
 
 interface UsageTableProps {

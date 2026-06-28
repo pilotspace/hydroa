@@ -10,14 +10,15 @@
  * Actions: create key (dialog → plaintext banner), revoke key (confirm dialog)
  *          governance editor (PATCH per-key governance fields)
  *          rotate key (POST rotate → one-time plaintext banner)
- * Logout: POST /api/auth/logout then router.push("/login")
+ *
+ * Sign-out lives in the shared AppShell sidebar chrome (see components/ui/app-shell),
+ * not on this page — every authenticated surface gets one consistent logout control.
  *
  * All data calls use bff-client.ts (credentials:"include") — no Authorization
  * header is ever constructed or read client-side.
  */
 
 import { Fragment, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bffGet, bffPost, bffDelete, BffError } from "@/lib/bff-client";
 import { KeyRow } from "./KeyRow";
@@ -91,7 +92,6 @@ function toGovernanceKey(k: ApiKey): ApiKeyGovernance {
 }
 
 export function KeysPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [plaintextKey, setPlaintextKey] = useState<string | null>(null);
@@ -146,18 +146,6 @@ export function KeysPage() {
     setPlaintextKey(null);
   }
 
-  async function handleLogout() {
-    try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch {
-      // Ignore network errors on logout — redirect regardless
-    }
-    router.push("/login");
-  }
-
   async function handleCreateKey(name: string) {
     await createKeyMutation.mutateAsync(name);
   }
@@ -189,9 +177,6 @@ export function KeysPage() {
               Create key
             </Button>
           )}
-          <Button type="button" variant="outline" onClick={handleLogout}>
-            Log out
-          </Button>
         </div>
       </header>
 

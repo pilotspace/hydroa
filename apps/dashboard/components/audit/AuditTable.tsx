@@ -8,6 +8,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/ui";
+import { formatTimestamp } from "@/lib/format";
 
 export interface AuditRow {
   id: string;
@@ -30,7 +31,11 @@ const COLUMNS: ColumnDef<AuditRow>[] = [
   { accessorKey: "action", header: "Action" },
   { accessorKey: "target_type", header: "Target" },
   { accessorKey: "result", header: "Result" },
-  { accessorKey: "created_at", header: "When" },
+  {
+    accessorKey: "created_at",
+    header: "When",
+    cell: ({ row }) => formatTimestamp(row.original.created_at),
+  },
 ];
 
 interface AuditTableProps {

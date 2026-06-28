@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, Menu, MessageSquare, Mic, Receipt, Settings, Users } from "lucide-react";
+import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, LogOut, Menu, MessageSquare, Mic, Receipt, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { bffAuthPost } from "@/lib/bff-client";
 import {
   Sidebar,
   SidebarBrand,
@@ -120,6 +121,19 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
   const items = visibleItems(role);
   const brandIcon = <Hexagon className="size-5" />;
 
+  // Global sign-out: POST the BFF logout (clears the HttpOnly session cookie) then
+  // hard-navigate to /login. We use window.location (not next/navigation) so the shell
+  // stays decoupled from the router — the cookie is gone, so a full reload is correct.
+  // Failures are swallowed: the user must always be able to leave.
+  async function handleLogout() {
+    try {
+      await bffAuthPost("logout", {});
+    } catch {
+      // ignore — sign out client-side regardless of the network result
+    }
+    window.location.assign("/login");
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <a
@@ -173,20 +187,33 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
               </SidebarGroup>
             </SidebarContent>
             <SidebarFooter>
-              <div className="flex items-center justify-between gap-2">
-                {userEmail ? (
-                  <div className={cn("min-w-0", collapsed && "sr-only")}>
-                    <div className="truncate text-sm font-medium text-sidebar-foreground">{userEmail}</div>
-                    {role ? (
-                      <div className="truncate text-xs capitalize text-muted-foreground">{role}</div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <span className={cn("text-xs text-muted-foreground", collapsed && "sr-only")}>
-                    Not signed in
-                  </span>
-                )}
-                <ThemeToggle />
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  {userEmail ? (
+                    <div className={cn("min-w-0", collapsed && "sr-only")}>
+                      <div className="truncate text-sm font-medium text-sidebar-foreground">{userEmail}</div>
+                      {role ? (
+                        <div className="truncate text-xs capitalize text-muted-foreground">{role}</div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className={cn("text-xs text-muted-foreground", collapsed && "sr-only")}>
+                      Not signed in
+                    </span>
+                  )}
+                  <ThemeToggle />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    collapsed && "justify-center",
+                  )}
+                >
+                  <LogOut className="size-4" aria-hidden="true" />
+                  <span className={collapsed ? "sr-only" : undefined}>Log out</span>
+                </button>
               </div>
             </SidebarFooter>
           </Sidebar>
