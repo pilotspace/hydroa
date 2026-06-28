@@ -134,6 +134,23 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
     window.location.assign("/login");
   }
 
+  // One logout control, rendered in both the desktop footer and the mobile sheet so
+  // every layout can sign out (below `lg` the desktop rail is hidden). `iconOnly`
+  // collapses it to an icon with an sr-only label (the collapsed rail).
+  const logoutButton = (iconOnly: boolean) => (
+    <button
+      type="button"
+      onClick={handleLogout}
+      className={cn(
+        "inline-flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        iconOnly && "justify-center",
+      )}
+    >
+      <LogOut className="size-4" aria-hidden="true" />
+      <span className={iconOnly ? "sr-only" : undefined}>Log out</span>
+    </button>
+  );
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <a
@@ -203,17 +220,7 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
                   )}
                   <ThemeToggle />
                 </div>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    collapsed && "justify-center",
-                  )}
-                >
-                  <LogOut className="size-4" aria-hidden="true" />
-                  <span className={collapsed ? "sr-only" : undefined}>Log out</span>
-                </button>
+                {logoutButton(collapsed)}
               </div>
             </SidebarFooter>
           </Sidebar>
@@ -235,6 +242,7 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
           <nav aria-label="Site" className="mt-2 flex flex-col gap-1">
             <NavLinks items={items} activePath={activePath} collapsed={false} />
           </nav>
+          <div className="mt-4 border-t border-border pt-4">{logoutButton(false)}</div>
         </DialogContent>
       </Dialog>
     </div>
