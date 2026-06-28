@@ -27,6 +27,23 @@ export interface Usage {
 }
 export type ChatStatus = "idle" | "streaming" | "error";
 
+/**
+ * Per-turn metadata, parallel to `messages` by index (so the frozen ChatMessage
+ * shape is untouched). Every field is REAL or absent — never fabricated:
+ *  - `at`        epoch ms the message was committed to the live thread. Absent on
+ *                turns resumed via load() (we don't know when they happened).
+ *  - `model`     assistant only — the model that produced the reply.
+ *  - `latencyMs` assistant only — client-measured time from send() to commit.
+ *  - `usage`     assistant only — the terminal usage frame (absent if upstream
+ *                omitted it or the turn was stopped/failed).
+ */
+export interface TurnMeta {
+  at?: number;
+  model?: string;
+  latencyMs?: number;
+  usage?: Usage;
+}
+
 export interface SendInput {
   model: string;
   text: string;
@@ -39,6 +56,8 @@ export interface SendInput {
 export interface UseChatStream {
   status: ChatStatus;
   messages: ChatMessage[];
+  /** Per-turn metadata, aligned with `messages` by index (see TurnMeta). */
+  meta: TurnMeta[];
   streamingText: string;
   usage?: Usage;
   error?: BffError;
@@ -82,16 +101,21 @@ export function useChatStream(opts?: {
 
   const [status, setStatus] = useState<ChatStatus>("idle");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [meta, setMeta] = useState<TurnMeta[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [usage, setUsage] = useState<Usage | undefined>(undefined);
   const [error, setError] = useState<BffError | undefined>(undefined);
 
   // Refs are the synchronous source of truth (state lags a render behind).
   const messagesRef = useRef<ChatMessage[]>([]);
+  const metaRef = useRef<TurnMeta[]>([]);
   const partialRef = useRef("");
   const abortRef = useRef<AbortController | null>(null);
   // v43: capture the user text of the current turn so onTurnComplete can report it.
   const currentUserTextRef = useRef<string>("");
+  // Per-turn meta capture: the model + the send() start time for latency.
+  const currentModelRef = useRef<string>("");
+  const turnStartRef = useRef<number>(0);
 
   // design-for-failure: unmounting mid-stream (route change / navigation) MUST
   // abort the in-flight fetch so the BFF closes and the gateway's v35
@@ -108,10 +132,26 @@ export function useChatStream(opts?: {
     setMessages(next);
   }
 
+  function commitMeta(next: TurnMeta[]): void {
+    metaRef.current = next;
+    setMeta(next);
+  }
+
   /** Append the accumulated partial as the assistant turn (if any) and go idle. */
   function finishTurn(finalUsage: Usage | undefined, isAbort: boolean): void {
     const content = partialRef.current;
-    if (content) commitMessages([...messagesRef.current, { role: "assistant", content }]);
+    if (content) {
+      commitMessages([...messagesRef.current, { role: "assistant", content }]);
+      commitMeta([
+        ...metaRef.current,
+        {
+          at: Date.now(),
+          model: currentModelRef.current || undefined,
+          latencyMs: turnStartRef.current ? Date.now() - turnStartRef.current : undefined,
+          usage: finalUsage,
+        },
+      ]);
+    }
     if (finalUsage) setUsage(finalUsage);
     partialRef.current = "";
     setStreamingText("");
@@ -214,6 +254,14 @@ export function useChatStream(opts?: {
       // Genuine failure: preserve any partial as a stopped assistant turn, go error.
       if (partialRef.current) {
         commitMessages([...messagesRef.current, { role: "assistant", content: partialRef.current }]);
+        commitMeta([
+          ...metaRef.current,
+          {
+            at: Date.now(),
+            model: currentModelRef.current || undefined,
+            latencyMs: turnStartRef.current ? Date.now() - turnStartRef.current : undefined,
+          },
+        ]);
       }
       const bff =
         err instanceof BffError
@@ -235,9 +283,13 @@ export function useChatStream(opts?: {
     setUsage(undefined);
     // v43: capture user text so onTurnComplete can report it.
     currentUserTextRef.current = text;
+    // Per-turn meta: remember the model and start the latency clock.
+    currentModelRef.current = input.model;
+    turnStartRef.current = Date.now();
 
     const next = [...messagesRef.current, { role: "user" as const, content: text }];
     commitMessages(next);
+    commitMeta([...metaRef.current, { at: Date.now() }]);
     const wire: ChatMessage[] = input.system
       ? [{ role: "system", content: input.system }, ...next]
       : next;
@@ -261,6 +313,8 @@ export function useChatStream(opts?: {
     partialRef.current = "";
     messagesRef.current = [];
     setMessages([]);
+    metaRef.current = [];
+    setMeta([]);
     setStreamingText("");
     setUsage(undefined);
     setError(undefined);
@@ -271,6 +325,10 @@ export function useChatStream(opts?: {
   function load(messages: ChatMessage[]): void {
     messagesRef.current = messages;
     setMessages(messages);
+    // Resumed turns carry no real timing/usage — empty meta (honest: shows "—").
+    const blankMeta = messages.map(() => ({}) as TurnMeta);
+    metaRef.current = blankMeta;
+    setMeta(blankMeta);
     partialRef.current = "";
     setStreamingText("");
     setError(undefined);
@@ -278,5 +336,5 @@ export function useChatStream(opts?: {
     setStatus("idle");
   }
 
-  return { status, messages, streamingText, usage, error, send, stop, reset, load };
+  return { status, messages, meta, streamingText, usage, error, send, stop, reset, load };
 }

@@ -109,3 +109,45 @@ describe("chat visual parity", () => {
     expect(screen.getByText(/tokens?/i)).toBeInTheDocument();
   });
 });
+
+describe("chat per-turn meta (real, never fabricated)", () => {
+  it("test_assistant_turn_shows_model_tokens_latency_and_timestamp", async () => {
+    server.use(http.post(URL_CHAT, () => sseResponse(REPLY)));
+    await sendOneTurn();
+    const turn = screen.getByText("Hi there").closest("[data-role='assistant']") as HTMLElement;
+    const t = within(turn);
+    // model that produced the reply (the default model the workspace sends)
+    expect(t.getByText(/openai\/gpt-4o/)).toBeInTheDocument();
+    // real usage from the terminal frame (total_tokens: 7)
+    expect(t.getByText(/7\s*tok/i)).toBeInTheDocument();
+    // a client-measured latency in seconds
+    expect(t.getByText(/\d+(\.\d+)?s\b/)).toBeInTheDocument();
+    // a wall-clock timestamp on the turn
+    expect(t.getByText(/\d{1,2}:\d{2}/)).toBeInTheDocument();
+  });
+
+  it("test_per_turn_cost_shown_only_when_catalog_pricing_is_available", async () => {
+    // priced catalog twin → cost = prompt*p + completion*c = 5*0.001 + 2*0.002 = 0.009
+    server.use(
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
+        HttpResponse.json({
+          object: "list",
+          data: [
+            {
+              id: "openai/gpt-4o",
+              name: "GPT-4o",
+              context_length: 128000,
+              prompt_per_token: 0.001,
+              completion_per_token: 0.002,
+              object: "model",
+            },
+          ],
+        }),
+      ),
+      http.post(URL_CHAT, () => sseResponse(REPLY)),
+    );
+    await sendOneTurn();
+    const turn = screen.getByText("Hi there").closest("[data-role='assistant']") as HTMLElement;
+    expect(await within(turn).findByText(/\$0\.0090/)).toBeInTheDocument();
+  });
+});

@@ -13,7 +13,9 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Bot, Check, Copy, RefreshCw, Send, Square, User } from "lucide-react";
-import { useChatStream, type ChatMessage, type Usage } from "@/lib/hooks/use-chat-stream";
+import { useChatStream, type ChatMessage, type TurnMeta, type Usage } from "@/lib/hooks/use-chat-stream";
+import { bffGet } from "@/lib/bff-client";
+import type { ModelsData } from "@/components/models/ModelCatalogTable";
 import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
 import { ModelPicker } from "@/components/chat/ModelPicker";
 import { MessageMarkdown } from "@/components/chat/MessageMarkdown";
@@ -62,6 +64,30 @@ function estimateTokens(text: string): number {
   return t ? Math.max(1, Math.ceil(t.length / 4)) : 0;
 }
 
+/** Wall-clock HH:MM for a turn's commit time (absent → null, shown as nothing). */
+function formatClock(at: number | undefined): string | null {
+  if (!at) return null;
+  try {
+    return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The per-turn meta line for an assistant reply: "model · 0.9s · ▲ 1,242 tok · $0.0041".
+ * Every part is REAL (from TurnMeta + catalog pricing) or omitted — no fabrication.
+ */
+function formatTurnMeta(meta: TurnMeta | undefined, costText: string | null): string {
+  if (!meta) return "";
+  const parts: string[] = [];
+  if (meta.model) parts.push(meta.model);
+  if (meta.latencyMs != null) parts.push(`${(meta.latencyMs / 1000).toFixed(1)}s`);
+  if (meta.usage) parts.push(`▲ ${meta.usage.total_tokens.toLocaleString()} tok`);
+  if (costText) parts.push(costText);
+  return parts.join(" · ");
+}
+
 export interface ChatWorkspaceProps {
   /** Default model until chat-model-controls supplies a live picker. */
   defaultModel?: string;
@@ -97,7 +123,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     [],
   );
 
-  const { status, messages, streamingText, usage, error, send, stop, reset, load } =
+  const { status, messages, meta, streamingText, usage, error, send, stop, reset, load } =
     useChatStream({ onTurnComplete });
 
   const [input, setInput] = useState("");
@@ -127,6 +153,42 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
       alive = false;
     };
   }, []);
+
+  // Per-model catalog pricing for honest per-turn cost (per-token leaves on the
+  // JWT/control-plane twin). Plain bffGet (no react-query) so the component stays
+  // standalone; honest degrade to no-cost when a model has no price.
+  const [priceMap, setPriceMap] = useState<Map<string, { p: number; c: number }>>(new Map());
+  useEffect(() => {
+    let alive = true;
+    bffGet<ModelsData>("/admin/catalog/models")
+      .then((d) => {
+        if (!alive) return;
+        const m = new Map<string, { p: number; c: number }>();
+        for (const e of d.data ?? []) {
+          if (typeof e.prompt_per_token === "number" && typeof e.completion_per_token === "number") {
+            m.set(e.id, { p: e.prompt_per_token, c: e.completion_per_token });
+          }
+        }
+        setPriceMap(m);
+      })
+      .catch(() => {
+        /* honest degrade — turns show tokens but no dollar cost */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const costFor = useCallback(
+    (tm: TurnMeta | undefined): string | null => {
+      if (!tm?.usage || !tm.model) return null;
+      const price = priceMap.get(tm.model);
+      if (!price) return null;
+      const cost = tm.usage.prompt_tokens * price.p + tm.usage.completion_tokens * price.c;
+      return Number.isFinite(cost) ? `$${cost.toFixed(4)}` : null;
+    },
+    [priceMap],
+  );
 
   const isStreaming = status === "streaming";
 
@@ -275,6 +337,8 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
             <MessageRow
               key={i}
               message={m}
+              meta={meta[i]}
+              costText={costFor(meta[i])}
               userInitials={userInitials}
               onRegenerate={
                 m.role === "assistant" && !isStreaming ? () => regenerateFrom(i) : undefined
@@ -419,24 +483,30 @@ function CopyTurnButton({ getText }: { getText: () => string }) {
 }
 
 /**
- * One conversation turn: avatar + role label + bubble, with per-turn Copy /
- * Regenerate actions on completed assistant replies (design parity). User text
- * is literal; assistant text is Markdown. Per-turn latency/cost is intentionally
- * NOT shown — the SSE seam carries only one latest usage, and fabricating
- * per-turn numbers would be dishonest.
+ * One conversation turn: avatar + role label (+ wall-clock time) + bubble, with a
+ * per-turn meta line (model · latency · tokens · cost) and Copy / Regenerate on
+ * completed assistant replies (design parity). User text is literal; assistant
+ * text is Markdown. Every meta value is REAL (TurnMeta + catalog pricing) or
+ * omitted — never fabricated.
  */
 function MessageRow({
   message,
   userInitials,
+  meta,
+  costText = null,
   streaming = false,
   onRegenerate,
 }: {
   message: ChatMessage;
   userInitials: string | null;
+  meta?: TurnMeta;
+  costText?: string | null;
   streaming?: boolean;
   onRegenerate?: () => void;
 }) {
   const isUser = message.role === "user";
+  const clock = formatClock(meta?.at);
+  const metaLine = isUser ? "" : formatTurnMeta(meta, costText);
   return (
     <div
       data-role={message.role}
@@ -448,6 +518,7 @@ function MessageRow({
       >
         <span className="px-1 text-xs font-medium text-muted-foreground">
           {isUser ? "You" : "Assistant"}
+          {clock ? <span className="font-normal"> · {clock}</span> : null}
         </span>
         <div
           className={cn(
@@ -466,7 +537,8 @@ function MessageRow({
           ) : null}
         </div>
         {!isUser && !streaming ? (
-          <div className="flex items-center gap-1 px-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
+            {metaLine ? <span className="text-xs text-muted-foreground">{metaLine}</span> : null}
             <CopyTurnButton getText={() => message.content} />
             {onRegenerate ? (
               <button
