@@ -16,6 +16,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { bffGet } from "@/lib/bff-client";
 import { Loading, ErrorState } from "@/components/ui";
+import { PageHeader } from "@/components/ui/page-header";
 import { AuditTable, AuditData } from "./AuditTable";
 
 export function AuditPage() {
@@ -29,12 +30,11 @@ export function AuditPage() {
       aria-labelledby="audit-heading"
       className="flex flex-col gap-6"
     >
-      <h1
-        id="audit-heading"
-        className="text-2xl font-semibold tracking-tight text-foreground"
-      >
-        Audit Log
-      </h1>
+      <PageHeader
+        title="Audit Log"
+        titleId="audit-heading"
+        description="Immutable record of administrative actions across this tenant."
+      />
 
       {auditQuery.isLoading ? (
         <Loading label="Loading audit log…" />

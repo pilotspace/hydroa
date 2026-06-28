@@ -33,7 +33,12 @@ import {
   Loading,
   Empty,
   ErrorState,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
 } from "@/components/ui";
+import { PageHeader } from "@/components/ui/page-header";
 
 type CircuitState = "open" | "half_open" | "closed" | "unknown";
 
@@ -135,17 +140,49 @@ export function RoutingPage() {
 
   const { routing_strategy, retry_policy, cooldown, model_groups, deployments, candidates } = data;
   const aliases = Object.keys(model_groups);
+  // Hero metric — circuit health: candidates not currently tripped open. Derived only
+  // from the fetched candidates (never fabricated). "open" = tripped; everything else healthy.
+  const healthyCount = candidates.filter((c) => c.state !== "open").length;
 
   return (
     <div className="flex flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Routing health</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Read-only view of retry policy, circuit-breaker cooldown, model groups, and per-candidate
-          circuit state.
-        </p>
-      </header>
+      <PageHeader
+        title="Routing health"
+        description="Read-only view of retry policy, circuit-breaker cooldown, model groups, and per-candidate circuit state."
+      />
 
+      {/* Hero — routing strategy + circuit health summary. */}
+      <div
+        data-testid="routing-hero"
+        className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4"
+      >
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Routing strategy
+          </p>
+          <p className="text-2xl font-semibold capitalize text-foreground">
+            {routing_strategy}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Healthy candidates
+          </p>
+          <p className="text-2xl font-semibold text-foreground">
+            {healthyCount} / {candidates.length}
+          </p>
+        </div>
+      </div>
+
+      <Tabs defaultValue="overview" className="flex flex-col gap-4">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          {canEdit && <TabsTrigger value="editor">Editor</TabsTrigger>}
+        </TabsList>
+
+        {/* Overview: the read-only health cards. */}
+        <TabsContent value="overview">
+          <div className="flex flex-col gap-6">
       <div className="grid gap-4 sm:grid-cols-2">
         {/* Retry policy */}
         <Card>
@@ -223,14 +260,19 @@ export function RoutingPage() {
           )}
         </CardContent>
       </Card>
+          </div>
+        </TabsContent>
 
-      {/* Editor — owner/admin only */}
-      {canEdit && (
-        <RoutingEditor
-          serverStrategy={routing_strategy}
-          serverDeployments={deployments ?? {}}
-        />
-      )}
+        {/* Editor — owner/admin only: the tab + panel exist only when canEdit. */}
+        {canEdit && (
+          <TabsContent value="editor">
+            <RoutingEditor
+              serverStrategy={routing_strategy}
+              serverDeployments={deployments ?? {}}
+            />
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

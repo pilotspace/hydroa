@@ -40,7 +40,12 @@ import {
   Loading,
   ErrorState,
   Empty,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
 } from "@/components/ui";
+import { PageHeader } from "@/components/ui/page-header";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
 /** Extended ApiKey includes governance fields from key-governance §3 FROZEN contract */
@@ -165,22 +170,25 @@ export function KeysPage() {
   // Focus-trap + ESC for the revoke-confirm dialog (accessible-dialog contract)
   const revokeTrapRef = useFocusTrap<HTMLDivElement>(!!revokeTargetId, handleCancelRevoke);
 
+  // Hero metric — active (non-revoked) key count, derived from the fetched list.
+  const activeKeyCount = keys?.filter((k) => !k.revoked_at).length ?? 0;
+
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          API Keys
-        </h1>
-        <div className="flex items-center gap-2">
-          {!isCreateDialogOpen && (
+      <PageHeader
+        title="API Keys"
+        description="Provision, govern, and rotate the keys that authenticate calls to your gateway."
+        actions={
+          !isCreateDialogOpen ? (
             <Button type="button" onClick={() => setIsCreateDialogOpen(true)}>
               Create key
             </Button>
-          )}
-        </div>
-      </header>
+          ) : undefined
+        }
+      />
 
-      {/* One-time plaintext key banner (create) */}
+      {/* One-time plaintext key banner (create) — OUTSIDE the tabs so it persists
+          regardless of which tab is active. */}
       {plaintextKey && (
         <PlaintextKeyBanner
           plaintextKey={plaintextKey}
@@ -188,7 +196,8 @@ export function KeysPage() {
         />
       )}
 
-      {/* Revoke confirmation dialog */}
+      {/* Revoke confirmation dialog — OUTSIDE the tabs (a fixed overlay; its focus-trap
+          must remain reachable from any tab). */}
       {revokeTargetId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4"
@@ -216,83 +225,110 @@ export function KeysPage() {
         </div>
       )}
 
-      {/* Keys list */}
-      {isLoading && (
-        <Loading
-          label="Loading API keys"
-          data-testid="loading"
-          className="animate-pulse"
-        />
+      {/* Hero — active key count (only once the list has loaded; never fabricated). */}
+      {!isLoading && !isError && keys !== undefined && (
+        <div
+          data-testid="keys-hero"
+          className="rounded-lg border border-border bg-muted/30 p-4"
+        >
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Active keys
+          </p>
+          <p className="text-3xl font-semibold text-foreground">{activeKeyCount}</p>
+        </div>
       )}
 
-      {isError && !isLoading && <ErrorState title={getErrorTitle(error)} />}
+      <Tabs defaultValue="keys" className="flex flex-col gap-4">
+        <TabsList>
+          <TabsTrigger value="keys">Keys</TabsTrigger>
+          <TabsTrigger value="rate-limits">Rate limits</TabsTrigger>
+          <TabsTrigger value="bandwidth">Bandwidth</TabsTrigger>
+        </TabsList>
 
-      {!isLoading && !isError && keys !== undefined && keys.length === 0 && (
-        <Empty
-          title="No API keys yet"
-          description="Create your first key to get started."
-        />
-      )}
+        {/* Keys: the keys list + inline governance editor (the four states live here). */}
+        <TabsContent value="keys">
+          {isLoading && (
+            <Loading
+              label="Loading API keys"
+              data-testid="loading"
+              className="animate-pulse"
+            />
+          )}
 
-      {!isLoading && !isError && keys !== undefined && keys.length > 0 && (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Key ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Prefix</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {keys.map((key) => (
-                  <Fragment key={key.key_id}>
-                    <KeyRow
-                      apiKey={key}
-                      onRevoke={handleRevoke}
-                      isPendingRevoke={revokeTargetId === key.key_id}
-                    />
-                    {/* Governance editor — its own sibling row (KeyRow renders a <tr>) */}
+          {isError && !isLoading && <ErrorState title={getErrorTitle(error)} />}
+
+          {!isLoading && !isError && keys !== undefined && keys.length === 0 && (
+            <Empty
+              title="No API keys yet"
+              description="Create your first key to get started."
+            />
+          )}
+
+          {!isLoading && !isError && keys !== undefined && keys.length > 0 && (
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={6}>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() =>
-                            setExpandedGovernance(
-                              expandedGovernance === key.key_id ? null : key.key_id
-                            )
-                          }
-                        >
-                          {expandedGovernance === key.key_id
-                            ? "Hide governance"
-                            : "Governance"}
-                        </Button>
-                        {expandedGovernance === key.key_id && (
-                          <KeyGovernanceEditor
-                            apiKey={toGovernanceKey(key)}
-                            onUpdated={handleGovernanceUpdated}
-                          />
-                        )}
-                      </TableCell>
+                      <TableHead>Key ID</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Prefix</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  </Fragment>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                  </TableHeader>
+                  <TableBody>
+                    {keys.map((key) => (
+                      <Fragment key={key.key_id}>
+                        <KeyRow
+                          apiKey={key}
+                          onRevoke={handleRevoke}
+                          isPendingRevoke={revokeTargetId === key.key_id}
+                        />
+                        {/* Governance editor — its own sibling row (KeyRow renders a <tr>) */}
+                        <TableRow>
+                          <TableCell colSpan={6}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() =>
+                                setExpandedGovernance(
+                                  expandedGovernance === key.key_id ? null : key.key_id
+                                )
+                              }
+                            >
+                              {expandedGovernance === key.key_id
+                                ? "Hide governance"
+                                : "Governance"}
+                            </Button>
+                            {expandedGovernance === key.key_id && (
+                              <KeyGovernanceEditor
+                                apiKey={toGovernanceKey(key)}
+                                onUpdated={handleGovernanceUpdated}
+                              />
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      </Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
 
-      {/* Read-only live rate-limit usage per key (current rpm/tpm vs configured limits) */}
-      <RatelimitsPanel />
+        {/* Rate limits: read-only live rate-limit usage per key (rpm/tpm vs configured). */}
+        <TabsContent value="rate-limits">
+          <RatelimitsPanel />
+        </TabsContent>
 
-      {/* Read-only live bandwidth bucket level per key (current vs capacity) — v37 */}
-      <BandwidthPanel />
+        {/* Bandwidth: read-only live bandwidth bucket level per key (current vs capacity). */}
+        <TabsContent value="bandwidth">
+          <BandwidthPanel />
+        </TabsContent>
+      </Tabs>
 
       <CreateKeyDialog
         isOpen={isCreateDialogOpen}

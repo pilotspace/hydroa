@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "monitoring-pages-redesign",
+  "active_task": "governance-pages-redesign",
   "active_milestone": "v54",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -427,6 +427,48 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "governance-pages-redesign": {
+      "title": "Redesign governance pages (keys\u00b7members\u00b7routing\u00b7alerts\u00b7audit\u00b7settings) to the refreshed standard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v54",
+      "depends_on": [],
+      "created": "2026-06-28T12:55:22+00:00",
+      "updated": "2026-06-28T13:59:53+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "e5cd02dfdc0a2f42bc1ccdff51b6ac33",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/keys/",
+          "apps/dashboard/components/members/",
+          "apps/dashboard/components/routing/",
+          "apps/dashboard/components/alerts/",
+          "apps/dashboard/components/audit/",
+          "apps/dashboard/components/settings/",
+          "apps/dashboard/tests/design-system/governance-redesign.test.tsx",
+          "apps/dashboard/tests/design-system/a11y.test.tsx",
+          "apps/dashboard/tests/routing-edit.test.tsx",
+          "apps/dashboard/tests/keys.test.tsx",
+          "apps/dashboard/tests/keys-dialog-a11y.test.tsx",
+          "apps/dashboard/tests/members.test.tsx",
+          "apps/dashboard/tests/alerts.test.tsx",
+          "apps/dashboard/tests/audit.test.tsx",
+          "apps/dashboard/tests/provider-keys.test.tsx",
+          "apps/dashboard/tests/ui-ux-verify.test.tsx",
+          "apps/dashboard/tests-bff/routing-health.test.tsx",
+          "apps/dashboard/tests-bff/tenant-settings.test.tsx"
+        ],
+        "snapshot_md5": "75f3474097a9620f188db90459ebc5b4"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -465,7 +507,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-28T12:46:48+00:00",
+  "updated": "2026-06-28T13:59:53+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1128,7 +1170,7 @@
     "v54"
   ],
   "active_tasks": {
-    "v54": "monitoring-pages-redesign"
+    "v54": "governance-pages-redesign"
   },
   "todos": [
     {

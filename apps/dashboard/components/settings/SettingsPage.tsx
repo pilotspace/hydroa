@@ -9,6 +9,7 @@
  */
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui";
+import { PageHeader } from "@/components/ui/page-header";
 import { CacheSettings } from "./CacheSettings";
 import { GuardrailSettings } from "./GuardrailSettings";
 import { OidcSettings } from "./OidcSettings";
@@ -17,12 +18,10 @@ import { ProviderKeysSettings } from "./ProviderKeysSettings";
 export function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage cache, guardrails, SSO, and provider keys for your tenant.
-        </p>
-      </header>
+      <PageHeader
+        title="Settings"
+        description="Manage cache, guardrails, SSO, and provider keys for your tenant."
+      />
 
       <Tabs defaultValue="cache">
         <TabsList>
