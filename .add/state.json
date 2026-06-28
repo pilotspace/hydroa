@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "aurora-polish-tokens",
+  "active_task": "monitoring-pages-redesign",
   "active_milestone": "v54",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -377,6 +377,56 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "monitoring-pages-redesign": {
+      "title": "Redesign monitoring pages (usage \u00b7 spend \u00b7 slo \u00b7 health) to the refreshed standard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v54",
+      "depends_on": [],
+      "created": "2026-06-28T09:31:35+00:00",
+      "updated": "2026-06-28T12:46:48+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-06-28T11:04:08+00:00",
+        "approved_by": "Tin",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0d578cee1387ae782fbe905db44836f4",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/ui/page-header.tsx",
+          "apps/dashboard/components/usage/",
+          "apps/dashboard/components/spend/",
+          "apps/dashboard/components/slo/",
+          "apps/dashboard/components/health/",
+          "apps/dashboard/components/models/ModelCatalogTable.tsx",
+          "apps/dashboard/tests/design-system/monitoring-redesign.test.tsx",
+          "apps/dashboard/tests/design-system/a11y.test.tsx",
+          "apps/dashboard/tests/design-system/components.test.tsx",
+          "apps/dashboard/tests/usage.test.tsx",
+          "apps/dashboard/tests/slo-page.test.tsx",
+          "apps/dashboard/tests/health.test.tsx",
+          "apps/dashboard/tests/ui-ux-verify.test.tsx",
+          "apps/dashboard/tests-bff/spend-chart.test.tsx",
+          "apps/dashboard/tests-bff/spend-breakdown.test.tsx",
+          "apps/dashboard/tests-bff/console-spend-redesign.test.tsx"
+        ],
+        "snapshot_md5": "fa8801a95b5e446d99456a05e6c2e860"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -415,7 +465,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-28T09:27:12+00:00",
+  "updated": "2026-06-28T12:46:48+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1078,7 +1128,7 @@
     "v54"
   ],
   "active_tasks": {
-    "v54": "aurora-polish-tokens"
+    "v54": "monitoring-pages-redesign"
   },
   "todos": [
     {

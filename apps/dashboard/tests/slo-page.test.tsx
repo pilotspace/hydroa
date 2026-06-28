@@ -24,6 +24,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "./mocks/server";
 import { axe } from "@/test-support/axe";
+import userEvent from "@testing-library/user-event";
 import React from "react";
 
 // ── This import will cause MODULE_NOT_FOUND — correct RED failure ─────────────
@@ -150,12 +151,14 @@ describe("SloPage", () => {
 
   // test_slo_latency_placeholder: latency_ms null → "not available yet"
   it("test_slo_latency_placeholder", async () => {
+    const user = userEvent.setup();
     server.use(
       http.get(`${APP}/api/gw/admin/slo`, () => HttpResponse.json(SLO_NOMINAL)),
     );
 
     renderSlo();
 
+    await user.click(screen.getByRole("tab", { name: /latency/i }));
     await waitFor(() => {
       expect(within(section()).getByText(/not available yet/i)).toBeInTheDocument();
     });

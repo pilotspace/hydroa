@@ -161,6 +161,7 @@ describe("UsagePage", () => {
     });
 
     // Records table row
+    await user.click(screen.getByRole("tab", { name: /records/i }));
     expect(screen.getByText("openai/gpt-4o")).toBeInTheDocument();
 
     // Owner sees Edit Budget button
@@ -198,6 +199,7 @@ describe("UsagePage", () => {
     });
 
     // Empty state message for records
+    await user.click(screen.getByRole("tab", { name: /records/i }));
     expect(
       screen.getByText(/no usage records yet/i)
     ).toBeInTheDocument();
@@ -285,6 +287,7 @@ describe("UsagePage", () => {
     renderUsage();
 
     // Assert: catalog table row
+    await user.click(screen.getByRole("tab", { name: /catalog/i }));
     await waitFor(() => {
       expect(screen.getByText("openai/gpt-4o")).toBeInTheDocument();
       expect(screen.getByText("GPT-4o")).toBeInTheDocument();
@@ -337,6 +340,7 @@ describe("UsagePage", () => {
     renderUsage();
 
     // The sentinel from the admin-catalog twin renders → the admin plane was used.
+    await user.click(screen.getByRole("tab", { name: /catalog/i }));
     await waitFor(() => {
       expect(screen.getByText("Sentinel Admin Catalog")).toBeInTheDocument();
     });
@@ -371,6 +375,7 @@ describe("UsagePage", () => {
     renderUsage();
 
     // Assert
+    await user.click(screen.getByRole("tab", { name: /catalog/i }));
     await waitFor(() => {
       expect(screen.getByText(/catalog not synced/i)).toBeInTheDocument();
     });

@@ -141,6 +141,7 @@ describe("SpendPage — breakdown depth", () => {
 
     await user.selectOptions(screen.getByRole("combobox", { name: /group by/i }), "key_id");
 
+    await user.click(screen.getByRole("tab", { name: /breakdown/i }));
     const table = await screen.findByRole("table", { name: /spend by key/i });
     expect(within(table).getByText("key-001")).toBeInTheDocument();
     expect(within(table).getByText("key-002")).toBeInTheDocument();
@@ -158,6 +159,7 @@ describe("SpendPage — breakdown depth", () => {
 
     await user.selectOptions(screen.getByRole("combobox", { name: /group by/i }), "team_id");
 
+    await user.click(screen.getByRole("tab", { name: /breakdown/i }));
     const table = await screen.findByRole("table", { name: /spend by team/i });
     expect(within(table).getByText("Alpha")).toBeInTheDocument();
     // a null team renders as "(no team)"
@@ -240,6 +242,7 @@ describe("SpendPage — breakdown depth", () => {
 
     // select Key → table shows
     await user.selectOptions(screen.getByRole("combobox", { name: /group by/i }), "key_id");
+    await user.click(screen.getByRole("tab", { name: /breakdown/i }));
     await screen.findByRole("table", { name: /spend by key/i });
 
     // back to None → the breakdown table is gone (no stale table)
@@ -299,6 +302,7 @@ describe("SpendPage — breakdown depth", () => {
 
     // recover by choosing a valid group_by → alert clears, fresh key table shows
     await user.selectOptions(screen.getByRole("combobox", { name: /group by/i }), "key_id");
+    await user.click(screen.getByRole("tab", { name: /breakdown/i }));
     await screen.findByRole("table", { name: /spend by key/i });
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
@@ -309,6 +313,7 @@ describe("SpendPage — breakdown depth", () => {
     const { container } = render(<SpendPage />, { wrapper: Wrapper });
     await screen.findByTestId("totals-cost");
     await user.selectOptions(screen.getByRole("combobox", { name: /group by/i }), "key_id");
+    await user.click(screen.getByRole("tab", { name: /breakdown/i }));
     await screen.findByRole("table", { name: /spend by key/i });
     expect(await axeSeriousCritical(container)).toEqual([]);
   });

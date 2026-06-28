@@ -138,8 +138,14 @@ describe("v13 verify · axe — usage/cost journey (no serious|critical)", () =>
     useUsageHappyHandlers();
     const { container } = render(<UsagePage />, { wrapper: Wrapper });
 
-    // data must be loaded before the scan (an empty skeleton would falsely pass)
+    // data must be loaded before the scan (an empty skeleton would falsely pass).
+    // total cost lives in the always-visible hero region (outside the tabs).
     await waitFor(() => expect(screen.getByText(/1\.23/)).toBeInTheDocument());
+
+    // The monitoring redesign (§3 v1) moves usage records behind the "Records"
+    // tab; navigate there to confirm the loaded record's model_id. Only a tab
+    // click is added — the seam and assertion target are unchanged.
+    await userEvent.click(screen.getByRole("tab", { name: /records/i }));
     expect(screen.getByText("openai/gpt-4o")).toBeInTheDocument();
 
     const violations = await axeSeriousCritical(container);
