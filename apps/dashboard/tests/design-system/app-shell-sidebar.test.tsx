@@ -142,6 +142,21 @@ describe("AppShell — the frozen v13 shell contract still holds", () => {
     );
     expect(container.querySelector('[class*="lg:flex-row"]')).not.toBeNull();
   });
+
+  it("test_desktop_rail_is_full_height_sticky", () => {
+    // The desktop rail is pinned to the viewport at full height (sticky, h-screen) so
+    // it never scrolls away with a tall page and its footer stays reachable. lg-scoped
+    // so the stacked mobile layout (rail hidden, sheet used) is unaffected.
+    render(
+      <AppShell role="owner">
+        <Body />
+      </AppShell>,
+    );
+    const rail = screen.getByRole("navigation", { name: /primary/i });
+    expect(rail.className).toContain("lg:sticky");
+    expect(rail.className).toContain("lg:top-0");
+    expect(rail.className).toContain("lg:h-screen");
+  });
 });
 
 // ── ACTIVE ROUTE ──────────────────────────────────────────────────────────────
