@@ -3,9 +3,11 @@
 /**
  * components/chat/ModelPicker.tsx — v40 chat-model-controls.
  *
- * Catalog-model picker for the chat composer. Fetches GET /api/gw/v1/models
- * (cookie-only, via bff-client) once on mount — a self-contained fetch matching
- * useChatStream's style (no QueryClientProvider needed in isolation renders).
+ * Catalog-model picker for the chat composer. Fetches GET /api/gw/admin/catalog/models
+ * (the JWT/control-plane twin of /v1/models — a session cookie can't reach /v1/* through
+ * the edge ext_authz, which would 401 and log the user out) once on mount, cookie-only
+ * via bff-client — a self-contained fetch matching useChatStream's style (no
+ * QueryClientProvider needed in isolation renders).
  *
  * FAILS OPEN by design: while loading, on a fetch error, or on an empty list it
  * still renders the current `value` as a selectable option, so the user is never
@@ -36,7 +38,7 @@ export function ModelPicker({ value, onChange, className }: ModelPickerProps) {
 
   useEffect(() => {
     let active = true;
-    bffGet<ModelsData>("/v1/models")
+    bffGet<ModelsData>("/admin/catalog/models")
       .then((res) => {
         if (active) setModels(res.data?.map((m) => m.id) ?? []);
       })

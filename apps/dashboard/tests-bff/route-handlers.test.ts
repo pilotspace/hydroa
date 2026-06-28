@@ -350,6 +350,45 @@ describe("GET /api/gw/[...path]", () => {
     const cookieLower = setCookie?.toLowerCase() ?? "";
     expect(cookieLower.includes("max-age=0") || cookieLower.includes("expires=")).toBe(true);
   });
+
+  /**
+   * TEST 10b — test_bff_proxy_dataplane_401_does_not_clear_cookie  [regression]
+   * Scenario: a /v1/* (data-plane) 401 means the session JWT was rejected as an API
+   * key — NOT that the session expired. The BFF must pass the upstream error through
+   * verbatim WITHOUT clearing the session cookie, so a dashboard user who opens a
+   * playground page (or clicks Send) is never logged out. Only control-plane
+   * (/admin/*) 401s clear the cookie (TEST 10).
+   */
+  it("test_bff_proxy_dataplane_401_does_not_clear_cookie", async () => {
+    // Arrange: the data plane rejects the session JWT (it requires an sk-/agent token)
+    server.use(
+      http.get("http://gateway.test/v1/models", () =>
+        HttpResponse.json(
+          { type: "about:blank", title: "Invalid key", status: 401, code: "ERR_AUTH_INVALID_KEY" },
+          { status: 401 }
+        )
+      )
+    );
+
+    const req = requestWithCookie(
+      "http://localhost:3000/api/gw/v1/models",
+      "GET",
+      VALID_SESSION_JWT
+    );
+
+    // Act
+    const res = await proxyGet(req, { params: Promise.resolve({ path: ["v1", "models"] }) });
+
+    // Assert: upstream 401 passed through verbatim — NOT rewritten to session-expired
+    expect(res.status).toBe(401);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.code).toBe("ERR_AUTH_INVALID_KEY");
+    expect(body.code).not.toBe("ERR_AUTH_SESSION_EXPIRED");
+
+    // The session cookie is NOT cleared — the user stays logged in
+    const setCookie = getSetCookie(res);
+    expect(setCookie).toBeNull();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

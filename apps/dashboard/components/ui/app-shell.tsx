@@ -148,11 +148,17 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
             </div>
           </header>
 
-          {/* Desktop rail — the single Primary nav landmark; collapsible from the lg breakpoint up. */}
+          {/* Desktop rail — the single Primary nav landmark; collapsible from the lg breakpoint up.
+              lg:sticky+lg:top-0+lg:h-screen pin it to the viewport at full height so it never
+              scrolls away with a tall page (the footer stays reachable); SidebarContent already
+              scrolls the nav internally when it overflows. */}
           <Sidebar
             aria-label="Primary"
             data-state={collapsed ? "collapsed" : "expanded"}
-            className={cn("hidden lg:flex", collapsed ? "w-16" : "w-64")}
+            className={cn(
+              "hidden lg:flex lg:sticky lg:top-0 lg:h-screen",
+              collapsed ? "w-16" : "w-64",
+            )}
           >
             <SidebarHeader className={collapsed ? "justify-center" : undefined}>
               {collapsed ? null : <SidebarBrand title={BRAND} icon={brandIcon} />}

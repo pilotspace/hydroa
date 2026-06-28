@@ -4,8 +4,12 @@
  * BFF authenticated gateway proxy — reads ai_proxy_session cookie, attaches
  * Authorization: Bearer header server-side, forwards to GATEWAY_URL.
  *
- * On upstream 401: clears the cookie and returns 401 ERR_AUTH_SESSION_EXPIRED.
- * On absent cookie: returns 401 ERR_AUTH_NO_SESSION without calling upstream.
+ * On a CONTROL-PLANE (/admin/*) upstream 401: clears the cookie and returns 401
+ * ERR_AUTH_SESSION_EXPIRED (the session JWT is invalid/expired). On a DATA-PLANE
+ * (/v1/*) upstream 401: passes the upstream error through verbatim WITHOUT clearing
+ * the cookie (the session JWT was rejected as an API key, not a session expiry —
+ * never log the user out for that). On absent cookie: returns 401 ERR_AUTH_NO_SESSION
+ * without calling upstream.
  *
  * STREAMING (v40 streaming-bff, §3 frozen contract): a STREAMABLE upstream
  * response (Content-Type in {text/event-stream, audio/*, video/*,
@@ -218,8 +222,15 @@ async function proxyRequest(
   // can outlive it.
   clearTimeout(timeout);
 
-  // On upstream 401: clear cookie, return ERR_AUTH_SESSION_EXPIRED
-  if (upstream.status === 401) {
+  // On upstream 401: only a CONTROL-PLANE (/admin/*) 401 means the session JWT
+  // itself is invalid/expired — clear the cookie and signal ERR_AUTH_SESSION_EXPIRED
+  // so the client bounces to /login. A DATA-PLANE (/v1/*) 401 means the session JWT
+  // was rejected as an API key (the data plane requires an sk-/agent token); the
+  // SESSION is fine, so clearing the cookie here would log the user out just for
+  // opening a playground page. Pass that 401 through verbatim (buffered branch below)
+  // with the upstream's own error code, cookie intact.
+  const isControlPlanePath = pathStr === "admin" || pathStr.startsWith("admin/");
+  if (upstream.status === 401 && isControlPlanePath) {
     const res = NextResponse.json(
       { code: "ERR_AUTH_SESSION_EXPIRED" },
       { status: 401 }

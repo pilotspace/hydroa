@@ -87,7 +87,7 @@ export const gatewayHandlers = [
     HttpResponse.json({ budget_usd_monthly: "25.00" })
   ),
 
-  http.get(`${GATEWAY}/v1/models`, () =>
+  http.get(`${GATEWAY}/admin/catalog/models`, () =>
     HttpResponse.json({ object: "list", data: [] })
   ),
 ];
@@ -128,9 +128,11 @@ export const bffHandlers = [
   ),
 
   // Baseline catalog-model list (v40 chat-model-controls): the chat ModelPicker
-  // fetches this on mount, so every ChatWorkspace render needs it stubbed.
+  // fetches this on mount, so every ChatWorkspace render needs it stubbed. Reads
+  // the JWT/control-plane twin /admin/catalog/models (NOT /v1/models, which the edge
+  // ext_authz would 401 for a browser session → forced logout).
   // Tests asserting specific picker behavior override with their own server.use(...).
-  http.get(`${APP}/api/gw/v1/models`, () =>
+  http.get(`${APP}/api/gw/admin/catalog/models`, () =>
     HttpResponse.json({
       object: "list",
       data: [{ id: "openai/gpt-4o", name: "GPT-4o", context_length: 128000 }],
@@ -158,15 +160,14 @@ export const bffHandlers = [
     HttpResponse.json({ data: [], limit: 50, offset: 0 })
   ),
 
-  // v46 vision workspace: VisionWorkspace fetches GET /v1/models on mount to
-  // filter for Gemini models. Any test that renders it needs this stubbed.
+  // v46 vision workspace: VisionWorkspace fetches GET /admin/catalog/models on mount
+  // to filter for Gemini models. Any test that renders it needs this stubbed.
   // Tests that assert specific model/completion behaviour override per-test.
-  // NOTE: the /v1/models handler above (gatewayHandlers) covers gateway-level
-  // tests; this covers BFF component tests that hit /api/gw/v1/models.
-  // The existing bffHandlers entry already covers /api/gw/v1/models (returns
-  // [{ id: "openai/gpt-4o" }]). Vision tests override that per-test with a
-  // gemini id. We add a default POST for chat/completions so unrelated tests
-  // that accidentally trigger it don't hit onUnhandledRequest:"error".
+  // NOTE: the /admin/catalog/models handler above (gatewayHandlers) covers gateway-level
+  // tests; the bffHandlers entry covers BFF component tests that hit
+  // /api/gw/admin/catalog/models (returns [{ id: "openai/gpt-4o" }]). Vision tests
+  // override that per-test with a gemini id. We add a default POST for chat/completions
+  // so unrelated tests that accidentally trigger it don't hit onUnhandledRequest:"error".
   http.post(`${APP}/api/gw/v1/chat/completions`, () =>
     HttpResponse.json({
       choices: [{ message: { content: "" } }],

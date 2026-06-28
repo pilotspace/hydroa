@@ -6,7 +6,10 @@
  * No Authorization header is ever constructed or read client-side.
  * No localStorage read or write.
  *
- * On 401 from /api/gw/*: fires window.location.href = "/login".
+ * On 401 from /api/gw/*: fires window.location.href = "/login" ONLY when the body
+ * carries ERR_AUTH_SESSION_EXPIRED (a genuine session expiry, signalled by the BFF
+ * for control-plane 401s). A data-plane (/v1/*) 401 is surfaced as a thrown BffError
+ * without redirecting — the caller handles it.
  */
 
 /**
@@ -49,14 +52,22 @@ export type { ProblemDetail };
 
 async function handleBffResponse<T>(res: Response, isAuthEndpoint = false): Promise<T> {
   if (res.status === 401 && !isAuthEndpoint) {
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
     let body: ProblemDetail;
     try {
       body = (await res.json()) as ProblemDetail;
     } catch {
       body = { title: "Unauthorized", status: 401 };
+    }
+    // Bounce to /login ONLY on a genuine session expiry. The BFF emits
+    // ERR_AUTH_SESSION_EXPIRED (and clears the cookie) solely for control-plane
+    // (/admin/*) 401s. A data-plane (/v1/*) 401 carries the upstream's own code
+    // (e.g. ERR_AUTH_INVALID_KEY) and must NOT log the user out — the caller
+    // handles it (fail-open picker / error state).
+    if (
+      typeof window !== "undefined" &&
+      (body as { code?: string }).code === "ERR_AUTH_SESSION_EXPIRED"
+    ) {
+      window.location.href = "/login";
     }
     throw new BffError(401, body);
   }

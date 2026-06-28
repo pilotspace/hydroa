@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * ModelCatalogTable — model catalog from GET /v1/models
+ * ModelCatalogTable — renders the model catalog (data supplied by the caller,
+ * which reads GET /admin/catalog/models — the JWT/control-plane twin of /v1/models)
  * IMPORTANT: uses div-based rows (NOT <table>/<tr>) so that test assertions
  * on queryAllByRole("row") only count usage record rows, not catalog rows.
  * States: loading (spinner), empty, error (problem+json title), success

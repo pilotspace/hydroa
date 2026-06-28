@@ -115,6 +115,29 @@ async def list_models(
     )
 
 
+@admin_catalog_router.get("/models", response_model=ModelsListResponse)
+async def list_catalog_models(
+    identity: Annotated[Identity, Depends(get_current_identity)],
+    use_case: Annotated[ListModelsForTenantUseCase, Depends(get_list_use_case)],
+) -> ModelsListResponse:
+    """GET /admin/catalog/models — JWT/control-plane twin of GET /v1/models.
+
+    Serves the SAME tenant-priced active-model list as the OpenAI-compatible
+    GET /v1/models, but on the /admin/* (JWT) plane. The dashboard reads the
+    catalog through its BFF with a browser SESSION JWT; /v1/models sits behind the
+    edge ext_authz (sk-/agent token only), so a session can't reach it through the
+    edge — it 401s and the BFF clears the cookie, logging the user out. This twin
+    closes that gap without widening the data plane.
+
+    Any authenticated tenant role may read it (get_current_identity — no permission
+    gate), parity with /v1/models and intentionally unlike the owner/admin-gated
+    GET /admin/models (which also omits pricing). Returns 409 ERR_CATALOG_EMPTY
+    before the first catalog sync. Delegates to list_models so the marked-up
+    payload can never drift from /v1/models.
+    """
+    return await list_models(identity=identity, use_case=use_case)
+
+
 # ---------------------------------------------------------------------------
 # Admin model management endpoints (model-mgmt TASK.md §3)
 # ---------------------------------------------------------------------------

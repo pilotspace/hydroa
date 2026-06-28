@@ -30,13 +30,18 @@ export function UsagePage() {
     queryFn: () => bffGet<UsageData>("/admin/usage"),
   });
 
-  // Models query — enabled only after usage data arrives so the catalog renders in
-  // a separate React commit from the budget widget. This ensures the /0\.00/ regex
-  // in test_budget_widget_null_shows_unlimited finds only the spend "0.00" leaf node
-  // and not catalog price leaves ("0.000003", "0.000012") in the same commit.
+  // Models query — reads the catalog over the JWT/control-plane twin
+  // GET /admin/catalog/models, NOT the data-plane GET /v1/models. /v1/* sits behind
+  // the edge ext_authz (sk-/agent token only), so a browser session JWT 401s through
+  // the edge and the BFF clears the cookie → the user is logged out just by opening
+  // this page. The admin-catalog route serves the identical priced list on the JWT
+  // plane. Enabled only after usage data arrives so the catalog renders in a separate
+  // React commit from the budget widget — this keeps the /0\.00/ regex in
+  // test_budget_widget_null_shows_unlimited matching only the spend "0.00" leaf and
+  // not catalog price leaves ("0.000003", "0.000012") in the same commit.
   const modelsQuery = useQuery<ModelsData>({
-    queryKey: ["v1-models"],
-    queryFn: () => bffGet<ModelsData>("/v1/models"),
+    queryKey: ["catalog-models"],
+    queryFn: () => bffGet<ModelsData>("/admin/catalog/models"),
     enabled: !!usageQuery.data,
   });
 

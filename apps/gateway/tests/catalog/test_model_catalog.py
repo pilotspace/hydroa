@@ -461,3 +461,92 @@ async def test_sync_handles_null_context_length(client: httpx.AsyncClient, app: 
     model = resp.json()["data"][0]
     assert model["id"] == no_ctx.id
     assert model["context_length"] is None
+
+
+# ---------------------------------------------------------------------------
+# Regression — GET /admin/catalog/models is the JWT/control-plane twin of
+# GET /v1/models (dashboard "/v1/* logs you out" bug).
+#
+# The dashboard BFF reads the model list with a SESSION JWT. /v1/models sits
+# behind the edge ext_authz (sk-/agent only), so a browser session 401s through
+# the edge and the BFF clears the cookie -> hard logout. This route serves the
+# IDENTICAL marked-up list on the /admin/* (JWT) plane, readable by ANY tenant
+# role — unlike GET /admin/models (owner/admin-only, no pricing).
+# ---------------------------------------------------------------------------
+
+ADMIN_CATALOG_MODELS = "/admin/catalog/models"
+
+
+async def test_admin_catalog_models_matches_v1_models(client: httpx.AsyncClient, app: Any) -> None:
+    """GET /admin/catalog/models returns byte-identical JSON to GET /v1/models."""
+    _install_fake_source(app, FakeCatalogSource(models=[_OPUS, _SONNET]))
+    assert (await client.post(SYNC)).status_code == 200
+
+    token = await _signup_and_login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    v1 = await client.get(MODELS, headers=headers)
+    twin = await client.get(ADMIN_CATALOG_MODELS, headers=headers)
+
+    assert v1.status_code == 200, v1.text
+    assert twin.status_code == 200, twin.text
+    # Same marked-up payload (object envelope + per-token prices) — zero drift.
+    assert twin.json() == v1.json()
+
+
+async def test_admin_catalog_models_readable_by_non_admin_role(
+    client: httpx.AsyncClient, app: Any
+) -> None:
+    """A viewer (non owner/admin) role can read it — parity with /v1/models.
+
+    GET /admin/models is owner/admin-gated; this twin must NOT inherit that gate,
+    or the all-roles dashboard surfaces (Usage / Chat picker / Vision) would 403
+    for viewer/member callers. JWT carries the role claim, so we mint a viewer
+    token bound to the seeded tenant (the live token_service, same pattern as the
+    rbac-roles suite).
+    """
+    import uuid
+
+    from gateway.tenants.domain.entities import Role
+
+    _install_fake_source(app, FakeCatalogSource(models=[_OPUS]))
+    assert (await client.post(SYNC)).status_code == 200
+
+    signup = await client.post(
+        "/admin/auth/signup",
+        json={"tenant_name": "Viewers", "email": "viewer@vco.io", "password": "viewer-horse-batt"},
+    )
+    assert signup.status_code == 201, signup.text
+    tenant_id = signup.json()["tenant_id"]
+
+    viewer_token, _ = app.state.token_service.issue(
+        user_id=uuid.uuid4(),
+        tenant_id=uuid.UUID(tenant_id),
+        role=Role.VIEWER,
+        email="viewer@vco.io",
+    )
+
+    resp = await client.get(
+        ADMIN_CATALOG_MODELS, headers={"Authorization": f"Bearer {viewer_token}"}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"][0]["id"] == _OPUS.id
+
+
+async def test_admin_catalog_models_before_sync_returns_catalog_empty(
+    client: httpx.AsyncClient,
+) -> None:
+    """With zero active models it must mirror /v1/models: 409 ERR_CATALOG_EMPTY."""
+    token = await _signup_and_login(client)
+    resp = await client.get(ADMIN_CATALOG_MODELS, headers={"Authorization": f"Bearer {token}"})
+
+    assert_problem(resp, 409, "ERR_CATALOG_EMPTY")
+    assert "data" not in resp.json()
+
+
+async def test_admin_catalog_models_invalid_token_rejected(client: httpx.AsyncClient) -> None:
+    """No/!bearer token must be rejected (JWT plane) — never serve the list anonymously."""
+    resp = await client.get(ADMIN_CATALOG_MODELS)
+    assert resp.status_code == 401, resp.text
+    assert "data" not in resp.json()

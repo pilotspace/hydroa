@@ -63,6 +63,48 @@ describe("bff-client: bffGet", () => {
     hrefSpy.mockRestore();
   });
 
+  /**
+   * TEST 16b — test_bff_client_dataplane_401_does_not_redirect  [regression]
+   * A /v1/* (data-plane) 401 is NOT a session expiry: the BFF passes the upstream
+   * error through with its own code (not ERR_AUTH_SESSION_EXPIRED) and leaves the
+   * cookie intact. The client must surface it as a thrown BffError WITHOUT bouncing
+   * to /login, so opening a playground page (or clicking Send) never logs the user out.
+   */
+  it("test_bff_client_dataplane_401_does_not_redirect", async () => {
+    // Arrange: data-plane 401 with the upstream code (no session-expiry signal)
+    server.use(
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
+        HttpResponse.json({ code: "ERR_AUTH_INVALID_KEY", status: 401 }, { status: 401 })
+      )
+    );
+
+    const hrefSpy = vi.spyOn(window, "location", "get");
+    let capturedHref: string | undefined;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      get() {
+        return {
+          get href() { return capturedHref ?? ""; },
+          set href(v: string) { capturedHref = v; },
+        };
+      },
+    });
+
+    let thrown: unknown;
+    try {
+      await bffGet("/v1/models");
+    } catch (e) {
+      thrown = e;
+    }
+
+    // No redirect to /login — the session is intact.
+    expect(capturedHref).toBeUndefined();
+    // Surfaced as a 401 BffError the caller can handle (fail-open / error state).
+    expect((thrown as { status?: number })?.status).toBe(401);
+
+    hrefSpy.mockRestore();
+  });
+
   it("test_bff_client_get_success_returns_data", async () => {
     // Arrange: happy path
     server.use(

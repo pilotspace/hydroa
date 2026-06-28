@@ -67,7 +67,7 @@ const CACHE = { enabled: true, semantic_enabled: false };
 function gwBody(url: string): unknown {
   if (url.includes("/admin/usage")) return USAGE;
   if (url.includes("/admin/budget")) return BUDGET;
-  if (url.includes("/v1/models")) return MODELS;
+  if (url.includes("/admin/catalog/models")) return MODELS;
   if (url.includes("/admin/keys")) return KEYS;
   if (url.includes("/admin/spend")) return SPEND;
   if (url.includes("/admin/cache")) return CACHE;

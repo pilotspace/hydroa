@@ -112,7 +112,7 @@ function useDefaultUsageHandlers() {
     http.get("http://localhost:3000/api/gw/admin/usage", () =>
       HttpResponse.json(USAGE_RESPONSE)
     ),
-    http.get("http://localhost:3000/api/gw/v1/models", () =>
+    http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
       HttpResponse.json(MODELS_RESPONSE)
     ),
     http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -179,7 +179,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_EMPTY_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -216,7 +216,7 @@ describe("UsagePage", () => {
           { status: 500 }
         )
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -248,7 +248,7 @@ describe("UsagePage", () => {
         "http://localhost:3000/api/gw/admin/usage",
         () => new Promise<never>(() => { /* intentionally never resolves */ })
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -294,6 +294,55 @@ describe("UsagePage", () => {
   });
 
   /**
+   * TEST 24b — test_catalog_reads_admin_plane_not_v1_models  [regression]
+   *
+   * The model catalog must be read over the JWT/control-plane twin
+   * GET /admin/catalog/models, NEVER the data-plane GET /v1/models. /v1/* sits
+   * behind the edge ext_authz (sk-/agent token only); a browser SESSION JWT 401s
+   * through the edge, and the BFF clears the cookie → the user is logged out just
+   * by opening this page. This pins the endpoint: the OLD path is stubbed to return
+   * the 401 the edge would produce, so a regression renders no catalog (and would
+   * trip the logout) instead of the model rows.
+   */
+  it("test_catalog_reads_admin_plane_not_v1_models", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/gw/admin/usage", () =>
+        HttpResponse.json(USAGE_RESPONSE)
+      ),
+      http.get("http://localhost:3000/api/gw/admin/budget", () =>
+        HttpResponse.json(BUDGET_RESPONSE)
+      ),
+      // The control-plane twin serves a sentinel model.
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
+        HttpResponse.json({
+          object: "list",
+          data: [
+            {
+              id: "sentinel/admin-catalog",
+              name: "Sentinel Admin Catalog",
+              context_length: 1000,
+              prompt_per_token: 0.000003,
+              completion_per_token: 0.000012,
+              object: "model",
+            },
+          ],
+        })
+      ),
+      // The data-plane path is what the edge would 401 → must NOT be called.
+      http.get("http://localhost:3000/api/gw/v1/models", () =>
+        HttpResponse.json({ code: "ERR_AUTH_SESSION_EXPIRED" }, { status: 401 })
+      )
+    );
+
+    renderUsage();
+
+    // The sentinel from the admin-catalog twin renders → the admin plane was used.
+    await waitFor(() => {
+      expect(screen.getByText("Sentinel Admin Catalog")).toBeInTheDocument();
+    });
+  });
+
+  /**
    * TEST 25 — test_catalog_error_state
    * Scenario: model catalog error state
    */
@@ -303,7 +352,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(
           {
             title: "Catalog not synced",
@@ -357,7 +406,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -398,7 +447,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", async () => {
@@ -485,7 +534,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -564,7 +613,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -635,7 +684,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -704,7 +753,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -780,7 +829,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>
@@ -853,7 +902,7 @@ describe("UsagePage", () => {
       http.get("http://localhost:3000/api/gw/admin/usage", () =>
         HttpResponse.json(USAGE_RESPONSE)
       ),
-      http.get("http://localhost:3000/api/gw/v1/models", () =>
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", () =>
         HttpResponse.json(MODELS_RESPONSE)
       ),
       http.get("http://localhost:3000/api/gw/admin/budget", () =>

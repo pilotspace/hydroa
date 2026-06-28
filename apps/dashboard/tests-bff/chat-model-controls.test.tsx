@@ -2,7 +2,7 @@
  * tests-bff/chat-model-controls.test.tsx — RED suite for v40 chat-model-controls.
  *
  * Drives the two SLOTS chat-workspace-page rendered: a catalog-model picker
- * (GET /v1/models, fail-open) and a collapsed system-prompt + temperature panel
+ * (GET /admin/catalog/models, fail-open) and a collapsed system-prompt + temperature panel
  * that feed the chat-workspace-page send(). Asserts the chosen model / system /
  * temperature reach the chat POST body. RED before Build: ChatWorkspace renders a
  * static model label + no settings panel today, so the combobox / settings toggle
@@ -18,7 +18,7 @@ import { ChatWorkspace } from "@/components/chat/ChatWorkspace";
 
 const enc = new TextEncoder();
 const URL_CHAT = "http://localhost:3000/api/gw/v1/chat/completions";
-const URL_MODELS = "http://localhost:3000/api/gw/v1/models";
+const URL_MODELS = "http://localhost:3000/api/gw/admin/catalog/models";
 const sse = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
 const DONE = "data: [DONE]\n\n";
 
