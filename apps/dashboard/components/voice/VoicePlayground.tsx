@@ -12,11 +12,12 @@
  * No new dependencies; uses the v13/v23 ui primitives.
  */
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Empty, ErrorState, Loading } from "@/components/ui/states";
+import { useCatalogModels, narrowModels } from "@/lib/hooks/use-catalog-models";
 
 /**
  * Absolute base for BFF fetches. In Node/jsdom (vitest), undici rejects
@@ -50,6 +51,14 @@ function SttPanel() {
   const [status, setStatus] = useState<PanelStatus>("idle");
   const [transcript, setTranscript] = useState<string | null>(null);
   const [errorTitle, setErrorTitle] = useState<string>("");
+
+  // Autocomplete suggestions from the configured catalog (transcription models first;
+  // free-text is preserved so a model the catalog omits, e.g. "whisper-1", still works).
+  const catalogModels = useCatalogModels();
+  const sttSuggestions = useMemo(
+    () => narrowModels(catalogModels, /whisper|transcrib|stt/i),
+    [catalogModels],
+  );
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -124,9 +133,15 @@ function SttPanel() {
             id="stt-model"
             type="text"
             aria-label="STT model"
+            list="stt-model-options"
             value={model}
             onChange={(e) => setModel(e.target.value)}
           />
+          <datalist id="stt-model-options">
+            {sttSuggestions.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
         </div>
 
         <Button
@@ -169,6 +184,14 @@ function TtsPanel() {
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [errorTitle, setErrorTitle] = useState<string>("");
   const prevObjectUrlRef = useRef<string | null>(null);
+
+  // Autocomplete suggestions from the configured catalog (speech models first);
+  // free-text preserved so a catalog-omitted model (e.g. "tts-1") still works.
+  const catalogModels = useCatalogModels();
+  const ttsSuggestions = useMemo(
+    () => narrowModels(catalogModels, /tts|speech|audio/i),
+    [catalogModels],
+  );
 
   // Revoke the previous object URL when replaced or on unmount
   useEffect(() => {
@@ -270,10 +293,16 @@ function TtsPanel() {
             <Input
               id="tts-model"
               type="text"
+              list="tts-model-options"
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="tts-1"
             />
+            <datalist id="tts-model-options">
+              {ttsSuggestions.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
           </div>
         </div>
 
@@ -298,7 +327,6 @@ function TtsPanel() {
           <ErrorState title={errorTitle} />
         )}
         {status === "success" && audioSrc !== null && (
-          // eslint-disable-next-line jsx-a11y/media-has-caption
           <audio controls src={audioSrc} className="w-full" data-testid="audio-player" />
         )}
       </div>

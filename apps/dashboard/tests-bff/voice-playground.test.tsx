@@ -233,3 +233,40 @@ describe("nav entry — Voice", () => {
     expect(voiceItem?.minRole).toBeUndefined();
   });
 });
+
+describe("VoicePlayground — model autocomplete", () => {
+  it("test_model_fields_suggest_catalog_audio_models", async () => {
+    // Both panels read /admin/catalog/models for datalist suggestions; the fields stay
+    // free-text (the defaults whisper-1/tts-1 may not be in the catalog).
+    server.use(
+      http.get(`${APP}/api/gw/admin/catalog/models`, () =>
+        HttpResponse.json({
+          object: "list",
+          data: [
+            { id: "openai/whisper-1" },
+            { id: "openai/tts-1-hd" },
+            { id: "openai/gpt-4o" },
+          ],
+        }),
+      ),
+    );
+
+    render(<VoicePlayground />);
+
+    // STT field suggests transcription models, not chat models.
+    await waitFor(() => {
+      const stt = Array.from(
+        document.querySelectorAll("#stt-model-options option"),
+      ).map((o) => (o as HTMLOptionElement).value);
+      expect(stt).toContain("openai/whisper-1");
+      expect(stt).not.toContain("openai/gpt-4o");
+    });
+
+    // TTS field suggests speech models, not chat models.
+    const tts = Array.from(
+      document.querySelectorAll("#tts-model-options option"),
+    ).map((o) => (o as HTMLOptionElement).value);
+    expect(tts).toContain("openai/tts-1-hd");
+    expect(tts).not.toContain("openai/gpt-4o");
+  });
+});
