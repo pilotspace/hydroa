@@ -6,7 +6,7 @@
  * cookie-scopes all requests to the authenticated tenant automatically.
  */
 
-import { bffGet, bffPost, bffDelete } from "@/lib/bff-client";
+import { bffGet, bffPost, bffPatch, bffDelete } from "@/lib/bff-client";
 import type { ChatRole } from "@/lib/hooks/use-chat-stream";
 
 export interface ConversationSummary {
@@ -48,6 +48,19 @@ export function appendMessage(
   content: string,
 ): Promise<unknown> {
   return bffPost<unknown>(`/v1/conversations/${id}/messages`, { role, content });
+}
+
+/** PATCH /v1/conversations/:id — rename a conversation title. */
+export function renameConversation(
+  id: string,
+  title: string,
+): Promise<{ id: string; title: string | null; created_at: string; updated_at: string }> {
+  return bffPatch<{
+    id: string;
+    title: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(`/v1/conversations/${id}`, { title });
 }
 
 /** DELETE /v1/conversations/:id — permanently delete a conversation. */

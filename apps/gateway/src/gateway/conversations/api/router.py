@@ -154,6 +154,20 @@ class ConversationDetailResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PatchConversationRequest(BaseModel):
+    title: Annotated[str, Field(strict=True)]
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("title must be a non-empty string (after stripping whitespace)")
+        if len(v) > 500:
+            raise ValueError("title exceeds maximum length of 500 characters")
+        return v
+
+
 class AppendMessageRequest(BaseModel):
     role: Annotated[str, Field(strict=True)]
     content: str
@@ -282,6 +296,40 @@ async def get_conversation(
             )
             for msg in row.messages
         ],
+    )
+
+
+@conversations_router.patch(
+    "/v1/conversations/{conversation_id}",
+    response_model=ConversationResponse,
+)
+async def patch_conversation(
+    conversation_id: uuid.UUID,
+    body: PatchConversationRequest,
+    authz: Annotated[AuthzResult, Depends(_authenticate)],
+    repo: Annotated[ConversationRepository, Depends(_get_repo)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ConversationResponse:
+    """Rename a conversation title.
+
+    Returns 404 for unknown, cross-tenant, or soft-deleted conversations
+    (identical response — no existence leak).
+    Returns 422 for a missing, blank, or oversized title.
+    """
+    row = await repo.rename_title(
+        tenant_id=authz.tenant_id,
+        conversation_id=conversation_id,
+        title=body.title,
+    )
+    if row is None:
+        raise _not_found()
+
+    await session.commit()
+    return ConversationResponse(
+        id=row.id,
+        title=row.title,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
