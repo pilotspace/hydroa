@@ -25,40 +25,48 @@ Out: The other five features (voice·memory·artifacts·vision·video — each i
 - **Conversation metadata contract** (PATCH `/v1/conversations/:id` rename/metadata — the one backend delta + migration if needed) -> owning task `chat-conversation-mgmt`.
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] chat-playground-shell     depends-on: none                 — The 3-pane Console layout (sessions · conversation · parameters/inspector) + the Playground design system; carries the design-confirm gate. Freezes the shell the rest consume.
-- [ ] chat-parameters-panel     depends-on: chat-playground-shell — Full sampling control (temperature·top_p·max_tokens·stop·frequency/presence penalty·seed·response_format) wired pass-through to `/v1/chat/completions`; validated, persisted per session.
-- [ ] chat-tools-functions      depends-on: chat-playground-shell — Define JSON-schema tools, send `tools`/`tool_choice`, render the model's `tool_calls`, supply a tool result, continue the run.
-- [ ] chat-attachments          depends-on: chat-playground-shell — Attach images to a user message (content-part format) with preview + size guard; the model answers about them.
-- [ ] chat-run-metadata-cost    depends-on: chat-playground-shell — Per-turn inspector (model·finish_reason·tokens·latency·cost) + session/run totals + running cost meter, from the usage frame already streamed.
-- [ ] chat-conversation-mgmt    depends-on: none                 — Rename·duplicate/fork·export(JSON+markdown)·search conversations; backend PATCH `/v1/conversations/:id` (the milestone's one backend delta).
+- [x] chat-playground-shell     depends-on: none                 — The 3-pane Console layout (sessions · conversation · parameters/inspector) + the Playground design system; carries the design-confirm gate. Freezes the shell the rest consume.
+- [x] chat-parameters-panel     depends-on: chat-playground-shell — Full sampling control (temperature·top_p·max_tokens·stop·frequency/presence penalty·seed·response_format) wired pass-through to `/v1/chat/completions`; validated, persisted per session.
+- [x] chat-tools-functions      depends-on: chat-playground-shell — Define JSON-schema tools, send `tools`/`tool_choice`, render the model's `tool_calls`, supply a tool result, continue the run.
+- [x] chat-attachments          depends-on: chat-playground-shell — Attach images to a user message (content-part format) with preview + size guard; the model answers about them.
+- [x] chat-run-metadata-cost    depends-on: chat-playground-shell — Per-turn inspector (model·finish_reason·tokens·latency·cost) + session/run totals + running cost meter, from the usage frame already streamed.
+- [x] chat-conversation-mgmt    depends-on: none                 — Rename·duplicate/fork·export(JSON+markdown)·search conversations; backend PATCH `/v1/conversations/:id` (the milestone's one backend delta).
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] The chat surface is a 3-pane Console-grade playground matching an approved design   (← chat-playground-shell)
-- [ ] An operator can set temperature·top_p·max_tokens·stop·penalties·seed·response_format and the values reach the model on the next run   (← chat-parameters-panel)
-- [ ] An operator can define a tool, see the model's tool_call, supply a result, and the run continues with that result   (← chat-tools-functions)
-- [ ] An operator can attach an image to a message and the model answers about it   (← chat-attachments)
-- [ ] Each assistant turn shows model·finish_reason·tokens·latency·cost, and the session shows a running total   (← chat-run-metadata-cost)
-- [ ] An operator can rename, fork, export, and search conversations   (← chat-conversation-mgmt)
+- [x] The chat surface is a 3-pane Console-grade playground matching an approved design   (← chat-playground-shell)
+- [x] An operator can set temperature·top_p·max_tokens·stop·penalties·seed·response_format and the values reach the model on the next run   (← chat-parameters-panel)
+- [x] An operator can define a tool, see the model's tool_call, supply a result, and the run continues with that result   (← chat-tools-functions)
+- [x] An operator can attach an image to a message and the model answers about it   (← chat-attachments)
+- [x] Each assistant turn shows model·finish_reason·tokens·latency·cost, and the session shows a running total   (← chat-run-metadata-cost)
+- [x] An operator can rename, fork, export, and search conversations   (← chat-conversation-mgmt)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- tooling : state.json task records only (tracking); add.py/templates untouched.
+- skill   : untouched.
+- book    : untouched.
+- dashboard (product) : the /app/chat surface rebuilt to Console-grade — 3-pane shell + design system (ConversationTopBar/InspectorPanel/ChatHistorySidebar), sampling-parameter panel, JSON-tool calling + tool-call cards, image attachments (AttachmentPreview + lib/chat/attachments.ts), per-turn metadata + session cost (CostReadout), conversation rename/fork/export/search. Streaming consumer (use-chat-stream.ts) extended for tools, content-parts, and finish_reason — pass-through, off-path byte-identical.
+- gateway (product) : ONE additive delta — PATCH /v1/conversations/{id} (rename), tenant-scoped, no migration. No other gateway change (sampling/tools/attachments all ride the existing /v1/chat/completions).
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- chat-playground-shell    : gate=PASS · design-confirmed shell · residue=none
+- chat-parameters-panel    : gate=PASS · omitted-when-unset sampling, provider-aware · residue=none
+- chat-tools-functions     : gate=PASS · 10 tests · adversarial refute EARNED · residue=none
+- chat-attachments         : gate=PASS · 13 tests (incl. falsified concurrent-cap regression) · residue=none material (persist/paste-drag/cross-provider data-URL = §7 deltas)
+- chat-run-metadata-cost   : gate=PASS · 7 tests · finish_reason + session cost · residue=Inspector "Run" tab placeholder (§7 delta)
+- chat-conversation-mgmt   : gate=PASS · gateway 47 (incl. 12 rename, cross-tenant 404 no-leak) + dashboard 11 · residue=image-parts not persisted on fork (§7 delta)
+- INTEGRATION : merged on the up-to-date branch (agents built from a stale base → cherry-picked + resolved, #1-#4 preserved). Dashboard vitest 858/0, gateway conversations 47 passed, tsc 0, eslint 0.
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which): shell→shell row; sampling→parameters row; tools→tools row; attachments→attachments row; metadata/cost→metadata-cost row; rename/fork/export/search→conversation-mgmt row.
+- goal: "The Chat workspace becomes a true Console-grade playground … a surface an operator runs real LLM work on." MET — an operator can configure full sampling, define+run tools, attach images, see per-turn model·finish_reason·tokens·latency·cost + a running session total, and rename/fork/export/search conversations; 905 tests green across dashboard+gateway prove the surface end-to-end.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [ ] Open ONE PR for the whole chat-playground line (7 commits #1–#6 + state reconcile) from `feat/v54-ui-refinement` → `main`; Tin reviews + merges.
+- [ ] After merge, run the gateway migration check is N/A (no new migration); deploy rides the normal dashboard + gateway release (no schema change).
+- [ ] Fold this milestone's §7 deltas at release time (persist attachments, paste/drag, cross-provider data-URL verify, Inspector "Run" tab) — bundle into the next release notes (human-run, per release.md).
