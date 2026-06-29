@@ -16,6 +16,11 @@ import { useEffect, useRef, useState } from "react";
 import { BffError, type ProblemDetail } from "@/lib/bff-client";
 import { isSupported } from "@/lib/chat/param-capabilities";
 import { toWireTools, type ToolCall, type ToolChoice, type ToolDef } from "@/lib/chat/tool-defs";
+import {
+  composeUserContent,
+  type ImageAttachment,
+  type MessageContentPart,
+} from "@/lib/chat/attachments";
 
 export type ChatRole = "user" | "assistant" | "system" | "tool";
 /** A tool call carried on an assistant message (the OpenAI wire shape). */
@@ -26,7 +31,9 @@ export interface MessageToolCall {
 }
 export interface ChatMessage {
   role: ChatRole;
-  content: string;
+  /** chat-attachments: widened from string — a user turn carrying images is the
+   *  OpenAI content-part array; every other turn stays a plain string (off path). */
+  content: string | MessageContentPart[];
   /** assistant only — the tool calls the model requested (chat-tools-functions). */
   tool_calls?: MessageToolCall[];
   /** tool role only — the id of the assistant tool_call this message answers. */
@@ -79,6 +86,9 @@ export interface SendInput {
   /** chat-tools-functions: validated tool definitions (sent as tools[] when ≥1; omitted otherwise). */
   tools?: ToolDef[];
   toolChoice?: ToolChoice;
+  /** chat-attachments: staged image attachments — when ≥1, the user turn's content
+   *  becomes the OpenAI content-part array; absent/empty keeps content a plain string. */
+  images?: ImageAttachment[];
 }
 
 /** Injected (merged with any user system prompt) when responseFormat === "json_object". */
@@ -447,7 +457,10 @@ export function useChatStream(opts?: {
     // chat-tools-functions: remember the input so a tool-result continuation replays it.
     lastInputRef.current = input;
 
-    const next = [...messagesRef.current, { role: "user" as const, content: text }];
+    // chat-attachments: images present ⇒ content is the OpenAI content-part array;
+    // none ⇒ a plain string (byte-identical off path).
+    const userContent = composeUserContent(text, input.images);
+    const next = [...messagesRef.current, { role: "user" as const, content: userContent }];
     commitMessages(next);
     commitMeta([...metaRef.current, { at: Date.now() }]);
     startStream(input);

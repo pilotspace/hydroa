@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "chat-tools-functions",
+  "active_task": "chat-attachments",
   "active_milestone": "chat-playground",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -610,6 +610,46 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "chat-attachments": {
+      "title": "Image attachments in the chat composer",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "chat-playground",
+      "depends_on": [],
+      "created": "2026-06-29T14:37:12+00:00",
+      "updated": "2026-06-29T15:34:31+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a901edd9baf5ba5580aa253a9144c98f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/chat/attachments.ts",
+          "apps/dashboard/lib/hooks/use-chat-stream.ts",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/components/chat/AttachmentPreview.tsx",
+          "apps/dashboard/tests-bff/chat-attachments.test.tsx",
+          "apps/dashboard/tests-bff/attachments.test.ts"
+        ],
+        "snapshot_md5": "48ea5115be7a0f400304d1735d2499d8"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-29T15:33:48+00:00",
+            "reason": "scope_violation: task 'chat-attachments' touched outside its declared \u00a75 Scope \u2014 .claude/skills/add/phases/5-build.md \u00b7 .claude/skills/add/phases/6-verify.md \u00b7 .claude/skills/add/release.md \u00b7 .claude/skills/add/run.md \u00b7 .claude/skills/add/scope.md (5 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -670,7 +710,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-28T17:48:19+00:00",
+  "updated": "2026-06-29T15:34:31+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1335,7 +1375,7 @@
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
-    "chat-playground": "chat-tools-functions"
+    "chat-playground": "chat-attachments"
   },
   "todos": [
     {

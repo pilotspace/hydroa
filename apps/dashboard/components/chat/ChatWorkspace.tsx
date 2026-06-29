@@ -29,6 +29,17 @@ import {
   type Usage,
 } from "@/lib/hooks/use-chat-stream";
 import { parseToolDef, type ToolChoice, type ToolDef } from "@/lib/chat/tool-defs";
+import {
+  fileToAttachment,
+  attachmentErrorMessage,
+  contentText,
+  contentImages,
+  ATTACHMENT_LIMIT_MESSAGE,
+  MAX_IMAGES_PER_MESSAGE,
+  ALLOWED_MIME,
+  type ImageAttachment,
+} from "@/lib/chat/attachments";
+import { StagedAttachments, MessageImages } from "@/components/chat/AttachmentPreview";
 import { bffGet } from "@/lib/bff-client";
 import type { ModelsData } from "@/components/models/ModelCatalogTable";
 import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
@@ -200,6 +211,50 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   });
   // Per-tool_call_id result text the operator types before continuing (cleared on continue).
   const [toolResults, setToolResults] = useState<Record<string, string>>({});
+  // chat-attachments: staged images for the next turn + the last rejection message.
+  // `imageNames` keeps url→filename so a committed turn (whose wire content-part is
+  // only {image_url:{url}}) can still alt-text its thumbnails.
+  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [imageNames, setImageNames] = useState<Map<string, string>>(new Map());
+  const attachmentsRef = useRef<ImageAttachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+  // Validate + encode each pick; enforce the per-message count cap against the
+  // running staged set (design-for-failure — reject before building a data-URL).
+  const onPickFiles = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setAttachError(null);
+    for (const file of Array.from(files)) {
+      // Enforce the cap against the LIVE staged count (the ref is bumped
+      // synchronously on each admit) so concurrent onPickFiles invocations
+      // can't each read a stale snapshot and overflow it.
+      if (attachmentsRef.current.length >= MAX_IMAGES_PER_MESSAGE) {
+        setAttachError(ATTACHMENT_LIMIT_MESSAGE);
+        break;
+      }
+      const res = await fileToAttachment(file);
+      if (!res.ok) {
+        setAttachError(attachmentErrorMessage(res.error));
+        continue;
+      }
+      // re-check after the async encode — another pick may have filled the cap
+      if (attachmentsRef.current.length >= MAX_IMAGES_PER_MESSAGE) {
+        setAttachError(ATTACHMENT_LIMIT_MESSAGE);
+        break;
+      }
+      const att = res.attachment;
+      const nextStaged = [...attachmentsRef.current, att];
+      attachmentsRef.current = nextStaged; // bump synchronously; the effect reconciles
+      setAttachments(nextStaged);
+      setImageNames((cur) => new Map(cur).set(att.dataUrl, att.name));
+    }
+  }, []);
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((cur) => cur.filter((a) => a.id !== id));
+  }, []);
   const [sessionTokens, setSessionTokens] = useState(0);
   // The conversation title shown in the top bar (null → a fresh, unsaved chat).
   const [activeTitle, setActiveTitle] = useState<string | null>(null);
@@ -272,18 +327,32 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
       const userMsg = messages[assistantIndex - 1];
       if (!userMsg || userMsg.role !== "user") return;
       load(messages.slice(0, assistantIndex - 1));
+      // chat-attachments: regenerate re-sends the same turn — reconstruct the image
+      // parts (text + dataURLs) so a multimodal turn keeps its images.
+      const urls = contentImages(userMsg.content);
+      const images: ImageAttachment[] | undefined =
+        urls.length > 0
+          ? urls.map((url, i) => ({
+              id: `regen-${assistantIndex}-${i}`,
+              name: imageNames.get(url) ?? "image",
+              mime: url.startsWith("data:") ? url.slice(5, url.indexOf(";")) : "image/png",
+              dataUrl: url,
+              bytes: 0,
+            }))
+          : undefined;
       send({
         model,
-        text: userMsg.content,
+        text: contentText(userMsg.content),
         system: system || undefined,
         temperature,
         webSearch,
         ...samplingToInput(sampling),
         tools: validTools.length > 0 ? validTools : undefined,
         toolChoice,
+        images,
       });
     },
-    [isStreaming, messages, load, send, model, system, temperature, webSearch, sampling, validTools, toolChoice],
+    [isStreaming, messages, load, send, model, system, temperature, webSearch, sampling, validTools, toolChoice, imageNames],
   );
 
   // Accumulate the session token total — each completed turn's usage object is
@@ -338,8 +407,13 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
       webSearch,
       ...samplingToInput(sampling),
       ...toolsInput(),
+      // chat-attachments: ≥1 staged image ⇒ the user turn ships as content-parts.
+      images: attachments.length > 0 ? attachments : undefined,
     });
     setInput("");
+    // clear the staged set + any rejection message for the next turn
+    setAttachments([]);
+    setAttachError(null);
   }
 
   // chat-tools-functions: answer the pending tool calls (partial-friendly — unanswered ⇒ "")
@@ -446,6 +520,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
                 meta={meta[i]}
                 costText={costFor(meta[i])}
                 userInitials={userInitials}
+                imageNames={imageNames}
                 onRegenerate={
                   m.role === "assistant" && !isStreaming ? () => regenerateFrom(i) : undefined
                 }
@@ -489,13 +564,34 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
               ))}
             </div>
           ) : null}
+          {/* chat-attachments: staged image strip + any rejection message. */}
+          {attachments.length > 0 ? (
+            <StagedAttachments items={attachments} onRemove={removeAttachment} />
+          ) : null}
+          {attachError ? (
+            <p role="alert" className="px-1 text-xs text-destructive">
+              {attachError}
+            </p>
+          ) : null}
           <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:ring-2 focus-within:ring-ring">
-          {/* Scaffold: image attach ships in chat-attachments. */}
+          {/* chat-attachments: pick image(s) → stage as content-parts. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ALLOWED_MIME.join(",")}
+            multiple
+            data-testid="attachment-input"
+            className="hidden"
+            onChange={(e) => {
+              void onPickFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            disabled
+            onClick={() => fileInputRef.current?.click()}
             aria-label="Attach image"
             className="size-9 shrink-0 text-muted-foreground"
           >
@@ -669,6 +765,7 @@ function MessageRow({
   costText = null,
   streaming = false,
   onRegenerate,
+  imageNames,
 }: {
   message: ChatMessage;
   userInitials: string | null;
@@ -676,10 +773,18 @@ function MessageRow({
   costText?: string | null;
   streaming?: boolean;
   onRegenerate?: () => void;
+  /** chat-attachments: url→filename so a committed multimodal turn can alt-text its thumbnails. */
+  imageNames?: Map<string, string>;
 }) {
   const isUser = message.role === "user";
   const clock = formatClock(meta?.at);
   const metaLine = isUser ? "" : formatTurnMeta(meta, costText);
+  // chat-attachments: a user turn may carry image parts; everything else is text.
+  const text = contentText(message.content);
+  const images = contentImages(message.content).map((url) => ({
+    url,
+    alt: imageNames?.get(url) ?? "attachment",
+  }));
   return (
     <div
       data-role={message.role}
@@ -701,7 +806,8 @@ function MessageRow({
               : "border border-border bg-background text-foreground",
           )}
         >
-          {isUser ? message.content : <MessageMarkdown content={message.content} />}
+          {images.length > 0 ? <MessageImages images={images} className="mb-2" /> : null}
+          {isUser ? text : <MessageMarkdown content={text} />}
           {streaming ? (
             <span
               className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-current align-middle"
@@ -712,7 +818,7 @@ function MessageRow({
         {!isUser && !streaming ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
             {metaLine ? <span className="text-xs text-muted-foreground">{metaLine}</span> : null}
-            <CopyTurnButton getText={() => message.content} />
+            <CopyTurnButton getText={() => text} />
             {onRegenerate ? (
               <button
                 type="button"
