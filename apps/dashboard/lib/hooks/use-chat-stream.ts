@@ -50,18 +50,21 @@ export type ChatStatus = "idle" | "streaming" | "awaiting_tool" | "error";
 /**
  * Per-turn metadata, parallel to `messages` by index (so the frozen ChatMessage
  * shape is untouched). Every field is REAL or absent — never fabricated:
- *  - `at`        epoch ms the message was committed to the live thread. Absent on
- *                turns resumed via load() (we don't know when they happened).
- *  - `model`     assistant only — the model that produced the reply.
- *  - `latencyMs` assistant only — client-measured time from send() to commit.
- *  - `usage`     assistant only — the terminal usage frame (absent if upstream
- *                omitted it or the turn was stopped/failed).
+ *  - `at`          epoch ms the message was committed to the live thread. Absent on
+ *                  turns resumed via load() (we don't know when they happened).
+ *  - `model`       assistant only — the model that produced the reply.
+ *  - `latencyMs`   assistant only — client-measured time from send() to commit.
+ *  - `usage`       assistant only — the terminal usage frame (absent if upstream
+ *                  omitted it or the turn was stopped/failed).
+ *  - `finishReason` assistant only — the finish_reason from the terminal SSE frame
+ *                  (e.g. "stop", "length"); absent when upstream omits it.
  */
 export interface TurnMeta {
   at?: number;
   model?: string;
   latencyMs?: number;
   usage?: Usage;
+  finishReason?: string;
 }
 
 /** Response format selector — "text" (default) sends no key; "json_object" adds it + a hint. */
@@ -125,7 +128,7 @@ interface SSEFrame {
         function?: { name?: string; arguments?: string };
       }>;
     };
-    finish_reason?: string;
+    finish_reason?: string | null;
   }>;
   usage?: Usage;
 }
@@ -199,7 +202,7 @@ export function useChatStream(opts?: {
   }
 
   /** Append the accumulated partial as the assistant turn (if any) and go idle. */
-  function finishTurn(finalUsage: Usage | undefined, isAbort: boolean): void {
+  function finishTurn(finalUsage: Usage | undefined, isAbort: boolean, finishReason?: string): void {
     const content = partialRef.current;
     if (content) {
       commitMessages([...messagesRef.current, { role: "assistant", content }]);
@@ -210,6 +213,7 @@ export function useChatStream(opts?: {
           model: currentModelRef.current || undefined,
           latencyMs: turnStartRef.current ? Date.now() - turnStartRef.current : undefined,
           usage: finalUsage,
+          finishReason: finishReason || undefined,
         },
       ]);
     }
@@ -314,6 +318,7 @@ export function useChatStream(opts?: {
       const decoder = new TextDecoder();
       let buffer = "";
       let localUsage: Usage | undefined;
+      let localFinishReason: string | undefined;
       let done = false;
       // chat-tools-functions: assemble streamed tool_calls by their `index` (id + name arrive
       // once, function.arguments stream as fragments to concatenate).
@@ -369,6 +374,9 @@ export function useChatStream(opts?: {
               toolAcc.set(idx, slot);
             }
           }
+          // chat-run-metadata-cost: remember the last non-empty finish_reason.
+          const fr = frame.choices?.[0]?.finish_reason;
+          if (fr) localFinishReason = fr;
           if (frame.usage) localUsage = frame.usage;
         }
       }
@@ -383,7 +391,8 @@ export function useChatStream(opts?: {
       } else {
         // After the reader loop exits naturally (e.g. via reader.cancel() on abort),
         // check the signal: if aborted, treat as abort path so onTurnComplete does NOT fire.
-        finishTurn(localUsage, controller.signal.aborted);
+        // chat-run-metadata-cost: carry the finish_reason into the committed turn meta.
+        finishTurn(localUsage, controller.signal.aborted, localFinishReason);
       }
     } catch (err) {
       if (controller.signal.aborted) {

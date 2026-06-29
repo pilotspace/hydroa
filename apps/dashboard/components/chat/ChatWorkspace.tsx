@@ -121,15 +121,21 @@ function formatClock(at: number | undefined): string | null {
 }
 
 /**
- * The per-turn meta line for an assistant reply: "model · 0.9s · ▲ 1,242 tok · $0.0041".
+ * The per-turn meta line for an assistant reply:
+ *   "model · stop · 11p / 4c 15t · 0.9s · $0.0041"
+ * Order: model · finish_reason · tokens (Xp / Yc Zt) · latency · cost.
  * Every part is REAL (from TurnMeta + catalog pricing) or omitted — no fabrication.
  */
 function formatTurnMeta(meta: TurnMeta | undefined, costText: string | null): string {
   if (!meta) return "";
   const parts: string[] = [];
   if (meta.model) parts.push(meta.model);
+  if (meta.finishReason) parts.push(meta.finishReason);
+  if (meta.usage) {
+    const { prompt_tokens: p, completion_tokens: c, total_tokens: t } = meta.usage;
+    parts.push(`${p}p/${c}c ${t}tok`);
+  }
   if (meta.latencyMs != null) parts.push(`${(meta.latencyMs / 1000).toFixed(1)}s`);
-  if (meta.usage) parts.push(`▲ ${meta.usage.total_tokens.toLocaleString()} tok`);
   if (costText) parts.push(costText);
   return parts.join(" · ");
 }
@@ -365,6 +371,25 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     }
   }, [usage]);
 
+  // Session cost: derived from the committed meta array + catalog pricing.
+  // Each TurnMeta already carries the model that produced the turn, so no
+  // extra ref is needed. Returns null (honest-absent) until a priced turn exists.
+  const sessionCost = useMemo<number | null>(() => {
+    let total = 0;
+    let hasAny = false;
+    for (const m of meta) {
+      if (!m.usage || !m.model) continue;
+      const price = priceMap.get(m.model);
+      if (!price) continue;
+      const c = m.usage.prompt_tokens * price.p + m.usage.completion_tokens * price.c;
+      if (Number.isFinite(c) && c > 0) {
+        total += c;
+        hasAny = true;
+      }
+    }
+    return hasAny ? total : null;
+  }, [meta, priceMap]);
+
   // Scroll-to-latest as the thread grows (design: scroll-to-latest affordance).
   // scrollIntoView is absent in jsdom and older engines — guard before calling.
   useEffect(() => {
@@ -475,7 +500,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
       <ConversationTopBar
         title={activeTitle ?? "New chat"}
         modelPicker={<ModelPicker value={model} onChange={setModel} />}
-        costReadout={<CostReadout sessionTokens={sessionTokens} lastTurn={usage} />}
+        costReadout={<CostReadout sessionTokens={sessionTokens} lastTurn={usage} sessionCost={sessionCost} />}
       />
 
       <div
