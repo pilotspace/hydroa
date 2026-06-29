@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "chat-attachments",
+  "active_task": "chat-conversation-mgmt",
   "active_milestone": "chat-playground",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -57,7 +57,7 @@
       }
     },
     "alerts-events-viewer": {
-      "title": "Alerts & events viewer \u2014 GET /admin/alerts + dashboard Alerts page",
+      "title": "Alerts & events viewer — GET /admin/alerts + dashboard Alerts page",
       "phase": "done",
       "gate": "PASS",
       "milestone": "v31",
@@ -84,7 +84,7 @@
       }
     },
     "catalog-sync-trigger": {
-      "title": "Catalog sync trigger \u2014 POST /admin/catalog/sync + /models re-sync button",
+      "title": "Catalog sync trigger — POST /admin/catalog/sync + /models re-sync button",
       "phase": "done",
       "gate": "PASS",
       "milestone": "v31",
@@ -111,7 +111,7 @@
       }
     },
     "upstream-health-view": {
-      "title": "Upstream health view \u2014 GET /admin/health/upstreams + dashboard health panel",
+      "title": "Upstream health view — GET /admin/health/upstreams + dashboard health panel",
       "phase": "done",
       "gate": "PASS",
       "milestone": "v31",
@@ -138,7 +138,7 @@
       }
     },
     "ratelimit-counter-view": {
-      "title": "Rate-limit counter view \u2014 GET /admin/ratelimits + read-only counter panel",
+      "title": "Rate-limit counter view — GET /admin/ratelimits + read-only counter panel",
       "phase": "done",
       "gate": "PASS",
       "milestone": "v31",
@@ -264,7 +264,7 @@
         "history": [
           {
             "at": "2026-06-26T08:59:48+00:00",
-            "reason": "scope_violation: task 'artifacts-s3-persistence' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/video/api/router.py (1 total)",
+            "reason": "scope_violation: task 'artifacts-s3-persistence' touched outside its declared §5 Scope — apps/gateway/src/gateway/video/api/router.py (1 total)",
             "source": "scope"
           }
         ]
@@ -367,7 +367,7 @@
         "history": [
           {
             "at": "2026-06-28T09:20:58+00:00",
-            "reason": "scope_violation: task 'aurora-polish-tokens' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/palettepreview/page.tsx \u00b7 apps/dashboard/next-env.d.ts \u00b7 apps/dashboard/tests/design-system/enterprise-ext.test.tsx \u00b7 tmp/shellcaps/palette_final.png (4 total)",
+            "reason": "scope_violation: task 'aurora-polish-tokens' touched outside its declared §5 Scope — apps/dashboard/app/palettepreview/page.tsx · apps/dashboard/next-env.d.ts · apps/dashboard/tests/design-system/enterprise-ext.test.tsx · tmp/shellcaps/palette_final.png (4 total)",
             "source": "scope"
           }
         ]
@@ -379,7 +379,7 @@
       }
     },
     "monitoring-pages-redesign": {
-      "title": "Redesign monitoring pages (usage \u00b7 spend \u00b7 slo \u00b7 health) to the refreshed standard",
+      "title": "Redesign monitoring pages (usage · spend · slo · health) to the refreshed standard",
       "phase": "done",
       "gate": "PASS",
       "milestone": "v54",
@@ -429,7 +429,7 @@
       }
     },
     "governance-pages-redesign": {
-      "title": "Redesign governance pages (keys\u00b7members\u00b7routing\u00b7alerts\u00b7audit\u00b7settings) to the refreshed standard",
+      "title": "Redesign governance pages (keys·members·routing·alerts·audit·settings) to the refreshed standard",
       "phase": "done",
       "gate": "PASS",
       "milestone": "v54",
@@ -471,7 +471,7 @@
       }
     },
     "ai-feature-pages-redesign": {
-      "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
+      "title": "Redesign AI-feature pages (chat·voice·memory·artifacts·vision·video) to the refreshed standard",
       "phase": "specify",
       "gate": "none",
       "milestone": null,
@@ -480,7 +480,7 @@
       "updated": "2026-06-28T14:46:39+00:00"
     },
     "chat-playground-shell": {
-      "title": "Chat playground \u2014 3-pane Console shell + design system",
+      "title": "Chat playground — 3-pane Console shell + design system",
       "phase": "done",
       "gate": "PASS",
       "milestone": "chat-playground",
@@ -511,7 +511,7 @@
         "history": [
           {
             "at": "2026-06-28T16:08:31+00:00",
-            "reason": "scope_violation: task 'chat-playground-shell' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/next-env.d.ts (1 total)",
+            "reason": "scope_violation: task 'chat-playground-shell' touched outside its declared §5 Scope — apps/dashboard/next-env.d.ts (1 total)",
             "source": "scope"
           }
         ]
@@ -523,7 +523,7 @@
       }
     },
     "chat-parameters-panel": {
-      "title": "Chat parameters \u2014 full sampling control",
+      "title": "Chat parameters — full sampling control",
       "phase": "done",
       "gate": "PASS",
       "milestone": "chat-playground",
@@ -553,7 +553,7 @@
         "history": [
           {
             "at": "2026-06-28T16:48:06+00:00",
-            "reason": "refute-read:refute-read BLOCK (HIGH): contract \u00a73 promises 'clamp sliders to range' but ParamSlider.onChange passes the raw value; test_out_of_range only drove the number input, never slider top_p>1 (the \u00a74-named scenario). Fix: clamp in ParamSlider + strengthen the test to drive Top P 5 / penalty 3; also add a Bedrock JSON+hint-suppression integration assertion (MED gap).",
+            "reason": "refute-read:refute-read BLOCK (HIGH): contract §3 promises 'clamp sliders to range' but ParamSlider.onChange passes the raw value; test_out_of_range only drove the number input, never slider top_p>1 (the §4-named scenario). Fix: clamp in ParamSlider + strengthen the test to drive Top P 5 / penalty 3; also add a Bedrock JSON+hint-suppression integration assertion (MED gap).",
             "source": "refute-read"
           }
         ]
@@ -595,12 +595,12 @@
         "history": [
           {
             "at": "2026-06-28T17:45:40+00:00",
-            "reason": "scope_violation: task 'chat-tools-functions' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/use-chat-stream-tools.test.ts (1 total)",
+            "reason": "scope_violation: task 'chat-tools-functions' touched outside its declared §5 Scope — apps/dashboard/tests-bff/use-chat-stream-tools.test.ts (1 total)",
             "source": "scope"
           },
           {
             "at": "2026-06-28T17:46:25+00:00",
-            "reason": "scope_violation: task 'chat-tools-functions' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/use-chat-stream-tools.test.ts (1 total)",
+            "reason": "scope_violation: task 'chat-tools-functions' touched outside its declared §5 Scope — apps/dashboard/tests-bff/use-chat-stream-tools.test.ts (1 total)",
             "source": "scope"
           }
         ]
@@ -640,7 +640,84 @@
         "history": [
           {
             "at": "2026-06-29T15:33:48+00:00",
-            "reason": "scope_violation: task 'chat-attachments' touched outside its declared \u00a75 Scope \u2014 .claude/skills/add/phases/5-build.md \u00b7 .claude/skills/add/phases/6-verify.md \u00b7 .claude/skills/add/release.md \u00b7 .claude/skills/add/run.md \u00b7 .claude/skills/add/scope.md (5 total)",
+            "reason": "scope_violation: task 'chat-attachments' touched outside its declared §5 Scope — .claude/skills/add/phases/5-build.md · .claude/skills/add/phases/6-verify.md · .claude/skills/add/release.md · .claude/skills/add/run.md · .claude/skills/add/scope.md (5 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "chat-run-metadata-cost": {
+      "title": "Per-turn run metadata + session cost inspector",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "chat-playground",
+      "depends_on": [],
+      "created": "2026-06-29T15:46:07+00:00",
+      "updated": "2026-06-29T16:06:50+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "e48818c3d65b79ea8927f2c30e469850",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/hooks/use-chat-stream.ts",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/components/chat/CostReadout.tsx",
+          "apps/dashboard/tests-bff/chat-run-metadata.test.tsx"
+        ],
+        "snapshot_md5": "a51971b18e1bf9fa6cbf478a6c44bcc8"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "chat-conversation-mgmt": {
+      "title": "Conversation rename, fork, export, search",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "chat-playground",
+      "depends_on": [],
+      "created": "2026-06-29T15:46:53+00:00",
+      "updated": "2026-06-29T16:11:44+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8cd53a59b38b5ace576f949f2888200a",
+        "tests": {
+          "apps/gateway/tests/conversations/test_conversation_rename.py": "dff31f259390426c5e502de1aa08e345"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/conversations/infrastructure/repository.py",
+          "apps/gateway/src/gateway/conversations/api/router.py",
+          "apps/gateway/tests/conversations/test_conversation_rename.py",
+          "apps/gateway/",
+          "apps/dashboard/lib/conversations.ts",
+          "apps/dashboard/components/chat/ChatHistorySidebar.tsx",
+          "apps/dashboard/tests-bff/chat-conversation-mgmt.test.tsx",
+          "apps/dashboard/"
+        ],
+        "snapshot_md5": "e39d0c9de2900925b32dd86441da13b7"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-29T15:59:48+00:00",
+            "reason": "scope_violation: task 'chat-conversation-mgmt' touched outside its declared §5 Scope — apps/dashboard/components/chat/ChatHistorySidebar.tsx · apps/dashboard/lib/conversations.ts · apps/dashboard/tests-bff/chat-conversation-mgmt.test.tsx · apps/gateway/.coverage · apps/gateway/.pytest_cache/.gitignore (10 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-29T16:00:52+00:00",
+            "reason": "scope_violation: task 'chat-conversation-mgmt' touched outside its declared §5 Scope — apps/dashboard/components/chat/ChatHistorySidebar.tsx · apps/dashboard/lib/conversations.ts · apps/dashboard/tests-bff/chat-conversation-mgmt.test.tsx · apps/gateway/.coverage · apps/gateway/.pytest_cache/.gitignore (10 total)",
             "source": "scope"
           }
         ]
@@ -654,7 +731,7 @@
   },
   "milestones": {
     "v31": {
-      "title": "Operator-wide reconciliation + UI\u2194BE coverage",
+      "title": "Operator-wide reconciliation + UI↔BE coverage",
       "goal": "a platform operator reads cross-tenant reconciliation drift through an authorized ops-auth endpoint, and every implemented backend control-plane capability has a dashboard surface",
       "stage": "production",
       "status": "done",
@@ -670,7 +747,7 @@
       "updated": "2026-06-26T09:08:28+00:00"
     },
     "v54": {
-      "title": "UI refinement \u2014 polished, responsive, scalable app pages",
+      "title": "UI refinement — polished, responsive, scalable app pages",
       "goal": "Every authenticated dashboard page meets a refreshed UI standard: visually polished, structurally consistent, responsive across screen sizes, and usable at scale.",
       "stage": "production",
       "status": "done",
@@ -692,8 +769,8 @@
       }
     },
     "chat-playground": {
-      "title": "Chat \u2014 Console-grade playground",
-      "goal": "The Chat workspace becomes a true Console-grade playground: full sampling-parameter control, tool/function calling, multimodal attachments, rich per-run metadata + cost, and first-class conversation management \u2014 a surface an operator runs real LLM work on.",
+      "title": "Chat — Console-grade playground",
+      "goal": "The Chat workspace becomes a true Console-grade playground: full sampling-parameter control, tool/function calling, multimodal attachments, rich per-run metadata + cost, and first-class conversation management — a surface an operator runs real LLM work on.",
       "stage": "production",
       "status": "active",
       "created": "2026-06-28T14:48:43+00:00",
@@ -783,7 +860,7 @@
     },
     {
       "slug": "v5",
-      "title": "LiteLLM parity slice 3 \u2014 intelligence & hardening",
+      "title": "LiteLLM parity slice 3 — intelligence & hardening",
       "tasks": 6,
       "task_slugs": [
         "oidc-jwks",
@@ -810,7 +887,7 @@
     },
     {
       "slug": "v7",
-      "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider",
+      "title": "LiteLLM parity slice 5 — multi-modal & multi-provider",
       "tasks": 6,
       "task_slugs": [
         "provider-seam",
@@ -824,7 +901,7 @@
     },
     {
       "slug": "v8",
-      "title": "LiteLLM parity slice 6 \u2014 router & load-balancing",
+      "title": "LiteLLM parity slice 6 — router & load-balancing",
       "tasks": 5,
       "task_slugs": [
         "deployment-model",
@@ -837,7 +914,7 @@
     },
     {
       "slug": "v9",
-      "title": "LiteLLM parity slice 7 \u2014 provider breadth (Anthropic + Google Gemini, chat + embeddings)",
+      "title": "LiteLLM parity slice 7 — provider breadth (Anthropic + Google Gemini, chat + embeddings)",
       "tasks": 4,
       "task_slugs": [
         "provider-chat-dispatch",
@@ -849,7 +926,7 @@
     },
     {
       "slug": "v10",
-      "title": "LiteLLM parity slice 8 \u2014 tool-use / function-calling across providers",
+      "title": "LiteLLM parity slice 8 — tool-use / function-calling across providers",
       "tasks": 4,
       "task_slugs": [
         "tool-use-contract",
@@ -861,7 +938,7 @@
     },
     {
       "slug": "v11",
-      "title": "LiteLLM parity slice 9 \u2014 JSON-mode / structured outputs across providers",
+      "title": "LiteLLM parity slice 9 — JSON-mode / structured outputs across providers",
       "tasks": 4,
       "task_slugs": [
         "response-format-contract",
@@ -873,7 +950,7 @@
     },
     {
       "slug": "v12",
-      "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt",
+      "title": "Billing accuracy + ops hardening — pay down v7/v9/v11 follow-up debt",
       "tasks": 5,
       "task_slugs": [
         "gemini-embed-tokens",
@@ -886,7 +963,7 @@
     },
     {
       "slug": "v13",
-      "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
+      "title": "UI/UX refresh — highest-value dashboard journeys (usage/cost + key/budget governance)",
       "tasks": 4,
       "task_slugs": [
         "design-system-foundation",
@@ -898,7 +975,7 @@
     },
     {
       "slug": "v15",
-      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
+      "title": "Dashboard feature-coverage — a surface for every backend capability",
       "tasks": 11,
       "task_slugs": [
         "design-system-extension",
@@ -917,7 +994,7 @@
     },
     {
       "slug": "v14",
-      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
+      "title": "Dependency hardening — Next.js 16 upgrade + advisory remediation",
       "tasks": 1,
       "task_slugs": [
         "next16-upgrade"
@@ -926,7 +1003,7 @@
     },
     {
       "slug": "v17",
-      "title": "Hardening \u2014 clear carried follow-up debt (v13/v14/v15)",
+      "title": "Hardening — clear carried follow-up debt (v13/v14/v15)",
       "tasks": 6,
       "task_slugs": [
         "bff-test-harness-strict-handlers",
@@ -949,7 +1026,7 @@
     },
     {
       "slug": "v19",
-      "title": "Reliability \u2014 uniform retries, error-aware fallback, response & semantic caching",
+      "title": "Reliability — uniform retries, error-aware fallback, response & semantic caching",
       "tasks": 6,
       "task_slugs": [
         "retry-seam-unify",
@@ -963,7 +1040,7 @@
     },
     {
       "slug": "v20",
-      "title": "Enterprise provider: AWS Bedrock (SigV4 \u00b7 Converse chat/stream/tools \u00b7 Titan embeddings)",
+      "title": "Enterprise provider: AWS Bedrock (SigV4 · Converse chat/stream/tools · Titan embeddings)",
       "tasks": 6,
       "task_slugs": [
         "bedrock-sigv4-auth",
@@ -1039,7 +1116,7 @@
     },
     {
       "slug": "v26",
-      "title": "Provider config cleanup \u2014 v25 follow-ups",
+      "title": "Provider config cleanup — v25 follow-ups",
       "tasks": 2,
       "task_slugs": [
         "openai-retry-parity",
@@ -1049,7 +1126,7 @@
     },
     {
       "slug": "v27",
-      "title": "Billing precision \u2014 true per-tier cost on every call",
+      "title": "Billing precision — true per-tier cost on every call",
       "tasks": 4,
       "task_slugs": [
         "tiered-token-billing",
@@ -1072,7 +1149,7 @@
     },
     {
       "slug": "v29",
-      "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert",
+      "title": "Billing reconciliation — provider cost vs billed, with drift alert",
       "tasks": 3,
       "task_slugs": [
         "reconciliation-aggregate",
@@ -1083,7 +1160,7 @@
     },
     {
       "slug": "v30",
-      "title": "Reconciliation hardening \u2014 make leak-detection trustworthy",
+      "title": "Reconciliation hardening — make leak-detection trustworthy",
       "tasks": 10,
       "task_slugs": [
         "drift-threshold-validation",
@@ -1322,7 +1399,7 @@
     },
     {
       "slug": "v50",
-      "title": "Production hardening \u2014 landing & admin UI",
+      "title": "Production hardening — landing & admin UI",
       "tasks": 9,
       "task_slugs": [
         "resilient-bff-fetch",
