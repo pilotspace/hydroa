@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "chat-conversation-mgmt",
-  "active_milestone": "chat-playground",
+  "active_task": "ai-feature-pages-redesign",
+  "active_milestone": "v54",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -478,255 +478,6 @@
       "depends_on": [],
       "created": "2026-06-28T14:01:49+00:00",
       "updated": "2026-06-28T14:46:39+00:00"
-    },
-    "chat-playground-shell": {
-      "title": "Chat playground \u2014 3-pane Console shell + design system",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "chat-playground",
-      "depends_on": [],
-      "created": "2026-06-28T14:53:10+00:00",
-      "updated": "2026-06-28T16:08:50+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "0bdb51902453220e4c2b3c0535bed353",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/chat/",
-          "apps/dashboard/tests-bff/chat-playground-shell.test.tsx",
-          "apps/dashboard/tests-bff/chat-workspace-page.test.tsx",
-          "apps/dashboard/tests-bff/chat-cost-readout.test.tsx",
-          "apps/dashboard/tests-bff/chat-model-controls.test.tsx",
-          "apps/dashboard/tests-bff/chat-history.test.tsx",
-          "apps/dashboard/tests-bff/chat-websearch-toggle.test.tsx",
-          "apps/dashboard/tests-bff/chat-visual-parity.test.tsx",
-          "apps/dashboard/tests/chat-message-markdown.test.tsx"
-        ],
-        "snapshot_md5": "be05db2fc918159d36d06d0f20c47a4c"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-28T16:08:31+00:00",
-            "reason": "scope_violation: task 'chat-playground-shell' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/next-env.d.ts (1 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "chat-parameters-panel": {
-      "title": "Chat parameters \u2014 full sampling control",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "chat-playground",
-      "depends_on": [],
-      "created": "2026-06-28T16:11:55+00:00",
-      "updated": "2026-06-28T16:50:30+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "8f4711cd2d4e72bdaec99990ae83f3bb",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/lib/hooks/use-chat-stream.ts",
-          "apps/dashboard/lib/chat/param-capabilities.ts",
-          "apps/dashboard/components/chat/ChatWorkspace.tsx",
-          "apps/dashboard/components/chat/InspectorPanel.tsx",
-          "apps/dashboard/components/chat/ParameterField.tsx",
-          "apps/dashboard/components/chat/ModelControls.tsx",
-          "apps/dashboard/tests-bff/chat-parameters.test.tsx",
-          "apps/dashboard/tests-bff/param-capabilities.test.ts"
-        ],
-        "snapshot_md5": "a30e0af9c1b31ac225bbdd202e1aa74e"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-28T16:48:06+00:00",
-            "reason": "refute-read:refute-read BLOCK (HIGH): contract \u00a73 promises 'clamp sliders to range' but ParamSlider.onChange passes the raw value; test_out_of_range only drove the number input, never slider top_p>1 (the \u00a74-named scenario). Fix: clamp in ParamSlider + strengthen the test to drive Top P 5 / penalty 3; also add a Bedrock JSON+hint-suppression integration assertion (MED gap).",
-            "source": "refute-read"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "chat-tools-functions": {
-      "title": "Chat tool / function calling",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "chat-playground",
-      "depends_on": [],
-      "created": "2026-06-28T16:58:04+00:00",
-      "updated": "2026-06-28T17:48:19+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "2f10a637cda851a922b88999b626073a",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/lib/hooks/use-chat-stream.ts",
-          "apps/dashboard/lib/chat/tool-defs.ts",
-          "apps/dashboard/components/chat/ChatWorkspace.tsx",
-          "apps/dashboard/components/chat/InspectorPanel.tsx",
-          "apps/dashboard/components/chat/ToolsEditor.tsx",
-          "apps/dashboard/components/chat/ToolCallCard.tsx",
-          "apps/dashboard/tests-bff/chat-tools.test.tsx",
-          "apps/dashboard/tests-bff/use-chat-stream-tools.test.ts"
-        ],
-        "snapshot_md5": "385b5d4fe19c2ac671ae9cedc882c601"
-      },
-      "heal": {
-        "attempts": 2,
-        "history": [
-          {
-            "at": "2026-06-28T17:45:40+00:00",
-            "reason": "scope_violation: task 'chat-tools-functions' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/use-chat-stream-tools.test.ts (1 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-06-28T17:46:25+00:00",
-            "reason": "scope_violation: task 'chat-tools-functions' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/use-chat-stream-tools.test.ts (1 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "chat-attachments": {
-      "title": "Image attachments in the chat composer",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "chat-playground",
-      "depends_on": [],
-      "created": "2026-06-29T14:37:12+00:00",
-      "updated": "2026-06-29T15:34:31+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "a901edd9baf5ba5580aa253a9144c98f",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/lib/chat/attachments.ts",
-          "apps/dashboard/lib/hooks/use-chat-stream.ts",
-          "apps/dashboard/components/chat/ChatWorkspace.tsx",
-          "apps/dashboard/components/chat/AttachmentPreview.tsx",
-          "apps/dashboard/tests-bff/chat-attachments.test.tsx",
-          "apps/dashboard/tests-bff/attachments.test.ts"
-        ],
-        "snapshot_md5": "48ea5115be7a0f400304d1735d2499d8"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-29T15:33:48+00:00",
-            "reason": "scope_violation: task 'chat-attachments' touched outside its declared \u00a75 Scope \u2014 .claude/skills/add/phases/5-build.md \u00b7 .claude/skills/add/phases/6-verify.md \u00b7 .claude/skills/add/release.md \u00b7 .claude/skills/add/run.md \u00b7 .claude/skills/add/scope.md (5 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "chat-run-metadata-cost": {
-      "title": "Per-turn run metadata + session cost inspector",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "chat-playground",
-      "depends_on": [],
-      "created": "2026-06-29T15:46:07+00:00",
-      "updated": "2026-06-29T16:06:50+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "e48818c3d65b79ea8927f2c30e469850",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/lib/hooks/use-chat-stream.ts",
-          "apps/dashboard/components/chat/ChatWorkspace.tsx",
-          "apps/dashboard/components/chat/CostReadout.tsx",
-          "apps/dashboard/tests-bff/chat-run-metadata.test.tsx"
-        ],
-        "snapshot_md5": "a51971b18e1bf9fa6cbf478a6c44bcc8"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "chat-conversation-mgmt": {
-      "title": "Conversation rename, fork, export, search",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "chat-playground",
-      "depends_on": [],
-      "created": "2026-06-29T15:46:53+00:00",
-      "updated": "2026-06-29T16:11:44+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "8cd53a59b38b5ace576f949f2888200a",
-        "tests": {
-          "apps/gateway/tests/conversations/test_conversation_rename.py": "dff31f259390426c5e502de1aa08e345"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/conversations/infrastructure/repository.py",
-          "apps/gateway/src/gateway/conversations/api/router.py",
-          "apps/gateway/tests/conversations/test_conversation_rename.py",
-          "apps/gateway/",
-          "apps/dashboard/lib/conversations.ts",
-          "apps/dashboard/components/chat/ChatHistorySidebar.tsx",
-          "apps/dashboard/tests-bff/chat-conversation-mgmt.test.tsx",
-          "apps/dashboard/"
-        ],
-        "snapshot_md5": "e39d0c9de2900925b32dd86441da13b7"
-      },
-      "heal": {
-        "attempts": 2,
-        "history": [
-          {
-            "at": "2026-06-29T15:59:48+00:00",
-            "reason": "scope_violation: task 'chat-conversation-mgmt' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/components/chat/ChatHistorySidebar.tsx \u00b7 apps/dashboard/lib/conversations.ts \u00b7 apps/dashboard/tests-bff/chat-conversation-mgmt.test.tsx \u00b7 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore (10 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-06-29T16:00:52+00:00",
-            "reason": "scope_violation: task 'chat-conversation-mgmt' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/components/chat/ChatHistorySidebar.tsx \u00b7 apps/dashboard/lib/conversations.ts \u00b7 apps/dashboard/tests-bff/chat-conversation-mgmt.test.tsx \u00b7 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore (10 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "milestones": {
@@ -767,32 +518,10 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
-    },
-    "chat-playground": {
-      "title": "Chat \u2014 Console-grade playground",
-      "goal": "The Chat workspace becomes a true Console-grade playground: full sampling-parameter control, tool/function calling, multimodal attachments, rich per-run metadata + cost, and first-class conversation management \u2014 a surface an operator runs real LLM work on.",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-28T14:48:43+00:00",
-      "updated": "2026-06-29T17:09:14+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-06-28T14:53:10+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      },
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-29T17:09:14+00:00",
+  "updated": "2026-06-29T17:09:39+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1449,15 +1178,27 @@
         "ci-e2e-pipeline"
       ],
       "archived": "2026-06-27"
+    },
+    {
+      "slug": "chat-playground",
+      "title": "Chat \u2014 Console-grade playground",
+      "tasks": 6,
+      "task_slugs": [
+        "chat-playground-shell",
+        "chat-parameters-panel",
+        "chat-tools-functions",
+        "chat-attachments",
+        "chat-run-metadata-cost",
+        "chat-conversation-mgmt"
+      ],
+      "archived": "2026-06-30"
     }
   ],
   "active_milestones": [
-    "v54",
-    "chat-playground"
+    "v54"
   ],
   "active_tasks": {
-    "v54": "ai-feature-pages-redesign",
-    "chat-playground": "chat-attachments"
+    "v54": "ai-feature-pages-redesign"
   },
   "todos": [
     {
