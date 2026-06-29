@@ -15,18 +15,30 @@
 import { useEffect, useRef, useState } from "react";
 import { BffError, type ProblemDetail } from "@/lib/bff-client";
 import { isSupported } from "@/lib/chat/param-capabilities";
+import { toWireTools, type ToolCall, type ToolChoice, type ToolDef } from "@/lib/chat/tool-defs";
 
-export type ChatRole = "user" | "assistant" | "system";
+export type ChatRole = "user" | "assistant" | "system" | "tool";
+/** A tool call carried on an assistant message (the OpenAI wire shape). */
+export interface MessageToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
 export interface ChatMessage {
   role: ChatRole;
   content: string;
+  /** assistant only — the tool calls the model requested (chat-tools-functions). */
+  tool_calls?: MessageToolCall[];
+  /** tool role only — the id of the assistant tool_call this message answers. */
+  tool_call_id?: string;
 }
 export interface Usage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
 }
-export type ChatStatus = "idle" | "streaming" | "error";
+// "awaiting_tool" = the model asked to call tools and is waiting for the operator's results.
+export type ChatStatus = "idle" | "streaming" | "awaiting_tool" | "error";
 
 /**
  * Per-turn metadata, parallel to `messages` by index (so the frozen ChatMessage
@@ -64,6 +76,9 @@ export interface SendInput {
   seed?: number;
   stop?: string[];
   responseFormat?: ResponseFormat;
+  /** chat-tools-functions: validated tool definitions (sent as tools[] when ≥1; omitted otherwise). */
+  tools?: ToolDef[];
+  toolChoice?: ToolChoice;
 }
 
 /** Injected (merged with any user system prompt) when responseFormat === "json_object". */
@@ -82,11 +97,26 @@ export interface UseChatStream {
   reset(): void;
   /** v43: Replace the current thread with `messages` (resume a persisted conversation). */
   load(messages: ChatMessage[]): void;
+  /** chat-tools-functions: the tool calls awaiting operator results (empty unless awaiting_tool). */
+  pendingToolCalls: ToolCall[];
+  /** chat-tools-functions: answer the pending calls (partial-friendly — unanswered ⇒ "") and continue. */
+  submitToolResults(results: Array<{ tool_call_id: string; content: string }>): void;
 }
 
 /** A single SSE frame from the OpenAI-wire stream. */
 interface SSEFrame {
-  choices?: Array<{ delta?: { content?: string } }>;
+  choices?: Array<{
+    delta?: {
+      content?: string;
+      tool_calls?: Array<{
+        index?: number;
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+      }>;
+    };
+    finish_reason?: string;
+  }>;
   usage?: Usage;
 }
 
@@ -121,6 +151,11 @@ export function useChatStream(opts?: {
   const [streamingText, setStreamingText] = useState("");
   const [usage, setUsage] = useState<Usage | undefined>(undefined);
   const [error, setError] = useState<BffError | undefined>(undefined);
+  // chat-tools-functions: tool calls the model requested, awaiting operator results.
+  const [pendingToolCalls, setPendingToolCalls] = useState<ToolCall[]>([]);
+  const pendingToolCallsRef = useRef<ToolCall[]>([]);
+  // The last send() input — replayed (same tools/model/sampling/system) to continue after tool results.
+  const lastInputRef = useRef<SendInput | null>(null);
 
   // Refs are the synchronous source of truth (state lags a render behind).
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -180,6 +215,39 @@ export function useChatStream(opts?: {
     }
   }
 
+  /**
+   * chat-tools-functions: commit a turn whose assistant message carries tool_calls (with any
+   * streamed content) and enter the awaiting_tool state exposing the pending calls. Does NOT fire
+   * onTurnComplete — the round is not done until the operator supplies results and continues.
+   */
+  function finishToolTurn(calls: ToolCall[], finalUsage: Usage | undefined): void {
+    const toolCalls: MessageToolCall[] = calls.map((c) => ({
+      id: c.id,
+      type: "function",
+      function: { name: c.name, arguments: c.arguments },
+    }));
+    commitMessages([
+      ...messagesRef.current,
+      { role: "assistant", content: partialRef.current, tool_calls: toolCalls },
+    ]);
+    commitMeta([
+      ...metaRef.current,
+      {
+        at: Date.now(),
+        model: currentModelRef.current || undefined,
+        latencyMs: turnStartRef.current ? Date.now() - turnStartRef.current : undefined,
+        usage: finalUsage,
+      },
+    ]);
+    if (finalUsage) setUsage(finalUsage);
+    partialRef.current = "";
+    setStreamingText("");
+    abortRef.current = null;
+    pendingToolCallsRef.current = calls;
+    setPendingToolCalls(calls);
+    setStatus("awaiting_tool");
+  }
+
   async function runStream(wire: ChatMessage[], input: SendInput, controller: AbortController): Promise<void> {
     try {
       const res = await fetch(`${gatewayBase()}${path}`, {
@@ -213,6 +281,11 @@ export function useChatStream(opts?: {
           ...(input.responseFormat === "json_object" && isSupported(input.model, "responseFormat")
             ? { response_format: { type: "json_object" } }
             : {}),
+          // chat-tools-functions: tools[] + tool_choice ONLY when ≥1 valid tool (else BOTH absent ⇒
+          // byte-identical off path). ChatWorkspace passes already-validated ToolDefs. Pass-through.
+          ...(input.tools && input.tools.length > 0
+            ? { tools: toWireTools(input.tools), tool_choice: input.toolChoice ?? "auto" }
+            : {}),
         }),
         signal: controller.signal,
       });
@@ -232,6 +305,9 @@ export function useChatStream(opts?: {
       let buffer = "";
       let localUsage: Usage | undefined;
       let done = false;
+      // chat-tools-functions: assemble streamed tool_calls by their `index` (id + name arrive
+      // once, function.arguments stream as fragments to concatenate).
+      const toolAcc = new Map<number, ToolCall>();
 
       // stop()/reset() abort the fetch (→ BFF → gateway v35 billing), but a body
       // reader already vended from the response is not always unblocked by the
@@ -265,19 +341,40 @@ export function useChatStream(opts?: {
           } catch {
             continue; // ignore an unparseable frame rather than abort the stream
           }
-          const delta = frame.choices?.[0]?.delta?.content;
+          const choice = frame.choices?.[0];
+          const delta = choice?.delta?.content;
           if (typeof delta === "string") {
             partialRef.current += delta;
             setStreamingText(partialRef.current);
+          }
+          // chat-tools-functions: accumulate tool_calls by index.
+          const tcDeltas = choice?.delta?.tool_calls;
+          if (Array.isArray(tcDeltas)) {
+            for (const tc of tcDeltas) {
+              const idx = tc.index ?? 0;
+              const slot = toolAcc.get(idx) ?? { id: "", name: "", arguments: "" };
+              if (tc.id) slot.id = tc.id;
+              if (tc.function?.name) slot.name = tc.function.name;
+              if (typeof tc.function?.arguments === "string") slot.arguments += tc.function.arguments;
+              toolAcc.set(idx, slot);
+            }
           }
           if (frame.usage) localUsage = frame.usage;
         }
       }
 
       controller.signal.removeEventListener("abort", onAbort);
-      // After the reader loop exits naturally (e.g. via reader.cancel() on abort),
-      // check the signal: if aborted, treat as abort path so onTurnComplete does NOT fire.
-      finishTurn(localUsage, controller.signal.aborted);
+      // chat-tools-functions: a turn that produced tool_calls is NOT a finished content turn —
+      // commit the assistant tool_calls message and await operator results instead of finishTurn
+      // (which would commit an empty assistant turn + fire onTurnComplete — the dropped-call bug).
+      const assembled = [...toolAcc.values()].filter((t) => t.id || t.name);
+      if (!controller.signal.aborted && assembled.length > 0) {
+        finishToolTurn(assembled, localUsage);
+      } else {
+        // After the reader loop exits naturally (e.g. via reader.cancel() on abort),
+        // check the signal: if aborted, treat as abort path so onTurnComplete does NOT fire.
+        finishTurn(localUsage, controller.signal.aborted);
+      }
     } catch (err) {
       if (controller.signal.aborted) {
         // stop() / reset() — commit whatever streamed so far, then idle.
@@ -309,25 +406,13 @@ export function useChatStream(opts?: {
     }
   }
 
-  function send(input: SendInput): void {
-    const text = input.text.trim();
-    if (!text || abortRef.current) return; // empty submit / already streaming = no-op
-
-    setError(undefined);
-    setUsage(undefined);
-    // v43: capture user text so onTurnComplete can report it.
-    currentUserTextRef.current = text;
-    // Per-turn meta: remember the model and start the latency clock.
-    currentModelRef.current = input.model;
-    turnStartRef.current = Date.now();
-
-    const next = [...messagesRef.current, { role: "user" as const, content: text }];
-    commitMessages(next);
-    commitMeta([...metaRef.current, { at: Date.now() }]);
-    // chat-parameters-panel: when JSON is requested, merge a fixed "reply in JSON"
-    // hint into the (single) system message so providers that 400 a json_object
-    // request lacking "json" in the prompt still succeed. Text/unset ⇒ no hint ⇒
-    // the system message is byte-identical to today (the user prompt, or absent).
+  /**
+   * Kick off a stream for the CURRENT thread (messagesRef) with `input`. Builds the wire from the
+   * thread + the system prompt (chat-parameters-panel: a JSON hint is merged when responseFormat is
+   * json_object). Reused by send() (after appending the user turn) and submitToolResults() (after
+   * appending the role:"tool" results) so a continuation rides the exact same params.
+   */
+  function startStream(input: SendInput): void {
     const jsonOn = input.responseFormat === "json_object" && isSupported(input.model, "responseFormat");
     const effectiveSystem = jsonOn
       ? input.system
@@ -335,8 +420,12 @@ export function useChatStream(opts?: {
         : JSON_HINT
       : input.system;
     const wire: ChatMessage[] = effectiveSystem
-      ? [{ role: "system", content: effectiveSystem }, ...next]
-      : next;
+      ? [{ role: "system", content: effectiveSystem }, ...messagesRef.current]
+      : [...messagesRef.current];
+
+    // Per-turn meta: remember the model and start the latency clock.
+    currentModelRef.current = input.model;
+    turnStartRef.current = Date.now();
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -347,8 +436,55 @@ export function useChatStream(opts?: {
     void runStream(wire, input, controller);
   }
 
+  function send(input: SendInput): void {
+    const text = input.text.trim();
+    if (!text || abortRef.current) return; // empty submit / already streaming = no-op
+
+    setError(undefined);
+    setUsage(undefined);
+    // v43: capture user text so onTurnComplete can report it.
+    currentUserTextRef.current = text;
+    // chat-tools-functions: remember the input so a tool-result continuation replays it.
+    lastInputRef.current = input;
+
+    const next = [...messagesRef.current, { role: "user" as const, content: text }];
+    commitMessages(next);
+    commitMeta([...metaRef.current, { at: Date.now() }]);
+    startStream(input);
+  }
+
+  /**
+   * chat-tools-functions: answer the pending tool calls and continue the run. Partial-friendly —
+   * EVERY pending call gets a role:"tool" message (a supplied result, else "" placeholder) so the
+   * wire never leaves a tool_call unanswered (OpenAI 400s otherwise). Replays the last input's
+   * tools/model/sampling/system; the continuation may itself end in tool_calls (the loop repeats).
+   */
+  function submitToolResults(results: Array<{ tool_call_id: string; content: string }>): void {
+    const pending = pendingToolCallsRef.current;
+    const input = lastInputRef.current;
+    if (pending.length === 0 || abortRef.current || !input) return;
+
+    setError(undefined);
+    const byId = new Map(results.map((r) => [r.tool_call_id, r.content]));
+    const toolMsgs: ChatMessage[] = pending.map((c) => ({
+      role: "tool",
+      content: byId.get(c.id) ?? "",
+      tool_call_id: c.id,
+    }));
+    commitMessages([...messagesRef.current, ...toolMsgs]);
+    commitMeta([...metaRef.current, ...toolMsgs.map(() => ({ at: Date.now() }) as TurnMeta)]);
+    pendingToolCallsRef.current = [];
+    setPendingToolCalls([]);
+    startStream(input);
+  }
+
   function stop(): void {
     abortRef.current?.abort();
+  }
+
+  function clearPendingTools(): void {
+    pendingToolCallsRef.current = [];
+    setPendingToolCalls([]);
   }
 
   function reset(): void {
@@ -362,6 +498,7 @@ export function useChatStream(opts?: {
     setStreamingText("");
     setUsage(undefined);
     setError(undefined);
+    clearPendingTools();
     setStatus("idle");
   }
 
@@ -377,8 +514,22 @@ export function useChatStream(opts?: {
     setStreamingText("");
     setError(undefined);
     abortRef.current = null;
+    clearPendingTools();
     setStatus("idle");
   }
 
-  return { status, messages, meta, streamingText, usage, error, send, stop, reset, load };
+  return {
+    status,
+    messages,
+    meta,
+    streamingText,
+    usage,
+    error,
+    send,
+    stop,
+    reset,
+    load,
+    pendingToolCalls,
+    submitToolResults,
+  };
 }

@@ -21,8 +21,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty } from "@/components/ui/states";
 import { ModelControls, type ModelControlsProps } from "@/components/chat/ModelControls";
 import { ParamNumber, ParamSegmented, ParamSlider, ParamTags } from "@/components/chat/ParameterField";
+import { ToolsEditor } from "@/components/chat/ToolsEditor";
 import { isSupported, providerLabel, type CapKey } from "@/lib/chat/param-capabilities";
 import type { ResponseFormat } from "@/lib/hooks/use-chat-stream";
+import type { ToolChoice } from "@/lib/chat/tool-defs";
 
 /** The live sampling state lifted to ChatWorkspace (in-memory, persists across turns + tab switches). */
 export interface SamplingState {
@@ -42,9 +44,23 @@ export type InspectorPanelProps = ModelControlsProps & {
   model: string;
   sampling: SamplingState;
   onSampling: (patch: Partial<SamplingState>) => void;
+  /** chat-tools-functions: the raw-JSON tool drafts + tool_choice (lifted to ChatWorkspace). */
+  toolDrafts: string[];
+  onToolDrafts: (next: string[]) => void;
+  toolChoice: ToolChoice;
+  onToolChoice: (next: ToolChoice) => void;
 };
 
-export function InspectorPanel({ model, sampling, onSampling, ...props }: InspectorPanelProps) {
+export function InspectorPanel({
+  model,
+  sampling,
+  onSampling,
+  toolDrafts,
+  onToolDrafts,
+  toolChoice,
+  onToolChoice,
+  ...props
+}: InspectorPanelProps) {
   // A control the provider can't honor is disabled + annotated, never silently sent.
   const gate = (key: CapKey) =>
     isSupported(model, key) ? {} : { disabled: true, note: `Ignored by ${providerLabel(model)}` };
@@ -143,9 +159,11 @@ export function InspectorPanel({ model, sampling, onSampling, ...props }: Inspec
         </TabsContent>
 
         <TabsContent value="tools" className="min-h-0 flex-1 overflow-y-auto p-4">
-          <Empty
-            title="No tools defined"
-            description="Define JSON-schema tools to let the model call functions. Coming in this workspace."
+          <ToolsEditor
+            drafts={toolDrafts}
+            onDrafts={onToolDrafts}
+            toolChoice={toolChoice}
+            onToolChoice={onToolChoice}
           />
         </TabsContent>
 

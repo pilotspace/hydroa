@@ -11,14 +11,30 @@
  * .add/design/captures/chat-workspace-page.png.
  */
 
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { Bot, Check, Copy, Paperclip, RefreshCw, Send, Square, User } from "lucide-react";
-import { useChatStream, type ChatMessage, type TurnMeta, type Usage } from "@/lib/hooks/use-chat-stream";
+import {
+  useChatStream,
+  type ChatMessage,
+  type MessageToolCall,
+  type TurnMeta,
+  type Usage,
+} from "@/lib/hooks/use-chat-stream";
+import { parseToolDef, type ToolChoice, type ToolDef } from "@/lib/chat/tool-defs";
 import { bffGet } from "@/lib/bff-client";
 import type { ModelsData } from "@/components/models/ModelCatalogTable";
 import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
 import { ModelPicker } from "@/components/chat/ModelPicker";
 import { MessageMarkdown } from "@/components/chat/MessageMarkdown";
+import { ToolCallCard } from "@/components/chat/ToolCallCard";
 import { InspectorPanel, EMPTY_SAMPLING, type SamplingState } from "@/components/chat/InspectorPanel";
 import { ConversationTopBar } from "@/components/chat/ConversationTopBar";
 import { CostReadout } from "@/components/chat/CostReadout";
@@ -142,8 +158,20 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     [],
   );
 
-  const { status, messages, meta, streamingText, usage, error, send, stop, reset, load } =
-    useChatStream({ onTurnComplete });
+  const {
+    status,
+    messages,
+    meta,
+    streamingText,
+    usage,
+    error,
+    send,
+    stop,
+    reset,
+    load,
+    pendingToolCalls,
+    submitToolResults,
+  } = useChatStream({ onTurnComplete });
 
   const [input, setInput] = useState("");
   const [model, setModel] = useState(defaultModel);
@@ -157,6 +185,21 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     (patch: Partial<SamplingState>) => setSampling((s) => ({ ...s, ...patch })),
     [],
   );
+  // chat-tools-functions: tools authored as raw JSON drafts (one per editor) + the tool_choice.
+  // The valid subset (parses + shape-checks) is what reaches the wire; an invalid draft is
+  // flagged in the editor and excluded. Zero valid tools ⇒ no tools/tool_choice (byte-identical).
+  const [toolDrafts, setToolDrafts] = useState<string[]>([]);
+  const [toolChoice, setToolChoice] = useState<ToolChoice>("auto");
+  const validTools = useMemo<ToolDef[]>(
+    () => toolDrafts.map((d) => parseToolDef(d)).filter((d): d is ToolDef => d !== null),
+    [toolDrafts],
+  );
+  const toolsInput = () => ({
+    tools: validTools.length > 0 ? validTools : undefined,
+    toolChoice,
+  });
+  // Per-tool_call_id result text the operator types before continuing (cleared on continue).
+  const [toolResults, setToolResults] = useState<Record<string, string>>({});
   const [sessionTokens, setSessionTokens] = useState(0);
   // The conversation title shown in the top bar (null → a fresh, unsaved chat).
   const [activeTitle, setActiveTitle] = useState<string | null>(null);
@@ -236,9 +279,11 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
         temperature,
         webSearch,
         ...samplingToInput(sampling),
+        tools: validTools.length > 0 ? validTools : undefined,
+        toolChoice,
       });
     },
-    [isStreaming, messages, load, send, model, system, temperature, webSearch, sampling],
+    [isStreaming, messages, load, send, model, system, temperature, webSearch, sampling, validTools, toolChoice],
   );
 
   // Accumulate the session token total — each completed turn's usage object is
@@ -285,8 +330,24 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     })();
     pendingConvIdRef.current = persistPromise;
 
-    send({ model, text, system: system.trim() || undefined, temperature, webSearch, ...samplingToInput(sampling) });
+    send({
+      model,
+      text,
+      system: system.trim() || undefined,
+      temperature,
+      webSearch,
+      ...samplingToInput(sampling),
+      ...toolsInput(),
+    });
     setInput("");
+  }
+
+  // chat-tools-functions: answer the pending tool calls (partial-friendly — unanswered ⇒ "")
+  // and continue the run. The hook appends one role:"tool" message per pending call and re-streams
+  // with the same tools/model/sampling.
+  function handleContinue() {
+    submitToolResults(pendingToolCalls.map((c) => ({ tool_call_id: c.id, content: toolResults[c.id] ?? "" })));
+    setToolResults({});
   }
 
   function onSubmit(e: FormEvent) {
@@ -359,18 +420,38 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
 
           {messages.length > 0 ? <DayDivider label="Today" /> : null}
 
-          {messages.map((m, i) => (
-            <MessageRow
-              key={i}
-              message={m}
-              meta={meta[i]}
-              costText={costFor(meta[i])}
-              userInitials={userInitials}
-              onRegenerate={
-                m.role === "assistant" && !isStreaming ? () => regenerateFrom(i) : undefined
-              }
-            />
-          ))}
+          {messages.map((m, i) => {
+            // chat-tools-functions: a role:"tool" message is the operator's answer — captured in
+            // the card's input, not shown as its own bubble.
+            if (m.role === "tool") return null;
+            // an assistant turn that asked to call tools renders as ToolCallCards; the LAST such
+            // turn while awaiting_tool is interactive (result inputs + Continue).
+            if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
+              const pending = status === "awaiting_tool" && i === messages.length - 1;
+              return (
+                <ToolCallTurn
+                  key={i}
+                  calls={m.tool_calls}
+                  pending={pending}
+                  results={toolResults}
+                  onResult={(id, v) => setToolResults((r) => ({ ...r, [id]: v }))}
+                  onContinue={handleContinue}
+                />
+              );
+            }
+            return (
+              <MessageRow
+                key={i}
+                message={m}
+                meta={meta[i]}
+                costText={costFor(meta[i])}
+                userInitials={userInitials}
+                onRegenerate={
+                  m.role === "assistant" && !isStreaming ? () => regenerateFrom(i) : undefined
+                }
+              />
+            );
+          })}
 
           {isStreaming ? (
             <MessageRow
@@ -461,7 +542,58 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
         onTemperatureChange={setTemperature}
         webSearch={webSearch}
         onWebSearchChange={setWebSearch}
+        toolDrafts={toolDrafts}
+        onToolDrafts={setToolDrafts}
+        toolChoice={toolChoice}
+        onToolChoice={setToolChoice}
       />
+    </div>
+  );
+}
+
+/**
+ * chat-tools-functions: an assistant turn that requested tool calls. Renders each call as a
+ * ToolCallCard; while it is the pending turn (awaiting_tool) the cards expose result inputs and a
+ * single Continue answers ALL pending calls (partial-friendly) and resumes the run.
+ */
+function ToolCallTurn({
+  calls,
+  pending,
+  results,
+  onResult,
+  onContinue,
+}: {
+  calls: MessageToolCall[];
+  pending: boolean;
+  results: Record<string, string>;
+  onResult: (id: string, value: string) => void;
+  onContinue: () => void;
+}) {
+  return (
+    <div data-role="assistant" className="flex gap-3">
+      <Avatar isUser={false} initials={null} />
+      <div className="flex min-w-0 max-w-[85%] flex-col gap-2">
+        <span className="px-1 text-xs font-medium text-muted-foreground">Assistant · tool call</span>
+        {calls.map((c) => (
+          <ToolCallCard
+            key={c.id}
+            call={{ id: c.id, name: c.function.name, arguments: c.function.arguments }}
+            result={pending ? (results[c.id] ?? "") : undefined}
+            onResult={pending ? (v) => onResult(c.id, v) : undefined}
+          />
+        ))}
+        {pending ? (
+          <div className="flex items-center gap-2 px-1">
+            <Button type="button" size="sm" onClick={onContinue} aria-label="Continue">
+              <Send className="size-4" aria-hidden="true" />
+              Continue
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Supply results (any you can), then continue the run.
+            </span>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

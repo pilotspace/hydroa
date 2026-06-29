@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "chat-parameters-panel",
+  "active_task": "chat-tools-functions",
   "active_milestone": "chat-playground",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -563,6 +563,53 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "chat-tools-functions": {
+      "title": "Chat tool / function calling",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "chat-playground",
+      "depends_on": [],
+      "created": "2026-06-28T16:58:04+00:00",
+      "updated": "2026-06-28T17:48:19+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2f10a637cda851a922b88999b626073a",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/hooks/use-chat-stream.ts",
+          "apps/dashboard/lib/chat/tool-defs.ts",
+          "apps/dashboard/components/chat/ChatWorkspace.tsx",
+          "apps/dashboard/components/chat/InspectorPanel.tsx",
+          "apps/dashboard/components/chat/ToolsEditor.tsx",
+          "apps/dashboard/components/chat/ToolCallCard.tsx",
+          "apps/dashboard/tests-bff/chat-tools.test.tsx",
+          "apps/dashboard/tests-bff/use-chat-stream-tools.test.ts"
+        ],
+        "snapshot_md5": "385b5d4fe19c2ac671ae9cedc882c601"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-06-28T17:45:40+00:00",
+            "reason": "scope_violation: task 'chat-tools-functions' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/use-chat-stream-tools.test.ts (1 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-06-28T17:46:25+00:00",
+            "reason": "scope_violation: task 'chat-tools-functions' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests-bff/use-chat-stream-tools.test.ts (1 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -623,7 +670,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-28T16:50:30+00:00",
+  "updated": "2026-06-28T17:48:19+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1288,7 +1335,7 @@
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
-    "chat-playground": "chat-parameters-panel"
+    "chat-playground": "chat-tools-functions"
   },
   "todos": [
     {
