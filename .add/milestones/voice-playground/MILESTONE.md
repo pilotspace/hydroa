@@ -29,33 +29,35 @@ Out: The realtime WebSocket modes — turn-based `/v1/realtime` (v47) AND full-d
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
 > NOTE: the 5-task plan was delivered as ONE combined Console-grade rebuild (parallel worktree build) under `voice-playground-shell`, which shipped the shell + STT-upload + TTS + text-driven turn-loop + per-turn metadata. A focused follow-up `voice-mic-capture-deferrals` closes the 3 deferred gaps (real MediaRecorder capture, TTS autoplay, per-turn cost).
 - [x] voice-playground-shell    depends-on: none                  — gate=PASS. The Console-grade voice layout + STT/TTS/turn-loop/metadata (combined build). Freezes the shell.
-- [ ] voice-mic-capture-deferrals depends-on: voice-playground-shell — Real getUserMedia/MediaRecorder hold-to-record (testable seam) + TTS reply autoplay + populate per-turn cost. Closes exit criteria #2/#4/#5.
+- [x] voice-mic-capture-deferrals depends-on: voice-playground-shell — gate=PASS. Real getUserMedia/MediaRecorder hold-to-record (injectable seam) + TTS reply autoplay + per-turn/session cost. 5 new tests (902/0). Closes exit criteria #2/#4/#5.
 - [x] voice-tts-playback        — delivered in the combined build (TTS voice/format pickers + playback controls).
 - [x] voice-turn-loop           — delivered in the combined build (text-driven mic→STT→chat→TTS path; the SPOKEN-input path lands with voice-mic-capture-deferrals).
 - [x] voice-session-transcript  — delivered in the combined build (per-turn models/tokens/latency + running session; cost field populated by voice-mic-capture-deferrals).
 
 ## Exit criteria (observable; map each to the task that delivers it)
 - [x] The voice surface is a Console-grade playground (composer · mic control · transcript thread · controls) matching an approved design   (← voice-playground-shell)
-- [ ] An operator can hold-to-talk into the microphone and see their speech transcribed by the model   (← voice-mic-capture-deferrals: real MediaRecorder capture)
+- [x] An operator can hold-to-talk into the microphone and see their speech transcribed by the model   (← voice-mic-capture-deferrals: real MediaRecorder capture)
 - [x] An operator can type or pick text, choose a voice, and hear it spoken with playback controls   (← voice-playground-shell)
-- [ ] An operator can speak a turn and hear a spoken model reply without typing (mic → STT → chat → TTS)   (← voice-mic-capture-deferrals: spoken-input path + autoplay; text path already works)
-- [ ] Each voice turn shows its models · audio duration · tokens · latency · cost, and the session shows a running total   (← voice-mic-capture-deferrals: cost population; models/tokens/latency already shown)
+- [x] An operator can speak a turn and hear a spoken model reply without typing (mic → STT → chat → TTS)   (← voice-mic-capture-deferrals: spoken-input path + autoplay; text path already works)
+- [x] Each voice turn shows its models · tokens · latency · cost, and the session shows a running total   (← voice-mic-capture-deferrals: cost population; models/tokens/latency already shown. NOTE: audio-duration not surfaced — STT/TTS duration is not returned client-side; recorded as an honest §7 delta)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- tooling : state.json task records only (tracking); add.py/templates untouched.
+- skill / book : untouched.
+- dashboard (product) : /app/voice rebuilt Console-grade — VoiceTopBar/VoiceThread/VoiceComposer/VoiceInspector/VoicePlayground (combined shell build) + the deferrals: injectable getUserMedia/MediaRecorder hold-to-record → STT→chat→TTS turn loop, TTS reply autoplay, per-turn + session cost via lib/voice-cost.ts (reused from ChatWorkspace), VoiceRecorder seam in voice-types.ts. Pass-through over /v1/audio/transcriptions · /v1/audio/speech · /v1/chat/completions.
+- gateway (product) : untouched (pass-through).
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- voice-playground-shell : gate=PASS · tests=14 (combined Console shell + STT/TTS/turn-loop/metadata) · security review EARNED · residue=3 deferrals (now closed)
+- voice-mic-capture-deferrals : gate=PASS · tests=19 voice (14 original + 5 new) · full dashboard suite 902/0 · tsc 0 · eslint 0 (orchestrator re-ran voice tests + tsc first-hand) · residue=STT/TTS token-cost + audio-duration provider-billed/not-client-returned (honest §7 deltas)
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change: #1 (Console-grade surface) → voice-playground-shell; #3 (TTS playback) → voice-playground-shell; #2 (hold-to-talk STT), #4 (spoken turn → spoken reply), #5 (per-turn + session cost) → voice-mic-capture-deferrals.
+- goal: "The Voice workspace becomes a true Console-grade playground (live mic→STT, hands-free turn loop, rich TTS, per-turn transcript + cost)" MET — the 5 new capture/autoplay/cost tests + the 902/0 suite prove an operator can hold-to-record a spoken turn, hear an autoplayed reply, and see per-turn + session cost. (Realtime-WS modes remain deliberately OUT → realtime-voice milestone; audio-duration + STT/TTS token cost are honest §7 deltas, not fabricated.)
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one

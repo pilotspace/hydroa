@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "voice-playground-shell",
+  "active_task": "voice-mic-capture-deferrals",
   "active_milestone": "voice-playground",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -505,6 +505,160 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "memory-console-rebuild": {
+      "title": "Console-grade memory library rebuild",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "memory-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:05:20+00:00",
+      "updated": "2026-06-30T12:06:28+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "915034710ee6c801dce1dbebccccf9f0",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/memory/",
+          "apps/dashboard/lib/memories.ts",
+          "apps/dashboard/app/(app)/app/memory/page.tsx",
+          "apps/dashboard/tests-bff/memory-workspace-console.test.tsx"
+        ],
+        "snapshot_md5": "5929e41b8f0c32d2f65ab54771a08ff2"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "artifacts-console-rebuild": {
+      "title": "Console-grade artifact library rebuild",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "artifacts-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:07:49+00:00",
+      "updated": "2026-06-30T12:11:45+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "1340133c9b7bce6cf43b1096b0671565",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/artifacts/",
+          "apps/dashboard/lib/artifacts.ts",
+          "apps/dashboard/app/(app)/app/artifacts/page.tsx",
+          "apps/dashboard/tests-bff/artifacts-workspace.test.tsx"
+        ],
+        "snapshot_md5": "15fa3eddfe068635194415ab137246a3"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "vision-console-rebuild": {
+      "title": "Console-grade vision workspace rebuild",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "vision-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:12:31+00:00",
+      "updated": "2026-06-30T12:13:30+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6d8cca0e9b1fa272c0d21c6cece505bb",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/vision/",
+          "apps/dashboard/lib/vision.ts",
+          "apps/dashboard/app/(app)/app/vision/page.tsx",
+          "apps/dashboard/tests-bff/vision-workspace.test.tsx"
+        ],
+        "snapshot_md5": "15fa3eddfe068635194415ab137246a3"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "video-console-rebuild": {
+      "title": "Console-grade video studio rebuild",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "video-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:14:08+00:00",
+      "updated": "2026-06-30T12:15:03+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "d90fde7c96eb58346e7665338cb83883",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/video/",
+          "apps/dashboard/lib/video.ts",
+          "apps/dashboard/app/(app)/app/video/page.tsx",
+          "apps/dashboard/tests-bff/video-workspace.test.tsx"
+        ],
+        "snapshot_md5": "15fa3eddfe068635194415ab137246a3"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "adapter-correctness-fixes": {
+      "title": "Provider-adapter docs-faithfulness fixes (TDD)",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "proxy-correctness",
+      "depends_on": [],
+      "created": "2026-06-30T12:20:20+00:00",
+      "updated": "2026-06-30T12:20:20+00:00",
+      "fast": true
+    },
+    "voice-mic-capture-deferrals": {
+      "title": "Voice mic capture + autoplay + cost (close deferrals)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "voice-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:31:48+00:00",
+      "updated": "2026-06-30T12:32:56+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "cc0beebdb2c341dcc8246dff7aa82541",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/voice/*",
+          "apps/dashboard/lib/voice-cost.ts",
+          "apps/dashboard/tests-bff/voice-playground.test.tsx"
+        ],
+        "snapshot_md5": "ded7d303fef6bfbc4deac90e67ac0f5b"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -550,14 +704,19 @@
       "title": "Voice Playground",
       "goal": "",
       "stage": "mvp",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-30T10:55:41+00:00",
-      "updated": "2026-06-30T10:57:02+00:00",
+      "updated": "2026-06-30T12:33:52+00:00",
       "confirmed": true,
       "confirmed_at": "2026-06-30T10:57:02+00:00",
       "confirmed_by": "tindang",
       "await_confirm": true,
       "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "done_actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
         "source": "git"
@@ -567,37 +726,74 @@
       "title": "Memory Playground",
       "goal": "The Memory workspace becomes a Console-grade memory library: searchable/sortable semantic memory with a detail inspector and add/delete, over the existing /v1/memories endpoints.",
       "stage": "production",
-      "status": "queued",
+      "status": "done",
       "created": "2026-06-30T11:08:38+00:00",
-      "updated": "2026-06-30T11:08:38+00:00"
+      "updated": "2026-06-30T12:07:38+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "artifacts-playground": {
       "title": "Artifacts Playground",
       "goal": "The Artifacts workspace becomes a Console-grade artifact library/file-manager: typed list with search, inline image/text/JSON preview, drag-drop upload, download and delete, over the existing /v1/artifacts endpoints.",
       "stage": "production",
-      "status": "queued",
+      "status": "done",
       "created": "2026-06-30T11:08:38+00:00",
-      "updated": "2026-06-30T11:08:38+00:00"
+      "updated": "2026-06-30T12:12:24+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "vision-playground": {
       "title": "Vision Playground",
       "goal": "The Vision workspace becomes a Console-grade multimodal inspector: media preview, a multi-turn Q&A thread with markdown answers, and a model picker, over /v1/chat/completions image/video content parts.",
       "stage": "production",
-      "status": "queued",
+      "status": "done",
       "created": "2026-06-30T11:08:38+00:00",
-      "updated": "2026-06-30T11:08:38+00:00"
+      "updated": "2026-06-30T12:14:08+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "video-playground": {
       "title": "Video Playground",
       "goal": "The Video workspace becomes a Console-grade generation studio: prompt+params composer, a job gallery with rich status, inline video preview on success and download, over the existing async /v1/video/generations jobs.",
       "stage": "production",
-      "status": "queued",
+      "status": "done",
       "created": "2026-06-30T11:08:39+00:00",
-      "updated": "2026-06-30T11:08:39+00:00"
+      "updated": "2026-06-30T12:15:37+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "proxy-correctness": {
+      "title": "Proxy Correctness",
+      "goal": "Every gateway provider adapter maps provider responses to the OpenAI-compatible wire shape faithfully per the providers' published API docs \u2014 closing the real docs-vs-code deltas found by the adapter audit (finish_reason/stop_reason completeness, Anthropic in-stream error surfacing, OpenAI STT passthrough), with the Bedrock SigV4 'CRITICAL' recorded as a verified false-positive.",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-06-30T12:19:24+00:00",
+      "updated": "2026-06-30T12:20:11+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-06-30T12:20:11+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-30T12:01:07+00:00",
+  "updated": "2026-06-30T12:33:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1272,11 +1468,21 @@
   ],
   "active_milestones": [
     "v54",
-    "voice-playground"
+    "voice-playground",
+    "memory-playground",
+    "artifacts-playground",
+    "vision-playground",
+    "video-playground",
+    "proxy-correctness"
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
-    "voice-playground": "voice-playground-shell"
+    "voice-playground": "voice-mic-capture-deferrals",
+    "memory-playground": "memory-console-rebuild",
+    "artifacts-playground": "artifacts-console-rebuild",
+    "vision-playground": "vision-console-rebuild",
+    "video-playground": "video-console-rebuild",
+    "proxy-correctness": "adapter-correctness-fixes"
   },
   "todos": [
     {
