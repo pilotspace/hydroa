@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "voice-mic-capture-deferrals",
-  "active_milestone": "voice-playground",
+  "active_task": "adapter-correctness-fixes",
+  "active_milestone": "proxy-correctness",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -624,13 +624,27 @@
     },
     "adapter-correctness-fixes": {
       "title": "Provider-adapter docs-faithfulness fixes (TDD)",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "proxy-correctness",
       "depends_on": [],
       "created": "2026-06-30T12:20:20+00:00",
-      "updated": "2026-06-30T12:20:20+00:00",
-      "fast": true
+      "updated": "2026-06-30T12:47:39+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "5252e7eb8afcfc05c29770f2d31fbe6d",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "7dbd7158f8f0848e1b96091483f0e924"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "voice-mic-capture-deferrals": {
       "title": "Voice mic capture + autoplay + cost (close deferrals)",
@@ -778,9 +792,9 @@
       "title": "Proxy Correctness",
       "goal": "Every gateway provider adapter maps provider responses to the OpenAI-compatible wire shape faithfully per the providers' published API docs \u2014 closing the real docs-vs-code deltas found by the adapter audit (finish_reason/stop_reason completeness, Anthropic in-stream error surfacing, OpenAI STT passthrough), with the Bedrock SigV4 'CRITICAL' recorded as a verified false-positive.",
       "stage": "mvp",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-30T12:19:24+00:00",
-      "updated": "2026-06-30T12:20:11+00:00",
+      "updated": "2026-06-30T12:48:20+00:00",
       "confirmed": true,
       "confirmed_at": "2026-06-30T12:20:11+00:00",
       "confirmed_by": "tindang",
@@ -789,11 +803,16 @@
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
         "source": "git"
+      },
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-30T12:33:52+00:00",
+  "updated": "2026-06-30T12:48:20+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

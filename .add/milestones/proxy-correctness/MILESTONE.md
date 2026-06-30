@@ -23,28 +23,28 @@ Out: the Bedrock SigV4 service name (VERIFIED CORRECT — do NOT change, see Sha
 - **OpenAI STT optional-field passthrough allowlist** (`_STT_PASSTHROUGH_FIELDS`) -> owning task `adapter-correctness-fixes`.
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] adapter-correctness-fixes   depends-on: none   — the three additive TDD fixes (finish_reason completeness · Anthropic in-stream error → terminal frame · OpenAI STT passthrough); Bedrock SigV4 left untouched. (Built by a worktree-isolated backend agent off main.)
+- [x] adapter-correctness-fixes   depends-on: none   — gate=PASS. The three additive TDD fixes (finish_reason completeness · Anthropic in-stream error → terminal frame · OpenAI STT passthrough); Bedrock SigV4 left untouched. 17/17 new tests green (orchestrator re-ran first-hand). (Worktree-isolated backend agent off main.)
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] Gemini content-policy finishReasons, Bedrock model_context_window_exceeded, and Anthropic refusal map to the correct OpenAI finish_reason (content_filter / length), each pinned by a test   (← adapter-correctness-fixes)
-- [ ] An Anthropic mid-stream error event surfaces to the client as a terminal error frame (no silent "stop", no hang), pinned by a streaming test   (← adapter-correctness-fixes)
-- [ ] OpenAI /v1/audio/transcriptions forwards timestamp_granularities + chunking_strategy upstream, pinned by a test   (← adapter-correctness-fixes)
-- [ ] The Bedrock SigV4 "CRITICAL" is recorded as a verified false-positive and the signer is unchanged   (← adapter-correctness-fixes / this milestone doc)
+- [x] Gemini content-policy finishReasons, Bedrock model_context_window_exceeded, and Anthropic refusal map to the correct OpenAI finish_reason (content_filter / length), each pinned by a test   (← adapter-correctness-fixes: 5+3+3 tests)
+- [x] An Anthropic mid-stream error event surfaces to the client as a terminal error frame (no silent "stop", no hang), pinned by a streaming test   (← adapter-correctness-fixes: anthropic_midstream_error 3 tests)
+- [x] OpenAI /v1/audio/transcriptions forwards timestamp_granularities + chunking_strategy upstream, pinned by a test   (← adapter-correctness-fixes: stt_passthrough_fields 3 tests)
+- [x] The Bedrock SigV4 "CRITICAL" is recorded as a verified false-positive and the signer is unchanged   (← this milestone doc Shared decisions + diff confirms sigv4 NOT touched)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- gateway (product) : <provider adapters — what shipped>
-- tooling / skill / book : <untouched unless noted>
+- gateway (product) : 4 provider-adapter files — gemini_upstream (content-policy finishReasons → content_filter), bedrock_upstream (model_context_window_exceeded → length), anthropic_upstream (refusal → content_filter + mid-stream error → terminal frame via existing _anthropic_error_to_openai), audio_use_case (_STT_PASSTHROUGH_FIELDS += timestamp_granularities, chunking_strategy). bedrock_sigv4 UNTOUCHED (verified-correct). +5 new test files (17 tests).
+- tooling / skill / book : untouched.
 
 ### Cross-task evidence   (one row per task)
-- adapter-correctness-fixes : gate=<PASS> · tests=<n green> · residue=<deltas recorded>
+- adapter-correctness-fixes : gate=PASS · tests=17 new green (5 atomic commits dc1f7ea/c7e6af7/fd31201/6207d15/e2a0f0c; orchestrator re-ran 17/17 via uv run first-hand; ruff clean; pyright no NEW errors) · residue=audit NITs deferred as §7 deltas (OpenRouter headers/usage staleness, Anthropic thinking/input_tokens, OpenAI stream_options)
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate + the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change: all 4 exit criteria → adapter-correctness-fixes row (the 17 new tests) + the diff confirming sigv4 untouched.
+- goal: "Every gateway provider adapter maps provider responses to the OpenAI-compatible wire shape faithfully per the providers' published API docs" MET — the audit's real deltas are fixed and pinned by 17 tests, and the one "CRITICAL" was proven a false-positive (signer untouched). Honest residue: NIT-level audit items deferred as deltas.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
