@@ -275,6 +275,218 @@ describe("VoicePlayground — model autocomplete", () => {
 // NEW Console-grade voice playground tests
 // ════════════════════════════════════════════════════════════════════════════
 
+// ── RED: three new console-grade gaps — hold-to-record, TTS autoplay, cost ──
+
+describe("VoicePlayground — hold-to-record via injected seam", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("test_hold_to_record_drives_pipeline", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+    vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
+
+    // Injected seam: a fake MediaStream and a recorder that immediately yields a Blob
+    const fakeStream = {} as MediaStream;
+    const fakeAudioBlob = new Blob([new Uint8Array([0x49, 0x44, 0x33])], { type: "audio/webm" });
+    const mockRecorderStart = vi.fn();
+    const mockRecorderStop = vi.fn().mockResolvedValue(fakeAudioBlob);
+    const createRecorder = vi.fn().mockReturnValue({
+      start: mockRecorderStart,
+      stop: mockRecorderStop,
+    });
+    const requestMicStream = vi.fn().mockResolvedValue(fakeStream);
+
+    server.use(
+      http.post(`${APP}/api/gw/v1/audio/transcriptions`, () =>
+        HttpResponse.json({ text: "spoken text" }),
+      ),
+      http.post(`${APP}/api/gw/v1/chat/completions`, () =>
+        HttpResponse.json({
+          choices: [{ message: { content: "voice reply" } }],
+          usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+        }),
+      ),
+      http.post(`${APP}/api/gw/v1/audio/speech`, async () => {
+        const fakeAudio = new Uint8Array([0x49, 0x44, 0x33]);
+        return new HttpResponse(fakeAudio, { headers: { "Content-Type": "audio/mpeg" } });
+      }),
+    );
+
+    render(<VoicePlayground requestMicStream={requestMicStream} createRecorder={createRecorder} />);
+
+    // When seam props are provided, mic should show as available (active button)
+    const micButton = screen.getByRole("button", { name: /hold to record/i });
+    expect(micButton).toBeInTheDocument();
+    expect(micButton).not.toBeDisabled();
+
+    // Simulate hold-to-record: pointerDown starts recording
+    fireEvent.pointerDown(micButton);
+
+    // Wait for the "recording" phase indicator to appear
+    await waitFor(() => {
+      expect(screen.getByTestId("phase-indicator")).toBeInTheDocument();
+    });
+    expect(mockRecorderStart).toHaveBeenCalledOnce();
+
+    // Release: pointerUp stops recording and feeds blob into the STT→chat→TTS pipeline
+    fireEvent.pointerUp(micButton);
+
+    // After the full pipeline, transcript and assistant reply appear in the thread
+    expect(await screen.findByText("spoken text")).toBeInTheDocument();
+    expect(await screen.findByText("voice reply")).toBeInTheDocument();
+  });
+});
+
+describe("VoicePlayground — TTS reply autoplay", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("test_tts_reply_autoplays", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+    vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
+
+    server.use(
+      http.post(`${APP}/api/gw/v1/audio/speech`, async () => {
+        const fakeAudio = new Uint8Array([0x49, 0x44, 0x33]);
+        return new HttpResponse(fakeAudio, { headers: { "Content-Type": "audio/mpeg" } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<VoicePlayground />);
+
+    const textInput = screen.getByLabelText(/text to speak/i);
+    await user.type(textInput, "autoplay test");
+    await user.click(screen.getByRole("button", { name: /speak/i }));
+
+    // The latest audio element must have autoPlay set (browser-policy safe: jsdom won't crash)
+    const audioEl = await screen.findByTestId<HTMLAudioElement>("audio-player");
+    expect(audioEl.autoplay).toBe(true);
+  });
+
+  it("test_stt_only_does_not_autoplay", async () => {
+    server.use(
+      http.post(`${APP}/api/gw/v1/audio/transcriptions`, () =>
+        HttpResponse.json({ text: "stt transcript only" }),
+      ),
+    );
+
+    const user = userEvent.setup();
+    render(<VoicePlayground />);
+
+    const fileInput = screen.getByLabelText(/audio file/i);
+    const file = new File([new Uint8Array([0x49, 0x44, 0x33])], "a.mp3", { type: "audio/mpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await user.click(screen.getByRole("button", { name: /transcribe/i }));
+
+    // Transcript text appears but no audio element is mounted at all
+    expect(await screen.findByText("stt transcript only")).toBeInTheDocument();
+    expect(screen.queryByTestId("audio-player")).not.toBeInTheDocument();
+  });
+});
+
+describe("VoicePlayground — per-turn cost + session total", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("test_voice_turn_cost_populated", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+    vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
+
+    // Provide catalog pricing: prompt=0.000005/tok, completion=0.000015/tok
+    server.use(
+      http.get(`${APP}/api/gw/admin/catalog/models`, () =>
+        HttpResponse.json({
+          object: "list",
+          data: [
+            {
+              id: "openai/gpt-4o",
+              name: "GPT-4o",
+              context_length: 128000,
+              prompt_per_token: 0.000005,
+              completion_per_token: 0.000015,
+            },
+          ],
+        }),
+      ),
+      http.post(`${APP}/api/gw/v1/chat/completions`, () =>
+        HttpResponse.json({
+          choices: [{ message: { content: "cost reply" } }],
+          // 10 prompt * 0.000005 + 5 completion * 0.000015 = 0.00005 + 0.000075 = 0.000125
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        }),
+      ),
+      http.post(`${APP}/api/gw/v1/audio/speech`, async () => {
+        const fakeAudio = new Uint8Array([0x49, 0x44, 0x33]);
+        return new HttpResponse(fakeAudio, { headers: { "Content-Type": "audio/mpeg" } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<VoicePlayground />);
+
+    const textInput = screen.getByLabelText(/text to speak/i);
+    await user.type(textInput, "cost test");
+    await user.click(screen.getByRole("button", { name: /voice turn/i }));
+
+    // Per-turn cost appears in the turn-meta chip: $0.000125 → toFixed(4) = "$0.0001"
+    await waitFor(() => {
+      const meta = screen.getByTestId("turn-meta");
+      expect(meta.textContent).toMatch(/\$0\.0001/);
+    });
+
+    // Session cost pill in the top bar reflects the running total
+    await waitFor(() => {
+      const readout = screen.getByTestId("cost-readout");
+      expect(readout.textContent).toMatch(/\$0\.0001/);
+    });
+  });
+
+  it("test_unknown_model_shows_no_cost", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+    vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
+
+    // Catalog has no price for openai/gpt-4o (the default chat model)
+    server.use(
+      http.get(`${APP}/api/gw/admin/catalog/models`, () =>
+        HttpResponse.json({ object: "list", data: [] }),
+      ),
+      http.post(`${APP}/api/gw/v1/chat/completions`, () =>
+        HttpResponse.json({
+          choices: [{ message: { content: "reply" } }],
+          usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+        }),
+      ),
+      http.post(`${APP}/api/gw/v1/audio/speech`, async () => {
+        const fakeAudio = new Uint8Array([0x49, 0x44, 0x33]);
+        return new HttpResponse(fakeAudio, { headers: { "Content-Type": "audio/mpeg" } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<VoicePlayground />);
+
+    const textInput = screen.getByLabelText(/text to speak/i);
+    await user.type(textInput, "unknown model test");
+    await user.click(screen.getByRole("button", { name: /voice turn/i }));
+
+    // Turn-meta shows tokens but NO dollar cost when model has no price
+    await waitFor(() => {
+      const meta = screen.getByTestId("turn-meta");
+      expect(meta.textContent).toMatch(/\d+ tok/);
+      expect(meta.textContent).not.toMatch(/\$/);
+    });
+
+    // Session cost pill stays at placeholder "—" (no fabricated $0)
+    const readout = screen.getByTestId("cost-readout");
+    expect(readout.textContent).toMatch(/session cost —|tokens/i);
+    expect(readout.textContent).not.toMatch(/\$0\.0000/);
+  });
+});
+
 describe("VoicePlayground — mic unavailable fallback", () => {
   it("test_mic_unavailable_shows_fallback_notice", () => {
     // jsdom does not provide navigator.mediaDevices, so micAvailable=false on mount.

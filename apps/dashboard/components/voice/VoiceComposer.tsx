@@ -27,18 +27,27 @@ export interface VoiceComposerProps {
   phase: Phase;
   errorTitle: string | null;
   micAvailable: boolean;
+  /** True while the mic recorder is actively capturing — controls aria-pressed. */
+  isRecording: boolean;
   onTranscribe: (file: File) => Promise<void>;
   onSpeak: (text: string) => Promise<void>;
   onVoiceTurn: (transcript: string) => Promise<void>;
+  /** Called on pointerDown on the mic button — starts the recorder. */
+  onRecordStart: () => void;
+  /** Called on pointerUp / pointerLeave / pointerCancel — stops the recorder. */
+  onRecordStop: () => void;
 }
 
 export function VoiceComposer({
   phase,
   errorTitle,
   micAvailable,
+  isRecording,
   onTranscribe,
   onSpeak,
   onVoiceTurn,
+  onRecordStart,
+  onRecordStop,
 }: VoiceComposerProps) {
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
@@ -108,15 +117,25 @@ export function VoiceComposer({
           disabled={isBusy}
         />
 
-        {/* Mic button — only when mic is available */}
+        {/* Mic button — only when mic is available (real or injected seam).
+            Hold to record: pointerDown starts capture, pointerUp/Leave/Cancel
+            stops it and feeds the blob into the STT→chat→TTS pipeline.
+            aria-pressed tracks recording state for screen readers.
+            Disabled for other busy phases but ENABLED during recording so the
+            user can release it. */}
         {micAvailable ? (
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            aria-label="Hold to record"
-            disabled={isBusy}
+            variant={isRecording ? "default" : "outline"}
+            aria-label={isRecording ? "Recording…" : "Hold to record"}
+            aria-pressed={isRecording}
+            disabled={isBusy && !isRecording}
             title="Hold to record"
+            onPointerDown={onRecordStart}
+            onPointerUp={onRecordStop}
+            onPointerLeave={onRecordStop}
+            onPointerCancel={onRecordStop}
           >
             <Mic className="size-4" aria-hidden="true" />
           </Button>

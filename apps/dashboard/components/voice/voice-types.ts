@@ -11,6 +11,20 @@ export type Phase =
   | "speaking"
   | "error";
 
+/**
+ * Minimal recorder abstraction — injectable in tests so jsdom tests can drive
+ * capture without real browser media (MediaRecorder / getUserMedia).
+ *
+ * Default implementation in VoicePlayground wraps MediaRecorder.
+ * Tests inject a fake via the `createRecorder` prop.
+ */
+export interface VoiceRecorder {
+  /** Begin capturing audio. */
+  start(): void;
+  /** Stop capturing and resolve with the recorded Blob. */
+  stop(): Promise<Blob>;
+}
+
 export interface VoiceTurn {
   id: string;
   /** STT transcript — empty string for TTS-only turns. */

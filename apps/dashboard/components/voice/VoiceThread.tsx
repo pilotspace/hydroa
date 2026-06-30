@@ -19,9 +19,15 @@ import type { VoiceTurn } from "./voice-types";
 
 export interface VoiceThreadProps {
   turns: VoiceTurn[];
+  /**
+   * ID of the most-recent turn that has TTS audio. When set, the matching
+   * <audio> element mounts with autoPlay so the reply plays immediately.
+   * play() rejection (autoplay policy) is browser-native — no JS crash.
+   */
+  latestTurnId?: string;
 }
 
-export function VoiceThread({ turns }: VoiceThreadProps) {
+export function VoiceThread({ turns, latestTurnId }: VoiceThreadProps) {
   return (
     <div
       role="log"
@@ -54,10 +60,13 @@ export function VoiceThread({ turns }: VoiceThreadProps) {
               </div>
             )}
 
-            {/* Audio replay player */}
+            {/* Audio replay player — autoPlay on the latest audio turn only.
+                autoPlay is a DOM attribute; play() rejection (browser autoplay
+                policy) is handled natively and never crashes the component. */}
             {turn.audioSrc !== null && (
               <audio
                 controls
+                autoPlay={turn.id === latestTurnId}
                 data-testid="audio-player"
                 src={turn.audioSrc}
                 className="w-full"
@@ -72,6 +81,9 @@ export function VoiceThread({ turns }: VoiceThreadProps) {
               >
                 {turn.meta.chatModel} · {turn.meta.totalTokens} tok ·{" "}
                 {turn.meta.latencyMs}ms
+                {turn.meta.cost != null
+                  ? ` · $${turn.meta.cost.toFixed(4)}`
+                  : ""}
               </div>
             )}
           </div>
