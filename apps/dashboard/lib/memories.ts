@@ -13,6 +13,7 @@ export interface MemoryItem {
   content: string;
   created_at: string;
   has_embedding?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SearchResult {

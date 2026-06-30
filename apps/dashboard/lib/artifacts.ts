@@ -65,6 +65,23 @@ export async function downloadArtifact(id: string): Promise<Blob> {
   return res.blob();
 }
 
+/**
+ * GET /api/gw/v1/artifacts/:id — fetch artifact content as a UTF-8 string.
+ *
+ * Used for inline text/JSON preview; calls res.text() directly on the Response
+ * to avoid Blob→arrayBuffer→TextDecoder chain that has async quirks in jsdom.
+ */
+export async function fetchArtifactText(id: string): Promise<string> {
+  const res = await fetch(`${appBase()}/api/gw/v1/artifacts/${id}`, {
+    method: "GET",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new Error(`Preview failed: HTTP ${res.status}`);
+  }
+  return res.text();
+}
+
 /** DELETE /v1/artifacts/:id — permanently delete an artifact. */
 export function deleteArtifact(id: string): Promise<void> {
   return bffDelete(`/v1/artifacts/${id}`);

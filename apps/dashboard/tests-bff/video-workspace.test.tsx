@@ -346,6 +346,49 @@ describe("VideoWorkspace", () => {
     );
   });
 
+  // ── video_player_shown_for_succeeded_job ────────────────────────────────
+  it("video_player_shown_for_succeeded_job", async () => {
+    mockListVideoJobs.mockResolvedValue({ jobs: [JOB_SUCCEEDED] });
+
+    const fakeUrl = "blob:http://localhost/fake-video-preview";
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(fakeUrl);
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    render(<VideoWorkspace pollIntervalMs={POLL_MS} />);
+
+    // Wait for the auto-loaded inline video player to appear
+    await waitFor(() => {
+      const video = document.querySelector("video");
+      expect(video).toBeInTheDocument();
+      expect(video?.getAttribute("src")).toBe(fakeUrl);
+    });
+
+    vi.restoreAllMocks();
+  });
+
+  // ── video_player_object_url_revoked_on_unmount ────────────────────────────
+  it("video_player_object_url_revoked_on_unmount", async () => {
+    mockListVideoJobs.mockResolvedValue({ jobs: [JOB_SUCCEEDED] });
+
+    const fakeUrl = "blob:http://localhost/fake-video-unmount";
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(fakeUrl);
+    const revokeSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    const { unmount } = render(<VideoWorkspace pollIntervalMs={POLL_MS} />);
+
+    // Wait for auto-load to complete (confirms downloadArtifact + createObjectURL ran)
+    await waitFor(() => {
+      expect(document.querySelector("video")).toBeInTheDocument();
+    });
+
+    // Unmounting must revoke the object URL to free memory
+    unmount();
+
+    expect(revokeSpy).toHaveBeenCalledWith(fakeUrl);
+
+    vi.restoreAllMocks();
+  });
+
   // ── model field autocompletes from the catalog (video-gen models) ─────────
   it("model_field_suggests_catalog_video_models", async () => {
     mockListVideoJobs.mockResolvedValue({ jobs: [] });

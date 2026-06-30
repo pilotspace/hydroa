@@ -23,15 +23,29 @@ export interface VideoJob {
   updated_at: string;
 }
 
-/** POST /v1/video/generations — submit a new text-to-video generation job. */
+/**
+ * POST /v1/video/generations — submit a new text-to-video generation job.
+ *
+ * Optional `params` (e.g. duration_seconds, aspect_ratio) are forwarded to
+ * the gateway's params field only when supplied. Omitting params (or passing
+ * an empty object) sends only {model, prompt} so callers that don't use the
+ * params pathway get byte-identical requests.
+ */
 export function createVideoJob({
   model,
   prompt,
+  params,
 }: {
   model: string;
   prompt: string;
+  /** Optional generation parameters (duration_seconds, aspect_ratio, etc.). */
+  params?: Record<string, unknown>;
 }): Promise<VideoJob> {
-  return bffPost<VideoJob>("/v1/video/generations", { model, prompt });
+  const body: Record<string, unknown> = { model, prompt };
+  if (params && Object.keys(params).length > 0) {
+    body.params = params;
+  }
+  return bffPost<VideoJob>("/v1/video/generations", body);
 }
 
 /** GET /v1/video/generations/:id — fetch a single job by id. */
