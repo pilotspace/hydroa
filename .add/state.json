@@ -544,10 +544,42 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "memory-playground": {
+      "title": "Memory Playground",
+      "goal": "The Memory workspace becomes a Console-grade memory library: searchable/sortable semantic memory with a detail inspector and add/delete, over the existing /v1/memories endpoints.",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-06-30T11:08:38+00:00",
+      "updated": "2026-06-30T11:08:38+00:00"
+    },
+    "artifacts-playground": {
+      "title": "Artifacts Playground",
+      "goal": "The Artifacts workspace becomes a Console-grade artifact library/file-manager: typed list with search, inline image/text/JSON preview, drag-drop upload, download and delete, over the existing /v1/artifacts endpoints.",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-06-30T11:08:38+00:00",
+      "updated": "2026-06-30T11:08:38+00:00"
+    },
+    "vision-playground": {
+      "title": "Vision Playground",
+      "goal": "The Vision workspace becomes a Console-grade multimodal inspector: media preview, a multi-turn Q&A thread with markdown answers, and a model picker, over /v1/chat/completions image/video content parts.",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-06-30T11:08:38+00:00",
+      "updated": "2026-06-30T11:08:38+00:00"
+    },
+    "video-playground": {
+      "title": "Video Playground",
+      "goal": "The Video workspace becomes a Console-grade generation studio: prompt+params composer, a job gallery with rich status, inline video preview on success and download, over the existing async /v1/video/generations jobs.",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-06-30T11:08:39+00:00",
+      "updated": "2026-06-30T11:08:39+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-30T10:59:22+00:00",
+  "updated": "2026-06-30T11:08:39+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
