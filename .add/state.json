@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "artifact-upload-validation",
+  "active_task": "capabilities-admin-surface",
   "active_milestone": "v55",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -580,6 +580,44 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "capabilities-admin-surface": {
+      "title": "Surface model input capabilities on admin catalog API + dashboard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v55",
+      "depends_on": [],
+      "created": "2026-06-30T15:30:00+00:00",
+      "updated": "2026-06-30T15:59:12+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "5ea3d14464919068edaaca82d962b581",
+        "tests": {
+          "apps/gateway/tests/catalog_input_capabilities/test_capabilities_surface.py": "cfd35d3e4ad2ab1b5da238374d1674a0"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/catalog/api/schemas.py",
+          "apps/gateway/src/gateway/catalog/api/router.py",
+          "apps/gateway/src/gateway/catalog/domain/entities.py",
+          "apps/gateway/src/gateway/catalog/infrastructure/repository.py",
+          "apps/gateway/tests/catalog_input_capabilities/",
+          "apps/gateway/tests/catalog/test_model_catalog.py",
+          "apps/gateway/tests/catalog_input_modalities/test_input_modalities.py",
+          "apps/dashboard/components/models/ModelsPage.tsx",
+          "apps/dashboard/components/models/ModelCatalogTable.tsx",
+          "apps/dashboard/tests-bff/model-capabilities.test.tsx",
+          "apps/dashboard/tests-bff/MarkedUpModel",
+          "apps/dashboard/tests-bff/list_active_models_with_markup"
+        ],
+        "snapshot_md5": "063b8093b0d64f819cb5c82854d96ddf"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -625,9 +663,14 @@
       "title": "Capability-aware model management",
       "goal": "Every catalog model declares the input types it accepts, and any request carrying an input type the resolved model cannot handle is rejected with a clear structured 4xx before it reaches the provider.",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-06-30T12:11:18+00:00",
-      "updated": "2026-06-30T12:11:18+00:00"
+      "updated": "2026-06-30T16:00:42+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "v56": {
       "title": "Per-tenant model presets",
@@ -639,7 +682,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-30T15:27:50+00:00",
+  "updated": "2026-06-30T16:00:42+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1318,7 +1361,7 @@
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
-    "v55": "artifact-upload-validation"
+    "v55": "capabilities-admin-surface"
   },
   "todos": [
     {

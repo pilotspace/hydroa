@@ -320,17 +320,22 @@ def test_sc6_field_readable_from_entity_no_api_surfacing() -> None:
         f"ModelRow.input_modalities default must be 'text'; got {model_row.input_modalities!r}"  # type: ignore[attr-defined]
     )
 
-    # 3. API schemas must NOT surface input_modalities — byte-identical response bodies.
+    # 3. API schemas: ModelItem (public /v1/models) MUST NOT surface input_modalities —
+    #    the public OpenAI-compatible shape must stay byte-identical (task 1 contract).
+    #    AdminModelItem and AdminCatalogModelItem DO surface it (capabilities-admin-surface
+    #    task 2 is the "next task" referenced in the original comment; it is now done).
+    #    PutModelRequest is a request body and must never carry input_modalities.
     from gateway.catalog.api.schemas import AdminModelItem, ModelItem, PutModelRequest
 
     assert "input_modalities" not in ModelItem.model_fields, (
-        "ModelItem MUST NOT have 'input_modalities' field (surfacing is the NEXT task)"
-    )
-    assert "input_modalities" not in AdminModelItem.model_fields, (
-        "AdminModelItem MUST NOT have 'input_modalities' field"
+        "ModelItem MUST NOT have 'input_modalities' field — public /v1/models shape unchanged"
     )
     assert "input_modalities" not in PutModelRequest.model_fields, (
         "PutModelRequest MUST NOT have 'input_modalities' field"
+    )
+    # AdminModelItem now carries input_modalities (added by capabilities-admin-surface task 2).
+    assert "input_modalities" in AdminModelItem.model_fields, (
+        "AdminModelItem MUST have 'input_modalities' after capabilities-admin-surface task 2"
     )
 
 

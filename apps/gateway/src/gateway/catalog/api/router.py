@@ -19,6 +19,8 @@ from gateway.catalog.api.deps import (
     require_owner_or_admin,
 )
 from gateway.catalog.api.schemas import (
+    AdminCatalogModelItem,
+    AdminCatalogModelsListResponse,
     AdminModelItem,
     AdminModelsListResponse,
     CatalogSyncResponse,
@@ -31,6 +33,7 @@ from gateway.catalog.application.use_cases import (
     ListModelsForTenantUseCase,
     SyncCatalogUseCase,
 )
+from gateway.catalog.domain.entities import parse_input_modalities
 from gateway.catalog.domain.errors import (
     CatalogEmptyError,
     CatalogSourceUnavailableError,
@@ -115,27 +118,47 @@ async def list_models(
     )
 
 
-@admin_catalog_router.get("/models", response_model=ModelsListResponse)
+@admin_catalog_router.get("/models", response_model=AdminCatalogModelsListResponse)
 async def list_catalog_models(
     identity: Annotated[Identity, Depends(get_current_identity)],
     use_case: Annotated[ListModelsForTenantUseCase, Depends(get_list_use_case)],
-) -> ModelsListResponse:
-    """GET /admin/catalog/models — JWT/control-plane twin of GET /v1/models.
+) -> AdminCatalogModelsListResponse:
+    """GET /admin/catalog/models — admin catalog surface with input_modalities.
 
-    Serves the SAME tenant-priced active-model list as the OpenAI-compatible
-    GET /v1/models, but on the /admin/* (JWT) plane. The dashboard reads the
-    catalog through its BFF with a browser SESSION JWT; /v1/models sits behind the
-    edge ext_authz (sk-/agent token only), so a session can't reach it through the
-    edge — it 401s and the BFF clears the cookie, logging the user out. This twin
-    closes that gap without widening the data plane.
+    Returns the SAME tenant-priced active-model list as GET /v1/models (same
+    ListModelsForTenantUseCase, identical markup arithmetic) but on the /admin/*
+    (JWT/session) plane and extended with input_modalities — a sorted list of
+    accepted input types for each model.
 
-    Any authenticated tenant role may read it (get_current_identity — no permission
-    gate), parity with /v1/models and intentionally unlike the owner/admin-gated
-    GET /admin/models (which also omits pricing). Returns 409 ERR_CATALOG_EMPTY
-    before the first catalog sync. Delegates to list_models so the marked-up
-    payload can never drift from /v1/models.
+    Why two endpoints exist:
+      /v1/models sits behind edge ext_authz (sk-/agent keys only); a browser
+      SESSION JWT 401s through the edge and the BFF clears the cookie, logging
+      the user out.  This admin twin is readable with a session JWT without
+      widening the data plane.
+
+    Any authenticated tenant role may read it (get_current_identity — no
+    permission gate), parity with /v1/models.  Returns 409 ERR_CATALOG_EMPTY
+    before the first catalog sync (identical to /v1/models behavior).
+
+    GET /v1/models stays UNCHANGED (lean OpenAI shape, no input_modalities).
     """
-    return await list_models(identity=identity, use_case=use_case)
+    try:
+        models = await use_case.execute(tenant_id=identity.tenant_id)
+    except CatalogEmptyError:
+        raise CATALOG_EMPTY.exc() from None
+    return AdminCatalogModelsListResponse(
+        data=[
+            AdminCatalogModelItem(
+                id=m.id,
+                name=m.name,
+                context_length=m.context_length,
+                prompt_per_token=m.prompt_per_token,
+                completion_per_token=m.completion_per_token,
+                input_modalities=sorted(parse_input_modalities(m.input_modalities)),
+            )
+            for m in models
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +182,7 @@ async def get_admin_models(
             ModelRow.id,
             ModelRow.name,
             ModelRow.context_length,
+            ModelRow.input_modalities,
             TenantModelOverrideRow.enabled,
         )
         .outerjoin(
@@ -178,6 +202,8 @@ async def get_admin_models(
                 context_length=row.context_length,
                 # COALESCE(tmo.enabled, true): None means no override row → default enabled
                 enabled=row.enabled if row.enabled is not None else True,
+                # capabilities-admin-surface TASK.md §3: sorted list from stored CSV
+                input_modalities=sorted(parse_input_modalities(row.input_modalities)),
             )
             for row in rows
         ]
@@ -205,9 +231,12 @@ async def put_admin_model(
     # if the model is currently inactive; the §3 DDL allows FK to any models row).
     model_row = (
         await session.execute(
-            select(ModelRow.id, ModelRow.name, ModelRow.context_length).where(
-                ModelRow.id == model_id
-            )
+            select(
+                ModelRow.id,
+                ModelRow.name,
+                ModelRow.context_length,
+                ModelRow.input_modalities,
+            ).where(ModelRow.id == model_id)
         )
     ).one_or_none()
     if model_row is None:
@@ -239,6 +268,8 @@ async def put_admin_model(
         name=model_row.name,
         context_length=model_row.context_length,
         enabled=body.enabled,
+        # capabilities-admin-surface TASK.md §3: include in PUT response
+        input_modalities=sorted(parse_input_modalities(model_row.input_modalities)),
     )
 
 

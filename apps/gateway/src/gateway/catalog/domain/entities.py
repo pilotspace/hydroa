@@ -179,10 +179,16 @@ class PricingSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class MarkedUpModel:
-    """Model with tenant-specific markup applied — returned from list use case."""
+    """Model with tenant-specific markup applied — returned from list use case.
+
+    Additive field (capabilities-admin-surface TASK.md §3):
+      input_modalities — normalized CSV from the models row; defaults to "text".
+      Read-only surface — never derived or computed here.
+    """
 
     id: str
     name: str
     context_length: int | None
     prompt_per_token: float
     completion_per_token: float
+    input_modalities: str = field(default="text")

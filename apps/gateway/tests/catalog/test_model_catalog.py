@@ -478,7 +478,19 @@ ADMIN_CATALOG_MODELS = "/admin/catalog/models"
 
 
 async def test_admin_catalog_models_matches_v1_models(client: httpx.AsyncClient, app: Any) -> None:
-    """GET /admin/catalog/models returns byte-identical JSON to GET /v1/models."""
+    """GET /admin/catalog/models returns the same pricing/id as GET /v1/models (no drift).
+
+    After capabilities-admin-surface task 2, /admin/catalog/models returns
+    AdminCatalogModelsListResponse which includes an extra 'input_modalities' field
+    on each model entry.  The two endpoints can no longer be byte-identical.
+
+    Contract preserved:
+    - Same model set (same ids).
+    - Same tenant-marked-up pricing (prompt_per_token, completion_per_token).
+    - Same context_length and name.
+    - /v1/models MUST NOT contain 'input_modalities' (public lean shape unchanged).
+    - /admin/catalog/models MUST contain 'input_modalities' (new admin surface).
+    """
     _install_fake_source(app, FakeCatalogSource(models=[_OPUS, _SONNET]))
     assert (await client.post(SYNC)).status_code == 200
 
@@ -490,8 +502,35 @@ async def test_admin_catalog_models_matches_v1_models(client: httpx.AsyncClient,
 
     assert v1.status_code == 200, v1.text
     assert twin.status_code == 200, twin.text
-    # Same marked-up payload (object envelope + per-token prices) — zero drift.
-    assert twin.json() == v1.json()
+
+    v1_data = {m["id"]: m for m in v1.json()["data"]}
+    twin_data = {m["id"]: m for m in twin.json()["data"]}
+
+    # Same model set
+    assert set(v1_data) == set(twin_data), (
+        f"model id sets differ: v1={set(v1_data)} twin={set(twin_data)}"
+    )
+
+    for model_id, v1_entry in v1_data.items():
+        twin_entry = twin_data[model_id]
+        # Pricing must be identical (same markup arithmetic, no drift)
+        assert twin_entry["prompt_per_token"] == pytest.approx(v1_entry["prompt_per_token"]), (
+            f"{model_id}: prompt_per_token drift"
+        )
+        assert twin_entry["completion_per_token"] == pytest.approx(
+            v1_entry["completion_per_token"]
+        ), f"{model_id}: completion_per_token drift"
+        assert twin_entry["name"] == v1_entry["name"]
+        assert twin_entry["context_length"] == v1_entry["context_length"]
+        # /v1/models must stay lean (no input_modalities)
+        assert "input_modalities" not in v1_entry, (
+            f"/v1/models entry {model_id!r} must NOT contain input_modalities"
+        )
+        # /admin/catalog/models must expose input_modalities
+        assert "input_modalities" in twin_entry, (
+            f"/admin/catalog/models entry {model_id!r} must contain input_modalities"
+        )
+        assert isinstance(twin_entry["input_modalities"], list)
 
 
 async def test_admin_catalog_models_readable_by_non_admin_role(
