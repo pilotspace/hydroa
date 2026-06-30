@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "adapter-correctness-fixes",
-  "active_milestone": "proxy-correctness",
+  "active_task": null,
+  "active_milestone": "gateway-health",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -809,10 +809,27 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "gateway-health": {
+      "title": "Gateway Health",
+      "goal": "Restore the gateway's static-quality gates and test suite to fully green: make lint (ruff check + format) clean, make typecheck (pyright) clean, and the 3 pre-existing failing tests (azure_embeddings credential-fixture \u00d72, guardrails-core stale table invariant) fixed \u2014 so make ci passes end-to-end once CI billing returns. Pre-existing debt accumulated while CI was billing-blocked; surfaced by the v0.6.0 e2e/harden pass.",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-06-30T13:51:46+00:00",
+      "updated": "2026-06-30T13:52:30+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-06-30T13:52:30+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-30T12:48:20+00:00",
+  "updated": "2026-06-30T13:52:30+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1492,7 +1509,8 @@
     "artifacts-playground",
     "vision-playground",
     "video-playground",
-    "proxy-correctness"
+    "proxy-correctness",
+    "gateway-health"
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
