@@ -505,6 +505,8 @@ def _map_finish_reason(stop_reason: str | None) -> str:
     max_tokens      → "length"
     stop_sequence   → "stop"
     tool_use        → "tool_calls"
+    refusal         → "content_filter"
+    pause_turn      → "stop"  (server tool pause; no clean OpenAI equivalent)
     None / unknown  → "stop"
     """
     mapping = {
@@ -512,6 +514,9 @@ def _map_finish_reason(stop_reason: str | None) -> str:
         "max_tokens": "length",
         "stop_sequence": "stop",
         "tool_use": "tool_calls",
+        # Content-policy refusal — model declined to respond; maps to OpenAI "content_filter".
+        "refusal": "content_filter",
+        # pause_turn signals a paused server-tool turn; no OpenAI equivalent, falls to "stop".
     }
     return mapping.get(stop_reason or "", "stop")  # type: ignore[arg-type]
 
