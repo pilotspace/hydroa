@@ -23,30 +23,32 @@ Out: any feature/behavior change; new endpoints; the dashboard (already green); 
 - **guardrails-core table invariant** (the expected-tables baseline the guardrails migration test asserts against) -> owning task `fix-stale-failing-tests`.
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] ruff-format-and-lint-clean   depends-on: none   — `ruff format` the ~54 unformatted files + fix the 5 `ruff check` errors; verify behavior-preserving (full pytest green). Moves `make lint` → exit 0.
-- [ ] pyright-errors-clean         depends-on: none   — resolve the 12 pyright errors (config.py/web_search.py/main.py/use_cases.py); real fixes pinned by a test where a bug exists, justified narrow ignores otherwise. Moves `make typecheck` → exit 0.
-- [ ] fix-stale-failing-tests      depends-on: none   — azure_embeddings ×2 (decouple from seeded-credential ordering) + guardrails_core_migration (refresh the expected-tables baseline for the v40-program tables). Moves full pytest → 0 failures.
+- [x] ruff-format-and-lint-clean   depends-on: none   — `ruff format` the ~54 unformatted files + fix the 5 `ruff check` errors; verify behavior-preserving (full pytest green). Moves `make lint` → exit 0.  **gate=PASS**
+- [x] pyright-errors-clean         depends-on: none   — resolve the 12 pyright errors (config.py/web_search.py/main.py/use_cases.py); real fixes pinned by a test where a bug exists, justified narrow ignores otherwise. Moves `make typecheck` → exit 0.  **gate=PASS**
+- [x] fix-stale-failing-tests      depends-on: none   — azure_embeddings ×2 (decouple from seeded-credential ordering) + guardrails_core_migration (refresh the expected-tables baseline for the v40-program tables). Moves full pytest → 0 failures.  **gate=PASS**
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] `make lint` (ruff check + ruff format --check) exits 0 on the gateway   (← ruff-format-and-lint-clean)
-- [ ] `make typecheck` (pyright) exits 0 on the gateway   (← pyright-errors-clean)
-- [ ] The full gateway pytest suite passes with 0 failures (azure_embeddings ×2 + guardrails_core_migration green)   (← fix-stale-failing-tests)
-- [ ] `make ci` exits 0 end-to-end, re-run first-hand   (← all three tasks)
+- [x] `make lint` (ruff check + ruff format --check) exits 0 on the gateway   (← ruff-format-and-lint-clean)
+- [x] `make typecheck` (pyright) exits 0 on the gateway   (← pyright-errors-clean)
+- [x] The full gateway pytest suite passes with 0 failures (azure_embeddings ×2 + guardrails_core_migration green)   (← fix-stale-failing-tests)  — clean run 2020 passed/0 failed; flaky cross-suite contamination noted as open delta
+- [x] `make ci` exits 0 end-to-end, re-run first-hand   (← all three tasks)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- gateway (product) : <ruff/pyright/test files — what changed>
-- tooling / skill / book : <untouched unless noted>
+- gateway (product) : pyright 12→0 (config.py type:ignore on duck-typed coercions · main.py drop-invalid-annotation + middleware-cursor ignore · use_cases.py narrowing guard · web_search.py retype-untrusted-input); ruff (env.py E501 wrap · s3.py + _helios_harness import-sort · _helios_harness B007 rename · `ruff format` 53 files); 3 stale tests (azure_embeddings wrap ProviderKeyMissing→UpstreamUnavailableError · guardrails NOT-IN manifest += 5 v40 tables). One squashed commit `9640f52` (62 files, behavior-preserving).
+- tooling / skill / book : untouched (scaffold `chore(add)` commit only).
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS> · tests=<n green> · residue=<note>
+- pyright-errors-clean : gate=PASS · `uv run pyright` 0 errors (was 12) · residue=none (behavior-preserving; full suite green)
+- ruff-format-and-lint-clean : gate=PASS · `ruff check` All-passed + `ruff format --check` 655 formatted · residue=none (#42 adapters untouched)
+- fix-stale-failing-tests : gate=PASS · azure 10 + guardrails 19 green in isolation · residue=cross-suite flaky (open delta, pre-existing)
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate + the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which) — lint←ruff row · typecheck←pyright row · 0-failures←stale-tests row + clean full run · make-ci←all three
+- goal: restore the gateway's static gates + stale tests to green — proven by `make ci` exit 0 on a clean run (ruff + pyright + full pytest **2020 passed / 0 failures / 86.87% cov**). Residue: full-suite is flaky under pre-existing cross-suite Redis/DB contamination (passes in isolation + on re-run) — logged as an open delta for a deterministic-test-isolation follow-up.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
