@@ -124,13 +124,16 @@ def _assistant_tool_calls_to_content(msg: dict[str, Any]) -> list[dict[str, Any]
 def _map_finish_reason(stop_reason: str | None) -> str:
     """Map Bedrock stopReason → OpenAI finish_reason.
 
-    end_turn            → "stop"
-    max_tokens          → "length"
-    stop_sequence       → "stop"
-    tool_use            → "tool_calls"
-    content_filtered    → "content_filter"
-    guardrail_intervened → "content_filter"
-    None / unknown      → "stop"
+    end_turn                      → "stop"
+    max_tokens                    → "length"
+    stop_sequence                 → "stop"
+    tool_use                      → "tool_calls"
+    content_filtered              → "content_filter"
+    guardrail_intervened          → "content_filter"
+    model_context_window_exceeded → "length"
+    malformed_model_output        → "stop"  (Bedrock-specific; no clean OpenAI equivalent)
+    malformed_tool_use            → "stop"  (Bedrock-specific; no clean OpenAI equivalent)
+    None / unknown                → "stop"
     """
     mapping: dict[str, str] = {
         "end_turn": "stop",
@@ -139,6 +142,10 @@ def _map_finish_reason(stop_reason: str | None) -> str:
         "tool_use": "tool_calls",
         "content_filtered": "content_filter",
         "guardrail_intervened": "content_filter",
+        # Context-window overflow — same semantic as max_tokens, maps to "length".
+        "model_context_window_exceeded": "length",
+        # Bedrock-specific model errors with no clean OpenAI equivalent; "stop" is the
+        # least misleading default (malformed_model_output, malformed_tool_use).
     }
     return mapping.get(stop_reason or "", "stop")
 

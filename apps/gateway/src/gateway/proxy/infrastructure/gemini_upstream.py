@@ -459,17 +459,27 @@ def _openai_to_gemini_request(
 def _map_gemini_finish_reason(fr: str | None) -> str:
     """Map Gemini finishReason → OpenAI finish_reason.
 
-    STOP          → "stop"
-    MAX_TOKENS    → "length"
-    SAFETY        → "content_filter"
-    RECITATION    → "stop"
-    None / other  → "stop"
+    STOP               → "stop"
+    MAX_TOKENS         → "length"
+    SAFETY             → "content_filter"
+    RECITATION         → "stop"
+    BLOCKLIST          → "content_filter"
+    PROHIBITED_CONTENT → "content_filter"
+    SPII               → "content_filter"
+    IMAGE_SAFETY       → "content_filter"
+    None / other       → "stop"
     """
     mapping: dict[str, str] = {
         "STOP": "stop",
         "MAX_TOKENS": "length",
         "SAFETY": "content_filter",
         "RECITATION": "stop",
+        # Content-policy codes — all map to "content_filter" so clients can distinguish
+        # policy-blocked responses from normal completions.
+        "BLOCKLIST": "content_filter",
+        "PROHIBITED_CONTENT": "content_filter",
+        "SPII": "content_filter",
+        "IMAGE_SAFETY": "content_filter",
     }
     return mapping.get(fr or "", "stop")
 

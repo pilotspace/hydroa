@@ -98,7 +98,18 @@ _RESPONSE_FORMAT_MEDIA_TYPES: dict[str, str] = {
 }
 
 # Passthrough fields forwarded from multipart form to upstream STT endpoint
-_STT_PASSTHROUGH_FIELDS = ("language", "prompt", "response_format", "temperature")
+_STT_PASSTHROUGH_FIELDS = (
+    "language",
+    "prompt",
+    "response_format",
+    "temperature",
+    # timestamp_granularities enables word/segment-level timestamps
+    # (requires response_format=verbose_json on the OpenAI Whisper API).
+    "timestamp_granularities",
+    # chunking_strategy controls audio chunking behavior (e.g. "auto" or a
+    # ServerVAD config object); passed through unconditionally for consistency.
+    "chunking_strategy",
+)
 # Translation passthrough fields — same as STT except `language` is dropped:
 # the /audio/translations endpoint always outputs English and has no language param.
 _TRANSLATION_PASSTHROUGH_FIELDS = ("prompt", "response_format", "temperature")
