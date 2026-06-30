@@ -792,7 +792,17 @@ class _AnthropicSSEStepper:
             publish_partial_usage(self._prompt_tokens, self._completion_tokens)
 
         elif event_name == "message_stop":
-            yield from self._emit_terminal()
+            if not self._terminal_emitted:
+                yield from self._emit_terminal()
+
+        elif event_name == "error":
+            # Anthropic can emit an error event while HTTP stays 200/open
+            # (e.g. overloaded_error). Convert to an OpenAI-shaped error frame
+            # and terminate the stream so clients never hang on truncation.
+            error_body = _anthropic_error_to_openai(data)
+            yield b"data: " + json.dumps(error_body).encode() + b"\n\n"
+            yield b"data: [DONE]\n\n"
+            self._terminal_emitted = True
 
         # ping / content_block_start / content_block_stop / unknown → ignored
 
