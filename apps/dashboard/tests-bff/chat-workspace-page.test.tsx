@@ -227,7 +227,7 @@ describe("ChatWorkspace — the four UI states + composer", () => {
     // empty state on mount
     expect(screen.getByText(/start a conversation/i)).toBeInTheDocument();
 
-    await user.type(screen.getByRole("textbox"), "hi");
+    await user.type(screen.getByRole("textbox", { name: /message/i }), "hi");
     await user.click(screen.getByRole("button", { name: /send/i }));
 
     expect(await screen.findByText("hi")).toBeInTheDocument();
@@ -243,7 +243,7 @@ describe("ChatWorkspace — the four UI states + composer", () => {
     const user = userEvent.setup();
     render(<ChatWorkspace />);
 
-    await user.type(screen.getByRole("textbox"), "hi");
+    await user.type(screen.getByRole("textbox", { name: /message/i }), "hi");
     await user.click(screen.getByRole("button", { name: /send/i }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();

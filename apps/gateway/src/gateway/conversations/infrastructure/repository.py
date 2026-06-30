@@ -126,6 +126,40 @@ class ConversationRepository:
         await self._session.flush()
         return result.scalar_one_or_none() is not None
 
+    async def rename_title(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        title: str,
+    ) -> ConversationRow | None:
+        """Update the title of an active conversation, scoped to tenant_id.
+
+        Bumps updated_at explicitly (raw UPDATE does not trigger ORM onupdate).
+        Returns the updated ConversationRow on success, None when the id is
+        unknown, belongs to another tenant, or is soft-deleted.
+        """
+        now = datetime.now(tz=UTC)
+        result = await self._session.execute(
+            update(ConversationRow)
+            .where(
+                ConversationRow.id == conversation_id,
+                ConversationRow.tenant_id == tenant_id,
+                ConversationRow.deleted_at.is_(None),
+            )
+            .values(title=title, updated_at=now)
+            .returning(ConversationRow.id)
+        )
+        await self._session.flush()
+        updated_id = result.scalar_one_or_none()
+        if updated_id is None:
+            return None
+        # Re-fetch to return the full row (messages relationship loaded via selectin)
+        fetch = await self._session.execute(
+            select(ConversationRow).where(ConversationRow.id == updated_id)
+        )
+        return fetch.scalar_one_or_none()
+
     # ------------------------------------------------------------------
     # Messages
     # ------------------------------------------------------------------

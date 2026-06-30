@@ -103,10 +103,11 @@ describe("chat visual parity", () => {
     render(<ChatWorkspace />);
     // footer hint about Enter-to-send
     expect(screen.getByText(/shift/i)).toBeInTheDocument();
-    // a live token estimate appears as the user types
+    // a live token estimate appears as the user types (the composer's "~N tokens"
+    // estimate — scoped past the inspector's "Max tokens" parameter label)
     const box = await screen.findByLabelText("Message");
     await user.type(box, "some words here to estimate");
-    expect(screen.getByText(/tokens?/i)).toBeInTheDocument();
+    expect(screen.getByText(/~\s*\d+\s*tokens?/i)).toBeInTheDocument();
   });
 });
 

@@ -52,8 +52,17 @@ function Wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={makeQueryClient()}>{children}</QueryClientProvider>;
 }
 
-function renderRouting() {
-  return render(<RoutingPage />, { wrapper: Wrapper });
+async function renderRouting() {
+  const result = render(<RoutingPage />, { wrapper: Wrapper });
+  // Governance redesign (§3 v1) moves the owner/admin editor behind an "Editor"
+  // tab. Wait for the page to settle (the tablist appears once routing data
+  // loads), then navigate to the Editor tab WHEN it is present (owner/admin); a
+  // viewer has no Editor tab and stays on Overview. Navigation only — every
+  // assertion target and data seam below is unchanged.
+  await screen.findByRole("tab", { name: /overview/i });
+  const editorTab = screen.queryByRole("tab", { name: /editor/i });
+  if (editorTab) await userEvent.setup().click(editorTab);
+  return result;
 }
 
 // ── base GET response that satisfies BOTH the health cards AND the editor ────
@@ -83,7 +92,7 @@ describe("RoutingPage — routing-config-editor (v32)", () => {
       http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
     );
 
-    renderRouting();
+    await renderRouting();
 
     // Strategy select is pre-filled with "ordered"
     const strategySelect = await screen.findByLabelText(/routing strategy/i);
@@ -110,7 +119,7 @@ describe("RoutingPage — routing-config-editor (v32)", () => {
       }),
     );
 
-    renderRouting();
+    await renderRouting();
 
     // Wait for editor to be rendered (owner role loaded)
     const strategySelect = await screen.findByLabelText(/routing strategy/i);
@@ -158,7 +167,7 @@ describe("RoutingPage — routing-config-editor (v32)", () => {
       }),
     );
 
-    renderRouting();
+    await renderRouting();
 
     // Wait for editor
     await screen.findByLabelText(/routing strategy/i);
@@ -209,7 +218,7 @@ describe("RoutingPage — routing-config-editor (v32)", () => {
       http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
     );
 
-    renderRouting();
+    await renderRouting();
 
     await screen.findByLabelText(/routing strategy/i);
 
@@ -236,7 +245,7 @@ describe("RoutingPage — routing-config-editor (v32)", () => {
       ),
     );
 
-    renderRouting();
+    await renderRouting();
 
     // Wait for editor and change strategy so there's a user-visible edit
     const strategySelect = await screen.findByLabelText(/routing strategy/i);
@@ -264,7 +273,7 @@ describe("RoutingPage — routing-config-editor (v32)", () => {
       http.get(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
     );
 
-    renderRouting();
+    await renderRouting();
 
     // Wait for the page to settle (health cards render for members too)
     await waitFor(() => {
@@ -293,7 +302,7 @@ describe("RoutingEditor — feedback + validation (v37)", () => {
       }),
     );
 
-    renderRouting();
+    await renderRouting();
 
     const weightInput = await screen.findByLabelText(/weight.*gpt.*1|gpt.*weight.*1/i);
     await user.clear(weightInput); // empty -> coerced to 0
@@ -316,7 +325,7 @@ describe("RoutingEditor — feedback + validation (v37)", () => {
       }),
     );
 
-    renderRouting();
+    await renderRouting();
 
     const modelInput = await screen.findByDisplayValue("a");
     await user.clear(modelInput); // blank model_id
@@ -337,7 +346,7 @@ describe("RoutingEditor — feedback + validation (v37)", () => {
       }),
     );
 
-    renderRouting();
+    await renderRouting();
 
     // 1. zero weight → blocked, no PUT, inline error
     const weightInput = await screen.findByLabelText(/weight.*gpt.*1|gpt.*weight.*1/i);
@@ -367,7 +376,7 @@ describe("RoutingEditor — feedback + validation (v37)", () => {
       }),
     );
 
-    renderRouting();
+    await renderRouting();
 
     // BASE_ROUTING is already valid (weight 1, model "a") — just save.
     await screen.findByLabelText(/routing strategy/i);
@@ -385,7 +394,7 @@ describe("RoutingEditor — feedback + validation (v37)", () => {
       http.put(`${APP}/api/gw/admin/routing`, () => HttpResponse.json(BASE_ROUTING)),
     );
 
-    renderRouting();
+    await renderRouting();
 
     const strategySelect = await screen.findByLabelText(/routing strategy/i);
     await user.click(screen.getByRole("button", { name: /save/i }));
@@ -411,7 +420,7 @@ describe("RoutingEditor — feedback + validation (v37)", () => {
       ),
     );
 
-    renderRouting();
+    await renderRouting();
 
     // client-valid body, but the server rejects → mutError, no saved affordance
     await screen.findByLabelText(/routing strategy/i);

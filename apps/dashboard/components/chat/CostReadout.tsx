@@ -16,10 +16,12 @@ import type { Usage } from "@/lib/hooks/use-chat-stream";
 export interface CostReadoutProps {
   sessionTokens: number;
   lastTurn?: Usage;
+  /** Running sum of per-turn real costs. Absent (null/undefined) until a priced turn completes. */
+  sessionCost?: number | null;
   className?: string;
 }
 
-export function CostReadout({ sessionTokens, lastTurn, className }: CostReadoutProps) {
+export function CostReadout({ sessionTokens, lastTurn, sessionCost, className }: CostReadoutProps) {
   const hasUsage = sessionTokens > 0;
   return (
     <span
@@ -36,6 +38,9 @@ export function CostReadout({ sessionTokens, lastTurn, className }: CostReadoutP
           <span className="font-medium text-foreground">{sessionTokens.toLocaleString()} tokens</span>
           {lastTurn ? (
             <span> · last {(lastTurn.prompt_tokens + lastTurn.completion_tokens).toLocaleString()}</span>
+          ) : null}
+          {sessionCost != null && Number.isFinite(sessionCost) ? (
+            <span> · <span className="font-medium text-foreground">${sessionCost.toFixed(4)}</span> session</span>
           ) : null}
         </>
       ) : (

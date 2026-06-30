@@ -11,15 +11,43 @@
  * .add/design/captures/chat-workspace-page.png.
  */
 
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Bot, Check, Copy, RefreshCw, Send, Square, User } from "lucide-react";
-import { useChatStream, type ChatMessage, type TurnMeta, type Usage } from "@/lib/hooks/use-chat-stream";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
+import { Bot, Check, Copy, Paperclip, RefreshCw, Send, Square, User } from "lucide-react";
+import {
+  useChatStream,
+  type ChatMessage,
+  type MessageToolCall,
+  type TurnMeta,
+  type Usage,
+} from "@/lib/hooks/use-chat-stream";
+import { parseToolDef, type ToolChoice, type ToolDef } from "@/lib/chat/tool-defs";
+import {
+  fileToAttachment,
+  attachmentErrorMessage,
+  contentText,
+  contentImages,
+  ATTACHMENT_LIMIT_MESSAGE,
+  MAX_IMAGES_PER_MESSAGE,
+  ALLOWED_MIME,
+  type ImageAttachment,
+} from "@/lib/chat/attachments";
+import { StagedAttachments, MessageImages } from "@/components/chat/AttachmentPreview";
 import { bffGet } from "@/lib/bff-client";
 import type { ModelsData } from "@/components/models/ModelCatalogTable";
 import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
 import { ModelPicker } from "@/components/chat/ModelPicker";
 import { MessageMarkdown } from "@/components/chat/MessageMarkdown";
-import { ModelControls } from "@/components/chat/ModelControls";
+import { ToolCallCard } from "@/components/chat/ToolCallCard";
+import { InspectorPanel, EMPTY_SAMPLING, type SamplingState } from "@/components/chat/InspectorPanel";
+import { ConversationTopBar } from "@/components/chat/ConversationTopBar";
 import { CostReadout } from "@/components/chat/CostReadout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,6 +64,24 @@ const DEFAULT_MODEL = "openai/gpt-4o";
 /** First ~40 chars of text, trimmed — used as a conversation title slug. */
 function slug(text: string): string {
   return text.trim().slice(0, 40).trim();
+}
+
+/**
+ * Spread the live sampling state into a send() input. Each field is passed as-is;
+ * useChatStream omits any key that is unset/invalid OR not honored by the model's
+ * provider, so the off/default path stays byte-identical and a dropped param never
+ * ships. (chat-parameters-panel)
+ */
+function samplingToInput(s: SamplingState) {
+  return {
+    topP: s.topP,
+    maxTokens: s.maxTokens,
+    frequencyPenalty: s.frequencyPenalty,
+    presencePenalty: s.presencePenalty,
+    seed: s.seed,
+    stop: s.stop,
+    responseFormat: s.responseFormat,
+  };
 }
 
 /** Composer quick-action chips (design parity) — each prefills the input. */
@@ -75,15 +121,21 @@ function formatClock(at: number | undefined): string | null {
 }
 
 /**
- * The per-turn meta line for an assistant reply: "model · 0.9s · ▲ 1,242 tok · $0.0041".
+ * The per-turn meta line for an assistant reply:
+ *   "model · stop · 11p / 4c 15t · 0.9s · $0.0041"
+ * Order: model · finish_reason · tokens (Xp / Yc Zt) · latency · cost.
  * Every part is REAL (from TurnMeta + catalog pricing) or omitted — no fabrication.
  */
 function formatTurnMeta(meta: TurnMeta | undefined, costText: string | null): string {
   if (!meta) return "";
   const parts: string[] = [];
   if (meta.model) parts.push(meta.model);
+  if (meta.finishReason) parts.push(meta.finishReason);
+  if (meta.usage) {
+    const { prompt_tokens: p, completion_tokens: c, total_tokens: t } = meta.usage;
+    parts.push(`${p}p/${c}c ${t}tok`);
+  }
   if (meta.latencyMs != null) parts.push(`${(meta.latencyMs / 1000).toFixed(1)}s`);
-  if (meta.usage) parts.push(`▲ ${meta.usage.total_tokens.toLocaleString()} tok`);
   if (costText) parts.push(costText);
   return parts.join(" · ");
 }
@@ -123,15 +175,95 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     [],
   );
 
-  const { status, messages, meta, streamingText, usage, error, send, stop, reset, load } =
-    useChatStream({ onTurnComplete });
+  const {
+    status,
+    messages,
+    meta,
+    streamingText,
+    usage,
+    error,
+    send,
+    stop,
+    reset,
+    load,
+    pendingToolCalls,
+    submitToolResults,
+  } = useChatStream({ onTurnComplete });
 
   const [input, setInput] = useState("");
   const [model, setModel] = useState(defaultModel);
   const [system, setSystem] = useState("");
   const [temperature, setTemperature] = useState(1);
   const [webSearch, setWebSearch] = useState(false);
+  // chat-parameters-panel: live sampling controls — in-memory, persists across
+  // turns + inspector tab switches. A shallow patch keeps unrelated fields intact.
+  const [sampling, setSampling] = useState<SamplingState>(EMPTY_SAMPLING);
+  const onSampling = useCallback(
+    (patch: Partial<SamplingState>) => setSampling((s) => ({ ...s, ...patch })),
+    [],
+  );
+  // chat-tools-functions: tools authored as raw JSON drafts (one per editor) + the tool_choice.
+  // The valid subset (parses + shape-checks) is what reaches the wire; an invalid draft is
+  // flagged in the editor and excluded. Zero valid tools ⇒ no tools/tool_choice (byte-identical).
+  const [toolDrafts, setToolDrafts] = useState<string[]>([]);
+  const [toolChoice, setToolChoice] = useState<ToolChoice>("auto");
+  const validTools = useMemo<ToolDef[]>(
+    () => toolDrafts.map((d) => parseToolDef(d)).filter((d): d is ToolDef => d !== null),
+    [toolDrafts],
+  );
+  const toolsInput = () => ({
+    tools: validTools.length > 0 ? validTools : undefined,
+    toolChoice,
+  });
+  // Per-tool_call_id result text the operator types before continuing (cleared on continue).
+  const [toolResults, setToolResults] = useState<Record<string, string>>({});
+  // chat-attachments: staged images for the next turn + the last rejection message.
+  // `imageNames` keeps url→filename so a committed turn (whose wire content-part is
+  // only {image_url:{url}}) can still alt-text its thumbnails.
+  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [imageNames, setImageNames] = useState<Map<string, string>>(new Map());
+  const attachmentsRef = useRef<ImageAttachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+  // Validate + encode each pick; enforce the per-message count cap against the
+  // running staged set (design-for-failure — reject before building a data-URL).
+  const onPickFiles = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setAttachError(null);
+    for (const file of Array.from(files)) {
+      // Enforce the cap against the LIVE staged count (the ref is bumped
+      // synchronously on each admit) so concurrent onPickFiles invocations
+      // can't each read a stale snapshot and overflow it.
+      if (attachmentsRef.current.length >= MAX_IMAGES_PER_MESSAGE) {
+        setAttachError(ATTACHMENT_LIMIT_MESSAGE);
+        break;
+      }
+      const res = await fileToAttachment(file);
+      if (!res.ok) {
+        setAttachError(attachmentErrorMessage(res.error));
+        continue;
+      }
+      // re-check after the async encode — another pick may have filled the cap
+      if (attachmentsRef.current.length >= MAX_IMAGES_PER_MESSAGE) {
+        setAttachError(ATTACHMENT_LIMIT_MESSAGE);
+        break;
+      }
+      const att = res.attachment;
+      const nextStaged = [...attachmentsRef.current, att];
+      attachmentsRef.current = nextStaged; // bump synchronously; the effect reconciles
+      setAttachments(nextStaged);
+      setImageNames((cur) => new Map(cur).set(att.dataUrl, att.name));
+    }
+  }, []);
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((cur) => cur.filter((a) => a.id !== id));
+  }, []);
   const [sessionTokens, setSessionTokens] = useState(0);
+  // The conversation title shown in the top bar (null → a fresh, unsaved chat).
+  const [activeTitle, setActiveTitle] = useState<string | null>(null);
   const countedRef = useRef<Usage | undefined>(undefined);
   const threadEndRef = useRef<HTMLDivElement>(null);
 
@@ -201,15 +333,32 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
       const userMsg = messages[assistantIndex - 1];
       if (!userMsg || userMsg.role !== "user") return;
       load(messages.slice(0, assistantIndex - 1));
+      // chat-attachments: regenerate re-sends the same turn — reconstruct the image
+      // parts (text + dataURLs) so a multimodal turn keeps its images.
+      const urls = contentImages(userMsg.content);
+      const images: ImageAttachment[] | undefined =
+        urls.length > 0
+          ? urls.map((url, i) => ({
+              id: `regen-${assistantIndex}-${i}`,
+              name: imageNames.get(url) ?? "image",
+              mime: url.startsWith("data:") ? url.slice(5, url.indexOf(";")) : "image/png",
+              dataUrl: url,
+              bytes: 0,
+            }))
+          : undefined;
       send({
         model,
-        text: userMsg.content,
+        text: contentText(userMsg.content),
         system: system || undefined,
         temperature,
         webSearch,
+        ...samplingToInput(sampling),
+        tools: validTools.length > 0 ? validTools : undefined,
+        toolChoice,
+        images,
       });
     },
-    [isStreaming, messages, load, send, model, system, temperature, webSearch],
+    [isStreaming, messages, load, send, model, system, temperature, webSearch, sampling, validTools, toolChoice, imageNames],
   );
 
   // Accumulate the session token total — each completed turn's usage object is
@@ -221,6 +370,25 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
       setSessionTokens((t) => t + usage.total_tokens);
     }
   }, [usage]);
+
+  // Session cost: derived from the committed meta array + catalog pricing.
+  // Each TurnMeta already carries the model that produced the turn, so no
+  // extra ref is needed. Returns null (honest-absent) until a priced turn exists.
+  const sessionCost = useMemo<number | null>(() => {
+    let total = 0;
+    let hasAny = false;
+    for (const m of meta) {
+      if (!m.usage || !m.model) continue;
+      const price = priceMap.get(m.model);
+      if (!price) continue;
+      const c = m.usage.prompt_tokens * price.p + m.usage.completion_tokens * price.c;
+      if (Number.isFinite(c) && c > 0) {
+        total += c;
+        hasAny = true;
+      }
+    }
+    return hasAny ? total : null;
+  }, [meta, priceMap]);
 
   // Scroll-to-latest as the thread grows (design: scroll-to-latest affordance).
   // scrollIntoView is absent in jsdom and older engines — guard before calling.
@@ -256,8 +424,29 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     })();
     pendingConvIdRef.current = persistPromise;
 
-    send({ model, text, system: system.trim() || undefined, temperature, webSearch });
+    send({
+      model,
+      text,
+      system: system.trim() || undefined,
+      temperature,
+      webSearch,
+      ...samplingToInput(sampling),
+      ...toolsInput(),
+      // chat-attachments: ≥1 staged image ⇒ the user turn ships as content-parts.
+      images: attachments.length > 0 ? attachments : undefined,
+    });
     setInput("");
+    // clear the staged set + any rejection message for the next turn
+    setAttachments([]);
+    setAttachError(null);
+  }
+
+  // chat-tools-functions: answer the pending tool calls (partial-friendly — unanswered ⇒ "")
+  // and continue the run. The hook appends one role:"tool" message per pending call and re-streams
+  // with the same tools/model/sampling.
+  function handleContinue() {
+    submitToolResults(pendingToolCalls.map((c) => ({ tool_call_id: c.id, content: toolResults[c.id] ?? "" })));
+    setToolResults({});
   }
 
   function onSubmit(e: FormEvent) {
@@ -277,6 +466,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
     reset();
     activeConvIdRef.current = null;
     setActiveConversationId(null);
+    setActiveTitle(null);
   }
 
   function handleSelect(id: string) {
@@ -286,6 +476,7 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
         load(conv.messages.map((m) => ({ role: m.role, content: m.content })));
         activeConvIdRef.current = id;
         setActiveConversationId(id);
+        setActiveTitle(conv.title ?? "Untitled");
       } catch {
         // best-effort: if fetch fails just leave the current thread intact
       }
@@ -304,18 +495,13 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
         refreshKey={refreshKey}
         streaming={isStreaming}
       />
+      {/* CONVERSATION column — top bar + streaming thread + composer. */}
       <div className="flex min-h-0 flex-1 flex-col bg-muted/30">
-      <header className="flex items-center justify-between border-b border-border bg-background px-6 py-3">
-        <h1 className="text-lg font-semibold text-foreground">Chat</h1>
-        <div className="flex items-center gap-3">
-          {/* chat-cost-readout — live session token total + latest turn (tokens only). */}
-          <CostReadout sessionTokens={sessionTokens} lastTurn={usage} />
-          {/* SLOT: chat-model-controls (picker) */}
-          <span data-slot="model-picker">
-            <ModelPicker value={model} onChange={setModel} />
-          </span>
-        </div>
-      </header>
+      <ConversationTopBar
+        title={activeTitle ?? "New chat"}
+        modelPicker={<ModelPicker value={model} onChange={setModel} />}
+        costReadout={<CostReadout sessionTokens={sessionTokens} lastTurn={usage} sessionCost={sessionCost} />}
+      />
 
       <div
         className="min-h-0 flex-1 overflow-y-auto px-4 py-6"
@@ -333,18 +519,39 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
 
           {messages.length > 0 ? <DayDivider label="Today" /> : null}
 
-          {messages.map((m, i) => (
-            <MessageRow
-              key={i}
-              message={m}
-              meta={meta[i]}
-              costText={costFor(meta[i])}
-              userInitials={userInitials}
-              onRegenerate={
-                m.role === "assistant" && !isStreaming ? () => regenerateFrom(i) : undefined
-              }
-            />
-          ))}
+          {messages.map((m, i) => {
+            // chat-tools-functions: a role:"tool" message is the operator's answer — captured in
+            // the card's input, not shown as its own bubble.
+            if (m.role === "tool") return null;
+            // an assistant turn that asked to call tools renders as ToolCallCards; the LAST such
+            // turn while awaiting_tool is interactive (result inputs + Continue).
+            if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
+              const pending = status === "awaiting_tool" && i === messages.length - 1;
+              return (
+                <ToolCallTurn
+                  key={i}
+                  calls={m.tool_calls}
+                  pending={pending}
+                  results={toolResults}
+                  onResult={(id, v) => setToolResults((r) => ({ ...r, [id]: v }))}
+                  onContinue={handleContinue}
+                />
+              );
+            }
+            return (
+              <MessageRow
+                key={i}
+                message={m}
+                meta={meta[i]}
+                costText={costFor(meta[i])}
+                userInitials={userInitials}
+                imageNames={imageNames}
+                onRegenerate={
+                  m.role === "assistant" && !isStreaming ? () => regenerateFrom(i) : undefined
+                }
+              />
+            );
+          })}
 
           {isStreaming ? (
             <MessageRow
@@ -367,15 +574,6 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
 
       <form onSubmit={onSubmit} className="border-t border-border bg-background px-4 py-3">
         <div className="mx-auto flex max-w-3xl flex-col gap-2">
-          {/* SLOT: chat-model-controls (system + temperature) — collapsed by default */}
-          <ModelControls
-            system={system}
-            onSystemChange={setSystem}
-            temperature={temperature}
-            onTemperatureChange={setTemperature}
-            webSearch={webSearch}
-            onWebSearchChange={setWebSearch}
-          />
           {/* Quick-action chips — design parity; prefill the composer when idle+empty. */}
           {input.trim() === "" && !isStreaming ? (
             <div className="flex flex-wrap gap-1.5">
@@ -391,7 +589,39 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
               ))}
             </div>
           ) : null}
+          {/* chat-attachments: staged image strip + any rejection message. */}
+          {attachments.length > 0 ? (
+            <StagedAttachments items={attachments} onRemove={removeAttachment} />
+          ) : null}
+          {attachError ? (
+            <p role="alert" className="px-1 text-xs text-destructive">
+              {attachError}
+            </p>
+          ) : null}
           <div className="flex items-end gap-2 rounded-xl border border-border bg-background p-2 focus-within:ring-2 focus-within:ring-ring">
+          {/* chat-attachments: pick image(s) → stage as content-parts. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ALLOWED_MIME.join(",")}
+            multiple
+            data-testid="attachment-input"
+            className="hidden"
+            onChange={(e) => {
+              void onPickFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach image"
+            className="size-9 shrink-0 text-muted-foreground"
+          >
+            <Paperclip className="size-4" aria-hidden="true" />
+          </Button>
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -420,6 +650,70 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
           </div>
         </div>
       </form>
+      </div>
+
+      {/* INSPECTOR panel — Parameters / Tools / Code (collapses below xl). */}
+      <InspectorPanel
+        model={model}
+        sampling={sampling}
+        onSampling={onSampling}
+        system={system}
+        onSystemChange={setSystem}
+        temperature={temperature}
+        onTemperatureChange={setTemperature}
+        webSearch={webSearch}
+        onWebSearchChange={setWebSearch}
+        toolDrafts={toolDrafts}
+        onToolDrafts={setToolDrafts}
+        toolChoice={toolChoice}
+        onToolChoice={setToolChoice}
+      />
+    </div>
+  );
+}
+
+/**
+ * chat-tools-functions: an assistant turn that requested tool calls. Renders each call as a
+ * ToolCallCard; while it is the pending turn (awaiting_tool) the cards expose result inputs and a
+ * single Continue answers ALL pending calls (partial-friendly) and resumes the run.
+ */
+function ToolCallTurn({
+  calls,
+  pending,
+  results,
+  onResult,
+  onContinue,
+}: {
+  calls: MessageToolCall[];
+  pending: boolean;
+  results: Record<string, string>;
+  onResult: (id: string, value: string) => void;
+  onContinue: () => void;
+}) {
+  return (
+    <div data-role="assistant" className="flex gap-3">
+      <Avatar isUser={false} initials={null} />
+      <div className="flex min-w-0 max-w-[85%] flex-col gap-2">
+        <span className="px-1 text-xs font-medium text-muted-foreground">Assistant · tool call</span>
+        {calls.map((c) => (
+          <ToolCallCard
+            key={c.id}
+            call={{ id: c.id, name: c.function.name, arguments: c.function.arguments }}
+            result={pending ? (results[c.id] ?? "") : undefined}
+            onResult={pending ? (v) => onResult(c.id, v) : undefined}
+          />
+        ))}
+        {pending ? (
+          <div className="flex items-center gap-2 px-1">
+            <Button type="button" size="sm" onClick={onContinue} aria-label="Continue">
+              <Send className="size-4" aria-hidden="true" />
+              Continue
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Supply results (any you can), then continue the run.
+            </span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -496,6 +790,7 @@ function MessageRow({
   costText = null,
   streaming = false,
   onRegenerate,
+  imageNames,
 }: {
   message: ChatMessage;
   userInitials: string | null;
@@ -503,10 +798,18 @@ function MessageRow({
   costText?: string | null;
   streaming?: boolean;
   onRegenerate?: () => void;
+  /** chat-attachments: url→filename so a committed multimodal turn can alt-text its thumbnails. */
+  imageNames?: Map<string, string>;
 }) {
   const isUser = message.role === "user";
   const clock = formatClock(meta?.at);
   const metaLine = isUser ? "" : formatTurnMeta(meta, costText);
+  // chat-attachments: a user turn may carry image parts; everything else is text.
+  const text = contentText(message.content);
+  const images = contentImages(message.content).map((url) => ({
+    url,
+    alt: imageNames?.get(url) ?? "attachment",
+  }));
   return (
     <div
       data-role={message.role}
@@ -528,7 +831,8 @@ function MessageRow({
               : "border border-border bg-background text-foreground",
           )}
         >
-          {isUser ? message.content : <MessageMarkdown content={message.content} />}
+          {images.length > 0 ? <MessageImages images={images} className="mb-2" /> : null}
+          {isUser ? text : <MessageMarkdown content={text} />}
           {streaming ? (
             <span
               className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-current align-middle"
@@ -539,7 +843,7 @@ function MessageRow({
         {!isUser && !streaming ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
             {metaLine ? <span className="text-xs text-muted-foreground">{metaLine}</span> : null}
-            <CopyTurnButton getText={() => message.content} />
+            <CopyTurnButton getText={() => text} />
             {onRegenerate ? (
               <button
                 type="button"

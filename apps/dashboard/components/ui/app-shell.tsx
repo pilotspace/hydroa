@@ -120,6 +120,16 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
   const [collapsed, setCollapsed] = React.useState(false);
   const items = visibleItems(role);
   const brandIcon = <Hexagon className="size-5" />;
+  const mainRef = React.useRef<HTMLElement>(null);
+
+  // Fixed-viewport shell (v54): <main> is the desktop scroll container, so Next's
+  // window-scroll restoration (window.scrollTo(0,0) on navigation) is a no-op here.
+  // Reset the main scroll region to the top when the route changes, or a new page
+  // would inherit the previous page's scroll offset. (`scrollTo` is optional-chained
+  // so jsdom / older engines without it degrade silently.)
+  React.useEffect(() => {
+    mainRef.current?.scrollTo?.({ top: 0 });
+  }, [activePath]);
 
   // Global sign-out: POST the BFF logout (clears the HttpOnly session cookie) then
   // hard-navigate to /login. We use window.location (not next/navigation) so the shell
@@ -161,7 +171,12 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
       </a>
 
       <Dialog>
-        <div className="flex min-h-screen flex-col lg:flex-row">
+        {/* Fixed-viewport app shell (v54): below lg the page scrolls as one document
+            (min-h-screen, stacked). From lg the row is EXACTLY the viewport height and
+            clips its own overflow, so the rail spans full height (lg:h-full, no sticky)
+            and <main> owns the only scroll region — guaranteed full-height on any
+            browser/zoom, no double scrollbar. */}
+        <div className="flex min-h-screen flex-col lg:h-screen lg:flex-row lg:overflow-hidden">
           {/* Mobile header — visible below the lg breakpoint; opens the nav sheet. */}
           <header className="flex items-center justify-between gap-2 border-b border-border bg-card p-3 lg:hidden">
             <SidebarBrand title={BRAND} icon={brandIcon} />
@@ -180,14 +195,14 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
           </header>
 
           {/* Desktop rail — the single Primary nav landmark; collapsible from the lg breakpoint up.
-              lg:sticky+lg:top-0+lg:h-screen pin it to the viewport at full height so it never
-              scrolls away with a tall page (the footer stays reachable); SidebarContent already
-              scrolls the nav internally when it overflows. */}
+              lg:h-full makes it span the fixed-viewport-height row (above) at full height with
+              NO position:sticky dependency (which can break under an ancestor transform/zoom);
+              SidebarContent already scrolls the nav internally when it overflows. */}
           <Sidebar
             aria-label="Primary"
             data-state={collapsed ? "collapsed" : "expanded"}
             className={cn(
-              "hidden lg:flex lg:sticky lg:top-0 lg:h-screen",
+              "hidden lg:flex lg:h-full",
               collapsed ? "w-16" : "w-64",
             )}
           >
@@ -225,7 +240,15 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
             </SidebarFooter>
           </Sidebar>
 
-          <main id="main" className="flex-1 bg-muted/30 p-4 lg:p-8">
+          {/* From lg, main is the ONLY scroll region (lg:h-full + lg:overflow-y-auto) so the
+              rail/footer stay put. Content stays FLUID (no max-width cap); 2xl:px-16 grows the
+              gutters on very wide monitors so content is not edge-glued (wide tables keep width). */}
+          <main
+            id="main"
+            ref={mainRef}
+            tabIndex={-1}
+            className="flex-1 bg-muted/30 p-4 lg:p-8 lg:h-full lg:overflow-y-auto 2xl:px-16 focus:outline-none"
+          >
             {/* Reveal = a route-keyed, motion-safe entrance: it remounts on navigation
                 (key=activePath) so each admin route fades/slides in. Children render
                 unconditionally and the landmark is unchanged — reduced motion shows them

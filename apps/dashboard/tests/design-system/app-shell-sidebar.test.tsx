@@ -143,19 +143,82 @@ describe("AppShell — the frozen v13 shell contract still holds", () => {
     expect(container.querySelector('[class*="lg:flex-row"]')).not.toBeNull();
   });
 
-  it("test_desktop_rail_is_full_height_sticky", () => {
-    // The desktop rail is pinned to the viewport at full height (sticky, h-screen) so
-    // it never scrolls away with a tall page and its footer stays reachable. lg-scoped
-    // so the stacked mobile layout (rail hidden, sheet used) is unaffected.
-    render(
+  it("test_desktop_rail_full_height_fixed_viewport", () => {
+    // v54 (re-architect): the desktop rail fills the full viewport height via a
+    // FIXED-VIEWPORT shell — the lg:flex-row container is exactly the viewport height and
+    // clips its overflow, so the rail (lg:h-full) always spans it WITHOUT depending on
+    // position:sticky (which can break under an ancestor transform/zoom → the "~75%"
+    // report). lg-scoped: the stacked mobile layout is unaffected. <main> owns the ONLY
+    // desktop scroll region, so there is no double scrollbar and the rail never scrolls away.
+    const { container } = render(
       <AppShell role="owner">
         <Body />
       </AppShell>,
     );
     const rail = screen.getByRole("navigation", { name: /primary/i });
-    expect(rail.className).toContain("lg:sticky");
-    expect(rail.className).toContain("lg:top-0");
-    expect(rail.className).toContain("lg:h-screen");
+    expect(rail.className).toContain("lg:h-full");
+    expect(rail.className).not.toContain("lg:sticky");
+
+    const layout = container.querySelector('[class*="lg:flex-row"]') as HTMLElement;
+    expect(layout).not.toBeNull();
+    expect(layout.className).toContain("lg:h-screen");
+    expect(layout.className).toContain("lg:overflow-hidden");
+
+    const main = container.querySelector("main#main") as HTMLElement;
+    expect(main.className).toContain("lg:overflow-y-auto");
+  });
+
+  it("test_main_scales_gutters_on_wide_screens", () => {
+    // "No cap — scale gutters": content stays FLUID (no max-width cap) but the horizontal
+    // gutters grow on very wide screens (2xl) so content is not edge-glued on large monitors.
+    const { container } = render(
+      <AppShell role="owner">
+        <Body />
+      </AppShell>,
+    );
+    const main = container.querySelector("main#main") as HTMLElement;
+    expect(main.className).toContain("2xl:px-16");
+    expect(main.className).not.toMatch(/\bmax-w-/); // fluid, never capped
+  });
+});
+
+// ── FIXED-VIEWPORT SCROLL BEHAVIOR (v54) ──────────────────────────────────────
+describe("AppShell — main is a focusable scroll region that resets on route change", () => {
+  it("test_main_is_focusable_scroll_region", () => {
+    // In the fixed-viewport shell <main> owns the desktop scroll. tabindex=-1 makes it the
+    // valid target for the skip-link AND lets a keyboard user focus + scroll the region.
+    const { container } = render(
+      <AppShell role="owner" activePath="/app/usage">
+        <Body />
+      </AppShell>,
+    );
+    const main = container.querySelector("main#main") as HTMLElement;
+    expect(main).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("test_main_scroll_resets_on_route_change", () => {
+    // Regression guard: Next resets window scroll on navigation, but <main> is the scroll
+    // container now, so the shell must reset main's scroll to the top when the route changes —
+    // otherwise a new page inherits the previous page's scroll offset.
+    const scrollTo = vi.fn();
+    const orig = (HTMLElement.prototype as unknown as { scrollTo?: unknown }).scrollTo;
+    (HTMLElement.prototype as unknown as { scrollTo: unknown }).scrollTo = scrollTo;
+    try {
+      const { rerender } = render(
+        <AppShell role="owner" activePath="/app/usage">
+          <Body />
+        </AppShell>,
+      );
+      scrollTo.mockClear(); // ignore the on-mount reset
+      rerender(
+        <AppShell role="owner" activePath="/app/chat">
+          <Body />
+        </AppShell>,
+      );
+      expect(scrollTo).toHaveBeenCalled();
+    } finally {
+      (HTMLElement.prototype as unknown as { scrollTo?: unknown }).scrollTo = orig;
+    }
   });
 });
 

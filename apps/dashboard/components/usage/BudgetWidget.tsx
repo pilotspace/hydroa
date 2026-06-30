@@ -2,15 +2,21 @@
 
 /**
  * BudgetWidget — shows monthly ceiling and current spend from GET /admin/budget.
- * Owner/admin: "Edit Budget" button opens BudgetEditForm inline.
- * Member: read-only (no edit affordance).
- * null ceiling renders as "Unlimited".
+ *
+ * Self-contained edit flow:
+ *   canEdit={true}  → "Edit Budget" button rendered inside the widget;
+ *                     internal useState manages the form open/close.
+ *   canEdit={false} → read-only (member role, or parent wants no edit affordance).
+ *
+ * The widget is rendered OUTSIDE the tab panel in UsagePage so the "Edit Budget"
+ * button stays in the DOM regardless of which tab is active (usage.test.tsx
+ * checks for the button after clicking the Records tab).
  */
 
 import { useState } from "react";
 import { BffError } from "@/lib/bff-client";
 import { BudgetEditForm } from "./BudgetEditForm";
-import { Button, Loading, ErrorState, StatCard } from "@/components/ui";
+import { Loading, ErrorState, StatCard, Button } from "@/components/ui";
 
 export interface BudgetData {
   budget_usd_monthly: string | null;
@@ -28,7 +34,8 @@ interface BudgetWidgetProps {
   isError: boolean;
   error: unknown;
   data: BudgetData | undefined;
-  canEdit: boolean;
+  /** When true, renders "Edit Budget" button and manages the form internally. */
+  canEdit?: boolean;
 }
 
 export function BudgetWidget({
@@ -36,7 +43,7 @@ export function BudgetWidget({
   isError,
   error,
   data,
-  canEdit,
+  canEdit = false,
 }: BudgetWidgetProps) {
   const [isEditing, setIsEditing] = useState(false);
 
@@ -63,7 +70,6 @@ export function BudgetWidget({
         <Button
           type="button"
           variant="outline"
-          className="self-start"
           onClick={() => setIsEditing(true)}
         >
           Edit Budget

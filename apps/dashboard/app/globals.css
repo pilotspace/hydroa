@@ -6,7 +6,7 @@
 /*
  * Design-system token layer (v13 design-system-foundation).
  * The SINGLE source of design values for the dashboard — the realization of
- * .add/design/tokens.json. Identity: indigo-600 accent · slate ramp · Inter ·
+ * .add/design/tokens.json. Identity: Pantone Classic Blue accent · slate ramp · Inter ·
  * light default. Themeable: values live as CSS custom properties on :root; a
  * .dark block is scaffolded (light is the only mode shipped in v13). Components
  * consume these ONLY via the token-named Tailwind utilities below (bg-primary,
@@ -26,10 +26,10 @@
     --muted: #f1f5f9;               /* slate-100 */
     --muted-foreground: #64748b;    /* slate-500 */
 
-    /* brand accent (indigo) */
-    --primary: #4f46e5;             /* indigo-600 */
+    /* brand accent (Hydroa — Pantone Classic Blue 19-4052, luxury/trust) */
+    --primary: #0f4c81;             /* Classic Blue */
     --primary-foreground: #ffffff;
-    --primary-hover: #4338ca;       /* indigo-700 */
+    --primary-hover: #155394;       /* lifted Classic Blue */
 
     /* neutral interactive accent (shadcn "accent" — hover/active surfaces) */
     --accent: #f1f5f9;              /* slate-100 */
@@ -47,10 +47,10 @@
     /* lines & focus */
     --border: #e2e8f0;              /* slate-200 */
     --input: #e2e8f0;               /* slate-200 */
-    --ring: #6366f1;                /* indigo-500 — focus ring */
+    --ring: #2563eb;                /* blue-600 — focus ring */
 
     /* chart palette (data-viz series — v23 enterprise extension) */
-    --chart-1: #4f46e5;             /* indigo-600 */
+    --chart-1: #0f4c81;             /* Classic Blue */
     --chart-2: #10b981;             /* emerald-500 */
     --chart-3: #f59e0b;             /* amber-500 */
     --chart-4: #0ea5e9;             /* sky-500 */
@@ -62,7 +62,7 @@
     --sidebar-accent: #f1f5f9;              /* slate-100 — hover/active */
     --sidebar-accent-foreground: #0f172a;   /* slate-900 */
     --sidebar-border: #e2e8f0;             /* slate-200 */
-    --sidebar-ring: #6366f1;               /* indigo-500 */
+    --sidebar-ring: #2563eb;               /* blue-600 */
 
     /* radius (control = md 8px; card = lg 10px — retightened, Aurora) */
     --radius: 0.5rem;
@@ -70,17 +70,17 @@
     /* type */
     --font-sans: "Inter", system-ui, sans-serif;
 
-    /* elevation — layered soft shadows (Aurora · NEW depth scale) */
-    --elevation-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-    --elevation-md: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 10px -3px rgba(15, 23, 42, 0.08);
-    --elevation-lg: 0 10px 28px -8px rgba(15, 23, 42, 0.12), 0 2px 6px -2px rgba(15, 23, 42, 0.06);
-    --elevation-xl: 0 28px 56px -20px rgba(30, 27, 75, 0.28), 0 8px 20px -10px rgba(79, 70, 229, 0.18);
+    /* elevation — soft, diffuse, low-opacity (Apple-luxury: refined depth, not heavy) */
+    --elevation-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+    --elevation-md: 0 2px 8px -2px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+    --elevation-lg: 0 8px 24px -6px rgba(15, 23, 42, 0.10);
+    --elevation-xl: 0 20px 48px -16px rgba(15, 76, 129, 0.20);
 
     /* brand gradient + soft accent (Aurora · NEW — gradient reserved for hero headline + one hero CTA) */
-    --accent-soft: #eef2ff;          /* indigo-50  */
-    --accent-soft-border: #e0e7ff;   /* indigo-100 */
-    --brand-from: #4f46e5;           /* indigo-600 */
-    --brand-to: #7c3aed;             /* violet-500 */
+    --accent-soft: #eaf1f8;          /* Classic-Blue-tinted 50 */
+    --accent-soft-border: #cfe0f0;   /* Classic-Blue-tinted 100 */
+    --brand-from: #0f4c81;           /* Classic Blue */
+    --brand-to: #2563eb;             /* blue-600 — deep→bright enterprise gradient */
   }
 
   /* Scaffolded for a later dark theme (not shipped in v13). */
@@ -93,9 +93,9 @@
     --popover-foreground: #f8fafc;
     --muted: #1e293b;               /* slate-800 */
     --muted-foreground: #94a3b8;    /* slate-400 */
-    --primary: #6366f1;             /* indigo-500 */
+    --primary: #3b82f6;             /* blue-500 (brighter on dark) */
     --primary-foreground: #ffffff;
-    --primary-hover: #818cf8;
+    --primary-hover: #60a5fa;       /* blue-400 */
     --accent: #1e293b;
     --accent-foreground: #f8fafc;
     --secondary: #1e293b;
@@ -107,10 +107,10 @@
     --destructive-foreground: #ffffff;
     --border: #1e293b;
     --input: #1e293b;
-    --ring: #818cf8;
+    --ring: #3b82f6;                /* blue-500 */
 
     /* chart palette — lighter series for dark surfaces */
-    --chart-1: #818cf8;             /* indigo-400 */
+    --chart-1: #60a5fa;             /* blue-400 */
     --chart-2: #34d399;             /* emerald-400 */
     --chart-3: #fbbf24;             /* amber-400 */
     --chart-4: #38bdf8;             /* sky-400 */
@@ -122,19 +122,19 @@
     --sidebar-accent: #1e293b;              /* slate-800 — hover/active */
     --sidebar-accent-foreground: #f8fafc;   /* slate-50 */
     --sidebar-border: #1e293b;             /* slate-800 */
-    --sidebar-ring: #818cf8;               /* indigo-400 */
+    --sidebar-ring: #3b82f6;               /* blue-500 */
 
     /* elevation — dark counterparts (kept coherent; dark not shipped) */
     --elevation-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --elevation-md: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 10px -3px rgba(0, 0, 0, 0.5);
     --elevation-lg: 0 10px 28px -8px rgba(0, 0, 0, 0.55), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
-    --elevation-xl: 0 28px 56px -20px rgba(0, 0, 0, 0.7), 0 8px 20px -10px rgba(99, 102, 241, 0.25);
+    --elevation-xl: 0 28px 56px -20px rgba(0, 0, 0, 0.7), 0 8px 20px -10px rgba(37, 99, 235, 0.25);
 
-    /* brand gradient + soft accent — dark counterparts */
-    --accent-soft: #1e1b4b;          /* indigo-950 */
-    --accent-soft-border: #312e81;   /* indigo-900 */
-    --brand-from: #6366f1;           /* indigo-500 */
-    --brand-to: #8b5cf6;             /* violet-400 */
+    /* brand gradient + soft accent — dark counterparts (blue) */
+    --accent-soft: #0c2740;          /* deep Classic-Blue surface */
+    --accent-soft-border: #16395f;   /* deep Classic-Blue border */
+    --brand-from: #2563eb;           /* blue-600 */
+    --brand-to: #3b82f6;             /* blue-500 */
   }
 
   * {

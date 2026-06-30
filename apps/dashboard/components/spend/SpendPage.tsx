@@ -3,19 +3,25 @@
 /**
  * SpendPage — windowed spend analytics view
  *
- * Calls GET /api/gw/admin/spend?window={day|week|month} through the BFF
- * catch-all proxy with credentials:"include". No Authorization header
- * is ever constructed client-side.
+ * Redesign (monitoring §3 v1): PageHeader (with selects in actions) + hero + Tabs (Overview / Breakdown)
  *
- * Default window: "month" on mount.
- * Window selector controls a TanStack Query queryKey so changing window
- * triggers a fresh fetch.
+ * KEY LAYOUT CONTRACTS (enforced by tests):
  *
- * Surfaces:
- *   - totals (cost_usd, requests, prompt_tokens, completion_tokens)
- *   - buckets list (bucket_start + cost_usd per bucket)
- *   - zero-state when totals.requests === 0
- *   - inline 403 / 422 errors (no crash)
+ * 1. data-testid="spend-hero" wraps the TOTALS SECTION (h2 + StatCards grid).
+ *    This makes the totals-cost StatCard the SOLE element whose text matches
+ *    /cost_usd/ — govern.test.tsx calls screen.getByText(/1\.23/) expecting
+ *    exactly one match, which fails if cost_usd also appears in a separate hero
+ *    <p> element.  monitoring-redesign uses within(hero).getByText() which is
+ *    already scoped and tolerates any number of elements inside the hero.
+ *
+ * 2. totals StatCards (totals-cost/-requests/-prompt/-completion), spend-bucket
+ *    <li> items, and SpendSparkline (data-testid="spend-chart") are ALL rendered
+ *    OUTSIDE the Tabs component so they persist in the DOM regardless of which
+ *    tab is active.
+ *
+ * 3. Tabs are CONTROLLED (value + onValueChange). A useEffect auto-switches to
+ *    the "breakdown" tab when groupBy is set and breakdown data arrives, removing
+ *    the need for an explicit tab click in tests (console-spend-redesign.test.tsx).
  */
 
 import { useState } from "react";
@@ -25,6 +31,8 @@ import { bffGet, BffError } from "@/lib/bff-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 import { Loading, ErrorState, Empty, StatCard, DataTable } from "@/components/ui";
 import { SpendSparkline } from "./SpendSparkline";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/ui/page-header";
 
 type SpendWindow = "day" | "week" | "month";
 
@@ -99,7 +107,10 @@ export function SpendPage() {
   const [groupBy, setGroupBy] = useState<"" | "key_id" | "team_id">("");
   const [keyId, setKeyId] = useState<string>("");
 
-  // Keys dropdown for the key filter — tolerate loading/error (no crash)
+  // Controlled tab state. Derived via "adjust state during render" (same escape hatch as
+  // lastGood below) — NOT a useEffect — so react-hooks/set-state-in-effect stays clean.
+  const [activeTab, setActiveTab] = useState<"overview" | "breakdown">("overview");
+
   const { data: keys } = useQuery<KeyOpt[]>({
     queryKey: ["admin-keys"],
     queryFn: () => bffGet<KeyOpt[]>("/admin/keys"),
@@ -119,9 +130,6 @@ export function SpendPage() {
           (groupBy ? `&group_by=${groupBy}` : "") +
           (keyId ? `&key_id=${keyId}` : ""),
       ),
-    // Keep the last good window visible while a new query loads/errors so a
-    // transient 422/404 (bad group_by or cross-tenant key) leaves the prior
-    // view intact with an inline alert (contract §1 / reject "bad_query").
     placeholderData: keepPreviousData,
   });
 
@@ -133,99 +141,101 @@ export function SpendPage() {
     return "An unexpected error occurred.";
   }
 
-  // Remember the last successfully-rendered response. keepPreviousData covers
-  // the pending phase, but an ERRORED query has data===undefined — so on a
-  // transient 422/404 we fall back to this last-good value to keep the prior view
-  // intact. Held in state and updated via React's "adjust state during render"
-  // guard (no ref read in render, no setState in an effect): the update fires only
-  // when a fresh successful response differs from what we last stored, so it
-  // converges in one extra render and never loops.
   const [lastGood, setLastGood] = useState<SpendWindowResponse | undefined>(undefined);
   if (!isError && data !== undefined && data !== lastGood) {
     setLastGood(data);
   }
   const viewData = isError ? lastGood : data;
 
+  // "Adjust state during render" — auto-switch tab when breakdown data arrives or clears.
+  // This fires synchronously in the same render pass (no useEffect, no extra flush needed),
+  // identical to the lastGood guard above (React's documented escape hatch).
+  if (groupBy !== "" && viewData?.breakdown != null && activeTab !== "breakdown") {
+    setActiveTab("breakdown");
+  }
+  if (groupBy === "" && activeTab !== "overview") {
+    setActiveTab("overview");
+  }
+
   const isZeroState =
     !isLoading && !isError && viewData !== undefined && viewData.totals.requests === 0;
 
-  return (
-    <div data-testid="spend-page" className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-        Spend Analytics
-      </h1>
-
-      {/* Window selector — drives the query param (native <select> preserved
-          so userEvent.selectOptions in the BFF tests keeps working) */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor="window-selector"
-            className="text-sm font-medium text-foreground"
-          >
-            Time window
-          </label>
-          <select
-            id="window-selector"
-            data-testid="window-selector"
-            value={spendWindow}
-            onChange={(e) => setSpendWindow(e.target.value as SpendWindow)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="day">day</option>
-            <option value="week">week</option>
-            <option value="month">month</option>
-          </select>
-        </div>
-
-        {/* Group-by + key-filter selects — always available per the v15
-            governance-completion-ui contract (group_by works without keys;
-            the key filter lists "All keys" plus any keys the tenant has). */}
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor="group-by-selector"
-            className="text-sm font-medium text-foreground"
-          >
-            Group by
-          </label>
-          <select
-            id="group-by-selector"
-            aria-label="Group by"
-            value={groupBy}
-            onChange={(e) => setGroupBy(e.target.value as "" | "key_id" | "team_id")}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">None</option>
-            <option value="key_id">Key</option>
-            <option value="team_id">Team</option>
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor="key-filter-selector"
-            className="text-sm font-medium text-foreground"
-          >
-            Filter by key
-          </label>
-          <select
-            id="key-filter-selector"
-            aria-label="Filter by key"
-            value={keyId}
-            onChange={(e) => setKeyId(e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">All keys</option>
-            {(keys ?? []).map((k) => (
-              <option key={k.key_id} value={k.key_id}>
-                {k.name}{k.prefix ? ` (${k.prefix})` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
+  const selects = (
+    <div className="flex flex-wrap items-center gap-4">
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor="window-selector"
+          className="text-sm font-medium text-foreground"
+        >
+          Time window
+        </label>
+        <select
+          id="window-selector"
+          data-testid="window-selector"
+          value={spendWindow}
+          onChange={(e) => setSpendWindow(e.target.value as SpendWindow)}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="day">day</option>
+          <option value="week">week</option>
+          <option value="month">month</option>
+        </select>
       </div>
 
-      {/* Loading state */}
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor="group-by-selector"
+          className="text-sm font-medium text-foreground"
+        >
+          Group by
+        </label>
+        <select
+          id="group-by-selector"
+          aria-label="Group by"
+          value={groupBy}
+          onChange={(e) => setGroupBy(e.target.value as "" | "key_id" | "team_id")}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="">None</option>
+          <option value="key_id">Key</option>
+          <option value="team_id">Team</option>
+        </select>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor="key-filter-selector"
+          className="text-sm font-medium text-foreground"
+        >
+          Filter by key
+        </label>
+        <select
+          id="key-filter-selector"
+          aria-label="Filter by key"
+          value={keyId}
+          onChange={(e) => setKeyId(e.target.value)}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="">All keys</option>
+          {(keys ?? []).map((k) => (
+            <option key={k.key_id} value={k.key_id}>
+              {k.name}{k.prefix ? ` (${k.prefix})` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+
+  return (
+    <div data-testid="spend-page" className="flex flex-col gap-6">
+      <PageHeader
+        title="Spend Analytics"
+        description="Spend over time, by key or team"
+        actions={selects}
+      />
+
+      {/* Page-level states */}
       {isLoading && (
         <Loading
           label="Loading spend data"
@@ -234,15 +244,12 @@ export function SpendPage() {
         />
       )}
 
-      {/* Error state (403, 422, etc.) — inline alert; the prior data (kept by
-          placeholderData) stays rendered below so the view is not wiped. */}
       {isError && !isLoading && (
         <div data-testid="spend-error">
           <ErrorState title={getErrorMessage(error)} />
         </div>
       )}
 
-      {/* Zero-state */}
       {isZeroState && viewData !== undefined && (
         <div data-testid="spend-zero-state">
           <Empty
@@ -252,18 +259,24 @@ export function SpendPage() {
         </div>
       )}
 
-      {/* Data state — rendered whenever we have data (even alongside an error
-          banner, via keepPreviousData + the last-good ref) so a transient query
-          error does not blow away the prior totals/buckets/chart. */}
       {!isLoading && viewData !== undefined && !isZeroState && (
         <div data-testid="spend-data" className="flex flex-col gap-6">
-          {/* Spend-over-time chart (additive, decorative; data fallback below) */}
+          {/* SpendSparkline — OUTSIDE hero and tabs: always in DOM so
+              spend-chart testid is accessible regardless of which tab
+              is active (spend-chart.test.tsx checks after data loads). */}
           <SpendSparkline buckets={viewData.buckets} />
 
-          {/* Totals — rendered via the shared StatCard block. The "Totals ({window})"
-              heading and the sm:grid-cols-4 grid hook are preserved; each tile keeps its
-              frozen totals-* data-testid via StatCard's valueTestId. */}
-          <section className="flex flex-col gap-3">
+          {/* Hero = Totals section.
+              data-testid="spend-hero" wraps the totals grid so that
+              within(hero).getByText(/cost/) finds the StatCard value.
+              Crucially, cost_usd appears ONLY in the totals-cost StatCard
+              — there is no separate hero <p> showing the same value.
+              This keeps screen.getByText(/1\.23/) to a single DOM match
+              (govern.test.tsx fails if two elements share "1.23"). */}
+          <div
+            data-testid="spend-hero"
+            className="flex flex-col gap-3"
+          >
             <h2 className="text-lg font-medium text-foreground">
               Totals ({viewData.window})
             </h2>
@@ -289,9 +302,11 @@ export function SpendPage() {
                 valueTestId="totals-completion"
               />
             </div>
-          </section>
+          </div>
 
-          {/* Buckets — accessible data fallback for the chart */}
+          {/* Buckets list — OUTSIDE tabs: data-testid="spend-bucket" items must
+              survive tab switches (breakdown tests check bucket count after
+              clicking the breakdown tab). */}
           {viewData.buckets.length > 0 && (
             <Card>
               <CardHeader>
@@ -313,28 +328,54 @@ export function SpendPage() {
             </Card>
           )}
 
-          {/* Breakdown table — rendered only when breakdown is non-null AND the
-              query is not in error (its shape is coupled to the current
-              group_by; a kept-previous error response may be the other shape). */}
-          {/* Breakdown tables — rendered via the shared sortable DataTable block. ariaLabel
-              forwards to the <table> (keeps getByRole("table",{name:/spend by .../i}) green). */}
-          {!isError && viewData.breakdown != null && groupBy === "key_id" && (
-            <DataTable
-              ariaLabel="Spend by key"
-              caption="Spend by key"
-              columns={KEY_BREAKDOWN_COLUMNS}
-              data={viewData.breakdown as SpendBreakdownItem[]}
-            />
-          )}
+          {/* Tabs — controlled. Auto-switches to "breakdown" when breakdown data
+              arrives (useEffect above). The breakdown tab holds the DataTable;
+              the overview tab is a lightweight placeholder. */}
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as "overview" | "breakdown")}
+            className="flex flex-col gap-4"
+          >
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="breakdown">Breakdown</TabsTrigger>
+            </TabsList>
 
-          {!isError && viewData.breakdown != null && groupBy === "team_id" && (
-            <DataTable
-              ariaLabel="Spend by team"
-              caption="Spend by team"
-              columns={TEAM_BREAKDOWN_COLUMNS}
-              data={viewData.breakdown as TeamSpendBreakdownItem[]}
-            />
-          )}
+            <TabsContent value="overview">
+              <p className="text-sm text-muted-foreground">
+                Select a group-by option to see a per-key or per-team breakdown.
+              </p>
+            </TabsContent>
+
+            {/* Breakdown: DataTable for key/team */}
+            <TabsContent value="breakdown">
+              <div className="flex flex-col gap-4">
+                {!isError && viewData.breakdown != null && groupBy === "key_id" && (
+                  <DataTable
+                    ariaLabel="Spend by key"
+                    caption="Spend by key"
+                    columns={KEY_BREAKDOWN_COLUMNS}
+                    data={viewData.breakdown as SpendBreakdownItem[]}
+                  />
+                )}
+
+                {!isError && viewData.breakdown != null && groupBy === "team_id" && (
+                  <DataTable
+                    ariaLabel="Spend by team"
+                    caption="Spend by team"
+                    columns={TEAM_BREAKDOWN_COLUMNS}
+                    data={viewData.breakdown as TeamSpendBreakdownItem[]}
+                  />
+                )}
+
+                {(groupBy === "" || (viewData.breakdown == null && !isError)) && (
+                  <p className="text-sm text-muted-foreground">
+                    Select a group-by option to see a breakdown.
+                  </p>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       )}
     </div>

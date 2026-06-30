@@ -50,7 +50,10 @@ function captureChat() {
 }
 
 async function openControls(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /model settings/i }));
+  // The Web search control lives in the inspector's Parameters tab (the default);
+  // ensure it's the active tab (a no-op when already selected), then it's reachable.
+  const tab = screen.queryByRole("tab", { name: /parameters/i });
+  if (tab && tab.getAttribute("aria-selected") !== "true") await user.click(tab);
 }
 
 async function sendHi(user: ReturnType<typeof userEvent.setup>) {

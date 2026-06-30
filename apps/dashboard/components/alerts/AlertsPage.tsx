@@ -16,6 +16,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { bffGet } from "@/lib/bff-client";
 import { Loading, ErrorState } from "@/components/ui";
+import { PageHeader } from "@/components/ui/page-header";
 import { AlertsTable, AlertsData } from "./AlertsTable";
 
 export function AlertsPage() {
@@ -29,12 +30,11 @@ export function AlertsPage() {
       aria-labelledby="alerts-heading"
       className="flex flex-col gap-6"
     >
-      <h1
-        id="alerts-heading"
-        className="text-2xl font-semibold tracking-tight text-foreground"
-      >
-        Alerts
-      </h1>
+      <PageHeader
+        title="Alerts"
+        titleId="alerts-heading"
+        description="Soft-budget, circuit-breaker, upstream-health and drift events for your tenant."
+      />
 
       {alertsQuery.isLoading ? (
         <Loading label="Loading alerts…" />

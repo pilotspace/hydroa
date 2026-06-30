@@ -27,6 +27,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet, bffPut, BffError } from "@/lib/bff-client";
 import { Loading, ErrorState } from "@/components/ui";
 import { DataTable } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -138,12 +139,11 @@ export function MembersPage({ callerRole, callerUserId }: MembersPageProps) {
 
   return (
     <section aria-labelledby="members-heading" className="flex flex-col gap-6">
-      <h1
-        id="members-heading"
-        className="text-2xl font-semibold tracking-tight text-foreground"
-      >
-        Members
-      </h1>
+      <PageHeader
+        title="Members"
+        titleId="members-heading"
+        description="Manage tenant members and their roles."
+      />
 
       {usersQuery.isLoading ? (
         <Loading label="Loading members…" />

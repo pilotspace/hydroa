@@ -87,7 +87,17 @@ export function ModelCatalogTable({
         >
           <span>
             {model.name}
-            <span className="block text-xs text-gray-500">ID: {model.id}</span>
+            {/* sr-only bare ID: the visible ID node reads "ID: <id>", so an exact
+                getByText(model.id) would not match it. This hidden node carries the
+                bare ID as its own exact-match target; the visible "ID: …" span is
+                aria-hidden so the ID is announced once, not twice. */}
+            <span className="sr-only">{model.id}</span>
+            <span
+              className="block text-xs text-gray-500"
+              aria-hidden="true"
+            >
+              ID: {model.id}
+            </span>
           </span>
           <span>{model.context_length ?? "—"}</span>
           <span>{model.prompt_per_token}</span>

@@ -1,18 +1,17 @@
 "use client";
 
 /**
- * components/chat/ModelControls.tsx — v40 chat-model-controls.
+ * components/chat/ModelControls.tsx — the relocated per-request controls.
  *
- * Per-request controls for the chat composer: an optional system prompt and a
- * temperature. Collapsed behind a "Model settings" disclosure by default so the
- * composer keeps exactly one textbox until the user opts in (the system field is
- * the second textbox only when expanded). Pure presentation — state is lifted to
- * ChatWorkspace, which threads it into send().
+ * v40 shipped these behind a composer "Model settings" disclosure. The
+ * chat-playground-shell reshape MOVES them into the inspector's Parameters tab,
+ * where they are shown directly (the panel is the container; no nested
+ * disclosure). The control set, state wiring, and aria-labels are UNCHANGED —
+ * System prompt / Temperature / Web search — so the chat-model-controls and
+ * chat-websearch suites reach them by navigating to the Parameters tab. Pure
+ * presentation: state is lifted to ChatWorkspace, which threads it into send().
  */
 
-import { useState } from "react";
-import { Settings2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 export interface ModelControlsProps {
@@ -32,74 +31,61 @@ export function ModelControls({
   webSearch,
   onWebSearchChange,
 }: ModelControlsProps) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <div className="w-full">
-      <Button
-        type="button"
-        variant="ghost"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="h-7 px-2 text-xs text-muted-foreground"
-      >
-        <Settings2 className="size-3.5" aria-hidden="true" />
-        Model settings
-      </Button>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="chat-system" className="text-xs font-medium text-foreground">
+          System prompt
+        </label>
+        <Textarea
+          id="chat-system"
+          aria-label="System prompt"
+          rows={3}
+          value={system}
+          onChange={(e) => onSystemChange(e.target.value)}
+          placeholder="Optional — steer the assistant's behavior"
+          className="resize-none text-sm"
+        />
+      </div>
 
-      {open ? (
-        <div className="mt-2 flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="chat-system" className="text-xs font-medium text-foreground">
-              System prompt
-            </label>
-            <Textarea
-              id="chat-system"
-              aria-label="System prompt"
-              rows={2}
-              value={system}
-              onChange={(e) => onSystemChange(e.target.value)}
-              placeholder="Optional — steer the assistant's behavior"
-              className="resize-none text-sm"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label htmlFor="chat-temp" className="text-xs font-medium text-foreground">
-              Temperature
-            </label>
-            <input
-              id="chat-temp"
-              aria-label="Temperature"
-              type="range"
-              min={0}
-              max={2}
-              step={0.1}
-              value={temperature}
-              onChange={(e) => onTemperatureChange(Number(e.target.value))}
-              className="flex-1 accent-primary"
-            />
-            <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">
-              {temperature.toFixed(1)}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              id="chat-websearch"
-              aria-label="Web search"
-              type="checkbox"
-              checked={webSearch}
-              onChange={(e) => onWebSearchChange(e.target.checked)}
-              className="size-4 accent-primary"
-            />
-            <label htmlFor="chat-websearch" className="text-xs font-medium text-foreground">
-              Web search
-            </label>
-            <span className="text-xs text-muted-foreground">
-              — ground replies with live web results (provider-native)
-            </span>
-          </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between">
+          <label htmlFor="chat-temp" className="text-xs font-medium text-foreground">
+            Temperature
+          </label>
+          <span className="w-10 rounded-md border border-border bg-muted/40 px-1.5 py-0.5 text-right text-xs tabular-nums text-foreground">
+            {temperature.toFixed(1)}
+          </span>
         </div>
-      ) : null}
+        <input
+          id="chat-temp"
+          aria-label="Temperature"
+          type="range"
+          min={0}
+          max={2}
+          step={0.1}
+          value={temperature}
+          onChange={(e) => onTemperatureChange(Number(e.target.value))}
+          className="w-full accent-primary"
+        />
+      </div>
+
+      <div className="flex items-start gap-2">
+        <input
+          id="chat-websearch"
+          aria-label="Web search"
+          type="checkbox"
+          checked={webSearch}
+          onChange={(e) => onWebSearchChange(e.target.checked)}
+          className="mt-0.5 size-4 accent-primary"
+        />
+        <label htmlFor="chat-websearch" className="text-xs text-foreground">
+          <span className="font-medium">Web search</span>
+          <span className="block text-muted-foreground">
+            Ground replies with live web results (provider-native).
+          </span>
+        </label>
+      </div>
     </div>
   );
 }
