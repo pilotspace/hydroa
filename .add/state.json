@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "ai-feature-pages-redesign",
-  "active_milestone": "v54",
+  "active_task": "voice-playground-shell",
+  "active_milestone": "voice-playground",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -478,6 +478,15 @@
       "depends_on": [],
       "created": "2026-06-28T14:01:49+00:00",
       "updated": "2026-06-28T14:46:39+00:00"
+    },
+    "voice-playground-shell": {
+      "title": "Console-grade voice workspace shell + design system",
+      "phase": "scenarios",
+      "gate": "none",
+      "milestone": "voice-playground",
+      "depends_on": [],
+      "created": "2026-06-30T10:57:02+00:00",
+      "updated": "2026-06-30T10:59:22+00:00"
     }
   },
   "milestones": {
@@ -518,10 +527,27 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "voice-playground": {
+      "title": "Voice Playground",
+      "goal": "",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-06-30T10:55:41+00:00",
+      "updated": "2026-06-30T10:57:02+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-06-30T10:57:02+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-29T17:09:39+00:00",
+  "updated": "2026-06-30T10:59:22+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1195,10 +1221,12 @@
     }
   ],
   "active_milestones": [
-    "v54"
+    "v54",
+    "voice-playground"
   ],
   "active_tasks": {
-    "v54": "ai-feature-pages-redesign"
+    "v54": "ai-feature-pages-redesign",
+    "voice-playground": "voice-playground-shell"
   },
   "todos": [
     {
@@ -1217,6 +1245,12 @@
       "id": 3,
       "text": "upgrade UI of each page",
       "created": "2026-06-28T06:35:36+00:00",
+      "status": "open"
+    },
+    {
+      "id": 4,
+      "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
+      "created": "2026-06-30T10:57:02+00:00",
       "status": "open"
     }
   ]
