@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "fix-stale-failing-tests",
+  "active_task": "deterministic-test-isolation",
   "active_milestone": "gateway-health",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -745,6 +745,16 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "deterministic-test-isolation": {
+      "title": "Deterministic test isolation \u2014 kill cross-suite Redis/DB contamination",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "gateway-health",
+      "depends_on": [],
+      "created": "2026-06-30T15:47:46+00:00",
+      "updated": "2026-06-30T15:47:46+00:00",
+      "fast": true
     }
   },
   "milestones": {
@@ -906,7 +916,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-30T15:45:50+00:00",
+  "updated": "2026-06-30T15:47:46+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1597,7 +1607,7 @@
     "vision-playground": "vision-console-rebuild",
     "video-playground": "video-console-rebuild",
     "proxy-correctness": "adapter-correctness-fixes",
-    "gateway-health": "fix-stale-failing-tests"
+    "gateway-health": "deterministic-test-isolation"
   },
   "todos": [
     {
