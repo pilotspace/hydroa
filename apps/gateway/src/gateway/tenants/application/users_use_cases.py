@@ -72,9 +72,7 @@ class AssignUserRoleUseCase:
             )
 
         # Load the target user (also validates tenant membership)
-        user = await self._repo.get_by_id_and_tenant(
-            user_id=target_user_id, tenant_id=tenant_id
-        )
+        user = await self._repo.get_by_id_and_tenant(user_id=target_user_id, tenant_id=tenant_id)
         if user is None:
             raise UserNotFoundError(f"User {target_user_id} not found in tenant {tenant_id}")
 

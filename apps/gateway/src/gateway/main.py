@@ -610,7 +610,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.video_generator = None
     # Tracked in-process asyncio.Task set for video jobs.
     # The lifespan cancels any outstanding tasks on shutdown.
-    app.state.video_jobs_tasks: set[asyncio.Task[None]] = set()
+    app.state.video_jobs_tasks = set()  # set[asyncio.Task[None]] — no inline type on app.state
     # Durable video job worker task (v48 durable-queue). Default None (OFF).
     # Set to the running asyncio.Task when video_durable_queue_enabled=True.
     app.state.video_worker_task = None
@@ -966,7 +966,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     _mw_stack = app.middleware_stack  # triggers build_middleware_stack
     from starlette.types import ASGIApp as _ASGIApp  # local import avoids circular
 
-    _cur: _ASGIApp = _mw_stack
+    _cur: _ASGIApp = _mw_stack  # type: ignore[assignment]  # None guarded by if _cur is None: break
     for _ in range(20):
         if isinstance(_cur, GlobalBackPressureMiddleware):
             app.state.back_pressure = _cur

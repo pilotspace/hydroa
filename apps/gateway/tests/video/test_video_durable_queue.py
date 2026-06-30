@@ -223,6 +223,7 @@ class TestRecoveryRedrivesOrphan:
             # Check if orphan reached terminal state
             async with app.state.sessionmaker() as session:
                 from gateway.video.infrastructure.orm import VideoGenerationJobRow
+
                 row = await session.get(VideoGenerationJobRow, orphan_id)
                 if row is not None and row.status in ("succeeded", "failed"):
                     processed_orphan = True
@@ -278,11 +279,14 @@ class TestRetryCapMaxRetries:
             # Then reset status to queued, enqueue, drain again — retry_count becomes 2 > max=1
             # → max_retries_exceeded
             await video_queue.enqueue(job_id)
-            await worker.process_once()  # first drain: retry_count = 1, processes (→failed via no provider)
+            await (
+                worker.process_once()
+            )  # first drain: retry_count = 1, processes (→failed via no provider)
 
             # Check — job should be failed via normal processing (no provider)
             async with app.state.sessionmaker() as session:
                 from gateway.video.infrastructure.orm import VideoGenerationJobRow
+
                 job_row = await session.get(VideoGenerationJobRow, job_id)
                 assert job_row is not None
                 # Could be "failed" from no provider — that's fine. Now test the retry cap path:
@@ -329,6 +333,7 @@ class TestRetryCapMaxRetries:
 
             async with app.state.sessionmaker() as session:
                 from gateway.video.infrastructure.orm import VideoGenerationJobRow
+
                 final_row = await session.get(VideoGenerationJobRow, job_id3)
                 assert final_row is not None
                 assert final_row.status == "failed", f"expected failed, got: {final_row.status}"
@@ -346,7 +351,9 @@ class TestRetryCapMaxRetries:
         from gateway.video.infrastructure.repository import VideoJobRepository
 
         object.__setattr__(app.state.settings, "video_job_max_retries", 0)
-        app.state.video_generator = None  # → no_video_provider_configured (NOT max_retries_exceeded)
+        app.state.video_generator = (
+            None  # → no_video_provider_configured (NOT max_retries_exceeded)
+        )
 
         try:
             async with app.state.sessionmaker() as session:
@@ -504,6 +511,7 @@ class TestRedisDownEnqueueFallback:
 
         # Create the queue and install it on app.state
         from gateway.video.application.worker import RedisVideoJobQueue
+
         mock_queue = RedisVideoJobQueue(app.state.redis_client)
         # Patch enqueue to raise
         mock_queue.enqueue = AsyncMock(side_effect=Exception("Redis down"))  # type: ignore[method-assign]

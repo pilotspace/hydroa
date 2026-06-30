@@ -549,6 +549,4 @@ AGENT_OAUTH_NOT_PENDING = ErrorSpec(
 )
 
 #: Authorization is pending but its expiry has passed.
-AGENT_OAUTH_EXPIRED = ErrorSpec(
-    410, "ERR_AGENT_OAUTH_EXPIRED", "Authorization has expired"
-)
+AGENT_OAUTH_EXPIRED = ErrorSpec(410, "ERR_AGENT_OAUTH_EXPIRED", "Authorization has expired")

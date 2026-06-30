@@ -335,7 +335,9 @@ async def test_network_error_secret_hygiene() -> None:
     finally:
         reset_provider_credential(tok)
 
-    assert exc_info.value.__cause__ is None, "from None must suppress exception chain (secret hygiene)"
+    assert exc_info.value.__cause__ is None, (
+        "from None must suppress exception chain (secret hygiene)"
+    )
     assert "secret-api-key" not in str(exc_info.value), "api-key must not appear in error message"
     assert spy.errors == 1
 
@@ -365,9 +367,7 @@ async def test_multipart_no_forced_json_content_type() -> None:
         reset_provider_credential(tok)
 
     ct = seen["content_type"]
-    assert ct.startswith("multipart/form-data"), (
-        f"Expected multipart/form-data, got: {ct!r}"
-    )
+    assert ct.startswith("multipart/form-data"), f"Expected multipart/form-data, got: {ct!r}"
     assert "application/json" not in ct
 
 

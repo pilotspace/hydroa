@@ -27,9 +27,7 @@ async def _owner(client: httpx.AsyncClient, n: str = "acme") -> str:
 
 
 # ── valid write round-trips ─────────────────────────────────────────────────
-async def test_put_valid_persists_and_returns(
-    app: Any, client: httpx.AsyncClient
-) -> None:
+async def test_put_valid_persists_and_returns(app: Any, client: httpx.AsyncClient) -> None:
     token = await _owner(client)
     body = {"model_groups": {"gpt": ["a", "b"]}, "routing_strategy": "simple-shuffle"}
 
@@ -47,12 +45,12 @@ async def test_put_valid_persists_and_returns(
     assert g.json()["routing_strategy"] == "simple-shuffle"
 
 
-async def test_put_roundtrips_deployment_detail(
-    app: Any, client: httpx.AsyncClient
-) -> None:
+async def test_put_roundtrips_deployment_detail(app: Any, client: httpx.AsyncClient) -> None:
     token = await _owner(client)
     body = {
-        "model_groups": {"gpt": [{"model_id": "a", "weight": 3, "rpm_limit": 60, "tpm_limit": 1000}]}
+        "model_groups": {
+            "gpt": [{"model_id": "a", "weight": 3, "rpm_limit": 60, "tpm_limit": 1000}]
+        }
     }
 
     r = await client.put(ROUTING, json=body, headers=auth(token))
@@ -105,25 +103,19 @@ async def test_put_duplicate_deployment_rejected_no_row(
     app: Any, client: httpx.AsyncClient
 ) -> None:
     token = await _owner(client)
-    bad = await client.put(
-        ROUTING, json={"model_groups": {"gpt": ["a", "a"]}}, headers=auth(token)
-    )
+    bad = await client.put(ROUTING, json={"model_groups": {"gpt": ["a", "a"]}}, headers=auth(token))
     assert bad.status_code == 422, bad.text
     assert "DUPLICATE_DEPLOYMENT" in bad.text
     assert await routing_row_count(app) == 0
 
 
 # ── authz ───────────────────────────────────────────────────────────────────
-async def test_put_member_forbidden(
-    app: Any, client: httpx.AsyncClient, db_session: Any
-) -> None:
+async def test_put_member_forbidden(app: Any, client: httpx.AsyncClient, db_session: Any) -> None:
     _, tenant_id = await signup_tenant(client, tenant_name="acme", email="owner@acme.example")
     member = await mint_role_token(
         app, db_session, tenant_id=tenant_id, role=Role.MEMBER, email="member@acme.example"
     )
-    r = await client.put(
-        ROUTING, json={"model_groups": {"gpt": ["a"]}}, headers=auth(member)
-    )
+    r = await client.put(ROUTING, json={"model_groups": {"gpt": ["a"]}}, headers=auth(member))
     assert r.status_code == 403
     assert await routing_row_count(app) == 0
 
@@ -134,24 +126,18 @@ async def test_put_unauthenticated(app: Any, client: httpx.AsyncClient) -> None:
     assert await routing_row_count(app) == 0
 
 
-async def test_put_admin_role_allowed(
-    app: Any, client: httpx.AsyncClient, db_session: Any
-) -> None:
+async def test_put_admin_role_allowed(app: Any, client: httpx.AsyncClient, db_session: Any) -> None:
     """ADMIN role (not only OWNER) may write (require_owner_or_admin)."""
     _, tenant_id = await signup_tenant(client, tenant_name="acme", email="owner@acme.example")
     admin = await mint_role_token(
         app, db_session, tenant_id=tenant_id, role=Role.ADMIN, email="admin@acme.example"
     )
-    r = await client.put(
-        ROUTING, json={"model_groups": {"gpt": ["a"]}}, headers=auth(admin)
-    )
+    r = await client.put(ROUTING, json={"model_groups": {"gpt": ["a"]}}, headers=auth(admin))
     assert r.status_code == 200, r.text
     assert await routing_row_count(app) == 1
 
 
-async def test_put_strips_unrecognized_keys(
-    app: Any, client: httpx.AsyncClient
-) -> None:
+async def test_put_strips_unrecognized_keys(app: Any, client: httpx.AsyncClient) -> None:
     """A stray client-supplied key (e.g. a secret) is NOT persisted into the JSONB row."""
     token = await _owner(client)
     body = {"model_groups": {"gpt": ["a"]}, "jwt_secret": "should-not-persist", "junk": 1}

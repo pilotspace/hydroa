@@ -89,9 +89,7 @@ async def test_unused_key_reads_zero(client: Any, db_session: AsyncSession, app:
 # ---------------------------------------------------------------------------
 # Only the caller's tenant keys appear (cross-tenant isolation)
 # ---------------------------------------------------------------------------
-async def test_only_callers_tenant_keys(
-    client: Any, db_session: AsyncSession, app: Any
-) -> None:
+async def test_only_callers_tenant_keys(client: Any, db_session: AsyncSession, app: Any) -> None:
     token_t, _tid_t = await signup_tenant(client, tenant_name="RL T", email="t@rl.io")
     token_u, _tid_u = await signup_tenant(client, tenant_name="RL U", email="u@rl.io")
     key_t = await create_key(client, token_t, name="key-t", rpm_limit=60)
@@ -182,9 +180,7 @@ async def test_member_forbidden(client: Any, db_session: AsyncSession, app: Any)
 # ---------------------------------------------------------------------------
 # Missing bearer is unauthorized (401)
 # ---------------------------------------------------------------------------
-async def test_missing_bearer_unauthorized(
-    client: Any, db_session: AsyncSession, app: Any
-) -> None:
+async def test_missing_bearer_unauthorized(client: Any, db_session: AsyncSession, app: Any) -> None:
     resp = await client.get(RATELIMITS)
 
     assert resp.status_code == 401, resp.text

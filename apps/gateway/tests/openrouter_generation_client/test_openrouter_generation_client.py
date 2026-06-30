@@ -47,7 +47,9 @@ _FULL_DATA = {
 
 
 def _make_adapter(handler: object, *, max_retries: int = 0) -> OpenRouterCompletionUpstream:
-    adapter = OpenRouterCompletionUpstream(base_url=_BASE, max_retries=max_retries, backoff_base=0.0)
+    adapter = OpenRouterCompletionUpstream(
+        base_url=_BASE, max_retries=max_retries, backoff_base=0.0
+    )
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
         base_url=_BASE,
         transport=httpx.MockTransport(handler),  # type: ignore[arg-type]
@@ -104,7 +106,9 @@ async def test_total_cost_is_exact_decimal() -> None:
 
 async def test_zero_cost_is_valid_not_none() -> None:
     # total_cost present and 0 = a real zero-cost (free/cached) generation, NOT 'not ready'.
-    adapter = _make_adapter(_counting_handler([httpx.Response(200, json={"data": {"total_cost": 0}})], [0]))
+    adapter = _make_adapter(
+        _counting_handler([httpx.Response(200, json={"data": {"total_cost": 0}})], [0])
+    )
     token = set_provider_credential(_CRED)
     try:
         result = await adapter.get_generation(_GEN_ID)
@@ -129,7 +133,9 @@ async def test_request_carries_id_query_param() -> None:
 
 
 async def test_not_ready_404_returns_none() -> None:
-    adapter = _make_adapter(_counting_handler([httpx.Response(404, json={"error": "not found"})], [0]))
+    adapter = _make_adapter(
+        _counting_handler([httpx.Response(404, json={"error": "not found"})], [0])
+    )
     token = set_provider_credential(_CRED)
     try:
         result = await adapter.get_generation(_GEN_ID)
@@ -140,7 +146,9 @@ async def test_not_ready_404_returns_none() -> None:
 
 async def test_auth_4xx_raises() -> None:
     # 401/403 is a PERMANENT failure, not 'not ready' — must raise so the caller stops re-polling.
-    adapter = _make_adapter(_counting_handler([httpx.Response(401, json={"error": "unauthorized"})], [0]))
+    adapter = _make_adapter(
+        _counting_handler([httpx.Response(401, json={"error": "unauthorized"})], [0])
+    )
     token = set_provider_credential(_CRED)
     try:
         with pytest.raises(UpstreamUnavailableError):
@@ -179,9 +187,7 @@ async def test_transient_5xx_retried_then_success() -> None:
 
 
 async def test_retries_exhausted_raises() -> None:
-    adapter = _make_adapter(
-        _counting_handler([httpx.Response(503, json={})], [0]), max_retries=1
-    )
+    adapter = _make_adapter(_counting_handler([httpx.Response(503, json={})], [0]), max_retries=1)
     token = set_provider_credential(_CRED)
     try:
         with pytest.raises(UpstreamUnavailableError):

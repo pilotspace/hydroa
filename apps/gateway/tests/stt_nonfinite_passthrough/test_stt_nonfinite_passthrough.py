@@ -64,7 +64,9 @@ async def test_nf1_nan_duration_sanitized(
 
     assert resp.status_code == 200, f"non-finite body must not 500, got {resp.status_code}"
     body = resp.json()
-    assert body["duration"] is None, f"nan duration must sanitize to null, got {body.get('duration')!r}"
+    assert body["duration"] is None, (
+        f"nan duration must sanitize to null, got {body.get('duration')!r}"
+    )
     assert body["text"] == "hi"
     capped = [r for r in caplog.records if r.msg == "stt_nonfinite_sanitized"]
     assert len(capped) == 1, f"expected one stt_nonfinite_sanitized WARN, got {len(capped)}"
@@ -85,9 +87,7 @@ async def test_nf2_nested_segments_sanitized(
 ) -> None:
     await seed_stt_model(db_session)
     fake = inject_fake_openai_audio_provider(app)
-    fake.set_multipart_response(
-        200, {"text": "hi", "segments": [{"id": 0, "avg_logprob": NINF}]}
-    )
+    fake.set_multipart_response(200, {"text": "hi", "segments": [{"id": 0, "avg_logprob": NINF}]})
 
     resp = await _post(client, api_key_info)
 
@@ -136,9 +136,7 @@ async def test_nf4_all_nonfinite_forms_to_null(
 ) -> None:
     await seed_stt_model(db_session)
     fake = inject_fake_openai_audio_provider(app)
-    fake.set_multipart_response(
-        200, {"a": NAN, "b": INF, "c": NINF, "text": "hi"}
-    )
+    fake.set_multipart_response(200, {"a": NAN, "b": INF, "c": NINF, "text": "hi"})
 
     with caplog.at_level("WARNING"):
         resp = await _post(client, api_key_info)
@@ -208,9 +206,7 @@ async def test_nf6_status_preserved_body_echoed(
 ) -> None:
     await seed_stt_model(db_session)
     fake = inject_fake_openai_audio_provider(app)
-    fake.set_multipart_response(
-        200, {"text": "hello world", "language": "en", "duration": NAN}
-    )
+    fake.set_multipart_response(200, {"text": "hello world", "language": "en", "duration": NAN})
 
     resp = await _post(client, api_key_info)
 

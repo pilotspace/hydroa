@@ -1336,6 +1336,11 @@ async def test_guardrails_core_migration_column_exists(
     # device_authorizations + agent_tokens tables to this manifest too (same precedent) —
     # both register on Base.metadata via main.py's side-effect ORM import, so they appear
     # under create_all. Guardrails still adds no tables of its own; intent unchanged.
+    # DISPOSITION EDIT (v40-program §3, 2026-06-30): added the contracted v40-program
+    # tables (artifacts, memories, video_generation_jobs, conversations,
+    # conversation_messages) to this manifest — they are registered on Base.metadata via
+    # main.py's side-effect ORM imports (same oidc/teams/oauth precedent).
+    # Guardrails still adds no tables of its own; invariant intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1345,7 +1350,9 @@ async def test_guardrails_core_migration_column_exists(
                 " 'usage_records','alert_events','tenant_model_overrides',"
                 " 'teams','team_members','oidc_provider_configs',"
                 " 'tenant_provider_keys','routing_config','audit_events',"
-                " 'device_authorizations','agent_tokens','alembic_version')"
+                " 'device_authorizations','agent_tokens','alembic_version',"
+                " 'artifacts','memories','video_generation_jobs',"
+                " 'conversations','conversation_messages')"
             )
         )
     ).fetchall()

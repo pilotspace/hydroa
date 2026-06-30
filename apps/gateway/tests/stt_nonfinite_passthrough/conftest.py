@@ -21,7 +21,9 @@ from tests.audio_endpoints.conftest import FAKE_AUDIO_BYTES
 TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
 
 
-def multipart_files(*, filename: str = "audio.mp3", content_type: str = "audio/mpeg") -> dict[str, Any]:
+def multipart_files(
+    *, filename: str = "audio.mp3", content_type: str = "audio/mpeg"
+) -> dict[str, Any]:
     """httpx multipart dict; the file content is irrelevant to body sanitization."""
     return {"file": (filename, FAKE_AUDIO_BYTES, content_type)}
 

@@ -16,7 +16,8 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
-from typing import Any, Callable, Literal, TypedDict
+from typing import Any, Literal, TypedDict
+from collections.abc import Callable
 
 import httpx
 
@@ -124,6 +125,7 @@ class StubCompletionUpstream:
         self.forwarded.append(payload)
 
         if self._stream_script is None:
+
             async def _unscripted() -> AsyncIterator[bytes]:
                 raise HarnessError("stub_unscripted")
                 yield  # make it an async generator
@@ -193,9 +195,7 @@ _HELIOS_REQUESTS: dict[HeliosCase, dict[str, object]] = {
     },
     "parallel_tool_calls": {
         "model": "openai/gpt-4o",
-        "messages": [
-            {"role": "user", "content": "What's the weather in Paris and the UTC time?"}
-        ],
+        "messages": [{"role": "user", "content": "What's the weather in Paris and the UTC time?"}],
         "tools": [_GET_WEATHER_TOOL, _GET_TIME_TOOL],
         "tool_choice": "auto",
         "parallel_tool_calls": True,
@@ -298,9 +298,7 @@ _ANTHROPIC_CHAT_STREAM_NATIVE: list[bytes] = [
         }
     ).encode()
     + b"\n\n",
-    b"event: message_stop\ndata: "
-    + json.dumps({"type": "message_stop"}).encode()
-    + b"\n\n",
+    b"event: message_stop\ndata: " + json.dumps({"type": "message_stop"}).encode() + b"\n\n",
 ]
 
 # Anthropic non-stream tool_call response (single tool_use block)
@@ -477,7 +475,7 @@ def provider_fixture(case: HeliosCase, provider: Provider) -> ProviderFixture:
 
 def assert_fixtures_have_provenance() -> None:
     """Enumerate the library; any entry with empty/missing provenance → HarnessError."""
-    for (case, provider), pf in _FIXTURE_LIBRARY.items():
+    for (_case, _provider), pf in _FIXTURE_LIBRARY.items():
         prov = pf.get("provenance", "")
         if not isinstance(prov, str) or not prov.strip():
             raise HarnessError("unfaithful_fixture")

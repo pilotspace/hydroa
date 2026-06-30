@@ -264,9 +264,7 @@ async def test_gemini_stream_terminal_maps_thoughts_tokens() -> None:
             },
         },
     ]
-    sse_frames = [
-        b"data: " + json.dumps(chunk).encode() + b"\n\n" for chunk in gemini_chunks
-    ]
+    sse_frames = [b"data: " + json.dumps(chunk).encode() + b"\n\n" for chunk in gemini_chunks]
     sse_frames.append(b"data: [DONE]\n\n")
 
     adapter = GeminiCompletionUpstream()
@@ -275,9 +273,7 @@ async def test_gemini_stream_terminal_maps_thoughts_tokens() -> None:
 
     with fake_provider_credential("test-google-key"):
         frames_out: list[bytes] = []
-        async for frame in adapter.stream(
-            _gemini_req(max_tokens=512)
-        ):
+        async for frame in adapter.stream(_gemini_req(max_tokens=512)):
             frames_out.append(frame)
 
     # Find the terminal chunk (has usage)

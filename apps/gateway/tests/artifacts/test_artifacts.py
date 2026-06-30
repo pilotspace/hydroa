@@ -134,15 +134,17 @@ class TestUploadDownloadRoundtrip:
 
 
 class TestListMetadataOnly:
-    async def test_list_metadata_only(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_list_metadata_only(self, client: Any, api_key_info: dict[str, str]) -> None:
         raw_bytes = b"metadata test"
         encoded = base64.b64encode(raw_bytes).decode()
 
         await client.post(
             "/v1/artifacts",
-            json={"name": "meta.bin", "content_type": "application/octet-stream", "content_base64": encoded},
+            json={
+                "name": "meta.bin",
+                "content_type": "application/octet-stream",
+                "content_base64": encoded,
+            },
             headers=_bearer(api_key_info["key"]),
         )
 
@@ -182,7 +184,11 @@ class TestTenantIsolation:
         # Tenant A uploads
         create_resp = await client.post(
             "/v1/artifacts",
-            json={"name": "isolated.bin", "content_type": "application/octet-stream", "content_base64": encoded},
+            json={
+                "name": "isolated.bin",
+                "content_type": "application/octet-stream",
+                "content_base64": encoded,
+            },
             headers=_bearer(api_key_info["key"]),
         )
         assert create_resp.status_code == 201
@@ -222,9 +228,7 @@ class TestTenantIsolation:
 
 
 class TestOverCap413:
-    async def test_over_cap_413(
-        self, client: Any, app: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_over_cap_413(self, client: Any, app: Any, api_key_info: dict[str, str]) -> None:
         """413 when decoded size exceeds artifact_max_bytes."""
         # 9 bytes of content
         raw_bytes = b"123456789"
@@ -236,7 +240,11 @@ class TestOverCap413:
         try:
             resp = await client.post(
                 "/v1/artifacts",
-                json={"name": "over-cap.bin", "content_type": "application/octet-stream", "content_base64": encoded},
+                json={
+                    "name": "over-cap.bin",
+                    "content_type": "application/octet-stream",
+                    "content_base64": encoded,
+                },
                 headers=_bearer(api_key_info["key"]),
             )
             assert resp.status_code == 413, f"expected 413, got {resp.status_code}: {resp.text}"
@@ -284,9 +292,7 @@ class TestDownloadForcesAttachment:
 
 
 class TestSoftDeleteHides:
-    async def test_soft_delete_hides(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_soft_delete_hides(self, client: Any, api_key_info: dict[str, str]) -> None:
         raw_bytes = b"deletable content"
         encoded = base64.b64encode(raw_bytes).decode()
 
@@ -330,7 +336,11 @@ class TestAuthAndValidation:
         encoded = base64.b64encode(raw_bytes).decode()
         resp = await client.post(
             "/v1/artifacts",
-            json={"name": "x.bin", "content_type": "application/octet-stream", "content_base64": encoded},
+            json={
+                "name": "x.bin",
+                "content_type": "application/octet-stream",
+                "content_base64": encoded,
+            },
         )
         assert resp.status_code == 401
 
@@ -339,7 +349,11 @@ class TestAuthAndValidation:
         encoded = base64.b64encode(raw_bytes).decode()
         resp = await client.post(
             "/v1/artifacts",
-            json={"name": "x.bin", "content_type": "application/octet-stream", "content_base64": encoded},
+            json={
+                "name": "x.bin",
+                "content_type": "application/octet-stream",
+                "content_base64": encoded,
+            },
             headers={"Authorization": "Bearer sk-invalid"},
         )
         assert resp.status_code == 401
@@ -354,7 +368,11 @@ class TestAuthAndValidation:
         # Sanity: key works before expiry
         ok = await client.post(
             "/v1/artifacts",
-            json={"name": "ok.bin", "content_type": "application/octet-stream", "content_base64": encoded},
+            json={
+                "name": "ok.bin",
+                "content_type": "application/octet-stream",
+                "content_base64": encoded,
+            },
             headers=_bearer(api_key_info["key"]),
         )
         assert ok.status_code == 201
@@ -370,7 +388,11 @@ class TestAuthAndValidation:
 
         resp = await client.post(
             "/v1/artifacts",
-            json={"name": "post-expiry.bin", "content_type": "application/octet-stream", "content_base64": encoded},
+            json={
+                "name": "post-expiry.bin",
+                "content_type": "application/octet-stream",
+                "content_base64": encoded,
+            },
             headers=_bearer(api_key_info["key"]),
         )
         assert resp.status_code == 401
@@ -380,19 +402,25 @@ class TestAuthAndValidation:
     ) -> None:
         resp = await client.post(
             "/v1/artifacts",
-            json={"name": "bad.bin", "content_type": "application/octet-stream", "content_base64": "!!!not-base64!!!"},
+            json={
+                "name": "bad.bin",
+                "content_type": "application/octet-stream",
+                "content_base64": "!!!not-base64!!!",
+            },
             headers=_bearer(api_key_info["key"]),
         )
         assert resp.status_code == 422
 
-    async def test_empty_name_returns_422(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_empty_name_returns_422(self, client: Any, api_key_info: dict[str, str]) -> None:
         raw_bytes = b"test"
         encoded = base64.b64encode(raw_bytes).decode()
         resp = await client.post(
             "/v1/artifacts",
-            json={"name": "   ", "content_type": "application/octet-stream", "content_base64": encoded},
+            json={
+                "name": "   ",
+                "content_type": "application/octet-stream",
+                "content_base64": encoded,
+            },
             headers=_bearer(api_key_info["key"]),
         )
         assert resp.status_code == 422
@@ -404,7 +432,11 @@ class TestAuthAndValidation:
         # 401 case
         resp = await client.post(
             "/v1/artifacts",
-            json={"name": "should-not-persist.bin", "content_type": "application/octet-stream", "content_base64": base64.b64encode(b"test").decode()},
+            json={
+                "name": "should-not-persist.bin",
+                "content_type": "application/octet-stream",
+                "content_base64": base64.b64encode(b"test").decode(),
+            },
             headers={"Authorization": "Bearer sk-invalid"},
         )
         assert resp.status_code == 401
@@ -412,7 +444,11 @@ class TestAuthAndValidation:
         # 422 case — invalid base64
         resp2 = await client.post(
             "/v1/artifacts",
-            json={"name": "also-not-persist.bin", "content_type": "application/octet-stream", "content_base64": "!!!bad!!!"},
+            json={
+                "name": "also-not-persist.bin",
+                "content_type": "application/octet-stream",
+                "content_base64": "!!!bad!!!",
+            },
             headers=_bearer(api_key_info["key"]),
         )
         assert resp2.status_code == 422

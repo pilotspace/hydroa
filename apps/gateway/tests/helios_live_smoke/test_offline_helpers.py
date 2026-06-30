@@ -28,9 +28,7 @@ import pytest
 # Import the script under test via importlib (it is NOT a package)
 # ---------------------------------------------------------------------------
 
-_SCRIPT_PATH = (
-    Path(__file__).resolve().parents[4] / "scripts" / "live_helios_smoke.py"
-)
+_SCRIPT_PATH = Path(__file__).resolve().parents[4] / "scripts" / "live_helios_smoke.py"
 
 # Importing the module must NOT execute main() — the guard is tested implicitly
 # by the fact that this import succeeds without network access.
@@ -55,6 +53,7 @@ except SystemExit as _exc:
 # Helper — resolve the helpers from the loaded module (fail fast if missing)
 # ---------------------------------------------------------------------------
 
+
 def _get(name: str) -> Any:
     """Return the named attribute from the smoke module; fail with AttributeError if absent."""
     return getattr(_smoke, name)
@@ -63,6 +62,7 @@ def _get(name: str) -> Any:
 # ---------------------------------------------------------------------------
 # Test 1: resolve_provider_key() → SystemExit(2) when key is absent
 # ---------------------------------------------------------------------------
+
 
 class TestResolveGeminiKey:
     """resolve_provider_key() must exit 2 when OPENROUTER_API_KEY is absent or empty."""
@@ -121,6 +121,7 @@ class TestResolveGeminiKey:
 # Test 2: _redact(line, *secrets) — never emits the secret
 # ---------------------------------------------------------------------------
 
+
 class TestRedact:
     """_redact() must replace every occurrence of each secret with a fixed mask."""
 
@@ -132,9 +133,7 @@ class TestRedact:
 
         result = _redact(line, secret)
 
-        assert secret not in result, (
-            f"Secret STILL PRESENT in output: {result!r}"
-        )
+        assert secret not in result, f"Secret STILL PRESENT in output: {result!r}"
         # The mask must be a non-empty replacement (not just deletion)
         assert len(result) > 0
 
@@ -187,6 +186,7 @@ class TestRedact:
 # Test 3: exit_code(results) — any FAIL → 1; all PASS/SKIP → 0
 # ---------------------------------------------------------------------------
 
+
 class TestExitCode:
     """exit_code() must return 1 on any FAIL; 0 when all results are PASS or SKIP."""
 
@@ -223,9 +223,7 @@ class TestExitCode:
             ("C1", "PASS", "ok"),
             ("C6", "SKIP", "cap not set"),
         ]
-        assert exit_code(results) == 0, (
-            "A SKIP criterion must not force exit_code to 1"
-        )
+        assert exit_code(results) == 0, "A SKIP criterion must not force exit_code to 1"
 
     def test_empty_results_returns_0(self) -> None:
         """Empty results list → 0 (vacuous pass; no FAILs)."""
@@ -246,6 +244,7 @@ class TestExitCode:
 # Test 4: applicable(criterion, env) — C6 SKIPped when cap is unset/0
 # ---------------------------------------------------------------------------
 
+
 class TestApplicable:
     """applicable() must return SKIP for C6 when GATEWAY_MAX_CONCURRENT_REQUESTS is unset or 0."""
 
@@ -257,9 +256,7 @@ class TestApplicable:
 
         result = applicable("C6", env)
 
-        assert result == "SKIP", (
-            f"Expected 'SKIP' for C6 with cap unset, got {result!r}"
-        )
+        assert result == "SKIP", f"Expected 'SKIP' for C6 with cap unset, got {result!r}"
 
     def test_c6_skipped_when_cap_is_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """C6 is SKIPPED when GATEWAY_MAX_CONCURRENT_REQUESTS='0'."""
@@ -268,9 +265,7 @@ class TestApplicable:
 
         result = applicable("C6", env)
 
-        assert result == "SKIP", (
-            f"Expected 'SKIP' for C6 with cap=0, got {result!r}"
-        )
+        assert result == "SKIP", f"Expected 'SKIP' for C6 with cap=0, got {result!r}"
 
     def test_c6_applicable_when_cap_positive(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """C6 is applicable (not SKIP) when GATEWAY_MAX_CONCURRENT_REQUESTS > 0."""
@@ -279,9 +274,7 @@ class TestApplicable:
 
         result = applicable("C6", env)
 
-        assert result != "SKIP", (
-            f"Expected C6 to be applicable with cap=5, got {result!r}"
-        )
+        assert result != "SKIP", f"Expected C6 to be applicable with cap=5, got {result!r}"
 
     def test_other_criteria_always_applicable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """C1–C5 and C7 are always applicable (never SKIP)."""

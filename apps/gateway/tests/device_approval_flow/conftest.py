@@ -105,18 +105,26 @@ async def signup_and_login(client: httpx.AsyncClient) -> tuple[str, str, str]:
     email = f"owner-{uuid.uuid4().hex[:8]}@test.example"
     sr = await client.post(
         "/admin/auth/signup",
-        json={"tenant_name": f"tenant-{uuid.uuid4().hex[:6]}", "email": email, "password": "correct horse battery"},
+        json={
+            "tenant_name": f"tenant-{uuid.uuid4().hex[:6]}",
+            "email": email,
+            "password": "correct horse battery",
+        },
     )
     assert sr.status_code == 201, f"signup failed: {sr.text}"
     tenant_id: str = sr.json()["tenant_id"]
-    lr = await client.post("/admin/auth/login", json={"email": email, "password": "correct horse battery"})
+    lr = await client.post(
+        "/admin/auth/login", json={"email": email, "password": "correct horse battery"}
+    )
     assert lr.status_code == 200, f"login failed: {lr.text}"
     token: str = lr.json()["access_token"]
     # Decode user_id from the token service
     return token, tenant_id, ""
 
 
-async def mint_token(app: Any, session: AsyncSession, *, tenant_id: str, role: Role = Role.MEMBER) -> tuple[str, str]:
+async def mint_token(
+    app: Any, session: AsyncSession, *, tenant_id: str, role: Role = Role.MEMBER
+) -> tuple[str, str]:
     """Insert a same-tenant user with `role` and mint a JWT. Returns (token, user_id)."""
     user_id = str(uuid.uuid4())
     email = f"user-{uuid.uuid4().hex[:8]}@test.example"
@@ -204,10 +212,7 @@ async def get_authorization_row(app: Any, auth_id: str) -> dict[str, Any]:
     """Fetch the device_authorizations row by id."""
     async with app.state.sessionmaker() as session:
         res = await session.execute(
-            text(
-                "SELECT id, status, tenant_id, user_id"
-                " FROM device_authorizations WHERE id = :id"
-            ),
+            text("SELECT id, status, tenant_id, user_id FROM device_authorizations WHERE id = :id"),
             {"id": auth_id},
         )
         row = res.fetchone()

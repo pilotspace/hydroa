@@ -402,7 +402,9 @@ def _auth(key: str) -> dict[str, str]:
 
 
 def _assert_problem(resp: httpx.Response, status: int, code: str) -> None:
-    assert resp.status_code == status, f"Expected HTTP {status}, got {resp.status_code}: {resp.text}"
+    assert resp.status_code == status, (
+        f"Expected HTTP {status}, got {resp.status_code}: {resp.text}"
+    )
     data = resp.json()
     assert data.get("code") == code, f"Expected code={code!r}, got {data.get('code')!r}: {data}"
 

@@ -205,7 +205,12 @@ class AzureOpenAIProvider:
         Returns:
             (status_code, json_body) — body is OpenAI-shaped transcription response.
         """
-        cfg, cred = self._resolve_config_and_cred()
+        # Fail-closed: missing credential → UpstreamUnavailableError (not ProviderKeyMissing)
+        # so callers always see the canonical upstream-error type regardless of auth state.
+        try:
+            cfg, cred = self._resolve_config_and_cred()
+        except ProviderKeyMissing as exc:
+            raise UpstreamUnavailableError(str(exc)) from None
         deployment = cfg.resolve_deployment(data["model"])
         url = cfg.build_url(deployment, "audio/transcriptions")
         auth = await self._auth_headers_for_credential(cred)
@@ -251,7 +256,11 @@ class AzureOpenAIProvider:
         self._breaker.guard()
 
         async def _gen() -> AsyncIterator[bytes]:
-            cfg, cred = self._resolve_config_and_cred()
+            # Fail-closed: missing credential → UpstreamUnavailableError (canonical error type).
+            try:
+                cfg, cred = self._resolve_config_and_cred()
+            except ProviderKeyMissing as exc:
+                raise UpstreamUnavailableError(str(exc)) from None
             deployment = cfg.resolve_deployment(payload["model"])
             url = cfg.build_url(deployment, "audio/speech")
             auth = await self._auth_headers_for_credential(cred)

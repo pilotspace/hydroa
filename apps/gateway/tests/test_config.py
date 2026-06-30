@@ -56,7 +56,9 @@ def test_default_check_interval_is_zero_and_off() -> None:
     """Unset interval boots to the OFF sentinel — byte-identical to today."""
     s = Settings()
     assert s.reconciliation_check_interval_seconds == 0
-    assert should_start_drift_checker(Decimal("1"), s.reconciliation_check_interval_seconds) is False
+    assert (
+        should_start_drift_checker(Decimal("1"), s.reconciliation_check_interval_seconds) is False
+    )
 
 
 def test_positive_check_interval_accepted() -> None:

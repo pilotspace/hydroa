@@ -87,25 +87,33 @@ async def _await_all_video_tasks(app: Any) -> None:
 class _SuccessStub:
     """Returns a tiny fake video payload."""
 
-    def __init__(self, content: bytes = b"FAKE_VIDEO_BYTES", content_type: str = "video/mp4") -> None:
+    def __init__(
+        self, content: bytes = b"FAKE_VIDEO_BYTES", content_type: str = "video/mp4"
+    ) -> None:
         self._content = content
         self._content_type = content_type
 
-    async def generate(self, prompt: str, model: str, params: dict[str, Any] | None) -> tuple[bytes, str]:
+    async def generate(
+        self, prompt: str, model: str, params: dict[str, Any] | None
+    ) -> tuple[bytes, str]:
         return self._content, self._content_type
 
 
 class _ErrorStub:
     """Raises on generate."""
 
-    async def generate(self, prompt: str, model: str, params: dict[str, Any] | None) -> tuple[bytes, str]:
+    async def generate(
+        self, prompt: str, model: str, params: dict[str, Any] | None
+    ) -> tuple[bytes, str]:
         raise RuntimeError("provider exploded")
 
 
 class _TimeoutStub:
     """Hangs forever so asyncio.wait_for can time it out."""
 
-    async def generate(self, prompt: str, model: str, params: dict[str, Any] | None) -> tuple[bytes, str]:
+    async def generate(
+        self, prompt: str, model: str, params: dict[str, Any] | None
+    ) -> tuple[bytes, str]:
         await asyncio.sleep(9999)
         return b"", "video/mp4"  # unreachable
 
@@ -357,7 +365,9 @@ class TestTenantIsolationPoll:
             f"/v1/video/generations/{job_id}",
             headers=_bearer(other_tenant["key"]),
         )
-        assert poll_b.status_code == 404, f"expected 404 from cross-tenant poll, got: {poll_b.status_code}"
+        assert poll_b.status_code == 404, (
+            f"expected 404 from cross-tenant poll, got: {poll_b.status_code}"
+        )
         assert poll_b.json().get("code") == "ERR_VIDEO_JOB_NOT_FOUND"
 
         # Tenant A can still see it
@@ -376,9 +386,7 @@ class TestTenantIsolationPoll:
 
 
 class TestMissingModel422:
-    async def test_missing_model_422(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_missing_model_422(self, client: Any, api_key_info: dict[str, str]) -> None:
         """POST without model field → 422 ERR_PAYLOAD_MODEL_REQUIRED."""
         resp = await client.post(
             "/v1/video/generations",
@@ -389,9 +397,7 @@ class TestMissingModel422:
         body = resp.json()
         assert body.get("code") == "ERR_PAYLOAD_INVALID" or "model" in str(body).lower()
 
-    async def test_empty_model_422(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_empty_model_422(self, client: Any, api_key_info: dict[str, str]) -> None:
         """POST with empty model → 422."""
         resp = await client.post(
             "/v1/video/generations",
@@ -407,9 +413,7 @@ class TestMissingModel422:
 
 
 class TestMissingPrompt422:
-    async def test_missing_prompt_422(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_missing_prompt_422(self, client: Any, api_key_info: dict[str, str]) -> None:
         """POST without prompt → 422 ERR_PAYLOAD_INPUT_REQUIRED."""
         resp = await client.post(
             "/v1/video/generations",
@@ -420,9 +424,7 @@ class TestMissingPrompt422:
         body = resp.json()
         assert body.get("code") == "ERR_PAYLOAD_INVALID" or "prompt" in str(body).lower()
 
-    async def test_empty_prompt_422(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_empty_prompt_422(self, client: Any, api_key_info: dict[str, str]) -> None:
         """POST with empty prompt → 422."""
         resp = await client.post(
             "/v1/video/generations",

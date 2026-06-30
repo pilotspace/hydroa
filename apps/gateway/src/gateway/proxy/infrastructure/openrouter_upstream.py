@@ -208,9 +208,7 @@ class OpenRouterCompletionUpstream:
         byte-identical to v5 behavior. The retry policy lives in upstream_retry.py.
         """
 
-        outbound = self._maybe_inject_usage_accounting(
-            self._maybe_inject_web_search(payload)
-        )
+        outbound = self._maybe_inject_usage_accounting(self._maybe_inject_web_search(payload))
 
         async def _do_request() -> httpx.Response:
             return await self._client.post(
@@ -287,9 +285,7 @@ class OpenRouterCompletionUpstream:
         Zero retry machinery — stream() is unchanged by the retry-policy task.
         """
         self._breaker.guard()
-        outbound = self._maybe_inject_usage_accounting(
-            self._maybe_inject_web_search(payload)
-        )
+        outbound = self._maybe_inject_usage_accounting(self._maybe_inject_web_search(payload))
 
         async def _gen() -> AsyncIterator[bytes]:
             try:

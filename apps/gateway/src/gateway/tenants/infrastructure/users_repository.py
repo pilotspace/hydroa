@@ -24,12 +24,14 @@ class UserRoleRepository:
     async def list_by_tenant(self, *, tenant_id: uuid.UUID) -> list[User]:
         """Return all users in the tenant, ordered by email."""
         rows = (
-            await self._session.execute(
-                select(UserRow)
-                .where(UserRow.tenant_id == tenant_id)
-                .order_by(UserRow.email)
+            (
+                await self._session.execute(
+                    select(UserRow).where(UserRow.tenant_id == tenant_id).order_by(UserRow.email)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return [_row_to_user(r) for r in rows]
 
     async def get_by_id_and_tenant(
@@ -38,9 +40,7 @@ class UserRoleRepository:
         """Return a user only if they belong to the given tenant."""
         row = (
             await self._session.execute(
-                select(UserRow).where(
-                    UserRow.id == user_id, UserRow.tenant_id == tenant_id
-                )
+                select(UserRow).where(UserRow.id == user_id, UserRow.tenant_id == tenant_id)
             )
         ).scalar_one_or_none()
         if row is None:
@@ -63,9 +63,7 @@ class UserRoleRepository:
 
         row = (
             await self._session.execute(
-                select(UserRow).where(
-                    UserRow.id == user_id, UserRow.tenant_id == tenant_id
-                )
+                select(UserRow).where(UserRow.id == user_id, UserRow.tenant_id == tenant_id)
             )
         ).scalar_one()
         return _row_to_user(row)
