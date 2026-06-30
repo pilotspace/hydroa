@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "ai-feature-pages-redesign",
-  "active_milestone": "v54",
+  "active_task": "unsupported-input-guard",
+  "active_milestone": "v55",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -478,6 +478,68 @@
       "depends_on": [],
       "created": "2026-06-28T14:01:49+00:00",
       "updated": "2026-06-28T14:46:39+00:00"
+    },
+    "model-input-capabilities": {
+      "title": "Additive per-model input_modalities catalog descriptor",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v55",
+      "depends_on": [],
+      "created": "2026-06-30T12:12:42+00:00",
+      "updated": "2026-06-30T13:10:39+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "60390ae65623461ad99d485d10b307b9",
+        "tests": {
+          "apps/gateway/tests/catalog_input_modalities/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/catalog_input_modalities/test_input_modalities.py": "6d36003cfb50ae7ea4fba07d0c613ec2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/catalog/",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/catalog_input_modalities/"
+        ],
+        "snapshot_md5": "8356ba196805f7495053c60631dd1273"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "unsupported-input-guard": {
+      "title": "Capability-aware unsupported-input guard (chat content-parts + STT)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v55",
+      "depends_on": [],
+      "created": "2026-06-30T13:17:25+00:00",
+      "updated": "2026-06-30T14:53:22+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "3812ecd8ed6752fb4216f7a197a487cd",
+        "tests": {
+          "apps/gateway/tests/input_modality_guard/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/input_modality_guard/conftest.py": "b606e3d0f9a9f02c6e5d6ed8bbb253c1",
+          "apps/gateway/tests/input_modality_guard/test_input_modality_guard.py": "7f038d686297560349fd28043fec7b48"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/tests/input_modality_guard/"
+        ],
+        "snapshot_md5": "c1da3a77496eefc868808c603e4e3f02"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -518,10 +580,26 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "v55": {
+      "title": "Capability-aware model management",
+      "goal": "Every catalog model declares the input types it accepts, and any request carrying an input type the resolved model cannot handle is rejected with a clear structured 4xx before it reaches the provider.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-30T12:11:18+00:00",
+      "updated": "2026-06-30T12:11:18+00:00"
+    },
+    "v56": {
+      "title": "Per-tenant model presets",
+      "goal": "A tenant admin defines named presets that remap model names (opus to gpt5-5), selects among multiple presets via a name: prefix (cheap:opus), and requests resolve the preset to a concrete model before the router while the existing fallback seam stays byte-identical.",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-06-30T12:11:18+00:00",
+      "updated": "2026-06-30T12:11:18+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-29T17:09:39+00:00",
+  "updated": "2026-06-30T14:53:22+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1195,10 +1273,12 @@
     }
   ],
   "active_milestones": [
-    "v54"
+    "v54",
+    "v55"
   ],
   "active_tasks": {
-    "v54": "ai-feature-pages-redesign"
+    "v54": "ai-feature-pages-redesign",
+    "v55": "unsupported-input-guard"
   },
   "todos": [
     {

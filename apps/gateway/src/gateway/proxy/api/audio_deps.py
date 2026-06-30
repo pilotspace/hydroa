@@ -84,6 +84,14 @@ def get_transcription_use_case(
     )
     # credential-resolution-seam §3: per-tenant provider key resolver from app.state.
     tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
+    # unsupported-input-guard §3: when enabled, STT requests are rejected before upstream
+    # when the model's input_modalities lacks "audio". Default False = opt-in (byte-identical).
+    _stt_settings = getattr(request.app.state, "settings", None)
+    input_modality_guard_enabled: bool = (
+        bool(getattr(_stt_settings, "input_modality_guard_enabled", False))
+        if _stt_settings
+        else False
+    )
     return TranscriptionUseCase(
         governance=governance,
         session=session,
@@ -91,6 +99,7 @@ def get_transcription_use_case(
         # stt-duration-cap §3: bound the billed per_second duration.
         # env: GATEWAY_STT_MAX_DURATION_SECONDS
         max_duration_seconds=request.app.state.settings.stt_max_duration_seconds,
+        input_modality_guard_enabled=input_modality_guard_enabled,
     )
 
 

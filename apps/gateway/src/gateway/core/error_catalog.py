@@ -507,6 +507,16 @@ UNSUPPORTED_CONTENT_PART = ErrorSpec(
     400, "ERR_UNSUPPORTED_CONTENT_PART", "Unsupported or invalid content part"
 )
 
+#: Capability-aware input-modality guard (unsupported-input-guard task §3).
+#: Fired when a chat content-part or STT request requires an input modality the
+#: resolved model's catalog entry does not support.  400 — caller-fixable; the
+#: detail field names the offending type and the model's supported set.
+UNSUPPORTED_INPUT_MODALITY = ErrorSpec(
+    400,
+    "ERR_UNSUPPORTED_INPUT_MODALITY",
+    "Model does not accept '{input_type}' input",
+)
+
 # ---------------------------------------------------------------------------
 # Video generation job errors (video-generation-jobs task)
 # ---------------------------------------------------------------------------

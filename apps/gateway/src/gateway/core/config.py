@@ -329,6 +329,15 @@ class Settings(BaseSettings):
     # Non-grounding providers (bedrock/azure) inject nothing and never raise.
     # web-search-grounding TASK.md §3 (knob frozen default-OFF).
     web_search_enabled: bool = Field(default=False)
+
+    # GATEWAY_INPUT_MODALITY_GUARD_ENABLED — when True, a request whose required input
+    # types (derived from chat messages content-parts or audio modality) exceed the
+    # resolved model's catalog input_modalities is rejected with 400
+    # ERR_UNSUPPORTED_INPUT_MODALITY BEFORE any upstream call, bandwidth acquire, or usage
+    # record — a refused request is never billed. Default False = opt-in (byte-identical:
+    # no lookup, no rejection; frozen router + every existing proxy/audio test unchanged).
+    # unsupported-input-guard TASK.md §3 (knob frozen default-OFF).
+    input_modality_guard_enabled: bool = Field(default=False)
     # GATEWAY_OPENROUTER_COST_RECOVERY_ENABLED — when True, an OpenRouter stream aborted by
     # client disconnect schedules an inline fire-and-forget authoritative-cost recovery
     # (OpenRouterCostRecoveryService) from the disconnect handler. Default False = opt-in

@@ -64,6 +64,7 @@ from gateway.proxy.domain.errors import (
 from gateway.proxy.domain.ports import (
     CompletionUpstream,
     GuardrailEvaluator,
+    InputModalityLookup,
     KeyAuthenticator,
     ModelAccess,
     ModelChecker,
@@ -507,6 +508,8 @@ class CompletionUseCase:
         bandwidth_bucket: BandwidthBucket | None = None,
         bandwidth_max_wait_s: float = 0.0,
         web_search_enabled: bool = False,
+        input_modality_lookup: InputModalityLookup | None = None,
+        input_modality_guard_enabled: bool = False,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -547,6 +550,12 @@ class CompletionUseCase:
         # dispatch so the outgoing upstream body is byte-identical to today. True = adapters
         # receive the flag and translate it into provider-native grounding tools.
         self._web_search_enabled = web_search_enabled
+        # unsupported-input-guard (unsupported-input-guard task). None + False (defaults) =
+        # feature OFF: no catalog lookup, no rejection, byte-identical to today.
+        # When enabled, _check_input_modalities() runs after _enforce_governance and BEFORE
+        # bandwidth acquire / upstream / usage — a refused request is never billed.
+        self._input_modality_lookup: InputModalityLookup | None = input_modality_lookup
+        self._input_modality_guard_enabled: bool = input_modality_guard_enabled
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -580,6 +589,46 @@ class CompletionUseCase:
         """
         if not self._web_search_enabled:
             body.pop("web_search", None)
+
+    async def _check_input_modalities(
+        self,
+        body: dict[str, Any],
+        model_id: str,
+        model_groups: dict[str, list[str]] | None,
+    ) -> None:
+        """Enforce the capability-aware input-modality guard (unsupported-input-guard §3).
+
+        Runs AFTER _enforce_governance and BEFORE bandwidth acquire / upstream / usage.
+        A refused request is never billed (raises ProblemError 400 before any side-effect).
+
+        Guard is a no-op when:
+          - _input_modality_guard_enabled is False (default; byte-identical)
+          - _input_modality_lookup is None (not wired — legacy / test compat)
+          - lookup returns None (unknown model / no active row) → fail-open by design
+
+        Does NOT touch video_url parts (video modality deferred from v55).
+        """
+        if not self._input_modality_guard_enabled or self._input_modality_lookup is None:
+            return
+
+        from gateway.proxy.application.modality_guard import (
+            enforce,
+            required_input_modalities_for_chat,
+            resolve_allowed,
+        )
+
+        messages_raw = body.get("messages", [])
+        if not isinstance(messages_raw, list):
+            return  # malformed messages — adapter / payload validation will handle it
+        messages: list[dict[str, Any]] = messages_raw
+
+        required = required_input_modalities_for_chat(messages)
+        if not required:
+            # Nothing to enforce (e.g. only video_url parts, deferred)
+            return
+
+        allowed = await resolve_allowed(model_id, self._input_modality_lookup, model_groups)
+        enforce(required, allowed, model_id=model_id)
 
     async def _validate_payload(
         self,
@@ -941,6 +990,10 @@ class CompletionUseCase:
             # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
             _model_groups = model_router.model_groups if model_router is not None else None
             await self._enforce_governance(authz, model_id, self._budget_guard, _model_groups)
+
+            # unsupported-input-guard: check input modalities AFTER governance and BEFORE
+            # bandwidth acquire / upstream / usage (contract §3 — refused = never billed).
+            await self._check_input_modalities(body, model_id, _model_groups)
 
             # bandwidth-pacing pre-flight (stream-bandwidth-pacing v36): charge the per-key
             # bucket BEFORE the upstream call so a non-stream request is SHED (never paid) when
@@ -1510,6 +1563,10 @@ class CompletionUseCase:
             await self._enforce_governance(
                 authz, model_id, self._budget_guard, _stream_model_groups
             )
+
+            # unsupported-input-guard: check input modalities AFTER governance and BEFORE
+            # credential resolution / upstream stream / usage (contract §3).
+            await self._check_input_modalities(body, model_id, _stream_model_groups)
 
             # Credential resolution (credential-resolution-seam §3) — same as complete().
             _stream_cred_token = await self._resolve_credential(authz.tenant_id, model_id)
