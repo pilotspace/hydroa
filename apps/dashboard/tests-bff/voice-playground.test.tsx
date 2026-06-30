@@ -270,3 +270,164 @@ describe("VoicePlayground — model autocomplete", () => {
     expect(tts).not.toContain("openai/gpt-4o");
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// NEW Console-grade voice playground tests
+// ════════════════════════════════════════════════════════════════════════════
+
+describe("VoicePlayground — mic unavailable fallback", () => {
+  it("test_mic_unavailable_shows_fallback_notice", () => {
+    // jsdom does not provide navigator.mediaDevices, so micAvailable=false on mount.
+    // VoiceComposer must render a notice explaining mic is unavailable.
+    render(<VoicePlayground />);
+    expect(
+      screen.getByText(/mic not available|microphone not available|no microphone/i),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("VoicePlayground — thread empty state", () => {
+  it("test_thread_shows_empty_state", () => {
+    render(<VoicePlayground />);
+    // VoiceThread shows an empty state when no turns have been added yet.
+    expect(screen.getByText(/no voice turns yet/i)).toBeInTheDocument();
+  });
+});
+
+describe("VoicePlayground — inspector controls", () => {
+  it("test_inspector_chat_model_updates", async () => {
+    const user = userEvent.setup();
+    render(<VoicePlayground />);
+
+    // VoiceInspector has a chat model input (aria-label="Chat model").
+    const chatModelInput = screen.getByLabelText(/chat model/i);
+    await user.clear(chatModelInput);
+    await user.type(chatModelInput, "openai/gpt-4o-mini");
+    expect((chatModelInput as HTMLInputElement).value).toBe("openai/gpt-4o-mini");
+  });
+
+  it("test_inspector_tts_voice_updates", async () => {
+    const user = userEvent.setup();
+    render(<VoicePlayground />);
+
+    // VoiceComposer or VoiceInspector has a TTS voice select (aria-label="Voice").
+    const voiceSelect = screen.getByLabelText(/^voice$/i);
+    await user.selectOptions(voiceSelect, "nova");
+    expect((voiceSelect as HTMLSelectElement).value).toBe("nova");
+  });
+});
+
+describe("VoicePlayground — phase indicator", () => {
+  it("test_phase_indicator_shows_during_transcription", async () => {
+    let resolveSTT: (() => void) | undefined;
+    const sttGate = new Promise<void>((resolve) => {
+      resolveSTT = resolve;
+    });
+
+    server.use(
+      http.post(`${APP}/api/gw/v1/audio/transcriptions`, async () => {
+        await sttGate;
+        return HttpResponse.json({ text: "delayed transcript" });
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<VoicePlayground />);
+
+    const fileInput = screen.getByLabelText(/audio file/i);
+    const file = new File([new Uint8Array([0x49, 0x44, 0x33])], "a.mp3", {
+      type: "audio/mpeg",
+    });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await user.click(screen.getByRole("button", { name: /transcribe/i }));
+
+    // Phase indicator must be visible while STT is in-flight.
+    await waitFor(() => {
+      expect(screen.getByTestId("phase-indicator")).toBeInTheDocument();
+    });
+
+    // Unblock the STT handler.
+    resolveSTT!();
+
+    // Indicator disappears after the request resolves.
+    await waitFor(() => {
+      expect(screen.queryByTestId("phase-indicator")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("VoicePlayground — full voice turn loop", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("test_voice_loop_stt_chat_tts_adds_turn", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+    vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
+
+    // Override chat completions to return a meaningful reply.
+    server.use(
+      http.post(`${APP}/api/gw/v1/chat/completions`, () =>
+        HttpResponse.json({
+          choices: [{ message: { content: "Voice assistant reply" } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        }),
+      ),
+      http.post(`${APP}/api/gw/v1/audio/speech`, async () => {
+        const fakeAudio = new Uint8Array([0x49, 0x44, 0x33]);
+        return new HttpResponse(fakeAudio, {
+          headers: { "Content-Type": "audio/mpeg" },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<VoicePlayground />);
+
+    // Type text into the "Text to speak" input — used as transcript for Voice Turn.
+    const textInput = screen.getByLabelText(/text to speak/i);
+    await user.type(textInput, "test voice input");
+
+    // Click the "Voice Turn" button (text → chat → TTS, no STT needed).
+    await user.click(screen.getByRole("button", { name: /voice turn/i }));
+
+    // Thread must show the user's transcript text.
+    expect(await screen.findByText("test voice input")).toBeInTheDocument();
+
+    // Thread must show the assistant's reply.
+    expect(await screen.findByText("Voice assistant reply")).toBeInTheDocument();
+  });
+
+  it("test_per_turn_metadata_shows", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+    vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
+
+    server.use(
+      http.post(`${APP}/api/gw/v1/chat/completions`, () =>
+        HttpResponse.json({
+          choices: [{ message: { content: "Meta reply" } }],
+          usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 },
+        }),
+      ),
+      http.post(`${APP}/api/gw/v1/audio/speech`, async () => {
+        const fakeAudio = new Uint8Array([0x49, 0x44, 0x33]);
+        return new HttpResponse(fakeAudio, {
+          headers: { "Content-Type": "audio/mpeg" },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<VoicePlayground />);
+
+    const textInput = screen.getByLabelText(/text to speak/i);
+    await user.type(textInput, "metadata test");
+    await user.click(screen.getByRole("button", { name: /voice turn/i }));
+
+    // After a complete turn, a metadata chip (data-testid="turn-meta") must appear.
+    await waitFor(() => {
+      expect(screen.getByTestId("turn-meta")).toBeInTheDocument();
+    });
+  });
+});
