@@ -490,6 +490,14 @@ PAYLOAD_INVALID_BASE64 = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID_BASE64", "content_base64 is not valid base64"
 )
 
+#: Artifact: uploaded content_type is not in the configured allow-list.
+#: Dynamic: {content_type} — the value supplied by the caller (safe to echo).
+ARTIFACT_CONTENT_TYPE_NOT_ALLOWED = ErrorSpec(
+    415,
+    "ERR_ARTIFACT_CONTENT_TYPE_NOT_ALLOWED",
+    "content_type '{content_type}' is not allowed",
+)
+
 #: Object store (S3/MinIO) is unreachable or failed (timeout, transport, 5xx, breaker open).
 #: v51 object-store-port. 503 — transient; the caller may retry.
 OBJECT_STORE_UNAVAILABLE = ErrorSpec(

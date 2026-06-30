@@ -554,6 +554,12 @@ class Settings(BaseSettings):
     # GATEWAY_ARTIFACT_MAX_BYTES — per-artifact size cap (decoded bytes). 0 = disabled (no limit).
     # Default 10 MiB. Reject BEFORE insert (no partial write).
     artifact_max_bytes: int = Field(default=10_485_760, ge=0)  # GATEWAY_ARTIFACT_MAX_BYTES
+    # GATEWAY_ARTIFACT_ALLOWED_CONTENT_TYPES — comma-separated media-type allow-list.
+    # Default "" = allow any content_type (byte-identical to pre-policy behaviour).
+    # Non-empty: normalize(content_type) must be in the normalized set; else 415.
+    # NOTE: kept as str (not list[str]) — pydantic-settings parses complex env types
+    # as JSON, so a bare CSV env var would raise; str avoids that trap.
+    artifact_allowed_content_types: str = Field(default="")
 
     # ── Object store (S3/MinIO) for artifact bytes (v51 object-store-port) ─────
     # Unset/incomplete -> build_object_store() returns None -> artifacts honest-degrade

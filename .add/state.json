@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "unsupported-input-guard",
+  "active_task": "artifact-upload-validation",
   "active_milestone": "v55",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -540,6 +540,46 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "artifact-upload-validation": {
+      "title": "Artifact upload content-type allow-policy guard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v55",
+      "depends_on": [],
+      "created": "2026-06-30T15:04:24+00:00",
+      "updated": "2026-06-30T15:27:50+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f853ffcc3562890c9f4085aa424b817c",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/artifacts/api/router.py",
+          "apps/gateway/src/gateway/artifacts/content_type_policy.py",
+          "apps/gateway/tests/artifacts/test_artifact_content_type.py",
+          "apps/gateway/tests/artifacts/content_type_policy.py"
+        ],
+        "snapshot_md5": "9f4eaff2bc18de133311115c4ec7f171"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-30T15:27:14+00:00",
+            "reason": "scope_violation: task 'artifact-upload-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/16609207431043442056 \u00b7 apps/gateway/.ruff_cache/0.15.16/6450163036272733976 \u00b7 apps/gateway/src/gateway/artifacts/content_type_policy.py (5 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -599,7 +639,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-30T14:53:22+00:00",
+  "updated": "2026-06-30T15:27:50+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1278,7 +1318,7 @@
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
-    "v55": "unsupported-input-guard"
+    "v55": "artifact-upload-validation"
   },
   "todos": [
     {

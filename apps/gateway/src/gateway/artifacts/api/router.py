@@ -40,10 +40,12 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.artifacts.content_type_policy import is_content_type_allowed
 from gateway.artifacts.infrastructure.repository import ArtifactRepository
 from gateway.core.config import Settings
 from gateway.core.db import get_session
 from gateway.core.error_catalog import (
+    ARTIFACT_CONTENT_TYPE_NOT_ALLOWED,
     AUTH_KEY_EXPIRED,
     AUTH_KEY_INVALID,
     OBJECT_STORE_UNAVAILABLE,
@@ -221,6 +223,17 @@ async def create_artifact(
     settings = _get_settings(request)
     if settings.artifact_max_bytes > 0 and len(decoded) > settings.artifact_max_bytes:
         raise PAYLOAD_INPUT_TOO_LONG.exc() from None
+
+    # Content-type allow-policy — 415 BEFORE any object-store put or DB write/commit.
+    # Empty allow-list (default "") is a no-op: allow-all, byte-identical to pre-policy.
+    if not is_content_type_allowed(body.content_type, settings.artifact_allowed_content_types):
+        raise ARTIFACT_CONTENT_TYPE_NOT_ALLOWED.exc(
+            content_type=body.content_type,
+            detail=(
+                f"content_type '{body.content_type}' is not allowed; "
+                f"allowed: {settings.artifact_allowed_content_types!r}"
+            ),
+        ) from None
 
     # Generate the id at the call site so the s3 object key is known BEFORE the write.
     artifact_id = uuid.uuid4()
