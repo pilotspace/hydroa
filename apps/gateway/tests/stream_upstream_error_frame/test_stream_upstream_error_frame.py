@@ -111,7 +111,7 @@ def _parse_error_frame(raw: bytes) -> dict[str, Any] | None:
     the parsed payload; otherwise return None."""
     if not raw.startswith(b"data: "):
         return None
-    payload_bytes = raw[len(b"data: "):].strip()
+    payload_bytes = raw[len(b"data: ") :].strip()
     try:
         obj = json.loads(payload_bytes)
     except json.JSONDecodeError:
@@ -174,8 +174,7 @@ async def test_midstream_unavailable_emits_error_frame_and_done() -> None:
 
     # A terminal [DONE] must follow the error frame.
     assert _count_done(chunks) >= 1, (
-        f"Expected at least one data: [DONE] after error frame; got none. "
-        f"Full stream: {chunks!r}"
+        f"Expected at least one data: [DONE] after error frame; got none. Full stream: {chunks!r}"
     )
 
     # The error frame must precede [DONE] in the stream.
@@ -298,7 +297,13 @@ async def test_client_disconnect_emits_no_frame() -> None:
     # Use a _SpyRecorder that captures all fields (mirrors disconnect_provider_cost suite).
     class _SpyRecorder:
         supported_extras: frozenset[str] = frozenset(
-            {"team_id", "pii_masked", "usage_source", "provider_generation_id", "disconnect_estimate"}
+            {
+                "team_id",
+                "pii_masked",
+                "usage_source",
+                "provider_generation_id",
+                "disconnect_estimate",
+            }
         )
 
         def __init__(self) -> None:
@@ -330,9 +335,7 @@ async def test_client_disconnect_emits_no_frame() -> None:
     )
 
     # No injected [DONE] in the received chunks (the upstream hadn't sent one yet).
-    assert _count_done(received) == 0, (
-        f"disconnect path must NOT inject [DONE]; got {received!r}"
-    )
+    assert _count_done(received) == 0, f"disconnect path must NOT inject [DONE]; got {received!r}"
 
     # The v34 disconnect usage record must still fire.
     sources = [c.get("usage_source") for c in spy.calls]
@@ -356,9 +359,7 @@ async def test_success_stream_byte_identical() -> None:
     This guards against the build accidentally injecting an error frame on success.
     """
     recorder = FakeUsageRecorder()
-    upstream = PlanStreamUpstream(
-        {CAND_A: [_CHUNK_A, _CHUNK_B, _UPSTREAM_DONE]}
-    )
+    upstream = PlanStreamUpstream({CAND_A: [_CHUNK_A, _CHUNK_B, _UPSTREAM_DONE]})
 
     chunks = await _drain(upstream, recorder)
 
@@ -408,14 +409,11 @@ async def test_no_double_done_when_upstream_already_done() -> None:
 
     # Error frame MUST be present (failure is always visible).
     assert _has_error_frame(chunks), (
-        f"Error frame must appear even when upstream already sent [DONE]; "
-        f"got {chunks!r}"
+        f"Error frame must appear even when upstream already sent [DONE]; got {chunks!r}"
     )
 
     code = _error_code(chunks)
-    assert code == _CODE_UNAVAILABLE, (
-        f"Expected code={_CODE_UNAVAILABLE!r}; got code={code!r}"
-    )
+    assert code == _CODE_UNAVAILABLE, f"Expected code={_CODE_UNAVAILABLE!r}; got code={code!r}"
 
     # At most ONE [DONE] total — no double terminal.
     done_count = _count_done(chunks)

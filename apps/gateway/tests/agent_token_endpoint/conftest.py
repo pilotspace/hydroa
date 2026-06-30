@@ -168,7 +168,9 @@ async def _seed_authorization(
     user_code = "ABCD-EFGH"  # stable for tests; hash is what matters
     hasher = Sha256SecretHasher()
 
-    effective_expires_at = expires_at if expires_at is not None else (now + timedelta(seconds=ttl_seconds))
+    effective_expires_at = (
+        expires_at if expires_at is not None else (now + timedelta(seconds=ttl_seconds))
+    )
 
     async with app.state.sessionmaker() as session:
         repo = SqlAlchemyAgentOAuthRepository(session)

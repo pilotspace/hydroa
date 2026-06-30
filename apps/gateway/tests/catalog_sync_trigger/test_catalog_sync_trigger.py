@@ -36,9 +36,7 @@ def assert_problem(resp: Any, status: int, code: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-async def test_owner_sync_success(
-    client: Any, app: Any, db_session: AsyncSession
-) -> None:
+async def test_owner_sync_success(client: Any, app: Any, db_session: AsyncSession) -> None:
     token, _tid = await signup_and_login(client, tenant_name="Cat A", email="a@cat.io")
     install_fake_source(app, FakeCatalogSource(models=[OPUS, SONNET]))
 
@@ -53,9 +51,7 @@ async def test_owner_sync_success(
 
 
 # ---------------------------------------------------------------------------
-async def test_admin_sync_success(
-    client: Any, app: Any, db_session: AsyncSession
-) -> None:
+async def test_admin_sync_success(client: Any, app: Any, db_session: AsyncSession) -> None:
     _owner, tid = await signup_and_login(client, tenant_name="Cat AD", email="ad-o@cat.io")
     admin_jwt = await mint_role_token(
         app, db_session, tenant_id=tid, role=Role.ADMIN, email="ad@cat.io"
@@ -108,9 +104,7 @@ async def test_member_denied_leaves_existing_catalog_intact(
 
 
 # ---------------------------------------------------------------------------
-async def test_missing_bearer_denied(
-    client: Any, app: Any, db_session: AsyncSession
-) -> None:
+async def test_missing_bearer_denied(client: Any, app: Any, db_session: AsyncSession) -> None:
     install_fake_source(app, FakeCatalogSource(models=[OPUS]))
 
     resp = await client.post(SYNC)
@@ -120,9 +114,7 @@ async def test_missing_bearer_denied(
 
 
 # ---------------------------------------------------------------------------
-async def test_upstream_unavailable(
-    client: Any, app: Any, db_session: AsyncSession
-) -> None:
+async def test_upstream_unavailable(client: Any, app: Any, db_session: AsyncSession) -> None:
     token, _tid = await signup_and_login(client, tenant_name="Cat U", email="u@cat.io")
     install_fake_source(app, FakeCatalogSource(raise_unavailable=True))
 
@@ -149,9 +141,7 @@ async def test_idempotent(client: Any, app: Any, db_session: AsyncSession) -> No
 
 
 # ---------------------------------------------------------------------------
-async def test_synced_at_monotonic(
-    client: Any, app: Any, db_session: AsyncSession
-) -> None:
+async def test_synced_at_monotonic(client: Any, app: Any, db_session: AsyncSession) -> None:
     token, _tid = await signup_and_login(client, tenant_name="Cat T", email="t@cat.io")
 
     install_fake_source(app, FakeCatalogSource(models=[OPUS]))

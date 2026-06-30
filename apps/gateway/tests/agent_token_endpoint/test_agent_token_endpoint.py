@@ -77,7 +77,9 @@ async def test_poll_pending_returns_authorization_pending(
     device_code, auth = await _seed_authorization(app, status="pending")
     before = await _token_count(db_session)
 
-    resp = await client.post(TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code})
+    resp = await client.post(
+        TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code}
+    )
 
     assert resp.status_code == 400, resp.text
     assert resp.json() == {"error": "authorization_pending"}
@@ -105,7 +107,9 @@ async def test_poll_approved_mints_token(
     )
     before = await _token_count(db_session)
 
-    resp = await client.post(TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code})
+    resp = await client.post(
+        TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code}
+    )
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -140,7 +144,9 @@ async def test_refresh_token_present_when_enabled(
         tenant_id=tenant_user["tenant_id"],
         user_id=tenant_user["user_id"],
     )
-    resp = await client.post(TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code})
+    resp = await client.post(
+        TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code}
+    )
     assert resp.status_code == 200, resp.text
     assert "refresh_token" in resp.json()
 
@@ -161,7 +167,11 @@ async def test_refresh_token_absent_when_disabled(
     # Use the no_refresh_client to sign up a tenant
     signup_resp = await no_refresh_client.post(
         "/admin/auth/signup",
-        json={"tenant_name": "NoRefreshCo", "email": "test@norefresh.io", "password": "correct horse battery"},
+        json={
+            "tenant_name": "NoRefreshCo",
+            "email": "test@norefresh.io",
+            "password": "correct horse battery",
+        },
     )
     assert signup_resp.status_code == 201, signup_resp.text
     import uuid as _uuid
@@ -232,7 +242,9 @@ async def test_denied_returns_access_denied(
     device_code, auth = await _seed_authorization(app, status="denied")
     before = await _token_count(db_session)
 
-    resp = await client.post(TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code})
+    resp = await client.post(
+        TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code}
+    )
 
     assert resp.status_code == 400, resp.text
     assert resp.json() == {"error": "access_denied"}
@@ -257,7 +269,9 @@ async def test_expired_pending_returns_expired_token(
     )
     before = await _token_count(db_session)
 
-    resp = await client.post(TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code})
+    resp = await client.post(
+        TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code}
+    )
 
     assert resp.status_code == 400, resp.text
     assert resp.json() == {"error": "expired_token"}
@@ -271,13 +285,13 @@ async def test_expired_pending_returns_expired_token(
 # ---------------------------------------------------------------------------
 
 
-async def test_unknown_device_code_invalid_grant(
-    client: Any, db_session: AsyncSession
-) -> None:
+async def test_unknown_device_code_invalid_grant(client: Any, db_session: AsyncSession) -> None:
     """An unrecognized device_code → 400 invalid_grant; nothing created."""
     before = await _token_count(db_session)
 
-    resp = await client.post(TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": "nope-does-not-exist"})
+    resp = await client.post(
+        TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": "nope-does-not-exist"}
+    )
 
     assert resp.status_code == 400, resp.text
     assert resp.json() == {"error": "invalid_grant"}
@@ -308,9 +322,7 @@ async def test_wrong_grant_type_unsupported(client: Any, db_session: AsyncSessio
 # ---------------------------------------------------------------------------
 
 
-async def test_poll_too_fast_slow_down(
-    app: Any, client: Any, db_session: AsyncSession
-) -> None:
+async def test_poll_too_fast_slow_down(app: Any, client: Any, db_session: AsyncSession) -> None:
     """Two polls in rapid succession for the same pending device_code → 2nd gets slow_down."""
     device_code, _auth = await _seed_authorization(app, status="pending")
 
@@ -433,7 +445,9 @@ async def test_token_hashed_at_rest(
         user_id=tenant_user["user_id"],
     )
 
-    resp = await client.post(TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code})
+    resp = await client.post(
+        TOKEN_URL, json={"grant_type": _GRANT_TYPE, "device_code": device_code}
+    )
     assert resp.status_code == 200, resp.text
     body = resp.json()
 

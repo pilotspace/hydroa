@@ -63,7 +63,10 @@ async def test_over_cap_rejects_before_bill() -> None:
 
     with pytest.raises(ProblemError) as ei:
         await uc.execute(
-            raw_key="k", body=_body(5000), registry={}, usage_recorder=None  # type: ignore[arg-type]
+            raw_key="k",
+            body=_body(5000),
+            registry={},
+            usage_recorder=None,  # type: ignore[arg-type]
         )
 
     assert ei.value.status == 413
@@ -79,7 +82,10 @@ async def test_within_cap_reaches_governance() -> None:
     # The cap does NOT raise; the flow proceeds to Step 4 (spy raises the sentinel).
     with pytest.raises(_SentinelReached):
         await uc.execute(
-            raw_key="k", body=_body(100), registry={}, usage_recorder=None  # type: ignore[arg-type]
+            raw_key="k",
+            body=_body(100),
+            registry={},
+            usage_recorder=None,  # type: ignore[arg-type]
         )
 
     assert gov.authorize_called is True
@@ -92,7 +98,10 @@ async def test_cap_disabled_at_zero() -> None:
     # 0 disables the cap entirely — even a huge input reaches governance.
     with pytest.raises(_SentinelReached):
         await uc.execute(
-            raw_key="k", body=_body(50_000), registry={}, usage_recorder=None  # type: ignore[arg-type]
+            raw_key="k",
+            body=_body(50_000),
+            registry={},
+            usage_recorder=None,  # type: ignore[arg-type]
         )
 
     assert gov.authorize_called is True

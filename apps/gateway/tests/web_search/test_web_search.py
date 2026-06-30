@@ -25,7 +25,10 @@ from typing import Any
 import httpx
 import pytest
 
-from gateway.proxy.domain.credential_context import reset_provider_credential, set_provider_credential
+from gateway.proxy.domain.credential_context import (
+    reset_provider_credential,
+    set_provider_credential,
+)
 from gateway.proxy.domain.provider_credentials import BearerCredential
 from gateway.proxy.infrastructure.anthropic_upstream import (
     AnthropicCompletionUpstream,
@@ -102,6 +105,7 @@ _OPENAI_200 = {
 def _openrouter_adapter(handler: object) -> OpenRouterCompletionUpstream:
     adapter = OpenRouterCompletionUpstream.__new__(OpenRouterCompletionUpstream)
     from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+
     adapter._breaker = CircuitBreaker()
     adapter._client = httpx.AsyncClient(
         base_url="https://openrouter.ai/api/v1",
@@ -118,6 +122,7 @@ def _openrouter_adapter(handler: object) -> OpenRouterCompletionUpstream:
 def _openai_adapter(handler: object) -> OpenAIDirectProvider:
     adapter = OpenAIDirectProvider.__new__(OpenAIDirectProvider)
     from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+
     adapter._breaker = CircuitBreaker()
     adapter._client = httpx.AsyncClient(
         base_url="https://api.openai.com/v1",
@@ -146,7 +151,8 @@ def _gemini_adapter(handler: object) -> GeminiCompletionUpstream:
     _BASE = "https://generativelanguage.googleapis.com/v1beta"
     adapter = GeminiCompletionUpstream(base_url=_BASE, default_max_tokens=4096)
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
-        base_url=_BASE, transport=httpx.MockTransport(handler)  # type: ignore[arg-type]
+        base_url=_BASE,
+        transport=httpx.MockTransport(handler),  # type: ignore[arg-type]
     )
     return adapter
 
@@ -273,9 +279,9 @@ def test_anthropic_native_tool_request_translation() -> None:
     # Flag must not appear in the translated body
     assert "web_search" not in result, "web_search flag must never leak into Anthropic body"
     tools = result.get("tools", [])
-    assert any(
-        t.get("type") == "web_search_20250305" for t in tools
-    ), "web_search_20250305 tool must be in Anthropic tools"
+    assert any(t.get("type") == "web_search_20250305" for t in tools), (
+        "web_search_20250305 tool must be in Anthropic tools"
+    )
 
 
 async def test_anthropic_native_tool_adapter() -> None:
@@ -302,9 +308,9 @@ async def test_anthropic_native_tool_adapter() -> None:
     body = captured["body"]
     assert "web_search" not in body
     tools = body.get("tools", [])
-    assert any(
-        t.get("type") == "web_search_20250305" for t in tools
-    ), "web_search_20250305 must be in Anthropic upstream body tools"
+    assert any(t.get("type") == "web_search_20250305" for t in tools), (
+        "web_search_20250305 must be in Anthropic upstream body tools"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +401,9 @@ async def test_function_tools_preserved_openrouter() -> None:
     assert "web_search" not in body, "flag must be stripped from the upstream body"
     tools = body.get("tools", [])
     assert _FUNCTION_TOOL in tools, "the caller's function tool must be preserved"
-    assert {"type": "web_search_preview"} in tools, "the native grounding tool must also be injected"
+    assert {"type": "web_search_preview"} in tools, (
+        "the native grounding tool must also be injected"
+    )
 
 
 def test_function_tools_preserved_anthropic() -> None:
@@ -411,9 +419,9 @@ def test_function_tools_preserved_anthropic() -> None:
     )
     tools = result.get("tools", [])
     assert any(t.get("name") == "get_weather" for t in tools), "function tool must be preserved"
-    assert any(
-        t.get("type") == "web_search_20250305" for t in tools
-    ), "web_search_20250305 must also be present"
+    assert any(t.get("type") == "web_search_20250305" for t in tools), (
+        "web_search_20250305 must also be present"
+    )
 
 
 def test_function_tools_preserved_gemini() -> None:
@@ -493,9 +501,7 @@ async def test_no_web_search_key_no_injection_openrouter() -> None:
     adapter = _openrouter_adapter(handler)
     token = set_provider_credential(_TEST_CRED)
     try:
-        await adapter.complete(
-            {"model": "openai/gpt-4o", "messages": _BASE_MESSAGES}
-        )
+        await adapter.complete({"model": "openai/gpt-4o", "messages": _BASE_MESSAGES})
     finally:
         reset_provider_credential(token)
 
@@ -566,9 +572,7 @@ async def test_flag_never_reaches_upstream_openrouter_without_flag() -> None:
     adapter = _openrouter_adapter(handler)
     token = set_provider_credential(_TEST_CRED)
     try:
-        await adapter.complete(
-            {"model": "openai/gpt-4o", "messages": _BASE_MESSAGES}
-        )
+        await adapter.complete({"model": "openai/gpt-4o", "messages": _BASE_MESSAGES})
     finally:
         reset_provider_credential(token)
     assert "web_search" not in captured["body"]
@@ -585,9 +589,7 @@ async def test_flag_never_reaches_upstream_openai_with_flag() -> None:
     adapter = _openai_adapter(handler)
     token = set_provider_credential(_TEST_CRED)
     try:
-        await adapter.complete(
-            {"model": "gpt-4o", "messages": _BASE_MESSAGES, "web_search": True}
-        )
+        await adapter.complete({"model": "gpt-4o", "messages": _BASE_MESSAGES, "web_search": True})
     finally:
         reset_provider_credential(token)
     assert "web_search" not in captured["body"]

@@ -36,14 +36,32 @@ async def test_audit_finds_catalog_row_with_provider_cost(
 ) -> None:
     tid, kid = await signup_tenant(client, tenant_name="AuditCo", email="a@auditco.io")
     # breach: catalog row carrying provider_cost
-    await seed_row(db_session, tenant_id=tid, key_id=kid, cost_usd="0.20",
-                   provider_cost="0.50", cost_basis="catalog")
+    await seed_row(
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        cost_usd="0.20",
+        provider_cost="0.50",
+        cost_basis="catalog",
+    )
     # clean catalog row (no provider_cost) — must NOT be flagged
-    await seed_row(db_session, tenant_id=tid, key_id=kid, cost_usd="0.10",
-                   provider_cost=None, cost_basis="catalog")
+    await seed_row(
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        cost_usd="0.10",
+        provider_cost=None,
+        cost_basis="catalog",
+    )
     # provider row — must NOT be flagged
-    await seed_row(db_session, tenant_id=tid, key_id=kid, cost_usd="0",
-                   provider_cost="1.00", cost_basis="provider")
+    await seed_row(
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        cost_usd="0",
+        provider_cost="1.00",
+        cost_basis="provider",
+    )
 
     breaches = await audit_cost_basis_breaches(db_session)
 
@@ -56,10 +74,22 @@ async def test_audit_empty_when_invariant_holds(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     tid, kid = await signup_tenant(client, tenant_name="CleanCo", email="c@cleanco.io")
-    await seed_row(db_session, tenant_id=tid, key_id=kid, cost_usd="0",
-                   provider_cost="1.00", cost_basis="provider")
-    await seed_row(db_session, tenant_id=tid, key_id=kid, cost_usd="0.10",
-                   provider_cost=None, cost_basis="catalog")
+    await seed_row(
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        cost_usd="0",
+        provider_cost="1.00",
+        cost_basis="provider",
+    )
+    await seed_row(
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        cost_usd="0.10",
+        provider_cost=None,
+        cost_basis="catalog",
+    )
 
     breaches = await audit_cost_basis_breaches(db_session)
 
@@ -72,13 +102,23 @@ async def test_reconcile_window_excludes_catalog_provider_cost_from_unbilled(
 ) -> None:
     tid, kid = await signup_tenant(client, tenant_name="ExclCo", email="e@exclco.io")
     # provider unbilled row (counts) + catalog breach row (must be excluded)
-    await seed_row(db_session, tenant_id=tid, key_id=kid, cost_usd="0",
-                   provider_cost="1.00", cost_basis="provider")
-    await seed_row(db_session, tenant_id=tid, key_id=kid, cost_usd="0",
-                   provider_cost="0.50", cost_basis="catalog")
-
-    summary = await reconcile_window(
-        db_session, WINDOW_FROM, WINDOW_TO, tenant_id=uuid.UUID(tid)
+    await seed_row(
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        cost_usd="0",
+        provider_cost="1.00",
+        cost_basis="provider",
     )
+    await seed_row(
+        db_session,
+        tenant_id=tid,
+        key_id=kid,
+        cost_usd="0",
+        provider_cost="0.50",
+        cost_basis="catalog",
+    )
+
+    summary = await reconcile_window(db_session, WINDOW_FROM, WINDOW_TO, tenant_id=uuid.UUID(tid))
 
     assert summary.unbilled_upstream_cost == Decimal("1.00")  # provider only; catalog excluded

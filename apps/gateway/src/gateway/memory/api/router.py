@@ -164,9 +164,7 @@ async def _embed(request: Request, raw_key: str, text: str) -> list[float] | Non
             _budget_guard = request.app.state.budget_guard
             _rate_limiter = getattr(request.app.state, "rate_limiter", None)
             _redis_client = getattr(_budget_guard, "_redis", None)
-            _tenant_cred_resolver = getattr(
-                request.app.state, "tenant_credential_resolver", None
-            )
+            _tenant_cred_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
 
             governance = NonChatGovernance(
                 authenticator=_authenticator,

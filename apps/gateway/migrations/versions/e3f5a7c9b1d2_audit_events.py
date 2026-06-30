@@ -75,14 +75,8 @@ def upgrade() -> None:
     # DB-enforced immutability: RULEs that silently no-op any UPDATE or DELETE.
     # These fire INSTEAD of the actual DML, making any mutation attempt a silent no-op.
     # Verified by test_db_enforced_immutability.
-    op.execute(
-        "CREATE RULE audit_events_no_update AS "
-        "ON UPDATE TO audit_events DO INSTEAD NOTHING"
-    )
-    op.execute(
-        "CREATE RULE audit_events_no_delete AS "
-        "ON DELETE TO audit_events DO INSTEAD NOTHING"
-    )
+    op.execute("CREATE RULE audit_events_no_update AS ON UPDATE TO audit_events DO INSTEAD NOTHING")
+    op.execute("CREATE RULE audit_events_no_delete AS ON DELETE TO audit_events DO INSTEAD NOTHING")
 
 
 def downgrade() -> None:

@@ -16,7 +16,11 @@ async def api_key(client: httpx.AsyncClient) -> dict[str, str]:
     """Signup → login → create key; returns ids + plaintext key."""
     signup = await client.post(
         "/admin/auth/signup",
-        json={"tenant_name": "AcmeR", "email": "reason@acme.io", "password": "correct horse battery"},
+        json={
+            "tenant_name": "AcmeR",
+            "email": "reason@acme.io",
+            "password": "correct horse battery",
+        },
     )
     assert signup.status_code == 201
     token = (

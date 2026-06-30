@@ -110,10 +110,12 @@ def test_string_content_byte_identical() -> None:
 def test_string_content_assistant_byte_identical() -> None:
     """Assistant string content must also remain byte-identical."""
     body = _openai_to_gemini_request(
-        _req(messages=[
-            {"role": "user", "content": "Q"},
-            {"role": "assistant", "content": "A"},
-        ]),
+        _req(
+            messages=[
+                {"role": "user", "content": "Q"},
+                {"role": "assistant", "content": "A"},
+            ]
+        ),
         default_max_tokens=_DMT,
     )
     assert body["contents"][0] == {"role": "user", "parts": [{"text": "Q"}]}
@@ -205,6 +207,7 @@ def test_non_data_url_rejected_no_network_import() -> None:
     """Confirm that no network module (httpx/requests/urllib) is imported inside the helper."""
     import importlib
     import sys
+
     # The helper must NOT import or use httpx/requests/urllib for fetching.
     # We verify the function itself raises without network activity.
     running = [0]

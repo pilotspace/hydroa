@@ -103,22 +103,14 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Restore RULE-based immutability, drop trigger and retention indexes."""
     # ── 1. Drop the trigger first (depends on the function) ──────────────────
-    op.execute(
-        "DROP TRIGGER IF EXISTS audit_events_immutable_guard ON audit_events"
-    )
+    op.execute("DROP TRIGGER IF EXISTS audit_events_immutable_guard ON audit_events")
 
     # ── 2. Drop the trigger function ─────────────────────────────────────────
     op.execute("DROP FUNCTION IF EXISTS audit_events_immutable_guard_fn()")
 
     # ── 3. Restore the original RULE-based immutability ──────────────────────
-    op.execute(
-        "CREATE RULE audit_events_no_update AS "
-        "ON UPDATE TO audit_events DO INSTEAD NOTHING"
-    )
-    op.execute(
-        "CREATE RULE audit_events_no_delete AS "
-        "ON DELETE TO audit_events DO INSTEAD NOTHING"
-    )
+    op.execute("CREATE RULE audit_events_no_update AS ON UPDATE TO audit_events DO INSTEAD NOTHING")
+    op.execute("CREATE RULE audit_events_no_delete AS ON DELETE TO audit_events DO INSTEAD NOTHING")
 
     # ── 4. Drop retention indexes ─────────────────────────────────────────────
     op.drop_index("ix_usage_records_created_at", table_name="usage_records")

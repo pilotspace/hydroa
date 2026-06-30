@@ -476,9 +476,7 @@ async def realtime_ws(websocket: WebSocket) -> None:
         try:
             frame = _json.loads(_msg_text)
         except Exception:
-            await websocket.send_json(
-                _error_frame("bad_frame", "Malformed JSON control frame")
-            )
+            await websocket.send_json(_error_frame("bad_frame", "Malformed JSON control frame"))
             continue
 
         if not isinstance(frame, dict):
@@ -542,9 +540,7 @@ async def realtime_ws(websocket: WebSocket) -> None:
                 if _chat_stub is not None:
                     reply: str = await _chat_stub(transcript, model_chat, raw_key)
                 else:
-                    reply = await _real_chat(
-                        transcript, model_chat, raw_key, websocket=websocket
-                    )
+                    reply = await _real_chat(transcript, model_chat, raw_key, websocket=websocket)
             except Exception as exc:
                 _log.warning("realtime chat_failed", exc_info=exc)
                 await websocket.send_json(_error_frame("chat_failed", str(exc)))

@@ -258,7 +258,9 @@ async def test_exactly_cap_admitted_concurrent() -> None:
     admitted = results.count(200)
     shed = results.count(503)
 
-    assert 1 <= admitted <= cap, f"admission out of range: {admitted} admitted with cap={cap}; results={results}"
+    assert 1 <= admitted <= cap, (
+        f"admission out of range: {admitted} admitted with cap={cap}; results={results}"
+    )
     assert shed >= total - cap, (
         f"expected at least {total - cap} shed, got {shed}; results={results}"
     )

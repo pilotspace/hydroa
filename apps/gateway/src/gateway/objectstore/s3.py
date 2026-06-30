@@ -20,7 +20,6 @@ from __future__ import annotations
 # aioboto3 / botocore ship no type stubs (no py.typed) — suppress the stub-missing
 # noise for this file only; the wire surface is exercised by the live MinIO tests.
 # pyright: reportMissingTypeStubs=false
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 

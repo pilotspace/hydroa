@@ -36,6 +36,7 @@ from tests._helios_harness import (
 
 # ── local fixtures (api_key + active_model mirror test_proxy_completions.py) ─
 
+
 @pytest.fixture
 async def api_key(client: httpx.AsyncClient) -> dict[str, str]:
     """Signup → login → create key; returns ids + plaintext key."""
@@ -403,7 +404,12 @@ async def test_seam_c_real_adapter_via_mock_transport() -> None:
             {
                 "type": "content_block_start",
                 "index": 0,
-                "content_block": {"type": "tool_use", "id": "toolu_01", "name": "get_weather", "input": {}},
+                "content_block": {
+                    "type": "tool_use",
+                    "id": "toolu_01",
+                    "name": "get_weather",
+                    "input": {},
+                },
             }
         ).encode()
         + b"\n\n",
@@ -424,7 +430,12 @@ async def test_seam_c_real_adapter_via_mock_transport() -> None:
             {
                 "type": "content_block_start",
                 "index": 1,
-                "content_block": {"type": "tool_use", "id": "toolu_02", "name": "get_time", "input": {}},
+                "content_block": {
+                    "type": "tool_use",
+                    "id": "toolu_02",
+                    "name": "get_time",
+                    "input": {},
+                },
             }
         ).encode()
         + b"\n\n",
@@ -449,9 +460,7 @@ async def test_seam_c_real_adapter_via_mock_transport() -> None:
             }
         ).encode()
         + b"\n\n",
-        b"event: message_stop\ndata: "
-        + json.dumps({"type": "message_stop"}).encode()
-        + b"\n\n",
+        b"event: message_stop\ndata: " + json.dumps({"type": "message_stop"}).encode() + b"\n\n",
     ]
 
     adapter = AnthropicCompletionUpstream()
@@ -475,7 +484,10 @@ async def test_seam_c_real_adapter_via_mock_transport() -> None:
                 "function": {
                     "name": "get_time",
                     "description": "Get time",
-                    "parameters": {"type": "object", "properties": {"timezone": {"type": "string"}}},
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"timezone": {"type": "string"}},
+                    },
                 },
             },
         ],
@@ -495,7 +507,7 @@ async def test_seam_c_real_adapter_via_mock_transport() -> None:
     for chunk in frames_collected:
         if not chunk.startswith(b"data: "):
             continue
-        raw = chunk[len(b"data: "):].strip()
+        raw = chunk[len(b"data: ") :].strip()
         if raw == b"[DONE]":
             continue
         try:
@@ -529,7 +541,9 @@ async def test_stub_upstream_fixture_installs_on_app_state(
     body: dict[str, Any] = {
         "id": "chatcmpl-x",
         "object": "chat.completion",
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+        "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+        ],
         "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
     }
     stub = stub_upstream(complete=(200, body))
@@ -577,7 +591,9 @@ async def test_recorded_usage_readback(
     body: dict[str, Any] = {
         "id": "chatcmpl-u1",
         "object": "chat.completion",
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}],
+        "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}
+        ],
         "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10},
     }
     stub_upstream(complete=(200, body))
@@ -614,7 +630,9 @@ def test_harness_suite_non_e2e_no_network() -> None:
                 # Check for @pytest.mark.e2e
                 if isinstance(decorator, ast.Attribute):
                     if decorator.attr == "e2e":
-                        pytest.fail(f"Found @pytest.mark.e2e on {node.name} — harness must be non-e2e")
+                        pytest.fail(
+                            f"Found @pytest.mark.e2e on {node.name} — harness must be non-e2e"
+                        )
 
 
 def test_stub_upstream_is_non_blocking_pure_memory() -> None:

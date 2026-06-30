@@ -143,9 +143,7 @@ class TestStoreAndList:
         # raw embedding NEVER returned
         assert "embedding" not in body
 
-    async def test_store_with_metadata(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_store_with_metadata(self, client: Any, api_key_info: dict[str, str]) -> None:
         resp = await client.post(
             "/v1/memories",
             json={"content": "most relevant content", "metadata": {"tag": "test", "priority": 1}},
@@ -197,15 +195,11 @@ class TestStoreAndList:
     async def test_list_limit_default_50_cap_200(
         self, client: Any, api_key_info: dict[str, str]
     ) -> None:
-        resp = await client.get(
-            "/v1/memories?limit=999", headers=_bearer(api_key_info["key"])
-        )
+        resp = await client.get("/v1/memories?limit=999", headers=_bearer(api_key_info["key"]))
         assert resp.status_code == 200
         assert resp.json()["limit"] == 200
 
-    async def test_list_excludes_deleted(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_list_excludes_deleted(self, client: Any, api_key_info: dict[str, str]) -> None:
         create_resp = await client.post(
             "/v1/memories",
             json={"content": "most relevant content"},
@@ -229,7 +223,11 @@ class TestSearchRanksByCosine:
         self, client: Any, api_key_info: dict[str, str]
     ) -> None:
         """Three memories with deterministic stub vectors; query ranks them correctly."""
-        for content in ["most relevant content", "moderately relevant content", "least relevant content"]:
+        for content in [
+            "most relevant content",
+            "moderately relevant content",
+            "least relevant content",
+        ]:
             r = await client.post(
                 "/v1/memories",
                 json={"content": content},
@@ -256,9 +254,7 @@ class TestSearchRanksByCosine:
             assert "id" in item
             assert "created_at" in item
 
-    async def test_search_score_is_float(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_search_score_is_float(self, client: Any, api_key_info: dict[str, str]) -> None:
         await client.post(
             "/v1/memories",
             json={"content": "most relevant content"},
@@ -292,9 +288,7 @@ class TestSearchRanksByCosine:
         )
         assert resp.status_code == 200
 
-    async def test_search_default_top_k(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_search_default_top_k(self, client: Any, api_key_info: dict[str, str]) -> None:
         """Search without top_k uses the config default (5)."""
         resp = await client.post(
             "/v1/memories/search",
@@ -303,9 +297,7 @@ class TestSearchRanksByCosine:
         )
         assert resp.status_code == 200
 
-    async def test_search_excludes_deleted(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_search_excludes_deleted(self, client: Any, api_key_info: dict[str, str]) -> None:
         create_resp = await client.post(
             "/v1/memories",
             json={"content": "most relevant content"},
@@ -476,9 +468,7 @@ class TestEmbedFailureStillStores:
 
 
 class TestSoftDeleteHides:
-    async def test_delete_returns_204(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_delete_returns_204(self, client: Any, api_key_info: dict[str, str]) -> None:
         create_resp = await client.post(
             "/v1/memories",
             json={"content": "most relevant content"},
@@ -486,9 +476,7 @@ class TestSoftDeleteHides:
         )
         mem_id = create_resp.json()["id"]
 
-        resp = await client.delete(
-            f"/v1/memories/{mem_id}", headers=_bearer(api_key_info["key"])
-        )
+        resp = await client.delete(f"/v1/memories/{mem_id}", headers=_bearer(api_key_info["key"]))
         assert resp.status_code == 204
 
     async def test_delete_unknown_returns_404(
@@ -615,9 +603,7 @@ class TestAuthAndValidation:
         )
         assert resp.status_code == 422
 
-    async def test_empty_query_returns_422(
-        self, client: Any, api_key_info: dict[str, str]
-    ) -> None:
+    async def test_empty_query_returns_422(self, client: Any, api_key_info: dict[str, str]) -> None:
         resp = await client.post(
             "/v1/memories/search",
             json={"query": ""},

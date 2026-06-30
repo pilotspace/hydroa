@@ -80,9 +80,7 @@ _BEDROCK_CRED = BedrockCredential(
 # Shared SSE byte stream helper
 # ---------------------------------------------------------------------------
 
-_ONE_VALID_SSE_CHUNK = (
-    b'data: {"choices":[{"delta":{"role":"assistant","content":"hi"}}]}\n\n'
-)
+_ONE_VALID_SSE_CHUNK = b'data: {"choices":[{"delta":{"role":"assistant","content":"hi"}}]}\n\n'
 
 _ONE_VALID_ANTHROPIC_SSE_CHUNK = (
     b"event: message_start\n"
