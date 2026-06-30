@@ -481,12 +481,30 @@
     },
     "voice-playground-shell": {
       "title": "Console-grade voice workspace shell + design system",
-      "phase": "scenarios",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "voice-playground",
       "depends_on": [],
       "created": "2026-06-30T10:57:02+00:00",
-      "updated": "2026-06-30T10:59:22+00:00"
+      "updated": "2026-06-30T12:01:07+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "56db07de06e16f36afe98287294d2679",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/voice/",
+          "apps/dashboard/tests-bff/voice-playground.test.tsx",
+          "apps/dashboard/app/(app)/app/voice/page.tsx"
+        ],
+        "snapshot_md5": "5929e41b8f0c32d2f65ab54771a08ff2"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -579,7 +597,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-30T11:08:39+00:00",
+  "updated": "2026-06-30T12:01:07+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

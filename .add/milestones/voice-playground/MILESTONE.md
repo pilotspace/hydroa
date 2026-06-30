@@ -27,18 +27,19 @@ Out: The realtime WebSocket modes — turn-based `/v1/realtime` (v47) AND full-d
 - **Voice-session / transcript metadata contract** (the per-turn record: STT/chat/TTS models · duration · tokens · latency · cost; and whether persistence reuses `/v1/conversations` or needs the one backend delta) -> owning task `voice-session-transcript`.
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] voice-playground-shell    depends-on: none                  — The Console-grade voice layout (composer + mic control + transcript thread + voice/model controls) + the voice design system; carries the design-confirm gate. Freezes the shell the rest consume.
-- [ ] voice-mic-capture-stt     depends-on: voice-playground-shell — Live mic capture (getUserMedia/MediaRecorder, push-to-talk) + file upload → `POST /v1/audio/transcriptions`; segmented transcript; permission/insecure-context/no-audio states. Freezes the audio capture contract.
-- [ ] voice-tts-playback        depends-on: voice-playground-shell — Rich TTS over `POST /v1/audio/speech`: voice picker, response_format, playback + per-utterance replay, abortable stream.
-- [ ] voice-turn-loop           depends-on: voice-mic-capture-stt, voice-tts-playback — Hands-free voice turn: mic → STT → `/v1/chat/completions` → TTS, client-orchestrated, abortable, bounded; the operator speaks and hears a spoken reply.
-- [ ] voice-session-transcript  depends-on: voice-playground-shell — Per-turn session transcript + metadata (models · duration · tokens · latency · cost) + running session total; persistence pass-through over `/v1/conversations` (or the one backend delta if proven necessary).
+> NOTE: the 5-task plan was delivered as ONE combined Console-grade rebuild (parallel worktree build) under `voice-playground-shell`, which shipped the shell + STT-upload + TTS + text-driven turn-loop + per-turn metadata. A focused follow-up `voice-mic-capture-deferrals` closes the 3 deferred gaps (real MediaRecorder capture, TTS autoplay, per-turn cost).
+- [x] voice-playground-shell    depends-on: none                  — gate=PASS. The Console-grade voice layout + STT/TTS/turn-loop/metadata (combined build). Freezes the shell.
+- [ ] voice-mic-capture-deferrals depends-on: voice-playground-shell — Real getUserMedia/MediaRecorder hold-to-record (testable seam) + TTS reply autoplay + populate per-turn cost. Closes exit criteria #2/#4/#5.
+- [x] voice-tts-playback        — delivered in the combined build (TTS voice/format pickers + playback controls).
+- [x] voice-turn-loop           — delivered in the combined build (text-driven mic→STT→chat→TTS path; the SPOKEN-input path lands with voice-mic-capture-deferrals).
+- [x] voice-session-transcript  — delivered in the combined build (per-turn models/tokens/latency + running session; cost field populated by voice-mic-capture-deferrals).
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] The voice surface is a Console-grade playground (composer · mic control · transcript thread · controls) matching an approved design   (← voice-playground-shell)
-- [ ] An operator can hold-to-talk into the microphone and see their speech transcribed by the model   (← voice-mic-capture-stt)
-- [ ] An operator can type or pick text, choose a voice, and hear it spoken with playback controls   (← voice-tts-playback)
-- [ ] An operator can speak a turn and hear a spoken model reply without typing (mic → STT → chat → TTS)   (← voice-turn-loop)
-- [ ] Each voice turn shows its models · audio duration · tokens · latency · cost, and the session shows a running total   (← voice-session-transcript)
+- [x] The voice surface is a Console-grade playground (composer · mic control · transcript thread · controls) matching an approved design   (← voice-playground-shell)
+- [ ] An operator can hold-to-talk into the microphone and see their speech transcribed by the model   (← voice-mic-capture-deferrals: real MediaRecorder capture)
+- [x] An operator can type or pick text, choose a voice, and hear it spoken with playback controls   (← voice-playground-shell)
+- [ ] An operator can speak a turn and hear a spoken model reply without typing (mic → STT → chat → TTS)   (← voice-mic-capture-deferrals: spoken-input path + autoplay; text path already works)
+- [ ] Each voice turn shows its models · audio duration · tokens · latency · cost, and the session shows a running total   (← voice-mic-capture-deferrals: cost population; models/tokens/latency already shown)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
