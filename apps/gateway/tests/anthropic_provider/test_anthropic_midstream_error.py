@@ -73,9 +73,7 @@ def test_midstream_error_emits_terminal_error_frame_and_done() -> None:
 
     # There must be exactly one [DONE] (finish() must not double-emit)
     done_count = sum(1 for c in chunks if c == b"data: [DONE]\n\n")
-    assert done_count == 1, (
-        f"Expected exactly 1 [DONE]; got {done_count}. Chunks: {chunks!r}"
-    )
+    assert done_count == 1, f"Expected exactly 1 [DONE]; got {done_count}. Chunks: {chunks!r}"
 
     # Find the error frame
     error_frames = [c for c in chunks if b'"error"' in c and c != b"data: [DONE]\n\n"]

@@ -354,10 +354,7 @@ class SpeechUseCase:
         # (tts-input-guardrails §3). per_character billing fires at Step 7; rejecting here
         # means an over-cap input is never billed and never reaches an upstream. len() is
         # the same unit the bill uses (quantity=len(input_text)). 0 ⇒ cap disabled.
-        if (
-            self._max_input_characters > 0
-            and len(input_text) > self._max_input_characters
-        ):
+        if self._max_input_characters > 0 and len(input_text) > self._max_input_characters:
             raise PAYLOAD_INPUT_TOO_LONG.exc()
 
         # Step 3: Validate voice field

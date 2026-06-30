@@ -26,6 +26,17 @@ tw-animate-css
 # --- enterprise UI overhaul (v23) ---
 @tanstack/react-table
 
+# --- Console-grade AI-feature playgrounds (v0.6.0: chat·memory·artifacts·vision·video) ---
+# react-markdown + remark-gfm + rehype-highlight + highlight.js: XSS-safe markdown
+#   rendering (MessageMarkdown — no rehype-raw); fuse.js: client-side fuzzy search
+#   (memory/artifacts/chat); server-only: guards BFF-only modules from client bundles.
+react-markdown
+remark-gfm
+rehype-highlight
+highlight.js
+fuse.js
+server-only
+
 # --- devDependencies (apps/dashboard) ---
 typescript
 @types/react
