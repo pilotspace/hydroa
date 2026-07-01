@@ -169,6 +169,8 @@ fingerprint is in `GATEWAY_OPS_CERT_FINGERPRINTS` (empty = nobody).
 | `429 ERR_RATE_LIMITED` | key `rpm`/`tpm` exceeded | honor `Retry-After`; raise the key limits |
 | `503 ERR_BANDWIDTH_EXHAUSTED` | per-key tokens/s bucket drained | honor `Retry-After`; raise `GATEWAY_BANDWIDTH_TOKENS_PER_SEC` |
 | `400 ERR_UNSUPPORTED_CONTENT_PART` | external image URL on the Gemini path | use a `data:` URI (SSRF guard) |
+| `400 ERR_UNSUPPORTED_INPUT_MODALITY` | request needs an input type the resolved model doesn't declare (guard on) | pick a model whose `input_modalities` covers it, or disable `GATEWAY_INPUT_MODALITY_GUARD_ENABLED` |
+| `415 ERR_ARTIFACT_CONTENT_TYPE_NOT_ALLOWED` | artifact `content_type` not in `GATEWAY_ARTIFACT_ALLOWED_CONTENT_TYPES` | widen the allow-list or upload a supported type |
 
 ---
 

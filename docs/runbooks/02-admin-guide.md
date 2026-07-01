@@ -173,7 +173,7 @@ curl -s -X POST $E/admin/catalog/sync -H "authorization: Bearer $JWT"
 
 # List with per-tenant enabled flags
 curl -s $E/admin/models -H "authorization: Bearer $JWT"
-# → {"data":[{"id":"google/gemini-2.5-flash-lite","name":"…","context_length":…,"enabled":true}, …]}
+# → {"data":[{"id":"google/gemini-2.5-flash-lite","name":"…","context_length":…,"enabled":true,"input_modalities":["text"]}, …]}
 
 # Disable a model for this tenant (model id can contain "/", handled by :path)
 curl -s -X PUT "$E/admin/models/google/gemini-2.5-flash-lite" \
@@ -182,6 +182,13 @@ curl -s -X PUT "$E/admin/models/google/gemini-2.5-flash-lite" \
 
 A model with no override row is **enabled by default**. A disabled model returns
 `403 ERR_MODEL_DISABLED` to clients.
+
+`input_modalities` (additive; defaults to `["text"]`) declares which input types
+the model accepts — surfaced on both `/admin/models` and `/admin/catalog/models`
+for the dashboard's capability badges. When
+`GATEWAY_INPUT_MODALITY_GUARD_ENABLED=true` (default `false`), a request whose
+content requires a type outside that set is rejected with `400
+ERR_UNSUPPORTED_INPUT_MODALITY` before any upstream call or billing.
 
 ---
 

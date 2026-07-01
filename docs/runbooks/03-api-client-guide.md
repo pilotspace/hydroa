@@ -224,6 +224,12 @@ accepted on the Gemini path** (SSRF guard); external URLs → `400
 ERR_UNSUPPORTED_CONTENT_PART`. `video_url` parts are also supported for Gemini.
 Inline payloads are capped (`GATEWAY_GEMINI_INLINE_MAX_BYTES`, 20 MiB default).
 
+When the operator sets `GATEWAY_INPUT_MODALITY_GUARD_ENABLED=true`, a content
+part (or STT request) requiring an input type outside the resolved model's
+catalog `input_modalities` is rejected with `400
+ERR_UNSUPPORTED_INPUT_MODALITY` before any upstream call — a refused request is
+never billed. Default is off (byte-identical to pre-guard behavior).
+
 ### JSON mode & web search
 
 ```json
@@ -368,7 +374,9 @@ curl -s -X DELETE $E/v1/artifacts/$ID -H "authorization: Bearer $SK"            
 Bytes go to S3/MinIO if configured, else inline Postgres. Size capped by
 `GATEWAY_ARTIFACT_MAX_BYTES` (→ `413`); download is always
 `Content-Disposition: attachment` (XSS-safe). S3 unreachable → `503
-ERR_OBJECT_STORE_UNAVAILABLE`.
+ERR_OBJECT_STORE_UNAVAILABLE`. When `GATEWAY_ARTIFACT_ALLOWED_CONTENT_TYPES` is
+set, an upload whose `content_type` isn't in the allow-list → `415
+ERR_ARTIFACT_CONTENT_TYPE_NOT_ALLOWED`. Default is empty (allow any).
 
 ### Video generation — `/v1/video/generations` (async jobs)
 ```bash

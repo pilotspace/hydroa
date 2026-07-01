@@ -360,6 +360,8 @@ groups are below; the file is the exhaustive source.
 | `GATEWAY_VIDEO_DURABLE_QUEUE_ENABLED` | `false` | route video jobs through a restart-surviving Redis queue |
 | `GATEWAY_OTEL_ENABLED` | `false` | OTLP trace export |
 | `GATEWAY_OIDC_ENABLED` | `false` | SSO login |
+| `GATEWAY_INPUT_MODALITY_GUARD_ENABLED` | `false` | reject chat/STT requests whose input type exceeds the model's catalog `input_modalities` (`400 ERR_UNSUPPORTED_INPUT_MODALITY`) |
+| `GATEWAY_ARTIFACT_ALLOWED_CONTENT_TYPES` | `""` (allow any) | comma-separated content-type allow-list for artifact uploads (`415 ERR_ARTIFACT_CONTENT_TYPE_NOT_ALLOWED`) |
 
 ### Governance knobs (mostly default OFF / fail-open)
 
