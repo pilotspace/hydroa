@@ -24,11 +24,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.catalog.infrastructure.orm import ModelRow
 from gateway.core.error_catalog import (
+    AUTH_KEY_INVALID,
     MODEL_UNKNOWN,
     PAYLOAD_MODEL_REQUIRED,
     PAYLOAD_PROMPT_REQUIRED,
+    PRESET_NOT_FOUND,
     UPSTREAM_UNAVAILABLE,
 )
+from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.application.governance import NonChatGovernance
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so _fire_record_with_raw
@@ -40,7 +43,8 @@ from gateway.proxy.application.use_cases import (
 )
 from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
-from gateway.proxy.domain.ports import TenantCredentialResolver, UsageRecorder
+from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
+from gateway.proxy.domain.ports import KeyAuthenticator, TenantCredentialResolver, UsageRecorder
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
 
 
@@ -53,11 +57,19 @@ class ImagesUseCase:
         governance: NonChatGovernance,
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
+        authenticator: KeyAuthenticator | None = None,
+        tenant_model_preset_store: TenantModelPresetStore | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
+        # preset-resolution-ingress (v56 §3): both None (defaults) ⇒ feature off ⇒
+        # execute() is byte-identical (no resolve() call, no rewrite). `authenticator`
+        # is the SAME KeyAuthenticator instance the DI factory already builds and wraps
+        # into `governance` — never a second instance.
+        self._authenticator = authenticator
+        self._tenant_model_preset_store = tenant_model_preset_store
 
     async def execute(
         self,
@@ -80,6 +92,29 @@ class ImagesUseCase:
           8. _fire_record_with_raw (single-bill, pricing_unit="per_image")
           9. return (status, resp_body)
         """
+        # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
+        # tenant's target model BEFORE validation/governance/catalog/upstream. Mutates
+        # body["model"] in place — body is forwarded raw to upstream (Step 6 below).
+        # Either collaborator unwired (None) ⇒ guaranteed no-op (byte-identical).
+        if self._authenticator is not None and self._tenant_model_preset_store is not None:
+            _raw_model = body.get("model", "")
+            if isinstance(_raw_model, str):
+                _selector = parse_preset_selector(_raw_model)
+                if _selector is not None:
+                    _preset_name, _alias_key = _selector
+                    if not raw_key:
+                        raise AUTH_KEY_INVALID.exc()
+                    try:
+                        _authz_pre = await self._authenticator.authenticate(raw_key)
+                    except InvalidApiKeyError:
+                        raise AUTH_KEY_INVALID.exc() from None
+                    _target = await self._tenant_model_preset_store.resolve(
+                        _authz_pre.tenant_id, _preset_name, _alias_key
+                    )
+                    if _target is None:
+                        raise PRESET_NOT_FOUND.exc() from None
+                    body["model"] = _target
+
         # Step 1: Validate model field
         model_id = body.get("model")
         if not model_id or not isinstance(model_id, str) or not model_id.strip():

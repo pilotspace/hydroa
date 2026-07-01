@@ -39,14 +39,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.catalog.domain.entities import parse_input_modalities
 from gateway.catalog.infrastructure.orm import ModelRow
 from gateway.core.error_catalog import (
+    AUTH_KEY_INVALID,
     MODEL_UNKNOWN,
     PAYLOAD_FILE_REQUIRED,
     PAYLOAD_INPUT_REQUIRED,
     PAYLOAD_INPUT_TOO_LONG,
     PAYLOAD_MODEL_REQUIRED,
     PAYLOAD_VOICE_REQUIRED,
+    PRESET_NOT_FOUND,
     UPSTREAM_UNAVAILABLE,
 )
+from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.application.audio_duration import derive_duration_seconds
 from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.application.json_sanitize import sanitize_non_finite
@@ -60,7 +63,8 @@ from gateway.proxy.application.use_cases import (
 )
 from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
-from gateway.proxy.domain.ports import TenantCredentialResolver, UsageRecorder
+from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
+from gateway.proxy.domain.ports import KeyAuthenticator, TenantCredentialResolver, UsageRecorder
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
 
 _log = logging.getLogger(__name__)
@@ -127,6 +131,8 @@ class TranscriptionUseCase:
         tenant_credential_resolver: TenantCredentialResolver | None = None,
         max_duration_seconds: float | None = None,
         input_modality_guard_enabled: bool = False,
+        authenticator: KeyAuthenticator | None = None,
+        tenant_model_preset_store: TenantModelPresetStore | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
@@ -138,6 +144,12 @@ class TranscriptionUseCase:
         # unsupported-input-guard §3: when True, enforce STT audio modality BEFORE upstream.
         # False (default) ⇒ no lookup, no rejection, byte-identical to today.
         self._input_modality_guard_enabled: bool = input_modality_guard_enabled
+        # preset-resolution-ingress (v56 §3): both None (defaults) ⇒ feature off ⇒
+        # execute() is byte-identical (no resolve() call, no rewrite). `authenticator`
+        # is the SAME KeyAuthenticator instance the DI factory already builds and wraps
+        # into `governance` — never a second instance.
+        self._authenticator = authenticator
+        self._tenant_model_preset_store = tenant_model_preset_store
 
     async def execute(
         self,
@@ -167,8 +179,35 @@ class TranscriptionUseCase:
         if not file_field:
             raise PAYLOAD_FILE_REQUIRED.exc()
 
+        # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector BEFORE
+        # the model field is extracted/validated. `form` (starlette FormData) is not
+        # reliably mutable, so the resolved target is carried in `_resolved_model` and
+        # substituted into the LOCAL `model_id` variable below — the outgoing multipart
+        # `data["model"]` is built from that local var (never re-read from `form`), so
+        # this is sufficient to keep the tenant's alias string out of the upstream call.
+        # Either collaborator unwired (None) ⇒ guaranteed no-op (byte-identical).
+        _resolved_model: str | None = None
+        if self._authenticator is not None and self._tenant_model_preset_store is not None:
+            _raw_model = form.get("model", "")
+            if isinstance(_raw_model, str):
+                _selector = parse_preset_selector(_raw_model)
+                if _selector is not None:
+                    _preset_name, _alias_key = _selector
+                    if not raw_key:
+                        raise AUTH_KEY_INVALID.exc()
+                    try:
+                        _authz_pre = await self._authenticator.authenticate(raw_key)
+                    except InvalidApiKeyError:
+                        raise AUTH_KEY_INVALID.exc() from None
+                    _target = await self._tenant_model_preset_store.resolve(
+                        _authz_pre.tenant_id, _preset_name, _alias_key
+                    )
+                    if _target is None:
+                        raise PRESET_NOT_FOUND.exc() from None
+                    _resolved_model = _target
+
         # Step 2: Validate model field
-        model_id = form.get("model")
+        model_id = _resolved_model if _resolved_model is not None else form.get("model")
         if not model_id or not isinstance(model_id, str) or not model_id.strip():
             raise PAYLOAD_MODEL_REQUIRED.exc()
 
@@ -331,6 +370,8 @@ class SpeechUseCase:
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
         max_input_characters: int = 0,
+        authenticator: KeyAuthenticator | None = None,
+        tenant_model_preset_store: TenantModelPresetStore | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
@@ -341,6 +382,12 @@ class SpeechUseCase:
         # at Step 2.5 (before governance/upstream/bill); 0 ⇒ disabled. Default 0
         # keeps legacy/test construction uncapped; prod injects the Settings value.
         self._max_input_characters = max_input_characters
+        # preset-resolution-ingress (v56 §3): both None (defaults) ⇒ feature off ⇒
+        # execute() is byte-identical (no resolve() call, no rewrite). `authenticator`
+        # is the SAME KeyAuthenticator instance the DI factory already builds and wraps
+        # into `governance` — never a second instance.
+        self._authenticator = authenticator
+        self._tenant_model_preset_store = tenant_model_preset_store
 
     async def execute(
         self,
@@ -366,6 +413,29 @@ class SpeechUseCase:
           9. gen = provider.stream_bytes(...) — sync, NO await
           10. return (gen, media_type)
         """
+        # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
+        # tenant's target model BEFORE validation/governance/catalog/upstream. Mutates
+        # body["model"] in place — body is forwarded raw to upstream (Step 9 below).
+        # Either collaborator unwired (None) ⇒ guaranteed no-op (byte-identical).
+        if self._authenticator is not None and self._tenant_model_preset_store is not None:
+            _raw_model = body.get("model", "")
+            if isinstance(_raw_model, str):
+                _selector = parse_preset_selector(_raw_model)
+                if _selector is not None:
+                    _preset_name, _alias_key = _selector
+                    if not raw_key:
+                        raise AUTH_KEY_INVALID.exc()
+                    try:
+                        _authz_pre = await self._authenticator.authenticate(raw_key)
+                    except InvalidApiKeyError:
+                        raise AUTH_KEY_INVALID.exc() from None
+                    _target = await self._tenant_model_preset_store.resolve(
+                        _authz_pre.tenant_id, _preset_name, _alias_key
+                    )
+                    if _target is None:
+                        raise PRESET_NOT_FOUND.exc() from None
+                    body["model"] = _target
+
         # Step 1: Validate model field
         model_id = body.get("model")
         if not model_id or not isinstance(model_id, str) or not model_id.strip():

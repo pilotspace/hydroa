@@ -182,11 +182,17 @@ async def _real_stt(
         )
         _cred_resolver = getattr(app.state, "tenant_credential_resolver", None)
         _settings: Settings = app.state.settings
+        # preset-resolution-ingress (v56 §3): full coverage was the chosen scope for the
+        # realtime-WS voice protocol — thread the SAME `_authenticator` already built above
+        # (no second KeyAuthenticator) plus the real app.state singleton, mirroring _real_chat.
+        _tenant_model_preset_store = getattr(app.state, "tenant_model_preset_store", None)
         _uc = TranscriptionUseCase(
             governance=_governance,
             session=session,
             tenant_credential_resolver=_cred_resolver,
             max_duration_seconds=_settings.stt_max_duration_seconds,
+            authenticator=_authenticator,
+            tenant_model_preset_store=_tenant_model_preset_store,
         )
         _registry: ProviderRegistry = app.state.provider_registry
         _recorder: UsageRecorder = app.state.usage_recorder
@@ -241,6 +247,11 @@ async def _real_chat(
         _cost_recovery = getattr(app.state, "cost_recovery_service", None)
         _bw_bucket = getattr(app.state, "bandwidth_bucket", None)
         _settings: Settings = app.state.settings
+        # preset-resolution-ingress (v56 §3): full coverage was the chosen scope for
+        # realtime-WS voice chat — thread the REAL app.state singleton (not defaulted
+        # to None here); CompletionUseCase.complete() resolves via the SAME insertion
+        # point as the HTTP chat path.
+        _tenant_model_preset_store = getattr(app.state, "tenant_model_preset_store", None)
 
         _use_case = CompletionUseCase(
             authenticator=_authenticator,
@@ -254,6 +265,7 @@ async def _real_chat(
             cost_recovery=_cost_recovery,
             bandwidth_bucket=_bw_bucket,
             bandwidth_max_wait_s=_settings.bandwidth_max_wait_seconds,
+            tenant_model_preset_store=_tenant_model_preset_store,
         )
 
         _circuit_breaker = app.state.circuit_breaker
@@ -334,11 +346,17 @@ async def _real_tts(
             session_factory=app.state.sessionmaker,
         )
         _cred_resolver = getattr(app.state, "tenant_credential_resolver", None)
+        # preset-resolution-ingress (v56 §3): full coverage was the chosen scope for the
+        # realtime-WS voice protocol — thread the SAME `_authenticator` already built above
+        # (no second KeyAuthenticator) plus the real app.state singleton, mirroring _real_chat.
+        _tenant_model_preset_store = getattr(app.state, "tenant_model_preset_store", None)
         _uc = SpeechUseCase(
             governance=_governance,
             session=session,
             tenant_credential_resolver=_cred_resolver,
             max_input_characters=_settings.tts_max_input_characters,
+            authenticator=_authenticator,
+            tenant_model_preset_store=_tenant_model_preset_store,
         )
         _registry: ProviderRegistry = app.state.provider_registry
         _recorder = app.state.usage_recorder

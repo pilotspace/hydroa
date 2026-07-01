@@ -91,8 +91,14 @@ def get_embeddings_use_case(
     # credential-resolution-seam §3: resolve per-tenant provider key from app.state
     # (tests override app.state.tenant_credential_resolver with a fake). None ⇒ unwired.
     tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
+    # preset-resolution-ingress (v56): reuse the SAME `authenticator` instance already
+    # wrapped into `governance` above (no second KeyAuthenticator construction) plus the
+    # per-tenant preset store singleton from app.state. Absent ⇒ None ⇒ byte-identical.
+    tenant_model_preset_store = getattr(request.app.state, "tenant_model_preset_store", None)
     return EmbeddingsUseCase(
         governance=governance,
         session=session,
         tenant_credential_resolver=tenant_credential_resolver,
+        authenticator=authenticator,
+        tenant_model_preset_store=tenant_model_preset_store,
     )

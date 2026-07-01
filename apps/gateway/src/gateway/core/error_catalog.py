@@ -586,3 +586,12 @@ PRESET_TARGET_UNKNOWN = ErrorSpec(
 PRESET_SELECTOR_INVALID = ErrorSpec(
     400, "ERR_PRESET_SELECTOR_INVALID", "Preset selector token is invalid"
 )
+
+#: model field named a `<preset>:<alias>` selector (colon present) but
+#: TenantModelPresetStore.resolve(tenant_id, preset_name, alias_key) returned None
+#: — no matching row for the calling tenant (preset-resolution-ingress task, v56).
+#: Fires BEFORE any authorization/catalog/budget/billing/upstream call, at ingress,
+#: for all 5 entry points (chat, images, embeddings, audio STT, audio TTS).
+PRESET_NOT_FOUND = ErrorSpec(
+    400, "ERR_PRESET_NOT_FOUND", "Preset selector did not resolve to a known model"
+)
