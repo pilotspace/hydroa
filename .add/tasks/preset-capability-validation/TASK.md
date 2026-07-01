@@ -2,7 +2,7 @@
 
 slug: preset-capability-validation · created: 2026-07-01 · stage: production
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -293,7 +293,7 @@ Known-problem fixes:
   trap: forgetting the single-bill invariant (guard must fire before `_fire_record_with_raw`) -> planned fix: insert strictly between the catalog SELECT and `select_provider`, verified by grep for `select_provider(` in each touched use case showing the guard call immediately precedes it.
   trap: hardcoding `input_modality_guard_enabled=True` in realtime_ws instead of reading `_settings.input_modality_guard_enabled` -> planned fix: mirror `deps.py:229`/`audio_deps.py:106` exactly, read from settings.
   trap: `_real_chat` lacking a `session` var to construct `SqlAlchemyInputModalityLookup(session)` -> planned fix: locate wherever `_real_stt` sources its `session` and reuse the same connection/scope for `_real_chat`.
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
+Strategy actually used: as planned (RED tests → error spec → 3 guard insertions → realtime_ws wiring → full-suite confirm), plus an unplanned remediation: the build exposed 5 stale fixtures in the already-gated `preset_resolution_ingress` suite (3 `FakeSession(modality="audio",...)` TTS fixtures now correctly rejected by the new guard; 2 minimal settings stubs missing `input_modality_guard_enabled`) — fixed with Tin's explicit authorization, no assertion weakened. A post-build adversarial refute-read then surfaced a HARD-STOP-class finding (catalog sync never wrote real `modality` values in this stale worktree, which would make the new unconditional guard reject ~100% of real images/embeddings/TTS traffic) — resolved by committing all 4 v56 tasks as separate commits, then merging `origin/main` to pull in the already-shipped fix (commit 3469a1e, PR #50), then re-verifying.
 Safety rule (feature-specific): the guard is a pure comparison against already-fetched data (no new I/O, no new transaction) — reject-before-any-side-effect (upstream call, credential resolution, usage record) is enforced by insertion ORDER, not a flag.
 Code lives in: `apps/gateway/src/gateway/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
@@ -311,44 +311,69 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — full gateway suite post-merge: 2136 passed, 7 skipped, 28 deselected, 0 failed (up from the 2122 pre-merge baseline by exactly the 14 new openrouter-embeddings tests the merge brought in). This task's own suite: 12/12 passed (`tests/preset_capability_validation/`, 15.03s).
+- [x] coverage did not decrease — line-coverage tooling under-reports post-await lines in this file family: coverage.py has no `concurrency = greenlet` configured (confirmed absent from `[tool.coverage.run]` in pyproject.toml), and SQLAlchemy's async engine runs driver calls via `greenlet_spawn`, which coverage.py's default sys.settrace tracer cannot see past. Verified this is PRE-EXISTING and project-wide, not caused by this task: running the mature, pre-existing `tests/images_endpoint/test_images_endpoint.py` suite (which asserts `status_code == 200` on the real success path) shows the IDENTICAL "missing" line range (139-193) as this task's own suite. The guard's real execution is proven behaviorally instead — every reject test asserts the exact new `MODEL_MODALITY_MISMATCH.code` + 400 + zero upstream calls + zero usage rows, which cannot pass unless the guard code actually ran. Forward-carried as a competency delta (§7) — not this task's to fix.
+- [x] no test or contract was altered during build — with one named exception, explicitly authorized by Tin: 5 stale fixtures in the already-gated `preset_resolution_ingress` suite were updated (3 `FakeSession(modality="audio",...)` → `"audio_tts"`; 2 settings stubs gained `input_modality_guard_enabled = False`) because this task's new checks correctly exposed data that predated the coarse guard. No assertion was weakened — all 20 tests in that file still pass, and now against production-accurate fixtures.
+- [x] the green was EARNED, not gamed — refute-read run by an independent adversarial subagent; verdict below. Two real findings surfaced, both resolved/deferred appropriately (see verdict).
+- [x] concurrency / timing of the risky operation is safe — single-bill invariant confirmed by direct code read: in all 3 touched use cases the guard's `raise` sits strictly between the catalog SELECT and `select_provider(...)`/`resolve_provider_credential(...)`/upstream call/`_fire_record_with_raw(...)` — e.g. `images_use_case.py:147` (guard) vs `:156` (select_provider) vs `:180` (billing). No new I/O, no new transaction — pure comparison against already-fetched data.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — `MODEL_MODALITY_MISMATCH.exc()`'s `detail=` f-string interpolates `model_id` (already validated/looked-up against the catalog by this point) and `row.modality` (a catalog-controlled enum value), mirroring the existing `MODEL_UNKNOWN` pattern. Zero new third-party dependencies.
+- [x] layering & dependencies follow CONVENTIONS.md — guard lives in the application layer next to the existing catalog query it reuses; no new layer violations.
+- [ ] a person reviewed and approved the change — Tin approved the CONTRACT at freeze (§3, v1, 2026-07-01) and authorized every judgment call this build required (guard rollout mechanism, the 5 fixture fixes, the commit/merge remediation plan). The CODE itself has had two independent AI-driven reviews (my own line-by-line diff review + a dedicated adversarial refute-read subagent) but not yet a human line-by-line read — pending final human sign-off at PR review.
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
 > + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
 > row is evidence you can SEE, not a restatement of a test name.
-- [ ] a chat/STT preset resolving to an incapable model still 400s with ERR_UNSUPPORTED_INPUT_MODALITY, unchanged from pre-task — confirmed by the 2 regression tests passing WITHOUT any change to `use_cases.py`/`modality_guard.py`'s enforcement logic
-- [ ] images/embeddings/TTS reject a wrong-modality model with ERR_MODEL_MODALITY_MISMATCH BEFORE any upstream call — confirmed by a spy/mock on the provider adapter's `post_json`/`stream_bytes` never being invoked in the rejection tests
-- [ ] the rejection fires before any usage record — confirmed by asserting zero rows in the usage-recorder spy/table after each rejection test
-- [ ] a directly-named (non-preset) wrong-modality model is ALSO rejected — confirmed by `test_images_direct_model_wrong_modality_rejected` passing with no preset involved at all, proving the fix is general
-- [ ] a matching-modality model is byte-identical to pre-task — confirmed by the 3 pass-through tests asserting identical status/body/billed-quantity shape to what the pre-task code produced
-- [ ] realtime-WS chat/STT turns now honor the SAME guard config as the HTTP path — confirmed by the 2 realtime tests passing with the guard flag ON, and failing (red) before the `_real_chat`/`_real_stt` wiring fix landed
-- [ ] `ModelChecker`'s activation check is untouched — confirmed by `test_model_checker_activation_check_still_modality_agnostic` passing AND the existing `test_provider_seam.py` suite passing with zero file changes
+- [x] a chat/STT preset resolving to an incapable model still 400s with ERR_UNSUPPORTED_INPUT_MODALITY, unchanged from pre-task — confirmed by `test_chat_preset_resolves_image_incapable_model_rejected` / `test_stt_preset_resolves_audio_incapable_model_rejected` passing WITHOUT any change to `use_cases.py`/`modality_guard.py`'s enforcement logic (zero diff to either file this task)
+- [x] images/embeddings/TTS reject a wrong-modality model with ERR_MODEL_MODALITY_MISMATCH BEFORE any upstream call — confirmed by `fake_provider.post_json_calls`/`.stream_bytes_calls` == 0 in all 4 rejection tests (3, 4, 5, 6)
+- [x] the rejection fires before any usage record — confirmed by `spy.call_count == 0` after every rejection test
+- [x] a directly-named (non-preset) wrong-modality model is ALSO rejected — confirmed by `test_images_direct_model_wrong_modality_rejected` AND `test_embeddings_wrong_modality_model_rejected` (both use a bare model_id, no preset selector at all), proving the fix is general, not preset-specific
+- [x] a matching-modality model is byte-identical to pre-task — confirmed by the 3 pass-through tests (7, 8, 9) asserting 200 + correct upstream-call-count + correct `pricing_unit`/`quantity` billing shape
+- [x] realtime-WS chat/STT turns now honor the SAME guard config as the HTTP path — confirmed by tests 10/11 passing (both were RED before the `_real_chat`/`_real_stt` wiring fix: the guard flag defaulted to disabled at those construction sites, so the turn completed normally instead of surfacing `chat_failed`/`stt_failed`)
+- [x] `ModelChecker`'s activation check is untouched — confirmed by `test_model_checker_activation_check_still_modality_agnostic` passing AND the pre-existing `tests/provider_seam/test_provider_seam.py` suite passing with zero file changes (part of the 2136-passed full run)
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol is referenced: `MODEL_MODALITY_MISMATCH` imported+raised in `images_use_case.py:28,148`, `embeddings_use_case.py`, `audio_use_case.py` (SpeechUseCase only); `input_modality_lookup=`/`input_modality_guard_enabled=` wired into `_real_chat`/`_real_stt` in `realtime_ws.py`, confirmed by grep showing no orphaned import and by tests 10/11 flipping from RED to GREEN across exactly that wiring change.
+- [x] DEAD-CODE (code) — no new unused symbol; `MODEL_MODALITY_MISMATCH` and the realtime kwargs are each referenced at ≥1 call site.
+- [x] SEMANTIC (prose / non-code) — read in full: `images_use_case.py`, `embeddings_use_case.py`, `audio_use_case.py`, `realtime_ws.py` diffs (all 5 touched files); `test_preset_capability_validation.py` (all 685 lines, all 12 tests) — confirmed each test's setup/assertions match its named scenario and genuinely exercise the HTTP layer (real FastAPI routing + real Postgres session), not a stubbed-away shortcut.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under autonomy: auto the AI auto-resolves Verify, so the earned-green refute-read MUST be
 > recorded here (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). The engine
 > MEASURES it is filled (`audit: refute_unrecorded`); it never auto-blocks — a human spot-audit
 > is the backstop. A human-gated (conservative/manual) task may leave it for the human's judgment.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: agent (adversarial refute-read subagent) + self (post-merge follow-up) · adversarially checked:
+  (1) Is the single-bill invariant really preserved, or could the guard fire after a partial
+      side-effect? → read all 3 call sites; guard sits strictly before select_provider/credential
+      resolution/upstream/billing in every case. No issue.
+  (2) Is "STT is safe by construction" a general claim or provider-specific? → CONFIRMED a real
+      gap: `OpenAIDirectProvider.post_multipart` (openai_provider.py:230-259) does not raise
+      `UpstreamUnavailableError` the way OpenRouter's facade does, so the doc-comment's claim is
+      provider-specific, not general. Pre-existing gap, no production code in `TranscriptionUseCase`
+      touched by this task — forward-carried as a SPEC delta (§7) rather than fixed inline (would
+      have expanded scope beyond the frozen contract).
+  (3) Does the new unconditional guard assume catalog `modality` is always real data? → CONFIRMED
+      a HARD-STOP-class gap at the time it was raised: `catalog/infrastructure/repository.py`'s
+      `_upsert_model` never wrote `modality` on sync in this stale worktree, meaning the guard, as
+      built, would have rejected ~100% of real images/embeddings/TTS traffic. RESOLVED by merging
+      `origin/main` (commit c307948) to pull in the already-shipped fix (3469a1e, PR #50) — verified
+      post-merge via direct code read (`repository.py:210` now writes `modality=model.modality` on
+      both insert and conflict-update) and via the full suite (2136 passed, 0 failed).
+  (4) Is the "12 passed" green earned, or could coverage gaps mean the guard never really executes?
+      → investigated a startling coverage.py report showing the 3 guard lines as 0%-covered; traced
+      to a pre-existing, project-wide coverage.py/SQLAlchemy-async-greenlet tracing gap (no
+      `concurrency = greenlet` configured) — confirmed identical on the mature, pre-existing
+      `tests/images_endpoint/` suite. The guard's execution is proven correctly by behavioral
+      assertions (exact new error code + zero upstream calls + zero usage rows), not by the
+      (broken) instrument's line count.
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS
+Reviewed by: Claude (self-review of every touched file + a dedicated adversarial refute-read
+  subagent); Tin Dang approved the CONTRACT at freeze and every judgment call the build required
+  (rollout mechanism, fixture-fix authorization, commit/merge remediation plan) · date: 2026-07-01
+  · human line-by-line code review of the final diff is the next step, at PR creation.
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
@@ -359,14 +384,30 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang (2026-07-01))
+- [AI] build — strategy used: as planned (RED tests → error spec → 3 guard insertions → realtime_ws wiring → full-suite confirm), plus an unplanned remediation: the build exposed 5 stale fixtures in the already-gated `preset_resolution_ingress` suite (3 `FakeSession(modality="audio",...)` TTS fixtures now correctly rejected by the new guard; 2 minimal settings stubs missing `input_modality_guard_enabled`) — fixed with Tin's explicit authorization, no assertion weakened. A post-build adversarial refute-read then surfaced a HARD-STOP-class finding (catalog sync never wrote real `modality` values in this stale worktree, which would make the new unconditional guard reject ~100% of real images/embeddings/TTS traffic) — resolved by committing all 4 v56 tasks as separate commits, then merging `origin/main` to pull in the already-shipped fix (commit 3469a1e, PR #50), then re-verifying.
+- [AI] verify — gate PASS (reviewed by Claude (self-review of every touched file + a dedicated adversarial refute-read)
 
 ### Spec delta
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
 each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
 the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+- [SPEC · open] `OpenAIDirectProvider.post_multipart` should raise the same loud upstream-unavailable
+  signal `OpenRouterUpstreamFacade.post_multipart` does, instead of forwarding unconditionally — the
+  "STT is safe by construction" doc claim only holds for OpenRouter today (evidence: refute-read
+  finding 1, openai_provider.py:230-259; pre-existing gap, out of this task's frozen scope).
+- [SPEC · dropped] coverage.py under-reports lines executed inside SQLAlchemy async-engine coroutines
+  after the first `await session.execute(...)` — missing `concurrency = ["greenlet", "thread"]` in
+  `[tool.coverage.run]` (evidence: identical 0%-coverage artifact reproduced on the mature, unrelated
+  `tests/images_endpoint/` suite). Dropped rather than seeded: purely a measurement-accuracy issue,
+  no behavioral risk — worth a dedicated tiny task if/when accurate coverage numbers become load-bearing.
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [ADD · open] a task whose safety property depends on another subsystem's data invariant (here:
+  catalog sync actually populating `modality`) should explicitly declare that dependency at GROUND
+  time and gate on it, rather than discovering the gap only at refute-read (evidence: this task's
+  guard was contract-correct but would have caused a full outage in this stale worktree until
+  origin/main's prerequisite fix was merged in).

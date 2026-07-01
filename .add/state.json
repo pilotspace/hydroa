@@ -823,20 +823,44 @@
     },
     "preset-capability-validation": {
       "title": "Apply v55 input-capability guard when a preset resolves to a target model",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "v56",
       "depends_on": [],
       "created": "2026-07-01T09:35:46+00:00",
-      "updated": "2026-07-01T10:07:37+00:00",
+      "updated": "2026-07-01T15:39:45+00:00",
       "flag_verified": true,
       "tripwire": {
         "contract_md5": "cca480217cf7786b32fde3d7a744d593",
-        "tests": {}
+        "tests": {
+          "apps/gateway/tests/preset_capability_validation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/preset_capability_validation/conftest.py": "266146a9200a85c6ff4808ee10ab366a",
+          "apps/gateway/tests/preset_capability_validation/test_preset_capability_validation.py": "fbe4aa63955008c85e422de7ffc44a49"
+        }
       },
       "scope": {
         "declared": [],
-        "snapshot_md5": "1bb0ffc1ba446f18dc5b0f48dcb83f31"
+        "snapshot_md5": "76abae1922ed982c2bf1b5e044a4de1e"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-01T15:38:25+00:00",
+            "reason": "scope_violation: task 'preset-capability-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/10679602895296908565 \u00b7 apps/gateway/.ruff_cache/0.15.16/11938371052130299523 (55 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-01T15:39:00+00:00",
+            "reason": "scope_violation: task 'preset-capability-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (43 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
@@ -998,7 +1022,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-01T10:07:37+00:00",
+  "updated": "2026-07-01T15:39:45+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
