@@ -37,6 +37,9 @@ class FakeCatalogModel:
     context_length: int | None
     prompt_usd_per_token: float
     completion_usd_per_token: float
+    # openrouter-embeddings-routing TASK.md §3: CatalogModel.modality is now read
+    # by _upsert_model; mirror its "chat" default so this suite is unaffected.
+    modality: str = "chat"
 
 
 class FakeCatalogSource:
@@ -58,6 +61,13 @@ class FakeCatalogSource:
             raise CatalogSourceUnavailableError("fake upstream unavailable")
         for model in self.models:
             yield model
+
+    async def list_embedding_models(self) -> AsyncIterator[FakeCatalogModel]:
+        # openrouter-embeddings-routing TASK.md §3: CatalogSource grew this sibling
+        # method. This suite never exercises embeddings — always succeeds with zero
+        # rows (SyncCatalogUseCase.execute() calls it unconditionally now).
+        return
+        yield  # pragma: no cover — makes this an async generator
 
 
 OPUS = FakeCatalogModel(

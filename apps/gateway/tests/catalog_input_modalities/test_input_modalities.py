@@ -218,8 +218,8 @@ async def test_sc5_seed_sets_sync_never_clobbers(
 
     RED reason: ModelRow ORM lacks 'input_modalities' → INSERT fails.
 
-    Verifies the no-clobber contract: _upsert_model's written column set is
-    UNCHANGED (id, name, context_length, active only) — it must NOT include
+    Verifies the no-clobber contract: _upsert_model's written column set
+    (id, name, context_length, active, modality) must NOT include
     input_modalities so that a seeded or admin-edited value survives every sync.
     """
     from gateway.catalog.domain.entities import CatalogModel

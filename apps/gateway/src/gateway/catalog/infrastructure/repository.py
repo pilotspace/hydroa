@@ -27,35 +27,61 @@ class SqlAlchemyCatalogRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def sync_catalog(self, models: list[CatalogModel]) -> int:
+    async def sync_catalog(
+        self,
+        models: list[CatalogModel],
+        *,
+        embedding_models: list[CatalogModel] | None = None,
+    ) -> int:
         """Upsert model rows, append snapshots for price changes, deactivate absent models.
 
         All writes happen in ONE transaction — partial failure leaves no rows.
         Returns count of models processed from source (active models in this sync run).
+
+        embedding_models (openrouter-embeddings-routing TASK.md §3):
+          NOT None -> upsert those rows too and include their ids in the blanket
+            deactivation sweep (today's original semantics, now covering both
+            modalities — a genuinely-retired embedding model IS deactivated).
+          None -> the embeddings source was unavailable this cycle; deactivate
+            ONLY modality="chat" rows absent from `models` — modality="embedding"
+            rows are left completely untouched (neither upserted nor deactivated).
         """
         async with self._session.begin():
+            all_models = models if embedding_models is None else [*models, *embedding_models]
             incoming_ids = {m.id for m in models}
 
             # 1. Fetch latest snapshot prices for all known models in one query.
-            latest_prices = await self._fetch_latest_prices(list(incoming_ids))
+            latest_prices = await self._fetch_latest_prices([m.id for m in all_models])
 
             # 2. Upsert model rows and append snapshots as needed.
-            for model in models:
+            for model in all_models:
                 await self._upsert_model(model)
                 prev = latest_prices.get(model.id)
                 if self._price_changed(prev, model):
                     await self._insert_snapshot(model)
 
             # 3. Deactivate models absent from the upstream response.
-            if incoming_ids:
-                await self._session.execute(
-                    update(ModelRow).where(ModelRow.id.notin_(incoming_ids)).values(active=False)
-                )
+            if embedding_models is not None:
+                incoming_ids |= {m.id for m in embedding_models}
+                if incoming_ids:
+                    await self._session.execute(
+                        update(ModelRow)
+                        .where(ModelRow.id.notin_(incoming_ids))
+                        .values(active=False)
+                    )
+                else:
+                    # All models absent — deactivate everything.
+                    await self._session.execute(update(ModelRow).values(active=False))
             else:
-                # All models absent — deactivate everything.
-                await self._session.execute(update(ModelRow).values(active=False))
+                # Embeddings fetch unavailable this cycle — deactivate ONLY chat
+                # rows absent from `models`; embedding-modality rows untouched.
+                await self._session.execute(
+                    update(ModelRow)
+                    .where(ModelRow.id.notin_(incoming_ids), ModelRow.modality == "chat")
+                    .values(active=False)
+                )
 
-        return len(models)
+        return len(all_models)
 
     async def list_active_models_with_markup(self, tenant_id: uuid.UUID) -> list[MarkedUpModel]:
         """Single joined query: active models x latest snapshot x tenant markup.
@@ -167,7 +193,13 @@ class SqlAlchemyCatalogRepository:
         }
 
     async def _upsert_model(self, model: CatalogModel) -> None:
-        """Insert or update (on conflict) the model row, setting active=true."""
+        """Insert or update (on conflict) the model row, setting active=true.
+
+        openrouter-embeddings-routing TASK.md §3: writes `modality` (sourced from
+        the incoming CatalogModel, never hardcoded) on both the insert and the
+        conflict-update. `provider`/`input_modalities` stay unwritten (out of
+        scope; keep their column defaults).
+        """
         stmt = (
             pg_insert(ModelRow)
             .values(
@@ -175,6 +207,7 @@ class SqlAlchemyCatalogRepository:
                 name=model.name,
                 context_length=model.context_length,
                 active=True,
+                modality=model.modality,
             )
             .on_conflict_do_update(
                 index_elements=["id"],
@@ -182,6 +215,7 @@ class SqlAlchemyCatalogRepository:
                     "name": model.name,
                     "context_length": model.context_length,
                     "active": True,
+                    "modality": model.modality,
                 },
             )
         )

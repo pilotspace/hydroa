@@ -674,6 +674,47 @@
         "source": "git"
       }
     },
+    "openrouter-embeddings-routing": {
+      "title": "OpenRouter embeddings: facade routing + catalog modality classification",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "openrouter-embeddings",
+      "depends_on": [],
+      "created": "2026-07-01T04:21:27+00:00",
+      "updated": "2026-07-01T05:34:09+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ca9a9251265c8f880ed79e7aeb4af8ee",
+        "tests": {
+          "apps/gateway/tests/openrouter_embeddings_routing/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/openrouter_embeddings_routing/test_catalog_source_embeddings.py": "62402c81f2279e632dc84f67dade547a",
+          "apps/gateway/tests/openrouter_embeddings_routing/test_embed_upstream.py": "6f836e91fe7331c36d205d2aa0e01996",
+          "apps/gateway/tests/openrouter_embeddings_routing/test_facade_routing.py": "ca2aa72b849f3e291b927bd8e5700556",
+          "apps/gateway/tests/openrouter_embeddings_routing/test_sync_catalog_embeddings.py": "7cf59f77a906dd8150d94015e6d17b05"
+        }
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/openrouter-embeddings-routing/src/"
+        ],
+        "snapshot_md5": "5a97f65ea0e779b6daee8f7421e507bf"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-01T05:33:04+00:00",
+            "reason": "scope_violation: task 'openrouter-embeddings-routing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/13696346104343648672 \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/15857191058005275921 (22 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
     "tenant-preset-store": {
       "title": "Per-tenant model preset store (table + migration + domain/store + catalog-target validation)",
       "phase": "done",
@@ -941,6 +982,19 @@
       "status": "active",
       "created": "2026-06-30T12:11:18+00:00",
       "updated": "2026-06-30T12:11:18+00:00"
+    },
+    "openrouter-embeddings": {
+      "title": "OpenRouter embeddings routing",
+      "goal": "A client can call POST /v1/embeddings with an OpenRouter-hosted embedding model (e.g. google/gemini-embedding-2) and get a real embedding back, billed correctly \u2014 the facade forwards /embeddings instead of hardcoding /chat/completions, and catalog sync classifies OpenRouter embedding models correctly instead of defaulting every row to modality=chat.",
+      "stage": "production",
+      "status": "done",
+      "created": "2026-07-01T04:20:38+00:00",
+      "updated": "2026-07-01T05:34:49+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
@@ -1649,6 +1703,7 @@
     "vision-playground",
     "video-playground",
     "proxy-correctness",
+    "openrouter-embeddings",
     "v56"
   ],
   "active_tasks": {
@@ -1659,6 +1714,7 @@
     "vision-playground": "vision-console-rebuild",
     "video-playground": "video-console-rebuild",
     "proxy-correctness": "adapter-correctness-fixes",
+    "openrouter-embeddings": "openrouter-embeddings-routing",
     "v56": "preset-capability-validation"
   },
   "todos": [

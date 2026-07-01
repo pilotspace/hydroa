@@ -89,10 +89,14 @@ breakdown by key or team — the time-series view of cost. Maps to `/admin/spend
 
 ![Models](images/05-models.png)
 
-The synced catalog (339 models after a sync), each with context length and a
-per-tenant **enable/disable** toggle, plus a **Sync** action. Disabled models
-return `403 ERR_MODEL_DISABLED` to clients. Maps to `/admin/models` +
-`/admin/catalog/sync`.
+The synced catalog (339 models after a sync), each with context length, an
+**Inputs** column (capability badges — e.g. `text`, `image`, `audio` — from the
+catalog's `input_modalities`), and a per-tenant **enable/disable** toggle, plus
+a **Sync** action. Disabled models return `403 ERR_MODEL_DISABLED` to clients.
+Maps to `/admin/models` + `/admin/catalog/sync`.
+
+> Screenshot above predates the v55 **Inputs** column — refresh
+> `images/05-models.png` next UI capture pass.
 
 ---
 
