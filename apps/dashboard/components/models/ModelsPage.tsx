@@ -21,6 +21,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet, bffPost, bffPut, BffError } from "@/lib/bff-client";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -37,6 +38,7 @@ interface AdminModelItem {
   name: string;
   context_length: number | null;
   enabled: boolean;
+  input_modalities?: string[];
 }
 
 interface AdminModelsListResponse {
@@ -121,6 +123,24 @@ export function ModelsPage() {
             : "—"}
         </span>
       ),
+    },
+    {
+      id: "input_modalities",
+      header: "Inputs",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const modalities = row.original.input_modalities ?? [];
+        if (modalities.length === 0) return null;
+        return (
+          <div className="flex flex-wrap gap-1">
+            {modalities.map((m) => (
+              <Badge key={m} variant="secondary">
+                {m}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
     },
     {
       id: "enabled",

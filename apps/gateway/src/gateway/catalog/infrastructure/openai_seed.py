@@ -24,6 +24,7 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         completion_usd_per_token=0.0,
         modality="embedding",
         provider="openai",
+        input_modalities="text",  # embedding models accept text input
     ),
     CatalogModel(
         id="text-embedding-3-large",
@@ -33,6 +34,7 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         completion_usd_per_token=0.0,
         modality="embedding",
         provider="openai",
+        input_modalities="text",  # embedding models accept text input
     ),
     CatalogModel(
         id="dall-e-3",
@@ -42,6 +44,7 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         completion_usd_per_token=0.0,
         modality="image",
         provider="openai",
+        input_modalities="text",  # image-gen models accept text prompts (vision not in scope v55)
     ),
     CatalogModel(
         id="whisper-1",
@@ -51,6 +54,7 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         completion_usd_per_token=0.0,
         modality="audio_stt",
         provider="openai",
+        input_modalities="audio",  # STT accepts audio input
     ),
     CatalogModel(
         id="tts-1",
@@ -60,6 +64,7 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         completion_usd_per_token=0.0,
         modality="audio_tts",
         provider="openai",
+        input_modalities="text",  # TTS accepts text and produces audio output
     ),
     CatalogModel(
         id="tts-1-hd",
@@ -69,6 +74,7 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         completion_usd_per_token=0.0,
         modality="audio_tts",
         provider="openai",
+        input_modalities="text",  # TTS-HD accepts text and produces audio output
     ),
 ]
 

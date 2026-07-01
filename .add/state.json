@@ -765,6 +765,146 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "model-input-capabilities": {
+      "title": "Additive per-model input_modalities catalog descriptor",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v55",
+      "depends_on": [],
+      "created": "2026-06-30T12:12:42+00:00",
+      "updated": "2026-06-30T13:10:39+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "60390ae65623461ad99d485d10b307b9",
+        "tests": {
+          "apps/gateway/tests/catalog_input_modalities/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/catalog_input_modalities/test_input_modalities.py": "6d36003cfb50ae7ea4fba07d0c613ec2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/catalog/",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/catalog_input_modalities/"
+        ],
+        "snapshot_md5": "8356ba196805f7495053c60631dd1273"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "unsupported-input-guard": {
+      "title": "Capability-aware unsupported-input guard (chat content-parts + STT)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v55",
+      "depends_on": [],
+      "created": "2026-06-30T13:17:25+00:00",
+      "updated": "2026-06-30T14:53:22+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "3812ecd8ed6752fb4216f7a197a487cd",
+        "tests": {
+          "apps/gateway/tests/input_modality_guard/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/input_modality_guard/conftest.py": "b606e3d0f9a9f02c6e5d6ed8bbb253c1",
+          "apps/gateway/tests/input_modality_guard/test_input_modality_guard.py": "7f038d686297560349fd28043fec7b48"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/tests/input_modality_guard/"
+        ],
+        "snapshot_md5": "c1da3a77496eefc868808c603e4e3f02"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "artifact-upload-validation": {
+      "title": "Artifact upload content-type allow-policy guard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v55",
+      "depends_on": [],
+      "created": "2026-06-30T15:04:24+00:00",
+      "updated": "2026-06-30T15:27:50+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f853ffcc3562890c9f4085aa424b817c",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/artifacts/api/router.py",
+          "apps/gateway/src/gateway/artifacts/content_type_policy.py",
+          "apps/gateway/tests/artifacts/test_artifact_content_type.py",
+          "apps/gateway/tests/artifacts/content_type_policy.py"
+        ],
+        "snapshot_md5": "9f4eaff2bc18de133311115c4ec7f171"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-06-30T15:27:14+00:00",
+            "reason": "scope_violation: task 'artifact-upload-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/16609207431043442056 \u00b7 apps/gateway/.ruff_cache/0.15.16/6450163036272733976 \u00b7 apps/gateway/src/gateway/artifacts/content_type_policy.py (5 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "capabilities-admin-surface": {
+      "title": "Surface model input capabilities on admin catalog API + dashboard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v55",
+      "depends_on": [],
+      "created": "2026-06-30T15:30:00+00:00",
+      "updated": "2026-06-30T15:59:12+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "5ea3d14464919068edaaca82d962b581",
+        "tests": {
+          "apps/gateway/tests/catalog_input_capabilities/test_capabilities_surface.py": "cfd35d3e4ad2ab1b5da238374d1674a0"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/catalog/api/schemas.py",
+          "apps/gateway/src/gateway/catalog/api/router.py",
+          "apps/gateway/src/gateway/catalog/domain/entities.py",
+          "apps/gateway/src/gateway/catalog/infrastructure/repository.py",
+          "apps/gateway/tests/catalog_input_capabilities/",
+          "apps/gateway/tests/catalog/test_model_catalog.py",
+          "apps/gateway/tests/catalog_input_modalities/test_input_modalities.py",
+          "apps/dashboard/components/models/ModelsPage.tsx",
+          "apps/dashboard/components/models/ModelCatalogTable.tsx",
+          "apps/dashboard/tests-bff/model-capabilities.test.tsx",
+          "apps/dashboard/tests-bff/MarkedUpModel",
+          "apps/dashboard/tests-bff/list_active_models_with_markup"
+        ],
+        "snapshot_md5": "063b8093b0d64f819cb5c82854d96ddf"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -923,6 +1063,27 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "v55": {
+      "title": "Capability-aware model management",
+      "goal": "Every catalog model declares the input types it accepts, and any request carrying an input type the resolved model cannot handle is rejected with a clear structured 4xx before it reaches the provider.",
+      "stage": "production",
+      "status": "done",
+      "created": "2026-06-30T12:11:18+00:00",
+      "updated": "2026-06-30T16:00:42+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "v56": {
+      "title": "Per-tenant model presets",
+      "goal": "A tenant admin defines named presets that remap model names (opus to gpt5-5), selects among multiple presets via a name: prefix (cheap:opus), and requests resolve the preset to a concrete model before the router while the existing fallback seam stays byte-identical.",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-06-30T12:11:18+00:00",
+      "updated": "2026-06-30T12:11:18+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
@@ -1601,6 +1762,7 @@
   ],
   "active_milestones": [
     "v54",
+    "v55",
     "voice-playground",
     "memory-playground",
     "artifacts-playground",
@@ -1617,7 +1779,8 @@
     "vision-playground": "vision-console-rebuild",
     "video-playground": "video-console-rebuild",
     "proxy-correctness": "adapter-correctness-fixes",
-    "gateway-health": "deterministic-test-isolation"
+    "gateway-health": "deterministic-test-isolation",
+    "v55": "capabilities-admin-surface"
   },
   "todos": [
     {

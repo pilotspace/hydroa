@@ -8,6 +8,7 @@
  * States: loading (spinner), empty, error (problem+json title), success
  */
 
+import { Badge } from "@/components/ui";
 import { BffError } from "@/lib/bff-client";
 
 export interface ModelEntry {
@@ -17,6 +18,7 @@ export interface ModelEntry {
   prompt_per_token: number;
   completion_per_token: number;
   object: string;
+  input_modalities?: string[];
 }
 
 export interface ModelsData {
@@ -67,11 +69,12 @@ export function ModelCatalogTable({
   return (
     <div>
       {/* Header row */}
-      <div className="grid grid-cols-4 gap-2 font-semibold border-b py-2">
+      <div className="grid grid-cols-5 gap-2 font-semibold border-b py-2">
         <span>Name</span>
         <span>Context Length</span>
         <span>Prompt/token</span>
         <span>Completion/token</span>
+        <span>Inputs</span>
       </div>
       {/*
         Data rows — div-based (no <tr>) so the usage-records table owns the
@@ -83,7 +86,7 @@ export function ModelCatalogTable({
         <div
           key={model.id}
           data-model-id={model.id}
-          className="grid grid-cols-4 gap-2 border-b py-2"
+          className="grid grid-cols-5 gap-2 border-b py-2"
         >
           <span>
             {model.name}
@@ -102,6 +105,13 @@ export function ModelCatalogTable({
           <span>{model.context_length ?? "—"}</span>
           <span>{model.prompt_per_token}</span>
           <span>{model.completion_per_token}</span>
+          <span className="flex flex-wrap gap-1">
+            {(model.input_modalities ?? []).map((m) => (
+              <Badge key={m} variant="secondary">
+                {m}
+              </Badge>
+            ))}
+          </span>
         </div>
       ))}
     </div>

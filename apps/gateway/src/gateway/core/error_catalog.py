@@ -490,6 +490,14 @@ PAYLOAD_INVALID_BASE64 = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID_BASE64", "content_base64 is not valid base64"
 )
 
+#: Artifact: uploaded content_type is not in the configured allow-list.
+#: Dynamic: {content_type} — the value supplied by the caller (safe to echo).
+ARTIFACT_CONTENT_TYPE_NOT_ALLOWED = ErrorSpec(
+    415,
+    "ERR_ARTIFACT_CONTENT_TYPE_NOT_ALLOWED",
+    "content_type '{content_type}' is not allowed",
+)
+
 #: Object store (S3/MinIO) is unreachable or failed (timeout, transport, 5xx, breaker open).
 #: v51 object-store-port. 503 — transient; the caller may retry.
 OBJECT_STORE_UNAVAILABLE = ErrorSpec(
@@ -505,6 +513,16 @@ OBJECT_STORE_UNAVAILABLE = ErrorSpec(
 #: 400 — caller-fixable; no echo of the bad URL (security).
 UNSUPPORTED_CONTENT_PART = ErrorSpec(
     400, "ERR_UNSUPPORTED_CONTENT_PART", "Unsupported or invalid content part"
+)
+
+#: Capability-aware input-modality guard (unsupported-input-guard task §3).
+#: Fired when a chat content-part or STT request requires an input modality the
+#: resolved model's catalog entry does not support.  400 — caller-fixable; the
+#: detail field names the offending type and the model's supported set.
+UNSUPPORTED_INPUT_MODALITY = ErrorSpec(
+    400,
+    "ERR_UNSUPPORTED_INPUT_MODALITY",
+    "Model does not accept '{input_type}' input",
 )
 
 # ---------------------------------------------------------------------------

@@ -194,6 +194,16 @@ def get_completion_use_case(
     web_search_enabled: bool = (
         bool(getattr(_settings, "web_search_enabled", False)) if _settings else False
     )
+    # unsupported-input-guard (v55): lightweight per-request lookup over the catalog
+    # models table. Built from the same session as the model checker (zero extra connections).
+    # When the flag is OFF (default), the use-case's guard is a no-op and the lookup is
+    # never called — wiring it unconditionally keeps the DI seam clean.
+    from gateway.proxy.infrastructure.input_modality_lookup import SqlAlchemyInputModalityLookup
+
+    input_modality_lookup = SqlAlchemyInputModalityLookup(session)
+    input_modality_guard_enabled: bool = (
+        bool(getattr(_settings, "input_modality_guard_enabled", False)) if _settings else False
+    )
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -210,4 +220,6 @@ def get_completion_use_case(
         bandwidth_bucket=bandwidth_bucket,
         bandwidth_max_wait_s=bandwidth_max_wait_s,
         web_search_enabled=web_search_enabled,
+        input_modality_lookup=input_modality_lookup,
+        input_modality_guard_enabled=input_modality_guard_enabled,
     )

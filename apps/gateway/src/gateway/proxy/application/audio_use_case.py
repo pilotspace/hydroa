@@ -36,6 +36,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.catalog.domain.entities import parse_input_modalities
 from gateway.catalog.infrastructure.orm import ModelRow
 from gateway.core.error_catalog import (
     MODEL_UNKNOWN,
@@ -125,6 +126,7 @@ class TranscriptionUseCase:
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
         max_duration_seconds: float | None = None,
+        input_modality_guard_enabled: bool = False,
     ) -> None:
         self._governance = governance
         self._session = session
@@ -133,6 +135,9 @@ class TranscriptionUseCase:
         # stt-duration-cap §3: clamp ceiling (seconds) on the billed per_second duration.
         # None ⇒ no clamp (legacy/test-double parity); production DI injects the knob.
         self._max_duration_seconds = max_duration_seconds
+        # unsupported-input-guard §3: when True, enforce STT audio modality BEFORE upstream.
+        # False (default) ⇒ no lookup, no rejection, byte-identical to today.
+        self._input_modality_guard_enabled: bool = input_modality_guard_enabled
 
     async def execute(
         self,
@@ -171,14 +176,35 @@ class TranscriptionUseCase:
         # estimated_tokens=None → Step 9 (TPM) is skipped — audio has no token dimension
         authz = await self._governance.authorize(raw_key, model_id, estimated_tokens=None)
 
-        # Step 4: Query modality + provider from catalog
-        stmt = select(ModelRow.modality, ModelRow.provider).where(
-            ModelRow.id == model_id,
-            ModelRow.active.is_(True),
-        )
+        # Step 4: Query modality + provider from catalog.
+        # When the input-modality guard is ON we extend the select to also fetch
+        # input_modalities in the same round-trip (unsupported-input-guard §3).
+        # When the guard is OFF the select is byte-identical to the pre-guard code.
+        if self._input_modality_guard_enabled:
+            stmt = select(ModelRow.modality, ModelRow.provider, ModelRow.input_modalities).where(
+                ModelRow.id == model_id,
+                ModelRow.active.is_(True),
+            )
+        else:
+            stmt = select(ModelRow.modality, ModelRow.provider).where(
+                ModelRow.id == model_id,
+                ModelRow.active.is_(True),
+            )
         row = (await self._session.execute(stmt)).one_or_none()
         if row is None:
             raise MODEL_UNKNOWN.exc(model_id=model_id)
+
+        # unsupported-input-guard §3: enforce that the model accepts audio input BEFORE
+        # select_provider / upstream / billing. STT input is ALWAYS audio.
+        # Fail-open: empty/missing input_modalities → None → enforce() returns silently.
+        if self._input_modality_guard_enabled:
+            from gateway.proxy.application.modality_guard import enforce
+
+            enforce(
+                frozenset({"audio"}),
+                parse_input_modalities(row.input_modalities) or None,
+                model_id=model_id,
+            )
 
         # Step 5: Resolve provider adapter
         provider_adapter = select_provider(row.modality, row.provider, registry)

@@ -33,6 +33,10 @@ class ModelRow(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     modality: Mapped[str] = mapped_column(Text, nullable=False, server_default="chat")
     provider: Mapped[str] = mapped_column(Text, nullable=False, server_default="openrouter")
+    # model-input-capabilities TASK.md §3: normalized CSV of accepted input types.
+    # server_default 'text' gives every pre-existing row the conservative chat default.
+    # The migration's UPDATE sets audio_stt rows to 'audio' after column addition.
+    input_modalities: Mapped[str] = mapped_column(Text, nullable=False, server_default="text")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

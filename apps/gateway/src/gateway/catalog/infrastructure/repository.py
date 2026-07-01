@@ -83,6 +83,7 @@ class SqlAlchemyCatalogRepository:
                 ModelRow.id,
                 ModelRow.name,
                 ModelRow.context_length,
+                ModelRow.input_modalities,
                 snap_sub.c.prompt_usd_per_token,
                 snap_sub.c.completion_usd_per_token,
                 TenantRow.markup_pct,
@@ -107,6 +108,9 @@ class SqlAlchemyCatalogRepository:
                     context_length=row.context_length,
                     prompt_per_token=float(row.prompt_usd_per_token) * multiplier,
                     completion_per_token=float(row.completion_usd_per_token) * multiplier,
+                    # capabilities-admin-surface TASK.md §3: carry raw CSV through;
+                    # endpoints decide how to surface it (lean public vs. admin).
+                    input_modalities=row.input_modalities,
                 )
             )
         return result

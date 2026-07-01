@@ -417,6 +417,22 @@ class DeploymentLimitGate(Protocol):
 
 
 @runtime_checkable
+class InputModalityLookup(Protocol):
+    """Look up the allowed input modalities for a given model id from the catalog.
+
+    Additive extension @ unsupported-input-guard TASK.md §3.
+    Fail-OPEN contract: None means no active catalog row — the caller must allow
+    the request (never 4xx on absent capability data; design-for-failure).
+    """
+
+    async def get(self, model_id: str) -> frozenset[str] | None:
+        """Return frozenset of allowed input modality tokens, or None when the model
+        has no active catalog row (unknown id → caller fails open, no rejection).
+        """
+        ...
+
+
+@runtime_checkable
 class TenantCredentialResolver(Protocol):
     """Resolve the per-tenant, per-provider credential for an upstream call.
 
@@ -451,6 +467,7 @@ __all__ = [
     "DeploymentLimitGate",
     "DeploymentLoadGate",
     "GuardrailEvaluator",
+    "InputModalityLookup",
     "KeyAuthenticator",
     "ModelAccess",
     "ModelChecker",
