@@ -228,4 +228,7 @@ def get_completion_use_case(
         input_modality_lookup=input_modality_lookup,
         input_modality_guard_enabled=input_modality_guard_enabled,
         tenant_model_preset_store=tenant_model_preset_store,
+        # chat-modality-guard (v56): reuses the SAME provider_resolver singleton fetched
+        # above — zero new app.state attribute, zero new instance. None ⇒ feature off.
+        chat_modality_lookup=provider_resolver,
     )

@@ -402,7 +402,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
   `[tool.coverage.run]` (evidence: identical 0%-coverage artifact reproduced on the mature, unrelated
   `tests/images_endpoint/` suite). Dropped rather than seeded: purely a measurement-accuracy issue,
   no behavioral risk — worth a dedicated tiny task if/when accurate coverage numbers become load-bearing.
-- [SPEC · open] chat/realtime-WS-chat has NO coarse operation-type guard symmetric to images/
+- [SPEC · seeded] chat/realtime-WS-chat has NO coarse operation-type guard symmetric to images/ [→ chat-modality-guard]
   embeddings/TTS's new `MODEL_MODALITY_MISMATCH` — a preset (or direct model id) resolving to a
   non-chat model (e.g. an embedding-only or image-only model) reaches `provider_for(model_id)`
   (confirmed: "NEVER raises", `ports.py:333`) with zero modality check, then hits the real upstream

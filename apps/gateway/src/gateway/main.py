@@ -658,12 +658,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     from gateway.catalog.infrastructure.orm import ModelRow as _ModelRow
 
+    # chat-modality-guard (v56 §3): a single query fetches id/provider/modality; the
+    # modality column is stashed in this closure-scoped cache so _load_modality_map()
+    # below can hand it to the resolver with ZERO extra I/O (same refresh cycle,
+    # ordered: refresh() always calls _load_provider_map() before _load_modality_map()).
+    _last_modality_cache: dict[str, str] = {}
+
     async def _load_provider_map() -> dict[str, str]:
         async with app.state.sessionmaker() as _session:
-            _rows = (await _session.execute(_sa_select(_ModelRow.id, _ModelRow.provider))).all()
+            _rows = (
+                await _session.execute(
+                    _sa_select(_ModelRow.id, _ModelRow.provider, _ModelRow.modality)
+                )
+            ).all()
+            _last_modality_cache.clear()
+            _last_modality_cache.update({row.id: row.modality for row in _rows if row.modality})
             return {row.id: row.provider for row in _rows}
 
-    app.state.provider_resolver = CatalogProviderResolver(loader=_load_provider_map)
+    async def _load_modality_map() -> dict[str, str]:
+        return dict(_last_modality_cache)
+
+    app.state.provider_resolver = CatalogProviderResolver(
+        loader=_load_provider_map,
+        modality_loader=_load_modality_map,
+    )
 
     # Chat adapter map — ALL providers (openrouter / anthropic / google / openai /
     # bedrock / azure) are registered UNCONDITIONALLY. Per-tenant key gating moved to

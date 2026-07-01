@@ -280,6 +280,9 @@ async def _real_chat(
             input_modality_lookup=_input_modality_lookup,
             input_modality_guard_enabled=_settings.input_modality_guard_enabled,
             tenant_model_preset_store=_tenant_model_preset_store,
+            # chat-modality-guard (v56 §3): reuses the SAME app.state.provider_resolver
+            # instance fetched above — zero new app.state attribute, zero new instance.
+            chat_modality_lookup=_provider_resolver,
         )
 
         _circuit_breaker = app.state.circuit_breaker

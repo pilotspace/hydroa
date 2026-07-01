@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "preset-capability-validation",
+  "active_task": "chat-modality-guard",
   "active_milestone": "v56",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -862,6 +862,50 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "chat-modality-guard": {
+      "title": "Coarse operation-type guard for chat/realtime-WS-chat",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v56",
+      "depends_on": [
+        "preset-capability-validation"
+      ],
+      "created": "2026-07-01T15:53:25+00:00",
+      "updated": "2026-07-01T16:56:55+00:00",
+      "from_delta": "preset-capability-validation",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0856207d89e7cba64e89fd802d8a7489",
+        "tests": {
+          "apps/gateway/tests/chat_modality_guard/conftest.py": "9b456736709bff8f2cb8132aa220dc54",
+          "apps/gateway/tests/chat_modality_guard/test_chat_modality_guard.py": "ab68a6ae044e2090b94b2f707f972d07"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "a4909f6f0f25ae1996147e6ae53ab4db"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-01T16:54:08+00:00",
+            "reason": "scope_violation: task 'chat-modality-guard' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/main.py \u00b7 apps/gateway/src/gateway/proxy/api/deps.py \u00b7 apps/gateway/src/gateway/proxy/api/realtime_ws.py \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/src/gateway/proxy/domain/ports.py (8 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-01T16:55:05+00:00",
+            "reason": "scope_violation: task 'chat-modality-guard' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/main.py \u00b7 apps/gateway/src/gateway/proxy/api/deps.py \u00b7 apps/gateway/src/gateway/proxy/api/realtime_ws.py \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/src/gateway/proxy/domain/ports.py (8 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1022,7 +1066,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-01T15:39:45+00:00",
+  "updated": "2026-07-01T16:56:55+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1739,7 +1783,7 @@
     "video-playground": "video-console-rebuild",
     "proxy-correctness": "adapter-correctness-fixes",
     "openrouter-embeddings": "openrouter-embeddings-routing",
-    "v56": "preset-capability-validation"
+    "v56": "chat-modality-guard"
   },
   "todos": [
     {
