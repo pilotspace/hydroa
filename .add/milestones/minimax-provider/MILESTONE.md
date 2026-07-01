@@ -66,31 +66,59 @@ Out: embeddings/image/audio modalities (no MiniMax OpenAI-compatible endpoint fo
       api.minimax.io/v1, confirm exactly one usage_records row with accurate cost.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A tenant can store a MiniMax API key via BYOK                          (← minimax-adapter-registry)
-- [ ] The catalog lists >=1 MiniMax chat model, provider=minimax, modality=chat  (← minimax-catalog-seed)
-- [ ] A real chat completion routed to a MiniMax model returns a genuine response and produces
-      exactly one accurately-costed usage_records row, live-verified against api.minimax.io/v1
-      (← minimax-live-verify)
+- [x] A tenant can store a MiniMax API key via BYOK (verify: test_admin_put_minimax_key_roundtrip + test_admin_put_minimax_key_upsert_replaces + test_admin_delete_minimax_key, real Fernet-at-rest round-trip)   (← minimax-adapter-registry)
+- [x] The catalog lists >=3 MiniMax chat models, provider=minimax, modality=chat (verify: minimax-catalog-seed's test_full_sync_persists_minimax_rows_active_with_correct_fields, 2100/2100 full suite)   (← minimax-catalog-seed)
+- [x] A real chat completion routed to a MiniMax model returns a genuine response and produces exactly one accurately-costed usage_records row (verify: minimax-live-verify MLV1-MLV4 live run, real 200 + reasoning trace + cached_tokens=128 + cost $0.00014184 matching independent recompute)   (← minimax-live-verify)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway/proxy : ProviderName/PROVIDER_VALUE_SET/BYOK_PROVIDERS gained "minimax" (7th provider);
+  OpenAIDirectProvider gained a provider_name param (generalizing the previously-hardcoded
+  "openai" literal across auth headers/web-search/retry-dispatch); a minimax chat adapter wired
+  unconditionally in create_app(), chat-only (absent from the non-chat provider_registry);
+  tenant_provider_key_store accepts minimax as a plain Bearer BYOK provider.
+- gateway/catalog : new CompositeCatalogSource (layers a static seed list alongside the existing
+  OpenRouter sync) + minimax_seed.py (MINIMAX_SEED_MODELS: MiniMax-M3/M2.7/M2.7-highspeed, real
+  pay-as-you-go pricing/context length from MiniMax's public pricing page).
+- gateway/core/config : Settings.minimax_base_url (https://api.minimax.io/v1, BYOK-only — no
+  operator-level key setting, matching the dynamic-auth-byok precedent).
+- dashboard : ConfigureProviderDialog/ProviderKeysSettings gained a 7th "MiniMax" row (single
+  Bearer-secret form).
+- tooling : untouched.
+- skill   : untouched.
+- book    : untouched.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- minimax-adapter-registry : gate=PASS · tests=2090/2090 full suite + new adapter/BYOK/dashboard
+  tests · residue=none (adversarial refute-read verdict EARNED)
+- minimax-catalog-seed : gate=PASS · tests=2100/2100 full suite (incl. a genuine SC5 conflict
+  found and fixed — a shared _upsert_model change silently broke an already-shipped no-clobber
+  invariant, caught only by the full suite, not the directly-touched directory) · residue=none
+  (refute-read verdict EARNED)
+- minimax-live-verify : gate=PASS · tests=N/A (live-verify task, no pytest suite — evidence is the
+  real run itself: MLV1-MLV4, real 200 response with a MiniMax-generated reasoning trace,
+  cached_tokens=128, cost $0.00014184 independently recomputed and matched exactly) · residue=none
+  (self-adversarial refute-read verdict EARNED; this run's own evidence — a flat, undiscounted
+  cache-hit billing — is what motivated the follow-on catalog-pricing-fields task/milestone)
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by its named task's Cross-task evidence row (all
+      gate=PASS) — each Exit-criteria line above cites its own passing test/live-run evidence inline
+- goal: A client can call the proxy with a MiniMax-hosted model and get a real response back,
+  billed correctly via BYOK credentials, live-verified against api.minimax.io/v1 — MET:
+  minimax-live-verify's real end-to-end call (BYOK key, real tenant, MiniMax-M3, billed usage row)
+  proved the full chain works; the discovery that the cache-hit discount was NOT actually applied
+  to that real bill directly seeded the catalog-pricing-fields task (now shipped separately in
+  catalog-pricing-detail).
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [x] Review the diff, commit with the mandated message format (bundled with catalog-pricing-fields
+      in one commit, per Tin's explicit choice — both were sitting uncommitted together and
+      catalog-pricing-fields's diff builds directly on this milestone's files), ask for PR permission.
+- [ ] Open a PR from this branch; Tin reviews + merges.
+- [ ] Bundle into the next release cut (release.md) — human decides timing/bundling.

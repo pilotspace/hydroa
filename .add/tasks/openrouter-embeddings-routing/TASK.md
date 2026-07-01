@@ -875,7 +875,7 @@ each, tagged `[SPEC · open|seeded|dropped]`, with evidence.
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence.
-- [ADD · open] a Protocol-port change (`CatalogSource`/`CatalogRepository` gaining a new method/
+- [ADD · folded] a Protocol-port change (`CatalogSource`/`CatalogRepository` gaining a new method/ [folded foundation-version 41]
   kwarg) silently breaks any structural test double that isn't grepped for — the §1 "only one
   implementer" ground-phase claim was about PRODUCTION code only; two test fixtures
   (`FakeCatalogSource` in two files) were an unaccounted second/third "implementer" that broke
@@ -883,7 +883,7 @@ What did this loop teach the foundation? One line each, tagged by competency
   (evidence: `tests/catalog/test_model_catalog.py` + `tests/catalog_sync_trigger/conftest.py`
   both needed a `list_embedding_models()` stub + `modality` field added). Future Protocol-port
   changes should grep test doubles too, not just `src/`.
-- [TDD · open] an async-generator method's exception only surfaces on first iteration, not at
+- [TDD · folded] an async-generator method's exception only surfaces on first iteration, not at [folded foundation-version 41]
   call time — useful for red-suite authors testing `CatalogSourceUnavailableError`-raising
   scenarios: `with pytest.raises(...): [x async for x in obj.method()]`, not
   `with pytest.raises(...): obj.method()` (evidence: OER6b test design, confirmed correct by

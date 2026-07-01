@@ -770,7 +770,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
-  - [ADD · open] A contract's blast-radius risk flag (here: "`_upsert_model`'s fix changes behavior
+  - [ADD · folded] A contract's blast-radius risk flag (here: "`_upsert_model`'s fix changes behavior [folded foundation-version 41]
     for EVERY existing provider's re-sync") should trigger running the FULL test suite before
     VERIFY, not just the directly-touched test directory — evidence: `tests/catalog/` alone stayed
     green while `tests/catalog_input_modalities/`'s SC5 (a different, already-shipped task's frozen

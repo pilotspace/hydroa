@@ -577,14 +577,14 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
-- [ADD · open] a post-freeze correction to a red test or the frozen §3 (even a legitimate
+- [ADD · folded] a post-freeze correction to a red test or the frozen §3 (even a legitimate [folded foundation-version 41]
   arithmetic fix, not a weakening) must be self-disclosed and re-crossed (`add.py phase tests` →
   `advance`) THE MOMENT it happens, not left for the refute-read gate to catch as `build_tampered` —
   the fix here was correct on the merits, but the process gap (undisclosed post-freeze edit) was a
   genuine near-miss on this project's own HARD-STOP tripwire (evidence: refute-read agent
   a7dcf49edf578dec0 independently reproduced the md5/mtime mismatch this session; had it not caught
   it, the task would have gated PASS on an unrecrossed tamper flag)
-- [ADD · open] the sibling-worktree scope-snapshot-poisoning variant (documented once already this
+- [ADD · folded] the sibling-worktree scope-snapshot-poisoning variant (documented once already this [folded foundation-version 41]
   session for `minimax-live-verify`) recurred here with a materially different signature: instead of
   stale `.pytest_cache`/`.ruff_cache` build artifacts, it was the sibling task's own actively-edited
   SOURCE files (`error_catalog.py`, `main.py`, `tenant_model_preset_store.py`) — confirming

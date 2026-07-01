@@ -493,7 +493,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
-- [ADD · open] a live-verify task's own scope-snapshot can be poisoned by an unrelated SIBLING
+- [ADD · folded] a live-verify task's own scope-snapshot can be poisoned by an unrelated SIBLING [folded foundation-version 41]
   git worktree's build caches (`.pytest_cache`/`.ruff_cache` under `.claude/worktrees/<other>/`),
   not just caches in the main tree — `_scope_walk` doesn't exclude sibling worktree directories
   (evidence: `gate PASS` first returned `scope_violation` listing 21
@@ -502,7 +502,7 @@ What did this loop teach the foundation? One line each, tagged by competency
   quiescent tree) — but ONLY safe once confirmed the sibling process was idle (`pgrep` clean)
   first, since re-snapshotting while it's still actively writing would just poison the NEXT gate
   attempt too.
-- [TDD · open] a live-verify task with zero pytest coverage can still have its "green" earned or
+- [TDD · folded] a live-verify task with zero pytest coverage can still have its "green" earned or [folded foundation-version 41]
   gamed — the refute-read for this task type should specifically check that the harness FAILED
   LOUDLY at least once on a genuinely wrong input (here: the first key's real 401, the DB-race's
   real `ForeignKeyViolationError`) before trusting its final PASS, since a script with no prior
