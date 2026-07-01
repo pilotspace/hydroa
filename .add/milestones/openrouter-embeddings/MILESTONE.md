@@ -121,9 +121,17 @@ Out:
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] Review the diff (6 src files + 2 pre-existing test-fixture compatibility updates + 1 new
+- [x] Review the diff (6 src files + 2 pre-existing test-fixture compatibility updates + 1 new
       test dir), commit with the mandated message format, and ask Tin for PR-creation permission.
-- [ ] Open a PR from this branch; Tin reviews + merges.
-- [ ] `add.py milestone-done openrouter-embeddings` to close the milestone once merged.
+- [x] Open a PR from this branch; Tin reviews + merges. PR #50 → `pilotspace/hydroa` MERGED
+      2026-07-01 (merge commit `4c928ac`), including a follow-up commit `c1f9f7f` with OER14/OER15
+      full-stack live-verify evidence (real tenant + BYOK + billed embeddings call + durable
+      `usage_records` row) added post-gate at Tin's request, before merge.
+      CI note: `gateway`/`dashboard` checks showed pre-existing, unrelated failures (ruff-format
+      drift on 5 files this PR never touches + a dashboard artifact-upload test) — confirmed via
+      byte-identical before/after diffs and zero file overlap with this PR's changes;
+      `kind-e2e` passed. Merged with this evidence recorded rather than blocked on unrelated red CI.
+- [x] `add.py milestone-done openrouter-embeddings` — already run in the prior session (gate PASS
+      auto-closed the milestone ahead of the PR merge, per this project's ADD flow).
 - [ ] Bundle into the next release cut (release.md) alongside the currently-releasable
       gateway-health milestone — human decides timing/bundling, not this task.
