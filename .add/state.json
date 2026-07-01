@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "deterministic-test-isolation",
-  "active_milestone": "gateway-health",
+  "active_task": "adapter-correctness-fixes",
+  "active_milestone": "proxy-correctness",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -673,98 +673,6 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
-    },
-    "pyright-errors-clean": {
-      "title": "Resolve 12 pyright errors (behavior-preserving)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "gateway-health",
-      "depends_on": [],
-      "created": "2026-06-30T15:41:43+00:00",
-      "updated": "2026-06-30T15:42:59+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "ed165e45aed7c7a3e3518decd02c280d",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "b9613852d1ac114e928c0760c5b4094a"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "ruff-format-and-lint-clean": {
-      "title": "ruff format + fix 5 ruff check errors (make lint green)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "gateway-health",
-      "depends_on": [],
-      "created": "2026-06-30T15:43:07+00:00",
-      "updated": "2026-06-30T15:44:09+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "c2b2c44f493c36f9701e33abe6828912",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "b9613852d1ac114e928c0760c5b4094a"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "fix-stale-failing-tests": {
-      "title": "Fix 3 stale tests (azure embeddings x2 + guardrails baseline)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "gateway-health",
-      "depends_on": [],
-      "created": "2026-06-30T15:44:16+00:00",
-      "updated": "2026-06-30T15:45:04+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "4053ef9590261091bfbdfb02f58636ff",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "b9613852d1ac114e928c0760c5b4094a"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "deterministic-test-isolation": {
-      "title": "Deterministic test isolation \u2014 kill cross-suite Redis/DB contamination",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "gateway-health",
-      "depends_on": [],
-      "created": "2026-06-30T15:47:46+00:00",
-      "updated": "2026-06-30T16:22:17+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "c039738eee4286a3880027c195d2d147",
-        "tests": {}
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "milestones": {
@@ -902,28 +810,6 @@
         "source": "git"
       }
     },
-    "gateway-health": {
-      "title": "Gateway Health",
-      "goal": "Restore the gateway's static-quality gates and test suite to fully green: make lint (ruff check + format) clean, make typecheck (pyright) clean, and the 3 pre-existing failing tests (azure_embeddings credential-fixture \u00d72, guardrails-core stale table invariant) fixed \u2014 so make ci passes end-to-end once CI billing returns. Pre-existing debt accumulated while CI was billing-blocked; surfaced by the v0.6.0 e2e/harden pass.",
-      "stage": "mvp",
-      "status": "done",
-      "created": "2026-06-30T13:51:46+00:00",
-      "updated": "2026-06-30T15:45:50+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-06-30T13:52:30+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      },
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
     "v56": {
       "title": "Per-tenant model presets",
       "goal": "A tenant admin defines named presets that remap model names (opus to gpt5-5), selects among multiple presets via a name: prefix (cheap:opus), and requests resolve the preset to a concrete model before the router while the existing fallback seam stays byte-identical.",
@@ -934,7 +820,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-01T02:12:39+00:00",
+  "updated": "2026-07-01T02:21:57+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1617,6 +1503,18 @@
         "capabilities-admin-surface"
       ],
       "archived": "2026-07-01"
+    },
+    {
+      "slug": "gateway-health",
+      "title": "Gateway Health",
+      "tasks": 4,
+      "task_slugs": [
+        "pyright-errors-clean",
+        "ruff-format-and-lint-clean",
+        "fix-stale-failing-tests",
+        "deterministic-test-isolation"
+      ],
+      "archived": "2026-07-01"
     }
   ],
   "active_milestones": [
@@ -1626,8 +1524,7 @@
     "artifacts-playground",
     "vision-playground",
     "video-playground",
-    "proxy-correctness",
-    "gateway-health"
+    "proxy-correctness"
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
@@ -1636,8 +1533,7 @@
     "artifacts-playground": "artifacts-console-rebuild",
     "vision-playground": "vision-console-rebuild",
     "video-playground": "video-console-rebuild",
-    "proxy-correctness": "adapter-correctness-fixes",
-    "gateway-health": "deterministic-test-isolation"
+    "proxy-correctness": "adapter-correctness-fixes"
   },
   "todos": [
     {
