@@ -639,7 +639,10 @@ async def test_tts_colon_selector_resolves_outgoing_body_uses_target(
     store.seed(tenant_id, "cheap", "tts", "tts-mini")
     governance = FakeGovernance(tenant_id)
     authenticator = FakeAuthenticator(tenant_id)
-    session = FakeSession(modality="audio", provider="fake-provider")
+    # preset-capability-validation (v56 §3): SpeechUseCase now rejects a resolved model
+    # whose catalog modality isn't "audio_tts" — the fake target must reflect a real TTS
+    # catalog row's modality, not the placeholder "audio" used before that guard existed.
+    session = FakeSession(modality="audio_tts", provider="fake-provider")
     adapter = FakeProviderAdapter()
     uc = SpeechUseCase(
         governance=cast(Any, governance),
@@ -712,6 +715,9 @@ async def test_realtime_ws_real_chat_resolves_via_complete_delegation(
 
             class _Settings:
                 bandwidth_max_wait_seconds = 0.0
+                # preset-capability-validation (v56 §3): _real_chat now reads this flag
+                # to wire CompletionUseCase's input-modality guard, mirroring deps.py.
+                input_modality_guard_enabled = False
 
             self.settings = _Settings()
             self.circuit_breaker = object()
@@ -783,6 +789,9 @@ async def test_realtime_ws_real_stt_resolves_via_transcription_delegation(
 
     class _FakeSettings:
         stt_max_duration_seconds = 120.0
+        # preset-capability-validation (v56 §3): _real_stt now reads this flag to wire
+        # TranscriptionUseCase's input-modality guard, mirroring audio_deps.py.
+        input_modality_guard_enabled = False
 
     class _FakeAppState:
         def __init__(self) -> None:
@@ -1008,9 +1017,11 @@ async def test_tenant_with_zero_presets_fully_unaffected(tenant_id: uuid.UUID) -
     # --- TTS ---
     tts_governance = FakeGovernance(tenant_id)
     tts_adapter = FakeProviderAdapter()
+    # preset-capability-validation (v56 §3): SpeechUseCase now rejects a resolved model
+    # whose catalog modality isn't "audio_tts" — reflect a real TTS row, not "audio".
     tts_uc = SpeechUseCase(
         governance=cast(Any, tts_governance),
-        session=cast(Any, FakeSession(modality="audio", provider="fake-provider")),
+        session=cast(Any, FakeSession(modality="audio_tts", provider="fake-provider")),
         authenticator=authenticator,
         tenant_model_preset_store=store,
     )
@@ -1122,9 +1133,11 @@ async def test_unwired_store_is_safe_noop(tenant_id: uuid.UUID) -> None:
     # --- TTS ---
     tts_governance = FakeGovernance(tenant_id)
     tts_adapter = FakeProviderAdapter()
+    # preset-capability-validation (v56 §3): SpeechUseCase now rejects a resolved model
+    # whose catalog modality isn't "audio_tts" — reflect a real TTS row, not "audio".
     tts_uc = SpeechUseCase(
         governance=cast(Any, tts_governance),
-        session=cast(Any, FakeSession(modality="audio", provider="fake-provider")),
+        session=cast(Any, FakeSession(modality="audio_tts", provider="fake-provider")),
         authenticator=authenticator,
         tenant_model_preset_store=None,
     )

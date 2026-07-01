@@ -186,11 +186,15 @@ async def _real_stt(
         # realtime-WS voice protocol — thread the SAME `_authenticator` already built above
         # (no second KeyAuthenticator) plus the real app.state singleton, mirroring _real_chat.
         _tenant_model_preset_store = getattr(app.state, "tenant_model_preset_store", None)
+        # preset-capability-validation (v56 §3): mirror audio_deps.py:106 exactly — read the
+        # SAME settings flag the HTTP STT path reads (never hardcode a boolean), so
+        # realtime-WS STT behaves identically to HTTP under the same config.
         _uc = TranscriptionUseCase(
             governance=_governance,
             session=session,
             tenant_credential_resolver=_cred_resolver,
             max_duration_seconds=_settings.stt_max_duration_seconds,
+            input_modality_guard_enabled=_settings.input_modality_guard_enabled,
             authenticator=_authenticator,
             tenant_model_preset_store=_tenant_model_preset_store,
         )
@@ -229,6 +233,9 @@ async def _real_chat(
         from gateway.proxy.infrastructure.circuit_breaker_proxy import (
             BoundCircuitBreakerUpstream,
         )
+        from gateway.proxy.infrastructure.input_modality_lookup import (
+            SqlAlchemyInputModalityLookup,
+        )
         from gateway.proxy.infrastructure.key_authenticator import (
             SqlAlchemyKeyAuthenticator as _Auth,
         )
@@ -252,6 +259,11 @@ async def _real_chat(
         # to None here); CompletionUseCase.complete() resolves via the SAME insertion
         # point as the HTTP chat path.
         _tenant_model_preset_store = getattr(app.state, "tenant_model_preset_store", None)
+        # preset-capability-validation (v56 §3): mirror deps.py:208-211/228-229 exactly —
+        # build the SAME SqlAlchemyInputModalityLookup over this request's session and read
+        # the SAME settings flag the HTTP chat path reads (never hardcode a boolean), so
+        # realtime-WS chat behaves identically to HTTP under the same config.
+        _input_modality_lookup = SqlAlchemyInputModalityLookup(session)
 
         _use_case = CompletionUseCase(
             authenticator=_authenticator,
@@ -265,6 +277,8 @@ async def _real_chat(
             cost_recovery=_cost_recovery,
             bandwidth_bucket=_bw_bucket,
             bandwidth_max_wait_s=_settings.bandwidth_max_wait_seconds,
+            input_modality_lookup=_input_modality_lookup,
+            input_modality_guard_enabled=_settings.input_modality_guard_enabled,
             tenant_model_preset_store=_tenant_model_preset_store,
         )
 

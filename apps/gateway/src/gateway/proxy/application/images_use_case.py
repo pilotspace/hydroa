@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.catalog.infrastructure.orm import ModelRow
 from gateway.core.error_catalog import (
     AUTH_KEY_INVALID,
+    MODEL_MODALITY_MISMATCH,
     MODEL_UNKNOWN,
     PAYLOAD_MODEL_REQUIRED,
     PAYLOAD_PROMPT_REQUIRED,
@@ -137,6 +138,19 @@ class ImagesUseCase:
         row = (await self._session.execute(stmt)).one_or_none()
         if row is None:
             raise MODEL_UNKNOWN.exc(model_id=model_id)
+
+        # preset-capability-validation §3: coarse operation-type guard — unconditional (no
+        # feature flag). Reuses row.modality already fetched above (zero new I/O). A model
+        # whose modality isn't "image" would otherwise reach select_provider/the upstream
+        # facade and silently misroute to a chat completion (still billed) — reject here,
+        # BEFORE select_provider/upstream/billing (single-bill invariant preserved).
+        if row.modality != "image":
+            raise MODEL_MODALITY_MISMATCH.exc(
+                model_id=model_id,
+                detail=(
+                    f"model '{model_id}' has modality '{row.modality}', endpoint requires 'image'"
+                ),
+            )
 
         # Step 5: Resolve provider adapter
         provider_adapter = select_provider(row.modality, row.provider, registry)

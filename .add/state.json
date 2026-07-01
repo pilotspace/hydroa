@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "adapter-correctness-fixes",
-  "active_milestone": "proxy-correctness",
+  "active_task": "preset-capability-validation",
+  "active_milestone": "v56",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -673,6 +673,130 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "tenant-preset-store": {
+      "title": "Per-tenant model preset store (table + migration + domain/store + catalog-target validation)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v56",
+      "depends_on": [],
+      "created": "2026-07-01T02:50:34+00:00",
+      "updated": "2026-07-01T04:37:07+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a9e7d75fe5ceda31b43bd83258e4d930",
+        "tests": {
+          "apps/gateway/tests/tenant_model_presets/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/tenant_model_presets/test_tenant_model_preset_store_db.py": "260c1b3c5b4b80ba68b35b7893df3ae7"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/domain/model_presets.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/tenant_model_preset_store.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/orm.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/migrations/test_migrations.py",
+          "apps/gateway/tests/guardrails/test_guardrails_core.py"
+        ],
+        "snapshot_md5": "09c09b9fbb53eaa6405a5d618e756ad7"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-01T04:36:10+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/tenant_model_presets/test_tenant_model_preset_store_db.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "preset-resolution-ingress": {
+      "title": "Parse preset:alias selector, resolve tenant preset, rewrite model before FallbackModelRouter",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v56",
+      "depends_on": [],
+      "created": "2026-07-01T05:17:17+00:00",
+      "updated": "2026-07-01T07:38:32+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f0c7ab1a9cdec500e7a1c272e20cfb7b",
+        "tests": {
+          "apps/gateway/tests/preset_resolution_ingress/test_preset_resolution_ingress.py": "00f504ce7e35f9ad28d25d4e8929da87"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "fba53000a640393856652ebb037b451c"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-01T07:37:38+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/preset_resolution_ingress/test_preset_resolution_ingress.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "preset-admin-surface": {
+      "title": "Tenant-scoped API + dashboard editor to create/list/delete named presets",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v56",
+      "depends_on": [],
+      "created": "2026-07-01T07:39:18+00:00",
+      "updated": "2026-07-01T09:33:32+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c6c9a760307bd68e89037f5df0b526ae",
+        "tests": {
+          "apps/gateway/tests/presets_admin_surface/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/presets_admin_surface/test_presets_admin_surface.py": "df0b1b712f36b156b9ba3545e692485f"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "1bb0ffc1ba446f18dc5b0f48dcb83f31"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "preset-capability-validation": {
+      "title": "Apply v55 input-capability guard when a preset resolves to a target model",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "v56",
+      "depends_on": [],
+      "created": "2026-07-01T09:35:46+00:00",
+      "updated": "2026-07-01T10:07:37+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "cca480217cf7786b32fde3d7a744d593",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "1bb0ffc1ba446f18dc5b0f48dcb83f31"
+      }
     }
   },
   "milestones": {
@@ -814,13 +938,13 @@
       "title": "Per-tenant model presets",
       "goal": "A tenant admin defines named presets that remap model names (opus to gpt5-5), selects among multiple presets via a name: prefix (cheap:opus), and requests resolve the preset to a concrete model before the router while the existing fallback seam stays byte-identical.",
       "stage": "production",
-      "status": "queued",
+      "status": "active",
       "created": "2026-06-30T12:11:18+00:00",
       "updated": "2026-06-30T12:11:18+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-01T02:21:57+00:00",
+  "updated": "2026-07-01T10:07:37+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1524,7 +1648,8 @@
     "artifacts-playground",
     "vision-playground",
     "video-playground",
-    "proxy-correctness"
+    "proxy-correctness",
+    "v56"
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
@@ -1533,7 +1658,8 @@
     "artifacts-playground": "artifacts-console-rebuild",
     "vision-playground": "vision-console-rebuild",
     "video-playground": "video-console-rebuild",
-    "proxy-correctness": "adapter-correctness-fixes"
+    "proxy-correctness": "adapter-correctness-fixes",
+    "v56": "preset-capability-validation"
   },
   "todos": [
     {

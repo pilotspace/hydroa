@@ -525,6 +525,20 @@ UNSUPPORTED_INPUT_MODALITY = ErrorSpec(
     "Model does not accept '{input_type}' input",
 )
 
+#: Coarse operation-type guard (preset-capability-validation task §3).
+#: Fired when a (preset-resolved or directly-named) model's catalog `modality`
+#: (chat/embedding/image/audio_stt/audio_tts) does not match the endpoint's expected
+#: operation type — e.g. a chat model resolved for /v1/images/generations.  400 —
+#: caller-fixable; fired BEFORE select_provider/upstream/billing (single-bill invariant).
+#: Applies to /v1/images/generations, /v1/embeddings, /v1/audio/speech (TTS) only — chat
+#: has no ModelRow query in its seam, and STT is already safe by construction (see
+#: gateway.proxy.infrastructure.openrouter_upstream_provider's post_multipart).
+MODEL_MODALITY_MISMATCH = ErrorSpec(
+    400,
+    "ERR_MODEL_MODALITY_MISMATCH",
+    "Model '{model_id}' does not support this operation",
+)
+
 # ---------------------------------------------------------------------------
 # Video generation job errors (video-generation-jobs task)
 # ---------------------------------------------------------------------------
