@@ -134,6 +134,10 @@ class CatalogModel:
 
     Additive fields (model-input-capabilities TASK.md §3):
       input_modalities — normalized CSV; defaults to "text" (chat ⇒ {text}).
+
+    Additive field (catalog-pricing-fields TASK.md §3):
+      cached_input_usd_per_token — per-token cache-hit price; None when the provider has no
+      distinct cache tier (the vast majority today — only MiniMax carries a real value so far).
     """
 
     id: str
@@ -144,6 +148,7 @@ class CatalogModel:
     modality: str = field(default="chat")
     provider: str = field(default="openrouter")
     input_modalities: str = field(default="text")
+    cached_input_usd_per_token: float | None = field(default=None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +189,10 @@ class MarkedUpModel:
     Additive field (capabilities-admin-surface TASK.md §3):
       input_modalities — normalized CSV from the models row; defaults to "text".
       Read-only surface — never derived or computed here.
+
+    Additive field (catalog-pricing-fields TASK.md §3):
+      cached_input_per_token — cached_input_usd_per_token x tenant markup; None when the
+      model has no cache price (same None-passthrough semantics as the base field).
     """
 
     id: str
@@ -192,3 +201,4 @@ class MarkedUpModel:
     prompt_per_token: float
     completion_per_token: float
     input_modalities: str = field(default="text")
+    cached_input_per_token: float | None = field(default=None)

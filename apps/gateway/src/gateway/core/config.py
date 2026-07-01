@@ -224,6 +224,12 @@ class Settings(BaseSettings):
     # NEVER set to a non-https URL in production deployments.
     openai_base_url: str = "https://api.openai.com/v1"
 
+    # ── MiniMax direct provider (minimax-adapter-registry task) ──────────────
+    # GATEWAY_MINIMAX_BASE_URL — Override in e2e overlays to point at a stub.
+    # NEVER set to a non-https URL in production deployments. BYOK-only — no
+    # operator-level API key Settings field (dynamic-auth-byok precedent).
+    minimax_base_url: str = "https://api.minimax.io/v1"
+
     # ── Anthropic direct provider (provider-chat-dispatch task) ──────────────
     # GATEWAY_ANTHROPIC_BASE_URL — Override in e2e overlays to point at a stub.
     anthropic_base_url: str = "https://api.anthropic.com/v1"

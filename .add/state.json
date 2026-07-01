@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "openrouter-embeddings-routing",
-  "active_milestone": "openrouter-embeddings",
+  "active_task": "catalog-pricing-fields",
+  "active_milestone": "catalog-pricing-detail",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -714,6 +714,162 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "minimax-adapter-registry": {
+      "title": "MiniMax provider adapter, registry & BYOK wiring",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "minimax-provider",
+      "depends_on": [],
+      "created": "2026-07-01T07:17:28+00:00",
+      "updated": "2026-07-01T09:04:14+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "09c9adcd4dc52537b7bba6a2525a636a",
+        "tests": {
+          "apps/gateway/tests/minimax_adapter_registry/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/minimax_adapter_registry/conftest.py": "b969e1389a2b91fb3afe310820b7cec5",
+          "apps/gateway/tests/minimax_adapter_registry/test_minimax_adapter_registry.py": "e4cd2cc1ec10709b1f141483820070c8"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/",
+          "apps/dashboard/components/",
+          "apps/gateway/tests/",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "4005a2111461c426e6789d08ba5f39ef"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-01T08:08:57+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/minimax_adapter_registry/test_minimax_adapter_registry.py",
+            "source": "tamper"
+          },
+          {
+            "at": "2026-07-01T09:03:05+00:00",
+            "reason": "scope_violation: task 'minimax-adapter-registry' touched outside its declared \u00a75 Scope \u2014 .claude/worktrees/model-preset/apps/gateway/.coverage \u00b7 .claude/worktrees/model-preset/apps/gateway/.pytest_cache/v/cache/lastfailed (2 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "minimax-catalog-seed": {
+      "title": "MiniMax chat model catalog seed",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "minimax-provider",
+      "depends_on": [
+        "minimax-adapter-registry"
+      ],
+      "created": "2026-07-01T09:05:57+00:00",
+      "updated": "2026-07-01T10:15:19+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0a0515cf48f44b91e32f23f6878553af",
+        "tests": {
+          "apps/gateway/tests/minimax_catalog_seed/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/minimax_catalog_seed/test_minimax_catalog_seed.py": "b73544c9e573e3f787dd747d95838030",
+          "apps/gateway/tests/catalog/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/catalog/test_model_catalog.py": "a8fe5edea02dca0342212dbb9301915a"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/",
+          "apps/gateway/tests/"
+        ],
+        "snapshot_md5": "ee7be28272f0f6bacc80104e63312d5c"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-01T10:14:11+00:00",
+            "reason": "tamper_detected:contract_tampered,build_tampered:apps/gateway/tests/minimax_catalog_seed/test_minimax_catalog_seed.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "minimax-live-verify": {
+      "title": "MiniMax live end-to-end verify",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "minimax-provider",
+      "depends_on": [
+        "minimax-catalog-seed"
+      ],
+      "created": "2026-07-01T10:17:23+00:00",
+      "updated": "2026-07-01T13:08:28+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "badc54bb744833de4b1593a447ee7fbc",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/",
+          "apps/gateway/tests/"
+        ],
+        "snapshot_md5": "97435e8369988094d52c4e57af60fe42"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-01T13:06:31+00:00",
+            "reason": "scope_violation: task 'minimax-live-verify' touched outside its declared \u00a75 Scope \u2014 .claude/worktrees/model-preset/apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 .claude/worktrees/model-preset/apps/gateway/.ruff_cache/0.15.16/10679602895296908565 \u00b7 .claude/worktrees/model-preset/apps/gateway/.ruff_cache/0.15.16/11938371052130299523 \u00b7 .claude/worktrees/model-preset/apps/gateway/.ruff_cache/0.15.16/12024300955232928165 \u00b7 .claude/worktrees/model-preset/apps/gateway/.ruff_cache/0.15.16/12091618290994749628 (21 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "catalog-pricing-fields": {
+      "title": "Full OpenAI-compatible per-1M cost fields on GET /v1/models and GET /admin/catalog/models",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "catalog-pricing-detail",
+      "depends_on": [],
+      "created": "2026-07-01T13:10:45+00:00",
+      "updated": "2026-07-01T14:40:53+00:00",
+      "from_delta": "minimax-live-verify",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f5aefba22fecd4028e5783583bc0509e",
+        "tests": {
+          "apps/gateway/tests/catalog_pricing_fields/test_catalog_pricing_fields.py": "c82a3ac853ca26e494324f33ab4c6537"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/catalog/domain/entities.py"
+        ],
+        "snapshot_md5": "826b09a674e3fb6689a67c502dda43e3"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -865,7 +1021,28 @@
       "stage": "production",
       "status": "done",
       "created": "2026-07-01T04:20:38+00:00",
-      "updated": "2026-07-01T05:34:49+00:00",
+      "updated": "2026-07-01T07:14:00+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "minimax-provider": {
+      "title": "MiniMax provider integration",
+      "goal": "A client can call the proxy with a MiniMax-hosted model (chat, and any other modality MiniMax's OpenAI-compatible API exposes) and get a real response back, billed correctly via BYOK credentials, live-verified against api.minimax.io/v1.",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-07-01T07:14:17+00:00",
+      "updated": "2026-07-01T07:14:17+00:00"
+    },
+    "catalog-pricing-detail": {
+      "title": "Catalog pricing detail (OpenAI-compatible per-1M cost fields)",
+      "goal": "Both GET /v1/models (client) and GET /admin/catalog/models (admin) expose full OpenAI-compatible per-token cost detail (input/output/cache) normalized to a familiar per-1M-token display, using MiniMax's real cached_tokens usage as the driving example",
+      "stage": "production",
+      "status": "done",
+      "created": "2026-07-01T13:10:38+00:00",
+      "updated": "2026-07-01T14:43:46+00:00",
       "done_actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
@@ -874,7 +1051,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-01T05:34:49+00:00",
+  "updated": "2026-07-01T14:43:46+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1579,7 +1756,9 @@
     "vision-playground",
     "video-playground",
     "proxy-correctness",
-    "openrouter-embeddings"
+    "openrouter-embeddings",
+    "minimax-provider",
+    "catalog-pricing-detail"
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
@@ -1589,7 +1768,9 @@
     "vision-playground": "vision-console-rebuild",
     "video-playground": "video-console-rebuild",
     "proxy-correctness": "adapter-correctness-fixes",
-    "openrouter-embeddings": "openrouter-embeddings-routing"
+    "openrouter-embeddings": "openrouter-embeddings-routing",
+    "minimax-provider": "minimax-live-verify",
+    "catalog-pricing-detail": "catalog-pricing-fields"
   },
   "todos": [
     {

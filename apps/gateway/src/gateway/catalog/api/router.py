@@ -112,6 +112,13 @@ async def list_models(
                 context_length=m.context_length,
                 prompt_per_token=m.prompt_per_token,
                 completion_per_token=m.completion_per_token,
+                prompt_usd_per_1m=m.prompt_per_token * 1_000_000,
+                completion_usd_per_1m=m.completion_per_token * 1_000_000,
+                cached_input_usd_per_1m=(
+                    m.cached_input_per_token * 1_000_000
+                    if m.cached_input_per_token is not None
+                    else None
+                ),
             )
             for m in models
         ]
@@ -155,6 +162,13 @@ async def list_catalog_models(
                 prompt_per_token=m.prompt_per_token,
                 completion_per_token=m.completion_per_token,
                 input_modalities=sorted(parse_input_modalities(m.input_modalities)),
+                prompt_usd_per_1m=m.prompt_per_token * 1_000_000,
+                completion_usd_per_1m=m.completion_per_token * 1_000_000,
+                cached_input_usd_per_1m=(
+                    m.cached_input_per_token * 1_000_000
+                    if m.cached_input_per_token is not None
+                    else None
+                ),
             )
             for m in models
         ]

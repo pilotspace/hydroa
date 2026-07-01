@@ -138,7 +138,7 @@ def _parts_to_credential(
     Inverse of ``_credential_to_parts``.  Called only inside ``get()`` after
     both ``secret_enc`` and ``extra_enc`` have been decrypted in memory.
     """
-    if provider in ("openrouter", "openai", "anthropic", "google"):
+    if provider in ("openrouter", "openai", "anthropic", "google", "minimax"):
         return BearerCredential(secret=SecretStr(secret_plain))
 
     if provider == "bedrock":

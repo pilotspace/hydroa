@@ -41,6 +41,8 @@ from gateway.catalog.api.router import (
     catalog_router,
     internal_catalog_router,
 )
+from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
+from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 from gateway.conversations.api.router import conversations_router
 from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
@@ -625,7 +627,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.password_hasher = Argon2PasswordHasher()
     app.state.token_service = JwtTokenService(settings)
     # Default catalog source — tests override via app.state.catalog_source
-    app.state.catalog_source = OpenRouterCatalogSource(httpx.AsyncClient())
+    app.state.catalog_source = CompositeCatalogSource(
+        primary=OpenRouterCatalogSource(httpx.AsyncClient()),
+        static_models=MINIMAX_SEED_MODELS,
+    )
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()
     # Raw OpenRouter upstream — used directly by the provider adapter map and the
@@ -701,6 +706,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         metrics_registry=app.state.metrics_registry,
     )
     _chat_adapters["openai"] = _openai_direct
+
+    # MiniMax direct adapter — UNCONDITIONAL (credential resolved per-request from
+    # contextvar). Chat-only: registered in _chat_adapters ONLY, NOT in _providers
+    # (minimax has no embeddings/images/audio modality — provider is OpenAI-wire
+    # compatible for /chat/completions only). Same shape as _openai_direct above,
+    # base_url swapped, provider_name="minimax" so errors/metrics label correctly.
+    _chat_adapters["minimax"] = OpenAIDirectProvider(
+        base_url=settings.minimax_base_url,
+        provider_name="minimax",
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
+        metrics_registry=app.state.metrics_registry,
+    )
 
     # AWS Bedrock adapter — registered UNCONDITIONALLY (task-3 dynamic-auth-byok).
     # Credentials are resolved per-request from the tenant contextvar; no boot-env

@@ -62,10 +62,14 @@ class OpenAIDirectProvider:
     _backoff_base: float = 0.5
     _retry_deadline_s: float = 0.0
 
+    # Class-level default — read by __new__-built instances that skip __init__.
+    _provider_name: str = "openai"
+
     def __init__(
         self,
         *,
         base_url: str = _DEFAULT_BASE_URL,
+        provider_name: str = "openai",
         max_retries: int = 0,
         backoff_base: float = 0.5,
         retry_deadline_s: float = 0.0,
@@ -86,6 +90,7 @@ class OpenAIDirectProvider:
         self._backoff_base = backoff_base
         self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
+        self._provider_name = provider_name
 
     def _auth_headers(self) -> dict[str, str]:
         """Build OpenAI auth headers from the request-scoped credential contextvar.
@@ -94,7 +99,7 @@ class OpenAIDirectProvider:
         """
         cred = get_provider_credential()
         if not isinstance(cred, BearerCredential):
-            raise ProviderKeyMissing("openai")
+            raise ProviderKeyMissing(self._provider_name)
         return {"Authorization": f"Bearer {cred.secret.get_secret_value()}"}
 
     def _maybe_inject_web_search(self, payload: dict[str, object]) -> dict[str, object]:
@@ -113,7 +118,7 @@ class OpenAIDirectProvider:
             return payload
         outbound = {k: v for k, v in payload.items() if k != WEB_SEARCH_FLAG}
         if payload.get(WEB_SEARCH_FLAG):
-            ws_tool = native_web_search_tool("openai")
+            ws_tool = native_web_search_tool(self._provider_name)
             if ws_tool is not None:
                 existing = list(outbound.get("tools", []))  # type: ignore[arg-type]
                 outbound["tools"] = [*existing, ws_tool]
@@ -152,7 +157,7 @@ class OpenAIDirectProvider:
             _do_request,
             lambda resp: (resp.status_code, resp.json()),
             breaker=self._breaker,
-            provider="openai",
+            provider=self._provider_name,
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
             deadline_s=self._retry_deadline_s,
