@@ -247,4 +247,4 @@ Watch (reuse scenarios as monitors): meta line renders correctly across provider
 - [SPEC · open] InspectorPanel "Run" tab could surface the full per-turn metadata in a structured panel (finishReason, token breakdown, latency histogram) — deferred; the "Code" tab is still an empty placeholder
 
 ### Competency deltas
-- [TDD · open] The finish_reason capture strategy (last-non-empty-seen) should be validated against real Anthropic/Gemini provider wire format (evidence: assumption flagged at freeze)
+- [TDD · folded] The finish_reason capture strategy (last-non-empty-seen) should be validated against real Anthropic/Gemini provider wire format (evidence: assumption flagged at freeze) [folded foundation-version 40]

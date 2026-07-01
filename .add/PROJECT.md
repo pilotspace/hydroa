@@ -3,12 +3,13 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 39
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 40
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
 
 ## Domain (DDD) — the language and the boundaries
+- (DDD) "pass-through" is not capability-neutral: the OpenAI-compatible wire hides that providers DROP or 400 on params. Research-before-build (verify the seam against the live provider APIs + the gateway's real translation) caught a misleading-no-op UX before it shipped (evidence: Tin's "research first" instruction → the provider-variance findings → v2 gating change-request).  [folded foundation-version 40 · from chat-parameters-panel]
 - (DDD) Environment assumptions decay: "kindnet ignores NetworkPolicy" was true once, false in kind v0.32/k8s v1.36 — assumptions about external tooling behavior must be RE-VALIDATED live each milestone, not carried forward (evidence: NP enforcement broke the edge despite the documented assumption).  [folded foundation-version 39 · from kind-bootstrap]
 - (DDD) "audit event" is a distinct bounded concept from "alert event" (actor-attributed + immutable + compliance vs operational + deliverable + dedup'd) — separate module/table was correct (evidence: reuse-alert_events framing rejected at specify).  [folded foundation-version 35 · from audit-log-store]
 - (DDD) "retention/purge" is an operator-wide lifecycle policy distinct from tenant-scoped CRUD — modelled as a periodic application sweeper, not an API (evidence: on-demand endpoint deferred).  [folded foundation-version 35 · from data-retention-controls]
@@ -130,6 +131,7 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) raw SQLAlchemy UPDATE does not trigger ORM onupdate hooks — workaround: always supply updated_at=now() explicitly in VALUES (evidence: rename_title implementation; mirrors append_message lesson from v40)  [folded foundation-version 40 · from chat-conversation-mgmt]
 - (SDD) A frozen default can collide with a SIBLING task's frozen invariant — task-2's create=true default broke task-1's "no populated Secret by default"; caught at tests phase, fixed via CR-1 (evidence: the secure-by-default flip mirroring gateway jwtSecret).  [folded foundation-version 39 · from datastore-statefulsets]
 - (SDD) a Helm chart guard that claims to mirror an app-side validator MUST mirror its exact predicate — exact-string `=="production"` silently under-guarded vs the app's `not in {dev,test}` (evidence: refute-read F2; fixed + test_secret_guard_fires_for_any_non_dev_env).  [folded foundation-version 39 · from helm-chart-scaffold]
 - (SDD) when HONEST-DEGRADATION is a HARD invariant, even an UNREACHABLE corrupt-row state (s3 row with NULL object_key) must surface an honest 5xx, never a masking `or ""`/`or b""` that yields a misleading 404 or empty 200 (evidence: refute-read NIT → hardened the s3 object_key guard).  [folded foundation-version 38 · from artifacts-s3-persistence]
@@ -346,6 +348,9 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+- (UDD) honest gating > silent no-op: disabling + annotating ("Ignored by <Provider>") an unsupported control, and omitting it from the body, is the truthful UI when the backend would silently drop it (evidence: the live-vs-gated capture).  [folded foundation-version 40 · from chat-parameters-panel]
+- (UDD) the per-page-fit standard (PageHeader everywhere; hero+tabs only where the page warrants) scales the monitoring redesign cleanly to a heterogeneous page set — simple tables stayed header+table, complex pages got tabbed IA, with zero forced/empty tabs (evidence: 6 governance pages shipped under one frozen contract, 794 green).  [folded foundation-version 40 · from governance-pages-redesign]
+- (UDD) `role=status` is reserved for the transient loading spinner across this dashboard — a persistent pager indicator must use `aria-live="polite"` (a property, not a role) so it announces without tripping the four-state invariant (evidence: build-discovered collision → contract v2).  [folded foundation-version 40 · from model-catalog-paging-search]
 - (UDD) The never-axe'd auth forms + new failure segments passed serious/critical on the first check — the shared primitives (labeled Input, ErrorState role=alert) carry a11y by construction (evidence: 0 violations surfaced).  [folded foundation-version 37 · from a11y-ci-coverage]
 - (UDD) Reusing the v13 `states.tsx` primitives made the failure segments a thin composition (one RouteError + thin wrappers) with no new visual language — the state-pattern investment pays off again (evidence: 7 files, ~all delegate to ErrorState/Loading).  [folded foundation-version 37 · from failure-state-segments]
 - (UDD) Owning the route entrance ONCE in the shared shell (keyed by activePath) beats wrapping N pages — uniform motion, zero per-page churn, re-triggers on nav via React key remount (evidence: 13 routes covered by one wrap).  [folded foundation-version 37 · from harden-admin]
@@ -475,6 +480,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-07-01 | fold all → foundation-version 40 (DDD 1 · SDD 1 · UDD 3 · TDD 7 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 16 lessons open→folded; +16 routed bullets; 39→40 |
 | 2026-06-27 | fold all → foundation-version 39 (DDD 1 · SDD 2 · TDD 11 · ADD 11) | consolidate captured OBSERVE lessons into the versioned foundation | 25 lessons open→folded; +25 routed bullets; 38→39 |
 | 2026-06-26 | fold all → foundation-version 38 (SDD 2 · TDD 3 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 8 lessons open→folded; +8 routed bullets; 37→38 |
 <!-- NOTE: the v40–v49 program (this branch) and the v33–v50 line (main) folded the foundation
