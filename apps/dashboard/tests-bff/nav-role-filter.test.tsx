@@ -27,6 +27,12 @@
  * added after Artifacts → member now sees 9 (was 8); admin/owner/unknown now see 17 (was 16).
  * UPDATED by video-workspace (v47): a MEMBER-visible "Video" link (/app/video, NO minRole) is
  * added after Vision → member now sees 10 (was 9); admin/owner/unknown now see 18 (was 17).
+ * UPDATED by preset-admin-surface (v56): an OWNER-ONLY "Model Presets" link (/app/presets,
+ * minRole: "owner" — a NEW tier, since the backend enforces strict OWNER via
+ * _require_owner_identity, stricter than every existing "admin" tier link, which is
+ * owner-OR-admin) is added after "API Keys" → member sees 10 (unchanged, still hidden);
+ * admin now sees 18 (unchanged — still hidden from admin too, unlike every prior addition);
+ * owner/unknown now see 19 (was 18; unknown still fails open across BOTH tiers).
  *
  * AppShell takes an optional `role` prop (presentational); DashboardShell ("use
  * client") feeds it from useCurrentUser().role. The nav filter is UX-only — no
@@ -50,8 +56,10 @@ import { DashboardShell } from "@/components/dashboard-shell";
 
 const APP = "http://localhost:3000";
 const ADMIN_ONLY = [/models/i, /teams/i, /members/i, /routing/i, /alerts/i, /audit/i, /health/i, /^slo$/i];
+const OWNER_ONLY = [/model presets/i];
 const MEMBER_OK = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, /settings/i];
-const ALL_EIGHTEEN = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
+const ADMIN_SEES = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
+const ALL_NINETEEN = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...OWNER_ONLY, ...ADMIN_ONLY, /settings/i];
 
 function makeQueryClient() {
   return new QueryClient({
@@ -78,6 +86,9 @@ describe("AppShell — role-based nav visibility", () => {
     for (const re of ADMIN_ONLY) {
       expect(within(n).queryByRole("link", { name: re })).not.toBeInTheDocument();
     }
+    for (const re of OWNER_ONLY) {
+      expect(within(n).queryByRole("link", { name: re })).not.toBeInTheDocument();
+    }
     for (const re of MEMBER_OK) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
@@ -87,16 +98,21 @@ describe("AppShell — role-based nav visibility", () => {
     expect(within(n).getAllByRole("link")).toHaveLength(10);
   });
 
-  it("test_admin_sees_all_links", () => {
+  it("test_admin_sees_admin_tier_but_not_owner_only_links", () => {
     render(
       <AppShell role="admin">
         <div>content</div>
       </AppShell>,
     );
     const n = nav();
-    for (const re of ALL_EIGHTEEN) {
+    for (const re of ADMIN_SEES) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
+    for (const re of OWNER_ONLY) {
+      expect(within(n).queryByRole("link", { name: re })).not.toBeInTheDocument();
+    }
+    // admin is NOT owner — "Model Presets" (minRole: "owner") stays hidden, unlike every
+    // other minRole:"admin" link above it.
     expect(within(n).getAllByRole("link")).toHaveLength(18);
   });
 
@@ -106,7 +122,11 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(18);
+    const n = nav();
+    for (const re of ALL_NINETEEN) {
+      expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
+    }
+    expect(within(n).getAllByRole("link")).toHaveLength(19);
   });
 
   it("test_unknown_role_fails_open", () => {
@@ -115,7 +135,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(18);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(19);
     unmount();
 
     // no role prop at all → also fail-open (preserves the prior AppShell behavior)
@@ -124,7 +144,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(18);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(19);
   });
 });
 
@@ -164,6 +184,8 @@ describe("DashboardShell — wires role from useCurrentUser", () => {
     expect(within(n).getByRole("link", { name: /^video$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /usage/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /settings/i })).toBeInTheDocument();
+    // "Model Presets" is owner-only — a member never sees it.
+    expect(within(n).queryByRole("link", { name: /model presets/i })).not.toBeInTheDocument();
     expect(within(n).getAllByRole("link")).toHaveLength(10);
   });
 });

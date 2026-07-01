@@ -14,11 +14,14 @@ Once the modules + migration exist, each test asserts the observable behavior no
 
 from __future__ import annotations
 
+import asyncio
+import random
 import uuid
 from typing import Any
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import Settings
@@ -58,13 +61,36 @@ def make_settings() -> Settings:
 # ---------------------------------------------------------------------------
 
 
+def _is_deadlock(exc: DBAPIError) -> bool:
+    """True when `exc` wraps Postgres' deadlock_detected (SQLSTATE 40P01).
+
+    A per-test full drop_all/create_all against the shared `gateway_test`
+    database can transiently race a not-yet-fully-released connection from
+    the previous test (or a concurrent write) for an AccessExclusiveLock —
+    a known, pre-existing characteristic of this repo's per-test bootstrap
+    pattern (found + fixed by the later preset-admin-surface task's refute-
+    read), not a defect in the schema under test. PostgreSQL's own docs
+    recommend retrying a deadlock.
+    """
+    if getattr(exc.orig, "sqlstate", None) == "40P01":
+        return True
+    return "deadlock detected" in str(exc).lower()
+
+
 async def bootstrap_fresh_db(settings: Settings) -> tuple[Any, Any]:
     """Create a fresh schema; return (engine, sessionmaker)."""
     bootstrap_app = create_app(settings)
     engine = bootstrap_app.state.engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+    for attempt in range(3):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+                await conn.run_sync(Base.metadata.create_all)
+            break
+        except DBAPIError as exc:
+            if not _is_deadlock(exc) or attempt == 2:
+                raise
+            await asyncio.sleep(random.uniform(0, 0.05 * (2**attempt)))  # noqa: S311 — jitter, not cryptographic
     return engine, bootstrap_app.state.sessionmaker
 
 

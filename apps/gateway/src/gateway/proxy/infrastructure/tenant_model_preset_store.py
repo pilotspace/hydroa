@@ -25,10 +25,14 @@ shared/boot-time checker instance, no injected dependency to keep in sync.
 
 from __future__ import annotations
 
+import asyncio
+import random
+from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gateway.proxy.domain.model_presets import ModelPresetError, TenantModelPreset
@@ -38,6 +42,45 @@ from gateway.proxy.infrastructure.orm import TenantModelPresetRow
 #: Selector tokens (preset_name / alias_key) must be non-empty, <= this length,
 #: and colon-free (":" is reserved as a future compound-selector separator).
 _MAX_SELECTOR_TOKEN_LENGTH = 64
+
+#: Postgres SQLSTATE for deadlock_detected (class 40 — transaction rollback).
+_DEADLOCK_SQLSTATE = "40P01"
+_DEADLOCK_MAX_ATTEMPTS = 3
+_DEADLOCK_BACKOFF_BASE_S = 0.05
+
+
+def _is_deadlock(exc: DBAPIError) -> bool:
+    """True when `exc` wraps Postgres' deadlock_detected (SQLSTATE 40P01).
+
+    Checked via `.orig.sqlstate` (set by the asyncpg dialect's exception
+    translation) with a message-substring fallback for driver/version
+    variance — a deadlock is a transient condition PostgreSQL's own docs
+    recommend retrying, not a defect in the caller's query.
+    """
+    if getattr(exc.orig, "sqlstate", None) == _DEADLOCK_SQLSTATE:
+        return True
+    return "deadlock detected" in str(exc).lower()
+
+
+async def _retry_on_deadlock[T](op: Callable[[], Awaitable[T]]) -> T:
+    """Run `op` (a single-attempt async DB operation), retrying on a transient
+    Postgres deadlock with a short jittered backoff.
+
+    Design-for-failure: `upsert`/`delete` each open their own short-lived
+    session/transaction, so a deadlock detected by Postgres always aborts and
+    rolls back that ENTIRE transaction — re-running `op` from scratch (a
+    fresh session) is always safe, never double-applies a partial write.
+    """
+    last_exc: DBAPIError | None = None
+    for attempt in range(_DEADLOCK_MAX_ATTEMPTS):
+        try:
+            return await op()
+        except DBAPIError as exc:
+            if not _is_deadlock(exc) or attempt == _DEADLOCK_MAX_ATTEMPTS - 1:
+                raise
+            last_exc = exc
+            await asyncio.sleep(random.uniform(0, _DEADLOCK_BACKOFF_BASE_S * (2**attempt)))  # noqa: S311 — jitter, not cryptographic
+    raise AssertionError("unreachable") from last_exc  # pragma: no cover
 
 
 def _validate_selector_token(value: str) -> None:
@@ -87,32 +130,35 @@ class DbTenantModelPresetStore:
         _validate_selector_token(preset_name)
         _validate_selector_token(alias_key)
 
-        async with self._sessionmaker() as session:
-            # Guard 2: target validation. A fresh checker over THIS session (see
-            # module docstring — matches every other call site in the codebase)
-            # so it runs in the same transaction as the write below.
-            model_checker = SqlAlchemyModelChecker(session)
-            if not await model_checker.is_active(target_model):
-                raise ModelPresetError("ERR_PRESET_TARGET_UNKNOWN") from None
+        async def _do_upsert() -> None:
+            async with self._sessionmaker() as session:
+                # Guard 2: target validation. A fresh checker over THIS session (see
+                # module docstring — matches every other call site in the codebase)
+                # so it runs in the same transaction as the write below.
+                model_checker = SqlAlchemyModelChecker(session)
+                if not await model_checker.is_active(target_model):
+                    raise ModelPresetError("ERR_PRESET_TARGET_UNKNOWN") from None
 
-            stmt = (
-                pg_insert(TenantModelPresetRow)
-                .values(
-                    tenant_id=tenant_id,
-                    preset_name=preset_name,
-                    alias_key=alias_key,
-                    target_model=target_model,
+                stmt = (
+                    pg_insert(TenantModelPresetRow)
+                    .values(
+                        tenant_id=tenant_id,
+                        preset_name=preset_name,
+                        alias_key=alias_key,
+                        target_model=target_model,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=["tenant_id", "preset_name", "alias_key"],
+                        set_={
+                            "target_model": target_model,
+                            "updated_at": text("now()"),
+                        },
+                    )
                 )
-                .on_conflict_do_update(
-                    index_elements=["tenant_id", "preset_name", "alias_key"],
-                    set_={
-                        "target_model": target_model,
-                        "updated_at": text("now()"),
-                    },
-                )
-            )
-            await session.execute(stmt)
-            await session.commit()
+                await session.execute(stmt)
+                await session.commit()
+
+        await _retry_on_deadlock(_do_upsert)
 
     # ------------------------------------------------------------------
     # resolve
@@ -194,7 +240,10 @@ class DbTenantModelPresetStore:
             .returning(TenantModelPresetRow.preset_name)
         )
 
-        async with self._sessionmaker() as session:
-            result = await session.execute(stmt)
-            await session.commit()
-            return result.fetchone() is not None
+        async def _do_delete() -> bool:
+            async with self._sessionmaker() as session:
+                result = await session.execute(stmt)
+                await session.commit()
+                return result.fetchone() is not None
+
+        return await _retry_on_deadlock(_do_delete)
