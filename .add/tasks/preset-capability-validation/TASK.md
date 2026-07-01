@@ -402,6 +402,19 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
   `[tool.coverage.run]` (evidence: identical 0%-coverage artifact reproduced on the mature, unrelated
   `tests/images_endpoint/` suite). Dropped rather than seeded: purely a measurement-accuracy issue,
   no behavioral risk — worth a dedicated tiny task if/when accurate coverage numbers become load-bearing.
+- [SPEC · open] chat/realtime-WS-chat has NO coarse operation-type guard symmetric to images/
+  embeddings/TTS's new `MODEL_MODALITY_MISMATCH` — a preset (or direct model id) resolving to a
+  non-chat model (e.g. an embedding-only or image-only model) reaches `provider_for(model_id)`
+  (confirmed: "NEVER raises", `ports.py:333`) with zero modality check, then hits the real upstream
+  asking for a chat completion the model doesn't support. Severity assessed LOWER than the original
+  images/embeddings bug: OpenRouter's facade calling `.complete()`/`.stream()` for chat IS the
+  correct behavior (unlike the images/embeddings misroute), so the provider itself rejects the
+  request with an upstream 4xx rather than silently succeeding-and-billing — the user-visible cost
+  is an inconsistent/less-clean error shape reaching the client, not silent misbilling. Fixing it
+  would require adding a NEW `ModelRow.modality` query to `CompletionUseCase`'s seam, which
+  currently has none at all (architecturally asymmetric from images/embeddings/TTS) — non-trivial
+  enough to warrant its own task rather than folding into this one. Tin reviewed 2026-07-01 and
+  chose to record-and-defer rather than scope now.
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
