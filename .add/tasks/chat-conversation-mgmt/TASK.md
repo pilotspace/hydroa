@@ -287,4 +287,4 @@ Watch (reuse scenarios as monitors): 404-rate on PATCH (should stay near 0 for a
 - [SPEC · open] Fork should surface in the list immediately with optimistic loading indicator (currently triggers a re-fetch with loading state — evidence: UX friction on slow connections)
 
 ### Competency deltas
-- [SDD · open] raw SQLAlchemy UPDATE does not trigger ORM onupdate hooks — workaround: always supply updated_at=now() explicitly in VALUES (evidence: rename_title implementation; mirrors append_message lesson from v40)
+- [SDD · folded] raw SQLAlchemy UPDATE does not trigger ORM onupdate hooks — workaround: always supply updated_at=now() explicitly in VALUES (evidence: rename_title implementation; mirrors append_message lesson from v40) [folded foundation-version 40]
