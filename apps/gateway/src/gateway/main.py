@@ -95,6 +95,9 @@ from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
 from gateway.proxy.infrastructure.orm import (
+    TenantModelPresetRow as _TenantModelPresetRow,  # noqa: F401 — registers TenantModelPresetRow on Base.metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.proxy.infrastructure.orm import (
     TenantProviderKeyRow as _TenantProviderKeyRow,  # noqa: F401 — registers TenantProviderKeyRow on Base.metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.proxy.infrastructure.provider_aware_upstream import ProviderAwareCompletionUpstream
@@ -103,6 +106,7 @@ from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate
 from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
+from gateway.proxy.infrastructure.tenant_model_preset_store import DbTenantModelPresetStore
 from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
@@ -862,6 +866,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.tenant_credential_resolver = CachedTenantCredentialResolver(
         store=app.state.tenant_provider_key_store,
         settings=settings,
+    )
+
+    # Tenant model-preset store (tenant-preset-store v56). upsert() constructs its own
+    # SqlAlchemyModelChecker per call, scoped to the session it opens (see the store's
+    # module docstring) — matching every other call site in the codebase. Consumed by
+    # the proxy ingress via getattr(app.state, "tenant_model_preset_store", None) in
+    # deps.py/images_deps.py/embeddings_deps.py/audio_deps.py/realtime_ws.py
+    # (preset-resolution-ingress v56).
+    app.state.tenant_model_preset_store = DbTenantModelPresetStore(
+        sessionmaker=app.state.sessionmaker,
     )
 
     # openrouter-cost-recovery-wiring (v30 t6.2c): inline authoritative-cost recovery for

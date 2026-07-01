@@ -568,3 +568,21 @@ AGENT_OAUTH_NOT_PENDING = ErrorSpec(
 
 #: Authorization is pending but its expiry has passed.
 AGENT_OAUTH_EXPIRED = ErrorSpec(410, "ERR_AGENT_OAUTH_EXPIRED", "Authorization has expired")
+
+# ---------------------------------------------------------------------------
+# Tenant model presets (tenant-preset-store task — store layer only, v56)
+# ---------------------------------------------------------------------------
+
+#: Preset upsert target_model is not an active model in the catalog.
+#: Raised by DbTenantModelPresetStore.upsert as ModelPresetError; this entry
+#: exists for the later HTTP admin-API task to surface it as problem+json.
+PRESET_TARGET_UNKNOWN = ErrorSpec(
+    400, "ERR_PRESET_TARGET_UNKNOWN", "Preset target model is not active in the catalog"
+)
+
+#: Preset selector token (preset_name / alias_key) is empty, over 64 chars, or
+#: contains a colon. Raised by DbTenantModelPresetStore.upsert as
+#: ModelPresetError; this entry exists for the later HTTP admin-API task.
+PRESET_SELECTOR_INVALID = ErrorSpec(
+    400, "ERR_PRESET_SELECTOR_INVALID", "Preset selector token is invalid"
+)
