@@ -418,7 +418,7 @@ class Settings(BaseSettings):
         import logging as _logging
 
         try:
-            n = int(v)
+            n = int(v)  # type: ignore[arg-type]  # try/except is the guard
         except (TypeError, ValueError):
             return v  # not an int — let Pydantic raise its normal type error
         if n < 0:
@@ -445,7 +445,7 @@ class Settings(BaseSettings):
         import logging as _logging
 
         try:
-            n = int(v)
+            n = int(v)  # type: ignore[arg-type]  # try/except is the guard
         except (TypeError, ValueError):
             return v  # not an int — let Pydantic raise its normal type error
         if n < 0:
@@ -482,7 +482,7 @@ class Settings(BaseSettings):
         import logging as _logging
 
         try:
-            n = int(v)
+            n = int(v)  # type: ignore[arg-type]  # try/except is the guard
         except (TypeError, ValueError):
             return v
         if n < 0:
@@ -501,7 +501,7 @@ class Settings(BaseSettings):
         import logging as _logging
 
         try:
-            f = float(v)
+            f = float(v)  # type: ignore[arg-type]  # try/except is the guard
         except (TypeError, ValueError):
             return v
         if f < 0:

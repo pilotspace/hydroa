@@ -179,9 +179,7 @@ async def test_translate_drops_language_field(
         usage_recorder=_STUB_RECORDER,
         upstream_path="/audio/translations",
     )
-    assert "language" not in spy.captured_data, (
-        "language must be dropped for /audio/translations"
-    )
+    assert "language" not in spy.captured_data, "language must be dropped for /audio/translations"
     assert "temperature" in spy.captured_data, (
         "temperature must still be forwarded for /audio/translations"
     )

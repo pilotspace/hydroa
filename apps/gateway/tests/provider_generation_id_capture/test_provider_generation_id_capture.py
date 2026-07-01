@@ -83,7 +83,12 @@ async def _settle() -> None:
 
 async def test_disconnect_record_carries_generation_id() -> None:
     upstream = PlanStreamUpstream(
-        {CAND_A: [b'data: {"id":"gen-xyz","choices":[{"delta":{"content":"hi"}}]}\n\n', b"more\n\n"]}
+        {
+            CAND_A: [
+                b'data: {"id":"gen-xyz","choices":[{"delta":{"content":"hi"}}]}\n\n',
+                b"more\n\n",
+            ]
+        }
     )
     recorder = _SpyRecorder()
     uc = CompletionUseCase(

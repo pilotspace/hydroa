@@ -99,7 +99,18 @@ _RESPONSE_FORMAT_MEDIA_TYPES: dict[str, str] = {
 }
 
 # Passthrough fields forwarded from multipart form to upstream STT endpoint
-_STT_PASSTHROUGH_FIELDS = ("language", "prompt", "response_format", "temperature")
+_STT_PASSTHROUGH_FIELDS = (
+    "language",
+    "prompt",
+    "response_format",
+    "temperature",
+    # timestamp_granularities enables word/segment-level timestamps
+    # (requires response_format=verbose_json on the OpenAI Whisper API).
+    "timestamp_granularities",
+    # chunking_strategy controls audio chunking behavior (e.g. "auto" or a
+    # ServerVAD config object); passed through unconditionally for consistency.
+    "chunking_strategy",
+)
 # Translation passthrough fields — same as STT except `language` is dropped:
 # the /audio/translations endpoint always outputs English and has no language param.
 _TRANSLATION_PASSTHROUGH_FIELDS = ("prompt", "response_format", "temperature")
@@ -369,10 +380,7 @@ class SpeechUseCase:
         # (tts-input-guardrails §3). per_character billing fires at Step 7; rejecting here
         # means an over-cap input is never billed and never reaches an upstream. len() is
         # the same unit the bill uses (quantity=len(input_text)). 0 ⇒ cap disabled.
-        if (
-            self._max_input_characters > 0
-            and len(input_text) > self._max_input_characters
-        ):
+        if self._max_input_characters > 0 and len(input_text) > self._max_input_characters:
             raise PAYLOAD_INPUT_TOO_LONG.exc()
 
         # Step 3: Validate voice field

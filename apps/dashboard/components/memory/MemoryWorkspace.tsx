@@ -1,27 +1,22 @@
 "use client";
 
 /**
- * components/memory/MemoryWorkspace.tsx — v44 memory workspace.
+ * components/memory/MemoryWorkspace.tsx — Console-grade memory workspace.
  *
- * Surfaces:
- *   - List: on mount calls listMemories(), newest-first as returned.
- *   - Add form: textarea + submit (disabled when content empty/whitespace).
- *     On submit → createMemory(content) → clear input → refresh list.
- *     Best-effort: failure sets a non-blocking error, never throws.
- *   - Search: input + search button (disabled when query empty).
- *     On submit → searchMemories(query) → render ranked results section.
- *     null score renders as "text match" fallback — never a fabricated number.
- *   - Delete: per-item button → deleteMemory(id) → refresh list.
+ * Two-pane layout:
+ *   LEFT  → MemoryLibraryPane  (list / search / add / sort)
+ *   RIGHT → MemoryInspectorPane (selected-item detail + guarded delete)
  *
- * All network calls go to /api/gw/... (the BFF) — never the gateway directly.
- * No new dependencies; uses the v13/v23 ui primitives.
+ * All network calls route through /api/gw/... (BFF) — never the gateway directly.
+ * No new dependencies; reuses existing ui/* primitives.
+ *
+ * Failure model:
+ *   - List-load failure is non-blocking: the error is shown inside the library pane
+ *     while the add-composer and search remain fully accessible.
+ *   - Add/delete failures are shown inline; they never crash the workspace.
  */
 
-import { useEffect, useState, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Empty, ErrorState, Loading } from "@/components/ui/states";
+import { useEffect, useState } from "react";
 import {
   listMemories,
   createMemory,
@@ -30,108 +25,36 @@ import {
   type MemoryItem,
   type SearchResult,
 } from "@/lib/memories";
+import {
+  MemoryLibraryPane,
+  type ListState,
+} from "@/components/memory/MemoryLibraryPane";
+import { MemoryInspectorPane } from "@/components/memory/MemoryInspectorPane";
 
-// ── MemoryList ────────────────────────────────────────────────────────────────
-
-interface MemoryListProps {
-  items: MemoryItem[];
-  onDelete: (id: string) => void;
-}
-
-function MemoryList({ items, onDelete }: MemoryListProps) {
-  if (items.length === 0) {
-    return (
-      <Empty
-        title="No memories yet"
-        description="Add a memory using the form above."
-      />
-    );
-  }
-
-  return (
-    <ul className="flex flex-col gap-2" aria-label="Memory list">
-      {items.map((item) => (
-        <li
-          key={item.id}
-          className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 p-4"
-        >
-          <p className="flex-1 text-sm text-foreground">{item.content}</p>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={`Delete memory: ${item.content}`}
-            onClick={() => onDelete(item.id)}
-            className="shrink-0 text-destructive hover:text-destructive"
-          >
-            Delete
-          </Button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-// ── SearchResults ─────────────────────────────────────────────────────────────
-
-interface SearchResultsProps {
-  results: SearchResult[];
-}
-
-function SearchResults({ results }: SearchResultsProps) {
-  if (results.length === 0) {
-    return (
-      <Empty
-        title="No results"
-        description="No memories matched your search."
-      />
-    );
-  }
-
-  return (
-    <ul className="flex flex-col gap-2" aria-label="Search results">
-      {results.map((item) => (
-        <li
-          key={item.id}
-          className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 p-4"
-        >
-          <p className="flex-1 text-sm text-foreground">{item.content}</p>
-          <span className="shrink-0 text-xs text-muted-foreground" aria-label="Relevance score">
-            {item.score !== null ? item.score.toFixed(2) : "text match"}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-// ── List state ────────────────────────────────────────────────────────────────
-
-type ListState =
-  | { kind: "loading" }
-  | { kind: "error"; message: string }
-  | { kind: "ready"; memories: MemoryItem[] };
-
-// ── MemoryWorkspace ───────────────────────────────────────────────────────────
+type SortMode = "recency" | "relevance";
 
 export function MemoryWorkspace() {
-  // ── list state ──────────────────────────────────────────────────────────
+  // ── List state ─────────────────────────────────────────────────────────────
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
-  // Increment to trigger a re-fetch after add, delete, or retry.
   const [fetchTick, setFetchTick] = useState(0);
 
-  // ── add form state ───────────────────────────────────────────────────────
-  const [addContent, setAddContent] = useState("");
-  const [addPending, setAddPending] = useState(false);
-  const [addError, setAddError] = useState<string>("");
+  // ── Selection ──────────────────────────────────────────────────────────────
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // ── search state ─────────────────────────────────────────────────────────
+  // ── Sort ───────────────────────────────────────────────────────────────────
+  const [sortMode, setSortMode] = useState<SortMode>("recency");
+
+  // ── Search state ───────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searchPending, setSearchPending] = useState(false);
-  const [searchError, setSearchError] = useState<string>("");
+  const [searchError, setSearchError] = useState("");
 
-  // ── fetch on mount and on tick ────────────────────────────────────────────
+  // ── Fetch list on mount and on tick ───────────────────────────────────────
+  // NOTE: setListState({ kind: "loading" }) is intentionally NOT called here.
+  // The rule react-hooks/set-state-in-effect forbids synchronous setState in
+  // effect bodies. Loading state is set by callers before they increment fetchTick.
+  // Initial loading state is set by the useState initializer above.
   useEffect(() => {
     let cancelled = false;
 
@@ -151,44 +74,29 @@ export function MemoryWorkspace() {
     };
   }, [fetchTick]);
 
-  // ── add handler ───────────────────────────────────────────────────────────
-
-  function handleAdd(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = addContent.trim();
-    if (!trimmed) return; // guard: empty/whitespace → no-op
-
-    setAddPending(true);
-    setAddError("");
-
-    createMemory(trimmed)
-      .then(() => {
-        setAddContent("");
-        setAddPending(false);
-        setListState({ kind: "loading" });
-        setFetchTick((t) => t + 1);
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : "Failed to add memory";
-        setAddError(msg);
-        setAddPending(false);
-      });
+  // ── Add handler ────────────────────────────────────────────────────────────
+  async function handleAdd(content: string, metadata?: Record<string, unknown>): Promise<void> {
+    await createMemory(content, metadata);
+    // Clear search results and return to list mode after adding.
+    // Set loading state here (event-handler context, not inside an effect).
+    setSearchResults(null);
+    setSortMode("recency");
+    setListState({ kind: "loading" });
+    setFetchTick((t) => t + 1);
   }
 
-  // ── search handler ────────────────────────────────────────────────────────
-
-  function handleSearch(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = searchQuery.trim();
-    if (!trimmed) return; // guard
+  // ── Search handler ─────────────────────────────────────────────────────────
+  function handleSearch(query: string) {
+    const trimmed = query.trim();
+    if (!trimmed) return;
 
     setSearchPending(true);
     setSearchError("");
-    setSearchResults(null);
 
     searchMemories(trimmed)
       .then((result) => {
         setSearchResults(result.data);
+        setSortMode("relevance"); // auto-switch sort to relevance after search
         setSearchPending(false);
       })
       .catch((err: unknown) => {
@@ -198,11 +106,14 @@ export function MemoryWorkspace() {
       });
   }
 
-  // ── delete handler ────────────────────────────────────────────────────────
-
+  // ── Delete handler ─────────────────────────────────────────────────────────
   function handleDelete(id: string) {
     deleteMemory(id)
       .then(() => {
+        if (selectedId === id) setSelectedId(null);
+        // Clear search and refresh list.
+        // setListState in a Promise callback (not inside an effect body) is allowed.
+        setSearchResults(null);
         setListState({ kind: "loading" });
         setFetchTick((t) => t + 1);
       })
@@ -211,127 +122,49 @@ export function MemoryWorkspace() {
       });
   }
 
-  // ── derived ───────────────────────────────────────────────────────────────
+  // ── Select handler ─────────────────────────────────────────────────────────
+  function handleSelect(id: string) {
+    setSelectedId(id);
+  }
 
-  const isAddDisabled = addPending || !addContent.trim();
-  const isSearchDisabled = searchPending || !searchQuery.trim();
+  // ── Derive selected item ───────────────────────────────────────────────────
+  const libraryItems: MemoryItem[] =
+    listState.kind === "ready" ? listState.memories : [];
 
-  // ── render ────────────────────────────────────────────────────────────────
+  const selectedItem: MemoryItem | null = selectedId
+    ? (libraryItems.find((m) => m.id === selectedId) ??
+       // Fall back to search results cast to MemoryItem (score-less fields match)
+       (searchResults?.find((r) => r.id === selectedId) as MemoryItem | undefined) ??
+       null)
+    : null;
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-h-0 flex-col bg-muted/30">
-      <header className="border-b border-border bg-background px-6 py-3">
+      {/* Page header */}
+      <header className="shrink-0 border-b border-border bg-background px-6 py-3">
         <h1 className="text-lg font-semibold text-foreground">Memory</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      {/* Two-pane body */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <MemoryLibraryPane
+          listState={listState}
+          searchResults={searchResults}
+          searchQuery={searchQuery}
+          searchPending={searchPending}
+          searchError={searchError}
+          sortMode={sortMode}
+          selectedId={selectedId}
+          onAdd={handleAdd}
+          onSearch={handleSearch}
+          onSearchQueryChange={setSearchQuery}
+          onSortChange={setSortMode}
+          onSelect={handleSelect}
+          onDelete={handleDelete}
+        />
 
-          {/* ── Add memory form ─────────────────────────────────────────── */}
-          <section
-            aria-labelledby="add-memory-heading"
-            className="flex flex-col gap-4 rounded-xl border border-border bg-background p-6"
-          >
-            <h2 id="add-memory-heading" className="text-base font-semibold text-foreground">
-              Add memory
-            </h2>
-
-            <form onSubmit={handleAdd} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="memory-content" className="text-sm font-medium text-foreground">
-                  Content
-                </label>
-                <Textarea
-                  id="memory-content"
-                  aria-label="Memory content"
-                  value={addContent}
-                  onChange={(e) => setAddContent(e.target.value)}
-                  placeholder="Enter memory content…"
-                  rows={3}
-                />
-              </div>
-
-              <Button
-                type="submit"
-                disabled={isAddDisabled}
-                aria-disabled={isAddDisabled}
-              >
-                {addPending ? "Adding…" : "Add memory"}
-              </Button>
-            </form>
-
-            {addError && (
-              <ErrorState title={addError} />
-            )}
-          </section>
-
-          {/* ── Search form ──────────────────────────────────────────────── */}
-          <section
-            aria-labelledby="search-heading"
-            className="flex flex-col gap-4 rounded-xl border border-border bg-background p-6"
-          >
-            <h2 id="search-heading" className="text-base font-semibold text-foreground">
-              Search memories
-            </h2>
-
-            <form onSubmit={handleSearch} className="flex gap-2">
-              <div className="flex flex-1 flex-col gap-1.5">
-                <label htmlFor="search-query" className="sr-only">
-                  Search memories
-                </label>
-                <Input
-                  id="search-query"
-                  type="text"
-                  aria-label="Search memories"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search memories…"
-                />
-              </div>
-              <Button
-                type="submit"
-                disabled={isSearchDisabled}
-                aria-disabled={isSearchDisabled}
-              >
-                {searchPending ? "Searching…" : "Search"}
-              </Button>
-            </form>
-
-            {searchError && (
-              <ErrorState title={searchError} />
-            )}
-
-            {searchResults !== null && (
-              <div aria-live="polite" aria-label="Search results">
-                <p className="mb-2 text-sm text-muted-foreground">
-                  {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} found
-                </p>
-                <SearchResults results={searchResults} />
-              </div>
-            )}
-          </section>
-
-          {/* ── Memory list ──────────────────────────────────────────────── */}
-          <section
-            aria-labelledby="list-heading"
-            className="flex flex-col gap-4 rounded-xl border border-border bg-background p-6"
-          >
-            <h2 id="list-heading" className="text-base font-semibold text-foreground">
-              Saved memories
-            </h2>
-
-            <div aria-live="polite">
-              {listState.kind === "loading" && <Loading label="Loading memories…" />}
-              {listState.kind === "error" && (
-                <ErrorState title={listState.message} />
-              )}
-              {listState.kind === "ready" && (
-                <MemoryList items={listState.memories} onDelete={handleDelete} />
-              )}
-            </div>
-          </section>
-
-        </div>
+        <MemoryInspectorPane item={selectedItem} onDelete={handleDelete} />
       </div>
     </div>
   );

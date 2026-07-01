@@ -66,7 +66,7 @@ def native_web_search_tool(provider: str) -> dict[str, Any] | None:
 
 
 def _normalize_anthropic_grounding(
-    content_blocks: list[dict[str, Any]],
+    content_blocks: list[Any],  # Any: upstream JSON is untrusted; isinstance guards are defensive
 ) -> list[dict[str, Any]] | None:
     """Extract web_search_result blocks from an Anthropic response and normalize them.
 
@@ -113,7 +113,8 @@ def _normalize_gemini_grounding(
     # `or []` collapses both absent and null (and any falsy) to an empty list so the
     # loop below never iterates None (would 500 the non-stream translation).
     chunks_raw = grounding_metadata.get("groundingChunks") or []
-    chunks: list[dict[str, Any]] = chunks_raw if isinstance(chunks_raw, list) else []
+    # list[Any]: upstream JSON is untrusted; isinstance(chunk, dict) guards are defensive
+    chunks: list[Any] = chunks_raw if isinstance(chunks_raw, list) else []
     items: list[dict[str, Any]] = []
     for chunk in chunks:
         if not isinstance(chunk, dict):  # malformed chunk — skip, never crash

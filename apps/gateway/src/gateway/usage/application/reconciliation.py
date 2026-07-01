@@ -292,7 +292,8 @@ async def audit_cost_basis_breaches(
                 "SELECT id, tenant_id, provider_cost, created_at"  # noqa: S608 (static clause, bound params)
                 " FROM usage_records"
                 " WHERE cost_basis = 'catalog'"
-                "   AND provider_cost IS NOT NULL AND provider_cost > 0" + clause
+                "   AND provider_cost IS NOT NULL AND provider_cost > 0"
+                + clause
                 + " ORDER BY created_at"
             ),
             params,
@@ -351,7 +352,8 @@ async def audit_unrecovered_disconnects(
                 "   AND NOT EXISTS ("
                 "         SELECT 1 FROM usage_records r"
                 "          WHERE r.provider_generation_id = u.provider_generation_id"
-                "            AND r.usage_source = 'openrouter_recovered')" + clause
+                "            AND r.usage_source = 'openrouter_recovered')"
+                + clause
                 + " ORDER BY u.created_at"
             ),
             params,

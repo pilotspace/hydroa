@@ -73,6 +73,4 @@ class VideoGenerationJobRow(Base):
         onupdate=func.now(),
     )
 
-    __table_args__ = (
-        Index("ix_video_jobs_tenant_created", "tenant_id", text("created_at DESC")),
-    )
+    __table_args__ = (Index("ix_video_jobs_tenant_created", "tenant_id", text("created_at DESC")),)

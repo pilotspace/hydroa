@@ -139,9 +139,7 @@ async def test_boot_applies_persisted_config(app: Any) -> None:
     from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
 
     repo = RoutingConfigRepository(app.state.sessionmaker)
-    await repo.upsert(
-        {"routing_strategy": "simple-shuffle", "model_groups": {"gpt": ["x", "y"]}}
-    )
+    await repo.upsert({"routing_strategy": "simple-shuffle", "model_groups": {"gpt": ["x", "y"]}})
 
     async with app.router.lifespan_context(app):
         assert app.state.settings.routing_strategy == "simple-shuffle"

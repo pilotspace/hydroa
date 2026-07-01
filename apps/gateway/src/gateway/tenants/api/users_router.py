@@ -86,10 +86,7 @@ async def list_users(
     use_case = ListTenantUsersUseCase(repo)
     users = await use_case.execute(tenant_id=identity.tenant_id)
     return UsersListResponse(
-        users=[
-            UserResponse(id=u.id, email=u.email, role=u.role.value)
-            for u in users
-        ]
+        users=[UserResponse(id=u.id, email=u.email, role=u.role.value) for u in users]
     )
 
 
@@ -122,9 +119,7 @@ async def assign_user_role(
         raise PAYLOAD_INVALID.exc(detail=f"Unknown role: {body.role!r}") from None
 
     # Load old role for audit metadata (before update)
-    old_user = await repo.get_by_id_and_tenant(
-        user_id=user_id, tenant_id=identity.tenant_id
-    )
+    old_user = await repo.get_by_id_and_tenant(user_id=user_id, tenant_id=identity.tenant_id)
     old_role_str = old_user.role.value if old_user else None
 
     use_case = AssignUserRoleUseCase(repo)

@@ -473,14 +473,10 @@ def test_matrix_complete() -> None:
 
     # Sentinel: a hypothetical Role not in ROLE_PERMISSIONS should have been caught above.
     # Validate owner holds ALL perms (the superuser invariant)
-    assert ROLE_PERMISSIONS[Role.OWNER] == frozenset(Permission), (
-        "owner must hold ALL permissions"
-    )
+    assert ROLE_PERMISSIONS[Role.OWNER] == frozenset(Permission), "owner must hold ALL permissions"
 
     # member holds none of the admin permissions
-    assert ROLE_PERMISSIONS[Role.MEMBER] == frozenset(), (
-        "member must hold NO admin permissions"
-    )
+    assert ROLE_PERMISSIONS[Role.MEMBER] == frozenset(), "member must hold NO admin permissions"
 
 
 # ── TEST 8: require_permission unit test ────────────────────────────────────────────────────

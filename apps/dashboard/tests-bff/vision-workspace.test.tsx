@@ -375,3 +375,144 @@ describe("VisionWorkspace", () => {
     expect(postCalled).toBe(false);
   });
 });
+
+// ── Console-grade surface tests ───────────────────────────────────────────────
+describe("VisionWorkspace — Console-grade surface", () => {
+  beforeEach(() => {
+    server.use(
+      http.get(URL_MODELS, () =>
+        HttpResponse.json({
+          object: "list",
+          data: [{ id: "gemini-2.5-flash" }, { id: "openai/gpt-4o" }],
+        }),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  // test_multi_turn_thread — ask twice on same media; thread accumulates turns
+  it("test_multi_turn_thread", async () => {
+    let callCount = 0;
+    server.use(
+      http.post(URL_CHAT, () => {
+        callCount++;
+        return HttpResponse.json({
+          choices: [
+            { message: { content: callCount === 1 ? "First answer." : "Second answer." } },
+          ],
+          usage: { total_tokens: 10 },
+        });
+      }),
+    );
+
+    stubFileReader("data:image/png;base64,aGVsbG8=");
+    const user = userEvent.setup();
+    render(<VisionWorkspace />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /model/i })).toBeInTheDocument(),
+    );
+
+    const fileInput = screen.getByTestId("vision-file-input");
+    await user.upload(fileInput, new File(["img"], "photo.jpg", { type: "image/jpeg" }));
+
+    const textarea = screen.getByRole("textbox", { name: /prompt/i });
+    await user.type(textarea, "First question");
+
+    const askBtn = screen.getByRole("button", { name: /ask/i });
+    await waitFor(() => expect(askBtn).not.toBeDisabled());
+    await user.click(askBtn);
+
+    // First answer appears in thread
+    await screen.findByText("First answer.");
+
+    // Thread container (role="log") must exist
+    expect(screen.getByRole("log")).toBeInTheDocument();
+
+    // Type second follow-up
+    await user.type(textarea, "Second question");
+    await waitFor(() => expect(askBtn).not.toBeDisabled());
+    await user.click(askBtn);
+
+    // Second answer also appears in thread
+    await screen.findByText("Second answer.");
+
+    // Both answers still in the DOM (thread preserved)
+    expect(screen.getByText("First answer.")).toBeInTheDocument();
+    expect(screen.getByText("Second answer.")).toBeInTheDocument();
+    expect(callCount).toBe(2);
+  });
+
+  // test_media_preview_image — after image upload, <img alt="Media preview"> renders
+  it("test_media_preview_image", async () => {
+    stubFileReader("data:image/png;base64,iVBORw0KGgo=");
+    const user = userEvent.setup();
+    render(<VisionWorkspace />);
+
+    const fileInput = screen.getByTestId("vision-file-input");
+    await user.upload(fileInput, new File(["img"], "photo.png", { type: "image/png" }));
+
+    await waitFor(() => {
+      const img = screen.getByRole("img", { name: /media preview/i });
+      expect(img).toBeInTheDocument();
+      expect(img).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=");
+    });
+  });
+
+  // test_media_preview_video — after video upload, <video aria-label="Video preview"> renders
+  it("test_media_preview_video", async () => {
+    stubFileReader("data:video/mp4;base64,AAAAFGZ0");
+    const user = userEvent.setup();
+    render(<VisionWorkspace />);
+
+    const fileInput = screen.getByTestId("vision-file-input");
+    await user.upload(fileInput, new File(["vid"], "clip.mp4", { type: "video/mp4" }));
+
+    await waitFor(() => {
+      const video = screen.getByLabelText(/video preview/i);
+      expect(video).toBeInTheDocument();
+      expect(video.tagName).toBe("VIDEO");
+    });
+  });
+
+  // test_inspector_shows_token_count — after answer with usage, inspector shows token count
+  it("test_inspector_shows_token_count", async () => {
+    server.use(
+      http.post(URL_CHAT, () =>
+        HttpResponse.json({
+          choices: [{ message: { content: "Answer with tokens." } }],
+          usage: { total_tokens: 42, prompt_tokens: 20, completion_tokens: 22 },
+        }),
+      ),
+    );
+
+    stubFileReader("data:image/png;base64,abc");
+    const user = userEvent.setup();
+    render(<VisionWorkspace />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /model/i })).toBeInTheDocument(),
+    );
+
+    const fileInput = screen.getByTestId("vision-file-input");
+    await user.upload(fileInput, new File(["img"], "photo.png", { type: "image/png" }));
+
+    const textarea = screen.getByRole("textbox", { name: /prompt/i });
+    await user.type(textarea, "What is this?");
+
+    const askBtn = screen.getByRole("button", { name: /ask/i });
+    await waitFor(() => expect(askBtn).not.toBeDisabled());
+    await user.click(askBtn);
+
+    await screen.findByText("Answer with tokens.");
+
+    await waitFor(() => {
+      const tokensEl = screen.getByTestId("inspector-tokens");
+      expect(tokensEl).toHaveTextContent("42");
+    });
+  });
+});

@@ -3,6 +3,57 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic versioning.
 
+## [0.6.0] — 2026-06-30
+
+Sixth release. Turns the dashboard's thin AI-feature surfaces into **Console-grade playgrounds** an
+operator can run real work on, and makes the gateway's provider adapters **faithful to the providers'
+published API docs**. Bundles 8 closed milestones since 0.5.0 (chat · voice · memory · artifacts ·
+vision · video playgrounds + v54 UI refinement + proxy-correctness). No breaking changes — every
+change is additive; the playgrounds are pure pass-through over existing gateway endpoints (no backend
+change), and the adapter fixes only add mappings/passthrough. Existing API-key, agent-OAuth,
+OIDC/SSO, session-JWT, billing, and routing behavior is unchanged.
+
+### Added
+
+- **Console-grade AI-feature playgrounds** — the chat, voice, memory, artifacts, vision, and video
+  surfaces rebuilt to OpenAI-Playground / Anthropic-Console quality, reusing one shared Console
+  design language (four UI states, WCAG 2.2 AA, XSS-safe rendering). All are **pure pass-through**
+  over existing gateway endpoints via the Next.js BFF, which mints the server-side `sk-` token
+  (never exposed to the browser), caps bodies at 32 MiB, and streams SSE/audio/video unbuffered:
+  - **Voice** — live hold-to-record microphone capture (getUserMedia/MediaRecorder) → STT → chat →
+    TTS turn loop, TTS-reply autoplay, and a per-turn transcript with models · tokens · latency ·
+    cost plus a running session total.
+  - **Memory** — a two-pane semantic-memory library with search/sort, a detail inspector, and
+    add/delete (relevance scores are shown only when real — never fabricated).
+  - **Artifacts** — a file-manager with typed list + search/sort, XSS-safe inline image/text/JSON
+    preview (blob object URLs, escaped text), drag-drop + picker upload, download, guarded delete.
+  - **Vision** — a multimodal inspector: media preview + a multi-turn markdown Q&A thread over
+    images/video with a model picker and per-response metadata.
+  - **Video** — a generation studio: prompt + params composer, a job gallery with rich status,
+    inline blob-only video preview on success + download, and an honest no-provider-configured
+    degrade.
+- **Polished, responsive app pages** (v54) — UI refinement across the admin/app surfaces for
+  scalable, responsive layouts.
+
+### Fixed
+
+- **Provider-adapter docs-faithfulness** (proxy-correctness) — provider stop reasons now map to the
+  correct OpenAI `finish_reason`: Gemini content-policy finish reasons (`BLOCKLIST`,
+  `PROHIBITED_CONTENT`, `SPII`, `IMAGE_SAFETY`) → `content_filter`; Bedrock
+  `model_context_window_exceeded` → `length`; Anthropic `refusal` → `content_filter`. An Anthropic
+  **mid-stream `error` event** is now surfaced as a terminal SSE error frame instead of being
+  silently dropped. OpenAI speech-to-text now forwards `timestamp_granularities` and
+  `chunking_strategy`. (An audit's "critical" Bedrock SigV4 finding was investigated and **refuted**
+  — the signing name is correctly `bedrock`, pinned against AWS's published test vectors — so the
+  signer was left unchanged.)
+
+### Known deltas (backlog)
+
+35 documented SPEC deltas ride into this release as backlog (e.g. realtime-WS voice modes, OpenRouter
+attribution headers / usage-accounting staleness, Anthropic thinking-token passthrough, OpenAI
+`stream_options.include_usage`, a real video-generation provider adapter). All are additive
+follow-ups; none are security blockers (the release floor reported 0 blockers / 0 waivers).
+
 ## [0.5.0] — 2026-06-27
 
 Fifth release. Makes three previously-deferred capabilities **real** and puts the whole stack on

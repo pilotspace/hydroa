@@ -77,7 +77,6 @@ class AuditRepository:
         rows = result.scalars().all()
         return [_row_to_event(r) for r in rows]
 
-
     async def count_for_tenant(self, tenant_id: uuid.UUID) -> int:
         """Return total count of audit events for a tenant (for pagination envelopes)."""
         result = await self._session.execute(

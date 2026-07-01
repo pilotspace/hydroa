@@ -1,5 +1,12 @@
 # Releases
 
+## 0.6.0 — 2026-06-30
+milestones: v54, voice-playground, memory-playground, artifacts-playground, vision-playground, video-playground, proxy-correctness, chat-playground
+loose tasks: none
+waivers: none
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: Console-grade AI-feature playgrounds (voice·memory·artifacts·vision·video) + chat-playground + v54 UI refinement + proxy adapter docs-faithfulness; dashboard 902/0, gateway +17 adapter tests, 0 blockers/0 waivers; 35 SPEC deltas ride as documented backlog
+
 ## 0.5.0 — 2026-06-27
 milestones: v51, v52, v53
 loose tasks: none

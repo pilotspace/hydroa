@@ -1962,7 +1962,14 @@ class CompletionUseCase:
                     # whole schedule is suppressed so it can NEVER mask the re-raise below
                     # (a cancelled/failed inline attempt is re-covered by the t6.3 sweep).
                     # No await here — _stream_provider was resolved at setup.
-                    if self._cost_recovery is not None and recoverable:
+                    # disconnect_gen_id is already guaranteed non-None when recoverable=True
+                    # (line above: recoverable = ... and bool(disconnect_gen_id)), so this
+                    # extra guard is behavior-preserving and narrows the type for pyright.
+                    if (
+                        self._cost_recovery is not None
+                        and recoverable
+                        and disconnect_gen_id is not None
+                    ):
                         with contextlib.suppress(BaseException):
                             _recovery_task = asyncio.ensure_future(
                                 self._cost_recovery.recover(

@@ -505,6 +505,8 @@ def _map_finish_reason(stop_reason: str | None) -> str:
     max_tokens      → "length"
     stop_sequence   → "stop"
     tool_use        → "tool_calls"
+    refusal         → "content_filter"
+    pause_turn      → "stop"  (server tool pause; no clean OpenAI equivalent)
     None / unknown  → "stop"
     """
     mapping = {
@@ -512,6 +514,9 @@ def _map_finish_reason(stop_reason: str | None) -> str:
         "max_tokens": "length",
         "stop_sequence": "stop",
         "tool_use": "tool_calls",
+        # Content-policy refusal — model declined to respond; maps to OpenAI "content_filter".
+        "refusal": "content_filter",
+        # pause_turn signals a paused server-tool turn; no OpenAI equivalent, falls to "stop".
     }
     return mapping.get(stop_reason or "", "stop")  # type: ignore[arg-type]
 
@@ -787,7 +792,17 @@ class _AnthropicSSEStepper:
             publish_partial_usage(self._prompt_tokens, self._completion_tokens)
 
         elif event_name == "message_stop":
-            yield from self._emit_terminal()
+            if not self._terminal_emitted:
+                yield from self._emit_terminal()
+
+        elif event_name == "error":
+            # Anthropic can emit an error event while HTTP stays 200/open
+            # (e.g. overloaded_error). Convert to an OpenAI-shaped error frame
+            # and terminate the stream so clients never hang on truncation.
+            error_body = _anthropic_error_to_openai(data)
+            yield b"data: " + json.dumps(error_body).encode() + b"\n\n"
+            yield b"data: [DONE]\n\n"
+            self._terminal_emitted = True
 
         # ping / content_block_start / content_block_stop / unknown → ignored
 

@@ -42,7 +42,9 @@ async def signup_tenant(
     assert lr.status_code == 200, f"login failed: {lr.text}"
     token = lr.json()["access_token"]
     kr = await client.post(
-        ADMIN_KEYS, json={"name": f"{tenant_name}-key"}, headers={"Authorization": f"Bearer {token}"}
+        ADMIN_KEYS,
+        json={"name": f"{tenant_name}-key"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert kr.status_code == 201, f"key creation failed: {kr.text}"
     return tenant_id, kr.json()["key_id"]

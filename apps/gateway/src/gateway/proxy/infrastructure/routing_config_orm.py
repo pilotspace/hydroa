@@ -25,14 +25,10 @@ class RoutingConfigRow(Base):
     """The single operator-wide routing config row."""
 
     __tablename__ = "routing_config"
-    __table_args__ = (
-        CheckConstraint("id IS TRUE", name="routing_config_singleton_check"),
-    )
+    __table_args__ = (CheckConstraint("id IS TRUE", name="routing_config_singleton_check"),)
 
     # Fixed-TRUE primary key → at most one row (the upsert always targets id=True).
-    id: Mapped[bool] = mapped_column(
-        Boolean, primary_key=True, server_default=sa_text("true")
-    )
+    id: Mapped[bool] = mapped_column(Boolean, primary_key=True, server_default=sa_text("true"))
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

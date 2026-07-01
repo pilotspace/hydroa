@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "capabilities-admin-surface",
-  "active_milestone": "v55",
+  "active_task": "deterministic-test-isolation",
+  "active_milestone": "gateway-health",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -479,6 +479,293 @@
       "created": "2026-06-28T14:01:49+00:00",
       "updated": "2026-06-28T14:46:39+00:00"
     },
+    "voice-playground-shell": {
+      "title": "Console-grade voice workspace shell + design system",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "voice-playground",
+      "depends_on": [],
+      "created": "2026-06-30T10:57:02+00:00",
+      "updated": "2026-06-30T12:01:07+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "56db07de06e16f36afe98287294d2679",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/voice/",
+          "apps/dashboard/tests-bff/voice-playground.test.tsx",
+          "apps/dashboard/app/(app)/app/voice/page.tsx"
+        ],
+        "snapshot_md5": "5929e41b8f0c32d2f65ab54771a08ff2"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "memory-console-rebuild": {
+      "title": "Console-grade memory library rebuild",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "memory-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:05:20+00:00",
+      "updated": "2026-06-30T12:06:28+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "915034710ee6c801dce1dbebccccf9f0",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/memory/",
+          "apps/dashboard/lib/memories.ts",
+          "apps/dashboard/app/(app)/app/memory/page.tsx",
+          "apps/dashboard/tests-bff/memory-workspace-console.test.tsx"
+        ],
+        "snapshot_md5": "5929e41b8f0c32d2f65ab54771a08ff2"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "artifacts-console-rebuild": {
+      "title": "Console-grade artifact library rebuild",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "artifacts-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:07:49+00:00",
+      "updated": "2026-06-30T12:11:45+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "1340133c9b7bce6cf43b1096b0671565",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/artifacts/",
+          "apps/dashboard/lib/artifacts.ts",
+          "apps/dashboard/app/(app)/app/artifacts/page.tsx",
+          "apps/dashboard/tests-bff/artifacts-workspace.test.tsx"
+        ],
+        "snapshot_md5": "15fa3eddfe068635194415ab137246a3"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "vision-console-rebuild": {
+      "title": "Console-grade vision workspace rebuild",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "vision-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:12:31+00:00",
+      "updated": "2026-06-30T12:13:30+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6d8cca0e9b1fa272c0d21c6cece505bb",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/vision/",
+          "apps/dashboard/lib/vision.ts",
+          "apps/dashboard/app/(app)/app/vision/page.tsx",
+          "apps/dashboard/tests-bff/vision-workspace.test.tsx"
+        ],
+        "snapshot_md5": "15fa3eddfe068635194415ab137246a3"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "video-console-rebuild": {
+      "title": "Console-grade video studio rebuild",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "video-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:14:08+00:00",
+      "updated": "2026-06-30T12:15:03+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "d90fde7c96eb58346e7665338cb83883",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/video/",
+          "apps/dashboard/lib/video.ts",
+          "apps/dashboard/app/(app)/app/video/page.tsx",
+          "apps/dashboard/tests-bff/video-workspace.test.tsx"
+        ],
+        "snapshot_md5": "15fa3eddfe068635194415ab137246a3"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "adapter-correctness-fixes": {
+      "title": "Provider-adapter docs-faithfulness fixes (TDD)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "proxy-correctness",
+      "depends_on": [],
+      "created": "2026-06-30T12:20:20+00:00",
+      "updated": "2026-06-30T12:47:39+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "5252e7eb8afcfc05c29770f2d31fbe6d",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "7dbd7158f8f0848e1b96091483f0e924"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "voice-mic-capture-deferrals": {
+      "title": "Voice mic capture + autoplay + cost (close deferrals)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "voice-playground",
+      "depends_on": [],
+      "created": "2026-06-30T12:31:48+00:00",
+      "updated": "2026-06-30T12:32:56+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "cc0beebdb2c341dcc8246dff7aa82541",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/voice/*",
+          "apps/dashboard/lib/voice-cost.ts",
+          "apps/dashboard/tests-bff/voice-playground.test.tsx"
+        ],
+        "snapshot_md5": "ded7d303fef6bfbc4deac90e67ac0f5b"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "pyright-errors-clean": {
+      "title": "Resolve 12 pyright errors (behavior-preserving)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "gateway-health",
+      "depends_on": [],
+      "created": "2026-06-30T15:41:43+00:00",
+      "updated": "2026-06-30T15:42:59+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ed165e45aed7c7a3e3518decd02c280d",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "b9613852d1ac114e928c0760c5b4094a"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "ruff-format-and-lint-clean": {
+      "title": "ruff format + fix 5 ruff check errors (make lint green)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "gateway-health",
+      "depends_on": [],
+      "created": "2026-06-30T15:43:07+00:00",
+      "updated": "2026-06-30T15:44:09+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c2b2c44f493c36f9701e33abe6828912",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "b9613852d1ac114e928c0760c5b4094a"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "fix-stale-failing-tests": {
+      "title": "Fix 3 stale tests (azure embeddings x2 + guardrails baseline)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "gateway-health",
+      "depends_on": [],
+      "created": "2026-06-30T15:44:16+00:00",
+      "updated": "2026-06-30T15:45:04+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "4053ef9590261091bfbdfb02f58636ff",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "b9613852d1ac114e928c0760c5b4094a"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "deterministic-test-isolation": {
+      "title": "Deterministic test isolation \u2014 kill cross-suite Redis/DB contamination",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "gateway-health",
+      "depends_on": [],
+      "created": "2026-06-30T15:47:46+00:00",
+      "updated": "2026-06-30T16:22:17+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c039738eee4286a3880027c195d2d147",
+        "tests": {}
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
     "model-input-capabilities": {
       "title": "Additive per-model input_modalities catalog descriptor",
       "phase": "done",
@@ -659,6 +946,124 @@
         "source": "git"
       }
     },
+    "voice-playground": {
+      "title": "Voice Playground",
+      "goal": "",
+      "stage": "mvp",
+      "status": "done",
+      "created": "2026-06-30T10:55:41+00:00",
+      "updated": "2026-06-30T12:33:52+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-06-30T10:57:02+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "memory-playground": {
+      "title": "Memory Playground",
+      "goal": "The Memory workspace becomes a Console-grade memory library: searchable/sortable semantic memory with a detail inspector and add/delete, over the existing /v1/memories endpoints.",
+      "stage": "production",
+      "status": "done",
+      "created": "2026-06-30T11:08:38+00:00",
+      "updated": "2026-06-30T12:07:38+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "artifacts-playground": {
+      "title": "Artifacts Playground",
+      "goal": "The Artifacts workspace becomes a Console-grade artifact library/file-manager: typed list with search, inline image/text/JSON preview, drag-drop upload, download and delete, over the existing /v1/artifacts endpoints.",
+      "stage": "production",
+      "status": "done",
+      "created": "2026-06-30T11:08:38+00:00",
+      "updated": "2026-06-30T12:12:24+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "vision-playground": {
+      "title": "Vision Playground",
+      "goal": "The Vision workspace becomes a Console-grade multimodal inspector: media preview, a multi-turn Q&A thread with markdown answers, and a model picker, over /v1/chat/completions image/video content parts.",
+      "stage": "production",
+      "status": "done",
+      "created": "2026-06-30T11:08:38+00:00",
+      "updated": "2026-06-30T12:14:08+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "video-playground": {
+      "title": "Video Playground",
+      "goal": "The Video workspace becomes a Console-grade generation studio: prompt+params composer, a job gallery with rich status, inline video preview on success and download, over the existing async /v1/video/generations jobs.",
+      "stage": "production",
+      "status": "done",
+      "created": "2026-06-30T11:08:39+00:00",
+      "updated": "2026-06-30T12:15:37+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "proxy-correctness": {
+      "title": "Proxy Correctness",
+      "goal": "Every gateway provider adapter maps provider responses to the OpenAI-compatible wire shape faithfully per the providers' published API docs \u2014 closing the real docs-vs-code deltas found by the adapter audit (finish_reason/stop_reason completeness, Anthropic in-stream error surfacing, OpenAI STT passthrough), with the Bedrock SigV4 'CRITICAL' recorded as a verified false-positive.",
+      "stage": "mvp",
+      "status": "done",
+      "created": "2026-06-30T12:19:24+00:00",
+      "updated": "2026-06-30T12:48:20+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-06-30T12:20:11+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "gateway-health": {
+      "title": "Gateway Health",
+      "goal": "Restore the gateway's static-quality gates and test suite to fully green: make lint (ruff check + format) clean, make typecheck (pyright) clean, and the 3 pre-existing failing tests (azure_embeddings credential-fixture \u00d72, guardrails-core stale table invariant) fixed \u2014 so make ci passes end-to-end once CI billing returns. Pre-existing debt accumulated while CI was billing-blocked; surfaced by the v0.6.0 e2e/harden pass.",
+      "stage": "mvp",
+      "status": "done",
+      "created": "2026-06-30T13:51:46+00:00",
+      "updated": "2026-06-30T15:45:50+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-06-30T13:52:30+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
     "v55": {
       "title": "Capability-aware model management",
       "goal": "Every catalog model declares the input types it accepts, and any request carrying an input type the resolved model cannot handle is rejected with a clear structured 4xx before it reaches the provider.",
@@ -682,7 +1087,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-06-30T16:00:42+00:00",
+  "updated": "2026-06-30T16:22:17+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1357,10 +1762,24 @@
   ],
   "active_milestones": [
     "v54",
-    "v55"
+    "v55",
+    "voice-playground",
+    "memory-playground",
+    "artifacts-playground",
+    "vision-playground",
+    "video-playground",
+    "proxy-correctness",
+    "gateway-health"
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
+    "voice-playground": "voice-mic-capture-deferrals",
+    "memory-playground": "memory-console-rebuild",
+    "artifacts-playground": "artifacts-console-rebuild",
+    "vision-playground": "vision-console-rebuild",
+    "video-playground": "video-console-rebuild",
+    "proxy-correctness": "adapter-correctness-fixes",
+    "gateway-health": "deterministic-test-isolation",
     "v55": "capabilities-admin-surface"
   },
   "todos": [
@@ -1380,6 +1799,12 @@
       "id": 3,
       "text": "upgrade UI of each page",
       "created": "2026-06-28T06:35:36+00:00",
+      "status": "open"
+    },
+    {
+      "id": 4,
+      "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
+      "created": "2026-06-30T10:57:02+00:00",
       "status": "open"
     }
   ]

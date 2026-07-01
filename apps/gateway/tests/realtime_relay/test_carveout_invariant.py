@@ -43,9 +43,7 @@ def test_only_websocket_routes_under_realtime_carveout() -> None:
 def test_relay_ws_is_under_the_carveout() -> None:
     """Anchor so the guard above can't pass vacuously: the relay WS IS under the carved-out prefix."""
     app = create_app()
-    ws_paths = {
-        route.path for route in app.routes if isinstance(route, WebSocketRoute)
-    }
+    ws_paths = {route.path for route in app.routes if isinstance(route, WebSocketRoute)}
     assert "/v1/realtime/relay" in ws_paths, (
         "the relay WS /v1/realtime/relay is not registered — the carve-out guard would be vacuous "
         f"(WebSocket routes found: {sorted(ws_paths)})"

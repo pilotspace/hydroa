@@ -101,9 +101,15 @@ async def test_audit_read_roles_403(
 # ---------------------------------------------------------------------------
 async def test_audit_items_shape_and_total(client: Any, db_session: AsyncSession) -> None:
     token, tid = await signup_tenant(client, tenant_name="Audit Shape", email="shape@audit.io")
-    id1 = await seed_audit_event(db_session, tenant_id=tid, action="key.create", created_at=_mins(1))
-    id2 = await seed_audit_event(db_session, tenant_id=tid, action="key.delete", created_at=_mins(2))
-    id3 = await seed_audit_event(db_session, tenant_id=tid, action="user.invite", created_at=_mins(3))
+    id1 = await seed_audit_event(
+        db_session, tenant_id=tid, action="key.create", created_at=_mins(1)
+    )
+    id2 = await seed_audit_event(
+        db_session, tenant_id=tid, action="key.delete", created_at=_mins(2)
+    )
+    id3 = await seed_audit_event(
+        db_session, tenant_id=tid, action="user.invite", created_at=_mins(3)
+    )
 
     resp = await client.get(AUDIT, headers=auth(token))
 
@@ -113,7 +119,16 @@ async def test_audit_items_shape_and_total(client: Any, db_session: AsyncSession
     # newest-first: id3 (_mins(3)) > id2 > id1
     assert [item["id"] for item in body["items"]] == [id3, id2, id1]
     first = body["items"][0]
-    for field in ("id", "actor_email", "action", "target_type", "target_id", "result", "metadata", "created_at"):
+    for field in (
+        "id",
+        "actor_email",
+        "action",
+        "target_type",
+        "target_id",
+        "result",
+        "metadata",
+        "created_at",
+    ):
         assert field in first, f"missing field {field!r} in item: {first}"
     # verify metadata is a dict
     assert isinstance(first["metadata"], dict)
@@ -132,7 +147,9 @@ async def test_audit_items_shape_and_total(client: Any, db_session: AsyncSession
         {"offset": "xyz"},
     ],
 )
-async def test_audit_pagination_bounds(client: Any, db_session: AsyncSession, params: dict[str, str]) -> None:
+async def test_audit_pagination_bounds(
+    client: Any, db_session: AsyncSession, params: dict[str, str]
+) -> None:
     token, _tid = await signup_tenant(
         client,
         tenant_name=f"Audit Bounds {list(params.items())}",
@@ -151,9 +168,15 @@ async def test_audit_tenant_isolation(client: Any, db_session: AsyncSession) -> 
     token_a, tid_a = await signup_tenant(client, tenant_name="Audit Iso A", email="iso-a@audit.io")
     _token_b, tid_b = await signup_tenant(client, tenant_name="Audit Iso B", email="iso-b@audit.io")
 
-    id_a1 = await seed_audit_event(db_session, tenant_id=tid_a, action="key.create", created_at=_mins(1))
-    id_a2 = await seed_audit_event(db_session, tenant_id=tid_a, action="key.delete", created_at=_mins(2))
-    id_b = await seed_audit_event(db_session, tenant_id=tid_b, action="user.invite", created_at=_mins(3))
+    id_a1 = await seed_audit_event(
+        db_session, tenant_id=tid_a, action="key.create", created_at=_mins(1)
+    )
+    id_a2 = await seed_audit_event(
+        db_session, tenant_id=tid_a, action="key.delete", created_at=_mins(2)
+    )
+    id_b = await seed_audit_event(
+        db_session, tenant_id=tid_b, action="user.invite", created_at=_mins(3)
+    )
 
     resp = await client.get(AUDIT, headers=auth(token_a))
 

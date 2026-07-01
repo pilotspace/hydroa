@@ -192,9 +192,9 @@ async def test_read_is_side_effect_free(client: Any, db_session: AsyncSession) -
         db_session, tenant_id=tid, event_type="soft_budget_exceeded", delivered_at=None
     )
 
-    before_count = (
-        await db_session.execute(text("SELECT COUNT(*) FROM alert_events"))
-    ).fetchone()[0]
+    before_count = (await db_session.execute(text("SELECT COUNT(*) FROM alert_events"))).fetchone()[
+        0
+    ]
 
     resp = await client.get(ALERTS, headers=auth(token))
     assert resp.status_code == 200, resp.text
@@ -209,9 +209,9 @@ async def test_read_is_side_effect_free(client: Any, db_session: AsyncSession) -
     ).fetchone()
     assert after is not None  # the original row survives (not deleted/replaced)
     assert after[0] is None
-    after_count = (
-        await db_session.execute(text("SELECT COUNT(*) FROM alert_events"))
-    ).fetchone()[0]
+    after_count = (await db_session.execute(text("SELECT COUNT(*) FROM alert_events"))).fetchone()[
+        0
+    ]
     assert after_count == before_count
 
 

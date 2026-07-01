@@ -1,47 +1,66 @@
 "use client";
 
 /**
- * components/video/VideoWorkspace.tsx — v47 video generation workspace.
+ * components/video/VideoWorkspace.tsx — Console-grade video generation studio.
  *
- * Surfaces:
- *   - A form: model text input + prompt textarea → "Generate" button DISABLED
- *     until BOTH are non-empty. On click → createVideoJob → prepends the returned
- *     job to the list.
- *   - A list of jobs (newest first), each showing its status.
- *   - "Download" action ONLY when status==="succeeded" && result_artifact_id;
- *     click → downloadArtifact(result_artifact_id) → object URL → anchor click.
- *   - Failed jobs show their error verbatim, with a friendly special-case for
- *     "no_video_provider_configured". No Download button for failed jobs.
- *   - POLLING (design-for-failure): active ONLY while any job is queued/running;
- *     each tick calls listVideoJobs() and merges the result; cleared when all jobs
- *     are terminal AND on unmount; a poll error shows a soft inline banner and
- *     keeps the last good list — no poll-storm.
- *   - Four states: empty / submitting / error / data.
- *   - WCAG-AA: labels, button states, aria-live regions.
+ * Layout: two-panel split — Composer (left sidebar) + Gallery (right, scrollable).
+ * Mirrors the chat Console visual language (same border/bg tokens, header bar,
+ * left-panel/main-panel split). Pure BFF pass-through — no direct gateway calls.
  *
- * All network calls go to /api/gw/... (the BFF) — never the gateway directly.
- * No tenant id is ever sent client-side.
+ * Composer (left):
+ *   Model picker (catalog datalist), prompt textarea, optional params
+ *   (duration_seconds, aspect_ratio), Generate button.
  *
- * The `pollIntervalMs` prop (default 2000) is exposed so tests can inject a
- * shorter interval and verify polling behaviour with real timers.
+ * Gallery (right, newest-first):
+ *   Rich job cards — status badge, prompt excerpt, model, timestamp.
+ *   • queued/running: animated spinner badge.
+ *   • succeeded: inline <video controls> player (blob → objectURL, auto-loaded)
+ *                + Download button (reuses cached URL → anchor click).
+ *   • failed: friendly error text; special-case "no_video_provider_configured".
+ *
+ * Design-for-failure:
+ *   Polling stops when all jobs are terminal or on unmount (no storm).
+ *   Soft poll errors keep last-good list. Initial load error shows inline (form live).
+ *   Video blob auto-load failures are silent (preview unavailable, download falls back).
+ *   All object URLs revoked on unmount — no memory leak.
+ *
+ * Security: video blobs fetched via BFF (/api/gw/*) only. No raw-HTML injection.
+ *
+ * The `pollIntervalMs` prop (default 2000) allows tests to inject a fast interval.
+ *
+ * WCAG 2.2 AA:
+ *   One <h1> "Video"; <h2> "Compose" + sr-only "Video jobs"; aria-label on aside/main.
+ *   Decorative icons aria-hidden; buttons with explicit aria-label or visible label.
+ *   Loading: role=status+aria-busy. Errors: role=alert. Poll banner: role=alert+aria-live.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Download, Film, Clapperboard, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ErrorState, Loading } from "@/components/ui/states";
+import { Badge } from "@/components/ui/badge";
+import { Empty, ErrorState, Loading } from "@/components/ui/states";
 import { createVideoJob, listVideoJobs, type VideoJob } from "@/lib/video";
 import { downloadArtifact } from "@/lib/artifacts";
 import { BffError } from "@/lib/bff-client";
 import { useCatalogModels, narrowModels } from "@/lib/hooks/use-catalog-models";
 
-// ── constants ──────────────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const NO_PROVIDER_CODE = "no_video_provider_configured";
-const NO_PROVIDER_MSG = "Video generation isn't configured yet.";
+const NO_PROVIDER_MSG =
+  "Video generation isn't configured yet. Ask your admin to configure a video provider.";
 
-// ── helpers ────────────────────────────────────────────────────────────────────
+const ASPECT_OPTIONS = [
+  { value: "", label: "Default" },
+  { value: "16:9", label: "16:9 — Landscape" },
+  { value: "9:16", label: "9:16 — Portrait" },
+  { value: "1:1", label: "1:1 — Square" },
+  { value: "4:3", label: "4:3 — Standard" },
+];
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function isTerminal(status: VideoJob["status"]): boolean {
   return status === "succeeded" || status === "failed";
@@ -57,16 +76,110 @@ function friendlyError(error: string | null): string {
   return error;
 }
 
-// ── download helper ────────────────────────────────────────────────────────────
+function formatTs(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
 
-async function triggerDownload(artifactId: string): Promise<void> {
-  const blob = await downloadArtifact(artifactId);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `video-${artifactId}`;
-  a.click();
-  URL.revokeObjectURL(url);
+function extractBffMessage(err: unknown): string {
+  if (err instanceof BffError) return err.problem?.title ?? err.message;
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+// ── StatusBadge ────────────────────────────────────────────────────────────────
+
+type BadgeVariant = "default" | "secondary" | "outline" | "success" | "warning" | "destructive";
+
+const STATUS_VARIANT: Record<VideoJob["status"], BadgeVariant> = {
+  queued: "secondary",
+  running: "warning",
+  succeeded: "success",
+  failed: "destructive",
+};
+
+function StatusBadge({ status }: { status: VideoJob["status"] }) {
+  return (
+    <Badge variant={STATUS_VARIANT[status]} className="shrink-0 capitalize">
+      {status === "running" && (
+        <Loader2 className="mr-1 size-2.5 animate-spin" aria-hidden="true" />
+      )}
+      {status}
+    </Badge>
+  );
+}
+
+// ── JobCard ────────────────────────────────────────────────────────────────────
+
+interface JobCardProps {
+  job: VideoJob;
+  videoUrl: string | undefined;
+  downloadError: string | undefined;
+  onDownload: (job: VideoJob) => void;
+}
+
+function JobCard({ job, videoUrl, downloadError, onDownload }: JobCardProps) {
+  return (
+    <li className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4 shadow-sm">
+      {/* Header row: prompt + status */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{job.prompt}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {job.model} · {formatTs(job.created_at)}
+          </p>
+        </div>
+        <StatusBadge status={job.status} />
+      </div>
+
+      {/* Inline video player (succeeded + blob URL loaded) */}
+      {job.status === "succeeded" && videoUrl && (
+        <div className="overflow-hidden rounded-lg bg-black">
+          <video
+            src={videoUrl}
+            controls
+            className="w-full"
+            aria-label="Video preview"
+          />
+        </div>
+      )}
+
+      {/* Failed: friendly error text */}
+      {job.status === "failed" && (
+        <p className="text-sm text-destructive" aria-live="polite">
+          {friendlyError(job.error)}
+        </p>
+      )}
+
+      {/* Download button (succeeded with artifact only) */}
+      {job.status === "succeeded" && job.result_artifact_id && (
+        <div className="flex flex-col gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onDownload(job)}
+            className="self-start gap-1.5"
+            aria-label={`Download video for job ${job.id}`}
+          >
+            <Download className="size-3.5" aria-hidden="true" />
+            Download
+          </Button>
+          {downloadError && (
+            <p className="text-xs text-destructive">{downloadError}</p>
+          )}
+        </div>
+      )}
+    </li>
+  );
 }
 
 // ── VideoWorkspace ─────────────────────────────────────────────────────────────
@@ -76,41 +189,43 @@ type LoadState =
   | { kind: "idle" }
   | { kind: "error"; message: string };
 
-interface VideoWorkspaceProps {
-  /** Poll interval in ms. Default 2000. Pass a shorter value in tests. */
+export interface VideoWorkspaceProps {
+  /** Poll interval in ms. Default 2000. Inject a shorter value in tests. */
   pollIntervalMs?: number;
 }
 
 export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
-  // ── form fields ──────────────────────────────────────────────────────────────
+  // ── Form state ───────────────────────────────────────────────────────────────
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [duration, setDuration] = useState(0); // 0 = not set
+  const [aspectRatio, setAspectRatio] = useState("");
 
-  // Autocomplete suggestions from the configured catalog (video-gen models first);
-  // free-text preserved so a catalog-omitted model (e.g. "google/veo-2") still works.
+  // Catalog autocomplete — video-gen models first; field stays free-text
   const catalogModels = useCatalogModels();
   const videoSuggestions = useMemo(
     () => narrowModels(catalogModels, /veo|video|sora|gen/i),
     [catalogModels],
   );
 
-  // ── job list ─────────────────────────────────────────────────────────────────
+  // ── Job list + async state ───────────────────────────────────────────────────
   const [jobs, setJobs] = useState<VideoJob[]>([]);
-
-  // ── load/submit state ────────────────────────────────────────────────────────
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [submitting, setSubmitting] = useState(false);
-
-  // ── soft poll-error banner (does not replace the list) ───────────────────────
   const [pollError, setPollError] = useState<string | null>(null);
-
-  // ── download per-job error ────────────────────────────────────────────────────
   const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
 
-  // ── polling ref ──────────────────────────────────────────────────────────────
+  // ── Video preview blob cache ─────────────────────────────────────────────────
+  // Maps job.id → object URL; loaded lazily when a succeeded job appears.
+  const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
+  // Ref: tracks ALL created URLs for guaranteed cleanup; prevents double-load.
+  const videoUrlsRef = useRef<Record<string, string>>({});
+  // Tracks which jobs we've already started loading so we don't double-fetch.
+  const loadingJobsRef = useRef<Set<string>>(new Set());
+
+  // ── Polling ──────────────────────────────────────────────────────────────────
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── stop poll helper ──────────────────────────────────────────────────────────
   function stopPoll() {
     if (intervalRef.current !== null) {
       clearInterval(intervalRef.current);
@@ -118,7 +233,6 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
     }
   }
 
-  // ── start poll helper ─────────────────────────────────────────────────────────
   function startPoll() {
     if (intervalRef.current !== null) return; // already running
     intervalRef.current = setInterval(() => {
@@ -126,24 +240,16 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
         .then(({ jobs: fetched }) => {
           setPollError(null);
           setJobs(fetched);
-          if (allTerminal(fetched)) {
-            stopPoll();
-          }
+          if (allTerminal(fetched)) stopPoll();
         })
         .catch((err: unknown) => {
-          // Soft error — keep last good list, do NOT accelerate the interval
-          const msg =
-            err instanceof BffError
-              ? (err.problem?.title ?? err.message)
-              : err instanceof Error
-                ? err.message
-                : "Poll failed";
-          setPollError(msg);
+          // Soft error: keep last-good list, no accelerating
+          setPollError(extractBffMessage(err) || "Poll failed");
         });
     }, pollIntervalMs);
   }
 
-  // ── initial load ──────────────────────────────────────────────────────────────
+  // ── Initial load ─────────────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;
 
@@ -152,20 +258,11 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
         if (!active) return;
         setJobs(fetched);
         setLoadState({ kind: "idle" });
-        // Start polling only if any job is non-terminal
-        if (fetched.some((j) => !isTerminal(j.status))) {
-          startPoll();
-        }
+        if (fetched.some((j) => !isTerminal(j.status))) startPoll();
       })
       .catch((err: unknown) => {
         if (!active) return;
-        const msg =
-          err instanceof BffError
-            ? (err.problem?.title ?? err.message)
-            : err instanceof Error
-              ? err.message
-              : "Failed to load jobs";
-        setLoadState({ kind: "error", message: msg });
+        setLoadState({ kind: "error", message: extractBffMessage(err) || "Failed to load jobs" });
       });
 
     return () => {
@@ -175,7 +272,7 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── watch jobs: start/stop poll whenever the job list changes ────────────────
+  // ── Start/stop poll when job list changes ─────────────────────────────────────
   useEffect(() => {
     if (loadState.kind !== "idle") return;
     if (jobs.some((j) => !isTerminal(j.status))) {
@@ -186,32 +283,99 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobs, loadState.kind]);
 
-  // ── submit handler ────────────────────────────────────────────────────────────
+  // ── Auto-load video blobs for succeeded jobs ──────────────────────────────────
+  // For each succeeded job with result_artifact_id that we haven't started loading,
+  // fetch the blob and store an object URL. Failures are silent (preview unavailable;
+  // the Download button falls back to a fresh fetch).
+  useEffect(() => {
+    const pending = jobs.filter(
+      (j) =>
+        j.status === "succeeded" &&
+        j.result_artifact_id != null &&
+        !loadingJobsRef.current.has(j.id) &&
+        videoUrlsRef.current[j.id] === undefined,
+    );
+
+    for (const job of pending) {
+      const artifactId = job.result_artifact_id!;
+      loadingJobsRef.current.add(job.id);
+
+      downloadArtifact(artifactId)
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          videoUrlsRef.current[job.id] = url;
+          setVideoUrls((prev) => ({ ...prev, [job.id]: url }));
+        })
+        .catch(() => {
+          // Silently fail — video preview unavailable; download still works
+          loadingJobsRef.current.delete(job.id);
+        });
+    }
+  }, [jobs]);
+
+  // ── Cleanup: revoke all object URLs on unmount ───────────────────────────────
+  useEffect(() => {
+    // Snapshot the ref map at effect creation time to satisfy the linter rule
+    // "ref value will have changed by cleanup time". The ref is mutated in place
+    // so snapshotting the object itself is sufficient — the same properties are
+    // revoked regardless of when cleanup runs.
+    const urlMapRef = videoUrlsRef;
+    return () => {
+      const urls = Object.values(urlMapRef.current);
+      for (const url of urls) {
+        if (url) URL.revokeObjectURL(url);
+      }
+    };
+  }, []);
+
+  // ── Submit handler ────────────────────────────────────────────────────────────
   async function handleGenerate() {
     if (!model.trim() || !prompt.trim()) return;
     setSubmitting(true);
     try {
-      const job = await createVideoJob({ model: model.trim(), prompt: prompt.trim() });
-      // Prepend new job (newest first)
+      const args: Parameters<typeof createVideoJob>[0] = {
+        model: model.trim(),
+        prompt: prompt.trim(),
+      };
+      // Only include params when user has set a value — keeps call identical to
+      // the no-params path so `toHaveBeenCalledWith({model, prompt})` tests pass.
+      const extraParams: Record<string, unknown> = {};
+      if (duration > 0) extraParams.duration_seconds = duration;
+      if (aspectRatio) extraParams.aspect_ratio = aspectRatio;
+      if (Object.keys(extraParams).length > 0) args.params = extraParams;
+
+      const job = await createVideoJob(args);
       setJobs((prev) => [job, ...prev]);
     } catch (err: unknown) {
-      const msg =
-        err instanceof BffError
-          ? (err.problem?.title ?? err.message)
-          : err instanceof Error
-            ? err.message
-            : "Failed to create job";
-      setLoadState({ kind: "error", message: msg });
+      setLoadState({ kind: "error", message: extractBffMessage(err) || "Failed to create job" });
     } finally {
       setSubmitting(false);
     }
   }
 
-  // ── download handler ──────────────────────────────────────────────────────────
-  async function handleDownload(job: VideoJob) {
+  // ── Download handler ──────────────────────────────────────────────────────────
+  // Reuses the cached object URL when the inline player already loaded the blob.
+  // Falls back to a fresh downloadArtifact call when the cache isn't ready yet.
+  const handleDownload = useCallback(async (job: VideoJob) => {
     if (!job.result_artifact_id) return;
     try {
-      await triggerDownload(job.result_artifact_id);
+      const cachedUrl = videoUrlsRef.current[job.id];
+      if (cachedUrl) {
+        // Reuse cached blob URL — no extra network call, don't revoke (player uses it)
+        const a = document.createElement("a");
+        a.href = cachedUrl;
+        a.download = `video-${job.id}`;
+        a.click();
+      } else {
+        // Fallback: fetch a fresh blob and trigger download
+        const blob = await downloadArtifact(job.result_artifact_id);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `video-${job.id}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
       setDownloadErrors((prev) => {
         const next = { ...prev };
         delete next[job.id];
@@ -221,83 +385,144 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
       const msg = err instanceof Error ? err.message : "Download failed";
       setDownloadErrors((prev) => ({ ...prev, [job.id]: msg }));
     }
-  }
+  }, []);
 
-  // ── derived ───────────────────────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────────
   const isGenerateDisabled = !model.trim() || !prompt.trim() || submitting;
 
-  // ── render ────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-h-0 flex-col bg-muted/30">
-      <header className="border-b border-border bg-background px-6 py-3">
-        <h1 className="text-lg font-semibold text-foreground">Video</h1>
+
+      {/* ── Top bar ─────────────────────────────────────────────────────────── */}
+      <header className="flex items-center gap-2.5 border-b border-border bg-background px-6 py-3">
+        <Film className="size-4 text-muted-foreground" aria-hidden="true" />
+        <h1 className="text-sm font-semibold text-foreground">Video</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      {/* ── Body: two-panel split ────────────────────────────────────────────── */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
 
-          {/* ── Generate form ───────────────────────────────────────────────── */}
-          <section
-            aria-labelledby="video-heading"
-            className="flex flex-col gap-4 rounded-xl border border-border bg-background p-6"
-          >
-            <h2 id="video-heading" className="text-base font-semibold text-foreground">
-              Generate a video
-            </h2>
+        {/* ── Left: Composer ──────────────────────────────────────────────────── */}
+        <aside
+          className="flex w-80 flex-shrink-0 flex-col gap-5 overflow-y-auto border-r border-border bg-background p-5"
+          aria-label="Video generator"
+        >
+          <div className="flex items-center gap-2">
+            <Clapperboard className="size-4 text-muted-foreground" aria-hidden="true" />
+            <h2 className="text-sm font-semibold text-foreground">Compose</h2>
+          </div>
 
-            {/* ── Model input ─────────────────────────────────────────────── */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="video-model" className="text-sm font-medium text-foreground">
-                Model
-              </label>
-              <Input
-                id="video-model"
-                type="text"
-                aria-label="Model"
-                list="video-model-options"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="e.g. google/veo-2"
-              />
-              <datalist id="video-model-options">
-                {videoSuggestions.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
-            </div>
+          {/* Model */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="video-model" className="text-xs font-medium text-foreground">
+              Model
+            </label>
+            <Input
+              id="video-model"
+              type="text"
+              aria-label="Model"
+              list="video-model-options"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="e.g. google/veo-2"
+            />
+            <datalist id="video-model-options">
+              {videoSuggestions.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
 
-            {/* ── Prompt textarea ─────────────────────────────────────────── */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="video-prompt" className="text-sm font-medium text-foreground">
-                Prompt
-              </label>
-              <Textarea
-                id="video-prompt"
-                aria-label="Prompt"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe the video you want to generate…"
-                rows={3}
-              />
-            </div>
+          {/* Prompt */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="video-prompt" className="text-xs font-medium text-foreground">
+              Prompt
+            </label>
+            <Textarea
+              id="video-prompt"
+              aria-label="Prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Describe the video you want to generate…"
+              rows={4}
+              className="resize-none"
+            />
+          </div>
 
-            {/* ── Generate button ─────────────────────────────────────────── */}
-            <Button
-              type="button"
-              onClick={handleGenerate}
-              disabled={isGenerateDisabled}
-              aria-disabled={isGenerateDisabled}
+          {/* Optional: Duration */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="video-duration" className="text-xs font-medium text-foreground">
+              Duration{" "}
+              <span className="font-normal text-muted-foreground">(seconds · optional)</span>
+            </label>
+            <Input
+              id="video-duration"
+              type="number"
+              aria-label="Duration in seconds"
+              min={0}
+              max={300}
+              step={1}
+              value={duration || ""}
+              onChange={(e) => setDuration(Number(e.target.value) || 0)}
+              placeholder="e.g. 10"
+            />
+          </div>
+
+          {/* Optional: Aspect ratio */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="video-aspect" className="text-xs font-medium text-foreground">
+              Aspect ratio{" "}
+              <span className="font-normal text-muted-foreground">(optional)</span>
+            </label>
+            <select
+              id="video-aspect"
+              aria-label="Aspect ratio"
+              value={aspectRatio}
+              onChange={(e) => setAspectRatio(e.target.value)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              {submitting ? "Submitting…" : "Generate"}
-            </Button>
+              {ASPECT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            {/* ── Submit / load error ─────────────────────────────────────── */}
-            {loadState.kind === "error" && (
-              <ErrorState title={loadState.message} />
+          {/* Generate */}
+          <Button
+            type="button"
+            onClick={handleGenerate}
+            disabled={isGenerateDisabled}
+            aria-disabled={isGenerateDisabled}
+            className="w-full gap-1.5"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                Submitting…
+              </>
+            ) : (
+              <>
+                <Video className="size-4" aria-hidden="true" />
+                Generate
+              </>
             )}
-          </section>
+          </Button>
 
-          {/* ── Poll error banner (soft — list still visible) ───────────────── */}
+          {/* Initial load / submit error */}
+          {loadState.kind === "error" && (
+            <ErrorState title={loadState.message} />
+          )}
+        </aside>
+
+        {/* ── Right: Gallery ──────────────────────────────────────────────────── */}
+        <main
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6"
+          aria-label="Video gallery"
+        >
+          {/* Soft poll-error banner (list remains visible) */}
           {pollError && (
             <p
               role="alert"
@@ -308,13 +533,18 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
             </p>
           )}
 
-          {/* ── Job list ────────────────────────────────────────────────────── */}
+          {/* Job list states */}
           {loadState.kind === "loading" ? (
-            <Loading label="Loading jobs…" />
+            <div className="flex flex-1 items-center justify-center">
+              <Loading label="Loading jobs…" />
+            </div>
           ) : jobs.length === 0 ? (
-            <p className="text-center text-sm text-muted-foreground py-8">
-              No video jobs yet. Fill in the form above and click Generate.
-            </p>
+            <div className="flex flex-1 items-center justify-center">
+              <Empty
+                title="No video jobs yet"
+                description="Fill in the composer on the left and click Generate to start your first generation."
+              />
+            </div>
           ) : (
             <section aria-labelledby="jobs-heading">
               <h2 id="jobs-heading" className="sr-only">
@@ -322,74 +552,20 @@ export function VideoWorkspace({ pollIntervalMs = 2000 }: VideoWorkspaceProps) {
               </h2>
               <ul className="flex flex-col gap-3">
                 {jobs.map((job) => (
-                  <li
+                  <JobCard
                     key={job.id}
-                    className="flex flex-col gap-2 rounded-xl border border-border bg-background p-4"
-                  >
-                    {/* ── Job header ───────────────────────────────────────── */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {job.prompt}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{job.model}</p>
-                      </div>
-                      <StatusBadge status={job.status} />
-                    </div>
-
-                    {/* ── Error message ────────────────────────────────────── */}
-                    {job.status === "failed" && (
-                      <p className="text-sm text-destructive" aria-live="polite">
-                        {friendlyError(job.error)}
-                      </p>
-                    )}
-
-                    {/* ── Download button (succeeded + has artifact only) ───── */}
-                    {job.status === "succeeded" && job.result_artifact_id && (
-                      <div className="flex flex-col gap-1">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownload(job)}
-                          aria-label={`Download video for job ${job.id}`}
-                        >
-                          Download
-                        </Button>
-                        {downloadErrors[job.id] && (
-                          <p className="text-xs text-destructive">
-                            {downloadErrors[job.id]}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </li>
+                    job={job}
+                    videoUrl={videoUrls[job.id]}
+                    downloadError={downloadErrors[job.id]}
+                    onDownload={handleDownload}
+                  />
                 ))}
               </ul>
             </section>
           )}
+        </main>
 
-        </div>
       </div>
     </div>
-  );
-}
-
-// ── StatusBadge ────────────────────────────────────────────────────────────────
-
-const STATUS_STYLES: Record<VideoJob["status"], string> = {
-  queued: "bg-muted text-muted-foreground",
-  running: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  succeeded: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  failed: "bg-destructive/10 text-destructive",
-};
-
-function StatusBadge({ status }: { status: VideoJob["status"] }) {
-  return (
-    <span
-      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[status]}`}
-    >
-      {status}
-    </span>
   );
 }

@@ -204,7 +204,9 @@ async def test_full_journey_bills_tenant(
     assert rec["tenant_id"] == tenant_id, f"tenant_id mismatch: {rec['tenant_id']} != {tenant_id}"
     assert rec["status"] == 200
     # key_id must be the agent token's id, not the tenant/user id (now a REAL, unconditional assert)
-    assert str(rec["key_id"]) == token_id, f"key_id should be token_id {token_id}, got {rec['key_id']}"
+    assert str(rec["key_id"]) == token_id, (
+        f"key_id should be token_id {token_id}, got {rec['key_id']}"
+    )
 
 
 # ---------------------------------------------------------------------------

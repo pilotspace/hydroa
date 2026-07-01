@@ -158,7 +158,9 @@ class TestRenameConversation:
         assert get_resp.status_code == 200
         assert get_resp.json()["title"] == "After"
 
-    async def test_rename_reflected_in_list(self, client: Any, api_key_info: dict[str, str]) -> None:
+    async def test_rename_reflected_in_list(
+        self, client: Any, api_key_info: dict[str, str]
+    ) -> None:
         """After PATCH, GET /v1/conversations returns the new title in the list."""
         create_resp = await client.post(
             "/v1/conversations",
