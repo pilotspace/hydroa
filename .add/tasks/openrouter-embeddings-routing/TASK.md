@@ -757,6 +757,78 @@ Run (2026-07-01, from `apps/gateway/`):
 
 Result: **PASS** — all three assertions held; script printed `OER13 LIVE-VERIFY: PASS`.
 
+### OER14 — follow-up: real catalog sync through the actual Hydroa HTTP route, persisted to the
+real dev DB (Tin asked, post-gate, 2026-07-01: "we need get evidence by call on Hydroa" /
+"retry to sync all models from opnerouter to make sure data persistence into db")
+
+Scope: OER13 called `embed()`/`list_embedding_models()` directly, bypassing the HTTP app entirely
+— sufficient to retire the payload-pass-through risk, but not "a call on Hydroa" itself. This
+follow-up calls the real `POST /internal/catalog/sync` route on `create_app(Settings())` (the
+actual composition root, unmodified) via `httpx.ASGITransport`, against the real running
+`hydroa-dev-postgres-1` (`gateway_test` DB, port 5433) — no fakes, no drop_all (schema already
+present from prior work; the route's own `Base.metadata.create_all` bootstrap is additive-only).
+Health-checker disabled (`health_check_interval_seconds=0`) to avoid unrelated live provider
+pings during the run; catalog fetch itself needs no API key (OpenRouter's `/models` and
+`/embeddings/models` are public endpoints).
+
+Run (2026-07-01):
+1. Direct-use-case sync (`SyncCatalogUseCase` wired exactly as `get_sync_use_case` wires it) —
+   `synced=364` (338 chat + 26 embedding). DB before: 0 rows (never synced in this environment).
+   DB after: 364 rows, all `active=true`; `google/gemini-embedding-2` persisted with
+   `modality="embedding" provider="openrouter" context_length=8192`.
+2. Re-ran the same sync — `synced=364` again, DB total still 364 (no duplicate rows; ON CONFLICT
+   DO UPDATE confirmed idempotent against real Postgres, not just the unit-test double).
+3. `POST /internal/catalog/sync` through the actual FastAPI route (`httpx.ASGITransport(app=
+   create_app(settings))`) → `200 {"synced":364}`. DB re-queried after: total=364,
+   embedding=26, chat=338, active=364 — unchanged from steps 1-2, confirming the route calls the
+   identical production path (it does — `sync_catalog` handler is a 2-line pass-through to
+   `SyncCatalogUseCase.execute()`, no divergent logic to re-prove).
+
+Result: **PASS** — real persistence into the real dev Postgres confirmed via the actual HTTP
+route, idempotent on retry, `google/gemini-embedding-2` and all 25 other OpenRouter embedding
+models correctly classified `modality="embedding"` with zero manual DB edits.
+
+### OER15 — full-stack live-verify: real tenant, real BYOK, real sk- key, real billed
+`POST /v1/embeddings`, real `usage_records` row (Tin: "perform live-verified", 2026-07-01,
+closing the gap OER13/OER14 explicitly left open — tenant-attributed billing was still unproven)
+
+Scope: the full production request path with zero fakes/mocks — `create_app(Settings())`
+(the actual composition root) driven via `httpx.ASGITransport`, against the real
+`hydroa-dev-postgres-1`/`hydroa-dev-redis-1` containers. An ephemeral Fernet key was generated
+in-process for `provider_key_encryption_key` (never written to `.env` or printed) since none was
+configured; the real `OPENROUTER_API_KEY` was read from `.env` and never logged (only an 8-char
+redacted prefix printed for any secret-bearing response). Script was session-scratch, not
+committed.
+
+Run (2026-07-01):
+1. `POST /admin/auth/signup` → 201, real tenant + owner user created.
+2. `POST /admin/auth/login` → 200, real JWT issued.
+3. `PUT /admin/provider-keys/openrouter` (owner JWT, real `OPENROUTER_API_KEY`) → 200, Fernet-
+   encrypted into `tenant_provider_keys` (confirmed via direct row read: `secret_enc`/`extra_enc`
+   are opaque ciphertext, `auth_mode` unset — bearer path).
+4. `POST /internal/catalog/sync` → 200 `{"synced":364}` (same evidence as OER14).
+5. `POST /admin/keys` (owner JWT) → 201, real sk- key minted.
+6. `POST /v1/embeddings` (`Authorization: Bearer <sk-key>`, `model="google/gemini-embedding-2"`)
+   → real 200, 3072-dim vector, `usage={"prompt_tokens":10,"total_tokens":10,"cost":2e-06,...}`.
+7. Usage recording is fire-and-forget into a Redis Stream (`usage:events`), normally drained by
+   `UsageLedgerFlusher` every 1s under the app's lifespan; since this script never runs lifespan,
+   `flush_once()` was called explicitly. Queried `usage_records` directly afterward:
+   `tenant_id=019f1c64-0a52-7f55-b051-e54fe2e6b6a4 key_id=019f1c64-0d39-7b85-91b6-e37265fc7996
+   model_id=google/gemini-embedding-2 prompt_tokens=10 cost_usd=0.00000240 status=200
+   usage_source=frame` — a real, durably persisted, tenant-and-key-attributed billing row,
+   FK-valid against the real `tenants`/`api_keys` rows.
+
+Environmental note: an unrelated concurrent process was independently resetting this shared dev
+DB's schema (`Base.metadata.drop_all`/`create_all` cycles) during this run — caused two prior
+attempts to fail (one `ForeignKeyViolationError` when the tenant vanished mid-script, one real
+Postgres `DeadlockDetectedError` between the two processes). Not caused by and unrelated to this
+task's code; matches this project's known "one process at a time on :5433" constraint. Confirmed
+`pg_stat_activity` was quiescent (0 other connections) immediately before the run that succeeded.
+
+Result: **PASS** — full request path proven for real: tenant → BYOK → sk- key → billed embeddings
+call → durable, FK-valid, tenant-attributed `usage_records` row. Retires the gap OER13 explicitly
+scoped out (tenant billing attribution) and OER14 left open (Redis→Postgres flush path).
+
 ### GATE RECORD
 Outcome: PASS
 Reviewed by: Tin Dang · date: 2026-07-01
