@@ -228,6 +228,36 @@ class OpenRouterCompletionUpstream:
             metrics_registry=self._metrics_registry,
         )
 
+    async def embed(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        """Forward a non-streaming embeddings request to OpenRouter via the retry seam.
+
+        POSTs `payload` UNMODIFIED to /embeddings — no _maybe_inject_web_search /
+        _maybe_inject_usage_accounting (chat-only concerns; embeddings requests
+        carry no tools/web_search fields). Same execute_with_retry seam, same
+        breaker/auth/timeout contract as complete() (openrouter-embeddings-routing
+        TASK.md §3): non-200 passed through as (status, body); network/timeout
+        errors raise UpstreamUnavailableError; CircuitOpenError re-raised from
+        breaker.guard().
+        """
+
+        async def _do_request() -> httpx.Response:
+            return await self._client.post(
+                "/embeddings",
+                json=payload,
+                headers=self._auth_headers(),
+            )
+
+        return await execute_with_retry(
+            _do_request,
+            lambda resp: (resp.status_code, resp.json()),
+            breaker=self._breaker,
+            provider="openrouter",
+            max_retries=self._max_retries,
+            backoff_base=self._backoff_base,
+            deadline_s=self._retry_deadline_s,
+            metrics_registry=self._metrics_registry,
+        )
+
     async def get_generation(self, generation_id: str) -> GenerationCost | None:
         """Fetch a past generation's authoritative cost + native token usage.
 
