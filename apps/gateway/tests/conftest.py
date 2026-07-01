@@ -33,25 +33,38 @@ TEST_DATABASE_URL = os.environ.get(
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
 
-async def _clear_usage_leaks_if_reachable(redis_url: str) -> None:
-    """Clear leaked usage state in the test Redis (db 9); no-op if Redis is unreachable.
+_PRESERVE_KEYS = (b"usage:events", "usage:events")
 
-    SURGICAL — must NOT destroy the flusher's consumer group: a blanket FLUSHDB deletes
-    the `usage:events` stream together with its `ledger-flusher` consumer group, which
-    breaks every flusher-driving suite (NOGROUP on XREADGROUP) and makes the suite 3x
-    slower as those tests retry on broken state. Instead:
-      - XTRIM usage:events to 0 entries → clears the leaked UNDELIVERED backlog (the
-        FK-violation channel) while PRESERVING the consumer group.
-      - DEL the usage:spend:* counters → clears the "varying counts" channel.
-    Graceful degradation (no-op when Redis absent) keeps the no-infra `make test-fast`
-    suites runnable; redis-dependent suites still fail via their own redis_client fixtures.
+
+async def _clear_usage_leaks_if_reachable(redis_url: str) -> None:
+    """Reset the test Redis (db 9) to a clean slate per test; no-op if Redis is unreachable.
+
+    FULL cross-suite isolation, but still SURGICAL — must NOT destroy the flusher's
+    consumer group: a blanket FLUSHDB deletes the `usage:events` stream together with its
+    `ledger-flusher` consumer group, which breaks every flusher-driving suite (NOGROUP on
+    XREADGROUP) and makes the suite 3x slower as those tests retry on broken state.
+
+    The deterministic-test-isolation task (2026-06-30) widened this from a usage-only
+    clear (XTRIM usage:events + DEL usage:spend:*) to delete EVERY key EXCEPT the
+    `usage:events` stream, because the narrow clear left `resp-cache:` / `ratelimit:` /
+    worker-counter keys to accumulate across suites (or inherit from a prior partial run)
+    and contaminate later stateful suites — the source of the full-suite flakiness
+    (response_caching / routing_config_store / openrouter_cost_recovery / pii_v2 passed in
+    isolation but failed together). Net per test:
+      - XTRIM usage:events to 0 → clears the UNDELIVERED backlog (the FK-violation channel)
+        while PRESERVING the stream + its consumer group.
+      - DEL every other key (resp-cache:, embed-cache:, ratelimit:, bandwidth:, soft_budget:,
+        worker sweeps, …) → no inherited Redis state of ANY namespace bleeds across tests.
+    All test fixtures are function-scoped (app recreated per test) and no suite seeds Redis
+    at module/session scope, so per-test full clear is safe. Graceful degradation (no-op when
+    Redis absent) keeps the no-infra `make test-fast` suites runnable.
     """
     r = aioredis.from_url(redis_url)
     try:
         await r.xtrim("usage:events", maxlen=0, approximate=False)
-        spend_keys = [k async for k in r.scan_iter(match="usage:spend:*", count=500)]
-        if spend_keys:
-            await r.delete(*spend_keys)
+        leaked = [k async for k in r.scan_iter(match="*", count=1000) if k not in _PRESERVE_KEYS]
+        if leaked:
+            await r.delete(*leaked)
     except (RedisError, OSError):
         # redis.exceptions.ConnectionError/TimeoutError subclass RedisError, NOT the
         # builtin ConnectionError — catch RedisError so an unreachable Redis is a no-op.
