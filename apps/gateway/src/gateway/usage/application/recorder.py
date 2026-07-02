@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from gateway.usage.application.rate_card_resolver import resolve_markup_pct
 from gateway.usage.infrastructure.redis_stream import STREAM_KEY
 
 _log = logging.getLogger(__name__)
@@ -176,7 +177,7 @@ class RecordingUsageRecorder:
             # Only fetch pricing for non-cached records; cached hits always cost 0
             async with self._session_factory() as session:
                 pricing = await _fetch_latest_pricing(session, model)
-                markup_pct = await _fetch_markup_pct(session, tenant_id)
+                markup_pct = await _fetch_markup_pct(session, tenant_id, model)
 
             if pricing is not None:
                 (
@@ -702,14 +703,13 @@ async def _fetch_latest_pricing(
     )
 
 
-async def _fetch_markup_pct(session: AsyncSession, tenant_id: uuid.UUID) -> Decimal:
-    """Return the tenant's markup_pct; defaults to 0 if tenant not found."""
-    row = (
-        await session.execute(
-            text("SELECT markup_pct FROM tenants WHERE id = :tid"),
-            {"tid": str(tenant_id)},
-        )
-    ).fetchone()
-    if row is None:
-        return _ZERO
-    return Decimal(str(row[0]))
+async def _fetch_markup_pct(session: AsyncSession, tenant_id: uuid.UUID, model_id: str) -> Decimal:
+    """Return the effective per-(tenant, model) markup_pct (tiered-rate-cards).
+
+    Delegates to the shared resolver — the SAME rate every call site resolves
+    (recorder billing, cost_recovery disconnect, catalog display). A per-model
+    rate-card override wins; otherwise falls back to the tenant's flat
+    markup_pct (0 if the tenant row is absent — unchanged pre-existing
+    behavior).
+    """
+    return await resolve_markup_pct(session, tenant_id, model_id)

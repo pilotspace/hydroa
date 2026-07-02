@@ -113,6 +113,7 @@ from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamR
 )
 from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
+from gateway.tenants.api.rate_card_router import rate_card_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.api.users_router import users_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
@@ -921,6 +922,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users_router)
     app.include_router(cache_router)
     app.include_router(guardrail_router)
+    app.include_router(rate_card_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)

@@ -47,6 +47,9 @@ class Permission(StrEnum):
     PROVIDER_SECRETS = "provider_secrets"
     SECURITY_CONFIG = "security_config"
     AUDIT_READ = "audit_read"
+    # tiered-rate-cards TASK.md §3: OWNER-only (markup is the platform's margin
+    # over provider cost; auto-holds via ROLE_PERMISSIONS[OWNER] = frozenset(Permission)).
+    RATE_CARDS_MANAGE = "rate_cards_manage"
 
 
 # ---------------------------------------------------------------------------

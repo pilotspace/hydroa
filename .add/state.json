@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "usage-flusher-durability",
+  "active_task": "tiered-rate-cards",
   "active_milestone": "enterprise-hardening",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -927,14 +927,39 @@
     },
     "tiered-rate-cards": {
       "title": "Monetization: per-model/per-tier rate cards replace flat markup_pct",
-      "phase": "ground",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "enterprise-hardening",
       "depends_on": [
         "usage-flusher-durability"
       ],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T04:53:34+00:00"
+      "updated": "2026-07-02T09:23:28+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "adfd895cb1681e5725a84ac1d7855e57",
+        "tests": {
+          "apps/gateway/tests/tiered_rate_cards/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/tiered_rate_cards/conftest.py": "7ec6c6f4fc4dddef03a510a65a58b2dd",
+          "apps/gateway/tests/tiered_rate_cards/test_tiered_rate_cards.py": "317fc445e2d3c0ebb4b6c223d4418d11"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/",
+          "apps/gateway/src/gateway/usage/application/",
+          "apps/gateway/src/gateway/catalog/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/tiered_rate_cards/"
+        ],
+        "snapshot_md5": "21af95221f1afa5e5052bc16314d9c0b"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1112,7 +1137,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T07:54:38+00:00",
+  "updated": "2026-07-02T09:23:28+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1829,7 +1854,7 @@
     "video-playground": "video-console-rebuild",
     "proxy-correctness": "adapter-correctness-fixes",
     "openrouter-embeddings": "stream-alias-billing",
-    "enterprise-hardening": "usage-flusher-durability"
+    "enterprise-hardening": "tiered-rate-cards"
   },
   "todos": [
     {
