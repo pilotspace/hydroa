@@ -76,18 +76,26 @@ describe("ProviderKeysSettings", () => {
     server.use(http.get(GW, () => HttpResponse.json({ keys: [] })));
   });
 
-  // ── M1 — lists all six providers with status ───────────────────────────────
-  it("test_M1_lists_six_with_status", async () => {
+  // ── M1 — lists all seven providers with status (minimax added by minimax-adapter-registry) ──
+  it("test_M1_lists_seven_with_status", async () => {
     server.use(http.get(GW, () => HttpResponse.json({ keys: [status("openrouter")] })));
 
     renderPanel();
 
     await waitFor(() => expect(screen.getByText(/openrouter/i)).toBeInTheDocument());
-    for (const p of [/openrouter/i, /openai/i, /anthropic/i, /google/i, /bedrock/i, /azure/i]) {
+    for (const p of [
+      /openrouter/i,
+      /openai/i,
+      /anthropic/i,
+      /google/i,
+      /bedrock/i,
+      /azure/i,
+      /minimax/i,
+    ]) {
       expect(screen.getByText(p)).toBeInTheDocument();
     }
     expect(screen.getAllByText("Configured")).toHaveLength(1);
-    expect(screen.getAllByText("Not configured")).toHaveLength(5);
+    expect(screen.getAllByText("Not configured")).toHaveLength(6);
     // The configured row surfaces its updated_at (§1 Must, §3 contract).
     expect(
       within(screen.getByText(/openrouter/i).closest("[data-provider]")!).getByText(/2026-06-17/)

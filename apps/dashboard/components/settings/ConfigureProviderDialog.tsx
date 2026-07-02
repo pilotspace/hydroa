@@ -22,7 +22,7 @@ import { BffError } from "@/lib/bff-client";
 import { Input, Button, Switch } from "@/components/ui";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
-const BEARER_PROVIDERS = new Set(["openrouter", "openai", "anthropic", "google"]);
+const BEARER_PROVIDERS = new Set(["openrouter", "openai", "anthropic", "google", "minimax"]);
 
 /** Friendly title labels (the dialog title is cosmetic; fields are what tests assert). */
 const LABELS: Record<string, string> = {
@@ -32,6 +32,7 @@ const LABELS: Record<string, string> = {
   google: "Google",
   bedrock: "Bedrock",
   azure: "Azure",
+  minimax: "MiniMax",
 };
 
 type AzureMode = "api_key" | "aad";

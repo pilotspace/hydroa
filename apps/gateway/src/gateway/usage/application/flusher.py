@@ -148,6 +148,10 @@ class UsageLedgerFlusher:
         reasoning_tokens = int(_field("reasoning_tokens") or "0")
         # prompt-cache-passthrough (TASK.md §3): Anthropic cache-write count (old events → 0).
         cache_creation_tokens = int(_field("cache_creation_tokens") or "0")
+        # gpt-realtime-relay-billing (TASK.md §3): dual-stream audio counts (old events → 0).
+        audio_prompt_tokens = int(_field("audio_prompt_tokens") or "0")
+        audio_completion_tokens = int(_field("audio_completion_tokens") or "0")
+        audio_cached_tokens = int(_field("audio_cached_tokens") or "0")
         # provider-cost-reconciliation: basis + raw upstream cost (old events → catalog/NULL).
         cost_basis = _field("cost_basis") or "catalog"
         provider_cost_str = _field("provider_cost")
@@ -189,6 +193,7 @@ class UsageLedgerFlusher:
                         "  cost_usd, status, pricing_snapshot_id, raw, team_id,"
                         "  pricing_unit, quantity, cached_tokens, reasoning_tokens,"
                         "  cache_creation_tokens,"
+                        "  audio_prompt_tokens, audio_completion_tokens, audio_cached_tokens,"
                         "  cost_basis, provider_cost, usage_source,"
                         "  provider_generation_id)"
                         " VALUES"
@@ -197,6 +202,7 @@ class UsageLedgerFlusher:
                         "  :raw, :team_id, :pricing_unit, :quantity,"
                         "  :cached_tokens, :reasoning_tokens,"
                         "  :cache_creation_tokens,"
+                        "  :audio_prompt_tokens, :audio_completion_tokens, :audio_cached_tokens,"
                         "  :cost_basis, :provider_cost, :usage_source,"
                         "  :provider_generation_id)"
                         " ON CONFLICT (id) DO NOTHING"
@@ -218,6 +224,9 @@ class UsageLedgerFlusher:
                         "cached_tokens": cached_tokens,
                         "reasoning_tokens": reasoning_tokens,
                         "cache_creation_tokens": cache_creation_tokens,
+                        "audio_prompt_tokens": audio_prompt_tokens,
+                        "audio_completion_tokens": audio_completion_tokens,
+                        "audio_cached_tokens": audio_cached_tokens,
                         "cost_basis": cost_basis,
                         "provider_cost": provider_cost,
                         "usage_source": usage_source,

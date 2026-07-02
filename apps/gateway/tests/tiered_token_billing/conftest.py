@@ -105,6 +105,10 @@ class FakeSession:
                         str(self.cache_creation_price)
                         if self.cache_creation_price is not None
                         else None,
+                        # gpt-realtime-relay-billing extended _fetch_latest_pricing to an 11-tuple.
+                        None,  # audio_prompt_usd_per_token
+                        None,  # audio_completion_usd_per_token
+                        None,  # audio_cached_usd_per_token
                     )
                 )
             )

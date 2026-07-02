@@ -3633,7 +3633,7 @@ def _tripwire_divergence(root: Path, slug: str, tw: dict) -> list[str]:
 # consuming projects (`.next/`, `coverage/`, `tsconfig.tsbuildinfo`, whose `incremental`
 # rewrite even races a clean re-snapshot), so they are pruned here too.
 _SCOPE_EXCLUDE_DIRS = (".git", ".add", "__pycache__", "node_modules", ".serena",
-                       ".next", "coverage", "test-results")
+                       ".next", "coverage", "test-results", "worktrees")
 _SCOPE_EXCLUDE_FILES = (".DS_Store",)                  # plus *.pyc / *.tsbuildinfo by suffix
 _SCOPE_EXCLUDE_SUFFIXES = (".pyc", ".tsbuildinfo")
 

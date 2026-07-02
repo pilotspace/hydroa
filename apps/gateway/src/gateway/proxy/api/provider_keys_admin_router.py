@@ -57,7 +57,9 @@ from gateway.tenants.domain.entities import Identity, Role
 provider_keys_admin_router = APIRouter(prefix="/admin/provider-keys", tags=["provider-keys-admin"])
 
 #: Bearer-auth providers — a single shared secret each.
-_BEARER_PROVIDERS: frozenset[str] = frozenset({"openrouter", "openai", "anthropic", "google"})
+_BEARER_PROVIDERS: frozenset[str] = frozenset(
+    {"openrouter", "openai", "anthropic", "google", "minimax"}
+)
 
 
 class ProviderKeyPutBody(BaseModel):

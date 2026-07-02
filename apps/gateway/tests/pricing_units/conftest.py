@@ -101,6 +101,11 @@ class FakeSession:
                         None,  # cached_input_usd_per_token
                         None,  # reasoning_usd_per_token
                         None,  # cache_creation_usd_per_token (prompt-cache-passthrough §3)
+                        # gpt-realtime-relay-billing extended _fetch_latest_pricing to an 11-tuple;
+                        # NULL audio prices (byte-identical for every non-realtime model here).
+                        None,  # audio_prompt_usd_per_token
+                        None,  # audio_completion_usd_per_token
+                        None,  # audio_cached_usd_per_token
                     )
                 )
             )

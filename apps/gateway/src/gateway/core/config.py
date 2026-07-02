@@ -224,6 +224,12 @@ class Settings(BaseSettings):
     # NEVER set to a non-https URL in production deployments.
     openai_base_url: str = "https://api.openai.com/v1"
 
+    # ── MiniMax direct provider (minimax-adapter-registry task) ──────────────
+    # GATEWAY_MINIMAX_BASE_URL — Override in e2e overlays to point at a stub.
+    # NEVER set to a non-https URL in production deployments. BYOK-only — no
+    # operator-level API key Settings field (dynamic-auth-byok precedent).
+    minimax_base_url: str = "https://api.minimax.io/v1"
+
     # ── Anthropic direct provider (provider-chat-dispatch task) ──────────────
     # GATEWAY_ANTHROPIC_BASE_URL — Override in e2e overlays to point at a stub.
     anthropic_base_url: str = "https://api.anthropic.com/v1"
@@ -596,7 +602,10 @@ class Settings(BaseSettings):
     # GATEWAY_REALTIME_RELAY_PROVIDER — which realtime provider /v1/realtime/relay dials.
     # "" = none configured → honest-degrade close 4404; else "openai" | "gemini".
     realtime_relay_provider: str = Field(default="")
-    realtime_relay_openai_model: str = Field(default="gpt-4o-realtime-preview")
+    # gpt-realtime-pricing-fields TASK.md §3: switched from the older "gpt-4o-realtime-preview"
+    # to the current GA "gpt-realtime" model (Tin 2026-07-02, AskUserQuestion) — see
+    # catalog/infrastructure/gpt_realtime_seed.py for the corresponding pricing seed.
+    realtime_relay_openai_model: str = Field(default="gpt-realtime")
     realtime_relay_gemini_model: str = Field(default="gemini-2.0-flash-exp")
 
     # ── Model-group aliases → ordered Deployments (model-fallbacks v6 + deployment-model v8) ──

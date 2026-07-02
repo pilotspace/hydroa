@@ -23,7 +23,13 @@ class CatalogSyncResponse(BaseModel):
 
 
 class ModelItem(BaseModel):
-    """Single model entry in the GET /v1/models response."""
+    """Single model entry in the GET /v1/models response.
+
+    Additive fields (catalog-pricing-fields TASK.md §3): prompt_usd_per_1m/
+    completion_usd_per_1m/cached_input_usd_per_1m — the same tenant-marked-up prices as
+    prompt_per_token/completion_per_token, displayed per-1M-tokens. cached_input_usd_per_1m is
+    null when the model has no cache price (the majority today) — never 0, never masked.
+    """
 
     id: str
     name: str
@@ -31,6 +37,14 @@ class ModelItem(BaseModel):
     prompt_per_token: float
     completion_per_token: float
     object: str = "model"
+    prompt_usd_per_1m: float
+    completion_usd_per_1m: float
+    cached_input_usd_per_1m: float | None
+    # gpt-realtime-pricing-fields TASK.md §3: a SECOND, independently-priced token stream;
+    # null for every model without one (everything except gpt-realtime today).
+    audio_prompt_usd_per_1m: float | None
+    audio_completion_usd_per_1m: float | None
+    audio_cached_usd_per_1m: float | None
 
 
 class ModelsListResponse(BaseModel):
@@ -60,6 +74,13 @@ class AdminCatalogModelItem(BaseModel):
     completion_per_token: float
     object: str = "model"
     input_modalities: list[str]
+    prompt_usd_per_1m: float
+    completion_usd_per_1m: float
+    cached_input_usd_per_1m: float | None
+    # gpt-realtime-pricing-fields TASK.md §3: mirrors ModelItem's audio_* fields.
+    audio_prompt_usd_per_1m: float | None
+    audio_completion_usd_per_1m: float | None
+    audio_cached_usd_per_1m: float | None
 
 
 class AdminCatalogModelsListResponse(BaseModel):
