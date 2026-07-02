@@ -2,7 +2,7 @@
 
 slug: cache-alias-billing · created: 2026-07-02 · stage: production
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -226,7 +226,10 @@ Reviewed by: Tin Dang (froze contract @ v1) + auto-resolved verify (autonomy=aut
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose PERSIST served id at write, bill on it at read; rejected bill on `cached_body["model"]` at read (rejected — the provider-returned model may differ from the catalog id for OpenRouter ":free" variants → may still lack a pricing snapshot) · resolve the alias→candidate at read time (rejected — 3/4 routing strategies are non-deterministic; the served id must reflect the candidate that actually PRODUCED the cached body).
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang (2026-07-02). Changing this contract now = change request back to SPECIFY.)
+- [AI] build — strategy used: as planned — module fns `_stamp_served` (shallow copy) + `_read_served_from_cache` (pop→cached["model"]→model_id) added after `_fire_cache_set`; 3 write sites stamped (main :1373, refresh closure :1408/:1411 via one stamped arg); 3 read sites read+pop BEFORE evaluate_post (exact/semantic/vector) and bill on the captured `_served_cached*`. Sequential build in the main worktree (Rule 5: worktree only for parallel mode) — the worktree machinery will be validated on the first genuinely-parallel wave worker.
+- [AI] verify — gate PASS (reviewed by Tin Dang (froze contract @ v1) + auto-resolved verify (autonomy=auto, evidence above))
 
 ### Spec delta
 Forward changes for the next loop — each re-enters at Specify as the next task. One line

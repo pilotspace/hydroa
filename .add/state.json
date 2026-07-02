@@ -763,12 +763,12 @@
     },
     "cache-alias-billing": {
       "title": "B6: cache-hit alias bills served candidate, not alias",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T05:33:03+00:00",
+      "updated": "2026-07-02T05:41:56+00:00",
       "flag_verified": true,
       "tripwire": {
         "contract_md5": "fbea9630249e32b3cd8f81cf75d10613",
@@ -779,7 +779,22 @@
           "apps/gateway/src/gateway/proxy/application/use_cases.py",
           "apps/gateway/tests/cache_alias_billing/"
         ],
-        "snapshot_md5": "21c9b1b81b40378d98d18b2ee2b56bbb"
+        "snapshot_md5": "4c828ba31cf2a412a2a509354b624c41"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-02T05:41:07+00:00",
+            "reason": "scope_violation: task 'cache-alias-billing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/.gitignore \u00b7 apps/gateway/.ruff_cache/0.15.16/12422214373305498066 \u00b7 apps/gateway/.ruff_cache/CACHEDIR.TAG (3 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "usage-flusher-durability": {
@@ -1016,7 +1031,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T05:33:03+00:00",
+  "updated": "2026-07-02T05:41:56+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
