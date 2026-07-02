@@ -198,8 +198,11 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 > Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
 > + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
 > row is evidence you can SEE, not a restatement of a test name.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] A repeat alias request that HITS the exact cache records usage keyed on the served candidate (CAND_A), not the alias — confirmed by test_exact_hit_bills_served_not_alias (billed_records[-1]["model"]==CAND_A)
+- [ ] Same for the semantic and vector hit paths — confirmed by test_semantic_hit / test_vector_hit (x_cache asserted per layer; upstream never called)
+- [ ] The MISS store persists STAMP==served on the cached value AND the client body never contains STAMP — confirmed by test_miss_unchanged_and_no_stamp_leak (stored[STAMP]==CAND_A; STAMP not in body_out)
+- [ ] A legacy (no-stamp) cached entry bills cached["model"], never the alias — confirmed by test_legacy_entry_without_stamp_falls_back_to_cached_model
+- [ ] No regression: F7 miss-billing, x_cache values, TPM accounting, HTTP shape unchanged — confirmed by the pre-existing complete()/cache/vector_cache suites staying green
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
