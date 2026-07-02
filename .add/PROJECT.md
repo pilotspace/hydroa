@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 42
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 43
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -480,6 +480,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-07-02 | fold all → foundation-version 43 (TDD 1 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 4 lessons open→folded; +4 routed bullets; 42→43 |
 | 2026-07-02 | fold all → foundation-version 42 (ADD 5) | consolidate captured OBSERVE lessons into the versioned foundation | 5 lessons open→folded; +5 routed bullets; 41→42 |
 | 2026-07-01 | fold all → foundation-version 41 (TDD 2 · ADD 5) | consolidate captured OBSERVE lessons into the versioned foundation | 7 lessons open→folded; +7 routed bullets; 40→41 |
 | 2026-07-01 | fold all → foundation-version 40 (DDD 1 · SDD 1 · UDD 3 · TDD 7 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 16 lessons open→folded; +16 routed bullets; 39→40 |
