@@ -65,6 +65,11 @@ import gateway.audit.infrastructure.audit_events_orm  # noqa: F401 — registers
 # AgentTokenRow on Base.metadata.
 import gateway.agent_oauth.infrastructure.orm  # noqa: F401 — registers agent OAuth tables on Base.metadata
 
+# tiered-rate-cards TASK.md §3: registers TenantRateCardEntry on Base.metadata
+# (without this, autogenerate would not see tenant_rate_card_entries and would
+# propose DROP TABLE for it — mass rate-card loss).
+import gateway.tenants.infrastructure.rate_card_orm  # noqa: F401 — registers TenantRateCardEntry on Base.metadata
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------
