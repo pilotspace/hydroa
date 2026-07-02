@@ -40,10 +40,12 @@ from gateway.core.error_catalog import (
     BUDGET_EXCEEDED,
     GUARDRAIL_BLOCKED,
     MODEL_DISABLED,
+    MODEL_MODALITY_MISMATCH,
     MODEL_NOT_ALLOWED,
     MODEL_UNKNOWN,
     PAYLOAD_MESSAGES_REQUIRED,
     PAYLOAD_MODEL_REQUIRED,
+    PRESET_NOT_FOUND,
     RATE_LIMITED,
     UPSTREAM_RATE_LIMITED,
     UPSTREAM_UNAVAILABLE,
@@ -61,7 +63,9 @@ from gateway.proxy.domain.errors import (
     UpstreamRateLimitedError,
     UpstreamUnavailableError,
 )
+from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
 from gateway.proxy.domain.ports import (
+    ChatModalityLookup,
     CompletionUpstream,
     GuardrailEvaluator,
     InputModalityLookup,
@@ -510,6 +514,8 @@ class CompletionUseCase:
         web_search_enabled: bool = False,
         input_modality_lookup: InputModalityLookup | None = None,
         input_modality_guard_enabled: bool = False,
+        tenant_model_preset_store: TenantModelPresetStore | None = None,
+        chat_modality_lookup: ChatModalityLookup | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -556,6 +562,18 @@ class CompletionUseCase:
         # bandwidth acquire / upstream / usage — a refused request is never billed.
         self._input_modality_lookup: InputModalityLookup | None = input_modality_lookup
         self._input_modality_guard_enabled: bool = input_modality_guard_enabled
+        # preset-resolution-ingress (v56 §3): None (default) ⇒ feature off ⇒ complete()/
+        # stream() are byte-identical (no resolve() call, no rewrite). When wired, a
+        # `<preset>:<alias>` selector in body["model"] is resolved to the tenant's target
+        # model BEFORE _validate_payload/governance/catalog/budget/upstream — see complete()
+        # and stream() for the single insertion point each.
+        self._tenant_model_preset_store: TenantModelPresetStore | None = tenant_model_preset_store
+        # chat-modality-guard (v56 §3): None (default) ⇒ feature off ⇒ complete()/stream()
+        # are byte-identical (no lookup call, no rejection). When wired (main.py always wires
+        # the SAME provider_resolver singleton as this lookup — zero new per-request I/O), a
+        # resolved model_id whose CACHED modality is known and != "chat" is rejected via
+        # _check_chat_modality() — see complete()/stream() for the single insertion point each.
+        self._chat_modality_lookup: ChatModalityLookup | None = chat_modality_lookup
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -574,6 +592,33 @@ class CompletionUseCase:
         # On pre-auth 401 exits above, this line is never reached — field stays absent.
         structlog.contextvars.bind_contextvars(tenant_id=str(result.tenant_id))
         return result
+
+    async def _resolve_preset(self, body: dict[str, Any], tenant_id: uuid.UUID) -> None:
+        """Resolve a `<preset>:<alias>` selector in body["model"], in place.
+
+        preset-resolution-ingress (v56 §3 CONTRACT). Called between _authenticate and
+        _validate_payload in both complete() and stream() — BEFORE any per-model
+        authorization/catalog/budget/billing logic or upstream call.
+
+        No-ops (byte-identical) when: the store is unwired (None), the model field is
+        not a colon selector (bare id), or the model field is present but not a string
+        (defers to _validate_payload's existing type/emptiness check, never crashes here).
+        Raises PRESET_NOT_FOUND (400) when the selector's colon is present but resolve()
+        finds no matching row for the CALLING tenant only (never cross-tenant).
+        """
+        if self._tenant_model_preset_store is None:
+            return
+        raw_model = body.get("model", "")
+        if not isinstance(raw_model, str):
+            return
+        selector = parse_preset_selector(raw_model)
+        if selector is None:
+            return
+        preset_name, alias_key = selector
+        target = await self._tenant_model_preset_store.resolve(tenant_id, preset_name, alias_key)
+        if target is None:
+            raise PRESET_NOT_FOUND.exc() from None
+        body["model"] = target
 
     def _strip_web_search_flag(self, body: dict[str, Any]) -> None:
         """Central knob-kill for the web_search flag (web-search-grounding task).
@@ -629,6 +674,28 @@ class CompletionUseCase:
 
         allowed = await resolve_allowed(model_id, self._input_modality_lookup, model_groups)
         enforce(required, allowed, model_id=model_id)
+
+    async def _check_chat_modality(self, model_id: str) -> None:
+        """Enforce the coarse operation-type guard (chat-modality-guard TASK.md §3).
+
+        Runs AFTER _check_input_modalities and BEFORE credential resolution / upstream /
+        usage. A refused request is never billed (raises ProblemError 400 before any
+        side-effect) — mirrors the images/embeddings/TTS coarse guard precedent.
+
+        Reads from the SAME cached provider-resolver map provider_for() already reads —
+        zero new per-request I/O. Guard is a no-op (fail-open) when:
+          - _chat_modality_lookup is None (not wired — legacy / test compat)
+          - lookup returns None (unknown/uncached model_id) → fail-open by design; the
+            model's existence/active-state was already checked earlier by ModelChecker
+        """
+        if self._chat_modality_lookup is None:
+            return
+        modality = await self._chat_modality_lookup.modality_for(model_id)
+        if modality is not None and modality != "chat":
+            raise MODEL_MODALITY_MISMATCH.exc(
+                model_id=model_id,
+                detail=f"model '{model_id}' has modality '{modality}', endpoint requires 'chat'",
+            )
 
     async def _validate_payload(
         self,
@@ -982,6 +1049,9 @@ class CompletionUseCase:
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
+            # tenant's target model BEFORE payload validation/governance/catalog/upstream.
+            await self._resolve_preset(body, authz.tenant_id)
             # Validate payload fields (format only — catalog check is in _enforce_governance).
             model_id, _ = await self._validate_payload(body)
             _model_id = model_id
@@ -994,6 +1064,10 @@ class CompletionUseCase:
             # unsupported-input-guard: check input modalities AFTER governance and BEFORE
             # bandwidth acquire / upstream / usage (contract §3 — refused = never billed).
             await self._check_input_modalities(body, model_id, _model_groups)
+
+            # chat-modality-guard (v56 §3): coarse operation-type guard — a resolved model
+            # whose CACHED modality is known and != "chat" is rejected before any I/O.
+            await self._check_chat_modality(model_id)
 
             # bandwidth-pacing pre-flight (stream-bandwidth-pacing v36): charge the per-key
             # bucket BEFORE the upstream call so a non-stream request is SHED (never paid) when
@@ -1554,6 +1628,9 @@ class CompletionUseCase:
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
+            # tenant's target model BEFORE payload validation/governance/catalog/upstream.
+            await self._resolve_preset(body, authz.tenant_id)
             # Validate payload fields (format only — catalog check is in _enforce_governance).
             model_id, _ = await self._validate_payload(body)
             _stream_model_id = model_id
@@ -1567,6 +1644,10 @@ class CompletionUseCase:
             # unsupported-input-guard: check input modalities AFTER governance and BEFORE
             # credential resolution / upstream stream / usage (contract §3).
             await self._check_input_modalities(body, model_id, _stream_model_groups)
+
+            # chat-modality-guard (v56 §3): coarse operation-type guard — a resolved model
+            # whose CACHED modality is known and != "chat" is rejected before any I/O.
+            await self._check_chat_modality(model_id)
 
             # Credential resolution (credential-resolution-seam §3) — same as complete().
             _stream_cred_token = await self._resolve_credential(authz.tenant_id, model_id)
@@ -1656,6 +1737,17 @@ class CompletionUseCase:
             # per-request sink that _wrapped() will read on disconnect. _wrapped() skips
             # its own set() and reuses this token for reset(). None = not yet set.
             _pre_peek_partial_token: object = None
+            # stream-alias-billing (B1): capture the SERVED candidate id from the routing
+            # decision (default stream() -> strategy primary; resilient -> the candidate that
+            # COMMITTED after pre-first-byte fallover). NEVER recompute caller-side —
+            # simple-shuffle picks randomly, least-busy/latency depend on live state. Used to
+            # bill on the served catalog model, not the alias (aliases have no pricing snapshot
+            # -> silent $0). Populated synchronously (default) or by return time (resilient).
+            _served_holder: list[str] = []
+
+            def _capture_served(_served: str) -> None:
+                _served_holder.append(_served)
+
             try:
                 # Route stream through model_router when wired. With stream resilience enabled
                 # (streaming-resilience v19), peek the first chunk via stream_resilient so a
@@ -1664,9 +1756,11 @@ class CompletionUseCase:
                 # Otherwise the byte-identical OLD path: resolve to the first candidate only
                 # (§3 STREAMING BOUNDARY); no fallback on stream failure.
                 if model_router is not None and self._stream_resilience_enabled:
-                    first_chunk, gen = await model_router.stream_resilient(body, upstream=upstream)
+                    first_chunk, gen = await model_router.stream_resilient(
+                        body, upstream=upstream, on_served=_capture_served
+                    )
                 elif model_router is not None:
-                    gen = model_router.stream(body, upstream=upstream)
+                    gen = model_router.stream(body, upstream=upstream, on_served=_capture_served)
                     # upstream-ratelimit-passthrough: peek the first chunk so a pre-first-byte
                     # UpstreamRateLimitedError surfaces here (before StreamingResponse commits).
                     # Set the partial-usage sink now so peek-time side-effects are captured.
@@ -1750,6 +1844,12 @@ class CompletionUseCase:
                 _stream_error_status = 502
                 raise UPSTREAM_UNAVAILABLE.exc() from None
 
+            # stream-alias-billing (B1): the served candidate is now known — _capture_served
+            # ran during routing (default path) / commit (resilient path) above. Bill + span
+            # on the served catalog model, not the alias. No alias / no router -> stays model_id.
+            if _served_holder:
+                _stream_model_id = _served_holder[-1]
+
             tenant_id = authz.tenant_id
             key_id = authz.key_id
             team_id = authz.team_id
@@ -1812,7 +1912,11 @@ class CompletionUseCase:
                                 usage_recorder,
                                 tenant_id=tenant_id,
                                 key_id=key_id,
-                                model=model_id,
+                                # stream-alias-billing (B1): the bandwidth-shed truncation
+                                # record is CHARGED (status=200) — bill the SERVED candidate,
+                                # not the alias (third charged site; see clean-close @2048 +
+                                # disconnect @1933). _stream_model_id == served here (post-commit).
+                                model=_stream_model_id,
                                 usage=_bw_usage,
                                 status=200,
                                 team_id=team_id,
@@ -1915,7 +2019,7 @@ class CompletionUseCase:
                         usage_recorder,
                         tenant_id=tenant_id,
                         key_id=key_id,
-                        model=model_id,
+                        model=_stream_model_id,  # B1: served candidate, not the alias
                         usage=disconnect_usage,
                         status=200,
                         team_id=team_id,
@@ -1975,7 +2079,10 @@ class CompletionUseCase:
                                 self._cost_recovery.recover(
                                     tenant_id=tenant_id,
                                     key_id=key_id,
-                                    model=model_id,
+                                    # B1: served candidate — consistent with the disconnect
+                                    # billing row so recovery re-prices on the catalog
+                                    # candidate, not the alias (which has no pricing snapshot).
+                                    model=_stream_model_id,
                                     provider_generation_id=disconnect_gen_id,
                                 )
                             )
@@ -2027,7 +2134,7 @@ class CompletionUseCase:
                     usage_recorder,
                     tenant_id=tenant_id,
                     key_id=key_id,
-                    model=model_id,
+                    model=_stream_model_id,  # B1: served candidate, not the alias
                     usage=extracted_usage,
                     status=200,
                     team_id=team_id,
@@ -2057,7 +2164,7 @@ class CompletionUseCase:
                     _emit_span_fire_forget(
                         _emitter,
                         _authz,
-                        model_id,
+                        _stream_model_id,  # B1: served candidate, not the alias
                         200,
                         True,  # stream=True
                         False,  # cached=False (streaming never cache-hits)

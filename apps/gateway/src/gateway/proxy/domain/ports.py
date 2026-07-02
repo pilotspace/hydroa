@@ -11,6 +11,9 @@ Additive extension @ model-fallbacks TASK.md §3:
 Additive extension @ provider-seam TASK.md §3:
   - UpstreamProvider Protocol (post_json / post_multipart / stream_bytes)
     Three-method surface for non-chat modalities (embedding/image/audio_stt/audio_tts).
+Additive extension @ chat-modality-guard TASK.md §3:
+  - ChatModalityLookup Protocol (modality_for) — separate from ProviderResolver so the
+    frozen provider_chat_dispatch Protocol/fakes never change shape.
 """
 
 from __future__ import annotations
@@ -338,6 +341,28 @@ class ProviderResolver(Protocol):
         """Return the catalog provider for model_id; 'openrouter' for unknown/unset.
 
         NEVER raises — resolution failure degrades to 'openrouter'.
+        """
+        ...
+
+
+@runtime_checkable
+class ChatModalityLookup(Protocol):
+    """Resolve the cached catalog modality for a served chat model id.
+
+    Additive extension @ chat-modality-guard TASK.md §3 (FROZEN @ v1). A SEPARATE
+    Protocol from ProviderResolver — deliberately, so the frozen ProviderResolver
+    Protocol (and its many test fakes implementing only provider_for) never change
+    shape. CatalogProviderResolver structurally satisfies both.
+
+    Contract:
+      - modality_for NEVER raises. Unknown/uncached model_id returns None — the
+        caller MUST treat None as fail-open (compatible), never as a rejection.
+    """
+
+    async def modality_for(self, model_id: str) -> str | None:
+        """Return the cached catalog modality for model_id; None for unknown/uncached.
+
+        NEVER raises — a None result signals the caller to fail-open.
         """
         ...
 

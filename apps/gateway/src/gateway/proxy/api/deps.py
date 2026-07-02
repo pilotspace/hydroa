@@ -178,6 +178,11 @@ def get_completion_use_case(
     # app.state.tenant_credential_resolver = FakeResolver().
     tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
     provider_resolver = getattr(request.app.state, "provider_resolver", None)
+    # preset-resolution-ingress (v56): resolve a per-tenant `<preset>:<alias>` model
+    # selector at ingress. Absent / None ⇒ feature off ⇒ byte-identical (mirrors the
+    # tenant_credential_resolver getattr pattern immediately above — same stable,
+    # app.state-boot singleton shape; DbTenantModelPresetStore opens its own sessions).
+    tenant_model_preset_store = getattr(request.app.state, "tenant_model_preset_store", None)
     # openrouter-cost-recovery-wiring (v30 t6.2c): optional inline recovery service.
     # Absent / None ⇒ feature off ⇒ byte-identical (tests override via app.state).
     cost_recovery = getattr(request.app.state, "cost_recovery_service", None)
@@ -222,4 +227,8 @@ def get_completion_use_case(
         web_search_enabled=web_search_enabled,
         input_modality_lookup=input_modality_lookup,
         input_modality_guard_enabled=input_modality_guard_enabled,
+        tenant_model_preset_store=tenant_model_preset_store,
+        # chat-modality-guard (v56): reuses the SAME provider_resolver singleton fetched
+        # above — zero new app.state attribute, zero new instance. None ⇒ feature off.
+        chat_modality_lookup=provider_resolver,
     )

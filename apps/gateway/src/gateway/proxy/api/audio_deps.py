@@ -92,6 +92,10 @@ def get_transcription_use_case(
         if _stt_settings
         else False
     )
+    # preset-resolution-ingress (v56): reuse the SAME `authenticator` instance already
+    # wrapped into `governance` above (no second KeyAuthenticator construction) plus the
+    # per-tenant preset store singleton from app.state. Absent ⇒ None ⇒ byte-identical.
+    tenant_model_preset_store = getattr(request.app.state, "tenant_model_preset_store", None)
     return TranscriptionUseCase(
         governance=governance,
         session=session,
@@ -100,6 +104,8 @@ def get_transcription_use_case(
         # env: GATEWAY_STT_MAX_DURATION_SECONDS
         max_duration_seconds=request.app.state.settings.stt_max_duration_seconds,
         input_modality_guard_enabled=input_modality_guard_enabled,
+        authenticator=authenticator,
+        tenant_model_preset_store=tenant_model_preset_store,
     )
 
 
@@ -127,6 +133,10 @@ def get_speech_use_case(
     )
     # credential-resolution-seam §3: per-tenant provider key resolver from app.state.
     tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
+    # preset-resolution-ingress (v56): reuse the SAME `authenticator` instance already
+    # wrapped into `governance` above (no second KeyAuthenticator construction) plus the
+    # per-tenant preset store singleton from app.state. Absent ⇒ None ⇒ byte-identical.
+    tenant_model_preset_store = getattr(request.app.state, "tenant_model_preset_store", None)
     return SpeechUseCase(
         governance=governance,
         session=session,
@@ -134,4 +144,6 @@ def get_speech_use_case(
         # tts-input-guardrails: default-ON input ceiling from settings (0 ⇒ disabled).
         # Mirrors the STT max_duration_seconds injection above.
         max_input_characters=request.app.state.settings.tts_max_input_characters,
+        authenticator=authenticator,
+        tenant_model_preset_store=tenant_model_preset_store,
     )

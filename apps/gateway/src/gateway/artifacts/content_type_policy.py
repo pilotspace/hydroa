@@ -42,11 +42,7 @@ def parse_allowed_content_types(csv: str) -> frozenset[str]:
     """
     if not csv:
         return frozenset()
-    return frozenset(
-        normalize_content_type(entry)
-        for entry in csv.split(",")
-        if entry.strip()
-    )
+    return frozenset(normalize_content_type(entry) for entry in csv.split(",") if entry.strip())
 
 
 def is_content_type_allowed(content_type: str, allowed_csv: str) -> bool:

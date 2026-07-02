@@ -525,6 +525,20 @@ UNSUPPORTED_INPUT_MODALITY = ErrorSpec(
     "Model does not accept '{input_type}' input",
 )
 
+#: Coarse operation-type guard (preset-capability-validation task §3).
+#: Fired when a (preset-resolved or directly-named) model's catalog `modality`
+#: (chat/embedding/image/audio_stt/audio_tts) does not match the endpoint's expected
+#: operation type — e.g. a chat model resolved for /v1/images/generations.  400 —
+#: caller-fixable; fired BEFORE select_provider/upstream/billing (single-bill invariant).
+#: Applies to /v1/images/generations, /v1/embeddings, /v1/audio/speech (TTS) only — chat
+#: has no ModelRow query in its seam, and STT is already safe by construction (see
+#: gateway.proxy.infrastructure.openrouter_upstream_provider's post_multipart).
+MODEL_MODALITY_MISMATCH = ErrorSpec(
+    400,
+    "ERR_MODEL_MODALITY_MISMATCH",
+    "Model '{model_id}' does not support this operation",
+)
+
 # ---------------------------------------------------------------------------
 # Video generation job errors (video-generation-jobs task)
 # ---------------------------------------------------------------------------
@@ -568,3 +582,30 @@ AGENT_OAUTH_NOT_PENDING = ErrorSpec(
 
 #: Authorization is pending but its expiry has passed.
 AGENT_OAUTH_EXPIRED = ErrorSpec(410, "ERR_AGENT_OAUTH_EXPIRED", "Authorization has expired")
+
+# ---------------------------------------------------------------------------
+# Tenant model presets (tenant-preset-store task — store layer only, v56)
+# ---------------------------------------------------------------------------
+
+#: Preset upsert target_model is not an active model in the catalog.
+#: Raised by DbTenantModelPresetStore.upsert as ModelPresetError; this entry
+#: exists for the later HTTP admin-API task to surface it as problem+json.
+PRESET_TARGET_UNKNOWN = ErrorSpec(
+    400, "ERR_PRESET_TARGET_UNKNOWN", "Preset target model is not active in the catalog"
+)
+
+#: Preset selector token (preset_name / alias_key) is empty, over 64 chars, or
+#: contains a colon. Raised by DbTenantModelPresetStore.upsert as
+#: ModelPresetError; this entry exists for the later HTTP admin-API task.
+PRESET_SELECTOR_INVALID = ErrorSpec(
+    400, "ERR_PRESET_SELECTOR_INVALID", "Preset selector token is invalid"
+)
+
+#: model field named a `<preset>:<alias>` selector (colon present) but
+#: TenantModelPresetStore.resolve(tenant_id, preset_name, alias_key) returned None
+#: — no matching row for the calling tenant (preset-resolution-ingress task, v56).
+#: Fires BEFORE any authorization/catalog/budget/billing/upstream call, at ingress,
+#: for all 5 entry points (chat, images, embeddings, audio STT, audio TTS).
+PRESET_NOT_FOUND = ErrorSpec(
+    400, "ERR_PRESET_NOT_FOUND", "Preset selector did not resolve to a known model"
+)

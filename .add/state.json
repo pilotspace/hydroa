@@ -1,12 +1,284 @@
 {
-  "active_milestone": null,
-  "active_milestones": [],
+  "project": "ai-proxy",
+  "stage": "production",
   "active_task": null,
-  "active_tasks": {},
+  "active_milestone": null,
+  "tasks": {
+    "ai-feature-pages-redesign": {
+      "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-06-28T14:01:49+00:00",
+      "updated": "2026-06-28T14:46:39+00:00"
+    },
+    "stream-alias-billing": {
+      "title": "Streaming model-group alias must bill on served candidate, not the alias (B1 revenue leak)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-02T03:39:02+00:00",
+      "updated": "2026-07-02T04:29:54+00:00",
+      "fast": true,
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-02T03:46:19+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "039d170a0e3bcf6f4774286922ba9d43",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "src/gateway/proxy/application/fallback_router.py"
+        ],
+        "snapshot_md5": "9e7f74327f30c6abe48ea8a751078adc"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-02T04:28:00+00:00",
+            "reason": "scope_violation: task 'stream-alias-billing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/0.15.16/12422214373305498066 \u00b7 apps/gateway/.ruff_cache/0.15.16/6998441178905840490 \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/tests/stream_alias_billing/conftest.py \u00b7 apps/gateway/tests/stream_alias_billing/test_stream_alias_billing.py (6 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "tenant-preset-store": {
+      "title": "Per-tenant model preset store (table + migration + domain/store + catalog-target validation)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v56",
+      "depends_on": [],
+      "created": "2026-07-01T02:50:34+00:00",
+      "updated": "2026-07-01T04:37:07+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a9e7d75fe5ceda31b43bd83258e4d930",
+        "tests": {
+          "apps/gateway/tests/tenant_model_presets/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/tenant_model_presets/test_tenant_model_preset_store_db.py": "260c1b3c5b4b80ba68b35b7893df3ae7"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/domain/model_presets.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/tenant_model_preset_store.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/orm.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/migrations/test_migrations.py",
+          "apps/gateway/tests/guardrails/test_guardrails_core.py"
+        ],
+        "snapshot_md5": "09c09b9fbb53eaa6405a5d618e756ad7"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-01T04:36:10+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/tenant_model_presets/test_tenant_model_preset_store_db.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "preset-resolution-ingress": {
+      "title": "Parse preset:alias selector, resolve tenant preset, rewrite model before FallbackModelRouter",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v56",
+      "depends_on": [],
+      "created": "2026-07-01T05:17:17+00:00",
+      "updated": "2026-07-01T07:38:32+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f0c7ab1a9cdec500e7a1c272e20cfb7b",
+        "tests": {
+          "apps/gateway/tests/preset_resolution_ingress/test_preset_resolution_ingress.py": "00f504ce7e35f9ad28d25d4e8929da87"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "fba53000a640393856652ebb037b451c"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-01T07:37:38+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/preset_resolution_ingress/test_preset_resolution_ingress.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "preset-admin-surface": {
+      "title": "Tenant-scoped API + dashboard editor to create/list/delete named presets",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v56",
+      "depends_on": [],
+      "created": "2026-07-01T07:39:18+00:00",
+      "updated": "2026-07-01T09:33:32+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "c6c9a760307bd68e89037f5df0b526ae",
+        "tests": {
+          "apps/gateway/tests/presets_admin_surface/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/presets_admin_surface/test_presets_admin_surface.py": "df0b1b712f36b156b9ba3545e692485f"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "1bb0ffc1ba446f18dc5b0f48dcb83f31"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "preset-capability-validation": {
+      "title": "Apply v55 input-capability guard when a preset resolves to a target model",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v56",
+      "depends_on": [],
+      "created": "2026-07-01T09:35:46+00:00",
+      "updated": "2026-07-01T15:39:45+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "cca480217cf7786b32fde3d7a744d593",
+        "tests": {
+          "apps/gateway/tests/preset_capability_validation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/preset_capability_validation/conftest.py": "266146a9200a85c6ff4808ee10ab366a",
+          "apps/gateway/tests/preset_capability_validation/test_preset_capability_validation.py": "fbe4aa63955008c85e422de7ffc44a49"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "76abae1922ed982c2bf1b5e044a4de1e"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-01T15:38:25+00:00",
+            "reason": "scope_violation: task 'preset-capability-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/10679602895296908565 \u00b7 apps/gateway/.ruff_cache/0.15.16/11938371052130299523 (55 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-01T15:39:00+00:00",
+            "reason": "scope_violation: task 'preset-capability-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (43 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "chat-modality-guard": {
+      "title": "Coarse operation-type guard for chat/realtime-WS-chat",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v56",
+      "depends_on": [
+        "preset-capability-validation"
+      ],
+      "created": "2026-07-01T15:53:25+00:00",
+      "updated": "2026-07-01T16:56:55+00:00",
+      "from_delta": "preset-capability-validation",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0856207d89e7cba64e89fd802d8a7489",
+        "tests": {
+          "apps/gateway/tests/chat_modality_guard/conftest.py": "9b456736709bff8f2cb8132aa220dc54",
+          "apps/gateway/tests/chat_modality_guard/test_chat_modality_guard.py": "ab68a6ae044e2090b94b2f707f972d07"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "a4909f6f0f25ae1996147e6ae53ab4db"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-01T16:54:08+00:00",
+            "reason": "scope_violation: task 'chat-modality-guard' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/main.py \u00b7 apps/gateway/src/gateway/proxy/api/deps.py \u00b7 apps/gateway/src/gateway/proxy/api/realtime_ws.py \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/src/gateway/proxy/domain/ports.py (8 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-01T16:55:05+00:00",
+            "reason": "scope_violation: task 'chat-modality-guard' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/main.py \u00b7 apps/gateway/src/gateway/proxy/api/deps.py \u00b7 apps/gateway/src/gateway/proxy/api/realtime_ws.py \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/src/gateway/proxy/domain/ports.py (8 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    }
+  },
+  "milestones": {
+    "v56": {
+      "title": "Per-tenant model presets",
+      "goal": "A tenant admin defines named presets that remap model names (opus to gpt5-5), selects among multiple presets via a name: prefix (cheap:opus), and requests resolve the preset to a concrete model before the router while the existing fallback seam stays byte-identical.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-06-30T12:11:18+00:00",
+      "updated": "2026-06-30T12:11:18+00:00"
+    }
+  },
+  "created": "2026-06-10T08:03:15+00:00",
+  "updated": "2026-07-02T04:29:54+00:00",
+  "setup": {
+    "locked": true,
+    "locked_at": "2026-06-10T08:05:39+00:00",
+    "locked_by": "Tin Dang",
+    "layers": [
+      "foundation",
+      "scope",
+      "contract"
+    ]
+  },
   "archived": [
     {
-      "archived": "2026-06-10",
       "slug": "v1",
+      "title": "MVP: metered multi-tenant AI proxy",
+      "tasks": 9,
       "task_slugs": [
         "tenant-identity",
         "model-catalog",
@@ -18,12 +290,12 @@
         "dashboard-shell",
         "dashboard-usage"
       ],
-      "tasks": 9,
-      "title": "MVP: metered multi-tenant AI proxy"
+      "archived": "2026-06-10"
     },
     {
-      "archived": "2026-06-11",
       "slug": "v2",
+      "title": "Production-ready metered proxy",
+      "tasks": 6,
       "task_slugs": [
         "db-migrations",
         "live-upstream-smoke",
@@ -32,12 +304,12 @@
         "observability",
         "ops-hardening"
       ],
-      "tasks": 6,
-      "title": "Production-ready metered proxy"
+      "archived": "2026-06-11"
     },
     {
-      "archived": "2026-06-11",
       "slug": "v3",
+      "title": "V3",
+      "tasks": 6,
       "task_slugs": [
         "key-governance",
         "rate-limits",
@@ -46,12 +318,12 @@
         "model-mgmt",
         "dashboard-govern"
       ],
-      "tasks": 6,
-      "title": "V3"
+      "archived": "2026-06-11"
     },
     {
-      "archived": "2026-06-11",
       "slug": "v4",
+      "title": "V4",
+      "tasks": 6,
       "task_slugs": [
         "teams-core",
         "team-governance",
@@ -60,12 +332,12 @@
         "sso-oidc",
         "obs-callbacks"
       ],
-      "tasks": 6,
-      "title": "V4"
+      "archived": "2026-06-11"
     },
     {
-      "archived": "2026-06-12",
       "slug": "v5",
+      "title": "LiteLLM parity slice 3 \u2014 intelligence & hardening",
+      "tasks": 6,
       "task_slugs": [
         "oidc-jwks",
         "team-attribution",
@@ -74,12 +346,12 @@
         "oidc-tenant-config",
         "rename-hydroa"
       ],
-      "tasks": 6,
-      "title": "LiteLLM parity slice 3 \u2014 intelligence & hardening"
+      "archived": "2026-06-12"
     },
     {
-      "archived": "2026-06-12",
       "slug": "v6",
+      "title": "Routing & resilience",
+      "tasks": 5,
       "task_slugs": [
         "retry-policy",
         "model-fallbacks",
@@ -87,12 +359,12 @@
         "routing-admin",
         "v6-live-verify"
       ],
-      "tasks": 5,
-      "title": "Routing & resilience"
+      "archived": "2026-06-12"
     },
     {
-      "archived": "2026-06-12",
       "slug": "v7",
+      "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider",
+      "tasks": 6,
       "task_slugs": [
         "provider-seam",
         "pricing-units",
@@ -101,12 +373,12 @@
         "audio-endpoints",
         "v7-live-verify"
       ],
-      "tasks": 6,
-      "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider"
+      "archived": "2026-06-12"
     },
     {
-      "archived": "2026-06-12",
       "slug": "v8",
+      "title": "LiteLLM parity slice 6 \u2014 router & load-balancing",
+      "tasks": 5,
       "task_slugs": [
         "deployment-model",
         "routing-strategy",
@@ -114,48 +386,48 @@
         "deployment-limits",
         "v8-live-verify"
       ],
-      "tasks": 5,
-      "title": "LiteLLM parity slice 6 \u2014 router & load-balancing"
+      "archived": "2026-06-12"
     },
     {
-      "archived": "2026-06-13",
       "slug": "v9",
+      "title": "LiteLLM parity slice 7 \u2014 provider breadth (Anthropic + Google Gemini, chat + embeddings)",
+      "tasks": 4,
       "task_slugs": [
         "provider-chat-dispatch",
         "anthropic-provider",
         "gemini-provider",
         "provider-breadth-live-verify"
       ],
-      "tasks": 4,
-      "title": "LiteLLM parity slice 7 \u2014 provider breadth (Anthropic + Google Gemini, chat + embeddings)"
+      "archived": "2026-06-13"
     },
     {
-      "archived": "2026-06-13",
       "slug": "v10",
+      "title": "LiteLLM parity slice 8 \u2014 tool-use / function-calling across providers",
+      "tasks": 4,
       "task_slugs": [
         "tool-use-contract",
         "anthropic-tool-use",
         "gemini-tool-use",
         "tool-use-live-verify"
       ],
-      "tasks": 4,
-      "title": "LiteLLM parity slice 8 \u2014 tool-use / function-calling across providers"
+      "archived": "2026-06-13"
     },
     {
-      "archived": "2026-06-13",
       "slug": "v11",
+      "title": "LiteLLM parity slice 9 \u2014 JSON-mode / structured outputs across providers",
+      "tasks": 4,
       "task_slugs": [
         "response-format-contract",
         "gemini-json-mode",
         "anthropic-json-mode",
         "json-mode-live-verify"
       ],
-      "tasks": 4,
-      "title": "LiteLLM parity slice 9 \u2014 JSON-mode / structured outputs across providers"
+      "archived": "2026-06-13"
     },
     {
-      "archived": "2026-06-13",
       "slug": "v12",
+      "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt",
+      "tasks": 5,
       "task_slugs": [
         "gemini-embed-tokens",
         "empty-key-boot-guard",
@@ -163,24 +435,24 @@
         "test-db-isolation",
         "v12-live-verify"
       ],
-      "tasks": 5,
-      "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt"
+      "archived": "2026-06-13"
     },
     {
-      "archived": "2026-06-14",
       "slug": "v13",
+      "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
+      "tasks": 4,
       "task_slugs": [
         "design-system-foundation",
         "usage-cost-ui",
         "key-budget-governance-ui",
         "ui-ux-verify"
       ],
-      "tasks": 4,
-      "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)"
+      "archived": "2026-06-14"
     },
     {
-      "archived": "2026-06-14",
       "slug": "v15",
+      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
+      "tasks": 11,
       "task_slugs": [
         "design-system-extension",
         "model-management-ui",
@@ -194,21 +466,21 @@
         "oidc-login-relay",
         "feature-coverage-verify"
       ],
-      "tasks": 11,
-      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability"
+      "archived": "2026-06-14"
     },
     {
-      "archived": "2026-06-14",
       "slug": "v14",
+      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
+      "tasks": 1,
       "task_slugs": [
         "next16-upgrade"
       ],
-      "tasks": 1,
-      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation"
+      "archived": "2026-06-14"
     },
     {
-      "archived": "2026-06-15",
       "slug": "v17",
+      "title": "Hardening \u2014 clear carried follow-up debt (v13/v14/v15)",
+      "tasks": 6,
       "task_slugs": [
         "bff-test-harness-strict-handlers",
         "react-hooks-strict-lint",
@@ -217,21 +489,21 @@
         "devtool-vitest4-upgrade",
         "realbrowser-a11y-pass"
       ],
-      "tasks": 6,
-      "title": "Hardening \u2014 clear carried follow-up debt (v13/v14/v15)"
+      "archived": "2026-06-15"
     },
     {
-      "archived": "2026-06-15",
       "slug": "v18",
+      "title": "Auth session hardening",
+      "tasks": 1,
       "task_slugs": [
         "auth-me-session-verify"
       ],
-      "tasks": 1,
-      "title": "Auth session hardening"
+      "archived": "2026-06-15"
     },
     {
-      "archived": "2026-06-15",
       "slug": "v19",
+      "title": "Reliability \u2014 uniform retries, error-aware fallback, response & semantic caching",
+      "tasks": 6,
       "task_slugs": [
         "retry-seam-unify",
         "error-aware-fallback",
@@ -240,12 +512,12 @@
         "semantic-cache",
         "reliability-verify"
       ],
-      "tasks": 6,
-      "title": "Reliability \u2014 uniform retries, error-aware fallback, response & semantic caching"
+      "archived": "2026-06-15"
     },
     {
-      "archived": "2026-06-15",
       "slug": "v20",
+      "title": "Enterprise provider: AWS Bedrock (SigV4 \u00b7 Converse chat/stream/tools \u00b7 Titan embeddings)",
+      "tasks": 6,
       "task_slugs": [
         "bedrock-sigv4-auth",
         "bedrock-chat",
@@ -254,12 +526,12 @@
         "bedrock-embeddings",
         "bedrock-verify"
       ],
-      "tasks": 6,
-      "title": "Enterprise provider: AWS Bedrock (SigV4 \u00b7 Converse chat/stream/tools \u00b7 Titan embeddings)"
+      "archived": "2026-06-15"
     },
     {
-      "archived": "2026-06-15",
       "slug": "v21",
+      "title": "Enterprise provider: Azure OpenAI",
+      "tasks": 6,
       "task_slugs": [
         "azure-auth-routing",
         "azure-chat",
@@ -268,22 +540,22 @@
         "azure-embeddings",
         "azure-verify"
       ],
-      "tasks": 6,
-      "title": "Enterprise provider: Azure OpenAI"
+      "archived": "2026-06-15"
     },
     {
-      "archived": "2026-06-15",
       "slug": "v22",
+      "title": "Provider security & config hardening",
+      "tasks": 2,
       "task_slugs": [
         "provider-secret-chain-hardening",
         "azure-ad-authority-config"
       ],
-      "tasks": 2,
-      "title": "Provider security & config hardening"
+      "archived": "2026-06-15"
     },
     {
-      "archived": "2026-06-16",
       "slug": "v23",
+      "title": "Enterprise UI Overhaul",
+      "tasks": 6,
       "task_slugs": [
         "design-system-enterprise-ext",
         "app-shell-sidebar",
@@ -292,21 +564,21 @@
         "admin-surfaces-redesign",
         "auth-pages-redesign"
       ],
-      "tasks": 6,
-      "title": "Enterprise UI Overhaul"
+      "archived": "2026-06-16"
     },
     {
-      "archived": "2026-06-16",
       "slug": "v24",
+      "title": "UI polish & a11y follow-ups",
+      "tasks": 1,
       "task_slugs": [
         "overview-heading-a11y-fix"
       ],
-      "tasks": 1,
-      "title": "UI polish & a11y follow-ups"
+      "archived": "2026-06-16"
     },
     {
-      "archived": "2026-06-17",
       "slug": "v25",
+      "title": "Tenant-managed provider credentials (BYOK)",
+      "tasks": 7,
       "task_slugs": [
         "provider-credential-store",
         "credential-resolution-seam",
@@ -316,56 +588,56 @@
         "byok-live-verify",
         "openai-chat-complete"
       ],
-      "tasks": 7,
-      "title": "Tenant-managed provider credentials (BYOK)"
+      "archived": "2026-06-17"
     },
     {
-      "archived": "2026-06-17",
       "slug": "v26",
+      "title": "Provider config cleanup \u2014 v25 follow-ups",
+      "tasks": 2,
       "task_slugs": [
         "openai-retry-parity",
         "retire-empty-key-guard"
       ],
-      "tasks": 2,
-      "title": "Provider config cleanup \u2014 v25 follow-ups"
+      "archived": "2026-06-17"
     },
     {
-      "archived": "2026-06-18",
       "slug": "v27",
+      "title": "Billing precision \u2014 true per-tier cost on every call",
+      "tasks": 4,
       "task_slugs": [
         "tiered-token-billing",
         "provider-cost-reconciliation",
         "stt-duration-derivation",
         "stream-usage-completeness"
       ],
-      "tasks": 4,
-      "title": "Billing precision \u2014 true per-tier cost on every call"
+      "archived": "2026-06-18"
     },
     {
-      "archived": "2026-06-18",
       "slug": "v28",
+      "title": "Billing & passthrough robustness",
+      "tasks": 3,
       "task_slugs": [
         "stream-disconnect-billing",
         "stt-duration-cap",
         "stt-nonfinite-passthrough"
       ],
-      "tasks": 3,
-      "title": "Billing & passthrough robustness"
+      "archived": "2026-06-18"
     },
     {
-      "archived": "2026-06-18",
       "slug": "v29",
+      "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert",
+      "tasks": 3,
       "task_slugs": [
         "reconciliation-aggregate",
         "reconciliation-endpoint",
         "drift-alert"
       ],
-      "tasks": 3,
-      "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert"
+      "archived": "2026-06-18"
     },
     {
-      "archived": "2026-06-22",
       "slug": "v30",
+      "title": "Reconciliation hardening \u2014 make leak-detection trustworthy",
+      "tasks": 10,
       "task_slugs": [
         "drift-threshold-validation",
         "reconcile-cost-basis-filter",
@@ -378,35 +650,35 @@
         "openrouter-cost-recovery-wiring",
         "openrouter-recovery-sweep"
       ],
-      "tasks": 10,
-      "title": "Reconciliation hardening \u2014 make leak-detection trustworthy"
+      "archived": "2026-06-22"
     },
     {
-      "archived": "2026-06-23",
       "slug": "v32",
+      "title": "Writable routing configuration",
+      "tasks": 3,
       "task_slugs": [
         "routing-config-write",
         "routing-config-store",
         "routing-config-editor"
       ],
-      "tasks": 3,
-      "title": "Writable routing configuration"
+      "archived": "2026-06-23"
     },
     {
-      "archived": "2026-06-23",
       "slug": "v33",
+      "title": "Reconciliation & disconnect-billing hardening",
+      "tasks": 4,
       "task_slugs": [
         "passthrough-nonfinite-sanitize",
         "reconcile-cost-basis-filter",
         "disconnect-provider-cost",
         "drift-threshold-validation"
       ],
-      "tasks": 4,
-      "title": "Reconciliation & disconnect-billing hardening"
+      "archived": "2026-06-23"
     },
     {
-      "archived": "2026-06-23",
       "slug": "v34",
+      "title": "Helios agent-coding integration readiness",
+      "tasks": 7,
       "task_slugs": [
         "agent-coding-stub-harness",
         "reasoning-passthrough",
@@ -416,47 +688,47 @@
         "concurrency-load-guard",
         "helios-live-smoke"
       ],
-      "tasks": 7,
-      "title": "Helios agent-coding integration readiness"
+      "archived": "2026-06-23"
     },
     {
-      "archived": "2026-06-24",
       "slug": "v35",
+      "title": "Agent-loop error fidelity",
+      "tasks": 4,
       "task_slugs": [
         "upstream-ratelimit-passthrough",
         "stream-upstream-error-frame",
         "error-fidelity-live-verify",
         "stream-graceful-close-mapping"
       ],
-      "tasks": 4,
-      "title": "Agent-loop error fidelity"
+      "archived": "2026-06-24"
     },
     {
-      "archived": "2026-06-24",
       "slug": "v36",
+      "title": "Per-key bandwidth pacing",
+      "tasks": 4,
       "task_slugs": [
         "bandwidth-token-bucket",
         "stream-bandwidth-pacing",
         "bandwidth-usage-reconcile",
         "bandwidth-counter-view"
       ],
-      "tasks": 4,
-      "title": "Per-key bandwidth pacing"
+      "archived": "2026-06-24"
     },
     {
-      "archived": "2026-06-24",
       "slug": "v37",
+      "title": "Dashboard observability parity",
+      "tasks": 3,
       "task_slugs": [
         "bandwidth-panel",
         "routing-editor-feedback",
         "sso-login-polish"
       ],
-      "tasks": 3,
-      "title": "Dashboard observability parity"
+      "archived": "2026-06-24"
     },
     {
-      "archived": "2026-06-25",
       "slug": "v38",
+      "title": "Enterprise readiness",
+      "tasks": 13,
       "task_slugs": [
         "marketing-shell",
         "landing-page",
@@ -472,12 +744,12 @@
         "slo-metrics",
         "slo-dashboard"
       ],
-      "tasks": 13,
-      "title": "Enterprise readiness"
+      "archived": "2026-06-25"
     },
     {
-      "archived": "2026-06-25",
       "slug": "v39",
+      "title": "Headless agent authentication (OAuth device flow)",
+      "tasks": 6,
       "task_slugs": [
         "agent-oauth-grant-store",
         "device-authorization-endpoint",
@@ -486,125 +758,125 @@
         "agent-token-authn-seam",
         "agent-oauth-harness-e2e"
       ],
-      "tasks": 6,
-      "title": "Headless agent authentication (OAuth device flow)"
+      "archived": "2026-06-25"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v40",
+      "title": "Chat workspace + streaming",
+      "tasks": 4,
       "task_slugs": [
         "streaming-bff",
         "chat-workspace-page",
         "chat-model-controls",
         "chat-cost-readout"
       ],
-      "tasks": 4,
-      "title": "Chat workspace + streaming"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v41",
+      "title": "Web search augmentation",
+      "tasks": 2,
       "task_slugs": [
         "websearch-grounding-passthrough",
         "chat-websearch-toggle"
       ],
-      "tasks": 2,
-      "title": "Web search augmentation"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v42",
+      "title": "Voice breadth (multi-provider STT/TTS)",
+      "tasks": 4,
       "task_slugs": [
         "azure-audio-provider",
         "tts-input-guardrails",
         "audio-translations-endpoint",
         "voice-playground"
       ],
-      "tasks": 4,
-      "title": "Voice breadth (multi-provider STT/TTS)"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v43",
+      "title": "Remote sessions / conversations",
+      "tasks": 2,
       "task_slugs": [
         "conversations-backend",
         "chat-history-ui"
       ],
-      "tasks": 2,
-      "title": "Remote sessions / conversations"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v44",
+      "title": "Remote memory (tenant-scoped semantic memory store)",
+      "tasks": 2,
       "task_slugs": [
         "memory-backend",
         "memory-ui"
       ],
-      "tasks": 2,
-      "title": "Remote memory (tenant-scoped semantic memory store)"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v45",
+      "title": "Artifacts / files (tenant-scoped file store)",
+      "tasks": 2,
       "task_slugs": [
         "artifacts-backend",
         "artifacts-ui"
       ],
-      "tasks": 2,
-      "title": "Artifacts / files (tenant-scoped file store)"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v46",
+      "title": "Video & image understanding (Gemini multimodal)",
+      "tasks": 2,
       "task_slugs": [
         "gemini-multimodal",
         "vision-understanding-ui"
       ],
-      "tasks": 2,
-      "title": "Video & image understanding (Gemini multimodal)"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v47",
+      "title": "Realtime voice (turn-based WebSocket session)",
+      "tasks": 1,
       "task_slugs": [
         "realtime-voice"
       ],
-      "tasks": 1,
-      "title": "Realtime voice (turn-based WebSocket session)"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v48",
+      "title": "Video generation (async jobs)",
+      "tasks": 2,
       "task_slugs": [
         "video-jobs-backend",
         "video-jobs-ui"
       ],
-      "tasks": 2,
-      "title": "Video generation (async jobs)"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v49",
+      "title": "Durable video-job processing (Redis queue + restart recovery)",
+      "tasks": 1,
       "task_slugs": [
         "durable-video-queue"
       ],
-      "tasks": 1,
-      "title": "Durable video-job processing (Redis queue + restart recovery)"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "ui-fidelity",
+      "title": "UI visual fidelity",
+      "tasks": 3,
       "task_slugs": [
         "visual-language",
         "landing-fidelity",
         "admin-fidelity"
       ],
-      "tasks": 3,
-      "title": "UI visual fidelity"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v50",
+      "title": "Production hardening \u2014 landing & admin UI",
+      "tasks": 9,
       "task_slugs": [
         "resilient-bff-fetch",
         "security-headers-csp",
@@ -616,12 +888,12 @@
         "harden-admin",
         "harden-auth"
       ],
-      "tasks": 9,
-      "title": "Production hardening \u2014 landing & admin UI"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-26",
       "slug": "v52",
+      "title": "Full-duplex realtime voice relay (provider-agnostic seam)",
+      "tasks": 5,
       "task_slugs": [
         "realtime-relay-port",
         "openai-realtime-adapter",
@@ -629,12 +901,12 @@
         "realtime-relay-endpoint",
         "realtime-relay-live-verify"
       ],
-      "tasks": 5,
-      "title": "Full-duplex realtime voice relay (provider-agnostic seam)"
+      "archived": "2026-06-26"
     },
     {
-      "archived": "2026-06-27",
       "slug": "v53",
+      "title": "Kubernetes deployment + full e2e validation",
+      "tasks": 10,
       "task_slugs": [
         "helm-chart-scaffold",
         "datastore-statefulsets",
@@ -647,12 +919,12 @@
         "e2e-ui",
         "ci-e2e-pipeline"
       ],
-      "tasks": 10,
-      "title": "Kubernetes deployment + full e2e validation"
+      "archived": "2026-06-27"
     },
     {
-      "archived": "2026-06-30",
       "slug": "chat-playground",
+      "title": "Chat \u2014 Console-grade playground",
+      "tasks": 6,
       "task_slugs": [
         "chat-playground-shell",
         "chat-parameters-panel",
@@ -661,32 +933,31 @@
         "chat-run-metadata-cost",
         "chat-conversation-mgmt"
       ],
-      "tasks": 6,
-      "title": "Chat \u2014 Console-grade playground"
+      "archived": "2026-06-30"
     },
     {
-      "archived": "2026-07-01",
       "slug": "v55",
+      "title": "Capability-aware model management",
+      "tasks": 4,
       "task_slugs": [
         "model-input-capabilities",
         "unsupported-input-guard",
         "artifact-upload-validation",
         "capabilities-admin-surface"
       ],
-      "tasks": 4,
-      "title": "Capability-aware model management"
+      "archived": "2026-07-01"
     },
     {
-      "archived": "2026-07-01",
       "slug": "gateway-health",
+      "title": "Gateway Health",
+      "tasks": 4,
       "task_slugs": [
         "pyright-errors-clean",
         "ruff-format-and-lint-clean",
         "fix-stale-failing-tests",
         "deterministic-test-isolation"
       ],
-      "tasks": 4,
-      "title": "Gateway Health"
+      "archived": "2026-07-01"
     },
     {
       "archived": "2026-07-01",
@@ -822,65 +1093,36 @@
       "archived": "2026-07-02"
     }
   ],
-  "created": "2026-06-10T08:03:15+00:00",
-  "milestones": {
-    "v56": {
-      "created": "2026-06-30T12:11:18+00:00",
-      "goal": "A tenant admin defines named presets that remap model names (opus to gpt5-5), selects among multiple presets via a name: prefix (cheap:opus), and requests resolve the preset to a concrete model before the router while the existing fallback seam stays byte-identical.",
-      "stage": "production",
-      "status": "queued",
-      "title": "Per-tenant model presets",
-      "updated": "2026-06-30T12:11:18+00:00"
-    }
-  },
-  "project": "ai-proxy",
-  "setup": {
-    "layers": [
-      "foundation",
-      "scope",
-      "contract"
-    ],
-    "locked": true,
-    "locked_at": "2026-06-10T08:05:39+00:00",
-    "locked_by": "Tin Dang"
-  },
-  "stage": "production",
-  "tasks": {
-    "ai-feature-pages-redesign": {
-      "created": "2026-06-28T14:01:49+00:00",
-      "depends_on": [],
-      "gate": "none",
-      "milestone": null,
-      "phase": "specify",
-      "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
-      "updated": "2026-06-28T14:46:39+00:00"
-    }
+  "active_milestones": [
+    "v56"
+  ],
+  "active_tasks": {
+    "v56": "chat-modality-guard"
   },
   "todos": [
     {
-      "created": "2026-06-28T06:35:35+00:00",
       "id": 1,
-      "status": "open",
-      "text": "fix sidebar full height"
-    },
-    {
+      "text": "fix sidebar full height",
       "created": "2026-06-28T06:35:35+00:00",
+      "status": "open"
+    },
+    {
       "id": 2,
-      "status": "open",
-      "text": "paging model catalog with fuzzy search"
+      "text": "paging model catalog with fuzzy search",
+      "created": "2026-06-28T06:35:35+00:00",
+      "status": "open"
     },
     {
-      "created": "2026-06-28T06:35:36+00:00",
       "id": 3,
-      "status": "open",
-      "text": "upgrade UI of each page"
+      "text": "upgrade UI of each page",
+      "created": "2026-06-28T06:35:36+00:00",
+      "status": "open"
     },
     {
-      "created": "2026-06-30T10:57:02+00:00",
       "id": 4,
-      "status": "open",
-      "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time."
+      "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
+      "created": "2026-06-30T10:57:02+00:00",
+      "status": "open"
     }
-  ],
-  "updated": "2026-07-02T07:14:14+00:00"
+  ]
 }

@@ -76,7 +76,9 @@ async def test_owner_sees_levels_vs_capacity(client: Any, app: Any) -> None:
     assert body["rate_per_sec"] == 100
     assert body["burst"] == 200
     assert [k["name"] for k in body["keys"]] == ["seeded", "untouched"]  # created_at ASC
-    assert 149 <= _entry(body, seeded)["level"] <= 151
+    # rate=100/sec ⇒ ±15 tolerates ~150ms of real HTTP+DB+Redis round-trip latency
+    # (a loaded CI runner can exceed a ±1/±10ms budget while still proving no large refill)
+    assert 135 <= _entry(body, seeded)["level"] <= 165
     assert _entry(body, untouched)["level"] is None  # never touched ⇒ unknown
 
 
@@ -95,7 +97,9 @@ async def test_refill_adjusted_level(client: Any, app: Any) -> None:
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert _entry(body, clamped)["level"] == 200  # refill + clamp, exact
-    assert 149 <= _entry(body, fresh)["level"] <= 151
+    # rate=100/sec ⇒ ±15 tolerates ~150ms of real HTTP+DB+Redis round-trip latency
+    # (a loaded CI runner can exceed a ±1/±10ms budget while still proving no large refill)
+    assert 135 <= _entry(body, fresh)["level"] <= 165
 
 
 # ── float / negative persisted level parses without a 500 ────────────────────

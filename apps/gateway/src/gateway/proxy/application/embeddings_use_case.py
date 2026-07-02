@@ -21,11 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.catalog.infrastructure.orm import ModelRow
 from gateway.core.error_catalog import (
+    AUTH_KEY_INVALID,
+    MODEL_MODALITY_MISMATCH,
     MODEL_UNKNOWN,
     PAYLOAD_INPUT_REQUIRED,
     PAYLOAD_MODEL_REQUIRED,
+    PRESET_NOT_FOUND,
     UPSTREAM_UNAVAILABLE,
 )
+from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.application.governance import NonChatGovernance
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so the fire-and-forget
@@ -39,7 +43,13 @@ from gateway.proxy.application.use_cases import (
 )
 from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
-from gateway.proxy.domain.ports import ResponseCache, TenantCredentialResolver, UsageRecorder
+from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
+from gateway.proxy.domain.ports import (
+    KeyAuthenticator,
+    ResponseCache,
+    TenantCredentialResolver,
+    UsageRecorder,
+)
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
 from gateway.proxy.infrastructure.response_cache import build_embedding_cache_key
 
@@ -53,12 +63,20 @@ class EmbeddingsUseCase:
         governance: NonChatGovernance,
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
+        authenticator: KeyAuthenticator | None = None,
+        tenant_model_preset_store: TenantModelPresetStore | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test) ⇒
         # no per-request credential set (env-bound adapters unaffected).
         self._tenant_credential_resolver = tenant_credential_resolver
+        # preset-resolution-ingress (v56 §3): both None (defaults) ⇒ feature off ⇒
+        # execute() is byte-identical (no resolve() call, no rewrite). `authenticator`
+        # is the SAME KeyAuthenticator instance the DI factory already builds and wraps
+        # into `governance` — never a second instance.
+        self._authenticator = authenticator
+        self._tenant_model_preset_store = tenant_model_preset_store
 
     async def execute(
         self,
@@ -86,6 +104,29 @@ class EmbeddingsUseCase:
           7. _fire_record_with_raw (single-bill); store on 200 (fire-and-forget)
           8. return (status, resp_body, x_cache)  — x_cache None when cache disabled
         """
+        # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
+        # tenant's target model BEFORE validation/governance/cache/catalog/upstream. Mutates
+        # body["model"] in place — body is forwarded raw to upstream (Step 6 below).
+        # Either collaborator unwired (None) ⇒ guaranteed no-op (byte-identical).
+        if self._authenticator is not None and self._tenant_model_preset_store is not None:
+            _raw_model = body.get("model", "")
+            if isinstance(_raw_model, str):
+                _selector = parse_preset_selector(_raw_model)
+                if _selector is not None:
+                    _preset_name, _alias_key = _selector
+                    if not raw_key:
+                        raise AUTH_KEY_INVALID.exc()
+                    try:
+                        _authz_pre = await self._authenticator.authenticate(raw_key)
+                    except InvalidApiKeyError:
+                        raise AUTH_KEY_INVALID.exc() from None
+                    _target = await self._tenant_model_preset_store.resolve(
+                        _authz_pre.tenant_id, _preset_name, _alias_key
+                    )
+                    if _target is None:
+                        raise PRESET_NOT_FOUND.exc() from None
+                    body["model"] = _target
+
         # Step 1: Validate model field
         model_id = body.get("model")
         if not model_id or not isinstance(model_id, str) or not model_id.strip():
@@ -133,6 +174,20 @@ class EmbeddingsUseCase:
         row = (await self._session.execute(stmt)).one_or_none()
         if row is None:
             raise MODEL_UNKNOWN.exc(model_id=model_id)
+
+        # preset-capability-validation §3: coarse operation-type guard — unconditional (no
+        # feature flag). Reuses row.modality already fetched above (zero new I/O). A model
+        # whose modality isn't "embedding" would otherwise reach select_provider/the upstream
+        # facade and silently misroute to a chat completion (still billed) — reject here,
+        # BEFORE select_provider/upstream/billing (single-bill invariant preserved).
+        if row.modality != "embedding":
+            raise MODEL_MODALITY_MISMATCH.exc(
+                model_id=model_id,
+                detail=(
+                    f"model '{model_id}' has modality '{row.modality}',"
+                    " endpoint requires 'embedding'"
+                ),
+            )
 
         # Step 5: Resolve provider adapter
         provider_adapter = select_provider(row.modality, row.provider, registry)

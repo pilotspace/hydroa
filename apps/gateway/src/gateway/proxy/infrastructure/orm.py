@@ -66,3 +66,34 @@ class TenantProviderKeyRow(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sa.true())
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class TenantModelPresetRow(Base):
+    """SQLAlchemy ORM model for tenant_model_presets.
+
+    Mirrors the DDL in migration <rev>_tenant_model_presets.py.
+    PK is composite (tenant_id, preset_name, alias_key) — one row per
+    (preset_name, alias_key) selector pair per tenant.
+    """
+
+    __tablename__ = "tenant_model_presets"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    preset_name: Mapped[str] = mapped_column(
+        sa.TEXT,
+        primary_key=True,
+        nullable=False,
+    )
+    alias_key: Mapped[str] = mapped_column(
+        sa.TEXT,
+        primary_key=True,
+        nullable=False,
+    )
+    target_model: Mapped[str] = mapped_column(sa.TEXT, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
