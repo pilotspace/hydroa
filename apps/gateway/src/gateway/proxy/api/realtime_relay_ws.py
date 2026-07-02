@@ -114,9 +114,7 @@ def _extract_secret(cred: Any) -> str | None:
     return None
 
 
-def _make_relay_usage_callback(
-    usage_recorder: Any, tenant_id: Any, key_id: Any, model: str
-) -> Any:
+def _make_relay_usage_callback(usage_recorder: Any, tenant_id: Any, key_id: Any, model: str) -> Any:
     """Build the per-turn usage capture callback for one relay session (TASK.md §3).
 
     Captures the ONE-TIME WS-auth identity (tenant_id/key_id) — never re-derived per

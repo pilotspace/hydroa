@@ -18,7 +18,12 @@ from typing import Any
 
 from gateway.core.config import Settings
 
-from tests.gpt_realtime_relay_billing.conftest import FakeSession, FakeSessionFactory, SpyRecorder, StreamCapture
+from tests.gpt_realtime_relay_billing.conftest import (
+    FakeSession,
+    FakeSessionFactory,
+    SpyRecorder,
+    StreamCapture,
+)
 
 
 # ---------------------------------------------------------------------------

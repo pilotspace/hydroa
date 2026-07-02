@@ -204,9 +204,8 @@ async def test_admin_catalog_models_mirrors_pricing_fields(
             v1_entry["completion_usd_per_1m"]
         )
         assert admin_entry["cached_input_usd_per_1m"] == v1_entry["cached_input_usd_per_1m"] or (
-            admin_entry["cached_input_usd_per_1m"] == pytest.approx(
-                v1_entry["cached_input_usd_per_1m"]
-            )
+            admin_entry["cached_input_usd_per_1m"]
+            == pytest.approx(v1_entry["cached_input_usd_per_1m"])
         )
         assert "input_modalities" in admin_entry
         assert "input_modalities" not in v1_entry
@@ -331,7 +330,9 @@ async def test_cached_tokens_billed_at_cache_rate(
 
     redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
     try:
-        recorder = RecordingUsageRecorder(redis=redis_client, session_factory=app.state.sessionmaker)
+        recorder = RecordingUsageRecorder(
+            redis=redis_client, session_factory=app.state.sessionmaker
+        )
         # Exact numbers from minimax-live-verify's real, live-verified call.
         await recorder.record(
             tenant_id=tenant_uuid,

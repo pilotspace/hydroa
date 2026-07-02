@@ -644,9 +644,7 @@ def compute_per_token_cost_usd(
         _log.warning("audio_tier_price_missing", extra={"model": model, "tier": "audio_prompt"})
     if audio_completion_price is None and audio_completion_tokens > 0:
         _log.warning("audio_tier_price_missing", extra={"model": model, "tier": "audio_completion"})
-    a_prompt_price = (
-        Decimal(str(audio_prompt_price)) if audio_prompt_price is not None else _ZERO
-    )
+    a_prompt_price = Decimal(str(audio_prompt_price)) if audio_prompt_price is not None else _ZERO
     a_completion_price = (
         Decimal(str(audio_completion_price)) if audio_completion_price is not None else _ZERO
     )

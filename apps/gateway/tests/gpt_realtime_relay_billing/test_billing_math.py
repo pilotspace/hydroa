@@ -87,7 +87,9 @@ def test_compute_cost_byte_identical_when_audio_args_default() -> None:
         markup_pct=Decimal("0"),
     )
     expected = Decimal("1000") * prompt_price + Decimal("200") * completion_price
-    assert cost == expected, f"non-realtime cost must be byte-identical: got {cost}, want {expected}"
+    assert cost == expected, (
+        f"non-realtime cost must be byte-identical: got {cost}, want {expected}"
+    )
 
 
 # ---------------------------------------------------------------------------

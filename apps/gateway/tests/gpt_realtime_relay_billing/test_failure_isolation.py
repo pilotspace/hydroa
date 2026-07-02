@@ -14,7 +14,12 @@ from typing import Any
 
 from gateway.proxy.infrastructure.openai_realtime import OpenAIRealtimeSession
 
-from tests.gpt_realtime_relay_billing.conftest import FakeSession, FakeSessionFactory, FakeWebSocket, StreamCapture
+from tests.gpt_realtime_relay_billing.conftest import (
+    FakeSession,
+    FakeSessionFactory,
+    FakeWebSocket,
+    StreamCapture,
+)
 
 
 def _session(ws: FakeWebSocket, *, on_usage: Any = None) -> OpenAIRealtimeSession:
@@ -87,15 +92,15 @@ async def test_non_dict_usage_skips_capture() -> None:
     async def _on_usage(usage: dict) -> None:
         called.append(usage)
 
-    ws = FakeWebSocket(
-        incoming=[json.dumps({"type": "response.done", "usage": "not-a-dict"})]
-    )
+    ws = FakeWebSocket(incoming=[json.dumps({"type": "response.done", "usage": "not-a-dict"})])
     session = _session(ws, on_usage=_on_usage)
     await session.connect()
     frames = await _collect(session)
 
     assert frames == [{"type": "response.done"}]
-    assert called == [], "usage present but not a dict -> usage_malformed_skip: callback never invoked"
+    assert called == [], (
+        "usage present but not a dict -> usage_malformed_skip: callback never invoked"
+    )
 
 
 async def test_usage_dict_with_missing_subfields_still_bills_degraded_to_zero() -> None:

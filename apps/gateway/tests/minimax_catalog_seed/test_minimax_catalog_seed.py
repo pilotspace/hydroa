@@ -205,7 +205,8 @@ async def test_main_wires_composite_catalog_source(app: Any) -> None:
     # gpt-realtime-pricing-fields TASK.md §3: main.py now appends GPT_REALTIME_SEED_MODELS
     # after MINIMAX_SEED_MODELS in the real app's static_models wiring.
     assert [
-        m.id for m in source._static_models  # pyright: ignore[reportPrivateUsage]
+        m.id
+        for m in source._static_models  # pyright: ignore[reportPrivateUsage]
     ] == [*_MINIMAX_IDS, "gpt-realtime"], (
         "the wrapped static_models must be MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS"
     )
