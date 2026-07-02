@@ -120,8 +120,12 @@ describe("lib/artifacts — typed BFF client", () => {
       ),
     );
     const blob = await downloadArtifact("art-a");
-    expect(blob).toBeInstanceOf(Blob);
+    // Duck-type instead of `toBeInstanceOf(Blob)` — undici/MSW can hand back a Blob from a
+    // different realm than this file's global `Blob`, which fails `instanceof` even though
+    // the value is a genuine, correctly-shaped Blob (observed CI-only, Node 24 runner).
+    expect(blob.constructor.name).toBe("Blob");
     expect(blob.size).toBe(4);
+    expect(blob.type).toBe("application/pdf");
   });
 
   it("downloadArtifact_throws_on_non_ok", async () => {
@@ -264,7 +268,11 @@ describe("ArtifactsWorkspace", () => {
     const downloadBtn = screen.getByRole("button", { name: /download report\.pdf/i });
     await user.click(downloadBtn);
 
-    await waitFor(() => expect(createObjectURLSpy).toHaveBeenCalledWith(expect.any(Blob)));
+    // `expect.any(Blob)` matches via `instanceof`, which can fail across realms (see the
+    // duck-typed check above) — assert on the call's actual argument shape instead.
+    await waitFor(() => expect(createObjectURLSpy).toHaveBeenCalledTimes(1));
+    const createdArg = createObjectURLSpy.mock.calls[0]?.[0];
+    expect(createdArg?.constructor?.name).toBe("Blob");
     await waitFor(() => expect(clickSpy).toHaveBeenCalled());
     await waitFor(() => expect(revokeObjectURLSpy).toHaveBeenCalledWith(fakeUrl));
 

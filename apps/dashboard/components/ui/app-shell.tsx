@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, LogOut, Menu, MessageSquare, Mic, Receipt, Settings, Users } from "lucide-react";
+import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, LogOut, Menu, MessageSquare, Mic, Receipt, Settings, Shuffle, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { bffAuthPost } from "@/lib/bff-client";
 import {
@@ -36,10 +36,14 @@ interface NavItem {
   /**
    * Minimum role that can use the page the link points to. `"admin"` means the
    * page's GET 403s on a `member` (owner|admin only) — so the link is hidden from
-   * members. Omitted ⇒ any authenticated role may see the link. The gateway remains
-   * the source of truth — this is UX-only and FAILS OPEN.
+   * members. `"owner"` means the page's GET 403s on anyone but the tenant OWNER
+   * (e.g. `/admin/presets` — a strictly OWNER-only admin API, unlike the
+   * owner-or-admin pages above) — hidden from both member and admin. Omitted ⇒
+   * any authenticated role may see the link. The gateway remains the source of
+   * truth — this is UX-only and FAILS OPEN (an unrecognized/loading role sees
+   * every link rather than risk hiding one a user is actually entitled to).
    */
-  minRole?: "admin";
+  minRole?: "admin" | "owner";
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -52,6 +56,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/app/usage", label: "Usage", icon: BarChart3 },
   { href: "/app/spend", label: "Spend", icon: Receipt },
   { href: "/app/keys", label: "API Keys", icon: KeyRound },
+  { href: "/app/presets", label: "Model Presets", icon: Shuffle, minRole: "owner" },
   { href: "/app/models", label: "Models", icon: Boxes, minRole: "admin" },
   { href: "/app/teams", label: "Teams", icon: Users, minRole: "admin" },
   { href: "/app/members", label: "Members", icon: Users, minRole: "admin" },
@@ -71,9 +76,11 @@ export interface AppShellProps {
   activePath?: string;
   /**
    * The current user's role (owner|admin|member). When `"member"`, admin-only
-   * links are hidden. Any other value — including null/undefined while the
-   * identity is still loading or failed — FAILS OPEN (all links shown); the
-   * gateway still enforces RBAC on navigate, so no one is locked out of their nav.
+   * AND owner-only links are hidden; when `"admin"`, owner-only links are also
+   * hidden (admin is not owner). Any other value — including null/undefined
+   * while the identity is still loading or failed — FAILS OPEN (all links
+   * shown); the gateway still enforces RBAC on navigate, so no one is locked
+   * out of their nav.
    */
   role?: string | null;
   /** The signed-in user's email, shown in the sidebar footer when present. */
@@ -81,7 +88,11 @@ export interface AppShellProps {
 }
 
 function visibleItems(role?: string | null): NavItem[] {
-  return NAV_ITEMS.filter((item) => !(item.minRole === "admin" && role === "member"));
+  return NAV_ITEMS.filter((item) => {
+    if (item.minRole === "admin" && role === "member") return false;
+    if (item.minRole === "owner" && (role === "member" || role === "admin")) return false;
+    return true;
+  });
 }
 
 /**

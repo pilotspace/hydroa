@@ -311,9 +311,7 @@ async def test_chat_image_to_vision_allowed(
         seed_chat_model,
     )
 
-    await seed_chat_model(
-        db_session, model_id=CHAT_VISION_MODEL_ID, input_modalities="text,image"
-    )
+    await seed_chat_model(db_session, model_id=CHAT_VISION_MODEL_ID, input_modalities="text,image")
     fake_upstream = inject_fake_completion_upstream(app)
 
     body = {

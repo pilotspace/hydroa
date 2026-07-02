@@ -1341,6 +1341,9 @@ async def test_guardrails_core_migration_column_exists(
     # conversation_messages) to this manifest — they are registered on Base.metadata via
     # main.py's side-effect ORM imports (same oidc/teams/oauth precedent).
     # Guardrails still adds no tables of its own; invariant intent unchanged.
+    # SANCTIONED EDIT (tenant-preset-store TASK.md §3, 2026-07-01): added
+    # tenant_model_presets to this manifest — additive migration b5f8a1d4c7e0,
+    # registered on Base.metadata via main.py's side-effect ORM import (same precedent).
     new_tables = (
         await db_session.execute(
             text(
@@ -1352,7 +1355,7 @@ async def test_guardrails_core_migration_column_exists(
                 " 'tenant_provider_keys','routing_config','audit_events',"
                 " 'device_authorizations','agent_tokens','alembic_version',"
                 " 'artifacts','memories','video_generation_jobs',"
-                " 'conversations','conversation_messages')"
+                " 'conversations','conversation_messages','tenant_model_presets')"
             )
         )
     ).fetchall()

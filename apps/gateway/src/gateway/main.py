@@ -67,6 +67,7 @@ from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.concurrency_guard import GlobalBackPressureMiddleware
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
+from gateway.proxy.api.presets_admin_router import presets_admin_router
 from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
 from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
 from gateway.proxy.api.realtime_ws import realtime_router
@@ -95,6 +96,9 @@ from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
 from gateway.proxy.infrastructure.orm import (
+    TenantModelPresetRow as _TenantModelPresetRow,  # noqa: F401 — registers TenantModelPresetRow on Base.metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.proxy.infrastructure.orm import (
     TenantProviderKeyRow as _TenantProviderKeyRow,  # noqa: F401 — registers TenantProviderKeyRow on Base.metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.proxy.infrastructure.provider_aware_upstream import ProviderAwareCompletionUpstream
@@ -103,6 +107,7 @@ from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate
 from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
+from gateway.proxy.infrastructure.tenant_model_preset_store import DbTenantModelPresetStore
 from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
@@ -653,12 +658,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     from gateway.catalog.infrastructure.orm import ModelRow as _ModelRow
 
+    # chat-modality-guard (v56 §3): a single query fetches id/provider/modality; the
+    # modality column is stashed in this closure-scoped cache so _load_modality_map()
+    # below can hand it to the resolver with ZERO extra I/O (same refresh cycle,
+    # ordered: refresh() always calls _load_provider_map() before _load_modality_map()).
+    _last_modality_cache: dict[str, str] = {}
+
     async def _load_provider_map() -> dict[str, str]:
         async with app.state.sessionmaker() as _session:
-            _rows = (await _session.execute(_sa_select(_ModelRow.id, _ModelRow.provider))).all()
+            _rows = (
+                await _session.execute(
+                    _sa_select(_ModelRow.id, _ModelRow.provider, _ModelRow.modality)
+                )
+            ).all()
+            _last_modality_cache.clear()
+            _last_modality_cache.update({row.id: row.modality for row in _rows if row.modality})
             return {row.id: row.provider for row in _rows}
 
-    app.state.provider_resolver = CatalogProviderResolver(loader=_load_provider_map)
+    async def _load_modality_map() -> dict[str, str]:
+        return dict(_last_modality_cache)
+
+    app.state.provider_resolver = CatalogProviderResolver(
+        loader=_load_provider_map,
+        modality_loader=_load_modality_map,
+    )
 
     # Chat adapter map — ALL providers (openrouter / anthropic / google / openai /
     # bedrock / azure) are registered UNCONDITIONALLY. Per-tenant key gating moved to
@@ -864,6 +887,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings=settings,
     )
 
+    # Tenant model-preset store (tenant-preset-store v56). upsert() constructs its own
+    # SqlAlchemyModelChecker per call, scoped to the session it opens (see the store's
+    # module docstring) — matching every other call site in the codebase. Consumed by
+    # the proxy ingress via getattr(app.state, "tenant_model_preset_store", None) in
+    # deps.py/images_deps.py/embeddings_deps.py/audio_deps.py/realtime_ws.py
+    # (preset-resolution-ingress v56).
+    app.state.tenant_model_preset_store = DbTenantModelPresetStore(
+        sessionmaker=app.state.sessionmaker,
+    )
+
     # openrouter-cost-recovery-wiring (v30 t6.2c): inline authoritative-cost recovery for
     # disconnected OpenRouter streams. Constructed ONLY when the knob is on (default OFF ⇒
     # None ⇒ byte-identical streaming). The use-case schedules recover() fire-and-forget
@@ -913,6 +946,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(oidc_router)
     app.include_router(oidc_admin_router)
     app.include_router(provider_keys_admin_router)
+    app.include_router(presets_admin_router)
     app.include_router(health_router)
     app.include_router(internal_router)
     app.include_router(internal_catalog_router)

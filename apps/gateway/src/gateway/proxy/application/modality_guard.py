@@ -127,8 +127,7 @@ def enforce(
 
     raise UNSUPPORTED_INPUT_MODALITY.exc(
         detail=(
-            f"{input_type} input not supported by model '{model_id}'"
-            f" (supports: {sorted(allowed)})"
+            f"{input_type} input not supported by model '{model_id}' (supports: {sorted(allowed)})"
         ),
         input_type=input_type,
     )
