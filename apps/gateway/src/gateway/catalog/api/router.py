@@ -119,6 +119,21 @@ async def list_models(
                     if m.cached_input_per_token is not None
                     else None
                 ),
+                audio_prompt_usd_per_1m=(
+                    m.audio_prompt_per_token * 1_000_000
+                    if m.audio_prompt_per_token is not None
+                    else None
+                ),
+                audio_completion_usd_per_1m=(
+                    m.audio_completion_per_token * 1_000_000
+                    if m.audio_completion_per_token is not None
+                    else None
+                ),
+                audio_cached_usd_per_1m=(
+                    m.audio_cached_per_token * 1_000_000
+                    if m.audio_cached_per_token is not None
+                    else None
+                ),
             )
             for m in models
         ]
@@ -167,6 +182,21 @@ async def list_catalog_models(
                 cached_input_usd_per_1m=(
                     m.cached_input_per_token * 1_000_000
                     if m.cached_input_per_token is not None
+                    else None
+                ),
+                audio_prompt_usd_per_1m=(
+                    m.audio_prompt_per_token * 1_000_000
+                    if m.audio_prompt_per_token is not None
+                    else None
+                ),
+                audio_completion_usd_per_1m=(
+                    m.audio_completion_per_token * 1_000_000
+                    if m.audio_completion_per_token is not None
+                    else None
+                ),
+                audio_cached_usd_per_1m=(
+                    m.audio_cached_per_token * 1_000_000
+                    if m.audio_cached_per_token is not None
                     else None
                 ),
             )

@@ -96,6 +96,9 @@ class SqlAlchemyCatalogRepository:
                 PricingSnapshotRow.prompt_usd_per_token,
                 PricingSnapshotRow.completion_usd_per_token,
                 PricingSnapshotRow.cached_input_usd_per_token,
+                PricingSnapshotRow.audio_prompt_usd_per_token,
+                PricingSnapshotRow.audio_completion_usd_per_token,
+                PricingSnapshotRow.audio_cached_usd_per_token,
             )
             .distinct(PricingSnapshotRow.model_id)
             .order_by(
@@ -114,6 +117,9 @@ class SqlAlchemyCatalogRepository:
                 snap_sub.c.prompt_usd_per_token,
                 snap_sub.c.completion_usd_per_token,
                 snap_sub.c.cached_input_usd_per_token,
+                snap_sub.c.audio_prompt_usd_per_token,
+                snap_sub.c.audio_completion_usd_per_token,
+                snap_sub.c.audio_cached_usd_per_token,
                 TenantRow.markup_pct,
             )
             .join(snap_sub, snap_sub.c.model_id == ModelRow.id)
@@ -146,6 +152,23 @@ class SqlAlchemyCatalogRepository:
                         if row.cached_input_usd_per_token is not None
                         else None
                     ),
+                    # gpt-realtime-pricing-fields TASK.md §3: None-safe — no audio stream today
+                    # for any model except gpt-realtime; never coerced to 0.
+                    audio_prompt_per_token=(
+                        float(row.audio_prompt_usd_per_token) * multiplier
+                        if row.audio_prompt_usd_per_token is not None
+                        else None
+                    ),
+                    audio_completion_per_token=(
+                        float(row.audio_completion_usd_per_token) * multiplier
+                        if row.audio_completion_usd_per_token is not None
+                        else None
+                    ),
+                    audio_cached_per_token=(
+                        float(row.audio_cached_usd_per_token) * multiplier
+                        if row.audio_cached_usd_per_token is not None
+                        else None
+                    ),
                 )
             )
         return result
@@ -172,12 +195,26 @@ class SqlAlchemyCatalogRepository:
 
     async def _fetch_latest_prices(
         self, model_ids: list[str]
-    ) -> dict[str, tuple[Decimal, Decimal, Decimal | None]]:
+    ) -> dict[
+        str,
+        tuple[
+            Decimal,
+            Decimal,
+            Decimal | None,
+            Decimal | None,
+            Decimal | None,
+            Decimal | None,
+        ],
+    ]:
         """Bulk-fetch the most recent snapshot prices for a set of model IDs.
 
         catalog-pricing-fields TASK.md §3: the tuple grew a 3rd element
         (cached_input_usd_per_token, None when absent) so _price_changed can detect a
         cache-price-only change and append a new snapshot.
+
+        gpt-realtime-pricing-fields TASK.md §3: the tuple grows 3 MORE elements
+        (audio_prompt/audio_completion/audio_cached_usd_per_token, None when absent) for the
+        same reason — an audio-price-only change must also append a new snapshot.
         """
         if not model_ids:
             return {}
@@ -189,6 +226,9 @@ class SqlAlchemyCatalogRepository:
                 PricingSnapshotRow.prompt_usd_per_token,
                 PricingSnapshotRow.completion_usd_per_token,
                 PricingSnapshotRow.cached_input_usd_per_token,
+                PricingSnapshotRow.audio_prompt_usd_per_token,
+                PricingSnapshotRow.audio_completion_usd_per_token,
+                PricingSnapshotRow.audio_cached_usd_per_token,
             )
             .distinct(PricingSnapshotRow.model_id)
             .where(PricingSnapshotRow.model_id.in_(model_ids))
@@ -205,6 +245,15 @@ class SqlAlchemyCatalogRepository:
                 Decimal(str(row.completion_usd_per_token)),
                 Decimal(str(row.cached_input_usd_per_token))
                 if row.cached_input_usd_per_token is not None
+                else None,
+                Decimal(str(row.audio_prompt_usd_per_token))
+                if row.audio_prompt_usd_per_token is not None
+                else None,
+                Decimal(str(row.audio_completion_usd_per_token))
+                if row.audio_completion_usd_per_token is not None
+                else None,
+                Decimal(str(row.audio_cached_usd_per_token))
+                if row.audio_cached_usd_per_token is not None
                 else None,
             )
             for row in rows
@@ -252,6 +301,10 @@ class SqlAlchemyCatalogRepository:
         catalog-pricing-fields TASK.md §3: also persists cached_input_usd_per_token (the
         pre-existing tiered-token-billing column) when the model carries one — NULL otherwise,
         preserving byte-identical behavior for every provider without a cache price.
+
+        gpt-realtime-pricing-fields TASK.md §3: also persists the 3 audio_* columns (added by
+        gpt-realtime-schema-migration) when the model carries them — NULL otherwise, same
+        byte-identical-for-everyone-else discipline.
         """
         snap = PricingSnapshotRow(
             id=uuid7(),
@@ -259,28 +312,68 @@ class SqlAlchemyCatalogRepository:
             prompt_usd_per_token=model.prompt_usd_per_token,
             completion_usd_per_token=model.completion_usd_per_token,
             cached_input_usd_per_token=model.cached_input_usd_per_token,
+            audio_prompt_usd_per_token=model.audio_prompt_usd_per_token,
+            audio_completion_usd_per_token=model.audio_completion_usd_per_token,
+            audio_cached_usd_per_token=model.audio_cached_usd_per_token,
         )
         self._session.add(snap)
 
     @staticmethod
     def _price_changed(
-        prev: tuple[Decimal, Decimal, Decimal | None] | None, model: CatalogModel
+        prev: tuple[
+            Decimal,
+            Decimal,
+            Decimal | None,
+            Decimal | None,
+            Decimal | None,
+            Decimal | None,
+        ]
+        | None,
+        model: CatalogModel,
     ) -> bool:
-        """Return True if this model has no prior snapshot or any of its 3 prices differ.
+        """Return True if this model has no prior snapshot or any of its 6 prices differ.
 
         catalog-pricing-fields TASK.md §3: extended to a 3-way comparison (prompt, completion,
         cached_input) so a cache-price-only change still appends a new append-only snapshot row.
+
+        gpt-realtime-pricing-fields TASK.md §3: extended to a 6-way comparison (+ audio_prompt,
+        audio_completion, audio_cached) so an audio-price-only change also appends one.
         """
         if prev is None:
             return True
-        prev_prompt, prev_completion, prev_cached = prev
+        (
+            prev_prompt,
+            prev_completion,
+            prev_cached,
+            prev_audio_prompt,
+            prev_audio_completion,
+            prev_audio_cached,
+        ) = prev
         model_cached = (
             Decimal(str(model.cached_input_usd_per_token))
             if model.cached_input_usd_per_token is not None
+            else None
+        )
+        model_audio_prompt = (
+            Decimal(str(model.audio_prompt_usd_per_token))
+            if model.audio_prompt_usd_per_token is not None
+            else None
+        )
+        model_audio_completion = (
+            Decimal(str(model.audio_completion_usd_per_token))
+            if model.audio_completion_usd_per_token is not None
+            else None
+        )
+        model_audio_cached = (
+            Decimal(str(model.audio_cached_usd_per_token))
+            if model.audio_cached_usd_per_token is not None
             else None
         )
         return (
             prev_prompt != Decimal(str(model.prompt_usd_per_token))
             or prev_completion != Decimal(str(model.completion_usd_per_token))
             or prev_cached != model_cached
+            or prev_audio_prompt != model_audio_prompt
+            or prev_audio_completion != model_audio_completion
+            or prev_audio_cached != model_audio_cached
         )

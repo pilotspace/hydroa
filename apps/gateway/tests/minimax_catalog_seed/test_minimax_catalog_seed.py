@@ -202,9 +202,13 @@ async def test_main_wires_composite_catalog_source(app: Any) -> None:
     assert isinstance(source._primary, OpenRouterCatalogSource), (  # pyright: ignore[reportPrivateUsage]
         "the wrapped primary source must still be OpenRouterCatalogSource"
     )
+    # gpt-realtime-pricing-fields TASK.md §3: main.py now appends GPT_REALTIME_SEED_MODELS
+    # after MINIMAX_SEED_MODELS in the real app's static_models wiring.
     assert [
         m.id for m in source._static_models  # pyright: ignore[reportPrivateUsage]
-    ] == list(_MINIMAX_IDS), "the wrapped static_models must be MINIMAX_SEED_MODELS"
+    ] == [*_MINIMAX_IDS, "gpt-realtime"], (
+        "the wrapped static_models must be MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS"
+    )
 
 
 # ===========================================================================

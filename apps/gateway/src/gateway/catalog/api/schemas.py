@@ -40,6 +40,11 @@ class ModelItem(BaseModel):
     prompt_usd_per_1m: float
     completion_usd_per_1m: float
     cached_input_usd_per_1m: float | None
+    # gpt-realtime-pricing-fields TASK.md §3: a SECOND, independently-priced token stream;
+    # null for every model without one (everything except gpt-realtime today).
+    audio_prompt_usd_per_1m: float | None
+    audio_completion_usd_per_1m: float | None
+    audio_cached_usd_per_1m: float | None
 
 
 class ModelsListResponse(BaseModel):
@@ -72,6 +77,10 @@ class AdminCatalogModelItem(BaseModel):
     prompt_usd_per_1m: float
     completion_usd_per_1m: float
     cached_input_usd_per_1m: float | None
+    # gpt-realtime-pricing-fields TASK.md §3: mirrors ModelItem's audio_* fields.
+    audio_prompt_usd_per_1m: float | None
+    audio_completion_usd_per_1m: float | None
+    audio_cached_usd_per_1m: float | None
 
 
 class AdminCatalogModelsListResponse(BaseModel):

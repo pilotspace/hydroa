@@ -47,6 +47,11 @@ class FakeCatalogModel:
     # catalog-pricing-fields TASK.md §3: CatalogModel.cached_input_usd_per_token is now
     # read by _insert_snapshot too; mirror its real default so this suite is unaffected.
     cached_input_usd_per_token: float | None = None
+    # gpt-realtime-pricing-fields TASK.md §3: CatalogModel.audio_* fields are now read
+    # by _insert_snapshot too; mirror their real defaults so this suite is unaffected.
+    audio_prompt_usd_per_token: float | None = None
+    audio_completion_usd_per_token: float | None = None
+    audio_cached_usd_per_token: float | None = None
 
 
 class FakeCatalogSource:
