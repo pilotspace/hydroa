@@ -100,6 +100,8 @@ def test_check_node_deps_exits_nonzero_unlisted() -> None:
     fixture_pkg["dependencies"] = dict(real_pkg.get("dependencies", {}))
     fixture_pkg["dependencies"]["some-evil-package"] = "1.0.0"
 
+    # tmp/ is gitignored, so a fresh checkout (e.g. CI) won't have it yet.
+    (REPO_ROOT / "tmp").mkdir(exist_ok=True)
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False, dir=REPO_ROOT / "tmp"
     ) as f:
