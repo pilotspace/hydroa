@@ -799,12 +799,12 @@
     },
     "usage-flusher-durability": {
       "title": "B4+B5: usage recorder durable fallback + Redis timeout + PEL reclaim",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T04:53:34+00:00"
+      "updated": "2026-07-02T05:57:31+00:00"
     },
     "realtime-relay-governance": {
       "title": "B2: realtime relay authz/rate-limit + usage/audit rows",
@@ -1031,7 +1031,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T05:41:56+00:00",
+  "updated": "2026-07-02T05:57:31+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
