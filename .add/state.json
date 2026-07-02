@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "cache-alias-billing",
+  "active_task": "provider-circuit-breakers",
   "active_milestone": "enterprise-hardening",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -835,14 +835,14 @@
     },
     "provider-circuit-breakers": {
       "title": "B3: per-provider breakers; complete() survives CircuitOpenError",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "enterprise-hardening",
       "depends_on": [
         "cache-alias-billing"
       ],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T04:53:34+00:00"
+      "updated": "2026-07-02T06:14:04+00:00"
     },
     "tiered-rate-cards": {
       "title": "Monetization: per-model/per-tier rate cards replace flat markup_pct",
@@ -1031,7 +1031,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T05:57:31+00:00",
+  "updated": "2026-07-02T06:14:04+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1748,7 +1748,7 @@
     "video-playground": "video-console-rebuild",
     "proxy-correctness": "adapter-correctness-fixes",
     "openrouter-embeddings": "stream-alias-billing",
-    "enterprise-hardening": "cache-alias-billing"
+    "enterprise-hardening": "provider-circuit-breakers"
   },
   "todos": [
     {
