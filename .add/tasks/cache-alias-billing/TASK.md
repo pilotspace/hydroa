@@ -2,7 +2,7 @@
 
 slug: cache-alias-billing · created: 2026-07-02 · stage: production
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -123,8 +123,8 @@ UNCHANGED: HTTP req/resp shape · x_cache values · TPM accounting · miss-path 
 Schema: none — no DB/table change. usage_records rows now carry a catalog model id (→ pricing snapshot) instead of an alias.
 ```
 
-Status: DRAFT
-Bundle lowest-confidence flags (surface at freeze):
+Status: FROZEN @ v1 — approved by Tin Dang (2026-07-02). Changing this contract now = change request back to SPECIFY.
+Bundle lowest-confidence flags (surfaced at freeze — Tin froze as-is, stamp approach):
   ⚠ [contract] pop the stamp BEFORE post-call guardrail masking (evaluate_post) — else a masking
      transform dropping unknown keys loses it → falls back to cached["model"] (mis-bill OpenRouter
      variants, never $0-on-alias). Pinned in §1 Must; tested by S1.
@@ -164,7 +164,7 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `apps/gateway/src/gateway/proxy/application/use_cases.py` · `./tests/`
+Scope (may touch): `apps/gateway/src/gateway/proxy/application/use_cases.py` · `apps/gateway/tests/cache_alias_billing/`
 Strategy (ordered batches): 1. add module-level STAMP constant + a tiny `_stamp_served(body, served)` shallow-copy helper + `_read_served(cached, model_id)` (pop→cached["model"]→model_id). 2. wrap the 3 write sites (:1373/:1408/:1411) to store the stamped value. 3. at the 3 hit sites (:1143/:1199/:1257) read+pop served BEFORE evaluate_post and bill on it.
 Known-problem fixes: masking-drops-stamp → read+pop the served id immediately after cache.get/lookup, before evaluate_post · stamp-leaks-to-client → store a shallow COPY, never mutate response_body; pop on every hit path · under-enumeration (the B1 trap) → all 3 write sites AND all 3 read sites listed in §0, each gets a test.
 Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
