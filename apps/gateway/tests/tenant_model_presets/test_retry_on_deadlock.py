@@ -70,7 +70,9 @@ def test_is_deadlock_false_for_unrelated_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _counting_op(calls: list[int], raises: Callable[[int], BaseException | None]) -> Callable[[], Any]:
+def _counting_op(
+    calls: list[int], raises: Callable[[int], BaseException | None]
+) -> Callable[[], Any]:
     """Build an async op; on call N (1-indexed) either raises `raises(N)` or returns N."""
 
     async def op() -> int:

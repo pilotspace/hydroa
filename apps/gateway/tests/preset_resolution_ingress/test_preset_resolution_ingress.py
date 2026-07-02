@@ -374,9 +374,7 @@ async def test_chat_stream_colon_selector_resolves_before_router(tenant_id: uuid
     upstream = _FakeStreamUpstream()
 
     class _FakeStreamRouter(FakeModelRouter):
-        def stream(
-            self, body: dict[str, Any], *, upstream: Any
-        ) -> AsyncIterator[bytes]:
+        def stream(self, body: dict[str, Any], *, upstream: Any) -> AsyncIterator[bytes]:
             self.complete_calls.append(dict(body))
             return upstream.stream(body)
 
@@ -692,9 +690,7 @@ async def test_realtime_ws_real_chat_resolves_via_complete_delegation(
         def __init__(self, **kwargs: Any) -> None:
             captured_kwargs.update(kwargs)
 
-        async def complete(
-            self, **kwargs: Any
-        ) -> tuple[int, dict[str, Any], str | None]:
+        async def complete(self, **kwargs: Any) -> tuple[int, dict[str, Any], str | None]:
             return 200, {"choices": [{"message": {"content": "resolved-ok"}}]}, None
 
     monkeypatch.setattr(
@@ -980,9 +976,7 @@ async def test_tenant_with_zero_presets_fully_unaffected(tenant_id: uuid.UUID) -
     embeddings_adapter.json_response = (200, {"data": [], "usage": {}})
     embeddings_uc = EmbeddingsUseCase(
         governance=cast(Any, embeddings_governance),
-        session=cast(Any, FakeSession(
-            modality="embedding", provider="fake-provider"
-        )),
+        session=cast(Any, FakeSession(modality="embedding", provider="fake-provider")),
         authenticator=authenticator,
         tenant_model_preset_store=store,
     )
@@ -1096,9 +1090,7 @@ async def test_unwired_store_is_safe_noop(tenant_id: uuid.UUID) -> None:
     embeddings_adapter.json_response = (200, {"data": [], "usage": {}})
     embeddings_uc = EmbeddingsUseCase(
         governance=cast(Any, embeddings_governance),
-        session=cast(Any, FakeSession(
-            modality="embedding", provider="fake-provider"
-        )),
+        session=cast(Any, FakeSession(modality="embedding", provider="fake-provider")),
         authenticator=authenticator,
         tenant_model_preset_store=None,
     )

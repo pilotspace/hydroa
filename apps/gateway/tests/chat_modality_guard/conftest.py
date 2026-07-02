@@ -165,7 +165,10 @@ async def api_key_info(client: Any) -> dict[str, str]:
     token = (
         await client.post(
             "/admin/auth/login",
-            json={"email": "chat-modality-guard@example.io", "password": "chat modality guard test"},
+            json={
+                "email": "chat-modality-guard@example.io",
+                "password": "chat modality guard test",
+            },
         )
     ).json()["access_token"]
 

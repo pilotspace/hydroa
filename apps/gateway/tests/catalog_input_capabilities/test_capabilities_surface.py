@@ -156,9 +156,7 @@ async def test_v1_models_stays_lean(
     it may be green (field is absent from the current lean schema), but it must stay
     green throughout and after the build.
     """
-    jwt, _tid = await signup_and_login(
-        client, tenant_name="LeanTenant", email="lean@cap-test.io"
-    )
+    jwt, _tid = await signup_and_login(client, tenant_name="LeanTenant", email="lean@cap-test.io")
     await seed_model_with_pricing(
         db_session,
         "openai/gpt-4o",
@@ -290,9 +288,7 @@ async def test_admin_models_includes_input_modalities(
         client, tenant_name="AdminModTenant", email="admmod@cap-test.io"
     )
     # /admin/models does a plain SELECT from models — no pricing_snapshots needed.
-    await seed_model_only(
-        db_session, "openai/gpt-4o", name="GPT-4o", input_modalities="text,image"
-    )
+    await seed_model_only(db_session, "openai/gpt-4o", name="GPT-4o", input_modalities="text,image")
     await seed_model_only(
         db_session, "openai/whisper-1", name="Whisper 1", input_modalities="audio"
     )

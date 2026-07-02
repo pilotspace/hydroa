@@ -193,9 +193,7 @@ def test_sc4_normalize_input_modalities_deterministic() -> None:
 
     # All three tokens in reverse order → canonical order.
     result_all = normalize_input_modalities(["audio", "image", "text"])
-    assert result_all == "text,image,audio", (
-        f"Expected 'text,image,audio'; got {result_all!r}"
-    )
+    assert result_all == "text,image,audio", f"Expected 'text,image,audio'; got {result_all!r}"
 
     # Single token → just that token, no comma.
     result_single = normalize_input_modalities(["text"])
@@ -298,9 +296,7 @@ def test_sc6_field_readable_from_entity_no_api_surfacing() -> None:
         completion_usd_per_token=0.0,
         # input_modalities omitted — must default to 'text'
     )
-    assert hasattr(cat_model, "input_modalities"), (
-        "CatalogModel must have 'input_modalities' field"
-    )
+    assert hasattr(cat_model, "input_modalities"), "CatalogModel must have 'input_modalities' field"
     assert cat_model.input_modalities == "text", (  # type: ignore[attr-defined]
         f"CatalogModel.input_modalities default must be 'text'; got {cat_model.input_modalities!r}"  # type: ignore[attr-defined]
     )

@@ -32,7 +32,9 @@ def _bearer(key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"}
 
 
-async def _signup_and_key(client: Any, *, tenant_name: str, email: str, password: str) -> dict[str, str]:
+async def _signup_and_key(
+    client: Any, *, tenant_name: str, email: str, password: str
+) -> dict[str, str]:
     signup = await client.post(
         "/admin/auth/signup",
         json={"tenant_name": tenant_name, "email": email, "password": password},
@@ -95,14 +97,14 @@ async def test_empty_allowlist_accepts_any(
     """Allow-list "" (default) → any content_type uploads 201 (byte-identical)."""
     _set_allowlist(app, "")
     resp = await client.post(
-        "/v1/artifacts", json=_payload("application/x-anything"), headers=_bearer(api_key_info["key"])
+        "/v1/artifacts",
+        json=_payload("application/x-anything"),
+        headers=_bearer(api_key_info["key"]),
     )
     assert resp.status_code == 201, resp.text
 
 
-async def test_allowed_type_passes(
-    app: Any, client: Any, api_key_info: dict[str, str]
-) -> None:
+async def test_allowed_type_passes(app: Any, client: Any, api_key_info: dict[str, str]) -> None:
     """Allow-list set, content_type in it → 201."""
     _set_allowlist(app, "image/png,image/jpeg,application/pdf")
     resp = await client.post(
@@ -129,7 +131,9 @@ async def test_disallowed_type_rejected_415(
     assert body["code"] == "ERR_ARTIFACT_CONTENT_TYPE_NOT_ALLOWED"
     assert body["status"] == 415
     assert "text/html" in body.get("detail", "") or "text/html" in body.get("title", "")
-    assert await _list_count(client, api_key_info["key"]) == before, "rejected upload must not persist"
+    assert await _list_count(client, api_key_info["key"]) == before, (
+        "rejected upload must not persist"
+    )
     assert spy.put_calls == 0, "object store put must NOT be called on a rejected upload"
 
 
