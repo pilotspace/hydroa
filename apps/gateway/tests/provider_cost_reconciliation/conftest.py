@@ -110,6 +110,10 @@ class FakeSession:
                         else None,
                         str(self.reasoning_price) if self.reasoning_price is not None else None,
                         None,  # cache_creation_usd_per_token (prompt-cache-passthrough §3)
+                        # gpt-realtime-relay-billing extended _fetch_latest_pricing to an 11-tuple.
+                        None,  # audio_prompt_usd_per_token
+                        None,  # audio_completion_usd_per_token
+                        None,  # audio_cached_usd_per_token
                     )
                 )
             )

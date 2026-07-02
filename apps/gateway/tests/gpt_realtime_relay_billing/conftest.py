@@ -1,18 +1,17 @@
-"""Suite-local fixtures for tiered-token-billing tests (TASK.md §4).
+"""Suite-local fixtures for gpt-realtime-relay-billing tests (TASK.md §4).
 
-Mirrors tests/pricing_units/conftest.py but extends FakeSession so the fake
-`pricing_snapshots` row carries the TWO new tier-price columns
-(cached_input_usd_per_token, reasoning_usd_per_token) at positions [5] and [6] —
-the 7-tuple the FROZEN §3 contract pins for `_fetch_latest_pricing`.
+Mirrors tests/tiered_token_billing/conftest.py but extends FakeSession's fake
+`pricing_snapshots` row to the 11-tuple the FROZEN §3 contract pins for
+`_fetch_latest_pricing`: the 8 pre-existing positions plus 3 new trailing
+audio prices (audio_prompt, audio_completion, audio_cached).
 
-Before BUILD: the live `_fetch_latest_pricing` reads only row[0..4], so the two
-tier prices are dropped and the recorder bills FLAT — which is exactly why the
-tiered-cost assertions go RED for the right reason (missing tiered logic), not a
-broken harness.
+Before BUILD: the live `_fetch_latest_pricing` returns only an 8-tuple, so the
+audio-tier assertions here go RED for the right reason (missing audio pricing),
+not a broken harness.
 
-Unit tests use FakeSession + StreamCapture (no infra). The DB persistence tests
-use real Postgres (localhost:5433 gateway_test) + Redis (localhost:6380 db 9) via
-the shared root conftest fixtures, same as pricing_units PU6/PU7.
+Also provides a FakeWebSocket (mirrors tests/realtime_relay/test_openai_adapter.py)
+for driving OpenAIRealtimeSession.events() without network, and a SpyRecorder that
+captures full record() call kwargs (not just a count) for identity/wiring assertions.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Fake DB primitives (extended to the 7-tuple pricing row)
+# Fake DB primitives (extended to the 11-tuple pricing row)
 # ---------------------------------------------------------------------------
 
 
@@ -51,13 +50,15 @@ class FakeResult:
 
 class FakeSession:
     """In-memory async session intercepting `_fetch_latest_pricing` +
-    `_fetch_markup_pct`. Returns an 8-value pricing row:
+    `_fetch_markup_pct`. Returns an 11-value pricing row:
 
       (id, prompt_price, completion_price, pricing_unit, unit_usd_per_unit,
-       cached_input_price, reasoning_price, cache_creation_price)
+       cached_input_price, reasoning_price, cache_creation_price,
+       audio_prompt_price, audio_completion_price, audio_cached_price)
 
-    cache_creation_price (prompt-cache-passthrough TASK.md §3): added at position [7];
-    existing callers that don't set it get None (→ prompt-rate fallback, byte-identical).
+    The 3 audio prices (gpt-realtime-relay-billing TASK.md §3) are added at
+    positions [8], [9], [10]; existing callers that don't set them get None
+    (byte-identical — the flat/no-audio cost path never reads them).
     """
 
     def __init__(
@@ -71,6 +72,9 @@ class FakeSession:
         cached_input_price: Decimal | None = None,
         reasoning_price: Decimal | None = None,
         cache_creation_price: Decimal | None = None,
+        audio_prompt_price: Decimal | None = None,
+        audio_completion_price: Decimal | None = None,
+        audio_cached_price: Decimal | None = None,
         markup_pct: Decimal = Decimal("0"),
         has_pricing: bool = True,
     ) -> None:
@@ -82,6 +86,9 @@ class FakeSession:
         self.cached_input_price = cached_input_price
         self.reasoning_price = reasoning_price
         self.cache_creation_price = cache_creation_price
+        self.audio_prompt_price = audio_prompt_price
+        self.audio_completion_price = audio_completion_price
+        self.audio_cached_price = audio_cached_price
         self.markup_pct = markup_pct
         self.has_pricing = has_pricing
 
@@ -90,6 +97,10 @@ class FakeSession:
         if "pricing_snapshots" in sql:
             if not self.has_pricing:
                 return FakeResult(None)
+
+            def _s(v: Decimal | None) -> str | None:
+                return str(v) if v is not None else None
+
             return FakeResult(
                 FakeRow(
                     (
@@ -97,18 +108,13 @@ class FakeSession:
                         str(self.prompt_price),
                         str(self.completion_price),
                         self.pricing_unit,
-                        str(self.unit_usd_per_unit) if self.unit_usd_per_unit is not None else None,
-                        str(self.cached_input_price)
-                        if self.cached_input_price is not None
-                        else None,
-                        str(self.reasoning_price) if self.reasoning_price is not None else None,
-                        str(self.cache_creation_price)
-                        if self.cache_creation_price is not None
-                        else None,
-                        # gpt-realtime-relay-billing extended _fetch_latest_pricing to an 11-tuple.
-                        None,  # audio_prompt_usd_per_token
-                        None,  # audio_completion_usd_per_token
-                        None,  # audio_cached_usd_per_token
+                        _s(self.unit_usd_per_unit),
+                        _s(self.cached_input_price),
+                        _s(self.reasoning_price),
+                        _s(self.cache_creation_price),
+                        _s(self.audio_prompt_price),
+                        _s(self.audio_completion_price),
+                        _s(self.audio_cached_price),
                     )
                 )
             )
@@ -160,6 +166,55 @@ class StreamCapture:
 
 
 # ---------------------------------------------------------------------------
+# Spy recorder — captures full record() call kwargs (identity/wiring tests)
+# ---------------------------------------------------------------------------
+
+
+class SpyRecorder:
+    """Minimal UsageRecorder-compatible spy that captures every record() call's kwargs."""
+
+    supported_extras: frozenset[str] = frozenset(
+        {"usage_source", "pricing_unit", "quantity", "provider_generation_id"}
+    )
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def record(self, **kwargs: Any) -> None:
+        self.calls.append(kwargs)
+
+    @property
+    def last_call(self) -> dict[str, Any]:
+        assert self.calls, "No record() calls captured"
+        return self.calls[-1]
+
+
+# ---------------------------------------------------------------------------
+# Fake OpenAI Realtime WebSocket (mirrors tests/realtime_relay/test_openai_adapter.py)
+# ---------------------------------------------------------------------------
+
+
+class FakeWebSocket:
+    """A scripted RealtimeWebSocket: recv() drains `incoming`, send() records."""
+
+    def __init__(self, incoming: list[str] | None = None) -> None:
+        self._incoming = list(incoming or [])
+        self.sent: list[str] = []
+        self.closed = False
+
+    async def send(self, message: str) -> None:
+        self.sent.append(message)
+
+    async def recv(self) -> str:
+        if not self._incoming:
+            raise ConnectionError("socket closed")  # provider stream ended
+        return self._incoming.pop(0)
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -182,35 +237,3 @@ def key_id() -> uuid.UUID:
 @pytest.fixture
 def stream_capture() -> StreamCapture:
     return StreamCapture()
-
-
-# DB-backed api_key fixture (mirrors pricing_units PU6/PU7) — signup → login → key.
-@pytest.fixture
-async def api_key(client: Any) -> dict[str, str]:
-    signup = await client.post(
-        "/admin/auth/signup",
-        json={
-            "tenant_name": "TieredBillingTest",
-            "email": "tiered-test@example.io",
-            "password": "tiered billing battery",
-        },
-    )
-    assert signup.status_code == 201, f"signup failed: {signup.text}"
-    token = (
-        await client.post(
-            "/admin/auth/login",
-            json={"email": "tiered-test@example.io", "password": "tiered billing battery"},
-        )
-    ).json()["access_token"]
-    created = await client.post(
-        "/admin/keys",
-        json={"name": "tiered-ci"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert created.status_code == 201, f"key creation failed: {created.text}"
-    return {
-        "key": created.json()["key"],
-        "key_id": created.json()["key_id"],
-        "tenant_id": signup.json()["tenant_id"],
-        "jwt": token,
-    }

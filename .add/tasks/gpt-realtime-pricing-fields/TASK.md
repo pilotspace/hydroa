@@ -477,11 +477,11 @@ gpt-realtime, 100% for every other model — a flip either way signals a mapping
   same gap already accepted for the MiniMax seed precedent).
 
 ### Competency deltas
-- [ADD · open] The GROUND phase's initial research missed that the relay's actual default
+- [ADD · folded] The GROUND phase's initial research missed that the relay's actual default [folded foundation-version 42]
   model id (`gpt-4o-realtime-preview`) differed from the milestone's assumed pricing target
   (`gpt-realtime`) — caught only by live WebFetch pricing research, not by reading code alone
   (evidence: required a user decision via AskUserQuestion mid-GROUND).
-- [ADD · open] A single additive field access in `_insert_snapshot` (`repository.py`) broke 3
+- [ADD · folded] A single additive field access in `_insert_snapshot` (`repository.py`) broke 3 [folded foundation-version 42]
   sibling suites' independently-duck-typed `FakeCatalogModel` fixtures plus one exact-id-list
   wiring assertion — none of these were in this task's originally declared scope, only
   surfaced by running the FULL regression suite, not the targeted one (evidence: GRPF7 caught

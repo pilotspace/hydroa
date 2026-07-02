@@ -1,12 +1,8 @@
 {
-  "active_milestone": "gpt-realtime-pricing",
-  "active_milestones": [
-    "gpt-realtime-pricing"
-  ],
-  "active_task": "gpt-realtime-relay-billing",
-  "active_tasks": {
-    "gpt-realtime-pricing": "gpt-realtime-relay-billing"
-  },
+  "active_milestone": null,
+  "active_milestones": [],
+  "active_task": null,
+  "active_tasks": {},
   "archived": [
     {
       "archived": "2026-06-10",
@@ -813,18 +809,21 @@
       ],
       "tasks": 1,
       "title": "OpenRouter embeddings routing"
+    },
+    {
+      "slug": "gpt-realtime-pricing",
+      "title": "GPT-Realtime cache-discount pricing",
+      "tasks": 3,
+      "task_slugs": [
+        "gpt-realtime-pricing-fields",
+        "gpt-realtime-relay-billing",
+        "gpt-realtime-schema-migration"
+      ],
+      "archived": "2026-07-02"
     }
   ],
   "created": "2026-06-10T08:03:15+00:00",
   "milestones": {
-    "gpt-realtime-pricing": {
-      "created": "2026-07-01T15:44:18+00:00",
-      "goal": "GET /v1/models and GET /admin/catalog/models expose OpenAI's real GPT-Realtime cached-input discount (text + audio), reusing the catalog-pricing-fields cached_input_usd_per_token infra",
-      "stage": "production",
-      "status": "active",
-      "title": "GPT-Realtime cache-discount pricing",
-      "updated": "2026-07-01T15:44:18+00:00"
-    },
     "v56": {
       "created": "2026-06-30T12:11:18+00:00",
       "goal": "A tenant admin defines named presets that remap model names (opus to gpt5-5), selects among multiple presets via a name: prefix (cheap:opus), and requests resolve the preset to a concrete model before the router while the existing fallback seam stays byte-identical.",
@@ -855,110 +854,6 @@
       "phase": "specify",
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
       "updated": "2026-06-28T14:46:39+00:00"
-    },
-    "gpt-realtime-pricing-fields": {
-      "created": "2026-07-01T15:44:36+00:00",
-      "depends_on": [
-        "gpt-realtime-schema-migration"
-      ],
-      "gate": "PASS",
-      "milestone": "gpt-realtime-pricing",
-      "phase": "done",
-      "title": "OpenAI GPT-Realtime cached-input discount pricing",
-      "updated": "2026-07-02T02:13:11+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "6d361193d80ef9ae42a77454e068e39f",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/catalog/domain/entities.py",
-          "apps/gateway/src/gateway/catalog/infrastructure/repository.py",
-          "apps/gateway/src/gateway/catalog/infrastructure/gpt_realtime_seed.py",
-          "apps/gateway/src/gateway/catalog/api/schemas.py",
-          "apps/gateway/src/gateway/catalog/api/router.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/tests/gpt_realtime_pricing_fields/",
-          "apps/gateway/tests/catalog_sync_trigger/conftest.py",
-          "apps/gateway/tests/catalog/test_model_catalog.py",
-          "apps/gateway/tests/catalog_pricing_fields/test_catalog_pricing_fields.py",
-          "apps/gateway/tests/minimax_catalog_seed/test_minimax_catalog_seed.py"
-        ],
-        "snapshot_md5": "f664eba5331ed1fe458dd8a86aac6da7"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-02T02:11:22+00:00",
-            "reason": "scope_violation: task 'gpt-realtime-pricing-fields' touched outside its declared \u00a75 Scope \u2014 apps/gateway/tests/catalog/test_model_catalog.py \u00b7 apps/gateway/tests/catalog_pricing_fields/test_catalog_pricing_fields.py \u00b7 apps/gateway/tests/catalog_sync_trigger/conftest.py \u00b7 apps/gateway/tests/minimax_catalog_seed/test_minimax_catalog_seed.py (4 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "gpt-realtime-relay-billing": {
-      "created": "2026-07-01T15:51:16+00:00",
-      "depends_on": [
-        "gpt-realtime-pricing-fields"
-      ],
-      "gate": "none",
-      "milestone": "gpt-realtime-pricing",
-      "phase": "ground",
-      "title": "Bill real GPT-Realtime usage through the relay",
-      "updated": "2026-07-01T15:51:16+00:00"
-    },
-    "gpt-realtime-schema-migration": {
-      "created": "2026-07-01T15:50:35+00:00",
-      "depends_on": [],
-      "gate": "PASS",
-      "milestone": "gpt-realtime-pricing",
-      "phase": "done",
-      "title": "Additive dual-stream (text+audio) pricing columns",
-      "updated": "2026-07-01T17:31:34+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "05cd7f899e96bb106eeb5fd1fc8903a5",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/catalog/infrastructure/orm.py"
-        ],
-        "snapshot_md5": "f0d95d4094972f14f339e9f07d575e18"
-      },
-      "heal": {
-        "attempts": 3,
-        "history": [
-          {
-            "at": "2026-07-01T17:27:30+00:00",
-            "reason": "scope_violation: task 'gpt-realtime-schema-migration' touched outside its declared \u00a75 Scope \u2014 .claude/worktrees/model-preset/apps/gateway/src/gateway/main.py \u00b7 .claude/worktrees/model-preset/apps/gateway/src/gateway/proxy/api/deps.py \u00b7 .claude/worktrees/model-preset/apps/gateway/src/gateway/proxy/api/realtime_ws.py \u00b7 .claude/worktrees/model-preset/apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 .claude/worktrees/model-preset/apps/gateway/src/gateway/proxy/domain/ports.py (16 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-07-01T17:27:59+00:00",
-            "reason": "scope_violation: task 'gpt-realtime-schema-migration' touched outside its declared \u00a75 Scope \u2014 .claude/worktrees/model-preset/apps/gateway/src/gateway/main.py \u00b7 .claude/worktrees/model-preset/apps/gateway/src/gateway/proxy/api/deps.py \u00b7 .claude/worktrees/model-preset/apps/gateway/src/gateway/proxy/api/realtime_ws.py \u00b7 .claude/worktrees/model-preset/apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 .claude/worktrees/model-preset/apps/gateway/src/gateway/proxy/domain/ports.py (16 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-07-01T17:29:11+00:00",
-            "reason": "scope_violation: task 'gpt-realtime-schema-migration' touched outside its declared \u00a75 Scope \u2014 .claude/worktrees/agent-a7bf1d4303285c156/.claude/skills/add/SKILL.md \u00b7 .claude/worktrees/agent-a7bf1d4303285c156/.claude/skills/add/adopt.md \u00b7 .claude/worktrees/agent-a7bf1d4303285c156/.claude/skills/add/advisor.md \u00b7 .claude/worktrees/agent-a7bf1d4303285c156/.claude/skills/add/compact-foundation.md \u00b7 .claude/worktrees/agent-a7bf1d4303285c156/.claude/skills/add/components.md (25110 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "todos": [
@@ -987,5 +882,5 @@
       "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time."
     }
   ],
-  "updated": "2026-07-02T02:13:24+00:00"
+  "updated": "2026-07-02T07:14:14+00:00"
 }

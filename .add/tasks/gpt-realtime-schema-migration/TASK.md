@@ -408,7 +408,7 @@ Watch (reuse scenarios as monitors): the 6 new columns stay 100% NULL/0 in produ
   and enforced by CI-equivalent `add.py` full-suite runs).
 
 ### Competency deltas
-- [ADD · open] GROUND-phase research (both this task's own §0 and an earlier GROUND-phase subagent
+- [ADD · folded] GROUND-phase research (both this task's own §0 and an earlier GROUND-phase subagent [folded foundation-version 42]
   for the parent milestone) wrongly concluded "no Alembic/formal migration tooling exists in this
   repo" — a repo-wide search missed `apps/gateway/alembic.ini` + `apps/gateway/migrations/versions/`
   (35 prior migrations) entirely, and this false premise was baked into the FROZEN, human-approved
@@ -418,7 +418,7 @@ Watch (reuse scenarios as monitors): the 6 new columns stay 100% NULL/0 in produ
   directory-listing/grep miss is not equivalent to a confirmed absence (evidence: 2 full-suite
   failures — test_upgrade_from_empty_parity, test_autogenerate_empty_diff — caught the gap; fixed
   via a4c6e8b0d2f3, no contract/behavior change needed).
-- [ADD · open] the shared test Postgres (`localhost:5433/gateway_test`) has no isolation between
+- [ADD · folded] the shared test Postgres (`localhost:5433/gateway_test`) has no isolation between [folded foundation-version 42]
   concurrent worktree pytest sessions — a sibling worktree's own full-suite run can orphan a table
   (`tenant_model_presets`) mid-run and cascade a single `DROP TABLE` FK failure into hundreds of
   unrelated test failures for the REST of that pytest session. This is the third time this exact

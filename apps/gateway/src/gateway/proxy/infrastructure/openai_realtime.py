@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 from urllib.parse import quote
@@ -29,6 +30,7 @@ from gateway.proxy.infrastructure.realtime_ws_client import (
 _DEFAULT_URL = "wss://api.openai.com/v1/realtime"
 # OpenAI server event type -> a small translator producing a gateway frame.
 _TRANSCRIPT_EVENTS = frozenset({"response.audio_transcript.delta", "response.text.delta"})
+_log = logging.getLogger(__name__)
 
 
 class OpenAIRealtimeSession:
@@ -42,6 +44,7 @@ class OpenAIRealtimeSession:
         ws_connect: Callable[[], Awaitable[RealtimeWebSocket]] | None = None,
         url: str = _DEFAULT_URL,
         connect_timeout: float = 10.0,
+        on_usage: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self._model = model
         self._api_key = api_key
@@ -50,6 +53,9 @@ class OpenAIRealtimeSession:
         self._url = url
         self._connect_timeout = connect_timeout
         self._ws: RealtimeWebSocket | None = None
+        # gpt-realtime-relay-billing (TASK.md §3): optional per-turn usage capture callback.
+        # Never widens the RealtimeRelaySession Protocol — Gemini Live has no equivalent param.
+        self._on_usage = on_usage
 
     # -- connection ---------------------------------------------------------
 
@@ -125,9 +131,71 @@ class OpenAIRealtimeSession:
                 raise RealtimeProviderUnavailableError(
                     "OpenAI realtime sent a non-JSON message"
                 ) from exc
+            if event.get("type") == "response.done" and self._on_usage is not None:
+                raw_usage = event.get("usage")
+                if isinstance(raw_usage, dict):
+                    try:
+                        await self._on_usage(self._translate_realtime_usage(raw_usage))
+                    except Exception:
+                        # gpt-realtime-relay-billing (TASK.md §5 safety rule): a billing-pipe
+                        # failure must never disrupt the live relay session.
+                        _log.warning("realtime usage capture failed (swallowed)", exc_info=True)
+                elif raw_usage is not None:
+                    _log.warning(
+                        "usage_malformed_skip: response.done usage is not a dict",
+                        extra={"usage_type": type(raw_usage).__name__},
+                    )
             frame = self._translate_server_event(event)
             if frame is not None:
                 yield frame
+
+    @staticmethod
+    def _translate_realtime_usage(raw: dict[str, Any]) -> dict[str, Any]:
+        """Translate OpenAI Realtime's usage shape into the recorder-canonical shape.
+
+        `_record_internal` already reads `prompt_tokens`/`completion_tokens` and, via
+        `_safe_tier`, `prompt_tokens_details.cached_tokens` — this maps Realtime's
+        `input_tokens`/`output_tokens`/`input_token_details`/`output_token_details` onto
+        those exact keys, plus repackages the nested detail dicts so the 3 new audio-tier
+        `_safe_tier` reads (input_token_details.audio_tokens, output_token_details.audio_tokens,
+        input_token_details.cached_tokens) resolve to the correct values.
+
+        IMPORTANT: `input_token_details.cached_tokens` in OpenAI's RAW payload is the
+        COMBINED text+audio cached total, not audio-specific — the text/audio split lives
+        one level deeper at `input_token_details.cached_tokens_details.{text,audio}_tokens`.
+        This method un-nests that split so downstream code (which only reads one level of
+        nesting via `_safe_tier`) sees the correct per-stream values: the translated
+        `prompt_tokens_details.cached_tokens` carries the TEXT-cached count, and the
+        translated `input_token_details.cached_tokens` carries the AUDIO-cached count —
+        never the same ambiguous combined total for both (that was a real double/mis-count
+        bug caught by an adversarial review before this task's VERIFY gate).
+
+        Never raises — a missing/non-dict/non-numeric field simply reads as absent
+        downstream via _safe_tier's own fail-safe (returns 0), never propagating here.
+        """
+        input_details = raw.get("input_token_details")
+        if not isinstance(input_details, dict):
+            input_details = {}
+        output_details = raw.get("output_token_details")
+        if not isinstance(output_details, dict):
+            output_details = {}
+        cached_details = input_details.get("cached_tokens_details")
+        if not isinstance(cached_details, dict):
+            cached_details = {}
+        text_cached_tokens = cached_details.get("text_tokens", 0)
+        audio_cached_tokens = cached_details.get("audio_tokens", 0)
+        input_tokens = raw.get("input_tokens", 0)
+        output_tokens = raw.get("output_tokens", 0)
+        return {
+            "prompt_tokens": input_tokens if isinstance(input_tokens, int) else 0,
+            "completion_tokens": output_tokens if isinstance(output_tokens, int) else 0,
+            "prompt_tokens_details": {"cached_tokens": text_cached_tokens},
+            "input_token_details": {
+                "audio_tokens": input_details.get("audio_tokens", 0),
+                "cached_tokens": audio_cached_tokens,
+            },
+            "output_token_details": output_details,
+        }
 
     @staticmethod
     def _translate_server_event(event: dict[str, Any]) -> RelayFrame | None:
