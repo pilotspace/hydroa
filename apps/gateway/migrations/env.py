@@ -65,6 +65,18 @@ import gateway.audit.infrastructure.audit_events_orm  # noqa: F401 — registers
 # AgentTokenRow on Base.metadata.
 import gateway.agent_oauth.infrastructure.orm  # noqa: F401 — registers agent OAuth tables on Base.metadata
 
+# v43 conversations-store: registers ConversationRow/ConversationMessageRow on Base.metadata.
+import gateway.conversations.infrastructure.orm  # noqa: F401 — registers conversations tables on Base.metadata
+
+# v44 memory-store: registers MemoryRow on Base.metadata.
+import gateway.memory.infrastructure.orm  # noqa: F401 — registers MemoryRow on Base.metadata
+
+# v45 artifacts-store: registers ArtifactRow on Base.metadata.
+import gateway.artifacts.infrastructure.orm  # noqa: F401 — registers ArtifactRow on Base.metadata
+
+# video-generation job lifecycle: registers VideoGenerationJobRow on Base.metadata.
+import gateway.video.infrastructure.orm  # noqa: F401 — registers VideoGenerationJobRow on Base.metadata
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------
