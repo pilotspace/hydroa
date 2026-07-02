@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "stream-alias-billing",
-  "active_milestone": "openrouter-embeddings",
+  "active_task": "tiered-rate-cards",
+  "active_milestone": "enterprise-hardening",
   "tasks": {
     "operator-wide-reconciliation": {
       "title": "Cross-tenant reconciliation view behind ops-auth",
@@ -760,6 +760,73 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "cache-alias-billing": {
+      "title": "B6: cache-hit alias bills served candidate, not alias",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "enterprise-hardening",
+      "depends_on": [],
+      "created": "2026-07-02T04:53:34+00:00",
+      "updated": "2026-07-02T04:53:34+00:00"
+    },
+    "usage-flusher-durability": {
+      "title": "B4+B5: usage recorder durable fallback + Redis timeout + PEL reclaim",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "enterprise-hardening",
+      "depends_on": [],
+      "created": "2026-07-02T04:53:34+00:00",
+      "updated": "2026-07-02T04:53:34+00:00"
+    },
+    "realtime-relay-governance": {
+      "title": "B2: realtime relay authz/rate-limit + usage/audit rows",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "enterprise-hardening",
+      "depends_on": [],
+      "created": "2026-07-02T04:53:34+00:00",
+      "updated": "2026-07-02T04:53:34+00:00"
+    },
+    "edge-input-hardening": {
+      "title": "S2+S3+S4: XFF last-hop parse, SSRF IMDS deny, body-size cap",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "enterprise-hardening",
+      "depends_on": [],
+      "created": "2026-07-02T04:53:34+00:00",
+      "updated": "2026-07-02T04:53:34+00:00"
+    },
+    "signup-and-routing-authz": {
+      "title": "S1: signup invite-only default + routing-write ops permission",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "enterprise-hardening",
+      "depends_on": [],
+      "created": "2026-07-02T04:53:34+00:00",
+      "updated": "2026-07-02T04:53:34+00:00"
+    },
+    "provider-circuit-breakers": {
+      "title": "B3: per-provider breakers; complete() survives CircuitOpenError",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "enterprise-hardening",
+      "depends_on": [
+        "cache-alias-billing"
+      ],
+      "created": "2026-07-02T04:53:34+00:00",
+      "updated": "2026-07-02T04:53:34+00:00"
+    },
+    "tiered-rate-cards": {
+      "title": "Monetization: per-model/per-tier rate cards replace flat markup_pct",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "enterprise-hardening",
+      "depends_on": [
+        "usage-flusher-durability"
+      ],
+      "created": "2026-07-02T04:53:34+00:00",
+      "updated": "2026-07-02T04:53:34+00:00"
     }
   },
   "milestones": {
@@ -917,10 +984,27 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "enterprise-hardening": {
+      "title": "Enterprise Hardening",
+      "goal": "",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-07-02T04:42:17+00:00",
+      "updated": "2026-07-02T04:53:33+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-02T04:53:33+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T04:29:54+00:00",
+  "updated": "2026-07-02T04:53:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1625,7 +1709,8 @@
     "vision-playground",
     "video-playground",
     "proxy-correctness",
-    "openrouter-embeddings"
+    "openrouter-embeddings",
+    "enterprise-hardening"
   ],
   "active_tasks": {
     "v54": "ai-feature-pages-redesign",
@@ -1635,7 +1720,8 @@
     "vision-playground": "vision-console-rebuild",
     "video-playground": "video-console-rebuild",
     "proxy-correctness": "adapter-correctness-fixes",
-    "openrouter-embeddings": "stream-alias-billing"
+    "openrouter-embeddings": "stream-alias-billing",
+    "enterprise-hardening": "tiered-rate-cards"
   },
   "todos": [
     {
