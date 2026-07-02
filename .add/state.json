@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "provider-circuit-breakers",
+  "active_task": "usage-flusher-durability",
   "active_milestone": "enterprise-hardening",
   "tasks": {
     "operator-wide-reconciliation": {
@@ -799,12 +799,12 @@
     },
     "usage-flusher-durability": {
       "title": "B4+B5: usage recorder durable fallback + Redis timeout + PEL reclaim",
-      "phase": "contract",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T05:57:31+00:00",
+      "updated": "2026-07-02T07:54:38+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-02T06:16:56+00:00",
@@ -814,6 +814,50 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6a99ecf62c9b1ab5348ddfd0f59ae5bf",
+        "tests": {
+          "apps/gateway/tests/usage/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/usage/test_usage_metering.py": "86b09cf6902ab85ae75ffe895b6f261f",
+          "apps/gateway/tests/ops/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/ops/test_lifespan.py": "b417d7c78f0dbb649c34cfd0c75390f5",
+          "apps/gateway/tests/ops/test_node_deps.py": "249473438efb32b544de6f33d62558a2",
+          "apps/gateway/tests/ops/test_probes.py": "7d21fea877692f074201afa5493c3cec",
+          "apps/gateway/tests/ops/test_runbook.py": "3854f540ad1f0eb24d4691e2a85ff0a0"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/application/flusher.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/usage/",
+          "apps/gateway/tests/ops/"
+        ],
+        "snapshot_md5": "35c4692518bf7f110409836684f934f4"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-02T07:29:16+00:00",
+            "reason": "refute-read:Finding A (independent adversarial review): B5 XAUTOCLAIM reclaim loop batch-aborts on any non-UUID field-parse failure; poison entry (unparseable numeric) re-claimed oldest-first every cycle permanently starves sibling entries in its batch \u2014 silent lost-bill, no self-heal. Fix: broaden poison classification to all deterministic parse failures (drop+ACK+log payload), per-entry resilience in both loops, session.execute stays retryable.",
+            "source": "refute-read"
+          },
+          {
+            "at": "2026-07-02T07:52:03+00:00",
+            "reason": "scope_violation: task 'usage-flusher-durability' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/6998441178905840490 (3 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "realtime-relay-governance": {
@@ -1068,7 +1112,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T06:24:32+00:00",
+  "updated": "2026-07-02T07:54:38+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1785,7 +1829,7 @@
     "video-playground": "video-console-rebuild",
     "proxy-correctness": "adapter-correctness-fixes",
     "openrouter-embeddings": "stream-alias-billing",
-    "enterprise-hardening": "provider-circuit-breakers"
+    "enterprise-hardening": "usage-flusher-durability"
   },
   "todos": [
     {

@@ -96,6 +96,17 @@ class Settings(BaseSettings):
     ops_cert_fingerprints: str = Field(default="")  # GATEWAY_OPS_CERT_FINGERPRINTS
     redis_url: str = "redis://localhost:6380/0"
     shutdown_drain_timeout_seconds: int = 10  # env: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
+    # ── Usage flusher PEL reclaim (usage-flusher-durability B5) ────────────────
+    # XAUTOCLAIM min-idle (ms): an entry delivered by XREADGROUP but never ACKed
+    # (consumer crashed mid-flush) is reclaimed after this idle so it is re-flushed
+    # instead of stranded forever. Should exceed a normal flush cycle so a SINGLE
+    # consumer's still-in-flight entry is not reclaimed under it. NOTE: under multiple
+    # replicas sharing CONSUMER_NAME ('flusher-0'), idle time does not track one
+    # consumer's liveness, so a slow replica's entry CAN be reclaimed + reprocessed by
+    # another — harmless (ON CONFLICT id makes the re-insert a no-op, XACK is idempotent),
+    # but a per-replica consumer name would be stronger (spec-delta).
+    # env: GATEWAY_USAGE_PEL_RECLAIM_IDLE_MS
+    usage_pel_reclaim_idle_ms: int = 60000
 
     # ── Response cache (response-caching task) ────────────────────────────────
     cache_ttl_seconds: int = 300  # GATEWAY_CACHE_TTL_SECONDS

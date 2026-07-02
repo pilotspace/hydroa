@@ -364,6 +364,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         flusher = UsageLedgerFlusher(
             redis=_redis,
             session_factory=_sessionmaker,
+            pel_reclaim_idle_ms=_settings.usage_pel_reclaim_idle_ms,
         )
         app.state.flusher = flusher
         app.state.flusher_task = asyncio.create_task(flusher.run_forever())

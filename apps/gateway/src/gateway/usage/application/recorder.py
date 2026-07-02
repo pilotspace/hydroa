@@ -10,6 +10,7 @@ Responsibilities per TASK.md §1 Must:
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import logging
@@ -25,6 +26,10 @@ from gateway.usage.infrastructure.redis_stream import STREAM_KEY
 _log = logging.getLogger(__name__)
 
 _ZERO = Decimal("0")
+# usage-flusher-durability (B4): per-CALL bound on every Redis op in the record path
+# (NOT client-level — the redis client is shared across budget/ratelimiter/bandwidth,
+# a wide blast radius). Mirrors usage/api/router.py:_RATELIMIT_REDIS_TIMEOUT_SECONDS.
+_USAGE_REDIS_TIMEOUT_SECONDS = 5.0
 # TTL for the per-correction advisory-counter idempotency guard (cost-recovery v30 t6).
 # A correction is permanent, but the guard need only outlive any realistic re-fire window
 # (inline recovery racing the periodic sweep) — 30 days is far beyond it.
@@ -322,7 +327,13 @@ class RecordingUsageRecorder:
         # Encode quantity: empty string for per_token (NULL), str(q) for non-token
         quantity_str = str(resolved_quantity) if resolved_quantity is not None else ""
 
+        # B4-id: one deterministic id (mirrors record_correction) — the stream-flush PK
+        # and the direct-fallback PK are IDENTICAL, so a slow-but-landed XADD that BOTH
+        # falls back AND later flushes collapses to one row via ON CONFLICT (id).
+        event_id = uuid.uuid4()
+
         event_fields: dict[str, str] = {
+            "id": str(event_id),
             "tenant_id": str(tenant_id),
             "key_id": str(key_id),
             "model_id": model,
@@ -356,29 +367,67 @@ class RecordingUsageRecorder:
             "provider_generation_id": provider_generation_id or "",
         }
 
-        # Push to Redis Stream — must not drop the event even on cost-0
-        await self._redis.xadd(STREAM_KEY, event_fields)
+        # Push to Redis Stream — must not drop the event even on cost-0. Bounded by a
+        # per-call timeout; on failure/timeout the event is persisted DIRECTLY to the
+        # ledger (same id → ON CONFLICT) so a Redis blip never loses billing. A double
+        # failure (Redis AND Postgres) propagates to record()'s outer swallow.
+        # except Exception (NOT BaseException): CancelledError must propagate cleanly —
+        # record() runs as a fire-and-forget task.
+        xadd_ok = False
+        try:
+            async with asyncio.timeout(_USAGE_REDIS_TIMEOUT_SECONDS):
+                await self._redis.xadd(STREAM_KEY, event_fields)
+            xadd_ok = True
+        except Exception as exc:
+            _log.warning(
+                "usage_recorder: XADD failed; persisting event directly to the ledger",
+                exc_info=exc,
+                extra={"event_id": str(event_id), "model": model},
+            )
+            await self._fallback_insert(event_id, event_fields)
 
-        # Advisory spend counters — IEEE 754 float, ledger is source of truth
-        if cost_usd > _ZERO:
+        # Advisory spend counters — IEEE 754 float, ledger is source of truth. Best-effort:
+        # only when the stream write succeeded (if XADD failed the counter write would too,
+        # and the fallback row is already the durable truth; advisory reconciles from ledger).
+        # BOUNDED (§1 B4-timeout: every Redis call in the record path is timeout-guarded) AND
+        # best-effort — a timeout/failure here is logged and swallowed with NO durable fallback:
+        # the ledger row already written by XADD/fallback is the source of truth, and the
+        # advisory counters are reconstructable from it by the reconciliation job.
+        if xadd_ok and cost_usd > _ZERO:
             yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
-            # Tenant counter (existing)
+            # Tenant counter (existing) — usage:spend:{tenant_id}:{YYYYMM}
             spend_key = f"usage:spend:{tenant_id}:{yyyymm}"
-            await self._redis.incrbyfloat(spend_key, float(cost_usd))
-            # Per-key counter (key-governance seam — M10/A2)
-            # Keyed: usage:spend:key:{key_id}:{YYYYMM}
-            # This counter is read by CompletionUseCase._check_per_key_budget() for
-            # most-specific-wins enforcement. Soft-budget alerting will also read it
-            # when the spend-windows/health-alerting tasks land.
+            # Per-key counter (key-governance seam — M10/A2) — usage:spend:key:{key_id}:{YYYYMM}
+            # Read by CompletionUseCase._check_per_key_budget() for most-specific-wins
+            # enforcement. Soft-budget alerting also reads it (spend-windows/health-alerting).
             per_key_spend_key = f"usage:spend:key:{key_id}:{yyyymm}"
-            await self._redis.incrbyfloat(per_key_spend_key, float(cost_usd))
-            # Per-team counter (team-governance seam — fail-open same as per-key)
-            # Keyed: usage:spend:team:{team_id}:{YYYYMM}
-            # Only written when the key has a team attribution (team_id is set).
-            # Read by CompletionUseCase._check_team_budget() for team budget enforcement.
-            if team_id is not None:
-                per_team_spend_key = f"usage:spend:team:{team_id}:{yyyymm}"
-                await self._redis.incrbyfloat(per_team_spend_key, float(cost_usd))
+            try:
+                async with asyncio.timeout(_USAGE_REDIS_TIMEOUT_SECONDS):
+                    await self._redis.incrbyfloat(spend_key, float(cost_usd))
+                    await self._redis.incrbyfloat(per_key_spend_key, float(cost_usd))
+                    # Per-team counter (team-governance seam — fail-open same as per-key).
+                    # usage:spend:team:{team_id}:{YYYYMM} — only when the key has a team
+                    # attribution. Read by CompletionUseCase._check_team_budget().
+                    if team_id is not None:
+                        per_team_spend_key = f"usage:spend:team:{team_id}:{yyyymm}"
+                        await self._redis.incrbyfloat(per_team_spend_key, float(cost_usd))
+            except Exception as exc:
+                _log.warning(
+                    "usage_recorder: advisory spend increment failed "
+                    "(best-effort; ledger is source of truth)",
+                    exc_info=exc,
+                    extra={"event_id": str(event_id), "model": model},
+                )
+
+    async def _fallback_insert(self, event_id: uuid.UUID, fields: dict[str, str]) -> None:
+        """Durable fallback: persist a usage event directly to the ledger when the
+        Redis XADD fails/times out. Uses the SAME deterministic id the stream-flush
+        would use, so ON CONFLICT (id) makes a later flush of the (landed) event a
+        no-op — no double-bill. Propagates DB errors to record()'s outer swallow
+        (a double store failure resolves to log-and-swallow, never a raise)."""
+        from gateway.usage.application.flusher import insert_usage_row
+
+        await insert_usage_row(self._session_factory, record_id=event_id, fields=fields)
 
     async def record_correction(
         self,
