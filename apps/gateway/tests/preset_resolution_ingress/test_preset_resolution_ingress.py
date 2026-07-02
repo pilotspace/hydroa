@@ -374,8 +374,16 @@ async def test_chat_stream_colon_selector_resolves_before_router(tenant_id: uuid
     upstream = _FakeStreamUpstream()
 
     class _FakeStreamRouter(FakeModelRouter):
-        def stream(self, body: dict[str, Any], *, upstream: Any) -> AsyncIterator[bytes]:
+        def stream(
+            self,
+            body: dict[str, Any],
+            *,
+            upstream: Any,
+            on_served: Any = None,
+        ) -> AsyncIterator[bytes]:
             self.complete_calls.append(dict(body))
+            if on_served is not None:
+                on_served(body.get("model", ""))
             return upstream.stream(body)
 
     stream_router = _FakeStreamRouter()

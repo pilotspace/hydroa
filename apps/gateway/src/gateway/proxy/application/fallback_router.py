@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -422,6 +422,8 @@ class FallbackModelRouter:
         self,
         payload: dict[str, Any],
         upstream: CompletionUpstream | None = None,
+        *,
+        on_served: Callable[[str], None] | None = None,
     ) -> AsyncIterator[bytes]:
         """Route a streaming completion request.
 
@@ -431,6 +433,12 @@ class FallbackModelRouter:
         No fallback on stream failure (deferred beyond v6).
 
         The `upstream` kwarg allows the use case to pass the request-time upstream.
+
+        `on_served`, when supplied, is invoked with the SERVED candidate id — the exact
+        value written to payload["model"] (the strategy primary for an alias, or the model
+        id itself for a plain request). Billing must use this captured id, NEVER recompute
+        it caller-side (simple-shuffle picks randomly; least-busy/latency depend on live
+        state) — stream-alias-billing (B1).
         """
         _upstream = self._resolve_upstream(upstream)
         model_id: str = payload.get("model", "")
@@ -438,11 +446,15 @@ class FallbackModelRouter:
         candidates = self._model_groups.get(model_id)
         if candidates is None:
             # Plain model id — delegate directly.
+            if on_served is not None:
+                on_served(model_id)
             return _upstream.stream(payload)
 
         # Alias: resolve to the strategy PRIMARY only (§3 STREAMING BOUNDARY — no
         # fallback on stream). For OrderedStrategy this is candidates[0] (v6 byte-identical).
         primary = self._strategy_order(model_id, candidates)[0]
+        if on_served is not None:
+            on_served(primary)
         rewritten: dict[str, object] = {**payload, "model": primary}
         return _upstream.stream(rewritten)
 
@@ -450,6 +462,8 @@ class FallbackModelRouter:
         self,
         payload: dict[str, Any],
         upstream: CompletionUpstream | None = None,
+        *,
+        on_served: Callable[[str], None] | None = None,
     ) -> tuple[bytes | None, AsyncIterator[bytes]]:
         """Pre-first-byte resilient streaming (streaming-resilience v19).
 
@@ -486,6 +500,12 @@ class FallbackModelRouter:
                 alias=alias, from_model=from_model, to_model=to_model, outcome="stream_fallover"
             )
 
+        # stream-alias-billing (B1): thread on_served as on_committed so the use case bills
+        # the candidate that actually COMMITTED (survived pre-first-byte fallover), not the
+        # alias and not necessarily attempts[0].
         return await open_resilient_stream(
-            attempts=attempts, open_stream=_open, on_fallover=_on_fallover
+            attempts=attempts,
+            open_stream=_open,
+            on_fallover=_on_fallover,
+            on_committed=on_served,
         )

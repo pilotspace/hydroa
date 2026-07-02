@@ -26,6 +26,7 @@ async def open_resilient_stream(
     attempts: list[str],
     open_stream: Callable[[str], AsyncIterator[bytes]],
     on_fallover: Callable[[str, str], None] | None = None,
+    on_committed: Callable[[str], None] | None = None,
 ) -> tuple[bytes | None, AsyncIterator[bytes]]:
     """Acquire the first SSE chunk with pre-first-byte fallover.
 
@@ -34,6 +35,10 @@ async def open_resilient_stream(
                    for a plain model id it is a single-element list (no same-target retry).
       open_stream: model_id -> a FRESH upstream stream (AsyncIterator[bytes]).
       on_fallover: optional (from_model, to_model) callback fired on each pre-first-byte skip.
+      on_committed: optional (model_id) callback fired ONCE with the candidate that COMMITS
+                   the stream (its first chunk obtained, or a clean committed-empty) — for
+                   billing attribution so usage keys on the served candidate, not the alias
+                   (stream-alias-billing B1).
 
     Returns (first_chunk, rest): the caller yields first_chunk (when not None) then drains
     rest. first_chunk is None only for a committed-empty upstream (zero chunks, clean end).
@@ -58,8 +63,14 @@ async def open_resilient_stream(
                 continue
             raise  # last attempt failed pre-first-byte → propagate to the caller (→ 502)
         except StopAsyncIteration:
+            # Committed-empty: this candidate served (zero chunks, clean end) — it is the
+            # committed candidate for billing attribution (stream-alias-billing B1).
+            if on_committed is not None:
+                on_committed(model_id)
             return None, _empty_aiter()  # upstream yielded nothing — committed-empty
         else:
+            if on_committed is not None:
+                on_committed(model_id)  # the candidate whose first chunk COMMITTED the stream
             return first, ait  # COMMITTED — caller yields `first` then drains `ait`
     # Defensive: attempts must be non-empty; an empty list reaches here.
     raise UpstreamUnavailableError("open_resilient_stream: no attempts provided")

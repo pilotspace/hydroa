@@ -1737,6 +1737,17 @@ class CompletionUseCase:
             # per-request sink that _wrapped() will read on disconnect. _wrapped() skips
             # its own set() and reuses this token for reset(). None = not yet set.
             _pre_peek_partial_token: object = None
+            # stream-alias-billing (B1): capture the SERVED candidate id from the routing
+            # decision (default stream() -> strategy primary; resilient -> the candidate that
+            # COMMITTED after pre-first-byte fallover). NEVER recompute caller-side —
+            # simple-shuffle picks randomly, least-busy/latency depend on live state. Used to
+            # bill on the served catalog model, not the alias (aliases have no pricing snapshot
+            # -> silent $0). Populated synchronously (default) or by return time (resilient).
+            _served_holder: list[str] = []
+
+            def _capture_served(_served: str) -> None:
+                _served_holder.append(_served)
+
             try:
                 # Route stream through model_router when wired. With stream resilience enabled
                 # (streaming-resilience v19), peek the first chunk via stream_resilient so a
@@ -1745,9 +1756,11 @@ class CompletionUseCase:
                 # Otherwise the byte-identical OLD path: resolve to the first candidate only
                 # (§3 STREAMING BOUNDARY); no fallback on stream failure.
                 if model_router is not None and self._stream_resilience_enabled:
-                    first_chunk, gen = await model_router.stream_resilient(body, upstream=upstream)
+                    first_chunk, gen = await model_router.stream_resilient(
+                        body, upstream=upstream, on_served=_capture_served
+                    )
                 elif model_router is not None:
-                    gen = model_router.stream(body, upstream=upstream)
+                    gen = model_router.stream(body, upstream=upstream, on_served=_capture_served)
                     # upstream-ratelimit-passthrough: peek the first chunk so a pre-first-byte
                     # UpstreamRateLimitedError surfaces here (before StreamingResponse commits).
                     # Set the partial-usage sink now so peek-time side-effects are captured.
@@ -1831,6 +1844,12 @@ class CompletionUseCase:
                 _stream_error_status = 502
                 raise UPSTREAM_UNAVAILABLE.exc() from None
 
+            # stream-alias-billing (B1): the served candidate is now known — _capture_served
+            # ran during routing (default path) / commit (resilient path) above. Bill + span
+            # on the served catalog model, not the alias. No alias / no router -> stays model_id.
+            if _served_holder:
+                _stream_model_id = _served_holder[-1]
+
             tenant_id = authz.tenant_id
             key_id = authz.key_id
             team_id = authz.team_id
@@ -1893,7 +1912,11 @@ class CompletionUseCase:
                                 usage_recorder,
                                 tenant_id=tenant_id,
                                 key_id=key_id,
-                                model=model_id,
+                                # stream-alias-billing (B1): the bandwidth-shed truncation
+                                # record is CHARGED (status=200) — bill the SERVED candidate,
+                                # not the alias (third charged site; see clean-close @2048 +
+                                # disconnect @1933). _stream_model_id == served here (post-commit).
+                                model=_stream_model_id,
                                 usage=_bw_usage,
                                 status=200,
                                 team_id=team_id,
@@ -1996,7 +2019,7 @@ class CompletionUseCase:
                         usage_recorder,
                         tenant_id=tenant_id,
                         key_id=key_id,
-                        model=model_id,
+                        model=_stream_model_id,  # B1: served candidate, not the alias
                         usage=disconnect_usage,
                         status=200,
                         team_id=team_id,
@@ -2056,7 +2079,10 @@ class CompletionUseCase:
                                 self._cost_recovery.recover(
                                     tenant_id=tenant_id,
                                     key_id=key_id,
-                                    model=model_id,
+                                    # B1: served candidate — consistent with the disconnect
+                                    # billing row so recovery re-prices on the catalog
+                                    # candidate, not the alias (which has no pricing snapshot).
+                                    model=_stream_model_id,
                                     provider_generation_id=disconnect_gen_id,
                                 )
                             )
@@ -2108,7 +2134,7 @@ class CompletionUseCase:
                     usage_recorder,
                     tenant_id=tenant_id,
                     key_id=key_id,
-                    model=model_id,
+                    model=_stream_model_id,  # B1: served candidate, not the alias
                     usage=extracted_usage,
                     status=200,
                     team_id=team_id,
@@ -2138,7 +2164,7 @@ class CompletionUseCase:
                     _emit_span_fire_forget(
                         _emitter,
                         _authz,
-                        model_id,
+                        _stream_model_id,  # B1: served candidate, not the alias
                         200,
                         True,  # stream=True
                         False,  # cached=False (streaming never cache-hits)
