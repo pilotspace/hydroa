@@ -763,12 +763,24 @@
     },
     "cache-alias-billing": {
       "title": "B6: cache-hit alias bills served candidate, not alias",
-      "phase": "tests",
+      "phase": "build",
       "gate": "none",
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T05:32:09+00:00"
+      "updated": "2026-07-02T05:33:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "fbea9630249e32b3cd8f81cf75d10613",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/tests/cache_alias_billing/"
+        ],
+        "snapshot_md5": "21c9b1b81b40378d98d18b2ee2b56bbb"
+      }
     },
     "usage-flusher-durability": {
       "title": "B4+B5: usage recorder durable fallback + Redis timeout + PEL reclaim",
@@ -1004,7 +1016,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T05:32:09+00:00",
+  "updated": "2026-07-02T05:33:03+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

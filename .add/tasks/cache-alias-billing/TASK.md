@@ -2,7 +2,7 @@
 
 slug: cache-alias-billing · created: 2026-07-02 · stage: production
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -124,11 +124,7 @@ Schema: none — no DB/table change. usage_records rows now carry a catalog mode
 ```
 
 Status: FROZEN @ v1 — approved by Tin Dang (2026-07-02). Changing this contract now = change request back to SPECIFY.
-Bundle lowest-confidence flags (surfaced at freeze — Tin froze as-is, stamp approach):
-  ⚠ [contract] pop the stamp BEFORE post-call guardrail masking (evaluate_post) — else a masking
-     transform dropping unknown keys loses it → falls back to cached["model"] (mis-bill OpenRouter
-     variants, never $0-on-alias). Pinned in §1 Must; tested by S1.
-  · [test] the legacy no-stamp fallback (S5) must bill cached["model"], never the alias.
+Least-sure flag surfaced at freeze: [contract] the served-id stamp must be popped from the fetched cached dict BEFORE post-call guardrail masking (evaluate_post) runs — a masking transform that returns a fresh dict would drop the unknown key; if wrong, the masking path falls back to cached["model"] (mis-bill for OpenRouter ":free" variants, but NEVER the $0-on-alias leak). Pinned in §1 Must, guarded by test_exact_hit. Secondary [test]: the legacy no-stamp fallback (S5) must bill cached["model"], never the alias. Tin froze as-is (stamp approach) 2026-07-02.
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag: the 1–2
      points most likely wrong across the whole bundle, tagged [spec|scenario|contract|test], each
      with why + cost (the §1 ⚠ assumptions feed it; a flag may point at a scenario or the contract
