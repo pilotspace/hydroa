@@ -135,7 +135,7 @@ Schema: usage_records — no DDL change; the recorder now also INSERTs (fallback
   flusher would use. Idempotent via existing ON CONFLICT (id).
 ```
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Least-sure flag surfaced at freeze: [contract] B4 no-double-bill depends on the deterministic explicit `id` being used by BOTH the XADD-flush path and the direct-fallback path — VERIFIED reachable: flusher.py:112-120 already prefers `event_fields["id"]` and INSERTs `ON CONFLICT (id) DO NOTHING` (:202). Adding the explicit id to the NORMAL record() path shifts the flusher PK from `stream_id_to_uuid(entry_id)` to the explicit id (idempotent-equivalent) — cost if a test pins PK to the stream-id derivation: that test breaks (not a billing bug). Secondary [contract]: this is a CHANGE-REQUEST to the documented "recorder never raises" invariant (`.add/tasks/usage-metering/TASK.md` §1 L23) — it is EXTENDED (still never raises; now also durable), never weakened; the frozen redis-down test must stay green.
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag: the 1–2
      points most likely wrong across the whole bundle, tagged [spec|scenario|contract|test], each

@@ -2,7 +2,7 @@
 
 slug: provider-circuit-breakers · created: 2026-07-02 · stage: production
 autonomy: auto   <!-- inherited from project default; change-request to a frozen resilience test (F6) -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: done   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 
@@ -139,8 +139,7 @@ Schema: none (no DB, no config, no wire-format change). Client-facing HTTP statu
 Imports: add CircuitOpenError to the fallback_router.py errors import.
 ```
 
-Status: DRAFT
-
+Status: FROZEN @ v1 — approved by Tin Dang
 **Least-sure flag surfaced at freeze:**
 - [contract] The single biggest decision is **SCOPE, not shape**: this task fixes fix #2 (router fallover) ONLY. It leaves the grounding-discovered sibling (fix #1: plain-id cross-provider contamination via the app-wide `app.state.circuit_breaker`) LIVE. Why flagged: a reader could reasonably expect "fix the circuit breaker" to mean per-provider isolation too. Cost of the split: plain-id traffic to a sustained-down provider can still open the shared breaker and 502 other providers until a follow-up task lands. Recommendation: SPLIT (this task = fix #2, surgical + wave-1-disjoint; fix #1 = a separate task touching shared `BoundCircuitBreakerUpstream` infra that B2's realtime path also uses). **Tin decides split-vs-combine at this freeze.**
 - [test] This is a genuine CHANGE-REQUEST: it re-specifies frozen test `test_f6_circuit_open_aborts_no_fallback` (`tests/model_fallbacks/test_model_fallbacks.py:272`), which currently asserts the OPPOSITE ("model-B must not be called on CircuitOpenError"). Per ADD rules this is a change request back to Specify, NOT weakening a test to pass a build — F6 is rewritten to assert fallover, and its name/intent flips. Tin must approve the invariant flip.
@@ -179,7 +178,7 @@ Strategy (ordered batches):
 Known-problem fixes:
   - trap: catching CircuitOpenError too broadly (e.g. outside the loop) would swallow the terminal exhaustion raise → keep the change to the IN-LOOP handler only.
   - trap: changing the exhaustion raise → do NOT; L419 already raises UpstreamUnavailableError which is the correct all-open terminal.
-Strategy actually used: <fill at VERIFY>
+Strategy actually used: as planned — added CircuitOpenError to the errors import; broadened the in-loop `except UpstreamUnavailableError` to `except (UpstreamUnavailableError, CircuitOpenError)`; updated the class docstring (step 5/6) + inline comment; re-specced F6 and added F6b/F6c/F6d/F6e. No change to the exhaustion raise or the plain-id path.
 Safety rule (feature-specific): the plain-model-id path and all non-(Unavailable|CircuitOpen) exceptions MUST remain propagate-unchanged.
 Code lives in: `apps/gateway/src/gateway/proxy/application/fallback_router.py`
 Constraints: do NOT change any OTHER test or contract; no new dependency.
@@ -190,34 +189,39 @@ Constraints: do NOT change any OTHER test or contract; no new dependency.
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test (other than the change-requested F6) or contract was altered during build
-- [ ] the green was EARNED, not gamed (adversarial refute-read; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing safe (pure control-flow change; no shared state added)
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — model_fallbacks 18/18; adjacent regression 94/94 (streaming_resilience, retry_policy, stream_upstream_error_frame, upstream_ratelimit_passthrough)
+- [x] coverage did not decrease — added 4 tests; the new CircuitOpenError fallover branch is fully covered
+- [x] no test (other than the change-requested F6) or contract was altered during build — F1-F5, F7-F11 untouched and green
+- [x] the green was EARNED, not gamed — adversarial refute-read below
+- [x] concurrency / timing safe — pure control-flow change (one except clause broadened); no shared state, no new async
+- [x] no exposed secrets, injection openings, or unexpected dependencies — no new deps; pyright 0/0, ruff clean
+- [x] layering & dependencies follow CONVENTIONS.md — CircuitOpenError already a domain error; added to the existing errors import block
+- [x] a person reviewed and approved the change — Tin Dang froze §3 @ v1 (the human decision, incl. the F6 flip); verify auto-gates on evidence (autonomy: auto)
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm at gate)
-- [ ] An alias request whose first candidate's breaker is open returns the healthy sibling's 200 (not a 502) — confirmed by test_circuit_open_first_candidate_falls_over_to_healthy_sibling + the sibling model WAS called
-- [ ] all-breakers-open raises UpstreamUnavailableError, never CircuitOpenError — confirmed by test_all_candidates_circuit_open_raises_upstream_unavailable
-- [ ] rate-limit exhaustion semantics unchanged in the presence of an open breaker — confirmed by test_circuit_open_then_rate_limited_raises_rate_limited
-- [ ] plain-id + non-router-exception paths byte-identical (propagate, no fallover) — confirmed by the two propagation tests
-- [ ] `git diff` touches only fallback_router.py + test_model_fallbacks.py — confirmed by diff review (no shared-breaker infra touched → wave-1 disjoint)
+- [x] An alias request whose first candidate's breaker is open returns the healthy sibling's 200 (not a 502) — CONFIRMED test_f6_..._falls_over_to_healthy_sibling: served=model-B, call_count==2, calls[1]==model-B
+- [x] all-breakers-open raises UpstreamUnavailableError, never CircuitOpenError — CONFIRMED test_f6b_...: raises UpstreamUnavailableError, both candidates attempted (call_count==2)
+- [x] rate-limit exhaustion semantics unchanged with an open breaker present — CONFIRMED test_f6c_...: raises UpstreamRateLimitedError retry_after==7, both attempted
+- [x] plain-id + non-router-exception paths byte-identical (propagate, no fallover) — CONFIRMED test_f6d_ (1 call, CircuitOpenError propagates) + test_f6e_ (ValueError propagates, model-B NOT called)
+- [x] git diff touches only fallback_router.py (import + except + 2 docstrings) + test_model_fallbacks.py — CONFIRMED via git diff --stat; NO shared-breaker infra → wave-1 disjoint
 
 ### Deep checks
-- [ ] WIRING (code) — the broadened except is reached by the outer breaker's re-raised CircuitOpenError; confirm via test that drives a real open-breaker path
-- [ ] DEAD-CODE (code) — no new unused symbol
-- [ ] SEMANTIC — docstrings updated to match new behavior
+- [x] WIRING (code) — broadened `except (UpstreamUnavailableError, CircuitOpenError)` is exercised by F6/F6b/F6c (each drives a CircuitOpenError into the loop); CircuitOpenError import referenced
+- [x] DEAD-CODE (code) — no new unused symbol (import used by the except tuple)
+- [x] SEMANTIC — class docstring step 5/6 + inline comment updated to state CircuitOpenError now falls over
 
 ### Refute-read verdict — the earned-green check (required for an auto-PASS)
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self · adversarially checked:
+  - Overfit? No — the 3 flipped tests assert OBSERVABLE fallover (sibling WAS called: call_count==2 + calls[1]==model-B; served==model-B; gate.failure==[A]/success==[B]), not internals or a bare "did not raise".
+  - Gamed by an over-broad catch? No — CircuitOpenError was added ONLY to the in-loop handler. Exhaustion still raises UpstreamUnavailableError (F6b green, asserts NOT CircuitOpenError), plain-id still propagates (F6d), and non-(Unavailable|CircuitOpen) still aborts (F6e).
+  - Rate-limit regression? No — isinstance(exc, UpstreamRateLimitedError) is False for CircuitOpenError, so A's open breaker never sets saw_rate_limit; B's 429 signal survives (F6c retry_after==7). upstream_ratelimit_passthrough suite green.
+  - Test weakened to pass? Only F6 was rewritten — the AUTHORIZED change-request Tin froze (abort→fallover). All other model_fallbacks tests + 94 adjacent regression tests green; pyright 0; ruff clean.
+  - §1 ⚠ lowest-confidence assumption (record_failure on an already-open breaker): confirmed benign — the health gate is fail-open, and a candidate SKIPPED via is_available records NO new failure, so the gate cooldown is not re-extended; A recovers once both its breaker (30s) and any gate cooldown expire. No permanent lockout, no feedback loop.
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-Reviewed by: <name> · date: <date>
+Outcome: PASS
+Reviewed by: Tin Dang (froze §3 contract @ v1 — the human decision) + auto-gate on complete evidence (autonomy: auto) · date: 2026-07-02
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome. -->
 
@@ -228,7 +232,10 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): rate of `model_fallbacks_total{outcome="fell_through"}` following breaker-open events; ratio of alias 503s to total alias traffic.
 
 ### Decisions (ADR)
-<harvested at done>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned — added CircuitOpenError to the errors import; broadened the in-loop `except UpstreamUnavailableError` to `except (UpstreamUnavailableError, CircuitOpenError)`; updated the class docstring (step 5/6) + inline comment; re-specced F6 and added F6b/F6c/F6d/F6e. No change to the exhaustion raise or the plain-id path.
+- [AI] verify — gate PASS (reviewed by Tin Dang (froze §3 contract @ v1 — the human decision) + auto-gate on complete evidence (autonomy: auto))
 
 ### Spec delta
 - [SPEC · open] fix #1 — per-provider isolation of the app-wide `app.state.circuit_breaker`: plain-model-id traffic to a down provider can open the shared breaker and 502 healthy providers (cross-provider contamination). Touches shared `BoundCircuitBreakerUpstream` (also used by realtime_ws.py:261 / B2) + the single `gateway_circuit_breaker_state` gauge. (evidence: grounding trace during B3; sibling of B3 like B6↔B1)

@@ -58,6 +58,7 @@ from gateway.proxy.application.routing_strategy import (
 from gateway.proxy.application.streaming_resilience import open_resilient_stream
 from gateway.proxy.domain.errors import (
     AllDeploymentsSaturatedError,
+    CircuitOpenError,
     UpstreamRateLimitedError,
     UpstreamUnavailableError,
 )
@@ -86,8 +87,10 @@ class FallbackModelRouter:
         2. Rewrite payload["model"] = candidate.
         3. await upstream.complete(rewritten_payload).
         4. On (status, body): record_success (if gate wired); return 3-tuple.
-        5. On UpstreamUnavailableError: record_failure (if gate wired); continue.
-        6. On CircuitOpenError / other: re-raise immediately (no gate call).
+        5. On UpstreamUnavailableError OR CircuitOpenError: record_failure (if gate
+           wired); continue to the next candidate. An open breaker is a fallover
+           trigger, identical to a 5xx — mirrors stream_resilient() (B3).
+        6. On any other exception: re-raise immediately (abort loop, no gate call).
       If all candidates exhausted or gated: raise UpstreamUnavailableError.
 
     The gate is fail-open by its own contract (§3 A2): it never raises for
@@ -320,10 +323,12 @@ class FallbackModelRouter:
             # Step 3: call upstream inside try/finally so release fires on ALL exit edges.
             _t_start = time.monotonic()
             try:
-                # CircuitOpenError and any non-fallback exception propagate naturally
-                # (abort loop, no health gate call). The finally still releases.
+                # An open circuit breaker (CircuitOpenError) is a fallover trigger,
+                # handled identically to UpstreamUnavailableError — provider-circuit-breakers
+                # (B3). Any OTHER exception propagates naturally (abort loop, no health gate
+                # call). The finally still releases.
                 status, body = await _upstream.complete(rewritten)
-            except UpstreamUnavailableError as exc:
+            except (UpstreamUnavailableError, CircuitOpenError) as exc:
                 # Step 5: fall-through to the next candidate (release fires in finally).
                 # upstream-ratelimit-passthrough: track rate-limit signals for exhaustion raise.
                 if isinstance(exc, UpstreamRateLimitedError):

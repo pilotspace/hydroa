@@ -804,7 +804,17 @@
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T05:57:31+00:00"
+      "updated": "2026-07-02T05:57:31+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-02T06:16:56+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "realtime-relay-governance": {
       "title": "B2: realtime relay authz/rate-limit + usage/audit rows",
@@ -835,14 +845,41 @@
     },
     "provider-circuit-breakers": {
       "title": "B3: per-provider breakers; complete() survives CircuitOpenError",
-      "phase": "contract",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "enterprise-hardening",
       "depends_on": [
         "cache-alias-billing"
       ],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T06:14:04+00:00"
+      "updated": "2026-07-02T06:24:32+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-02T06:17:01+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "37be3f6131d1065f1e8e62d6c1d005ac",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/application/fallback_router.py",
+          "apps/gateway/tests/model_fallbacks/test_model_fallbacks.py"
+        ],
+        "snapshot_md5": "2882643120d774d31de77a30f4a889b5"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "tiered-rate-cards": {
       "title": "Monetization: per-model/per-tier rate cards replace flat markup_pct",
@@ -1031,7 +1068,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T06:14:04+00:00",
+  "updated": "2026-07-02T06:24:32+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
