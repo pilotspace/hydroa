@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "batch-auto-grouping",
+  "active_task": "batch-claim-drain-del",
   "active_milestone": "v57",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -352,6 +352,49 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "batch-window-grouping": {
+      "title": "Time-windowed multi-request batch grouping",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v57",
+      "depends_on": [
+        "batch-auto-grouping"
+      ],
+      "created": "2026-07-03T09:24:25+00:00",
+      "updated": "2026-07-03T14:31:03+00:00",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "batch-claim-drain-del": {
+      "title": "Drain-time DEL of abandoned-claim marker",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "v57",
+      "depends_on": [
+        "batch-window-grouping"
+      ],
+      "created": "2026-07-03T15:00:04+00:00",
+      "updated": "2026-07-03T15:55:04+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ce224c0f3ea4825709d19727ae874f26",
+        "tests": {
+          "apps/gateway/tests/batches/test_batch_window_grouping.py": "820751e9a822cf07cc3a0f3e33059e03"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "778cec302061291eba16015ae5296c13"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -382,7 +425,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-03T08:26:13+00:00",
+  "updated": "2026-07-03T15:55:04+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1218,7 +1261,7 @@
   ],
   "active_tasks": {
     "v56": "chat-modality-guard",
-    "v57": "batch-auto-grouping"
+    "v57": "batch-claim-drain-del"
   },
   "todos": [
     {

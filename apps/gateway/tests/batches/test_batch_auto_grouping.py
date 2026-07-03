@@ -44,13 +44,13 @@ pytestmark = pytest.mark.asyncio
 
 COMPLETIONS = "/v1/chat/completions"
 POLICY = "/admin/batch-policy"
-BATCH_REFERENCE_OBJECT = "chat.completion.batch_reference"
 
 # NOTE: the gateway passes non-streaming bodies through VERBATIM — it does not
 # guarantee an "object" field on a real (non-diverted) response. This fixture body
 # includes one purely because this fake upstream chooses to; a diverted-request
-# detector must key off BATCH_REFERENCE_OBJECT (the sentinel), never off the
-# presence/absence of "chat.completion" here (see TestDualShapeContract below).
+# detector must key off the response content-type (text/event-stream vs
+# application/json), never off the presence/absence of "chat.completion" here
+# (see TestDualShapeContract below).
 UPSTREAM_BODY = {
     "id": "gen-123",
     "object": "chat.completion",
@@ -376,23 +376,64 @@ class TestDivertedWhenAvailable:
         owner: dict[str, str],
         active_model: str,
     ) -> None:
+        # batch-window-grouping TASK.md SCOPE AMENDMENT (Tin, 2026-07-03): this test
+        # asserted the M6 flat batch_reference envelope, which G8 supersedes for the
+        # genuinely-accumulated case — updated to assert the new SSE contract instead.
+        # Every other test in this file is untouched.
+        import json
+
+        from gateway.batches.application.window_flusher import BatchWindowFlusher
+        from gateway.proxy.infrastructure.batch_window_buffer import BatchWindowBuffer
+
         await _enable_policy(client, owner["jwt"])
         upstream = FakeCompletionUpstream()
         install_upstream(app, upstream)
         app.state.batch_processor = _FakeNoopProcessor()
+        app.state.settings.batch_window_seconds = 0.05
         try:
-            resp = await client.post(
-                COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"])
+            resp_task = asyncio.create_task(
+                client.post(COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"]))
             )
+            await asyncio.sleep(0.5)
+            buffer = BatchWindowBuffer(redis=app.state.redis_client, settings=app.state.settings)
+            flusher = BatchWindowFlusher(
+                buffer=buffer,
+                sessionmaker=app.state.sessionmaker,
+                app_state=app.state,
+                settings=app.state.settings,
+                get_batch_processor=lambda: app.state.batch_processor,
+            )
+            await flusher.flush_once()
+            resp = await resp_task
             await _await_all_batch_tasks(app)
         finally:
             app.state.batch_processor = None
 
         assert resp.status_code == 200, f"expected 200, got {resp.status_code}: {resp.text}"
-        body = resp.json()
-        assert body["object"] == BATCH_REFERENCE_OBJECT, f"expected a batch reference, got: {body}"
-        assert body["status"] == "queued"
-        assert "batch_job_id" in body and "custom_id" in body and "poll_url" in body
+        assert resp.headers["content-type"].startswith("text/event-stream"), (
+            "G8 supersedes the M6 flat batch_reference envelope — a genuinely-"
+            "accumulated request is now always SSE, never a plain JSON envelope"
+        )
+
+        events: list[tuple[str, dict[str, Any]]] = []
+        for block in resp.text.strip("\n").split("\n\n"):
+            if not block.strip():
+                continue
+            name: str | None = None
+            data: dict[str, Any] | None = None
+            for line in block.split("\n"):
+                if line.startswith("event:"):
+                    name = line[len("event:") :].strip()
+                elif line.startswith("data:"):
+                    data = json.loads(line[len("data:") :].strip())
+            if name is not None and data is not None:
+                events.append((name, data))
+
+        assert [n for n, _ in events] == ["queued", "submitted"], events
+        submitted = dict(events)["submitted"]
+        assert "batch_job_id" in submitted
+        assert "custom_id" in submitted
+        assert "poll_url" in submitted
         assert upstream.calls == 0, "a diverted request must never reach the upstream provider"
 
         result = await db_session.execute(
@@ -402,7 +443,7 @@ class TestDivertedWhenAvailable:
         assert int(result.scalar_one()) == 1
         items = await db_session.execute(
             text("SELECT request_body FROM batch_job_items WHERE batch_job_id = :jid"),
-            {"jid": body["batch_job_id"]},
+            {"jid": submitted["batch_job_id"]},
         )
         rows = items.fetchall()
         assert len(rows) == 1
@@ -448,6 +489,15 @@ class TestFallsBackWhenUnavailable:
         active_model: str,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # batch-window-grouping TASK.md SCOPE AMENDMENT #2 (AI-approved during build,
+        # 2026-07-03): identical root cause to the 5 tests amendment #1 already
+        # covers — this one also asserted the retired flat batch_reference envelope,
+        # this time for a request that resolves via the bounded-fallback path (never
+        # claimed by a flusher tick) rather than the happy path. G8's SSE framing
+        # supersedes the old contract for every diverted request, fallback-resolved
+        # or not — updated to assert the queued/completion SSE events instead.
+        import json
+
         await _enable_policy(client, owner["jwt"])
         upstream = FakeCompletionUpstream()
         install_upstream(app, upstream)
@@ -468,7 +518,27 @@ class TestFallsBackWhenUnavailable:
         assert resp.status_code == 200, (
             f"a hand-off failure must never surface as a 5xx: {resp.status_code} {resp.text}"
         )
-        assert resp.json() == UPSTREAM_BODY
+        assert resp.headers["content-type"].startswith("text/event-stream"), (
+            "G8 supersedes the M6 flat batch_reference envelope — a hand-off failure "
+            "still resolves via the bounded-fallback SSE path, never a plain JSON body"
+        )
+
+        events: list[tuple[str, dict[str, Any]]] = []
+        for block in resp.text.strip("\n").split("\n\n"):
+            if not block.strip():
+                continue
+            name: str | None = None
+            data: dict[str, Any] | None = None
+            for line in block.split("\n"):
+                if line.startswith("event:"):
+                    name = line[len("event:") :].strip()
+                elif line.startswith("data:"):
+                    data = json.loads(line[len("data:") :].strip())
+            if name is not None and data is not None:
+                events.append((name, data))
+
+        assert [n for n, _ in events] == ["queued", "completion"], events
+        assert dict(events)["completion"] == UPSTREAM_BODY
         assert upstream.calls == 1
         assert await _batch_jobs_count(db_session, owner["tenant_id"]) == 0
 
@@ -482,6 +552,13 @@ class TestResultRetrieval:
     async def test_diverted_result_retrievable_once_resolved(
         self, client: httpx.AsyncClient, app: Any, owner: dict[str, str], active_model: str
     ) -> None:
+        # batch-window-grouping SCOPE AMENDMENT (Tin, 2026-07-03): job_id/custom_id are
+        # now read off the SSE "submitted" event instead of a flat JSON envelope (G8).
+        import json
+
+        from gateway.batches.application.window_flusher import BatchWindowFlusher
+        from gateway.proxy.infrastructure.batch_window_buffer import BatchWindowBuffer
+
         await _enable_policy(client, owner["jwt"])
         install_upstream(app, FakeCompletionUpstream())
         result_body = {
@@ -490,16 +567,43 @@ class TestResultRetrieval:
             "choices": [{"message": {"role": "assistant", "content": "the real answer"}}],
         }
         app.state.batch_processor = _FakeSucceedingProcessor(app.state.sessionmaker, result_body)
+        app.state.settings.batch_window_seconds = 0.05
         try:
-            divert_resp = await client.post(
-                COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"])
+            divert_task = asyncio.create_task(
+                client.post(COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"]))
             )
+            await asyncio.sleep(0.5)
+            buffer = BatchWindowBuffer(redis=app.state.redis_client, settings=app.state.settings)
+            flusher = BatchWindowFlusher(
+                buffer=buffer,
+                sessionmaker=app.state.sessionmaker,
+                app_state=app.state,
+                settings=app.state.settings,
+                get_batch_processor=lambda: app.state.batch_processor,
+            )
+            await flusher.flush_once()
+            divert_resp = await divert_task
             await _await_all_batch_tasks(app)
         finally:
             app.state.batch_processor = None
 
-        job_id = divert_resp.json()["batch_job_id"]
-        custom_id = divert_resp.json()["custom_id"]
+        events: list[tuple[str, dict[str, Any]]] = []
+        for block in divert_resp.text.strip("\n").split("\n\n"):
+            if not block.strip():
+                continue
+            name: str | None = None
+            data: dict[str, Any] | None = None
+            for line in block.split("\n"):
+                if line.startswith("event:"):
+                    name = line[len("event:") :].strip()
+                elif line.startswith("data:"):
+                    data = json.loads(line[len("data:") :].strip())
+            if name is not None and data is not None:
+                events.append((name, data))
+
+        submitted = dict(events)["submitted"]
+        job_id = submitted["batch_job_id"]
+        custom_id = submitted["custom_id"]
 
         poll = await client.get(f"/v1/batches/{job_id}", headers=_bearer(owner["key"]))
 
@@ -520,17 +624,50 @@ class TestDisablingDoesNotAffectInFlight:
     async def test_disabling_policy_does_not_affect_inflight_job(
         self, client: httpx.AsyncClient, app: Any, owner: dict[str, str], active_model: str
     ) -> None:
+        # batch-window-grouping SCOPE AMENDMENT (Tin, 2026-07-03): job_id is now read
+        # off the SSE "submitted" event instead of a flat JSON envelope (G8).
+        import json
+
+        from gateway.batches.application.window_flusher import BatchWindowFlusher
+        from gateway.proxy.infrastructure.batch_window_buffer import BatchWindowBuffer
+
         await _enable_policy(client, owner["jwt"])
         install_upstream(app, FakeCompletionUpstream())
         app.state.batch_processor = _FakeNoopProcessor()
+        app.state.settings.batch_window_seconds = 0.05
         try:
-            divert_resp = await client.post(
-                COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"])
+            divert_task = asyncio.create_task(
+                client.post(COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"]))
             )
+            await asyncio.sleep(0.5)
+            buffer = BatchWindowBuffer(redis=app.state.redis_client, settings=app.state.settings)
+            flusher = BatchWindowFlusher(
+                buffer=buffer,
+                sessionmaker=app.state.sessionmaker,
+                app_state=app.state,
+                settings=app.state.settings,
+                get_batch_processor=lambda: app.state.batch_processor,
+            )
+            await flusher.flush_once()
+            divert_resp = await divert_task
             await _await_all_batch_tasks(app)
         finally:
             app.state.batch_processor = None
-        job_id = divert_resp.json()["batch_job_id"]
+
+        events: list[tuple[str, dict[str, Any]]] = []
+        for block in divert_resp.text.strip("\n").split("\n\n"):
+            if not block.strip():
+                continue
+            name: str | None = None
+            data: dict[str, Any] | None = None
+            for line in block.split("\n"):
+                if line.startswith("event:"):
+                    name = line[len("event:") :].strip()
+                elif line.startswith("data:"):
+                    data = json.loads(line[len("data:") :].strip())
+            if name is not None and data is not None:
+                events.append((name, data))
+        job_id = dict(events)["submitted"]["batch_job_id"]
 
         before_disable = await client.get(f"/v1/batches/{job_id}", headers=_bearer(owner["key"]))
         assert before_disable.status_code == 200
@@ -563,6 +700,13 @@ class TestTenantScoping:
     async def test_diverted_request_honors_tenant_scoping(
         self, client: httpx.AsyncClient, app: Any, owner: dict[str, str], active_model: str
     ) -> None:
+        # batch-window-grouping SCOPE AMENDMENT (Tin, 2026-07-03): job_id is now read
+        # off the SSE "submitted" event instead of a flat JSON envelope (G8).
+        import json
+
+        from gateway.batches.application.window_flusher import BatchWindowFlusher
+        from gateway.proxy.infrastructure.batch_window_buffer import BatchWindowBuffer
+
         other = await _signup_owner(
             client,
             tenant_name="BatchAutoGroupOther",
@@ -573,14 +717,40 @@ class TestTenantScoping:
         await _enable_policy(client, owner["jwt"])
         install_upstream(app, FakeCompletionUpstream())
         app.state.batch_processor = _FakeNoopProcessor()
+        app.state.settings.batch_window_seconds = 0.05
         try:
-            divert_resp = await client.post(
-                COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"])
+            divert_task = asyncio.create_task(
+                client.post(COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"]))
             )
+            await asyncio.sleep(0.5)
+            buffer = BatchWindowBuffer(redis=app.state.redis_client, settings=app.state.settings)
+            flusher = BatchWindowFlusher(
+                buffer=buffer,
+                sessionmaker=app.state.sessionmaker,
+                app_state=app.state,
+                settings=app.state.settings,
+                get_batch_processor=lambda: app.state.batch_processor,
+            )
+            await flusher.flush_once()
+            divert_resp = await divert_task
             await _await_all_batch_tasks(app)
         finally:
             app.state.batch_processor = None
-        job_id = divert_resp.json()["batch_job_id"]
+
+        events: list[tuple[str, dict[str, Any]]] = []
+        for block in divert_resp.text.strip("\n").split("\n\n"):
+            if not block.strip():
+                continue
+            name: str | None = None
+            data: dict[str, Any] | None = None
+            for line in block.split("\n"):
+                if line.startswith("event:"):
+                    name = line[len("event:") :].strip()
+                elif line.startswith("data:"):
+                    data = json.loads(line[len("data:") :].strip())
+            if name is not None and data is not None:
+                events.append((name, data))
+        job_id = dict(events)["submitted"]["batch_job_id"]
 
         cross_tenant = await client.get(f"/v1/batches/{job_id}", headers=_bearer(other["key"]))
         assert cross_tenant.status_code == 404
@@ -599,14 +769,33 @@ class TestDualShapeContract:
     async def test_opted_in_tenant_response_shape_varies_by_availability(
         self, client: httpx.AsyncClient, app: Any, owner: dict[str, str], active_model: str
     ) -> None:
+        # batch-window-grouping SCOPE AMENDMENT (Tin, 2026-07-03): the sentinel a
+        # caller must key off is now the top-level Content-Type (text/event-stream vs
+        # application/json) — G8 retires the batch_reference-object sentinel entirely
+        # for the genuinely-accumulated case (dead code, not an alternate branch).
+        from gateway.batches.application.window_flusher import BatchWindowFlusher
+        from gateway.proxy.infrastructure.batch_window_buffer import BatchWindowBuffer
+
         await _enable_policy(client, owner["jwt"])
         install_upstream(app, FakeCompletionUpstream())
 
         app.state.batch_processor = _FakeNoopProcessor()
+        app.state.settings.batch_window_seconds = 0.05
         try:
-            diverted = await client.post(
-                COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"])
+            diverted_task = asyncio.create_task(
+                client.post(COMPLETIONS, json=payload(active_model), headers=_bearer(owner["key"]))
             )
+            await asyncio.sleep(0.5)
+            buffer = BatchWindowBuffer(redis=app.state.redis_client, settings=app.state.settings)
+            flusher = BatchWindowFlusher(
+                buffer=buffer,
+                sessionmaker=app.state.sessionmaker,
+                app_state=app.state,
+                settings=app.state.settings,
+                get_batch_processor=lambda: app.state.batch_processor,
+            )
+            await flusher.flush_once()
+            diverted = await diverted_task
             await _await_all_batch_tasks(app)
         finally:
             app.state.batch_processor = None
@@ -618,6 +807,6 @@ class TestDualShapeContract:
         # The sentinel is what a caller must key off — never the presence/absence of
         # "chat.completion" (the gateway passes non-diverted bodies through verbatim
         # and does not itself guarantee that field; see the UPSTREAM_BODY note above).
-        assert diverted.json()["object"] == BATCH_REFERENCE_OBJECT
-        assert not_diverted.json().get("object") != BATCH_REFERENCE_OBJECT
-        assert "batch_job_id" not in not_diverted.json()
+        assert diverted.headers["content-type"].startswith("text/event-stream")
+        assert not_diverted.headers["content-type"].startswith("application/json")
+        assert not_diverted.json() == UPSTREAM_BODY

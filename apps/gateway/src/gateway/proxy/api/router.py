@@ -23,7 +23,7 @@ from gateway.proxy.api.deps import (
 )
 from gateway.proxy.application.json_sanitize import sanitize_non_finite
 from gateway.proxy.application.use_cases import CompletionUseCase
-from gateway.proxy.domain.ports import CompletionUpstream, UsageRecorder
+from gateway.proxy.domain.ports import BatchDivertedStream, CompletionUpstream, UsageRecorder
 from gateway.proxy.infrastructure.response_cache import resolve_cache_ttl
 
 _log = logging.getLogger(__name__)
@@ -88,6 +88,14 @@ async def completions(
         model_router=model_router,
         batch_processor=batch_processor,
     )
+
+    # batch-window-grouping (§3, G8): a genuinely-accumulated request's response is
+    # ALWAYS 200 text/event-stream, never a JSON body — checked BEFORE the JSON-only
+    # sanitize/x-cache tail below (a BatchDivertedStream carries neither non-finite
+    # floats nor a cache-relevant status).
+    if isinstance(response_body, BatchDivertedStream):
+        return StreamingResponse(response_body.body_stream, media_type="text/event-stream")
+
     # Sanitize non-finite floats (inf/-inf/nan) before render: Starlette serializes with
     # allow_nan=False, so an upstream non-finite anywhere (e.g. a -inf logprob) would 500.
     # Replace with null (degrade, never fail) + WARN once. This is the single non-stream

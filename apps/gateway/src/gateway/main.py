@@ -35,6 +35,13 @@ from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcPr
 )
 from gateway.batches.api.router import batch_router
 from gateway.batches.api.stats_router import batch_stats_router
+from gateway.batches.application.window_flusher import (
+    DEFAULT_TICK_INTERVAL_SECONDS as BATCH_WINDOW_TICK_INTERVAL_SECONDS,
+)
+from gateway.batches.application.window_flusher import (
+    BatchWindowFlusher,
+    should_start_batch_window_flusher,
+)
 from gateway.batches.application.worker import (
     BatchJobWorker,
     RedisBatchJobQueue,
@@ -98,6 +105,7 @@ from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
 from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
 from gateway.proxy.infrastructure.batch_diversion import BatchDiversionAdapter
+from gateway.proxy.infrastructure.batch_window_buffer import BatchWindowBuffer
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
 from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
 from gateway.proxy.infrastructure.cached_tenant_credential_resolver import (
@@ -533,6 +541,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.batch_worker = _batch_worker
             app.state.batch_worker_task = asyncio.create_task(_batch_worker.run_forever())
 
+        # BatchWindowFlusher — background drain of due BatchWindowBuffer windows
+        # (batch-window-grouping §3). The buffer itself (app.state.batch_window_buffer)
+        # is constructed in create_app()'s synchronous body (above) so it's always
+        # present, even under ASGITransport-based tests; only this background
+        # run_forever() task is lifespan-gated here, mirroring RetentionSweeper/
+        # BatchJobWorker's wiring shape exactly. should_start_batch_window_flusher is
+        # an operator escape hatch (batch_window_seconds<=0 disables the loop) —
+        # BatchDiversionAdapter's own append path is unaffected either way.
+        app.state.batch_window_flusher_task = None
+        if should_start_batch_window_flusher(_settings):
+            _batch_window_flusher = BatchWindowFlusher(
+                buffer=app.state.batch_window_buffer,
+                sessionmaker=_sessionmaker,
+                app_state=app.state,
+                settings=_settings,
+                get_batch_processor=lambda: getattr(app.state, "batch_processor", None),
+            )
+            app.state.batch_window_flusher = _batch_window_flusher
+            app.state.batch_window_flusher_task = asyncio.create_task(
+                _batch_window_flusher.run_forever(
+                    interval_seconds=BATCH_WINDOW_TICK_INTERVAL_SECONDS
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -580,6 +612,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             batch_worker_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await batch_worker_task
+
+        batch_window_flusher_task: asyncio.Task[None] | None = getattr(
+            app.state, "batch_window_flusher_task", None
+        )
+        if batch_window_flusher_task is not None:
+            batch_window_flusher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await batch_window_flusher_task
 
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
@@ -658,6 +698,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.drift_checker_task = None
     app.state.recovery_sweep_task = None
     app.state.retention_sweeper_task = None
+    app.state.batch_window_flusher_task = None
 
     # Video generation seam — default: no provider (honest degradation).
     # Tests override via app.state.video_generator = <stub>.
@@ -974,19 +1015,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sessionmaker=app.state.sessionmaker,
     )
 
-    # Batch-auto-grouping diversion adapter (v57 §3). Always constructed — safety comes
-    # from the per-tenant authz.batch_grouping_enabled flag (default false, checked in
-    # CompletionUseCase.complete()) and the M4 safety-gate inside the adapter itself
-    # (batch_processor is None today, pre openai-batch-adapter/anthropic-batch-adapter,
-    # so try_divert() always returns None ⇒ byte-identical). app_state=app.state (not
-    # individual attributes) because dispatch_batch_job reads batch_job_queue/
-    # batch_jobs_tasks, which are populated later in this same lifespan — deferred to
-    # per-call time, same reason model_router/batch_processor are getattr'd per-request
-    # rather than captured here. Tests override via app.state.batch_diversion.
+    # batch-window-grouping (§3): the per-tenant fixed-tick accumulation buffer.
+    # Constructed here (create_app()'s synchronous body), NOT inside the async
+    # lifespan below — unlike BatchWindowFlusher's background drain loop, the buffer
+    # itself is touched on every eligible request (BatchDiversionAdapter.try_divert),
+    # so it must exist even under ASGITransport-based tests (which never fire
+    # lifespan). No I/O happens at construction (redis.asyncio clients are lazy),
+    # mirroring RedisBatchJobQueue/BatchDiversionAdapter's own safe-without-lifespan
+    # shape. Tests override via app.state.batch_window_buffer.
+    app.state.batch_window_buffer = BatchWindowBuffer(redis=redis_client, settings=settings)
+
+    # Batch-auto-grouping diversion adapter (v57 §3), superseded body @ batch-window-
+    # grouping (§3): safety comes from the per-tenant authz.batch_grouping_enabled
+    # flag (default false, checked in CompletionUseCase.complete()) and the restored
+    # M4 safety-gate inside the adapter itself (batch_processor is None today, pre
+    # openai-batch-adapter/anthropic-batch-adapter, so try_divert() always returns
+    # None ⇒ byte-identical). Tests override via app.state.batch_diversion.
     app.state.batch_diversion = BatchDiversionAdapter(
-        sessionmaker=app.state.sessionmaker,
-        app_state=app.state,
         settings=settings,
+        buffer=app.state.batch_window_buffer,
     )
 
     # openrouter-cost-recovery-wiring (v30 t6.2c): inline authoritative-cost recovery for

@@ -66,6 +66,7 @@ from gateway.proxy.domain.errors import (
 from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
 from gateway.proxy.domain.ports import (
     BatchDiversionPort,
+    BatchDivertedStream,
     ChatModalityLookup,
     CompletionUpstream,
     GuardrailEvaluator,
@@ -1026,6 +1027,92 @@ class CompletionUseCase:
             self._tenant_credential_resolver, tenant_id, _provider
         )
 
+    async def _run_diverted_fallback(
+        self,
+        *,
+        authz: AuthzResult,
+        body: dict[str, Any],
+        model_id: str,
+        upstream: CompletionUpstream,
+        usage_recorder: UsageRecorder,
+        model_router: FallbackModelRouter | None,
+    ) -> dict[str, Any]:
+        """G10 fallback: run the billing-correct equivalent of the existing
+        synchronous upstream call for ONE accumulated item, entirely independent of
+        the original complete() call's lifetime (batch-window-grouping TASK.md §3).
+
+        Invoked by the SSE generator (BatchDiversionAdapter._lifecycle), potentially
+        seconds after the original complete() call already returned — that call's own
+        credential-resolution contextvar token was already reset by its own `finally`
+        clause. Credential resolution is therefore redone FRESH here, exactly as a
+        brand-new request would, never assumed still in effect.
+
+        Never raises: this is a deferred, best-effort completion for an item whose
+        HTTP response (200 text/event-stream, already committed) cannot change
+        status. Any upstream failure degrades to an error-shaped body rather than an
+        unhandled exception reaching the SSE generator.
+
+        Deliberately does NOT re-apply post-call guardrail masking or cache-store — a
+        conscious, bounded residue for this rare fallback path (this task's own test
+        plan only requires "a real body, never a 5xx" here, not guardrail/cache
+        parity; documented per batch-auto-grouping's own non-blocking-residue
+        convention).
+        """
+        _cred_token: object | None = None
+        try:
+            _cred_token = await self._resolve_credential(authz.tenant_id, model_id)
+            try:
+                if model_router is not None:
+                    status, response_body, served_model_id = await model_router.complete(
+                        body, upstream=upstream
+                    )
+                else:
+                    status, response_body = await upstream.complete(body)
+                    served_model_id = model_id
+            except Exception as exc:
+                _log.warning(
+                    "batch window fallback upstream call failed for tenant %s",
+                    authz.tenant_id,
+                    exc_info=exc,
+                )
+                _fire_record(
+                    usage_recorder,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=model_id,
+                    usage=None,
+                    status=502,
+                    team_id=authz.team_id,
+                )
+                return {
+                    "error": {
+                        "message": "batch window fallback failed",
+                        "type": "internal_error",
+                        "code": "ERR_UPSTREAM_UNAVAILABLE",
+                    }
+                }
+
+            # Mirrors the established idiom at complete()'s own success path above:
+            # response_body's static type is dict[str, Any] | dict[str, object]
+            # (model_router.complete() vs upstream.complete() declare different value
+            # types), so isinstance(response_body, dict) is always true (both arms are
+            # already dicts) — narrow the EXTRACTED usage value instead.
+            usage_raw = response_body.get("usage")
+            usage: dict[str, Any] | None = usage_raw if isinstance(usage_raw, dict) else None
+            _fire_record(
+                usage_recorder,
+                tenant_id=authz.tenant_id,
+                key_id=authz.key_id,
+                model=served_model_id,
+                usage=usage,
+                status=status,
+                team_id=authz.team_id,
+            )
+            return response_body
+        finally:
+            if _cred_token is not None:
+                reset_provider_credential(_cred_token)  # type: ignore[arg-type]
+
     async def complete(
         self,
         *,
@@ -1038,10 +1125,14 @@ class CompletionUseCase:
         request_headers: dict[str, str] | None = None,
         model_router: FallbackModelRouter | None = None,
         batch_processor: object | None = None,
-    ) -> tuple[int, dict[str, Any], str | None]:
+    ) -> tuple[int, dict[str, Any] | BatchDivertedStream, str | None]:
         """Handle a non-streaming completion.
 
-        Returns (status_code, json_body, x_cache_value).
+        Returns (status_code, json_body, x_cache_value). json_body is a
+        BatchDivertedStream (batch-window-grouping §3) instead of a dict exactly when
+        this request was genuinely accepted into the batch accumulation buffer — the
+        caller (proxy/api/router.py) MUST check isinstance() and wrap body_stream in a
+        StreamingResponse rather than a JSONResponse in that case.
         x_cache_value is "hit", "miss", "bypass", or None (cache disabled).
         On upstream 4xx: pass-through verbatim.
         On upstream 5xx / circuit open: raise ProblemError 502.
@@ -1372,21 +1463,47 @@ class CompletionUseCase:
                         except Exception:  # noqa: S110
                             pass
 
-            # batch-auto-grouping (v57 §3): diversion check — sits OUTSIDE the cache
-            # block above so it catches every path that would otherwise call upstream
-            # (miss, bypass, cache disabled/unconfigured), and NEVER an exact/semantic/
-            # vector HIT (those already returned above). authz.batch_grouping_enabled
-            # was resolved at authentication time (zero extra DB reads, mirrors
+            # batch-auto-grouping (v57 §3) / batch-window-grouping (§3, supersedes the
+            # size-1-job body): diversion check — sits OUTSIDE the cache block above
+            # so it catches every path that would otherwise call upstream (miss,
+            # bypass, cache disabled/unconfigured), and NEVER an exact/semantic/vector
+            # HIT (those already returned above). authz.batch_grouping_enabled was
+            # resolved at authentication time (zero extra DB reads, mirrors
             # semantic_cache_enabled) — try_divert() itself NEVER raises; a None
             # result means "proceed synchronously", identical to policy-disabled.
             if self._batch_diversion is not None and getattr(
                 authz, "batch_grouping_enabled", False
             ):
+                # G10 fallback closure: captures this call's own local scope (authz/
+                # body/model_id/upstream/usage_recorder/model_router) so a deferred
+                # SSE-generator invocation — potentially seconds later, well after
+                # THIS complete() call has returned and its own credential-resolution
+                # contextvar token has already been reset in the finally below — still
+                # resolves credentials and records usage correctly, entirely on its
+                # own, never assuming any of complete()'s own now-defunct state.
+                async def _sync_fallback(
+                    _authz: AuthzResult = authz,
+                    _body: dict[str, Any] = body,
+                    _model_id: str = model_id,
+                    _upstream: CompletionUpstream = upstream,
+                    _usage_recorder: UsageRecorder = usage_recorder,
+                    _model_router: FallbackModelRouter | None = model_router,
+                ) -> dict[str, Any]:
+                    return await self._run_diverted_fallback(
+                        authz=_authz,
+                        body=_body,
+                        model_id=_model_id,
+                        upstream=_upstream,
+                        usage_recorder=_usage_recorder,
+                        model_router=_model_router,
+                    )
+
                 _diverted = await self._batch_diversion.try_divert(
                     tenant_id=authz.tenant_id,
                     key_id=authz.key_id,
                     body=body,
                     batch_processor=batch_processor,
+                    sync_fallback=_sync_fallback,
                 )
                 if _diverted is not None:
                     _status_code = 200

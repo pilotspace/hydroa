@@ -429,8 +429,19 @@ class Settings(BaseSettings):
     # GATEWAY_BATCH_MAX_ITEMS_PER_JOB — the maximum number of line items a single
     # POST /v1/batches submission may contain. Default 500 for this MVP shell (well
     # under real provider limits of 50k/100k) — operator-configurable. Inclusive cap
-    # (reject fires on ">").
+    # (reject fires on ">"). Also doubles as BatchWindowBuffer's early-flush size cap
+    # (batch-window-grouping): a window flushes as soon as its accumulated item count
+    # reaches this value, even if batch_window_seconds has not yet elapsed.
     batch_max_items_per_job: int = Field(default=500, ge=1)
+    # GATEWAY_BATCH_WINDOW_SECONDS — batch-window-grouping: the fixed-tick accumulation
+    # window (seconds) for BatchWindowBuffer/BatchWindowFlusher. A tenant's FIRST
+    # eligible request opens the window; it flushes as one multi-item batch job when
+    # EITHER this many seconds have elapsed since that first arrival OR
+    # batch_max_items_per_job items have accumulated, whichever comes first — a later
+    # arrival in the same window never resets it (fixed-tick, not debounce). Read
+    # fresh per-call (never snapshotted at construction) so it can be tuned live and
+    # shrunk in tests after app construction. Default 3.0s.
+    batch_window_seconds: float = Field(default=3.0, ge=0)
 
     @field_validator("back_pressure_retry_after_seconds", mode="before")
     @classmethod

@@ -901,6 +901,24 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
   Postgres-contention pattern but via shared Redis state instead (evidence: 2026-07-03
   coverage run + two solo re-runs, response_caching test file, unrelated to this task's own
   code).
+- [SPEC · seeded] seeded as task batch-window-grouping — this task's shipped M5 design
+  ("a genuinely diverted request wraps as a single-line-item batch job") is NOT what the
+  v57 milestone goal or Tin actually wants: the milestone goal states "a tenant can
+  process a SET of chat-completion requests as ONE discounted batch job," and Tin's own
+  words (MILESTONE.md SCOPE CHANGE note) are "group user's request as batch" — plural
+  requests into one batch, not one job per request. Root cause: §1 SPECIFY weighed three
+  framings, none of which was time-windowed multi-request accumulation — that framing was
+  never on the table, and neither of the two lowest-confidence items flagged to Tin at the
+  §3 freeze (Framing A / M11 dual-shape) covered this axis, so his bundle approval never
+  actually tested against his own mental model. Discovered 2026-07-03 via direct
+  conversation, same day as freeze/build/gate — no production impact (batch_processor is
+  None by default; the whole diversion path is inert today). NOT patched in place per the
+  standing rule that a real behavioral change re-enters at Specify — a new task,
+  batch-window-grouping, carries the actual fix (Redis-backed per-tenant accumulation +
+  fixed-tick window + SSE lifecycle response), reusing this task's policy flag/safety-gate/
+  poll-extension as-is (evidence: this conversation, 2026-07-03; OpenAI/Anthropic batch API
+  docs fetched and verified live to confirm no faster-than-24h-ceiling SLA exists on either
+  provider, ruling out a held-open-connection design).
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
@@ -934,4 +952,17 @@ What did this loop teach the foundation? One line each, tagged by competency
   isolation for Redis-backed fixtures the same way it now guards Postgres DB names
   (evidence: `test_spend_counter_not_incremented_on_cache_hit`, 2026-07-03, three
   consecutive runs).
+- [ADD · open] when a task's own §1 SPECIFY weighs multiple framings, the milestone's own
+  goal/rationale text (and any direct human quote captured there) should be checked as an
+  explicit cross-reference BEFORE a framing is chosen — not just re-read for general
+  color. Here, MILESTONE.md's goal ("a SET of requests as ONE batch job") and Tin's own
+  quoted words ("group user's request as batch") directly named multi-request aggregation,
+  but the framing list at specify never included that option, and neither of the two
+  items flagged to Tin at the §3 freeze covered the gap — so a bundle approval was taken
+  on a design axis the human never actually got to react to. The fix isn't "ask more
+  questions at freeze," it's checking the milestone's own language against each framing
+  BEFORE they're written down, so a framing that contradicts the milestone goal is either
+  never on the list or is explicitly flagged as "diverges from milestone goal — confirm."
+  (evidence: this session, 2026-07-03 — full sequence in Build-time findings above and in
+  task batch-window-grouping's §0 Related intent.)
 
