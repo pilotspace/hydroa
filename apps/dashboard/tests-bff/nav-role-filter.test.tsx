@@ -33,6 +33,10 @@
  * owner-OR-admin) is added after "API Keys" → member sees 10 (unchanged, still hidden);
  * admin now sees 18 (unchanged — still hidden from admin too, unlike every prior addition);
  * owner/unknown now see 19 (was 18; unknown still fails open across BOTH tiers).
+ * UPDATED by batch-dashboard-surface (v57): an admin-only "Batches" link (/app/batches,
+ * minRole: "admin" — GET /admin/batches/stats is require_owner_or_admin) is added after
+ * "Routing" → member sees 10 (unchanged, still hidden); admin now sees 19 (was 18); owner/
+ * unknown now see 20 (was 19).
  *
  * AppShell takes an optional `role` prop (presentational); DashboardShell ("use
  * client") feeds it from useCurrentUser().role. The nav filter is UX-only — no
@@ -55,11 +59,11 @@ import { AppShell } from "@/components/ui";
 import { DashboardShell } from "@/components/dashboard-shell";
 
 const APP = "http://localhost:3000";
-const ADMIN_ONLY = [/models/i, /teams/i, /members/i, /routing/i, /alerts/i, /audit/i, /health/i, /^slo$/i];
+const ADMIN_ONLY = [/models/i, /teams/i, /members/i, /routing/i, /^batches$/i, /alerts/i, /audit/i, /health/i, /^slo$/i];
 const OWNER_ONLY = [/model presets/i];
 const MEMBER_OK = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, /settings/i];
 const ADMIN_SEES = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
-const ALL_NINETEEN = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...OWNER_ONLY, ...ADMIN_ONLY, /settings/i];
+const ALL_TWENTY = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...OWNER_ONLY, ...ADMIN_ONLY, /settings/i];
 
 function makeQueryClient() {
   return new QueryClient({
@@ -113,7 +117,7 @@ describe("AppShell — role-based nav visibility", () => {
     }
     // admin is NOT owner — "Model Presets" (minRole: "owner") stays hidden, unlike every
     // other minRole:"admin" link above it.
-    expect(within(n).getAllByRole("link")).toHaveLength(18);
+    expect(within(n).getAllByRole("link")).toHaveLength(19);
   });
 
   it("test_owner_sees_all_links", () => {
@@ -123,10 +127,10 @@ describe("AppShell — role-based nav visibility", () => {
       </AppShell>,
     );
     const n = nav();
-    for (const re of ALL_NINETEEN) {
+    for (const re of ALL_TWENTY) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
-    expect(within(n).getAllByRole("link")).toHaveLength(19);
+    expect(within(n).getAllByRole("link")).toHaveLength(20);
   });
 
   it("test_unknown_role_fails_open", () => {
@@ -135,7 +139,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(19);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(20);
     unmount();
 
     // no role prop at all → also fail-open (preserves the prior AppShell behavior)
@@ -144,7 +148,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(19);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(20);
   });
 });
 

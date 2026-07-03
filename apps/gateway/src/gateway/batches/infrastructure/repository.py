@@ -11,6 +11,7 @@ Methods:
   get(*, tenant_id, job_id) -> BatchJobRow | None
   list_for_tenant(*, tenant_id, limit, offset) -> list[BatchJobRow]
   status_counts(*, job_id) -> dict[str, int]  [all 5 item-vocabulary keys always present]
+  tenant_status_counts(*, tenant_id) -> dict[str, int]  [same, tenant-wide instead of per-job]
   set_in_progress(*, job_id) -> None   [fresh session — called from background task]
   set_failed(*, job_id, error) -> None  [cascades every still-pending item to errored —
     a terminal job never leaves pending items behind, TASK.md §1 Must]
@@ -120,6 +121,26 @@ class BatchJobRepository:
         stmt = (
             select(BatchJobItemRow.status, func.count())
             .where(BatchJobItemRow.batch_job_id == job_id)
+            .group_by(BatchJobItemRow.status)
+        )
+        result = await self._session.execute(stmt)
+        counts: dict[str, int] = dict.fromkeys(_ITEM_STATUSES, 0)
+        for status_value, count in result.all():
+            if status_value in counts:
+                counts[status_value] = int(count)
+        return counts
+
+    async def tenant_status_counts(self, *, tenant_id: uuid.UUID) -> dict[str, int]:
+        """Tenant-wide per-item-status breakdown across EVERY batch job the tenant has
+        ever submitted — same convention as status_counts() (all 5 item-vocabulary keys
+        always present, 0 when none), just scoped by tenant_id instead of one job_id.
+
+        BatchJobItemRow.tenant_id is denormalized on the item row itself (see create()) —
+        no join through BatchJobRow needed. Used by batch-dashboard-surface's read-only
+        stats page (total_requests = sum(these values), no separate count query)."""
+        stmt = (
+            select(BatchJobItemRow.status, func.count())
+            .where(BatchJobItemRow.tenant_id == tenant_id)
             .group_by(BatchJobItemRow.status)
         )
         result = await self._session.execute(stmt)

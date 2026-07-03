@@ -34,6 +34,7 @@ from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcPr
     OidcProviderConfigRow as _OidcProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.batches.api.router import batch_router
+from gateway.batches.api.stats_router import batch_stats_router
 from gateway.batches.application.worker import (
     BatchJobWorker,
     RedisBatchJobQueue,
@@ -1049,6 +1050,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(artifacts_router)
     app.include_router(video_router)
     app.include_router(batch_router)
+    app.include_router(batch_stats_router)
 
     # RequestIdMiddleware must be added AFTER routers are included so it wraps
     # the full ASGI app and captures final status codes including those set by

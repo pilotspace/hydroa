@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, LogOut, Menu, MessageSquare, Mic, Receipt, Settings, Shuffle, Users } from "lucide-react";
+import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, Layers, LogOut, Menu, MessageSquare, Mic, Receipt, Settings, Shuffle, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { bffAuthPost } from "@/lib/bff-client";
 import {
@@ -61,6 +61,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/app/teams", label: "Teams", icon: Users, minRole: "admin" },
   { href: "/app/members", label: "Members", icon: Users, minRole: "admin" },
   { href: "/app/routing", label: "Routing", icon: Activity, minRole: "admin" },
+  { href: "/app/batches", label: "Batches", icon: Layers, minRole: "admin" },
   { href: "/app/alerts", label: "Alerts", icon: Bell, minRole: "admin" },
   { href: "/app/audit", label: "Audit", icon: ClipboardList, minRole: "admin" },
   { href: "/app/health", label: "Health", icon: HeartPulse, minRole: "admin" },
