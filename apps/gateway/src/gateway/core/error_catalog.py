@@ -609,3 +609,25 @@ PRESET_SELECTOR_INVALID = ErrorSpec(
 PRESET_NOT_FOUND = ErrorSpec(
     400, "ERR_PRESET_NOT_FOUND", "Preset selector did not resolve to a known model"
 )
+
+# ---------------------------------------------------------------------------
+# Batch job store errors (batch-job-store task, v57)
+# ---------------------------------------------------------------------------
+
+#: Requested batch job not found, or belongs to another tenant.
+#: NEVER distinguish between "not found" and "belongs to another tenant" — no oracle.
+BATCH_JOB_NOT_FOUND = ErrorSpec(404, "ERR_BATCH_JOB_NOT_FOUND", "Batch job not found")
+
+#: POST /v1/batches with an empty line_items array.
+BATCH_ITEMS_EMPTY = ErrorSpec(422, "batch_items_empty", "line_items must not be empty")
+
+#: POST /v1/batches with more line items than the configured cap
+#: (Settings.batch_max_items_per_job). The cap is inclusive — reject fires on ">".
+BATCH_ITEMS_TOO_MANY = ErrorSpec(
+    422, "batch_items_too_many", "line_items exceeds the maximum allowed"
+)
+
+#: A line item failed validation: missing model, missing/empty messages, or a
+#: custom_id that duplicates another item in the same submission. The whole
+#: submission is atomic — no row is created on this reject.
+BATCH_ITEM_INVALID = ErrorSpec(422, "batch_item_invalid", "a line item failed validation")

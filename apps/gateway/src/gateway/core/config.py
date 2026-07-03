@@ -411,6 +411,27 @@ class Settings(BaseSettings):
     # is therefore always attempted at least once.
     video_job_max_retries: int = Field(default=3, ge=0)
 
+    # ── Batch job store (batch-job-store task, v57) ───────────────────────────
+    # GATEWAY_BATCH_DURABLE_QUEUE_ENABLED — when True, batch jobs are enqueued to a
+    # Redis list (batch:jobs:pending) and drained by an in-process BatchJobWorker
+    # rather than a fire-and-forget asyncio.create_task. Jobs survive gateway
+    # restarts; orphaned non-terminal rows are re-enqueued on startup.
+    # Default False = opt-in (mirrors video_durable_queue_enabled exactly).
+    # Fail-open: if the Redis enqueue raises, the router falls back to the inline task.
+    batch_durable_queue_enabled: bool = Field(default=False)
+    # GATEWAY_BATCH_JOB_MAX_RETRIES — maximum number of times the durable worker will
+    # attempt a job before setting status=failed error=max_retries_exceeded. **0 =
+    # UNLIMITED** (the codebase convention for a 0-valued cap). Default 3.
+    batch_job_max_retries: int = Field(default=3, ge=0)
+    # GATEWAY_BATCH_JOB_TIMEOUT_SECONDS — per-job asyncio.wait_for timeout for the
+    # BatchProcessor.process() call. 0 = unlimited (no timeout). Default 300 s.
+    batch_job_timeout_seconds: float = Field(default=300.0, ge=0)
+    # GATEWAY_BATCH_MAX_ITEMS_PER_JOB — the maximum number of line items a single
+    # POST /v1/batches submission may contain. Default 500 for this MVP shell (well
+    # under real provider limits of 50k/100k) — operator-configurable. Inclusive cap
+    # (reject fires on ">").
+    batch_max_items_per_job: int = Field(default=500, ge=1)
+
     @field_validator("back_pressure_retry_after_seconds", mode="before")
     @classmethod
     def _coerce_negative_retry_after(cls, v: object) -> object:

@@ -1344,6 +1344,9 @@ async def test_guardrails_core_migration_column_exists(
     # SANCTIONED EDIT (tenant-preset-store TASK.md §3, 2026-07-01): added
     # tenant_model_presets to this manifest — additive migration b5f8a1d4c7e0,
     # registered on Base.metadata via main.py's side-effect ORM import (same precedent).
+    # SANCTIONED EDIT (batch-job-store TASK.md §3, 2026-07-02): added batch_jobs +
+    # batch_job_items to this manifest — additive migration e5a7c9b1d3f6, registered on
+    # Base.metadata via main.py's side-effect ORM import (same precedent).
     new_tables = (
         await db_session.execute(
             text(
@@ -1355,7 +1358,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'tenant_provider_keys','routing_config','audit_events',"
                 " 'device_authorizations','agent_tokens','alembic_version',"
                 " 'artifacts','memories','video_generation_jobs',"
-                " 'conversations','conversation_messages','tenant_model_presets')"
+                " 'conversations','conversation_messages','tenant_model_presets',"
+                " 'batch_jobs','batch_job_items')"
             )
         )
     ).fetchall()

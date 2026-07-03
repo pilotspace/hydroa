@@ -33,6 +33,18 @@ from gateway.auth.api.oidc_router import oidc_router
 from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
     OidcProviderConfigRow as _OidcProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.batches.api.router import batch_router
+from gateway.batches.application.worker import (
+    BatchJobWorker,
+    RedisBatchJobQueue,
+    should_start_batch_worker,
+)
+from gateway.batches.application.worker import (
+    recover_orphans as recover_batch_orphans,
+)
+from gateway.batches.infrastructure.orm import (  # noqa: F401 — registers BatchJobRow/BatchJobItemRow on Base.metadata
+    BatchJobItemRow as _BatchJobItemRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import (
@@ -501,6 +513,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.video_worker = _video_worker
             app.state.video_worker_task = asyncio.create_task(_video_worker.run_forever())
 
+        # BatchJobWorker — durable Redis-backed in-process worker (batch-job-store, v57).
+        # Default-OFF: started only when batch_durable_queue_enabled=True. Structurally
+        # copied from the VideoJobWorker wiring immediately above.
+        app.state.batch_worker_task = None
+        if should_start_batch_worker(_settings):
+            _batch_queue = RedisBatchJobQueue(_redis)
+            app.state.batch_job_queue = _batch_queue
+            await recover_batch_orphans(_sessionmaker, _batch_queue)
+            _batch_worker = BatchJobWorker(
+                sessionmaker=_sessionmaker,
+                queue=_batch_queue,
+                settings=_settings,
+                get_batch_processor=lambda: getattr(app.state, "batch_processor", None),
+            )
+            app.state.batch_worker = _batch_worker
+            app.state.batch_worker_task = asyncio.create_task(_batch_worker.run_forever())
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -543,6 +572,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await video_worker_task
 
+        batch_worker_task: asyncio.Task[None] | None = getattr(app.state, "batch_worker_task", None)
+        if batch_worker_task is not None:
+            batch_worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await batch_worker_task
+
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
             await dispatcher.run_once()
@@ -574,6 +609,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if video_tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await asyncio.gather(*video_tasks, return_exceptions=True)
+
+        # 2d. Cancel outstanding batch job tasks
+        batch_tasks: set[asyncio.Task[None]] = getattr(app.state, "batch_jobs_tasks", set())
+        for _bt in list(batch_tasks):
+            _bt.cancel()
+        if batch_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.gather(*batch_tasks, return_exceptions=True)
 
         # 3. Cancel the flusher background task
         flusher_task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)
@@ -622,6 +665,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Durable video job worker task (v48 durable-queue). Default None (OFF).
     # Set to the running asyncio.Task when video_durable_queue_enabled=True.
     app.state.video_worker_task = None
+
+    # Batch processor seam (batch-job-store, v57) — default: no processor (honest
+    # degradation to status=failed error=no_batch_processor_configured). Tests override
+    # via app.state.batch_processor = <stub>. openai-batch-adapter / anthropic-batch-adapter
+    # (downstream tasks) plug in a real one.
+    app.state.batch_processor = None
+    # Tracked in-process asyncio.Task set for batch jobs — mirrors video_jobs_tasks.
+    app.state.batch_jobs_tasks = set()  # set[asyncio.Task[None]] — no inline type on app.state
+    # Durable batch job worker task. Default None (OFF).
+    # Set to the running asyncio.Task when batch_durable_queue_enabled=True.
+    app.state.batch_worker_task = None
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings
@@ -994,6 +1048,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(memories_router)
     app.include_router(artifacts_router)
     app.include_router(video_router)
+    app.include_router(batch_router)
 
     # RequestIdMiddleware must be added AFTER routers are included so it wraps
     # the full ASGI app and captures final status codes including those set by
