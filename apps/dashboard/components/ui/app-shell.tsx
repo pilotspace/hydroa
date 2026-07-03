@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, LogOut, Menu, MessageSquare, Mic, Receipt, Settings, Shuffle, Users } from "lucide-react";
+import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, LogOut, Menu, MessageSquare, Mic, Receipt, Settings, ShieldCheck, Shuffle, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { bffAuthPost } from "@/lib/bff-client";
 import {
@@ -10,6 +10,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarItem,
   SidebarTrigger,
@@ -93,6 +94,46 @@ function visibleItems(role?: string | null): NavItem[] {
     if (item.minRole === "owner" && (role === "member" || role === "admin")) return false;
     return true;
   });
+}
+
+/**
+ * "Platform" -> "Tenants" (admin-console-ui, TASK.md M3) is deliberately an
+ * ALLOWLIST — visible if and only if role === "superadmin" EXACTLY — not a
+ * byte-literal copy of `visibleItems`'s existing DENYLIST/fail-open shape
+ * above. Every item in NAV_ITEMS fails OPEN (shown while role is still
+ * loading/null, since the gateway is the real enforcement); this ONE entry
+ * fails CLOSED instead, because it is the single link whose mere presence
+ * discloses a cross-tenant admin surface to ~100% of ordinary paying
+ * customers on every cold load if it followed the same fail-open default —
+ * a real information-disclosure/trust cost, not just a transient UX nicety
+ * (§1 Framings weighed, ⚠ Assumption #3). Zero changes to `visibleItems` or
+ * any of the 19 existing NAV_ITEMS entries.
+ */
+function showPlatformNav(role?: string | null): boolean {
+  return role === "superadmin";
+}
+
+const PLATFORM_TENANTS_HREF = "/app/platform/tenants";
+
+function PlatformNavGroup({
+  activePath,
+  collapsed,
+}: {
+  activePath?: string;
+  collapsed: boolean;
+}) {
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Platform</SidebarGroupLabel>
+      <SidebarItem
+        href={PLATFORM_TENANTS_HREF}
+        active={activePath === PLATFORM_TENANTS_HREF}
+        icon={<ShieldCheck className="size-4" />}
+      >
+        <span className={collapsed ? "sr-only" : undefined}>Tenants</span>
+      </SidebarItem>
+    </SidebarGroup>
+  );
 }
 
 /**
@@ -228,6 +269,9 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
               <SidebarGroup>
                 <NavLinks items={items} activePath={activePath} collapsed={collapsed} />
               </SidebarGroup>
+              {showPlatformNav(role) ? (
+                <PlatformNavGroup activePath={activePath} collapsed={collapsed} />
+              ) : null}
             </SidebarContent>
             <SidebarFooter>
               <div className="flex flex-col gap-2">
@@ -275,6 +319,9 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
           <DialogDescription className="sr-only">Primary site navigation</DialogDescription>
           <nav aria-label="Site" className="mt-2 flex flex-col gap-1">
             <NavLinks items={items} activePath={activePath} collapsed={false} />
+            {showPlatformNav(role) ? (
+              <PlatformNavGroup activePath={activePath} collapsed={false} />
+            ) : null}
           </nav>
           <div className="mt-4 border-t border-border pt-4">{logoutButton(false)}</div>
         </DialogContent>

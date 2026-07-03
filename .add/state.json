@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "admin-console-ui",
+  "active_milestone": "platform-admin-console",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -58,6 +58,215 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "platform-tenant-directory": {
+      "title": "Platform tenant directory \u2014 superadmin list/search/view any tenant",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [],
+      "created": "2026-07-03T06:36:33+00:00",
+      "updated": "2026-07-03T07:12:44+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "d2ff46f41fb1311ebc8b1c6f661cbcfc",
+        "tests": {
+          "apps/gateway/tests/platform_tenant_directory/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/platform_tenant_directory/test_platform_tenant_directory.py": "3a67a75ebc326e32aa4a7d64450c97cf"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "50139056764df67a78747f64844d3c55"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-03T07:10:02+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/platform_tenant_directory/test_platform_tenant_directory.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "cross-tenant-config-budget": {
+      "title": "Cross-tenant config + budget view/edit",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [],
+      "created": "2026-07-03T07:16:57+00:00",
+      "updated": "2026-07-03T08:33:43+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2c55529bfbe606d051cffbb06fb6e569",
+        "tests": {
+          "apps/gateway/tests/cross_tenant_config_budget/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/cross_tenant_config_budget/conftest.py": "756738e13e8b040b372c015b02553081",
+          "apps/gateway/tests/cross_tenant_config_budget/test_cross_tenant_config_budget.py": "1ba213331436d6c69a8e421e6df05b17"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "ffb3ec51c569fb4810119485aaf3ae3a"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-03T08:29:02+00:00",
+            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (9 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-03T08:29:46+00:00",
+            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (34 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "cross-tenant-keys-members": {
+      "title": "Cross-tenant keys + members view/manage",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [],
+      "created": "2026-07-03T07:16:57+00:00",
+      "updated": "2026-07-03T08:48:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f303ee3b410ef6e5a1afd281335cdc93",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "a6b23b19cb5b866061149eb4f8f6a6fb"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "role-update-persistence-fix": {
+      "title": "Fix silent role-change rollback in self-service user-role update",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-03T09:21:04+00:00",
+      "updated": "2026-07-03T09:37:03+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "7a6819729ad467f1936ff206da1df990",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/infrastructure/users_repository.py",
+          "apps/gateway/tests/test_users_role.py",
+          "apps/gateway/tests/.pytest_cache",
+          "apps/gateway/tests/.ruff_cache",
+          "apps/gateway/tests/.coverage"
+        ],
+        "snapshot_md5": "f40f056e7f4953a45635bfa21e2cc000"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "admin-console-audit": {
+      "title": "Audit every cross-tenant admin action, attributing the real superadmin actor",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [
+        "platform-tenant-directory",
+        "cross-tenant-config-budget",
+        "cross-tenant-keys-members"
+      ],
+      "created": "2026-07-03T09:25:45+00:00",
+      "updated": "2026-07-03T11:10:56+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2a5b2a2216fd0936bbe274eaa881cb50",
+        "tests": {
+          "apps/gateway/tests/admin_console_audit/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/admin_console_audit/test_admin_console_audit.py": "22174ad2578c53b7bf365578b2abe5e2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/audit/application/platform_audit.py",
+          "apps/gateway/src/gateway/tenants/api/platform_tenants_router.py",
+          "apps/gateway/src/gateway/tenants/api/platform_tenant_config_router.py",
+          "apps/gateway/src/gateway/keys/api/platform_keys_router.py",
+          "apps/gateway/src/gateway/tenants/api/platform_users_router.py",
+          "apps/gateway/tests/admin_console_audit/",
+          "apps/gateway/tests/cross_tenant_config_budget/test_cross_tenant_config_budget.py",
+          "apps/gateway/tests/cross_tenant_keys_members/test_cross_tenant_keys_members.py",
+          "apps/gateway/.coverage",
+          "apps/gateway/.pytest_cache/",
+          "apps/gateway/.ruff_cache/"
+        ],
+        "snapshot_md5": "02b6d2a7a39969c5e42799b835098cc0"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "admin-console-ui": {
+      "title": "Platform admin console \u2014 dashboard UI (directory + tenant detail)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [],
+      "created": "2026-07-03T11:38:28+00:00",
+      "updated": "2026-07-03T14:42:41+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6351ff899a032835cf3f715d4145c190",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(app)/app/platform/",
+          "apps/dashboard/components/platform/",
+          "apps/dashboard/components/ui/card.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests/platform-tenant-directory.test.tsx",
+          "apps/dashboard/tests/platform-tenant-detail.test.tsx",
+          "apps/dashboard/tests/platform-config-budget.test.tsx",
+          "apps/dashboard/tests/platform-keys.test.tsx",
+          "apps/dashboard/tests/platform-members.test.tsx",
+          "apps/dashboard/tests/platform-nav.test.tsx",
+          "apps/dashboard/tests/platform-card-variant.test.tsx",
+          "apps/dashboard/tests/platform-token-hygiene.test.tsx"
+        ],
+        "snapshot_md5": "7039004880ee44a6553a11929969c411"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -65,7 +274,7 @@
       "title": "Platform Admin Console",
       "goal": "A superadmin can view and fully manage any tenant (config, budget, keys, members) through a dedicated, fully audited cross-tenant admin surface",
       "stage": "production",
-      "status": "queued",
+      "status": "active",
       "created": "2026-07-02T15:53:53+00:00",
       "updated": "2026-07-02T15:53:53+00:00"
     },
@@ -95,7 +304,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-03T04:48:58+00:00",
+  "updated": "2026-07-03T14:42:41+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -951,8 +1160,12 @@
       "archived": "2026-07-03"
     }
   ],
-  "active_milestones": [],
-  "active_tasks": {},
+  "active_milestones": [
+    "platform-admin-console"
+  ],
+  "active_tasks": {
+    "platform-admin-console": "admin-console-ui"
+  },
   "todos": [
     {
       "id": 1,
