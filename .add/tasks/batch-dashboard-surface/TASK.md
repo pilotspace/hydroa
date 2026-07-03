@@ -640,7 +640,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 
-- [UDD · open] the "build-grounding scrub" (re-checking an approved mock against the frozen
+- [UDD · folded] the "build-grounding scrub" (re-checking an approved mock against the frozen [folded foundation-version 44]
   contract and build-time reality immediately before implementing, correcting transparently
   rather than building blindly or silently deviating) held 3-for-3 within this single task alone
   (`savings_usd` constant at build time; the `.toggle-row` referencing an unbuilt sibling task's

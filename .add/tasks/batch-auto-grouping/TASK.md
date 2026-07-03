@@ -923,7 +923,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [ADD · open] re-crossing the tests→build→verify snapshot to clear a genuinely-resolved
+- [ADD · folded] re-crossing the tests→build→verify snapshot to clear a genuinely-resolved [folded foundation-version 43]
   `scope_violation`/`build_tampered` finding also erases the ENGINE'S OWN forcing function
   that would otherwise make a human confront a scope excursion at gate time — after
   re-crossing, `add.py check` reads fully clean and the entire burden of surfacing the
@@ -931,28 +931,28 @@ What did this loop teach the foundation? One line each, tagged by competency
   back on if that prose under-reports it (evidence: this task's `scope_violation` on
   `worker.py`/`test_batch_jobs.py` vanished from `add.py check` immediately after
   re-crossing, even though the files had only just been touched outside declared scope).
-- [ADD · open] on a `risk: high`/`autonomy: conservative` task, an advisor pass floating a
+- [ADD · folded] on a `risk: high`/`autonomy: conservative` task, an advisor pass floating a [folded foundation-version 43]
   fix as advisory (not a mandate) should be recorded as documented residue, NOT executed
   immediately — expanding blast radius at verify to resolve a smell is exactly the kind of
   call conservative autonomy exists to route through the human first, even when the fix
   itself would be mechanically clean (evidence: the first relocation attempt was
   ruff/pyright-clean and 107/107-tested, yet still had to be reverted for touching
   undeclared scope).
-- [ADD · open] `git diff HEAD`/`git checkout HEAD --` is the wrong revert target once a
+- [ADD · folded] `git diff HEAD`/`git checkout HEAD --` is the wrong revert target once a [folded foundation-version 43]
   task's OWN build has already made legitimate changes to a file being reverted for an
   unrelated reason — HEAD predates the whole task, not just the unwanted edit, so a blind
   revert-to-HEAD can silently discard in-scope work alongside the out-of-scope part
   (evidence: reverting `batches/api/router.py` to HEAD initially deleted
   batch-auto-grouping's own already-built `dispatch_batch_job` extraction, caught only by a
   pyright `reportAttributeAccessIssue` on `batch_diversion.py`'s import immediately after).
-- [TDD · open] this codebase's shared-instance test flakiness is not limited to the
+- [TDD · folded] this codebase's shared-instance test flakiness is not limited to the [folded foundation-version 43]
   already-known Postgres DB-name contention — a shared Redis stream (`usage:events`) /
   consumer group (`ledger-flusher`) shows the same non-deterministic signature (fail → fail
   → pass across identical runs with zero code changes), suggesting the test suite lacks
   isolation for Redis-backed fixtures the same way it now guards Postgres DB names
   (evidence: `test_spend_counter_not_incremented_on_cache_hit`, 2026-07-03, three
   consecutive runs).
-- [ADD · open] when a task's own §1 SPECIFY weighs multiple framings, the milestone's own
+- [ADD · folded] when a task's own §1 SPECIFY weighs multiple framings, the milestone's own [folded foundation-version 43]
   goal/rationale text (and any direct human quote captured there) should be checked as an
   explicit cross-reference BEFORE a framing is chosen — not just re-read for general
   color. Here, MILESTONE.md's goal ("a SET of requests as ONE batch job") and Tin's own

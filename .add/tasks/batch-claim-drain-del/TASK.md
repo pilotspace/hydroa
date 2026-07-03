@@ -430,13 +430,13 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 
-- [TDD · open] an adversarial reviewer that only reads code can't tell whether a
+- [TDD · folded] an adversarial reviewer that only reads code can't tell whether a [folded foundation-version 45]
   test's guard condition (e.g. `abandon_wins_observed > 0`) is real or vacuous;
   temporarily reverting the fix, confirming the exact expected RED, then
   restoring and reconfirming GREEN is a stronger standard and should be the
   default ask for future adversarial-review dispatches, not an optional extra
   (evidence: agent `ac5af5b2ac44b01e2`'s report, this task's §6 VERIFY, 2026-07-03).
-- [ADD · open] a Build-expectations row that pre-declares "confirmed by `git
+- [ADD · folded] a Build-expectations row that pre-declares "confirmed by `git [folded foundation-version 45]
   diff` at the gate" can silently fail when the touched file was never
   committed (still `??` untracked across a whole prior milestone's work) —
   `git diff` shows the entire file as new, not an incremental diff.
