@@ -450,14 +450,14 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [SDD · open] a frozen §2/§3's prose path string (`/admin/auth/oidc-config`) drifted from the
+- [SDD · folded] a frozen §2/§3's prose path string (`/admin/auth/oidc-config`) drifted from the [folded foundation-version 44]
   real mounted route (`/admin/oidc`, `oidc_admin_router.py:45`) even though the §0 GROUND anchor
   citing the exact file:line was correct throughout — the concrete anchor should be treated as
   more authoritative than a restated path string when drafting contract prose, and ideally the
   restated string should be generated FROM the anchor, not typed independently (evidence: this
   task's build agent caught it by cross-checking against `rbac_roles/test_rbac_roles.py`'s
   existing real-route usage, not by the contract text alone).
-- [TDD · open] two test-construction bugs (an `EmailStr`-invalid TLD; a required Pydantic field
+- [TDD · folded] two test-construction bugs (an `EmailStr`-invalid TLD; a required Pydantic field [folded foundation-version 44]
   omitted from a PUT body) both manifested as a 422 that would have made the test pass for the
   WRONG reason (validation failure, not the actual 403 gate check) had the assertion been looser
   (e.g. `assert resp.status_code != 200`) — writing the exact expected status+code catches this

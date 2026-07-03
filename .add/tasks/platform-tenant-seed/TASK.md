@@ -423,12 +423,12 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
-- [TDD · open] a "returns None, never raises" contract on a degrade path needs a test that forces
+- [TDD · folded] a "returns None, never raises" contract on a degrade path needs a test that forces [folded foundation-version 44]
   the actual failure branch (a real precondition-violating environment), not just a happy-path
   test plus a prose promise — the untested branch was silently wrong (evidence: `get_platform_tenant`
   would have raised `ProgrammingError`, not returned `None`, on an unmigrated DB until the refute-read
   caught it and `test_get_platform_tenant_returns_none_when_unmigrated` was added).
-- [ADD · open] when a refute-read finding requires strengthening a frozen test file mid-Build, call
+- [ADD · folded] when a refute-read finding requires strengthening a frozen test file mid-Build, call [folded foundation-version 44]
   `add.py heal --reason "..."` BEFORE re-running the suite and gating — not after. Fixing the test
   first and going straight to `gate PASS` still trips the mechanical tamper tripwire (it hashes
   bytes, not intent), which force-returns the task to build and burns a heal attempt that a

@@ -531,7 +531,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
-- [ADD · open] §5's scope-lock snapshot is tree-wide, not per-task: running two sibling tasks'
+- [ADD · folded] §5's scope-lock snapshot is tree-wide, not per-task: running two sibling tasks' [folded foundation-version 44]
   Build phases concurrently in a shared, non-worktree-isolated tree causes each task's completing
   verify gate to flag the OTHER task's legitimate files as `scope_violation` (evidence: sibling
   `ops-platform-job-identity`'s `gate PASS` attempt was flagged for this task's migration +
@@ -541,7 +541,7 @@ What did this loop teach the foundation? One line each, tagged by competency
   the pre-existing `ADD scope-snapshot poisoning` memory gotcha — this is fresh, concrete evidence
   reinforcing it, worth folding into the foundation so future parallel-build waves plan around it
   upfront (either serialize the gate step, or accept the recovery cost knowingly).
-- [TDD · open] a build subagent's self-reported test/coverage numbers should be independently
+- [TDD · folded] a build subagent's self-reported test/coverage numbers should be independently [folded foundation-version 44]
   reproduced, not just trusted, for any security-sensitive build — doing so here directly caught a
   tooling gotcha that would have gone unnoticed otherwise (evidence: `alembic.ini` hardcodes
   `sqlalchemy.url`; the real override env var is `GATEWAY_DATABASE_URL` not `DATABASE_URL`; my

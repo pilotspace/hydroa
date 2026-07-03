@@ -773,7 +773,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [TDD · open] an `AsyncMock(spec=SomeClass)` with only ONE method configured to raise is a
+- [TDD · folded] an `AsyncMock(spec=SomeClass)` with only ONE method configured to raise is a [folded foundation-version 44]
   silent trap if the code under test doesn't actually call that specific method on that
   specific failure path — it looks like a real failure-injection test and passes, but proves
   nothing. Prefer making the FIRST thing the code under test calls raise directly (here: the
@@ -781,7 +781,7 @@ What did this loop teach the foundation? One line each, tagged by competency
   inside an object whose exact call pattern you have to keep re-verifying (evidence: found by
   independently re-deriving `record_audit`'s real call sequence before trusting the existing
   suite's pattern — see the Spec delta above).
-- [SDD · open] a §3 CONTRACT's illustrative Python is not automatically valid Python — this
+- [SDD · folded] a §3 CONTRACT's illustrative Python is not automatically valid Python — this [folded foundation-version 44]
   task's own Part C snippet had a required param placed after already-defaulted ones with no
   `*` separator (a straightforward syntax error), and a false "already imported" note for
   `Role`. Neither was semantic (no Must/Reject changed), both were still worth a real syntax/
@@ -789,7 +789,7 @@ What did this loop teach the foundation? One line each, tagged by competency
   (evidence: §5 "Strategy actually used" (2)-(3); mirrors `superadmin-login`'s own SDD delta
   about a prose path string drifting from its §0 anchor — the same underlying lesson, contract
   prose/code needs the same rigor as contract decisions).
-- [TDD · open] when a scenario can only be driven through an HTTP/router round-trip (not direct
+- [TDD · folded] when a scenario can only be driven through an HTTP/router round-trip (not direct [folded foundation-version 44]
   use-case construction), a negative assertion like "0 audit rows" is vacuous pre-build for a
   different reason than the AsyncMock trap above: the feature being entirely absent ALSO
   produces 0 rows, so the test can pass for the wrong reason at every stage, not just RED. Fix:
@@ -799,7 +799,7 @@ What did this loop teach the foundation? One line each, tagged by competency
   own module docstring names this explicitly; independently confirmed by the orchestrator
   reading the test file — both tests open with a control block that itself asserts count==1
   before proceeding to the real scenario).
-- [SDD · open] a contract-widening pass (adding Part C mid-freeze-cycle) can update one section's
+- [SDD · folded] a contract-widening pass (adding Part C mid-freeze-cycle) can update one section's [folded foundation-version 44]
   rule (§1 Must) for consistency across ALL affected parts, while leaving a SIBLING section's
   illustrative text (§2 scenario prose, §3 Python) stale for the part NOT being actively
   rebuilt in that pass — a distinct failure mode from deviation (2)-(3)'s single-snippet syntax

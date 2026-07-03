@@ -363,7 +363,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
-- [ADD · open] this task's own `gate PASS` was the one that actually hit the tree-wide §5
+- [ADD · folded] this task's own `gate PASS` was the one that actually hit the tree-wide §5 [folded foundation-version 44]
   scope-lock cross-contamination and consumed 1/3 heal attempts — full analysis and recovery
   pattern recorded in sibling task `superadmin-role`'s §7 (same milestone, same root cause: both
   tasks' Build phases ran concurrently, non-worktree-isolated, in the shared tree) (evidence: this
