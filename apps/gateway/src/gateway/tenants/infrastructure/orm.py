@@ -55,13 +55,18 @@ class TenantRow(Base):
     # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without
     # onupdate so `alembic check` sees no diff (server_default only), matching the migration DDL.
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # Platform-tenant discriminator (platform-tenant-seed migration). DEFAULT 'customer'
+    # backfills existing rows; CHECK + partial unique index (kind='platform') enforce at
+    # most one platform-kind row — resolve it via get_platform_tenant(), never a raw filter.
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default="customer")
 
 
 class UserRow(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('owner', 'admin', 'operator', 'billing_admin', 'viewer', 'member')",
+            "role IN ('owner', 'admin', 'operator', 'billing_admin', 'viewer', 'member', "
+            "'superadmin')",
             name="users_role_check",
         ),
         CheckConstraint("email = lower(email)", name="users_email_lowercase_check"),
