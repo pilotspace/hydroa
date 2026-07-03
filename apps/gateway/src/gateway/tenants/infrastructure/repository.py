@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.auth.domain.errors import OidcTenantConflictError
@@ -9,6 +9,23 @@ from gateway.core.ids import uuid7
 from gateway.tenants.domain.entities import Role, User
 from gateway.tenants.domain.errors import EmailAlreadyRegisteredError
 from gateway.tenants.infrastructure.orm import TenantRow, UserRow
+
+
+async def get_platform_tenant(session: AsyncSession) -> TenantRow | None:
+    """Resolve the reserved platform tenant row — the sole sanctioned lookup.
+
+    Returns None (never raises) if the seed migration has not run yet, so
+    callers on an unmigrated DB degrade rather than crash. An unmigrated DB
+    surfaces as a ProgrammingError (undefined column/relation) that aborts the
+    current transaction — rollback so the session stays usable for the caller.
+    """
+    try:
+        return (
+            await session.execute(select(TenantRow).where(TenantRow.kind == "platform"))
+        ).scalar_one_or_none()
+    except ProgrammingError:
+        await session.rollback()
+        return None
 
 
 class SqlAlchemyIdentityRepository:
