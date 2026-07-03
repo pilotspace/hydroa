@@ -142,6 +142,17 @@ class CreateBatchJobRequest(BaseModel):
     line_items: list[LineItemRequest]
 
 
+class BatchJobItemResponse(BaseModel):
+    """Additive extension (batch-auto-grouping TASK.md §3, M7) — a single item's
+    resolved result. result_body is None until the item reaches a terminal status."""
+
+    custom_id: str
+    status: str
+    result_body: dict[str, Any] | None
+
+    model_config = {"from_attributes": True}
+
+
 class BatchJobResponse(BaseModel):
     id: uuid.UUID
     status: str
@@ -150,6 +161,10 @@ class BatchJobResponse(BaseModel):
     error: str | None
     created_at: datetime
     updated_at: datetime
+    # Additive extension (batch-auto-grouping TASK.md §3, M7) — defaults to [] so
+    # list_batch_jobs's existing per-job construction (no item-level query there,
+    # by design — avoids an N+1 per list page) stays byte-identical.
+    items: list[BatchJobItemResponse] = []
 
     model_config = {"from_attributes": True}
 
@@ -265,6 +280,55 @@ async def _process_batch_job(
             tasks_set.discard(current_task)
 
 
+async def dispatch_batch_job(
+    *,
+    job_id: uuid.UUID,
+    app_state: Any,
+    settings: Settings,
+    batch_processor: object | None,
+) -> None:
+    """Spawn the background processing task for job_id — durable queue if enabled,
+    else inline asyncio.create_task. The ONE dispatch path shared by create_batch_job
+    (below) and BatchDiversionAdapter (automatic diversion from /v1/chat/completions,
+    batch-auto-grouping TASK.md §5, proxy/infrastructure/batch_diversion.py) —
+    extracted so there is never a second, drifting copy of the durable-vs-inline
+    branching.
+
+    app_state duck-types FastAPI's app.state: needs .batch_jobs_tasks, .sessionmaker,
+    and (only when settings.batch_durable_queue_enabled) .batch_job_queue.
+    """
+    tasks_set: set[asyncio.Task[None]] = app_state.batch_jobs_tasks
+
+    if settings.batch_durable_queue_enabled:
+        # Durable path: enqueue to Redis so the BatchJobWorker picks it up. Fail-open:
+        # if the Redis enqueue raises (Redis down / network error) OR app_state.batch_job_queue
+        # was never wired (settings/lifespan drift), fall back to the inline
+        # asyncio.create_task so no job is dropped. The attribute access is INSIDE the try —
+        # a missing attribute must take the same fallback path as an enqueue failure, not
+        # escape as an uncaught 500 that leaves the row stuck in "validating" forever.
+        try:
+            _queue: RedisBatchJobQueue = app_state.batch_job_queue
+            await _queue.enqueue(job_id)
+            return
+        except Exception:
+            _log.warning(
+                "batch enqueue failed; falling back to in-process task for job %s",
+                job_id,
+            )
+
+    # Default inline path.
+    task: asyncio.Task[None] = asyncio.create_task(
+        _process_batch_job(
+            job_id=job_id,
+            sessionmaker=app_state.sessionmaker,
+            batch_processor=batch_processor,
+            timeout_seconds=settings.batch_job_timeout_seconds,
+            tasks_set=tasks_set,
+        )
+    )
+    tasks_set.add(task)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -300,47 +364,12 @@ async def create_batch_job(
     )
     await session.commit()
 
-    # Spawn the background processing task (durable queue or inline).
-    batch_processor = getattr(request.app.state, "batch_processor", None)
-    tasks_set: set[asyncio.Task[None]] = request.app.state.batch_jobs_tasks
-
-    if settings.batch_durable_queue_enabled:
-        # Durable path: enqueue to Redis so the BatchJobWorker picks it up. Fail-open:
-        # if the Redis enqueue raises (Redis down / network error) OR app.state.batch_job_queue
-        # was never wired (settings/lifespan drift), fall back to the inline
-        # asyncio.create_task so no job is dropped. The attribute access is INSIDE the try —
-        # a missing attribute must take the same fallback path as an enqueue failure, not
-        # escape as an uncaught 500 that leaves the row stuck in "validating" forever.
-        try:
-            _queue: RedisBatchJobQueue = request.app.state.batch_job_queue
-            await _queue.enqueue(row.id)
-        except Exception:
-            _log.warning(
-                "batch enqueue failed; falling back to in-process task for job %s",
-                row.id,
-            )
-            task: asyncio.Task[None] = asyncio.create_task(
-                _process_batch_job(
-                    job_id=row.id,
-                    sessionmaker=request.app.state.sessionmaker,
-                    batch_processor=batch_processor,
-                    timeout_seconds=settings.batch_job_timeout_seconds,
-                    tasks_set=tasks_set,
-                )
-            )
-            tasks_set.add(task)
-    else:
-        # Default inline path.
-        task = asyncio.create_task(
-            _process_batch_job(
-                job_id=row.id,
-                sessionmaker=request.app.state.sessionmaker,
-                batch_processor=batch_processor,
-                timeout_seconds=settings.batch_job_timeout_seconds,
-                tasks_set=tasks_set,
-            )
-        )
-        tasks_set.add(task)
+    await dispatch_batch_job(
+        job_id=row.id,
+        app_state=request.app.state,
+        settings=settings,
+        batch_processor=getattr(request.app.state, "batch_processor", None),
+    )
 
     # Every item was just created status=pending, in this same transaction — the
     # breakdown is deterministic without a re-query.
@@ -368,7 +397,8 @@ async def get_batch_job(
 ) -> BatchJobResponse:
     """Poll a batch job by id.
 
-    Returns 200 with the current job state + a per-status item count breakdown.
+    Returns 200 with the current job state + a per-status item count breakdown +
+    per-item results (batch-auto-grouping TASK.md §3, M7 — additive).
     Returns 404 for unknown or cross-tenant jobs — never reveals another tenant's job.
     """
     row = await repo.get(tenant_id=authz.tenant_id, job_id=job_id)
@@ -376,6 +406,7 @@ async def get_batch_job(
         raise BATCH_JOB_NOT_FOUND.exc()
 
     status_counts = await repo.status_counts(job_id=row.id)
+    item_rows = await repo.list_items(tenant_id=authz.tenant_id, job_id=row.id)
 
     return BatchJobResponse(
         id=row.id,
@@ -385,6 +416,14 @@ async def get_batch_job(
         error=row.error,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        items=[
+            BatchJobItemResponse(
+                custom_id=item.custom_id,
+                status=item.status,
+                result_body=item.result_body,
+            )
+            for item in item_rows
+        ],
     )
 
 

@@ -65,6 +65,7 @@ from gateway.proxy.domain.errors import (
 )
 from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
 from gateway.proxy.domain.ports import (
+    BatchDiversionPort,
     ChatModalityLookup,
     CompletionUpstream,
     GuardrailEvaluator,
@@ -516,6 +517,7 @@ class CompletionUseCase:
         input_modality_guard_enabled: bool = False,
         tenant_model_preset_store: TenantModelPresetStore | None = None,
         chat_modality_lookup: ChatModalityLookup | None = None,
+        batch_diversion: BatchDiversionPort | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -574,6 +576,13 @@ class CompletionUseCase:
         # resolved model_id whose CACHED modality is known and != "chat" is rejected via
         # _check_chat_modality() — see complete()/stream() for the single insertion point each.
         self._chat_modality_lookup: ChatModalityLookup | None = chat_modality_lookup
+        # batch-auto-grouping (v57 §3): None (default) ⇒ feature off ⇒ complete() is
+        # byte-identical (no try_divert call). When wired, an opted-in tenant's eligible
+        # (non-streaming, past-validation, cache-miss/bypass) request may be diverted
+        # into the batch-job-store pipeline — see complete() for the single insertion
+        # point, immediately before the upstream call, after every cache tier resolves.
+        # stream() is NEVER touched (M2 — streaming always synchronous).
+        self._batch_diversion: BatchDiversionPort | None = batch_diversion
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -1028,6 +1037,7 @@ class CompletionUseCase:
         metrics_registry: Any = None,
         request_headers: dict[str, str] | None = None,
         model_router: FallbackModelRouter | None = None,
+        batch_processor: object | None = None,
     ) -> tuple[int, dict[str, Any], str | None]:
         """Handle a non-streaming completion.
 
@@ -1361,6 +1371,26 @@ class CompletionUseCase:
                             metrics_registry.cache_events_total.labels(result="bypass").inc()
                         except Exception:  # noqa: S110
                             pass
+
+            # batch-auto-grouping (v57 §3): diversion check — sits OUTSIDE the cache
+            # block above so it catches every path that would otherwise call upstream
+            # (miss, bypass, cache disabled/unconfigured), and NEVER an exact/semantic/
+            # vector HIT (those already returned above). authz.batch_grouping_enabled
+            # was resolved at authentication time (zero extra DB reads, mirrors
+            # semantic_cache_enabled) — try_divert() itself NEVER raises; a None
+            # result means "proceed synchronously", identical to policy-disabled.
+            if self._batch_diversion is not None and getattr(
+                authz, "batch_grouping_enabled", False
+            ):
+                _diverted = await self._batch_diversion.try_divert(
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    body=body,
+                    batch_processor=batch_processor,
+                )
+                if _diverted is not None:
+                    _status_code = 200
+                    return 200, _diverted, x_cache
 
             try:
                 # Route through model_router when wired (model-fallbacks §3).

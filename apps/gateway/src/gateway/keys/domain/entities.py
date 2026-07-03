@@ -38,6 +38,9 @@ class ApiKey:
     # Semantic-cache additive field (semantic-cache migration)
     # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
     semantic_cache_enabled: bool = False
+    # Batch-auto-grouping additive field (batch-auto-grouping migration, v57)
+    # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
+    batch_grouping_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,3 +99,7 @@ class AuthzResult:
     # Populated at auth time from tenants.semantic_cache_enabled via the existing LEFT JOIN tenants.
     # Default False = semantic layer inactive (per-tenant opt-in).
     semantic_cache_enabled: bool = False
+    # Batch-auto-grouping additive field (batch-auto-grouping migration, v57)
+    # Populated at auth time from tenants.batch_grouping_enabled via the existing LEFT JOIN tenants.
+    # Default False = diversion inactive (per-tenant opt-in, M9 byte-identical guarantee).
+    batch_grouping_enabled: bool = False

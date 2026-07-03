@@ -97,6 +97,7 @@ from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionU
 from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
 from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
+from gateway.proxy.infrastructure.batch_diversion import BatchDiversionAdapter
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
 from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
 from gateway.proxy.infrastructure.cached_tenant_credential_resolver import (
@@ -132,6 +133,7 @@ from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
     TeamMemberRow as _TeamMemberRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.tenants.api.batch_policy_router import batch_policy_router
 from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.router import router as tenants_router
@@ -972,6 +974,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sessionmaker=app.state.sessionmaker,
     )
 
+    # Batch-auto-grouping diversion adapter (v57 §3). Always constructed — safety comes
+    # from the per-tenant authz.batch_grouping_enabled flag (default false, checked in
+    # CompletionUseCase.complete()) and the M4 safety-gate inside the adapter itself
+    # (batch_processor is None today, pre openai-batch-adapter/anthropic-batch-adapter,
+    # so try_divert() always returns None ⇒ byte-identical). app_state=app.state (not
+    # individual attributes) because dispatch_batch_job reads batch_job_queue/
+    # batch_jobs_tasks, which are populated later in this same lifespan — deferred to
+    # per-call time, same reason model_router/batch_processor are getattr'd per-request
+    # rather than captured here. Tests override via app.state.batch_diversion.
+    app.state.batch_diversion = BatchDiversionAdapter(
+        sessionmaker=app.state.sessionmaker,
+        app_state=app.state,
+        settings=settings,
+    )
+
     # openrouter-cost-recovery-wiring (v30 t6.2c): inline authoritative-cost recovery for
     # disconnected OpenRouter streams. Constructed ONLY when the knob is on (default OFF ⇒
     # None ⇒ byte-identical streaming). The use-case schedules recover() fire-and-forget
@@ -1028,6 +1045,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(tenants_router)
     app.include_router(users_router)
     app.include_router(cache_router)
+    app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)

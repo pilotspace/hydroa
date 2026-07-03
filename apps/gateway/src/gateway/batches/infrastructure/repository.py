@@ -9,6 +9,7 @@ Methods:
     [creates the job row + one BatchJobItemRow per line item, ONE transaction — the
      caller commits]
   get(*, tenant_id, job_id) -> BatchJobRow | None
+  list_items(*, tenant_id, job_id) -> list[BatchJobItemRow]  [batch-auto-grouping §3 extension]
   list_for_tenant(*, tenant_id, limit, offset) -> list[BatchJobRow]
   status_counts(*, job_id) -> dict[str, int]  [all 5 item-vocabulary keys always present]
   tenant_status_counts(*, tenant_id) -> dict[str, int]  [same, tenant-wide instead of per-job]
@@ -96,6 +97,29 @@ class BatchJobRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_items(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        job_id: uuid.UUID,
+    ) -> list[BatchJobItemRow]:
+        """Load every item row for a job, scoped to tenant_id (same isolation invariant
+        as get() — BatchJobItemRow.tenant_id is denormalized, no join needed).
+
+        Returns an empty list for an unknown or cross-tenant job_id — never 403
+        (mirrors get()'s None-for-unknown convention at the item-list level).
+        """
+        stmt = (
+            select(BatchJobItemRow)
+            .where(
+                BatchJobItemRow.batch_job_id == job_id,
+                BatchJobItemRow.tenant_id == tenant_id,
+            )
+            .order_by(BatchJobItemRow.created_at.asc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
     async def list_for_tenant(
         self,

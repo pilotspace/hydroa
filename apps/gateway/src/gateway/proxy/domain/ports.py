@@ -486,8 +486,41 @@ class TenantCredentialResolver(Protocol):
         ...
 
 
+@runtime_checkable
+class BatchDiversionPort(Protocol):
+    """Attempt to divert an eligible /v1/chat/completions request into the
+    batch-job-store pipeline instead of calling upstream synchronously.
+
+    Additive extension @ batch-auto-grouping TASK.md §3 (FROZEN @ v1).
+
+    Contract (the M4 safety-gate — batch-auto-grouping TASK.md §1):
+      - try_divert NEVER raises. Any internal failure (policy lookup, job-row
+        creation, dispatch hand-off) is caught and logged by the implementation;
+        the caller MUST treat a None result as "proceed synchronously, unchanged"
+        — never as a rejection or an error.
+      - A non-None result means the job row + dispatch hand-off both already
+        succeeded — the caller returns it directly as the HTTP response body and
+        MUST NOT also call the upstream/model_router for this request.
+    """
+
+    async def try_divert(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        key_id: uuid.UUID,
+        body: dict[str, Any],
+        batch_processor: object | None,
+    ) -> dict[str, Any] | None:
+        """Return a batch-reference envelope dict when genuinely diverted, else None.
+
+        NEVER raises — a None result signals the caller to proceed synchronously.
+        """
+        ...
+
+
 __all__ = [
     "AuthzResult",
+    "BatchDiversionPort",
     "CompletionUpstream",
     "DeploymentLimitGate",
     "DeploymentLoadGate",
