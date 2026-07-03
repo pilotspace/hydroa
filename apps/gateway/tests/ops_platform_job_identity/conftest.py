@@ -21,7 +21,7 @@ import uuid
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gateway.proxy.domain.provider_credentials import (
     BearerCredential,
@@ -63,6 +63,21 @@ def platform_resolver() -> FakePlatformCredentialResolver:
 @pytest.fixture
 def minimax_credential() -> BearerCredential:
     return BearerCredential(secret="platform-minimax-secret-XYZ")  # noqa: S106
+
+
+@pytest.fixture
+def session_factory(app: object) -> async_sessionmaker[AsyncSession]:
+    """The live sessionmaker resolve_platform_credential's new audit-write param needs.
+
+    Added by superadmin-audit-foundation TASK.md §3 Part A (FROZEN @ v1): that task
+    retrofits resolve_platform_credential with a new REQUIRED session_factory param
+    (used only to schedule a fire-and-forget audit write), so every existing call site
+    in this suite — a plain composition-function call, not an HTTP request — must supply
+    one to keep compiling/calling. This suite's own credential-resolution assertions are
+    otherwise unchanged; app.state.sessionmaker is the same live global every other
+    record_audit call site in the app already uses.
+    """
+    return app.state.sessionmaker  # type: ignore[attr-defined,no-any-return]
 
 
 async def seed_platform_tenant(session: AsyncSession, *, name: str = "Platform") -> uuid.UUID:

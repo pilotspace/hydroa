@@ -19,17 +19,21 @@ Security constraints (§3 inviolables):
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import logging
 import time
 import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import httpx
 import jwt
 import structlog
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.auth.domain.errors import (
     OidcDomainNotMappedError,
     OidcInvalidCallbackError,
@@ -39,8 +43,11 @@ from gateway.auth.domain.errors import (
     OidcTokenInvalidError,
     OidcUpstreamError,
 )
+from gateway.tenants.domain.entities import Role
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
     from gateway.auth.application.jwks_key_cache import JwksKeyCache
     from gateway.auth.domain.entities import DomainMapping, OidcProviderConfig
     from gateway.auth.domain.ports import JwksClient, OidcTokenExchanger
@@ -118,12 +125,24 @@ class OidcLoginUseCase:
         jwks_client: JwksClient | None = None,
         jwks_key_cache: JwksKeyCache | None = None,
         oidc_config: OidcProviderConfig | None = None,
+        *,
+        session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         self._exchanger = exchanger
         self._repository = repository
         self._tokens = tokens
         self._settings = settings
         self._jwks_client = jwks_client
+        # NEW (superadmin-audit-foundation TASK.md §3 Part C — FROZEN @ v1): used ONLY
+        # to schedule the post-issuance audit write below — never for OIDC exchange,
+        # claims validation, or user provisioning, which are byte-identical to before
+        # this task. Keyword-only + required (no default) so no future caller can
+        # silently skip the audit wiring — mirrors Part A's resolve_platform_credential
+        # precedent. Placed after the existing defaulted params to preserve every
+        # existing positional-or-keyword call shape unchanged; the sole construction
+        # site (auth/api/deps.py::get_oidc_use_case_with_config) already passes every
+        # argument by keyword.
+        self._session_factory = session_factory
         # Per-tenant OidcProviderConfig (when DB-backed path is active).
         # When present, overrides oidc_issuer/oidc_client_id/oidc_jwks_url from settings.
         self._oidc_config = oidc_config
@@ -335,5 +354,34 @@ class OidcLoginUseCase:
             role=user.role,
             email=user.email,
         )
+
+        # NEW (superadmin-audit-foundation TASK.md §3 Part C — FROZEN @ v1): fires iff
+        # the STORED role being preserved into this JWT is superadmin — identical
+        # firing rule to the /admin/auth password-login side (Part B, out of this
+        # task's scope), evaluated post-issuance. get_or_provision_oidc_user above
+        # always provisions a brand-new user as role=member (never from claims), so
+        # this can only ever fire for an EXISTING superadmin matched by email — OIDC
+        # never grants the role, it only audits a login by someone who already has it.
+        # Fire-and-forget + fail-open: reuses record_audit's already-frozen contract
+        # verbatim (own isolated session, swallow-all-exceptions-log-a-warning) — an
+        # audit-subsystem failure must never block a superadmin's login response.
+        if user.role == Role.SUPERADMIN:
+            asyncio.ensure_future(  # noqa: RUF006
+                record_audit(
+                    self._session_factory,
+                    AuditEvent(
+                        id=uuid.uuid4(),
+                        tenant_id=user.tenant_id,
+                        actor_user_id=user.id,
+                        actor_email=user.email,
+                        action="auth.superadmin_login",
+                        target_type="user",
+                        target_id=str(user.id),
+                        result="success",
+                        metadata={"role": "superadmin", "auth_method": "oidc"},
+                        created_at=datetime.now(UTC),
+                    ),
+                )
+            )
 
         return jwt_token, expires_in

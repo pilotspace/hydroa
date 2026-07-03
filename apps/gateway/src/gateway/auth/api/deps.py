@@ -134,4 +134,8 @@ def get_oidc_use_case_with_config(
         jwks_client=jwks_client,
         jwks_key_cache=jwks_key_cache,
         oidc_config=oidc_config,
+        # NEW (superadmin-audit-foundation TASK.md §3 Part C — FROZEN @ v1): audit-only,
+        # the same live app.state.sessionmaker global every other record_audit call site
+        # (including Part A's resolve_platform_credential) already reads.
+        session_factory=request.app.state.sessionmaker,
     )

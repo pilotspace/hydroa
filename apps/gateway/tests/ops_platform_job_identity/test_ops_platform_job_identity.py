@@ -23,7 +23,7 @@ import uuid
 from typing import Any
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from .conftest import FakePlatformCredentialResolver, seed_platform_tenant
 
@@ -35,6 +35,7 @@ async def test_ops_authenticated_caller_resolves_platform_credential(
     db_session: AsyncSession,
     platform_resolver: FakePlatformCredentialResolver,
     minimax_credential: Any,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     from gateway.ops.api.deps import resolve_platform_credential
     from gateway.proxy.domain.credential_context import (
@@ -47,7 +48,9 @@ async def test_ops_authenticated_caller_resolves_platform_credential(
     platform_resolver.program(decoy_tenant_id, "minimax", minimax_credential)
     platform_resolver.program(platform_id, "minimax", minimax_credential)
 
-    token = await resolve_platform_credential(platform_resolver, db_session, "minimax")
+    token = await resolve_platform_credential(
+        platform_resolver, db_session, "minimax", session_factory
+    )
 
     assert token is not None
     try:
@@ -65,6 +68,7 @@ async def test_ops_authenticated_caller_resolves_platform_credential(
 async def test_non_byok_provider_and_unwired_resolver_return_none(
     db_session: AsyncSession,
     platform_resolver: FakePlatformCredentialResolver,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     from gateway.ops.api.deps import resolve_platform_credential
     from gateway.proxy.domain.credential_context import get_provider_credential
@@ -72,9 +76,9 @@ async def test_non_byok_provider_and_unwired_resolver_return_none(
     await seed_platform_tenant(db_session)
 
     not_byok = await resolve_platform_credential(
-        platform_resolver, db_session, "not-a-real-provider"
+        platform_resolver, db_session, "not-a-real-provider", session_factory
     )
-    no_resolver = await resolve_platform_credential(None, db_session, "minimax")
+    no_resolver = await resolve_platform_credential(None, db_session, "minimax", session_factory)
 
     assert not_byok is None
     assert no_resolver is None
@@ -87,6 +91,7 @@ async def test_non_byok_provider_and_unwired_resolver_return_none(
 async def test_missing_platform_credential_raises_402(
     db_session: AsyncSession,
     platform_resolver: FakePlatformCredentialResolver,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     from gateway.core.errors import ProblemError
     from gateway.ops.api.deps import resolve_platform_credential
@@ -95,7 +100,9 @@ async def test_missing_platform_credential_raises_402(
     # nothing programmed on platform_resolver for "minimax" -> ProviderKeyMissing
 
     with pytest.raises(ProblemError) as exc_info:
-        await resolve_platform_credential(platform_resolver, db_session, "minimax")
+        await resolve_platform_credential(
+            platform_resolver, db_session, "minimax", session_factory
+        )
 
     assert exc_info.value.status == 402
     assert exc_info.value.code == "ERR_PROVIDER_KEY_MISSING"
@@ -107,6 +114,7 @@ async def test_missing_platform_credential_raises_402(
 async def test_missing_platform_tenant_raises_500(
     db_session: AsyncSession,
     platform_resolver: FakePlatformCredentialResolver,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     from gateway.core.errors import ProblemError
     from gateway.ops.api.deps import resolve_platform_credential
@@ -114,7 +122,9 @@ async def test_missing_platform_tenant_raises_500(
     # no seed_platform_tenant call — tenants has no kind='platform' row
 
     with pytest.raises(ProblemError) as exc_info:
-        await resolve_platform_credential(platform_resolver, db_session, "minimax")
+        await resolve_platform_credential(
+            platform_resolver, db_session, "minimax", session_factory
+        )
 
     assert exc_info.value.status == 500
     assert exc_info.value.code == "ERR_PLATFORM_TENANT_MISSING"
