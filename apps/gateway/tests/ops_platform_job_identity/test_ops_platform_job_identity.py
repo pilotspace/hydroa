@@ -100,9 +100,7 @@ async def test_missing_platform_credential_raises_402(
     # nothing programmed on platform_resolver for "minimax" -> ProviderKeyMissing
 
     with pytest.raises(ProblemError) as exc_info:
-        await resolve_platform_credential(
-            platform_resolver, db_session, "minimax", session_factory
-        )
+        await resolve_platform_credential(platform_resolver, db_session, "minimax", session_factory)
 
     assert exc_info.value.status == 402
     assert exc_info.value.code == "ERR_PROVIDER_KEY_MISSING"
@@ -122,9 +120,7 @@ async def test_missing_platform_tenant_raises_500(
     # no seed_platform_tenant call — tenants has no kind='platform' row
 
     with pytest.raises(ProblemError) as exc_info:
-        await resolve_platform_credential(
-            platform_resolver, db_session, "minimax", session_factory
-        )
+        await resolve_platform_credential(platform_resolver, db_session, "minimax", session_factory)
 
     assert exc_info.value.status == 500
     assert exc_info.value.code == "ERR_PLATFORM_TENANT_MISSING"
