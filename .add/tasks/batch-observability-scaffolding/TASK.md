@@ -316,6 +316,23 @@ Post-build fixes (found at VERIFY, applied before gate — contract shape untouc
   3. Reverted an unrelated drift in `apps/dashboard/next-env.d.ts` (Next.js dev-server
      auto-regenerates this file's import path; not a deliberate edit, same recurring artifact
      flagged earlier this session).
+  4. A stronger-reviewer pass (post-gate) pushed for full-`make ci` evidence, not just the
+     scoped subset. That surfaced two `ruff format` offenders: this task's own
+     `test_batch_window_grouping.py` (fixed, own commit) and a PRE-EXISTING drift in
+     `test_batch_stats.py` (last touched 2df9ac5, v57 — fixed anyway as a separate commit
+     since it was blocking a clean `make ci` locally). It also surfaced that the FULL
+     gateway suite (`uv run pytest`, no path filter) currently errors on ~60+ unrelated
+     tests (guardrails/health_alerting/pii_v2/oidc/presets/realtime/etc.) with
+     `asyncpg.exceptions.DependentObjectsStillExistError: cannot drop table users` — traced
+     to a bare `DROP TABLE users` (not `Base.metadata.drop_all`, which orders by FK
+     dependency correctly) somewhere in the migration/reset path, colliding with a newer
+     `invites` table's FK to `users`. Reproduces identically on a freshly-created, never-
+     shared DB and on the default `gateway_test` DB; the responsible file's git history
+     (`tests/conftest.py`, last touched `70cb8cf`) predates and is untouched by every commit
+     in this task — confirmed unrelated, not fixed here (own blast radius, own task). Full
+     gateway typecheck (`uv run pyright`, 0 errors) and both allowlist checks
+     (`check_allowlist.py`/`check_node_deps.py`) ran clean repo-wide. Full dashboard suite:
+     921/921.
 
 Code lives in: `./src/`   ·   Constraints: change no test, no contract; allow-list packages only.
 
