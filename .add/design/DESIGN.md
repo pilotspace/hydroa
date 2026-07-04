@@ -62,3 +62,70 @@ human-owned (Tin's rebrand) — design mocks REUSE it, never invent a new brand 
   - VISUAL — REUSE the shipped Classic-Blue identity (no new brand value); Console density (tighter
     rhythm, smaller controls, more info per screen than the dashboard pages).
   - Capture (design-confirm): `captures/chat-playground.png` · render tree: `prototypes/chat-playground.json`.
+
+- **batches-workspace** (milestone v57 · task batch-dashboard-surface · 2026-07-03 — DERIVED, not a
+  fresh intake interview: Tin picked "broader — a real batches workspace, mirroring the existing
+  chat/voice/memory/artifacts/vision/video playground pattern" via AskUserQuestion; a follow-up
+  AskUserQuestion round (per-item detail scope + toggle inclusion) timed out with no reply, so
+  these axes are proposed defaults pending reconfirmation at the design-confirm / contract freeze,
+  not settled):
+  - FIDELITY — **production**-leaning hi-fi (matches every shipped playground), but UNCONFIRMED —
+    proposed, not interviewed live.
+  - CONCEPT — a genuinely usable **submit + monitor workspace** (memory `aifeature-pages-usable-bar`:
+    thin CRUD reskins rejected) — NOT Console-grade-dense like chat-playground; closer to
+    VideoWorkspace's plainer async-job feel, since batches has one real interaction (submit JSONL,
+    watch status) rather than a rich per-turn parameter surface.
+  - LAYOUT — **flat list + polling** (VideoWorkspace shape), NOT ArtifactsWorkspace's master/detail —
+    a direct consequence of deferring the per-item-results endpoint (see TASK.md §0 Issues/Risks):
+    no per-item drill-down pane this round, so no second pane is needed.
+  - VISUAL — REUSE the shipped Classic-Blue identity verbatim (no new brand value) — same rule as
+    every prior row, not re-litigated.
+  - Composer UX — **JSONL free-text textarea** (mirrors VideoWorkspace's prompt Textarea; also the
+    authentic native shape of the OpenAI/Anthropic batch-file format, so it reads as domain-accurate,
+    not just fast-to-build) over a structured per-line-item form. This is the single most consequential,
+    least-confirmed call in this row — flag it as the headline item at design-confirm.
+  - Capture: no local headless-capture tooling in this worktree (node_modules not installed; a full
+    monorepo+browser install was judged too invasive to do unilaterally for one screenshot) — substituted
+    with a published interactive Artifact instead of a static PNG (arguably a better review medium: the
+    human can actually interact with hover/focus states). HTML mock saved regardless for a durable
+    record: `mocks/batches-workspace.html` · render tree: `prototypes/batches-workspace.json`.
+    `add.py check` will WARN `missing_capture` for this prototype (no `captures/*.png` file) — expected,
+    non-blocking, noted here so it isn't mistaken for an oversight.
+  - Settings-tab half (tenant toggle + savings StatCard) NOT separately mocked — it's a near-identical
+    clone of `CacheSettings.tsx` plus one `StatCard` swap, low enough risk not to warrant its own hi-fi
+    render; described structurally in TASK.md §1 instead.
+  - **SUPERSEDED (Tin, 2026-07-03, correction)**: the submit+monitor CONCEPT and the JSONL Composer UX
+    above are both WRONG — Tin corrected course: "we no need a playground for batch request, we just
+    provide for admin to view statistics." No composer, no job-authoring UI, no per-item drill-down
+    debate — none of it exists in the corrected feature. The published Artifact mock, this row's
+    CONCEPT/LAYOUT/Composer-UX axes, and `prototypes/batches-workspace.json`'s `composer_card`/
+    `joblist_card` subtrees are all retired, kept only as a record of the discarded direction (same
+    non-destructive-correction convention as the "Classic Blue" identity note above). The corrected
+    scope — a read-only admin statistics page (savings + volume + status breakdown) — has NOT been
+    through its own design-intake yet; that runs fresh at batch-dashboard-surface's re-specify, as
+    its own new row here, not a patch to this one.
+
+- **batches-stats** (milestone v57 · task batch-dashboard-surface · 2026-07-03, re-intake after the
+  submit+monitor direction above was reversed):
+  - FIDELITY — production hi-fi, matching every shipped dashboard page (unchanged judgment from the
+    superseded row).
+  - CONCEPT — a plain read-only statistics page, closely modeled on the EXISTING
+    `components/usage/UsagePage.tsx` (`/app/usage`, read in full this session): a hero region for the
+    single headline number (there: Total Cost; here: dollars saved) + a `StatCard` grid below for the
+    supporting numbers (there: requests/prompt-tokens/completion-tokens; here: volume + status
+    breakdown) — reuse, not invention, per design.md's "research-components" rule. NOT Console-dense,
+    NOT a workspace — exactly one real interaction on this page (view), no composer, no polling loop,
+    no drill-down.
+  - LAYOUT — hero (savings) + a `grid grid-cols-2 gap-4 sm:grid-cols-4` `StatCard` row below (volume +
+    3 status counts: succeeded/errored/in-progress) — `UsagePage`'s Overview-tab shape verbatim,
+    minus its `Tabs` wrapper (Records/Catalog/Trends don't apply — no equivalent secondary data to
+    tab between for a 4-number page).
+  - VISUAL — reuse Classic-Blue verbatim (unchanged from every prior row).
+  - Access — a deliberate DIVERGENCE from the `UsagePage`/`SpendPage` precedent: those are open to
+    every tenant role (only the in-page Edit action is role-gated); this page is `minRole:"admin"`
+    end-to-end, because Tin's own words specifically named "admin" as the viewer ("provide for admin
+    to view statistics"), not "every tenant member." Named here so the divergence from the closest
+    precedent is visible, not accidental.
+  - Capture: `.add/design/mocks/batches-stats.html` (Artifact) · render tree:
+    `prototypes/batches-stats.json`. **Design-confirm: CONFIRMED 2026-07-03** — approved by Tin
+    together with the §3 contract freeze (one "approve," both gates; see TASK.md §1/§3).

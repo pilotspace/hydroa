@@ -50,15 +50,14 @@ When every task is done but the goal is not, `add.py status` shows
    - **Define the release steps** — write the milestone's `## Release steps` (merge is one small
      step among them; PR, asset export, tag/publish are others). These **feed** the release scope —
      read `release.md` for the cut; loop.md never re-specifies it.
-   Present the close via `report-template.md` — open with the ARC (goal · done · plan) and
-   render as a guided choice (recommended next move + described alternatives).
+   Present the close via `report-template.md` — open with the ARC (goal · done · plan),
+   render as a guided choice — **before `milestone-done`/`archive-milestone` run, not after.**
 
 ## Reopen is the verb; this loop is the trigger
 
 When a deepened verify finds a criterion unmet on a task already marked done,
 `add.py reopen <task> --to <phase> --reason "..."` returns it to the flow with a recorded
-reason and a reset gate. Deciding WHEN to fire it — because a goal criterion is unmet — is this
-loop's job.
+reason and a reset gate — fired by this loop's judgment, not the engine's.
 
 ## The reactivation residual (deferred)
 

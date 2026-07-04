@@ -33,6 +33,26 @@ from gateway.auth.api.oidc_router import oidc_router
 from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
     OidcProviderConfigRow as _OidcProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.batches.api.router import batch_router
+from gateway.batches.api.stats_router import batch_stats_router
+from gateway.batches.application.window_flusher import (
+    DEFAULT_TICK_INTERVAL_SECONDS as BATCH_WINDOW_TICK_INTERVAL_SECONDS,
+)
+from gateway.batches.application.window_flusher import (
+    BatchWindowFlusher,
+    should_start_batch_window_flusher,
+)
+from gateway.batches.application.worker import (
+    BatchJobWorker,
+    RedisBatchJobQueue,
+    should_start_batch_worker,
+)
+from gateway.batches.application.worker import (
+    recover_orphans as recover_batch_orphans,
+)
+from gateway.batches.infrastructure.orm import (  # noqa: F401 — registers BatchJobRow/BatchJobItemRow on Base.metadata
+    BatchJobItemRow as _BatchJobItemRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import (
@@ -84,6 +104,8 @@ from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionU
 from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
 from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
+from gateway.proxy.infrastructure.batch_diversion import BatchDiversionAdapter
+from gateway.proxy.infrastructure.batch_window_buffer import BatchWindowBuffer
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
 from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
 from gateway.proxy.infrastructure.cached_tenant_credential_resolver import (
@@ -119,6 +141,7 @@ from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
     TeamMemberRow as _TeamMemberRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.tenants.api.batch_policy_router import batch_policy_router
 from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.router import router as tenants_router
@@ -501,6 +524,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.video_worker = _video_worker
             app.state.video_worker_task = asyncio.create_task(_video_worker.run_forever())
 
+        # BatchJobWorker — durable Redis-backed in-process worker (batch-job-store, v57).
+        # Default-OFF: started only when batch_durable_queue_enabled=True. Structurally
+        # copied from the VideoJobWorker wiring immediately above.
+        app.state.batch_worker_task = None
+        if should_start_batch_worker(_settings):
+            _batch_queue = RedisBatchJobQueue(_redis)
+            app.state.batch_job_queue = _batch_queue
+            await recover_batch_orphans(_sessionmaker, _batch_queue)
+            _batch_worker = BatchJobWorker(
+                sessionmaker=_sessionmaker,
+                queue=_batch_queue,
+                settings=_settings,
+                get_batch_processor=lambda: getattr(app.state, "batch_processor", None),
+            )
+            app.state.batch_worker = _batch_worker
+            app.state.batch_worker_task = asyncio.create_task(_batch_worker.run_forever())
+
+        # BatchWindowFlusher — background drain of due BatchWindowBuffer windows
+        # (batch-window-grouping §3). The buffer itself (app.state.batch_window_buffer)
+        # is constructed in create_app()'s synchronous body (above) so it's always
+        # present, even under ASGITransport-based tests; only this background
+        # run_forever() task is lifespan-gated here, mirroring RetentionSweeper/
+        # BatchJobWorker's wiring shape exactly. should_start_batch_window_flusher is
+        # an operator escape hatch (batch_window_seconds<=0 disables the loop) —
+        # BatchDiversionAdapter's own append path is unaffected either way.
+        app.state.batch_window_flusher_task = None
+        if should_start_batch_window_flusher(_settings):
+            _batch_window_flusher = BatchWindowFlusher(
+                buffer=app.state.batch_window_buffer,
+                sessionmaker=_sessionmaker,
+                app_state=app.state,
+                settings=_settings,
+                get_batch_processor=lambda: getattr(app.state, "batch_processor", None),
+            )
+            app.state.batch_window_flusher = _batch_window_flusher
+            app.state.batch_window_flusher_task = asyncio.create_task(
+                _batch_window_flusher.run_forever(
+                    interval_seconds=BATCH_WINDOW_TICK_INTERVAL_SECONDS
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -543,6 +607,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await video_worker_task
 
+        batch_worker_task: asyncio.Task[None] | None = getattr(app.state, "batch_worker_task", None)
+        if batch_worker_task is not None:
+            batch_worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await batch_worker_task
+
+        batch_window_flusher_task: asyncio.Task[None] | None = getattr(
+            app.state, "batch_window_flusher_task", None
+        )
+        if batch_window_flusher_task is not None:
+            batch_window_flusher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await batch_window_flusher_task
+
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
             await dispatcher.run_once()
@@ -574,6 +652,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if video_tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await asyncio.gather(*video_tasks, return_exceptions=True)
+
+        # 2d. Cancel outstanding batch job tasks
+        batch_tasks: set[asyncio.Task[None]] = getattr(app.state, "batch_jobs_tasks", set())
+        for _bt in list(batch_tasks):
+            _bt.cancel()
+        if batch_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.gather(*batch_tasks, return_exceptions=True)
 
         # 3. Cancel the flusher background task
         flusher_task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)
@@ -612,6 +698,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.drift_checker_task = None
     app.state.recovery_sweep_task = None
     app.state.retention_sweeper_task = None
+    app.state.batch_window_flusher_task = None
 
     # Video generation seam — default: no provider (honest degradation).
     # Tests override via app.state.video_generator = <stub>.
@@ -622,6 +709,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Durable video job worker task (v48 durable-queue). Default None (OFF).
     # Set to the running asyncio.Task when video_durable_queue_enabled=True.
     app.state.video_worker_task = None
+
+    # Batch processor seam (batch-job-store, v57) — default: no processor (honest
+    # degradation to status=failed error=no_batch_processor_configured). Tests override
+    # via app.state.batch_processor = <stub>. openai-batch-adapter / anthropic-batch-adapter
+    # (downstream tasks) plug in a real one.
+    app.state.batch_processor = None
+    # Tracked in-process asyncio.Task set for batch jobs — mirrors video_jobs_tasks.
+    app.state.batch_jobs_tasks = set()  # set[asyncio.Task[None]] — no inline type on app.state
+    # Durable batch job worker task. Default None (OFF).
+    # Set to the running asyncio.Task when batch_durable_queue_enabled=True.
+    app.state.batch_worker_task = None
 
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings
@@ -917,6 +1015,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sessionmaker=app.state.sessionmaker,
     )
 
+    # batch-window-grouping (§3): the per-tenant fixed-tick accumulation buffer.
+    # Constructed here (create_app()'s synchronous body), NOT inside the async
+    # lifespan below — unlike BatchWindowFlusher's background drain loop, the buffer
+    # itself is touched on every eligible request (BatchDiversionAdapter.try_divert),
+    # so it must exist even under ASGITransport-based tests (which never fire
+    # lifespan). No I/O happens at construction (redis.asyncio clients are lazy),
+    # mirroring RedisBatchJobQueue/BatchDiversionAdapter's own safe-without-lifespan
+    # shape. Tests override via app.state.batch_window_buffer.
+    app.state.batch_window_buffer = BatchWindowBuffer(redis=redis_client, settings=settings)
+
+    # Batch-auto-grouping diversion adapter (v57 §3), superseded body @ batch-window-
+    # grouping (§3): safety comes from the per-tenant authz.batch_grouping_enabled
+    # flag (default false, checked in CompletionUseCase.complete()) and the restored
+    # M4 safety-gate inside the adapter itself (batch_processor is None today, pre
+    # openai-batch-adapter/anthropic-batch-adapter, so try_divert() always returns
+    # None ⇒ byte-identical). Tests override via app.state.batch_diversion.
+    app.state.batch_diversion = BatchDiversionAdapter(
+        settings=settings,
+        buffer=app.state.batch_window_buffer,
+    )
+
     # openrouter-cost-recovery-wiring (v30 t6.2c): inline authoritative-cost recovery for
     # disconnected OpenRouter streams. Constructed ONLY when the knob is on (default OFF ⇒
     # None ⇒ byte-identical streaming). The use-case schedules recover() fire-and-forget
@@ -973,6 +1092,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(tenants_router)
     app.include_router(users_router)
     app.include_router(cache_router)
+    app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
@@ -994,6 +1114,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(memories_router)
     app.include_router(artifacts_router)
     app.include_router(video_router)
+    app.include_router(batch_router)
+    app.include_router(batch_stats_router)
 
     # RequestIdMiddleware must be added AFTER routers are included so it wraps
     # the full ASGI app and captures final status codes including those set by

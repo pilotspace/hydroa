@@ -5,7 +5,7 @@
   "active_milestone": null,
   "tasks": {
     "ai-feature-pages-redesign": {
-      "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
+      "title": "Redesign AI-feature pages (chat·voice·memory·artifacts·vision·video) to the refreshed standard",
       "phase": "specify",
       "gate": "none",
       "milestone": null,
@@ -48,10 +48,34 @@
         "history": [
           {
             "at": "2026-07-02T04:28:00+00:00",
-            "reason": "scope_violation: task 'stream-alias-billing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/0.15.16/12422214373305498066 \u00b7 apps/gateway/.ruff_cache/0.15.16/6998441178905840490 \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/tests/stream_alias_billing/conftest.py \u00b7 apps/gateway/tests/stream_alias_billing/test_stream_alias_billing.py (6 total)",
+            "reason": "scope_violation: task 'stream-alias-billing' touched outside its declared §5 Scope — apps/gateway/.ruff_cache/0.15.16/12422214373305498066 · apps/gateway/.ruff_cache/0.15.16/6998441178905840490 · apps/gateway/src/gateway/proxy/application/use_cases.py · apps/gateway/tests/stream_alias_billing/conftest.py · apps/gateway/tests/stream_alias_billing/test_stream_alias_billing.py (6 total)",
             "source": "scope"
           }
         ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "batch-observability-scaffolding": {
+      "title": "Batch observability scaffolding: window-latency + placeholder completion metrics",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-03T17:25:21+00:00",
+      "updated": "2026-07-04T08:22:24+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "bf1ec333b9b5cc21a392dadf8456ee71",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "94c9a96a63f8c730cf016967cfda6326"
       },
       "gate_actor": {
         "name": "Tin Dang",
@@ -92,10 +116,18 @@
       "status": "queued",
       "created": "2026-07-02T15:53:54+00:00",
       "updated": "2026-07-02T15:53:54+00:00"
+    },
+    "v58": {
+      "title": "Batch-discounted chat completions: provider integration",
+      "goal": "a tenant can process a set of chat-completion requests as one discounted batch job instead of many synchronous calls, with the existing response cache still applied per item — real OpenAI/Anthropic Batch API submission, cache pre-filtering, and batch-discount billing",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-03T16:30:16+00:00",
+      "updated": "2026-07-03T16:30:16+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-03T04:48:58+00:00",
+  "updated": "2026-07-04T08:22:24+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -168,7 +200,7 @@
     },
     {
       "slug": "v5",
-      "title": "LiteLLM parity slice 3 \u2014 intelligence & hardening",
+      "title": "LiteLLM parity slice 3 — intelligence & hardening",
       "tasks": 6,
       "task_slugs": [
         "oidc-jwks",
@@ -195,7 +227,7 @@
     },
     {
       "slug": "v7",
-      "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider",
+      "title": "LiteLLM parity slice 5 — multi-modal & multi-provider",
       "tasks": 6,
       "task_slugs": [
         "provider-seam",
@@ -209,7 +241,7 @@
     },
     {
       "slug": "v8",
-      "title": "LiteLLM parity slice 6 \u2014 router & load-balancing",
+      "title": "LiteLLM parity slice 6 — router & load-balancing",
       "tasks": 5,
       "task_slugs": [
         "deployment-model",
@@ -222,7 +254,7 @@
     },
     {
       "slug": "v9",
-      "title": "LiteLLM parity slice 7 \u2014 provider breadth (Anthropic + Google Gemini, chat + embeddings)",
+      "title": "LiteLLM parity slice 7 — provider breadth (Anthropic + Google Gemini, chat + embeddings)",
       "tasks": 4,
       "task_slugs": [
         "provider-chat-dispatch",
@@ -234,7 +266,7 @@
     },
     {
       "slug": "v10",
-      "title": "LiteLLM parity slice 8 \u2014 tool-use / function-calling across providers",
+      "title": "LiteLLM parity slice 8 — tool-use / function-calling across providers",
       "tasks": 4,
       "task_slugs": [
         "tool-use-contract",
@@ -246,7 +278,7 @@
     },
     {
       "slug": "v11",
-      "title": "LiteLLM parity slice 9 \u2014 JSON-mode / structured outputs across providers",
+      "title": "LiteLLM parity slice 9 — JSON-mode / structured outputs across providers",
       "tasks": 4,
       "task_slugs": [
         "response-format-contract",
@@ -258,7 +290,7 @@
     },
     {
       "slug": "v12",
-      "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt",
+      "title": "Billing accuracy + ops hardening — pay down v7/v9/v11 follow-up debt",
       "tasks": 5,
       "task_slugs": [
         "gemini-embed-tokens",
@@ -271,7 +303,7 @@
     },
     {
       "slug": "v13",
-      "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
+      "title": "UI/UX refresh — highest-value dashboard journeys (usage/cost + key/budget governance)",
       "tasks": 4,
       "task_slugs": [
         "design-system-foundation",
@@ -283,7 +315,7 @@
     },
     {
       "slug": "v15",
-      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
+      "title": "Dashboard feature-coverage — a surface for every backend capability",
       "tasks": 11,
       "task_slugs": [
         "design-system-extension",
@@ -302,7 +334,7 @@
     },
     {
       "slug": "v14",
-      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
+      "title": "Dependency hardening — Next.js 16 upgrade + advisory remediation",
       "tasks": 1,
       "task_slugs": [
         "next16-upgrade"
@@ -311,7 +343,7 @@
     },
     {
       "slug": "v17",
-      "title": "Hardening \u2014 clear carried follow-up debt (v13/v14/v15)",
+      "title": "Hardening — clear carried follow-up debt (v13/v14/v15)",
       "tasks": 6,
       "task_slugs": [
         "bff-test-harness-strict-handlers",
@@ -334,7 +366,7 @@
     },
     {
       "slug": "v19",
-      "title": "Reliability \u2014 uniform retries, error-aware fallback, response & semantic caching",
+      "title": "Reliability — uniform retries, error-aware fallback, response & semantic caching",
       "tasks": 6,
       "task_slugs": [
         "retry-seam-unify",
@@ -348,7 +380,7 @@
     },
     {
       "slug": "v20",
-      "title": "Enterprise provider: AWS Bedrock (SigV4 \u00b7 Converse chat/stream/tools \u00b7 Titan embeddings)",
+      "title": "Enterprise provider: AWS Bedrock (SigV4 · Converse chat/stream/tools · Titan embeddings)",
       "tasks": 6,
       "task_slugs": [
         "bedrock-sigv4-auth",
@@ -424,7 +456,7 @@
     },
     {
       "slug": "v26",
-      "title": "Provider config cleanup \u2014 v25 follow-ups",
+      "title": "Provider config cleanup — v25 follow-ups",
       "tasks": 2,
       "task_slugs": [
         "openai-retry-parity",
@@ -434,7 +466,7 @@
     },
     {
       "slug": "v27",
-      "title": "Billing precision \u2014 true per-tier cost on every call",
+      "title": "Billing precision — true per-tier cost on every call",
       "tasks": 4,
       "task_slugs": [
         "tiered-token-billing",
@@ -457,7 +489,7 @@
     },
     {
       "slug": "v29",
-      "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert",
+      "title": "Billing reconciliation — provider cost vs billed, with drift alert",
       "tasks": 3,
       "task_slugs": [
         "reconciliation-aggregate",
@@ -468,7 +500,7 @@
     },
     {
       "slug": "v30",
-      "title": "Reconciliation hardening \u2014 make leak-detection trustworthy",
+      "title": "Reconciliation hardening — make leak-detection trustworthy",
       "tasks": 10,
       "task_slugs": [
         "drift-threshold-validation",
@@ -707,7 +739,7 @@
     },
     {
       "slug": "v50",
-      "title": "Production hardening \u2014 landing & admin UI",
+      "title": "Production hardening — landing & admin UI",
       "tasks": 9,
       "task_slugs": [
         "resilient-bff-fetch",
@@ -755,7 +787,7 @@
     },
     {
       "slug": "chat-playground",
-      "title": "Chat \u2014 Console-grade playground",
+      "title": "Chat — Console-grade playground",
       "tasks": 6,
       "task_slugs": [
         "chat-playground-shell",
@@ -823,7 +855,7 @@
         "ratelimit-counter-view"
       ],
       "tasks": 6,
-      "title": "Operator-wide reconciliation + UI\u2194BE coverage"
+      "title": "Operator-wide reconciliation + UI↔BE coverage"
     },
     {
       "archived": "2026-07-01",
@@ -847,7 +879,7 @@
         "governance-pages-redesign"
       ],
       "tasks": 5,
-      "title": "UI refinement \u2014 polished, responsive, scalable app pages"
+      "title": "UI refinement — polished, responsive, scalable app pages"
     },
     {
       "archived": "2026-07-01",
@@ -949,6 +981,19 @@
         "superadmin-audit-foundation"
       ],
       "archived": "2026-07-03"
+    },
+    {
+      "slug": "v57",
+      "title": "Batch-discounted chat completions",
+      "tasks": 5,
+      "task_slugs": [
+        "batch-job-store",
+        "batch-dashboard-surface",
+        "batch-auto-grouping",
+        "batch-window-grouping",
+        "batch-claim-drain-del"
+      ],
+      "archived": "2026-07-03"
     }
   ],
   "active_milestones": [],
@@ -974,7 +1019,7 @@
     },
     {
       "id": 4,
-      "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
+      "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground · m4 artifacts-playground · m5 vision-playground · m6 video-playground · m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
       "created": "2026-06-30T10:57:02+00:00",
       "status": "open"
     }

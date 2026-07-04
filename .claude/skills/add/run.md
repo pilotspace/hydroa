@@ -69,6 +69,9 @@ recorded pass is an explicit pass, not a skip).
   contract edited; loops dry; completeness-critic clean; and the deep check below.
 - **The deep check (every gate, do not skim).** If the task produced code, record that every new symbol is referenced (wiring) and that no new dead/unused code was introduced. If it produced prose or non-code, record a semantic read. An unfilled deep check is a **shallow verify**, not an auto-PASS.
 - **The recorded refute-read (under `auto`).** The earned-green refute-read (`6-verify.md`) is not just run — its **verdict is recorded** in §6 (`EARNED | NOT-EARNED`); `add.py audit` surfaces an unrecorded one as `refute_unrecorded` — one of three shape lints it lists (with `shallow_deep_check` + `risk_unset`) — and a human spot-audit is the backstop. NOT-EARNED routes to `add.py heal`, never an auto-PASS.
+- **The recorded Advisor 3-lens verdict (under `auto`).** The Advisor 3-lens sweep (security → concurrency → architecture, `6-verify.md`) is recorded in §6 `### Advisor 3-lens verdict`; `add.py audit` surfaces an unfilled block as `advisor_verdict_unrecorded` — a shape lint alongside `refute_unrecorded`.
+- **The rendered gate report (§3/§6).** Report-template.md's ceremony is recorded, not just performed — a `Reported: yes` line in §3/§6; `add.py audit` surfaces an unrecorded one as `contract_report_unrecorded`/`verify_report_unrecorded`; a human spot-audit is the backstop.
+- **The `advisor-gate-relax` pathway.** A `risk: high` + `sensitivity: mechanical` task whose §6 Advisor 3-lens verdict records Verdict `PASS` and Residue `none` may auto-complete via `add.py gate PASS` **without** a lowered autonomy level. Security and every non-mechanical sensitivity class are never relaxed by this pathway — the high-risk guard still applies.
 - **Always escalates to a human (never auto-passed):** any **security** finding (HARD-STOP, always);
   a **concurrency**/timing risk the tests cannot exercise; an **architecture**/layering violation;
   any failing test.
@@ -122,9 +125,8 @@ autonomy: manual | conservative | auto
 - **conservative** — the deliberate *lowering*: the run converges but STOPS at the verify gate.
 - **manual** — the strict floor: the human owns the verify gate; the engine never auto-resolves.
 
-> **v7 reversal (recorded).** Earlier the default was `conservative`; v7 flips it — `auto` is the
-> default, `conservative` is the deliberate lowering. The level is still **per-scope** and is
-> lowered wherever risk demands.
+> **v7 reversal (recorded).** Earlier the default was `conservative`; v7 flips it to `auto` as
+> the default. The level is still **per-scope** and is lowered wherever risk demands.
 
 **The high-risk guard.** On a **high-risk or method-defining scope** `auto` must be lowered to
 `conservative` or `manual`; leaving it at `auto` is the reject code **`unguarded_high_risk_auto`**.

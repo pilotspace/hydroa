@@ -50,6 +50,12 @@ class TenantRow(Base):
     semantic_cache_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    # Batch-auto-grouping additive field (batch-auto-grouping migration, v57)
+    # BOOLEAN NOT NULL DEFAULT false — per-tenant opt-in for automatic diversion of
+    # eligible /v1/chat/completions requests into the batch-job-store pipeline.
+    batch_grouping_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # updated_at — NOT in the baseline (ad14442336db created tenants with created_at only);
     # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without

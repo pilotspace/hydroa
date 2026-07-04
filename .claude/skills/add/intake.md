@@ -6,8 +6,9 @@ Before a task exists, ADD turns a raw request into correctly-sized, versioned sc
 
 ## Interview before you size
 
-When the request arrives as a question, or its intent is not sharp enough to place in one bucket:
-explore it WITH the user before classifying. Reflect the intent you heard, name what seems in and
+Run `add.py search <keyword> [<keyword> ...]` first — it surfaces overlapping/prior work in one
+command instead of a full manual re-read. When the request arrives as a question, or its intent is
+not sharp enough to place in one bucket: explore it WITH the user before classifying. Reflect the intent you heard, name what seems in and
 out of scope, and offer 2–3 sized options with your own recommendation. Only then emit
 `{ bucket, rationale, command }`. `ask_human` stays the floor: when interviewing cannot sharpen the
 request, reject — never guess a bucket.
@@ -61,7 +62,7 @@ goal/body, the new TASK.md, or a note in the affected TASK.md — never in state
 Some requests decompose into **N>1 milestones of the same line** — a roadmap, not one milestone.
 Don't create only the first and lose the rest. Instead:
 
-1. **Propose** the roadmap — the ordered milestone list, each with a one-line goal. (AI proposes.)
+1. **Propose** the roadmap — the ordered milestone list, each with a one-line goal.
 2. **Confirm** — the human confirms the roadmap before anything is created. Never auto-create N
    milestones unprompted — the intake floor (`ask_human`) still holds.
 3. **Create** all N on confirm — the first with `add.py new-milestone <slug>` (active), the rest

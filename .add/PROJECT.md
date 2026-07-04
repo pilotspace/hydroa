@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 44
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 47
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -351,6 +351,8 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+
+- (UDD) the "build-grounding scrub" (re-checking an approved mock against the frozen contract and build-time reality immediately before implementing, correcting transparently rather than building blindly or silently deviating) held 3-for-3 within this single task alone (`savings_usd` constant at build time; the `.toggle-row` referencing an unbuilt sibling task's control; the hero-sub copy asserting a live query that doesn't exist) — worth naming as a standing UDD step rather than rediscovering it ad hoc per task (evidence: this task, 2026-07-03).  [folded foundation-version 44 · from batch-dashboard-surface]
 - (UDD) honest gating > silent no-op: disabling + annotating ("Ignored by <Provider>") an unsupported control, and omitting it from the body, is the truthful UI when the backend would silently drop it (evidence: the live-vs-gated capture).  [folded foundation-version 40 · from chat-parameters-panel]
 - (UDD) the per-page-fit standard (PageHeader everywhere; hero+tabs only where the page warrants) scales the monitoring redesign cleanly to a heterogeneous page set — simple tables stayed header+table, complex pages got tabbed IA, with zero forced/empty tabs (evidence: 6 governance pages shipped under one frozen contract, 794 green).  [folded foundation-version 40 · from governance-pages-redesign]
 - (UDD) `role=status` is reserved for the transient loading spinner across this dashboard — a persistent pager indicator must use `aria-live="polite"` (a property, not a role) so it announces without tripping the four-state invariant (evidence: build-discovered collision → contract v2).  [folded foundation-version 40 · from model-catalog-paging-search]
@@ -483,8 +485,12 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-07-04 | merge reconciliation: main (42→44 via v56+platform-identity folds) + PR #55/batch branch (42→45 via 3 independent task folds, own numbering below) → cumulative foundation-version 47 | two branches independently forked from foundation-version 42 and each folded lessons using their own local counter; a correct merge sums both branches' fold counts rather than picking one side's number | 5 fold-events total (2 main + 3 batch); 44+3=47 |
 | 2026-07-03 | fold all → foundation-version 44 (SDD 3 · TDD 5 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 11 lessons open→folded; +11 routed bullets; 43→44 |
 | 2026-07-02 | fold all → foundation-version 43 (TDD 1 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 4 lessons open→folded; +4 routed bullets; 42→43 |
+| 2026-07-03 | fold --task batch-claim-drain-del → foundation-version 45 (TDD 1 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 2 lessons open→folded; +2 routed bullets; 44→45 |
+| 2026-07-03 | fold --task batch-dashboard-surface → foundation-version 44 (UDD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 1 lessons open→folded; +1 routed bullets; 43→44 |
+| 2026-07-03 | fold --task batch-auto-grouping → foundation-version 43 (TDD 1 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 5 lessons open→folded; +5 routed bullets; 42→43 |
 | 2026-07-02 | fold all → foundation-version 42 (ADD 5) | consolidate captured OBSERVE lessons into the versioned foundation | 5 lessons open→folded; +5 routed bullets; 41→42 |
 | 2026-07-01 | fold all → foundation-version 41 (TDD 2 · ADD 5) | consolidate captured OBSERVE lessons into the versioned foundation | 7 lessons open→folded; +7 routed bullets; 40→41 |
 | 2026-07-01 | fold all → foundation-version 40 (DDD 1 · SDD 1 · UDD 3 · TDD 7 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 16 lessons open→folded; +16 routed bullets; 39→40 |
