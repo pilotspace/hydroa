@@ -319,6 +319,9 @@ USER_NOT_FOUND = ErrorSpec(404, "ERR_USER_NOT_FOUND", "User not found in this te
 #: Team member not found.
 MEMBER_NOT_FOUND = ErrorSpec(404, "ERR_MEMBER_NOT_FOUND", "Member not found")
 
+#: Tenant not found (platform-tenant-directory TASK.md §3 — superadmin cross-tenant lookup).
+TENANT_NOT_FOUND = ErrorSpec(404, "ERR_TENANT_NOT_FOUND", "Tenant not found")
+
 # ---------------------------------------------------------------------------
 # Conflict / already exists
 # ---------------------------------------------------------------------------
