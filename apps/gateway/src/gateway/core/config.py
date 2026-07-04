@@ -911,6 +911,25 @@ class Settings(BaseSettings):
             )
         return v
 
+    # ── Impersonation session (impersonation-session-lifecycle task) ────────────
+    # A time-boxed, revocable, superadmin-initiated session-store record + JWT pair
+    # granting a superadmin the ability to act as one specific, eligible target user.
+    # GATEWAY_IMPERSONATION_SESSION_TTL_SECONDS — hard session TTL; materially shorter
+    # than jwt_ttl_seconds's own 86400s default. Must be > 0; fails fast at boot.
+    impersonation_session_ttl_seconds: int = 900  # GATEWAY_IMPERSONATION_SESSION_TTL_SECONDS
+
+    @field_validator("impersonation_session_ttl_seconds")
+    @classmethod
+    def _validate_impersonation_ttl(cls, v: int) -> int:
+        """Fail loud on a non-positive impersonation TTL (mirrors playground_token_ttl_seconds's
+        own style exactly — a short positive lifetime is the point)."""
+        if v <= 0:
+            raise ValueError(
+                "INVALID_IMPERSONATION_SESSION_TTL: GATEWAY_IMPERSONATION_SESSION_TTL_SECONDS "
+                f"must be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":
         """If OIDC is enabled, required fields must be non-empty and domain_mapping valid JSON."""

@@ -1344,6 +1344,19 @@ async def test_guardrails_core_migration_column_exists(
     # SANCTIONED EDIT (tenant-preset-store TASK.md §3, 2026-07-01): added
     # tenant_model_presets to this manifest — additive migration b5f8a1d4c7e0,
     # registered on Base.metadata via main.py's side-effect ORM import (same precedent).
+    # SANCTIONED EDIT (member-invite-issuance TASK.md §3, 2026-07-04): added invites to
+    # this manifest — additive migration 1193bc6178f3, registered on Base.metadata via
+    # main.py's side-effect ORM import (same precedent).
+    # SANCTIONED EDIT (plan-catalog TASK.md §3, 2026-07-04): added plans to this
+    # manifest — additive migration 1e66a2cb51a6, registered on Base.metadata via
+    # tenants/infrastructure/orm.py (same file as TenantRow, so no separate side-effect
+    # import is needed — main.py already imports TenantRow from that module).
+    # Guardrails still adds no tables of its own; invariant intent unchanged.
+    # SANCTIONED EDIT (impersonation-session-lifecycle TASK.md §3, 2026-07-04): added
+    # impersonation_sessions to this manifest — additive migration 1d563bf9b143,
+    # registered on Base.metadata via tenants/infrastructure/orm.py (same file as
+    # TenantRow, so no separate side-effect import is needed). Guardrails still adds no
+    # tables of its own; invariant intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1355,7 +1368,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'tenant_provider_keys','routing_config','audit_events',"
                 " 'device_authorizations','agent_tokens','alembic_version',"
                 " 'artifacts','memories','video_generation_jobs',"
-                " 'conversations','conversation_messages','tenant_model_presets')"
+                " 'conversations','conversation_messages','tenant_model_presets',"
+                " 'invites','plans','impersonation_sessions')"
             )
         )
     ).fetchall()
