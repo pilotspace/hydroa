@@ -79,9 +79,7 @@ class FakePlatformCredentialResolver:
         self._by_key: dict[tuple[uuid.UUID, str], ProviderCredential] = {}
         self.calls: list[tuple[uuid.UUID, str]] = []
 
-    def program(
-        self, tenant_id: uuid.UUID, provider: str, credential: ProviderCredential
-    ) -> None:
+    def program(self, tenant_id: uuid.UUID, provider: str, credential: ProviderCredential) -> None:
         self._by_key[(tenant_id, provider)] = credential
 
     async def resolve(self, tenant_id: uuid.UUID, provider: str) -> ProviderCredential:

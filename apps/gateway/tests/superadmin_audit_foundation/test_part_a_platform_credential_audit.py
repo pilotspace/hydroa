@@ -142,9 +142,7 @@ async def test_missing_platform_tenant_audited_as_error(
     # no seed_platform_tenant call — tenants has no kind='platform' row
 
     with pytest.raises(ProblemError) as exc_info:
-        await resolve_platform_credential(
-            platform_resolver, db_session, "minimax", session_factory
-        )
+        await resolve_platform_credential(platform_resolver, db_session, "minimax", session_factory)
 
     assert exc_info.value.status == 500
     assert exc_info.value.code == "ERR_PLATFORM_TENANT_MISSING"
@@ -186,9 +184,7 @@ async def test_missing_provider_credential_audited_as_denied(
     # nothing programmed on platform_resolver for "minimax" -> ProviderKeyMissing -> 402
 
     with pytest.raises(ProblemError) as exc_info:
-        await resolve_platform_credential(
-            platform_resolver, db_session, "minimax", session_factory
-        )
+        await resolve_platform_credential(platform_resolver, db_session, "minimax", session_factory)
 
     assert exc_info.value.status == 402
     assert exc_info.value.code == "ERR_PROVIDER_KEY_MISSING"
@@ -235,9 +231,7 @@ async def test_audit_write_failure_never_blocks_credential_resolution(
             platform_resolver, db_session, "minimax", failing_session_factory
         )
 
-        assert token is not None, (
-            "resolution must succeed identically to the healthy-audit-DB case"
-        )
+        assert token is not None, "resolution must succeed identically to the healthy-audit-DB case"
         try:
             assert get_provider_credential() is minimax_credential
         finally:
