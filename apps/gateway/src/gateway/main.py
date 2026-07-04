@@ -54,6 +54,7 @@ from gateway.conversations.infrastructure.orm import (
 )
 from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
+from gateway.keys.api.platform_keys_router import platform_keys_router
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
 from gateway.keys.infrastructure.mint_rate_limiter import PlaygroundMintRateLimiter
@@ -124,6 +125,9 @@ from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.invites_router import invites_router
 from gateway.tenants.api.platform_impersonation_router import platform_impersonation_router
 from gateway.tenants.api.platform_plans_router import platform_plans_router
+from gateway.tenants.api.platform_tenant_config_router import platform_tenant_config_router
+from gateway.tenants.api.platform_tenants_router import platform_tenants_router
+from gateway.tenants.api.platform_users_router import platform_users_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.api.users_router import users_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
@@ -976,6 +980,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(tenants_router)
     app.include_router(users_router)
     app.include_router(invites_router)
+    app.include_router(platform_tenants_router)
+    app.include_router(platform_users_router)
+    app.include_router(platform_tenant_config_router)
     app.include_router(platform_plans_router)
     app.include_router(platform_impersonation_router)
     app.include_router(cache_router)
@@ -983,6 +990,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)
+    app.include_router(platform_keys_router)
     app.include_router(teams_router)
     app.include_router(admin_models_router)
     app.include_router(admin_catalog_router)

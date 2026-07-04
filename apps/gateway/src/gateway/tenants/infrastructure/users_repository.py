@@ -66,6 +66,7 @@ class UserRoleRepository:
                 select(UserRow).where(UserRow.id == user_id, UserRow.tenant_id == tenant_id)
             )
         ).scalar_one()
+        await self._session.commit()
         return _row_to_user(row)
 
 
