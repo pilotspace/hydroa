@@ -1,5 +1,12 @@
 # Releases
 
+## 0.7.0 — 2026-07-02
+milestones: v55, gateway-health, catalog-pricing-detail, minimax-provider, openrouter-embeddings, v56
+loose tasks: stream-alias-billing
+waivers: none
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: 6 milestones + 1 loose task gated PASS, all merged to main; 0 blockers/0 waivers; gpt-realtime-pricing held back by request (billing math not live-verified against real OpenAI infra — code merged but not credited to this release); ~220 pre-existing SPEC deltas ride as documented backlog (precedented: 0.6.0 shipped with 35)
+
 ## 0.6.0 — 2026-06-30
 milestones: v54, voice-playground, memory-playground, artifacts-playground, vision-playground, video-playground, proxy-correctness, chat-playground
 loose tasks: none

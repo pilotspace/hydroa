@@ -667,13 +667,13 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [ADD · open] a contract's own §1 ⚠ "mirrors X precedent" claim needs the SAME precedent checked on
+- [ADD · folded] a contract's own §1 ⚠ "mirrors X precedent" claim needs the SAME precedent checked on [folded foundation-version 43]
   BOTH axes (here: frontend nav shape AND backend auth strictness) before freeze — this task's v1/v2
   SCOPE ADDENDUM 1 asserted "mirrors /app/keys exactly" for nav visibility while silently carrying a
   STRICTER backend gate (OWNER-only vs. keys' any-role `get_identity`) than the precedent it named;
   only the adversarial refute-read caught the mismatch, not the contract-freeze review itself
   (evidence: refute-read agent affb580a9fa5a2545, finding (g1)).
-- [TDD · open] a single clean local test run is not sufficient evidence of a green suite's
+- [TDD · folded] a single clean local test run is not sufficient evidence of a green suite's [folded foundation-version 43]
   determinism when the harness has known shared-resource characteristics (one Postgres instance
   across all tests) — this task's build agent's "15/15 green" self-report rested on exactly one run;
   repeating it 6-8x surfaced a ~25-30% failure rate the single run entirely missed (evidence: my own

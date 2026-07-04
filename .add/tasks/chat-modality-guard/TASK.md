@@ -476,7 +476,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [ADD · open] running independent adversarial refute-read subagents IN PARALLEL with a
+- [ADD · folded] running independent adversarial refute-read subagents IN PARALLEL with a [folded foundation-version 43]
   developer-driven full-suite verification run risks the exact "concurrent pytest processes on a
   shared test DB" hazard this same project already hit and partially hardened against earlier
   this session — evidence: the first full-suite run this VERIFY pass showed 32 failed/13 errors

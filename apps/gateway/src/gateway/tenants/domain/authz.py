@@ -17,6 +17,7 @@ OWNER/ADMIN/MEMBER as they did before the refactor.
 
 from __future__ import annotations
 
+import uuid
 from enum import StrEnum
 from typing import Annotated
 
@@ -26,7 +27,13 @@ from gateway.core.error_catalog import AUTH_FORBIDDEN, AUTH_TOKEN_INVALID, AUTH_
 from gateway.tenants.domain.entities import Identity, Role
 from gateway.tenants.domain.errors import InvalidTokenError
 
-__all__ = ["ROLE_PERMISSIONS", "Permission", "Role", "require_permission"]
+__all__ = [
+    "ROLE_PERMISSIONS",
+    "Permission",
+    "Role",
+    "authorize_tenant_scope",
+    "require_permission",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +99,12 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         }
     ),
     Role.MEMBER: frozenset(),  # none of the admin permissions
+    # Platform-tenant-only role (superadmin-role TASK.md §3 CONTRACT — FROZEN @ v1).
+    # Full parity with OWNER. Note: a Permission says nothing about WHICH tenant —
+    # every repository still filters WHERE tenant_id = identity.tenant_id regardless
+    # of role; cross-tenant reach is a SEPARATE, explicit predicate — see
+    # authorize_tenant_scope() below, not this matrix.
+    Role.SUPERADMIN: frozenset(Permission),
 }
 
 # ---------------------------------------------------------------------------
@@ -110,6 +123,36 @@ if ROLE_PERMISSIONS[Role.OWNER] != _all_perms:
         "incomplete_matrix: Role.OWNER must hold ALL permissions; "
         f"missing: {_all_perms - ROLE_PERMISSIONS[Role.OWNER]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Cross-tenant authorization predicate (superadmin-role TASK.md §3 CONTRACT — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+
+def authorize_tenant_scope(identity: Identity, target_tenant_id: uuid.UUID) -> None:
+    """Raise 403 unless ``identity`` may act on ``target_tenant_id``.
+
+    A SUPERADMIN identity (platform-tenant-only, see Role.SUPERADMIN) may target any
+    tenant_id. Every other role may only target its own tenant_id — this is the
+    baseline (non-bypass) behavior proven for all 6 other roles.
+
+    This predicate answers "which tenant" — a question ``require_permission``
+    deliberately does not ask (it only answers "does this role hold this capability").
+    Keeping the two orthogonal keeps the ROLE_PERMISSIONS matrix honest: a Permission
+    says nothing about which tenant, and every repository still filters
+    ``WHERE tenant_id = identity.tenant_id`` regardless of role.
+
+    Dormant by design: no repository or endpoint calls this yet (§1 ⚠ flag, surfaced
+    at freeze) — ``platform-admin-console`` wires the first real caller.
+
+    Raises:
+        403 ERR_AUTH_FORBIDDEN — identity.role is not SUPERADMIN and
+            target_tenant_id != identity.tenant_id.
+    """
+    if identity.role == Role.SUPERADMIN or identity.tenant_id == target_tenant_id:
+        return
+    raise AUTH_FORBIDDEN.exc()
 
 
 # ---------------------------------------------------------------------------

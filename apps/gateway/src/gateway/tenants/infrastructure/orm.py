@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Numeric, func, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Numeric, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,6 +14,15 @@ from gateway.core.ids import uuid7
 
 class TenantRow(Base):
     __tablename__ = "tenants"
+    __table_args__ = (
+        CheckConstraint("kind IN ('customer', 'platform')", name="ck_tenants_kind"),
+        Index(
+            "tenants_platform_kind_uidx",
+            "kind",
+            unique=True,
+            postgresql_where=text("kind = 'platform'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
     name: Mapped[str]
@@ -52,13 +61,18 @@ class TenantRow(Base):
     # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without
     # onupdate so `alembic check` sees no diff (server_default only), matching the migration DDL.
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # Platform-tenant discriminator (platform-tenant-seed migration). DEFAULT 'customer'
+    # backfills existing rows; CHECK + partial unique index (kind='platform') enforce at
+    # most one platform-kind row — resolve it via get_platform_tenant(), never a raw filter.
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default="customer")
 
 
 class UserRow(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('owner', 'admin', 'operator', 'billing_admin', 'viewer', 'member')",
+            "role IN ('owner', 'admin', 'operator', 'billing_admin', 'viewer', 'member', "
+            "'superadmin')",
             name="users_role_check",
         ),
         CheckConstraint("email = lower(email)", name="users_email_lowercase_check"),

@@ -32,11 +32,20 @@ def get_signup_use_case(
 
 
 def get_login_use_case(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
     hasher: Annotated[PasswordHasher, Depends(get_hasher)],
     tokens: Annotated[TokenService, Depends(get_token_service)],
 ) -> LoginUseCase:
-    return LoginUseCase(SqlAlchemyIdentityRepository(session), hasher, tokens)
+    return LoginUseCase(
+        SqlAlchemyIdentityRepository(session),
+        hasher,
+        tokens,
+        # NEW (superadmin-audit-foundation TASK.md §3 Part B — FROZEN @ v1): audit-only,
+        # the same live app.state.sessionmaker global every other record_audit call
+        # site (Part A's resolve_platform_credential, Part C's OidcLoginUseCase) reads.
+        session_factory=request.app.state.sessionmaker,
+    )
 
 
 def get_identity_use_case(

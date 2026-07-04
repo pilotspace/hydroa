@@ -419,7 +419,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [ADD · open] a task whose safety property depends on another subsystem's data invariant (here:
+- [ADD · folded] a task whose safety property depends on another subsystem's data invariant (here: [folded foundation-version 43]
   catalog sync actually populating `modality`) should explicitly declare that dependency at GROUND
   time and gate on it, rather than discovering the gap only at refute-read (evidence: this task's
   guard was contract-correct but would have caused a full outage in this stale worktree until

@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 45
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 47
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -131,6 +131,9 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) a §3 CONTRACT's illustrative Python is not automatically valid Python — this task's own Part C snippet had a required param placed after already-defaulted ones with no `*` separator (a straightforward syntax error), and a false "already imported" note for `Role`. Neither was semantic (no Must/Reject changed), both were still worth a real syntax/ import sanity pass before freezing a contract's code block, not just a shape/decision review (evidence: §5 "Strategy actually used" (2)-(3); mirrors `superadmin-login`'s own SDD delta about a prose path string drifting from its §0 anchor — the same underlying lesson, contract prose/code needs the same rigor as contract decisions).  [folded foundation-version 44 · from superadmin-audit-foundation]
+- (SDD) a contract-widening pass (adding Part C mid-freeze-cycle) can update one section's rule (§1 Must) for consistency across ALL affected parts, while leaving a SIBLING section's illustrative text (§2 scenario prose, §3 Python) stale for the part NOT being actively rebuilt in that pass — a distinct failure mode from deviation (2)-(3)'s single-snippet syntax error above: this is cross-section drift within one freeze, invisible unless §1 is read against §2/§3 side-by-side for every part, not just the part being changed. Found here: §1's Must for Part B silently gained an `auth_method` field when Part C was added, but §2/§3's own Part-B text did not (evidence: §5 "Strategy actually used" (6)). Suggests a freeze-time checklist item: when widening a contract for one part, diff-check whether the widening implies a change to any OTHER already-drafted part's text too, not just the part being added.  [folded foundation-version 44 · from superadmin-audit-foundation]
+- (SDD) a frozen §2/§3's prose path string (`/admin/auth/oidc-config`) drifted from the real mounted route (`/admin/oidc`, `oidc_admin_router.py:45`) even though the §0 GROUND anchor citing the exact file:line was correct throughout — the concrete anchor should be treated as more authoritative than a restated path string when drafting contract prose, and ideally the restated string should be generated FROM the anchor, not typed independently (evidence: this task's build agent caught it by cross-checking against `rbac_roles/test_rbac_roles.py`'s existing real-route usage, not by the contract text alone).  [folded foundation-version 44 · from superadmin-login]
 - (SDD) raw SQLAlchemy UPDATE does not trigger ORM onupdate hooks — workaround: always supply updated_at=now() explicitly in VALUES (evidence: rename_title implementation; mirrors append_message lesson from v40)  [folded foundation-version 40 · from chat-conversation-mgmt]
 - (SDD) A frozen default can collide with a SIBLING task's frozen invariant — task-2's create=true default broke task-1's "no populated Secret by default"; caught at tests phase, fixed via CR-1 (evidence: the secure-by-default flip mirroring gateway jwtSecret).  [folded foundation-version 39 · from datastore-statefulsets]
 - (SDD) a Helm chart guard that claims to mirror an app-side validator MUST mirror its exact predicate — exact-string `=="production"` silently under-guarded vs the app's `not in {dev,test}` (evidence: refute-read F2; fixed + test_secret_guard_fires_for_any_non_dev_env).  [folded foundation-version 39 · from helm-chart-scaffold]
@@ -348,6 +351,7 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+
 - (UDD) the "build-grounding scrub" (re-checking an approved mock against the frozen contract and build-time reality immediately before implementing, correcting transparently rather than building blindly or silently deviating) held 3-for-3 within this single task alone (`savings_usd` constant at build time; the `.toggle-row` referencing an unbuilt sibling task's control; the hero-sub copy asserting a live query that doesn't exist) — worth naming as a standing UDD step rather than rediscovering it ad hoc per task (evidence: this task, 2026-07-03).  [folded foundation-version 44 · from batch-dashboard-surface]
 - (UDD) honest gating > silent no-op: disabling + annotating ("Ignored by <Provider>") an unsupported control, and omitting it from the body, is the truthful UI when the backend would silently drop it (evidence: the live-vs-gated capture).  [folded foundation-version 40 · from chat-parameters-panel]
 - (UDD) the per-page-fit standard (PageHeader everywhere; hero+tabs only where the page warrants) scales the monitoring redesign cleanly to a heterogeneous page set — simple tables stayed header+table, complex pages got tabbed IA, with zero forced/empty tabs (evidence: 6 governance pages shipped under one frozen contract, 794 green).  [folded foundation-version 40 · from governance-pages-redesign]
@@ -481,6 +485,9 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-07-04 | merge reconciliation: main (42→44 via v56+platform-identity folds) + PR #55/batch branch (42→45 via 3 independent task folds, own numbering below) → cumulative foundation-version 47 | two branches independently forked from foundation-version 42 and each folded lessons using their own local counter; a correct merge sums both branches' fold counts rather than picking one side's number | 5 fold-events total (2 main + 3 batch); 44+3=47 |
+| 2026-07-03 | fold all → foundation-version 44 (SDD 3 · TDD 5 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 11 lessons open→folded; +11 routed bullets; 43→44 |
+| 2026-07-02 | fold all → foundation-version 43 (TDD 1 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 4 lessons open→folded; +4 routed bullets; 42→43 |
 | 2026-07-03 | fold --task batch-claim-drain-del → foundation-version 45 (TDD 1 · ADD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 2 lessons open→folded; +2 routed bullets; 44→45 |
 | 2026-07-03 | fold --task batch-dashboard-surface → foundation-version 44 (UDD 1) | consolidate captured OBSERVE lessons into the versioned foundation | 1 lessons open→folded; +1 routed bullets; 43→44 |
 | 2026-07-03 | fold --task batch-auto-grouping → foundation-version 43 (TDD 1 · ADD 4) | consolidate captured OBSERVE lessons into the versioned foundation | 5 lessons open→folded; +5 routed bullets; 42→43 |

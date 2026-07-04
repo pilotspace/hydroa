@@ -99,6 +99,12 @@ OPS_FORBIDDEN = ErrorSpec(
     403, "ERR_OPS_FORBIDDEN", "Tenant credentials cannot access the operator surface"
 )
 
+#: The reserved kind='platform' tenants row does not exist (unmigrated/pre-seed state).
+#: Fails closed — resolve_platform_credential never fabricates a substitute tenant_id.
+PLATFORM_TENANT_MISSING = ErrorSpec(
+    500, "ERR_PLATFORM_TENANT_MISSING", "Platform tenant not provisioned"
+)
+
 # ---------------------------------------------------------------------------
 # Auth — API key errors
 # ---------------------------------------------------------------------------
