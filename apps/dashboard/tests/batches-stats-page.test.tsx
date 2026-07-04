@@ -150,4 +150,111 @@ describe("BatchesStatsPage", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument();
     expect(screen.queryByText(/no batch activity yet/i)).not.toBeInTheDocument();
   });
+
+  // ---------------------------------------------------------------------
+  // batch-observability-scaffolding: 3 new StatCards (window-wait latency +
+  // 2 honest placeholders pending v58). STATS_ZERO/STATS_ACTIVE above are the
+  // PRE-EXISTING mocks and deliberately omit the 3 new fields entirely —
+  // proving the page tolerates absence exactly like an explicit null.
+  // ---------------------------------------------------------------------
+
+  /**
+   * Scenario: the 3 new StatCards render even against old mocks lacking the new fields
+   */
+  it("test_all_three_new_statcards_render_with_default_mocks", async () => {
+    server.use(http.get(STATS_URL, () => HttpResponse.json(STATS_ACTIVE)));
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Avg. queue wait")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Avg. completion latency")).toBeInTheDocument();
+    expect(screen.getByText("Token throughput (TPM)")).toBeInTheDocument();
+  });
+
+  /**
+   * Scenario: Avg. queue wait shows a real value once windows have flushed
+   */
+  it("test_avg_window_wait_shows_real_value_when_present", async () => {
+    server.use(
+      http.get(STATS_URL, () =>
+        HttpResponse.json({
+          ...STATS_ACTIVE,
+          avg_window_wait_ms: 3750.4,
+          avg_completion_latency_ms: null,
+          completion_tpm: null,
+        }),
+      ),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("3750 ms")).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Scenario: Avg. queue wait shows an honest empty state before any window has flushed
+   */
+  it("test_avg_window_wait_shows_dash_and_footer_when_no_samples_yet", async () => {
+    server.use(http.get(STATS_URL, () => HttpResponse.json(STATS_ZERO)));
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("No windows have flushed yet.")).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Scenario: the completion-latency/TPM placeholders read distinctly from the
+   * window-wait card's own empty-state caption — both can show a dash today, for
+   * two DIFFERENT reasons, and must not read as the same bug (TASK.md §1 Must).
+   */
+  it("test_completion_placeholders_read_distinctly_from_window_wait_empty_state", async () => {
+    server.use(
+      http.get(STATS_URL, () =>
+        HttpResponse.json({
+          ...STATS_ACTIVE,
+          avg_window_wait_ms: 3750.4,
+          avg_completion_latency_ms: null,
+          completion_tpm: null,
+        }),
+      ),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("3750 ms")).toBeInTheDocument();
+    });
+    // window-wait has real data now -> its OWN empty-state footer must be gone
+    expect(screen.queryByText("No windows have flushed yet.")).not.toBeInTheDocument();
+    // the two placeholder cards are STILL "—", for a genuinely different reason,
+    // worded distinctly so an admin doesn't mistake this for the same bug
+    expect(screen.getAllByText("—").length).toBe(2);
+    expect(
+      screen.getAllByText("Lands once real batch processing exists (v58).").length,
+    ).toBe(2);
+  });
+
+  /**
+   * Scenario: the page carries a visible experimental notice, regardless of data state —
+   * admins must know this whole feature (and its still-placeholder metrics) is
+   * experimental before they read too much into any number on it.
+   */
+  it("test_experimental_notice_always_visible", async () => {
+    server.use(http.get(STATS_URL, () => HttpResponse.json(STATS_ACTIVE)));
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Experimental")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/batch processing is still being rolled out/i),
+    ).toBeInTheDocument();
+  });
 });

@@ -45,6 +45,8 @@ from gateway.proxy.infrastructure.batch_diversion import BatchDiversionAdapter
 from gateway.proxy.infrastructure.batch_window_buffer import (
     _RESULT_KEY_PREFIX,
     BatchWindowBuffer,
+    _wait_count_key,
+    _wait_sum_key,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -687,6 +689,81 @@ class TestConcurrentAbandonVsClaimDelOnDrain:
             "exercised the new DEL-on-drain branch; increase N or investigate "
             "scheduling bias before trusting this test"
         )
+
+
+class TestWindowWaitAggregateRecorded:
+    """batch-observability-scaffolding TASK.md §3: _CLAIM_DUE_LUA additively records
+    its already-computed `elapsed` value into a per-tenant Redis sum+count pair at
+    the moment of a successful claim -- a pure side effect, never altering the
+    existing claimed_items return value (proven unchanged by every other test in
+    this file staying green, unmodified)."""
+
+    async def test_claim_due_records_wait_sum_and_count(self, app: Any) -> None:
+        tenant_id = uuid.uuid4()
+        clock = _FakeClock()
+        settings = app.state.settings
+        settings.batch_window_seconds = 3.0
+        settings.batch_max_items_per_job = 500
+        buffer = BatchWindowBuffer(redis=app.state.redis_client, settings=settings, _now=clock)
+
+        await buffer.append(tenant_id=tenant_id, custom_id="c1", key_id=uuid.uuid4(), body={})
+        clock.advance(3.5)  # elapsed = 3.5s at the moment of claim
+        claimed = await buffer.claim_due(tenant_id)
+        assert claimed is not None, "existing due/claim contract must still hold"
+
+        wait_sum = await app.state.redis_client.get(_wait_sum_key(tenant_id))
+        wait_count = await app.state.redis_client.get(_wait_count_key(tenant_id))
+        assert wait_sum is not None, "claim_due must have recorded a wait sample"
+        assert wait_count is not None
+        assert float(wait_sum) == pytest.approx(3.5)
+        assert int(wait_count) == 1
+
+    async def test_claim_due_accumulates_across_multiple_windows(self, app: Any) -> None:
+        """A SECOND, later claim for the SAME tenant accumulates onto the running
+        sum/count rather than resetting it -- the all-time running-average
+        convention documented in TASK.md §0 (matches tenant_status_counts's own
+        "every batch job the tenant has ever submitted" convention)."""
+        tenant_id = uuid.uuid4()
+        clock = _FakeClock()
+        settings = app.state.settings
+        settings.batch_window_seconds = 2.0
+        settings.batch_max_items_per_job = 500
+        buffer = BatchWindowBuffer(redis=app.state.redis_client, settings=settings, _now=clock)
+
+        await buffer.append(tenant_id=tenant_id, custom_id="c1", key_id=uuid.uuid4(), body={})
+        clock.advance(2.0)  # first window: elapsed 2.0s
+        assert await buffer.claim_due(tenant_id) is not None
+
+        await buffer.append(tenant_id=tenant_id, custom_id="c2", key_id=uuid.uuid4(), body={})
+        clock.advance(4.0)  # second window: elapsed 4.0s
+        assert await buffer.claim_due(tenant_id) is not None
+
+        wait_sum = await app.state.redis_client.get(_wait_sum_key(tenant_id))
+        wait_count = await app.state.redis_client.get(_wait_count_key(tenant_id))
+        assert float(wait_sum) == pytest.approx(6.0)
+        assert int(wait_count) == 2
+
+    async def test_claim_due_not_due_leaves_wait_aggregate_untouched(self, app: Any) -> None:
+        """A claim_due call that returns None (not yet due) must NOT write to the
+        wait_sum/wait_count keys -- the two additive lines sit strictly on the
+        already-guaranteed-due path, never the early return-false path (the
+        Known-problem flagged in TASK.md §5: an accidental insert above the `due`
+        check would record a wait sample for a window that isn't due yet)."""
+        tenant_id = uuid.uuid4()
+        clock = _FakeClock()
+        settings = app.state.settings
+        settings.batch_window_seconds = 10.0
+        settings.batch_max_items_per_job = 500
+        buffer = BatchWindowBuffer(redis=app.state.redis_client, settings=settings, _now=clock)
+
+        await buffer.append(tenant_id=tenant_id, custom_id="c1", key_id=uuid.uuid4(), body={})
+        clock.advance(1.0)  # nowhere near the 10.0s window
+        assert await buffer.claim_due(tenant_id) is None
+
+        wait_sum = await app.state.redis_client.get(_wait_sum_key(tenant_id))
+        wait_count = await app.state.redis_client.get(_wait_count_key(tenant_id))
+        assert wait_sum is None, "not-due must never write the wait_sum key"
+        assert wait_count is None, "not-due must never write the wait_count key"
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,15 @@ Redis key scheme (per tenant_id):
                                           BatchWindowFlusher.publish_result
                                           (kind=submitted | failed). TTL'd so completed
                                           markers do not accumulate forever.
+  batch:window:wait_sum:{tenant_id}    — STRING, INCRBYFLOAT'd by the already-computed
+                                          `elapsed` on every successful claim (batch-
+                                          observability-scaffolding TASK.md §3) — an
+                                          all-time running sum, never reset, no TTL.
+  batch:window:wait_count:{tenant_id}  — STRING, INCR'd by 1 alongside wait_sum, same
+                                          claim, same task. Together they back
+                                          GET /admin/batches/stats' avg_window_wait_ms
+                                          (stats_router.py) — read-only from there,
+                                          written only by _CLAIM_DUE_LUA below.
 
 ATOMICITY (G6 — the hardest requirement): append and claim_due are each a single Lua
 EVAL script. Redis executes scripts to completion with no other command interleaving
@@ -109,7 +118,8 @@ redis.call('SADD', KEYS[3], ARGV[1])
 return 1
 """
 
-# KEYS[1]=items list key, KEYS[2]=started_at key, KEYS[3]=active_tenants set key
+# KEYS[1]=items list key, KEYS[2]=started_at key, KEYS[3]=active_tenants set key,
+# KEYS[4]=wait_sum key, KEYS[5]=wait_count key
 # ARGV[1]=tenant_id str, ARGV[2]=now, ARGV[3]=window_seconds, ARGV[4]=max_items,
 # ARGV[5]=result_key_prefix, ARGV[6]=claimed_marker_ttl_seconds
 # Returns the Redis nil (Python None) when nothing is due yet, else the claimed
@@ -120,6 +130,11 @@ return 1
 # abandoned marker itself is DELeted right here too (batch-claim-drain-del TASK.md)
 # -- this is the one moment its owning window drains, ever, so its job is done;
 # cleanup no longer depends on _ABANDONED_TTL_SECONDS in the common case.
+# batch-observability-scaffolding TASK.md §3: once `due` is confirmed true (never on
+# the early `return false` path above), additively records this claim's already-
+# computed `elapsed` into KEYS[4]/KEYS[5] -- a pure side effect purely for
+# GET /admin/batches/stats' avg_window_wait_ms; the claimed_items return value below
+# is untouched, byte-identical to before this addition.
 _CLAIM_DUE_LUA = """
 local started = redis.call('GET', KEYS[2])
 if not started then
@@ -140,6 +155,8 @@ end
 if not due then
   return false
 end
+redis.call('INCRBYFLOAT', KEYS[4], elapsed)
+redis.call('INCR', KEYS[5])
 local items = redis.call('LRANGE', KEYS[1], 0, -1)
 redis.call('DEL', KEYS[1])
 redis.call('DEL', KEYS[2])
@@ -181,6 +198,14 @@ def _items_key(tenant_id: uuid.UUID) -> str:
 
 def _started_key(tenant_id: uuid.UUID) -> str:
     return f"batch:window:started:{tenant_id}"
+
+
+def _wait_sum_key(tenant_id: uuid.UUID) -> str:
+    return f"batch:window:wait_sum:{tenant_id}"
+
+
+def _wait_count_key(tenant_id: uuid.UUID) -> str:
+    return f"batch:window:wait_count:{tenant_id}"
 
 
 class BatchWindowBuffer:
@@ -251,10 +276,22 @@ class BatchWindowBuffer:
 
         Raises on a genuine Redis failure — the caller (BatchWindowFlusher) treats
         that as "nothing claimed this cycle", never as a false empty claim.
+
+        Additive side effect (batch-observability-scaffolding TASK.md §3): a
+        successful claim also records this window's elapsed wait time into a
+        per-tenant Redis sum+count pair (batch:window:wait_sum/wait_count) — read by
+        GET /admin/batches/stats' avg_window_wait_ms. Never affects the value
+        returned here.
         """
         raw = await asyncio.wait_for(
             self._claim_script(
-                keys=[_items_key(tenant_id), _started_key(tenant_id), _ACTIVE_TENANTS_KEY],
+                keys=[
+                    _items_key(tenant_id),
+                    _started_key(tenant_id),
+                    _ACTIVE_TENANTS_KEY,
+                    _wait_sum_key(tenant_id),
+                    _wait_count_key(tenant_id),
+                ],
                 args=[
                     str(tenant_id),
                     str(self._now()),

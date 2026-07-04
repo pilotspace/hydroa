@@ -21,6 +21,12 @@ export interface BatchStatsData {
   savings_usd: string;
   total_requests: number;
   status_counts: BatchStatusCounts;
+  /** Real, computed from flushed windows' actual elapsed wait time. null = no samples yet. */
+  avg_window_wait_ms: number | null;
+  /** ALWAYS null today — pending v58's batch-processing adapters (see gateway stats_router.py). */
+  avg_completion_latency_ms: number | null;
+  /** ALWAYS null today — pending v58's batch-processing adapters (see gateway stats_router.py). */
+  completion_tpm: number | null;
 }
 
 /** GET /admin/batches/stats — tenant-wide batch statistics (owner or admin only). */
