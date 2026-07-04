@@ -33,6 +33,7 @@ __all__ = [
     "Role",
     "authorize_tenant_scope",
     "require_permission",
+    "require_superadmin",
 ]
 
 
@@ -204,3 +205,29 @@ def require_permission(perm: Permission) -> fastapi.Depends:  # type: ignore[typ
         return identity
 
     return fastapi.Depends(_check)
+
+
+def require_superadmin(
+    identity: Annotated[Identity, fastapi.Depends(_resolve_identity)],
+) -> Identity:
+    """FastAPI dependency that passes iff the caller's role is SUPERADMIN.
+
+    Role-only — deliberately NOT a Permission (platform-tenant-directory TASK.md §1
+    Framings weighed): "list every tenant" has no single target_tenant_id, so
+    ``authorize_tenant_scope`` doesn't apply, and no Permission should imply a
+    non-superadmin role could ever meaningfully hold this capability.
+
+    Raises:
+        401 ERR_AUTH_INVALID_TOKEN — missing/invalid Bearer token.
+        403 ERR_AUTH_FORBIDDEN — role is not SUPERADMIN.
+
+    Usage::
+
+        @router.get("/admin/platform/tenants")
+        async def list_tenants(
+            identity: Annotated[Identity, Depends(require_superadmin)],
+        ) -> ...: ...
+    """
+    if identity.role != Role.SUPERADMIN:
+        raise AUTH_FORBIDDEN.exc()
+    return identity
