@@ -650,8 +650,12 @@ class TestConcurrentAbandonVsClaimDelOnDrain:
             tenant_id = uuid.uuid4()
             custom_id = f"race-drain-{i}"
             clock = _FakeClock()
-            buffer_a = BatchWindowBuffer(redis=app.state.redis_client, settings=settings, _now=clock)
-            buffer_b = BatchWindowBuffer(redis=app.state.redis_client, settings=settings, _now=clock)
+            buffer_a = BatchWindowBuffer(
+                redis=app.state.redis_client, settings=settings, _now=clock
+            )
+            buffer_b = BatchWindowBuffer(
+                redis=app.state.redis_client, settings=settings, _now=clock
+            )
 
             await buffer_a.append(
                 tenant_id=tenant_id, custom_id=custom_id, key_id=uuid.uuid4(), body={}
