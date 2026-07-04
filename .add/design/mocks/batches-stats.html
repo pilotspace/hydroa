@@ -1,0 +1,190 @@
+<div style="min-height:100vh; display:flex; background:var(--background); color:var(--foreground); font-family:var(--font-sans);">
+
+<style>
+  :root {
+    --primary:#0f4c81; --primary-hover:#155394; --background:#f8fafc; --foreground:#0f172a;
+    --card:#ffffff; --muted:#f1f5f9; --muted-foreground:#64748b; --success:#059669;
+    --warning:#f59e0b; --warning-foreground:#92400e; --destructive:#dc2626; --border:#e2e8f0;
+    --input:#e2e8f0; --ring:#2563eb; --accent-soft:#eaf1f8; --accent-soft-border:#cfe0f0;
+    --brand-from:#0f4c81; --brand-to:#2563eb;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+    /* Inter is this project's real typeface (see globals.css); no CDN link here since the Artifact
+       CSP blocks external font requests — falls back to the closest system-installed match rather
+       than risk a silent, unstyled fallback. */
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .sidebar {
+    width: 240px; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 20px 12px; gap: 4px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 8px; padding: 4px 10px 20px;
+    font-weight: 700; font-size: 15px; letter-spacing: -0.01em;
+  }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--brand-from), var(--brand-to));
+  }
+  .nav-group-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--muted-foreground); padding: 14px 10px 6px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
+    font-size: 13.5px; font-weight: 500; color: var(--muted-foreground); text-decoration: none;
+  }
+  .nav-item .dot { width: 16px; height: 16px; border-radius: 4px; background: var(--muted); flex-shrink: 0; }
+  .nav-item.active { background: var(--accent-soft); color: var(--primary); }
+  .nav-item.active .dot { background: var(--primary); }
+  .nav-item .badge {
+    margin-left: auto; font-size: 9.5px; font-weight: 700; letter-spacing: 0.03em;
+    color: var(--muted-foreground); background: var(--muted); border-radius: 4px; padding: 1px 5px;
+  }
+  .main { flex: 1; padding: 32px 40px; max-width: 1120px; }
+  .page-header { margin-bottom: 24px; }
+  .page-title { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 6px; text-wrap: balance; }
+  .page-desc { font-size: 14px; color: var(--muted-foreground); margin: 0; max-width: 60ch; }
+  .admin-pill {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;
+    color: var(--primary); background: var(--accent-soft); border: 1px solid var(--accent-soft-border);
+    border-radius: 999px; padding: 3px 10px; margin-left: 10px; vertical-align: 2px;
+  }
+  .hero {
+    border-radius: 12px; border: 1px solid var(--border); background: var(--card); padding: 24px 28px;
+    margin-bottom: 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
+  }
+  .hero-label {
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--muted-foreground); margin: 0 0 8px;
+  }
+  .hero-value {
+    font-size: 40px; font-weight: 700; letter-spacing: -0.02em; margin: 0; color: var(--foreground);
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-sub { font-size: 13px; color: var(--muted-foreground); margin: 8px 0 0; max-width: 46ch; }
+  .hero-note {
+    font-size: 12px; color: var(--primary); background: var(--accent-soft);
+    border: 1px solid var(--accent-soft-border); border-radius: 8px; padding: 8px 12px; max-width: 260px;
+  }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .stat-card { border-radius: 12px; border: 1px solid var(--border); background: var(--card); padding: 16px 18px; }
+  .stat-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--muted-foreground); margin: 0 0 8px;
+  }
+  .stat-value { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0; font-variant-numeric: tabular-nums; }
+  .stat-value.success { color: var(--success); }
+  .stat-value.destructive { color: var(--destructive); }
+  .stat-value.warning { color: var(--warning-foreground); }
+  section.block { border-radius: 12px; border: 1px solid var(--border); background: var(--card); padding: 20px 24px; }
+  .block-title { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .block-desc { font-size: 13px; color: var(--muted-foreground); margin: 0 0 16px; }
+  .empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    border: 1px dashed var(--border); border-radius: 10px; padding: 32px; text-align: center;
+  }
+  .empty-icon { width: 24px; height: 24px; color: var(--muted-foreground); }
+  .empty-title { font-size: 13.5px; font-weight: 600; margin: 0; }
+  .empty-desc { font-size: 12.5px; color: var(--muted-foreground); margin: 0; max-width: 42ch; }
+  .toggle-row {
+    display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted-foreground);
+    margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);
+  }
+  .toggle-row button {
+    font: inherit; font-weight: 600; color: var(--primary); background: none; border: none;
+    padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .annot {
+    position: fixed; right: 24px; bottom: 24px; max-width: 300px; background: var(--foreground);
+    color: #fff; border-radius: 10px; padding: 14px 16px; font-size: 12px; line-height: 1.5;
+    box-shadow: 0 12px 32px -8px rgba(15,23,42,0.4);
+  }
+  .annot b { color: #93c5fd; }
+</style>
+
+<nav class="sidebar" aria-label="Primary">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"></span> Hydroa</div>
+
+  <div class="nav-group-label">Playgrounds</div>
+  <a class="nav-item" href="#"><span class="dot"></span> Chat</a>
+  <a class="nav-item" href="#"><span class="dot"></span> Voice</a>
+  <a class="nav-item" href="#"><span class="dot"></span> Memory</a>
+  <a class="nav-item" href="#"><span class="dot"></span> Artifacts</a>
+  <a class="nav-item" href="#"><span class="dot"></span> Vision</a>
+  <a class="nav-item" href="#"><span class="dot"></span> Video</a>
+
+  <div class="nav-group-label">Account</div>
+  <a class="nav-item" href="#"><span class="dot"></span> Usage</a>
+  <a class="nav-item" href="#"><span class="dot"></span> Spend</a>
+  <a class="nav-item" href="#"><span class="dot"></span> API Keys</a>
+
+  <div class="nav-group-label">Admin</div>
+  <a class="nav-item" href="#"><span class="dot"></span> Routing<span class="badge">ADMIN</span></a>
+  <a class="nav-item active" href="#"><span class="dot"></span> Batches<span class="badge">ADMIN</span></a>
+  <a class="nav-item" href="#"><span class="dot"></span> Audit<span class="badge">ADMIN</span></a>
+  <a class="nav-item" href="#"><span class="dot"></span> Health<span class="badge">ADMIN</span></a>
+</nav>
+
+<main class="main">
+  <div class="page-header">
+    <h1 class="page-title">Batches<span class="admin-pill">Admin only</span></h1>
+    <p class="page-desc">
+      How much this tenant is saving by processing eligible requests as discounted batch jobs instead
+      of standard synchronous calls, and how that traffic is moving through the pipeline.
+    </p>
+  </div>
+
+  <div class="hero">
+    <div>
+      <p class="hero-label">Total saved via batching</p>
+      <p class="hero-value">$0.00</p>
+      <p class="hero-sub">Recomputed live from list_price_usd − cost_usd across every completed batch line item this period.</p>
+    </div>
+    <div class="hero-note">$0.00 is accurate today — real batch traffic hasn't been priced yet. This number updates itself once it has, no page change needed.</div>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <p class="stat-label">Batched requests</p>
+      <p class="stat-value">0</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Succeeded</p>
+      <p class="stat-value success">0</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Errored</p>
+      <p class="stat-value destructive">0</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">In progress</p>
+      <p class="stat-value warning">0</p>
+    </div>
+  </div>
+
+  <section class="block">
+    <h2 class="block-title">No batch activity yet</h2>
+    <p class="block-desc">This tenant hasn't had any requests grouped into a batch job this period.</p>
+    <div class="empty">
+      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 4h16v16H4z" opacity="0"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg>
+      <p class="empty-title">Nothing to show yet</p>
+      <p class="empty-desc">Numbers above are honest zeros, not placeholders — they'll move on their own once batching is active for this tenant.</p>
+    </div>
+    <div class="toggle-row">
+      Batch processing for this tenant is currently <strong>off</strong>.
+      <button type="button">Manage in Settings →</button>
+    </div>
+  </section>
+</main>
+
+<div class="annot">
+  <b>Design note</b> — modeled directly on the shipped <code>UsagePage.tsx</code> (/app/usage): same
+  hero + StatCard-grid shape, same honest-zero convention already used for the savings number alone.
+  Divergence from that precedent: this whole page is admin-gated (Usage/Spend are open to every
+  role) — Tin's own words named "admin" as the viewer. Populated with illustrative zeros matching
+  what actually ships first; real numbers move in automatically, no layout change. Outstanding:
+  Tin hasn't confirmed this shape yet.
+</div>
+
+</div>

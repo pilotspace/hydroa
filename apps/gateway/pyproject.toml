@@ -172,3 +172,4 @@ addopts = "--cov=gateway --cov-report=term-missing --cov-fail-under=80 -m 'not e
 
 [tool.coverage.run]
 source = ["src/gateway"]
+concurrency = ["greenlet"]

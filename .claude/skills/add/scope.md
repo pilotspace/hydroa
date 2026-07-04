@@ -20,7 +20,7 @@
 Before drafting the goal sentence, position the request in what already exists — distinct from intake's classification, not redundant with it.
 
 1. **Ground in current assets.** Read the goal against what exists — the goal must reflect what the project already is. Ground as rigorously as a task's §0 (`phases/0-ground.md`), using the **same four fields** at milestone scope: **Touches** (the subsystems/files the milestone spans) · **Context** (the docs · todos · config · data it works against) · **Honors** (the `PROJECT.md` / `CONVENTIONS.md` invariants it must respect) · **Anchors** (the existing contracts/symbols its tasks will cite). Grounding is complete when each is named from real assets, not assumed.
-2. **Relate to the milestone map.** Read every existing goal — `.add/milestones/*/MILESTONE.md` and `.add/archive/*` — and name THIS request's relationship: *extends* X · *depends-on* Y · *overlaps* Z. Record in the `rationale` line.
+2. **Relate to the milestone map.** Run `add.py search <keyword> [<keyword> ...]` first — then read every existing goal — `.add/milestones/*/MILESTONE.md` and `.add/archive/*` — and name THIS request's relationship: *extends* X · *depends-on* Y · *overlaps* Z. Record in the `rationale` line.
 3. **If the goal is already delivered** by an existing milestone, reject `duplicate_goal` and route as `task` or `change-request`.
 
 ## Brainstorm before you draft — co-specify at milestone level
@@ -40,7 +40,7 @@ Rank assumptions lowest-confidence first; top 1–2 get the flag: `⚠ <assumpti
 
 - **goal** — ONE outcome sentence (no "and" — that is two milestones).
 - **rationale** — intake bucket + WHY, AND the milestone relationship from "Position the goal". Never in state.json.
-- **Scope In/Out** — explicit anti-creep deferral list. An empty Out list means scope is not yet thought through.
+- **Scope In/Out** — explicit anti-creep deferral list. An empty Out list means scope is not yet thought through. UI/UX scope? use the template's Scope hint vocabulary, not generic prose.
 - **Shared decisions & glossary deltas** — cross-cutting rules every task must honor. New terms get a glossary entry.
 - **Shared / risky contracts to freeze first** — decision points between tasks; name the owning task.
 - **Tasks (breadth-first)** — `slug · depends-on · one line` each. Decompose by deliverable; keep each task one-file-sized.
