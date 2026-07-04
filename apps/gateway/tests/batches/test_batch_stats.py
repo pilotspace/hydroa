@@ -35,7 +35,9 @@ def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _line_item(custom_id: str, *, model: str = "test-model", content: str = "hello") -> dict[str, Any]:
+def _line_item(
+    custom_id: str, *, model: str = "test-model", content: str = "hello"
+) -> dict[str, Any]:
     return {
         "custom_id": custom_id,
         "body": {"model": model, "messages": [{"role": "user", "content": content}]},
@@ -124,7 +126,9 @@ class TestOwnerOrAdminGetsHonestZeroStats:
         assert body["total_requests"] == 0
         assert body["status_counts"] == dict.fromkeys(_ITEM_VOCAB, 0)
 
-    async def test_admin_role_also_gets_stats(self, app: Any, client: Any, owner: dict[str, str]) -> None:
+    async def test_admin_role_also_gets_stats(
+        self, app: Any, client: Any, owner: dict[str, str]
+    ) -> None:
         admin_token = _issue_role_token(app, tenant_id=owner["tenant_id"], role_str="admin")
         resp = await client.get("/admin/batches/stats", headers=_bearer(admin_token))
         assert resp.status_code == 200, f"expected 200, got {resp.status_code}: {resp.text}"
