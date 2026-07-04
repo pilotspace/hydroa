@@ -60,9 +60,42 @@
       }
     }
   },
-  "milestones": {},
+  "milestones": {
+    "platform-admin-console": {
+      "title": "Platform Admin Console",
+      "goal": "A superadmin can view and fully manage any tenant (config, budget, keys, members) through a dedicated, fully audited cross-tenant admin surface",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-02T15:53:53+00:00",
+      "updated": "2026-07-02T15:53:53+00:00"
+    },
+    "tenant-impersonation": {
+      "title": "Tenant Impersonation",
+      "goal": "A superadmin can act as a specific tenant user in a time-boxed, fully audited impersonation session where the real actor stays distinguishable in every downstream record",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-02T15:53:53+00:00",
+      "updated": "2026-07-02T15:53:53+00:00"
+    },
+    "platform-key-default": {
+      "title": "Platform Key Default Credential",
+      "goal": "A tenant with no configured BYOK key automatically uses the platform tenant credential by default, and a configured tenant key takes precedence once present",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-02T15:53:54+00:00",
+      "updated": "2026-07-02T15:53:54+00:00"
+    },
+    "platform-access-plan": {
+      "title": "Platform Access Subscription Plan",
+      "goal": "A tenant can subscribe to a metered, rate-limited, fully audited plan governing platform-tenant-backed usage",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-02T15:53:54+00:00",
+      "updated": "2026-07-02T15:53:54+00:00"
+    }
+  },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T14:28:39+00:00",
+  "updated": "2026-07-03T04:48:58+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -903,6 +936,19 @@
         "chat-modality-guard"
       ],
       "archived": "2026-07-02"
+    },
+    {
+      "slug": "platform-identity",
+      "title": "Platform Identity Foundation",
+      "tasks": 5,
+      "task_slugs": [
+        "platform-tenant-seed",
+        "superadmin-role",
+        "ops-platform-job-identity",
+        "superadmin-login",
+        "superadmin-audit-foundation"
+      ],
+      "archived": "2026-07-03"
     }
   ],
   "active_milestones": [],

@@ -12,6 +12,11 @@ class Role(StrEnum):
     BILLING_ADMIN = "billing_admin"
     VIEWER = "viewer"
     MEMBER = "member"
+    # Platform-tenant-only role (superadmin-role TASK.md §3 CONTRACT — FROZEN @ v1).
+    # A superadmin's authz check may target any tenant_id (see authz.authorize_tenant_scope);
+    # a DB trigger (migration 5b34ca5e1c4b) enforces this role can only exist under the
+    # sole kind='platform' tenant. Never assignable via PUT /admin/users/{id}/role.
+    SUPERADMIN = "superadmin"
 
 
 @dataclass(frozen=True, slots=True)

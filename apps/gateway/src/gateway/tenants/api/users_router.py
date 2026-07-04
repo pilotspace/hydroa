@@ -118,6 +118,16 @@ async def assign_user_role(
     except ValueError:
         raise PAYLOAD_INVALID.exc(detail=f"Unknown role: {body.role!r}") from None
 
+    # superadmin-role TASK.md §3: "superadmin" is a VALID Role member (unlike a truly
+    # unknown literal), so Role(body.role) above no longer raises ValueError for it —
+    # it must be rejected here, explicitly, with the SAME 422 ERR_PAYLOAD_INVALID shape
+    # as any unparseable role literal. Never assignable via this generic, unaudited
+    # endpoint, for EVERY caller regardless of role/tenant (never routed through the
+    # escalation-guard 403 path, or test_users_role.py::test_role_validation's existing
+    # 422 assertion for this exact payload would break).
+    if new_role == Role.SUPERADMIN:
+        raise PAYLOAD_INVALID.exc(detail=f"Unknown role: {body.role!r}") from None
+
     # Load old role for audit metadata (before update)
     old_user = await repo.get_by_id_and_tenant(user_id=user_id, tenant_id=identity.tenant_id)
     old_role_str = old_user.role.value if old_user else None

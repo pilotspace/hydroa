@@ -61,6 +61,16 @@ class AssignUserRoleUseCase:
         target_user_id: uuid.UUID,
         new_role: Role,
     ) -> User:
+        # SUPERADMIN GUARD (first, unconditional — superadmin-role TASK.md §3).
+        # Defense-in-depth for any future non-HTTP caller of this use case: the router
+        # already rejects a {"role": "superadmin"} payload with 422 ERR_PAYLOAD_INVALID
+        # before this use case is ever reached (see users_router.py::assign_user_role).
+        # Checked BEFORE the self-guard/escalation-guard/repository so that even an
+        # OWNER caller — who has no other restriction on this endpoint — can never
+        # mint a superadmin through this path.
+        if new_role == Role.SUPERADMIN:
+            raise EscalationForbiddenError("superadmin is not assignable via this use case")
+
         # SELF-GUARD (always, even for owner)
         if caller_user_id == target_user_id:
             raise EscalationForbiddenError("Cannot change your own role")
