@@ -381,47 +381,129 @@
     },
     "member-invite-acceptance": {
       "title": "Member invite acceptance",
-      "phase": "ground",
+      "phase": "build",
       "gate": "none",
       "milestone": "team-member-invite",
       "depends_on": [
         "member-invite-issuance"
       ],
       "created": "2026-07-05T02:33:58+00:00",
-      "updated": "2026-07-05T02:33:58+00:00"
+      "updated": "2026-07-05T04:08:13+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-05T04:07:57+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "abc516cba43f48cbdeaabaf2a641a88d",
+        "tests": {
+          "apps/gateway/tests/member_invite_acceptance/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/member_invite_acceptance/conftest.py": "e82cc55f9de55219f6ee2abfdf6ff7c4",
+          "apps/gateway/tests/member_invite_acceptance/test_member_invite_acceptance.py": "b9676f835ef616b3b76f5d9eb3c8c1c8"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "b514436776ac8320197598643ea89e84"
+      }
     },
     "impersonation-ui": {
       "title": "Impersonation UI",
-      "phase": "ground",
+      "phase": "build",
       "gate": "none",
       "milestone": "tenant-impersonation",
       "depends_on": [
         "impersonation-session-lifecycle"
       ],
       "created": "2026-07-05T02:34:31+00:00",
-      "updated": "2026-07-05T02:34:31+00:00"
+      "updated": "2026-07-05T04:08:13+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-05T04:07:57+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "71a84d8580618517676a67b8620911a8",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "b514436776ac8320197598643ea89e84"
+      }
     },
     "impersonation-live-session-guard": {
       "title": "Impersonation live session guard",
-      "phase": "ground",
+      "phase": "build",
       "gate": "none",
       "milestone": "tenant-impersonation",
       "depends_on": [
         "impersonation-session-lifecycle"
       ],
       "created": "2026-07-05T02:34:31+00:00",
-      "updated": "2026-07-05T02:34:31+00:00"
+      "updated": "2026-07-05T04:08:14+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-05T04:07:57+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "3e5ffecd29151f478e3a92c21a80fbe3",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "b514436776ac8320197598643ea89e84"
+      }
     },
     "plan-admin-ui": {
       "title": "Plan admin UI",
-      "phase": "ground",
+      "phase": "build",
       "gate": "none",
       "milestone": "platform-access-plan",
       "depends_on": [
         "plan-catalog"
       ],
       "created": "2026-07-05T02:34:35+00:00",
-      "updated": "2026-07-05T02:34:35+00:00"
+      "updated": "2026-07-05T04:08:15+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-05T04:07:57+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8ee98b9fd62a0333b0910a10f89d0911",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/plan-admin-ui/src/"
+        ],
+        "snapshot_md5": "b514436776ac8320197598643ea89e84"
+      }
     },
     "plan-seat-cap": {
       "title": "Plan seat cap enforcement",
@@ -487,7 +569,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-05T02:34:44+00:00",
+  "updated": "2026-07-05T04:08:15+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

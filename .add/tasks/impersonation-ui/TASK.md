@@ -3,7 +3,7 @@
 slug: impersonation-ui · created: 2026-07-05 · stage: production
 milestone: tenant-impersonation
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -622,7 +622,7 @@ Glossary deltas:
   End or left to lapse via its own `Max-Age` at the session's natural TTL. Its VALUE is a small,
   URI-encoded JSON envelope (`{token, session_id, expires_at}`), not a bare JWT — see M1.
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag: the 1–2
      points most likely wrong across the whole bundle, tagged [spec|scenario|contract|test], each
@@ -633,7 +633,7 @@ Reported: no
      terms declared as a Glossary delta) + the bundle's lowest-confidence flag was surfaced at
      the freeze (or an honest "none material"). -->
 
-Least-sure flags for the freeze decision (carried from §1, restated here for the freeze reader):
+Least-sure flag surfaced at freeze: (multiple, carried from §1, restated here for the freeze reader)
 ⚠ [contract] The impersonation-cookie envelope (M1) concentrates 3 call sites' correctness (Mint
   writes, Status reads, `/api/gw` reads) into 1-2 shared encode/decode helpers — a single encoding bug
   there breaks impersonation entirely at once (though always fail-CLOSED, never a leak), a broader

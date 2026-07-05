@@ -3,7 +3,7 @@
 slug: member-invite-acceptance · created: 2026-07-05 · stage: production
 milestone: team-member-invite
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -560,10 +560,10 @@ Glossary deltas: none new — this task fulfills the state transition ALREADY na
   "invite (pending invite)" glossary entry (`pending -> accepted | revoked`, both terminal); it does
   not introduce a new business concept. `InvitePreview` is an internal DTO, not a glossary-worthy term.
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
 
-**Least-sure flag surfaced at freeze (drafted, not yet presented):** (bundle lowest-confidence, ranked)
+**Least-sure flag surfaced at freeze:** (bundle lowest-confidence, ranked)
   ⚠ [spec] Preview enforces the SAME 404/409/410 gate as accept — MY OWN reasoned extension, not
     verbatim in MILESTONE.md (which only describes preview's happy path). If wrong, the NOT-YET-
     drafted `member-invite-ui` sibling may instead want preview to always 200 with a `status` field

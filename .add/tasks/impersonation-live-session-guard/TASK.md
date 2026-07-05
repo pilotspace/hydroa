@@ -4,7 +4,7 @@ slug: impersonation-live-session-guard · created: 2026-07-05 · stage: producti
 milestone: tenant-impersonation
 sensitivity: security
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -611,12 +611,12 @@ Glossary deltas: none — this task introduces no new domain term; it closes an 
   ("impersonation session" liveness, per the sibling task's own proposed, fold-pending Glossary
   entry) with a mechanism, not a new concept.
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — drafted by add-design for the orchestrator's review; the freeze itself (Status ->
   FROZEN @ vN) and its mandatory HARD-STOP security review are the human/orchestrator's own next
   step, never this draft's to declare.
 
-Lowest-confidence flag for the freeze (surfaced here, not decided here):
+Least-sure flag surfaced at freeze: (surfaced here, not decided here)
   ⚠ [contract/scope] This contract's Build surface is 5 call sites across 6+ files (2 in
     `domain/`, 1 NEW in `infrastructure/`, 2 in `api/`, 1 in `application/` + its 4 downstream
     router call sites) — materially larger than "patch the one auth dependency file" that this
