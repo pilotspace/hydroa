@@ -378,6 +378,62 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "member-invite-acceptance": {
+      "title": "Member invite acceptance",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "team-member-invite",
+      "depends_on": [
+        "member-invite-issuance"
+      ],
+      "created": "2026-07-05T02:33:58+00:00",
+      "updated": "2026-07-05T02:33:58+00:00"
+    },
+    "impersonation-ui": {
+      "title": "Impersonation UI",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "tenant-impersonation",
+      "depends_on": [
+        "impersonation-session-lifecycle"
+      ],
+      "created": "2026-07-05T02:34:31+00:00",
+      "updated": "2026-07-05T02:34:31+00:00"
+    },
+    "impersonation-live-session-guard": {
+      "title": "Impersonation live session guard",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "tenant-impersonation",
+      "depends_on": [
+        "impersonation-session-lifecycle"
+      ],
+      "created": "2026-07-05T02:34:31+00:00",
+      "updated": "2026-07-05T02:34:31+00:00"
+    },
+    "plan-admin-ui": {
+      "title": "Plan admin UI",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "platform-access-plan",
+      "depends_on": [
+        "plan-catalog"
+      ],
+      "created": "2026-07-05T02:34:35+00:00",
+      "updated": "2026-07-05T02:34:35+00:00"
+    },
+    "plan-seat-cap": {
+      "title": "Plan seat cap enforcement",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "platform-access-plan",
+      "depends_on": [
+        "plan-catalog",
+        "member-invite-acceptance"
+      ],
+      "created": "2026-07-05T02:34:35+00:00",
+      "updated": "2026-07-05T02:34:35+00:00"
     }
   },
   "milestones": {
@@ -431,7 +487,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-05T02:23:50+00:00",
+  "updated": "2026-07-05T02:34:44+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1304,7 +1360,10 @@
     "platform-admin-console"
   ],
   "active_tasks": {
-    "platform-admin-console": "admin-console-ui"
+    "platform-admin-console": "admin-console-ui",
+    "team-member-invite": "member-invite-acceptance",
+    "tenant-impersonation": "impersonation-live-session-guard",
+    "platform-access-plan": "plan-seat-cap"
   },
   "todos": [
     {
