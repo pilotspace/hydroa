@@ -483,14 +483,14 @@
     },
     "impersonation-live-session-guard": {
       "title": "Impersonation live session guard",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "tenant-impersonation",
       "depends_on": [
         "impersonation-session-lifecycle"
       ],
       "created": "2026-07-05T02:34:31+00:00",
-      "updated": "2026-07-05T04:08:14+00:00",
+      "updated": "2026-07-05T06:00:38+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-05T04:07:57+00:00",
@@ -507,8 +507,40 @@
         "tests": {}
       },
       "scope": {
-        "declared": [],
-        "snapshot_md5": "b514436776ac8320197598643ea89e84"
+        "declared": [
+          "apps/gateway/src/gateway/tenants/domain/ports.py",
+          "apps/gateway/src/gateway/tenants/domain/authz.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/impersonation_session_guard.py",
+          "apps/gateway/src/gateway/keys/api/deps.py",
+          "apps/gateway/src/gateway/catalog/api/deps.py",
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/gateway/src/gateway/tenants/application/use_cases.py",
+          "apps/gateway/src/gateway/tenants/api/deps.py",
+          "apps/gateway/src/gateway/agent_oauth/api/device_approval_router.py",
+          "apps/gateway/src/gateway/auth/api/oidc_admin_router.py",
+          "apps/gateway/src/gateway/proxy/api/provider_keys_admin_router.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/tests/impersonation_live_session_guard/",
+          "apps/gateway/src/gateway/tenants/api/router.py",
+          "apps/gateway/src/gateway/proxy/api/presets_admin_router.py",
+          "apps/gateway/tests/presets_admin_surface/test_presets_admin_surface.py"
+        ],
+        "snapshot_md5": "9f088f59a5127b55cebe21de4b331d62"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-05T05:59:58+00:00",
+            "reason": "scope_violation: task 'impersonation-live-session-guard' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (3 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "plan-admin-ui": {
@@ -633,7 +665,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-05T05:17:46+00:00",
+  "updated": "2026-07-05T06:00:38+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

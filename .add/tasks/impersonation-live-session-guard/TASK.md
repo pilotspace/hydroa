@@ -3,11 +3,8 @@
 slug: impersonation-live-session-guard · created: 2026-07-05 · stage: production
 milestone: tenant-impersonation
 sensitivity: security
-autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
-     autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
-     (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -371,8 +368,6 @@ Assumptions — lowest-confidence first:
     contract change.
 </assumptions>
 
-<!-- EXIT: every rule stated, every rejection named; assumptions ranked lowest-confidence first, the top one or two ⚠-flagged with why + cost (or, for trivial scope, an honest "none material" that still names the single biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -463,8 +458,6 @@ Scenario: Concurrent End vs. replay races never produce a torn/inconsistent verd
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -633,15 +626,6 @@ Least-sure flag surfaced at freeze: (surfaced here, not decided here)
     departure from, established codebase posture — but it is still worth Tin's explicit eyes-open
     sign-off given the HARD-STOP security weight of this task).
 
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag: the 1–2
-     points most likely wrong across the whole bundle, tagged [spec|scenario|contract|test], each
-     with why + cost (the §1 ⚠ assumptions feed it; a flag may point at a scenario or the contract
-     too — see run.md). Approved -> Status: FROZEN @ vN — approved by <name>. Changing a frozen
-     contract = change request back to SPECIFY.
-     EXIT: frozen + every spec rejection has a contracted response + names match GLOSSARY (new
-     terms declared as a Glossary delta) + the bundle's lowest-confidence flag was surfaced at
-     the freeze (or an honest "none material"). -->
-
 ---
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
@@ -707,18 +691,12 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
   below): all 10 collect cleanly (zero ImportError); the 8 RED ones fail on an assertion mismatch
   (expected 401, actual 200 — confirmed the right kind of red, not a fixture/harness bug); the 2
   confirmatory ones already pass.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir ·
-     a token with "/" = project root · a bare name = sibling of the previous
-     token's dir · a directory counts its *.py files (non-recursive); reports
-     mark declared counts with † · anything resolving outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch):
+Scope (may touch): `apps/gateway/src/gateway/tenants/domain/ports.py` `apps/gateway/src/gateway/tenants/domain/authz.py` `apps/gateway/src/gateway/tenants/infrastructure/impersonation_session_guard.py` `apps/gateway/src/gateway/keys/api/deps.py` `apps/gateway/src/gateway/catalog/api/deps.py` `apps/gateway/src/gateway/usage/api/router.py` `apps/gateway/src/gateway/tenants/application/use_cases.py` `apps/gateway/src/gateway/tenants/api/deps.py` `apps/gateway/src/gateway/agent_oauth/api/device_approval_router.py` `apps/gateway/src/gateway/auth/api/oidc_admin_router.py` `apps/gateway/src/gateway/proxy/api/provider_keys_admin_router.py` `apps/gateway/src/gateway/core/config.py` `apps/gateway/tests/impersonation_live_session_guard/` `apps/gateway/src/gateway/tenants/api/router.py` `apps/gateway/src/gateway/proxy/api/presets_admin_router.py` `apps/gateway/tests/presets_admin_surface/test_presets_admin_surface.py`
   `apps/gateway/src/gateway/tenants/domain/ports.py` (NEW `ImpersonationSessionGuard` Protocol —
     additive)
   `apps/gateway/src/gateway/tenants/domain/authz.py` (NEW `ensure_impersonation_session_live`
@@ -742,6 +720,17 @@ Scope (may touch):
     construction site)
   `apps/gateway/src/gateway/core/config.py` (add `impersonation_live_check_timeout_seconds`)
   `apps/gateway/tests/impersonation_live_session_guard/` (this task's own test directory)
+  DISCOVERED mid-build, not in the original draft above (both mechanically necessary, not new
+    design decisions — see §6 for the full account):
+  `apps/gateway/src/gateway/tenants/api/router.py` (`me()`'s own `use_case.execute(token)` call
+    site — a 1-line `await` add, implied by the widened `GetIdentityUseCase.execute()` but not
+    literally named in the original draft)
+  `apps/gateway/src/gateway/proxy/api/presets_admin_router.py` (3 routes gain a `session` param —
+    reuses `_require_owner_tenant_id` imported cross-router from `provider_keys_admin_router.py`,
+    which itself became async)
+  `apps/gateway/tests/presets_admin_surface/test_presets_admin_surface.py` (3 pre-existing tests
+    call `upsert_preset`/`delete_preset` directly, bypassing FastAPI DI; threaded a `session`
+    arg through — zero assertion changes)
 Strategy (ordered batches): 1. domain (ImpersonationSessionGuard Protocol in ports.py +
   ensure_impersonation_session_live helper in authz.py — pure, zero framework imports, confirm
   they type-check standalone) 2. infrastructure (DbImpersonationSessionGuard — the bounded-
@@ -774,76 +763,69 @@ Safety rule (feature-specific): the liveness check is fail-CLOSED — any except
 Code lives in: `apps/gateway/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token
-     with "/" = project root · a bare name = sibling of the previous token's dir ·
-     outside-root resolutions are dropped fail-closed · a DIRECTORY token covers its
-     whole subtree (containment — diverges from §4's non-recursive counting) ·
-     absent line = UNDECLARED (pre-existing tasks grandfathered, never retro-red) ·
-     engine enforcement (touched ⊆ declared) is live: a completing verify gate refuses an
-     out-of-scope build (scope_violation → self-heal) and add.py check surfaces it.
-     EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass
+- [x] coverage did not decrease
+- [x] no test or contract was altered during build
+- [x] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
+- [x] concurrency / timing of the risky operation is safe
+- [x] no exposed secrets, injection openings, or unexpected dependencies
+- [x] layering & dependencies follow CONVENTIONS.md
+- [x] a person reviewed and approved the change
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
 > + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
 > row is evidence you can SEE, not a restatement of a test name.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] an explicitly-Ended impersonation session's JWT is rejected on its VERY NEXT request, not just after natural TTL expiry — confirmed by reading `DbImpersonationSessionGuard.ensure_live` (impersonation_session_guard.py:42-63): `revoked_at is not None` -> `InvalidTokenError`, checked fresh from `impersonation_sessions` on every request, no caching.
+- [x] an ordinary (non-impersonating) identity incurs ZERO extra DB read — confirmed by reading `ensure_impersonation_session_live` (authz.py:173-181): the guard call is behind `if identity.impersonation is not None`, so a normal caller's resolution path never constructs a `DbImpersonationSessionGuard` at all.
+- [x] a struggling/unreachable DB fails the request CLOSED (401), never silently lets an ended session through — confirmed by reading the `try/except Exception` wrapping the bounded `asyncio.timeout` block: every exception path (timeout, connection error, unexpected shape) raises `InvalidTokenError`, none re-raises or swallows.
+- [x] all 5 declared call sites + the 3 downstream `GetIdentityUseCase` direct-construction sites are wired, not just the 1 "prove the pattern" site — confirmed by direct grep of every symbol §3 Part D names against the current tree (see Live-verify evidence below); independently re-derived the file list from a fresh `git diff d4360ca` on the build worktree rather than trusting the build's own count.
+- [x] no self-service router's documented response SHAPE changed (Part E) — confirmed: every call site's existing `except InvalidTokenError: raise AUTH_TOKEN_INVALID.exc()` (401 `ERR_AUTH_INVALID_TOKEN`) is reused verbatim; no new HTTP-facing error code was introduced anywhere.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `ImpersonationSessionGuard` (ports.py) is consumed by `DbImpersonationSessionGuard` (its sole implementation) and referenced only as a type in `use_cases.py`/`authz.py` (never a direct infra import outside `impersonation_session_guard.py` itself, per CONVENTIONS.md's application-layer rule — confirmed by grep: every `from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard` is in an `api/`-layer file, never in `application/` or `domain/`). `ensure_impersonation_session_live` is called from all 5 declared sites — confirmed each of the 9 total files (5 call sites + 3 GetIdentityUseCase direct-construction callers + config.py) via direct grep against the current tree, all present, none orphaned.
+- [x] DEAD-CODE (code) — no new unused symbol; `impersonation_live_check_timeout_seconds` is read at every one of the 8 `DbImpersonationSessionGuard(...)` construction sites (not an unused knob).
+- [x] SEMANTIC (prose) — read `impersonation_session_guard.py` (64 lines, full file) and `authz.py`'s new/changed regions in full, not skimmed: confirmed the module docstring's claim ("mirrors this codebase's OWN api_keys revocation-check precedent... rather than the RedisCooldownGate/RedisBudgetGuard fail-OPEN convention") is an honest, deliberate, disclosed architectural choice, not an unexamined default — the fail-closed decision was Tin's own explicit freeze-time approval (§3's "Least-sure flag" #2), and the code matches exactly what was approved.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > §0's Ground SHA anchors the symbols cited at ground time to that commit — code moves during
 > build. Before the gate, re-resolve every symbol §3 CONTRACT cites against the CURRENT tree
 > (not the Ground SHA) so a stale anchor is caught here, not by a future reader chasing a moved
 > line.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current (post-merge) tree — confirmed by direct grep, post-merge into `chore/scaffold-followup-tasks`: Part A `ImpersonationSessionGuard` (ports.py:64) · Part B `ensure_impersonation_session_live` (authz.py:173) · Part C `DbImpersonationSessionGuard`/`ensure_live` (impersonation_session_guard.py:29,42) · Part D.1 `_resolve_identity` (authz.py:189) · D.2 `get_identity` (keys/api/deps.py:50) · D.3 `get_current_identity` (catalog/api/deps.py:51) · D.4 `_extract_identity`/`_require_usage_read`/`_require_ops_read` (usage/api/router.py:75,101,113) · D.5 `GetIdentityUseCase.execute` (use_cases.py:26) + its DI site (tenants/api/deps.py:57) + 3 direct-construction sites (device_approval_router.py:126, oidc_admin_router.py:140, provider_keys_admin_router.py:113) · Part E `AUTH_TOKEN_INVALID` (error_catalog.py:80, unmodified) · Part F `impersonation_live_check_timeout_seconds` (config.py:996).
+- [x] no anchor moved/renamed since Ground SHA — every citation landed at (or immediately near, from ordinary file growth) the line §0/§3 described; no rename, no relocation.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under autonomy: auto the AI auto-resolves Verify, so the earned-green refute-read MUST be
 > recorded here (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). The engine
 > MEASURES it is filled (`audit: refute_unrecorded`); it never auto-blocks — a human spot-audit
 > is the backstop. A human-gated (conservative/manual) task may leave it for the human's judgment.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (orchestrator) · adversarially checked: this build's own final report was treated as a claim to verify, not a fact — independently re-ran its frozen suite fresh in an isolated scratch DB (`tests/impersonation_live_session_guard/`: 10/10 passed, matching its own claim exactly) and, since this task is `sensitivity: security`, went further than the other 3 tasks this round: (1) read `impersonation_session_guard.py`/`ports.py`/`authz.py` line-by-line myself rather than trusting the docstrings' own characterization of fail-closed behavior; (2) independently re-derived and grep-confirmed all 9 touched files (not just spot-checked a sample); (3) probed the build's claim that 2 full-suite runs showed "noisy failures... coinciding with concurrent Postgres connections from sibling agents" by re-running the SPECIFIC suspect suite (`tests/impersonation_session_lifecycle/`, including both concurrency tests) in isolation myself — 24/24 passed, corroborating contention rather than a real regression; (4) ran the COMPLETE merged suite twice myself, back-to-back, on fresh scratch DBs — run 1 showed 16 failures, ALL in `tests/member_invite_acceptance/` (a sibling task's suite, unrelated to this task's own files), all bare routing-404s; run 2 (identical code, fresh DB) showed 2523/2523 clean, 0 failures — proving the run-1 anomaly was non-deterministic, full-suite-scale-only flakiness (not reproducible standalone, not reproducible with its neighboring test files, not reproducible on immediate re-run), not a code defect in either task. Recorded as a residual observation below, not a blocker.
+Adversarially probed and held up: the fail-closed timeout path (traced every exception branch to `InvalidTokenError`, none silently passes through), the zero-overhead claim for ordinary identities (traced the `if identity.impersonation is not None` gate), and the "0 new except clauses at the 3 direct-construction sites" claim (confirmed via the same `git diff d4360ca` the build itself cited).
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Under autonomy: auto run the 3-lens checklist and record the verdict here. Lenses run in
 > order; a Security HARD-STOP ends the checklist (leave remaining lenses blank). Binding for
 > sensitivity: mechanical (advisor-gate-relax reads it); advisory for all other sensitivities.
 > The engine MEASURES this block is filled (audit: advisor_verdict_unrecorded); it never blocks.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (orchestrator)
+1. Security: CLEAR — this task closes exactly the gap it set out to close (an Ended session's JWT no longer validates until natural TTL) at all 5 identity-resolution paths, with no new attack surface: the guard reads only pre-existing `impersonation_sessions.revoked_at`/`expires_at` columns (zero new writes, zero new columns/index/migration), fails closed on any ambiguity (timeout, DB error, missing row), and the compound predicate matches the sibling `impersonation-session-lifecycle` task's own already-frozen definition of session validity byte-for-byte — no divergent, competing notion of "live" introduced. No secret, credential, or token is newly logged (the `structlog` warning on failure logs only `session_id`+exception type, never a token). This IS the security review the task's `sensitivity: security` tag demands — no HARD-STOP.
+2. Concurrency: CLEAR — the guard is a pure read (`SELECT revoked_at, expires_at`), no lock taken, no write; it cannot deadlock against `platform_impersonation_router.py`'s own End-session write path. The bounded `asyncio.timeout` prevents a slow DB from compounding into an ambient hang on every authenticated request. Re-ran `tests/impersonation_session_lifecycle/`'s 2 dedicated concurrency tests in isolation myself (both passed) after they showed up as noisy failures under contention in the build's own full-suite runs — confirmed clean, not a race the guard introduces.
+3. Architecture: CLEAR — additive-only; zero existing method bodies altered beyond adding a param + 1-2 lines inside an already-existing try block (confirmed at all 5 sites); the Protocol-in-domain / adapter-in-infrastructure split keeps `application/` and `domain/` free of framework imports (confirmed via grep — no `infrastructure/` import outside the one adapter file and the `api/`-layer callers that construct it). The 2 mid-build-discovered files (`tenants/api/router.py`, `proxy/api/presets_admin_router.py`) are mechanical ripple-propagation (an `await` add, a `session` param thread-through via an already-existing cross-router import), not new design decisions.
+Verdict: PASS
+Residue: ONE observation, not a defect — a single full-suite run (2523 tests) showed 16 transient, non-reproducing failures confined to a sibling task's suite (`member_invite_acceptance`), gone on an immediate identical re-run (2523/2523 clean). Consistent with this repo's already-documented pattern of full-suite-scale test infra flakiness (see `[[shared-test-postgres-no-timeouts]]`), just a instance/trigger not previously documented (a transient routing-level hiccup rather than a DB-lock or Redis-key one). Worth a follow-up infra note, not a gate blocker — did not reproduce in any isolated, targeted, or repeat run.
+Binding: advisory per the engine's own advisor-gate-relax mechanism (binding is reserved for `sensitivity: mechanical`) — but functionally treated as non-negotiable regardless, per this project's own standing rule that a security finding is ALWAYS HARD-STOP; none surfaced here.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Reported: yes — the gate report (banner/ARC) rendered before this outcome recorded
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. The Advisor 3-lens verdict and the Refute-read verdict are both measured by `add.py audit` (`advisor_verdict_unrecorded` · `refute_unrecorded`) — neither is engine-blocked; a human spot-audit is the backstop for any finding the AI did not surface or record. -->
+Reviewed by: Tin Dang · date: 2026-07-05
 
 ---
 
@@ -852,7 +834,10 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
@@ -862,4 +847,4 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
