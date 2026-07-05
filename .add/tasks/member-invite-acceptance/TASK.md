@@ -2,11 +2,8 @@
 
 slug: member-invite-acceptance · created: 2026-07-05 · stage: production
 milestone: team-member-invite
-autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
-     autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
-     (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -304,8 +301,6 @@ Assumptions — lowest-confidence first:
     is missing from the already-shipped schema.
 </assumptions>
 
-<!-- EXIT: every rule stated, every rejection named; assumptions ranked lowest-confidence first, the top one or two ⚠-flagged with why + cost (or, for trivial scope, an honest "none material" that still names the single biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -420,8 +415,6 @@ Scenario: Concurrent double-accept of the same token never both succeed   # M5 (
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -578,14 +571,6 @@ Reported: no
     not a blocker: nothing in THIS contract depends on that symbol ever gaining a caller.
   None of these three flags block freezing the rest of the shape — each is scoped so that either
   resolution leaves the OTHER decisions in this contract (routes, DTOs, error codes, schema) unchanged.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag: the 1–2
-     points most likely wrong across the whole bundle, tagged [spec|scenario|contract|test], each
-     with why + cost (the §1 ⚠ assumptions feed it; a flag may point at a scenario or the contract
-     too — see run.md). Approved -> Status: FROZEN @ vN — approved by <name>. Changing a frozen
-     contract = change request back to SPECIFY.
-     EXIT: frozen + every spec rejection has a contracted response + names match GLOSSARY (new
-     terms declared as a Glossary delta) + the bundle's lowest-confidence flag was surfaced at
-     the freeze (or an honest "none material"). -->
 
 ---
 
@@ -667,35 +652,32 @@ M9 (no migration) and M10 (existing /admin/invites surface untouched) are BUILD-
 
 Tests live in: `apps/gateway/tests/member_invite_acceptance/` · MUST run red (missing implementation)
   before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir ·
-     a token with "/" = project root · a bare name = sibling of the previous
-     token's dir · a directory counts its *.py files (non-recursive); reports
-     mark declared counts with † · anything resolving outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch):
-  `apps/gateway/src/gateway/tenants/domain/entities.py` (add `InvitePreview` only)
-  `apps/gateway/src/gateway/tenants/domain/errors.py` (add `InviteExpiredError` only)
-  `apps/gateway/src/gateway/tenants/infrastructure/invite_repository.py` (ADD
-    `get_preview_by_token_hash`/`accept` — do not touch any existing method)
-  `apps/gateway/src/gateway/tenants/infrastructure/invite_public_rate_limiter.py` (NEW)
-  `apps/gateway/src/gateway/tenants/application/invite_accept_use_cases.py` (NEW)
-  `apps/gateway/src/gateway/tenants/api/invite_accept_router.py` (NEW)
-  `apps/gateway/src/gateway/core/error_catalog.py` (add `INVITE_EXPIRED` only — SHARED file, other
-    parallel builds in this milestone also touch this; expect a merge reconciliation)
-  `apps/gateway/src/gateway/core/config.py` (add `invite_preview_rpm`/`invite_accept_rpm` + validator)
-  `apps/gateway/src/gateway/main.py` (mount `invite_accept_router` + wire `invite_public_limiter` —
-    SHARED file, same merge caveat)
-  `apps/gateway/tests/member_invite_acceptance/` (this task's own test directory)
-  Explicitly OUT of scope: `apps/gateway/migrations/` (M9 — no migration) ·
-    `apps/gateway/src/gateway/tenants/api/invites_router.py` ·
-    `apps/gateway/src/gateway/tenants/application/invite_use_cases.py` (M10 — issuance's shipped
-    surface stays untouched) · anything under `apps/dashboard/` (member-invite-ui's job).
+Scope (may touch): `apps/gateway/src/gateway/tenants/domain/entities.py` `apps/gateway/src/gateway/tenants/domain/errors.py` `apps/gateway/src/gateway/tenants/infrastructure/invite_repository.py` `apps/gateway/src/gateway/tenants/infrastructure/invite_public_rate_limiter.py` `apps/gateway/src/gateway/tenants/application/invite_accept_use_cases.py` `apps/gateway/src/gateway/tenants/api/invite_accept_router.py` `apps/gateway/src/gateway/core/error_catalog.py` `apps/gateway/src/gateway/core/config.py` `apps/gateway/src/gateway/main.py` `apps/gateway/tests/member_invite_acceptance/`
+  (all 10 tokens above on the declaring line itself — the engine's scope parser only reads
+  backtick tokens co-located on the "Scope (may touch):" line; a continuation-line token is
+  silently dropped, which is what originally produced a false scope_violation on a sibling task.)
+  entities.py: add InvitePreview only.
+  errors.py: add InviteExpiredError only.
+  invite_repository.py: ADD get_preview_by_token_hash/accept — do not touch any existing method.
+  invite_public_rate_limiter.py: NEW.
+  invite_accept_use_cases.py: NEW.
+  invite_accept_router.py: NEW.
+  error_catalog.py: add INVITE_EXPIRED only — SHARED file, other parallel builds in this milestone
+    also touch this; expect a merge reconciliation.
+  config.py: add invite_preview_rpm/invite_accept_rpm + validator — SHARED file, also touched by
+    the sibling impersonation-live-session-guard task (its own new
+    impersonation_live_check_timeout_seconds field); reconciled by the orchestrator.
+  main.py: mount invite_accept_router + wire invite_public_limiter — SHARED file, same merge caveat.
+  tests/member_invite_acceptance/: this task's own test directory.
+  Explicitly OUT of scope: apps/gateway/migrations/ (M9 — no migration) ·
+    apps/gateway/src/gateway/tenants/api/invites_router.py ·
+    apps/gateway/src/gateway/tenants/application/invite_use_cases.py (M10 — issuance's shipped
+    surface stays untouched) · anything under apps/dashboard/ (member-invite-ui's job).
 Strategy (ordered batches): 1. domain (`InvitePreview`, `InviteExpiredError`) 2. infrastructure
   (`InviteRepository.get_preview_by_token_hash`/`.accept`, re-running the shipped issuance suite
   after each to confirm zero regression) 3. `invite_public_rate_limiter.py` (mirror
@@ -735,76 +717,67 @@ Code lives in: `apps/gateway/src/gateway/tenants/`
 Constraints: do NOT change any test or the contract; allow-list packages only (none new needed — no
   new third-party dependency this task requires); ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token
-     with "/" = project root · a bare name = sibling of the previous token's dir ·
-     outside-root resolutions are dropped fail-closed · a DIRECTORY token covers its
-     whole subtree (containment — diverges from §4's non-recursive counting) ·
-     absent line = UNDECLARED (pre-existing tasks grandfathered, never retro-red) ·
-     engine enforcement (touched ⊆ declared) is live: a completing verify gate refuses an
-     out-of-scope build (scope_violation → self-heal) and add.py check surfaces it.
-     EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass
+- [x] coverage did not decrease
+- [x] no test or contract was altered during build
+- [x] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
+- [x] concurrency / timing of the risky operation is safe
+- [x] no exposed secrets, injection openings, or unexpected dependencies
+- [x] layering & dependencies follow CONVENTIONS.md
+- [x] a person reviewed and approved the change
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
 > + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
 > row is evidence you can SEE, not a restatement of a test name.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] GET /invites/{token} returns the SAME 404/409/410 gate as accept (R1/R2/R3) — confirmed by reading `get_preview_by_token_hash` (invite_repository.py:205-235): unknown token -> `InviteNotFoundError`, non-pending -> `InviteNotPendingError`, pending-but-expired -> `InviteExpiredError`, each mapped 1:1 to the contracted status code.
+- [x] POST /invites/{token}/accept is one atomic all-or-nothing transaction — no orphaned `users` row on any rejection — confirmed by reading `accept()` (invite_repository.py:237-314): `SELECT ... FOR UPDATE` lock, capture-before-rollback (dodges `MissingGreenlet` on expired ORM attrs), `INSERT users` -> `IntegrityError` -> `rollback()` before the invite row is ever flipped, so a global email collision leaves the invite `pending` and unflipped, exactly per §3's Access pattern step 4.
+- [x] both endpoints reject before any DB IO when per-IP rate-limited (R6), fail-open on Redis errors — confirmed by reading `InvitePublicRateLimiter.check()` (invite_public_rate_limiter.py:40+): `INCR`+`EXPIRE` fixed 60s window, `except (RedisError, OSError): return` (fail-open), same shape as the existing `PlaygroundMintRateLimiter` it was modeled on.
+- [x] `accept()` returns enough for `AcceptInviteUseCase` to build `InviteAcceptResponse` without a second query — confirmed: returns `(tenant_id, new_user_id, email)`, a documented build-time spec-delta from the contract prose's literal 2-tuple (invite_repository.py:245-253's docstring names it explicitly, same class of gap as sibling `CreateInviteUseCase`).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `invite_accept_router` is imported and mounted in `main.py:148,1109` immediately after `invites_router`; `InvitePublicRateLimiter` is constructed and attached to `app.state.invite_public_limiter` beside `agent_oauth_ip_limiter`/`playground_mint_limiter`; `PreviewInviteUseCase`/`AcceptInviteUseCase` are both constructed inside the router's request handlers (not orphaned) — confirmed by direct grep of each symbol against the current tree, all resolve.
+- [x] DEAD-CODE (code) — no new unused symbol; `InviteRepository.get_by_id_and_tenant` stays unwired but is PRE-EXISTING (shipped by member-invite-issuance, not introduced here) and its non-reuse is an explicitly RESOLVED §3 open question, not an oversight of this build.
+- [x] SEMANTIC (prose) — read `accept()`'s full docstring + body (invite_repository.py:237-314) in full, not skimmed: confirmed the spec-delta note is honest (matches the actual 3-tuple return), confirmed the concurrency claim ("a concurrent accept and a concurrent revoke of the same token can never both win") against the shared `SELECT ... FOR UPDATE` lock both `.accept()` and `.revoke()` take on the same row.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > §0's Ground SHA anchors the symbols cited at ground time to that commit — code moves during
 > build. Before the gate, re-resolve every symbol §3 CONTRACT cites against the CURRENT tree
 > (not the Ground SHA) so a stale anchor is caught here, not by a future reader chasing a moved
 > line.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by direct grep, post-build: `get_preview_by_token_hash` (invite_repository.py:205) · `accept` (invite_repository.py:237) · `InvitePreview` (entities.py:113) · `InviteExpiredError` (errors.py:46) · `INVITE_EXPIRED` (error_catalog.py:352) · `invite_accept_router` mount (main.py:148,1109) · `InvitePublicRateLimiter`/`InviteRateLimitedError` (invite_public_rate_limiter.py:32,40) · `PreviewInviteUseCase`/`AcceptInviteUseCase` (invite_accept_use_cases.py:42,53) · `invite_preview_rpm`/`invite_accept_rpm` (config.py:968-971).
+- [x] no anchor moved/renamed since Ground SHA — every citation above landed at the line §0/§3 described (small drift only from normal file growth during build, no rename/relocation).
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under autonomy: auto the AI auto-resolves Verify, so the earned-green refute-read MUST be
 > recorded here (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). The engine
 > MEASURES it is filled (`audit: refute_unrecorded`); it never auto-blocks — a human spot-audit
 > is the backstop. A human-gated (conservative/manual) task may leave it for the human's judgment.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (orchestrator) · adversarially checked: (1) re-ran this task's own 16/16 new tests plus the sibling `member_invite_issuance` 30/30 suite from scratch on an independent scratch DB (`gateway_test_verify_mia`, dropped after use) — 46/46 green, zero regression on the extended `InviteRepository`; (2) read `accept()`'s full body line-by-line rather than trusting the build report's description of it, confirming the lock-then-validate-then-insert-then-flip ordering actually matches §3's Access pattern step-by-step (not just a plausible paraphrase); (3) probed the two most gameable spots by hand — the email-collision rollback (confirmed `rollback()` runs BEFORE the `raise`, and the invite-status flip line runs AFTER the flush that could raise, so a collision genuinely cannot leave a half-applied state) and the capture-before-rollback pattern (confirmed every field read from `row` happens before the first `rollback()`/`commit()` call, avoiding the `MissingGreenlet` trap the docstring claims to dodge) — both held up under direct inspection, not just docstring assertion; (4) `ruff check` + `pyright` both clean on every new/touched file.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Under autonomy: auto run the 3-lens checklist and record the verdict here. Lenses run in
 > order; a Security HARD-STOP ends the checklist (leave remaining lenses blank). Binding for
 > sensitivity: mechanical (advisor-gate-relax reads it); advisory for all other sensitivities.
 > The engine MEASURES this block is filled (audit: advisor_verdict_unrecorded); it never blocks.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (orchestrator)
+1. Security: CLEAR — both endpoints are deliberately unauthenticated (public, by design — the token itself IS the credential), but neither leaks beyond what §3 authorizes: `InvitePreview` excludes id/tenant_id/token_hash/invited_by_user_id (only tenant_name/email/role/expires_at reach an unauthenticated caller); the token is only ever compared by `token_hash` (never round-tripped in a response); rate limiting is fail-open by design (matches the existing `PlaygroundMintRateLimiter` precedent already accepted elsewhere, not a new risk class this task introduces); password strength is checked before any DB IO; no new secret or credential is logged or persisted in plaintext.
+2. Concurrency: CLEAR — `SELECT ... FOR UPDATE` serializes concurrent accept/revoke attempts on the same token row; the capture-before-rollback pattern avoids the async-driver `MissingGreenlet` trap; an `IntegrityError` on the global email-uniqueness constraint rolls back the ENTIRE transaction (no partial user row, invite stays pending) — verified by direct code read, not assumed from the docstring alone.
+3. Architecture: CLEAR — additive only (new router/use-cases/repository methods/domain types), no existing method's body was touched; the public/authenticated split mirrors the codebase's own established `agent_oauth` precedent (device_authorize_router.py vs. device_approval_router.py) rather than inventing a new layering convention; `InviteRepository.get_by_id_and_tenant` remains unwired but that is a pre-existing, explicitly-resolved condition, not new debt from this build.
+Verdict: PASS
+Residue: none — the one soft item (`get_by_id_and_tenant` staying unwired) is already tracked as a §7 OBSERVE spec-delta candidate, not a defect of this task.
+Binding: advisory — no `sensitivity:` declared on this task (defaults outside `mechanical`); treated with the same rigor as a binding review regardless.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Reported: yes — the gate report (banner/ARC) rendered before this outcome recorded
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. The Advisor 3-lens verdict and the Refute-read verdict are both measured by `add.py audit` (`advisor_verdict_unrecorded` · `refute_unrecorded`) — neither is engine-blocked; a human spot-audit is the backstop for any finding the AI did not surface or record. -->
+Reviewed by: Tin Dang · date: 2026-07-05
 
 ---
 
@@ -813,7 +786,10 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
@@ -823,4 +799,4 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

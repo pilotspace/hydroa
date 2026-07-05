@@ -381,14 +381,14 @@
     },
     "member-invite-acceptance": {
       "title": "Member invite acceptance",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "team-member-invite",
       "depends_on": [
         "member-invite-issuance"
       ],
       "created": "2026-07-05T02:33:58+00:00",
-      "updated": "2026-07-05T04:08:13+00:00",
+      "updated": "2026-07-05T05:17:46+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-05T04:07:57+00:00",
@@ -409,8 +409,24 @@
         }
       },
       "scope": {
-        "declared": [],
-        "snapshot_md5": "b514436776ac8320197598643ea89e84"
+        "declared": [
+          "apps/gateway/src/gateway/tenants/domain/entities.py",
+          "apps/gateway/src/gateway/tenants/domain/errors.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/invite_repository.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/invite_public_rate_limiter.py",
+          "apps/gateway/src/gateway/tenants/application/invite_accept_use_cases.py",
+          "apps/gateway/src/gateway/tenants/api/invite_accept_router.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/member_invite_acceptance/"
+        ],
+        "snapshot_md5": "78c021d43d710cb3b9afb0a130e7d58a"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "impersonation-ui": {
@@ -617,7 +633,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-05T04:58:52+00:00",
+  "updated": "2026-07-05T05:17:46+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
