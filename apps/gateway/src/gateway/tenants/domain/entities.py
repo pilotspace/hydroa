@@ -110,6 +110,23 @@ class Invite:
 
 
 @dataclass(frozen=True, slots=True)
+class InvitePreview:
+    """The unauthenticated, pre-accept preview of a pending invite (member-invite-acceptance
+    TASK.md §3): exactly what an invited-but-not-yet-a-user caller may see before setting a
+    password. Deliberately excludes id/tenant_id/token_hash/invited_by_user_id/status — an
+    unauthenticated caller needs nothing beyond what they are about to join; status is
+    implicitly "pending", the ONLY status this type is ever constructed for (see §3 Access
+    pattern: PreviewInviteUseCase never builds one for a non-pending invite — that path
+    raises instead).
+    """
+
+    tenant_name: str
+    email: str
+    role: Role
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class ImpersonationSession:
     """A time-boxed, revocable superadmin impersonation session-store record
     (impersonation-session-lifecycle TASK.md §3 Part D, FROZEN @ v1) — the THIRD use of the

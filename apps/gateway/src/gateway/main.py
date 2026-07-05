@@ -145,6 +145,7 @@ from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamR
 from gateway.tenants.api.batch_policy_router import batch_policy_router
 from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
+from gateway.tenants.api.invite_accept_router import invite_accept_router
 from gateway.tenants.api.invites_router import invites_router
 from gateway.tenants.api.platform_impersonation_router import platform_impersonation_router
 from gateway.tenants.api.platform_plans_router import platform_plans_router
@@ -154,6 +155,7 @@ from gateway.tenants.api.platform_users_router import platform_users_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.api.users_router import users_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
+from gateway.tenants.infrastructure.invite_public_rate_limiter import InvitePublicRateLimiter
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
 from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -923,6 +925,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Same redis_client; no IO at construction; fail-open on Redis outage.
     app.state.playground_mint_limiter = PlaygroundMintRateLimiter(redis=redis_client)
 
+    # Per-client-IP rate limiter for the public invite preview/accept endpoints
+    # (member-invite-acceptance TASK.md §3, M7). Same redis_client; no IO at construction;
+    # fail-open on Redis outage.
+    app.state.invite_public_limiter = InvitePublicRateLimiter(redis=redis_client)
+
     # Bandwidth pacing (stream-bandwidth-pacing, v36): per-key aggregate token-bucket.
     # rate==0 (default) → PassthroughBandwidthBucket → byte-identical (no pacing, no Redis).
     # Construction does NOT connect to Redis (safe without lifespan); tests override via app.state.
@@ -1099,6 +1106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(tenants_router)
     app.include_router(users_router)
     app.include_router(invites_router)
+    app.include_router(invite_accept_router)
     app.include_router(platform_tenants_router)
     app.include_router(platform_users_router)
     app.include_router(platform_tenant_config_router)

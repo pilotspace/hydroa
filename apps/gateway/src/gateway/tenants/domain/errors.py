@@ -43,6 +43,13 @@ class InviteNotPendingError(IdentityError):
     pass
 
 
+class InviteExpiredError(IdentityError):
+    """Invite resolved and its status IS 'pending', but expires_at has passed
+    (member-invite-acceptance TASK.md §3) — a computed check, never a persisted 4th status."""
+
+    pass
+
+
 class InviteEmailAlreadyMemberError(IdentityError):
     """Target email already belongs to an existing user in the caller's own tenant."""
 

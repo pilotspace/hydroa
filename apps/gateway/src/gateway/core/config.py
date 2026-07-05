@@ -962,6 +962,29 @@ class Settings(BaseSettings):
             )
         return v
 
+    # ── Member invite acceptance (member-invite-acceptance task) ────────────────
+    # Per-client-IP fixed-window rate limits for the two PUBLIC, unauthenticated invite
+    # endpoints (M7). Both must be > 0; fails fast at boot when set to 0 or negative.
+    invite_preview_rpm: int = 30  # GATEWAY_INVITE_PREVIEW_RPM
+    invite_accept_rpm: int = 10  # GATEWAY_INVITE_ACCEPT_RPM
+
+    @field_validator("invite_preview_rpm", "invite_accept_rpm")
+    @classmethod
+    def _validate_invite_positive_knobs(cls, v: int) -> int:
+        """Fail loud on a non-positive invite rate-limit knob (member-invite-acceptance).
+
+        A zero or negative value is a misconfiguration, not a disable signal: a functioning
+        per-IP limiter needs a strictly positive ceiling. Kept as its OWN validator (rather
+        than folded into _validate_agent_oauth_positive_knobs above) so a failure here
+        reports an invite-scoped field list, not an unrelated agent_oauth one.
+        """
+        if v <= 0:
+            raise ValueError(
+                "INVALID_INVITE_KNOB: invite_preview_rpm and invite_accept_rpm must each be "
+                f"a positive integer (> 0); got {v!r}"
+            )
+        return v
+
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":
         """If OIDC is enabled, required fields must be non-empty and domain_mapping valid JSON."""
