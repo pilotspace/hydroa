@@ -1,7 +1,7 @@
 import uuid
 from typing import Protocol
 
-from gateway.tenants.domain.entities import Identity, Role, User
+from gateway.tenants.domain.entities import Identity, ImpersonationContext, Role, User
 
 
 class IdentityRepository(Protocol):
@@ -42,7 +42,16 @@ class PasswordHasher(Protocol):
 
 class TokenService(Protocol):
     def issue(
-        self, *, user_id: uuid.UUID, tenant_id: uuid.UUID, role: Role, email: str
+        self,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        role: Role,
+        email: str,
+        # NEW optional kwargs (impersonation-session-lifecycle TASK.md §3 Part B, FROZEN @
+        # v1) — both None ⇒ byte-identical claims dict to today for every EXISTING caller.
+        impersonation: ImpersonationContext | None = None,
+        ttl_seconds: int | None = None,
     ) -> tuple[str, int]:
         """Returns (signed token, expires_in seconds)."""
         ...

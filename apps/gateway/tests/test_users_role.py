@@ -1,6 +1,6 @@
 """RED suite for GET /admin/users + PUT /admin/users/{id}/role (rbac-admin-ui TASK.md §4).
 
-Seven tests per the §4 plan:
+Seven tests per the §4 plan, plus one added by role-update-persistence-fix TASK.md §4:
   1. test_owner_assigns_any_tier           — owner sets operator/admin/owner -> 200 + audit
   2. test_admin_cannot_grant_owner_admin   — admin->owner/admin = 403; admin->operator/etc = 200
   3. test_self_role_change_forbidden       — caller PUTs own id -> 403
@@ -8,6 +8,8 @@ Seven tests per the §4 plan:
   5. test_role_validation                  — unknown role -> 400; cross-tenant user -> 404
   6. test_orm_accepts_six_roles            — create_all schema accepts all 6 role values
   7. test_list_users_returns_tenant_users  — GET /admin/users returns caller's tenant users
+  8. test_role_change_persists_past_request — the role survives an independent read after
+     the request's own session has closed (not just the response body)
 
 All assertions are behavioral (HTTP responses).  Identity JWTs are issued directly via
 app.state.token_service.issue() — same pattern as tests/rbac_roles/test_rbac_roles.py.
@@ -496,3 +498,45 @@ async def test_list_users_returns_tenant_users(
     # The seeded member is included
     member_ids = [u["id"] for u in users]
     assert str(seeded_users["member_id"]) in member_ids
+
+
+# ---------------------------------------------------------------------------
+# TEST 8: role change persists past the request (role-update-persistence-fix)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_role_change_persists_past_request(
+    client: httpx.AsyncClient,
+    seeded_users: dict[str, Any],
+    db_session: AsyncSession,
+) -> None:
+    """A role change must survive the request's own session closing.
+
+    `db_session` is a genuinely separate AsyncSession from the one the request handler
+    uses (each opened fresh via `app.state.sessionmaker()`) — reading through it after the
+    request returns proves the write is durable, not just visible to the request's own
+    response body or a read sharing its still-open transaction.
+    """
+    owner_token = seeded_users["owner_token"]
+    target_id = seeded_users["member_id"]
+    headers = _bearer(owner_token)
+
+    r = await client.put(
+        f"/admin/users/{target_id}/role",
+        json={"role": "admin"},
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["role"] == "admin"
+
+    row = await db_session.execute(
+        text("SELECT role FROM users WHERE id = :id"),
+        {"id": target_id},
+    )
+    persisted_role = row.scalar_one()
+    assert persisted_role == "admin", (
+        f"role change did not survive past the request — independent read saw "
+        f"{persisted_role!r}, expected 'admin' (the request's own response showed "
+        f"'admin' but the write was rolled back on session close)"
+    )

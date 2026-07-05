@@ -316,6 +316,10 @@ TEAM_NOT_FOUND = ErrorSpec(404, "ERR_TEAM_NOT_FOUND", "Team not found")
 #: User not found in the team / tenant.
 USER_NOT_FOUND = ErrorSpec(404, "ERR_USER_NOT_FOUND", "User not found in this tenant")
 
+#: Invite not found — unknown id OR belongs to a different tenant (no distinguishing oracle;
+#: member-invite-issuance TASK.md R8).
+INVITE_NOT_FOUND = ErrorSpec(404, "ERR_INVITE_NOT_FOUND", "Invite not found")
+
 #: Team member not found.
 MEMBER_NOT_FOUND = ErrorSpec(404, "ERR_MEMBER_NOT_FOUND", "Member not found")
 
@@ -328,6 +332,17 @@ TENANT_NOT_FOUND = ErrorSpec(404, "ERR_TENANT_NOT_FOUND", "Tenant not found")
 
 #: A team with this name already exists in the tenant.
 TEAM_EXISTS = ErrorSpec(409, "ERR_TEAM_EXISTS", "A team with this name already exists")
+
+#: Invite-create rejected — the target email already belongs to a user in the CALLER's own
+#: tenant (member-invite-issuance TASK.md R7; safe to disclose — caller already sees this
+#: roster via GET /admin/users).
+INVITE_EMAIL_ALREADY_MEMBER = ErrorSpec(
+    409, "ERR_INVITE_EMAIL_ALREADY_MEMBER", "This email already belongs to a member of your tenant"
+)
+
+#: Invite-revoke rejected — the resolved invite's status is not 'pending' (already accepted
+#: or already revoked; member-invite-issuance TASK.md R9).
+INVITE_NOT_PENDING = ErrorSpec(409, "ERR_INVITE_NOT_PENDING", "Invite is not in pending state")
 
 #: User is already a member of the team.
 MEMBER_EXISTS = ErrorSpec(409, "ERR_MEMBER_EXISTS", "User is already a member of this team")
@@ -617,6 +632,55 @@ PRESET_SELECTOR_INVALID = ErrorSpec(
 #: for all 5 entry points (chat, images, embeddings, audio STT, audio TTS).
 PRESET_NOT_FOUND = ErrorSpec(
     400, "ERR_PRESET_NOT_FOUND", "Preset selector did not resolve to a known model"
+)
+
+# ---------------------------------------------------------------------------
+# Plan catalog (plan-catalog task — superadmin plan/tier assignment surface)
+# ---------------------------------------------------------------------------
+
+#: PUT .../plan — plan_id (non-null) does not resolve to a real plans row (R5). Follows
+#: TENANT_NOT_FOUND/USER_NOT_FOUND's "admin action references an unknown id -> 404" idiom,
+#: NOT PRESET_NOT_FOUND's 400 (that code fires on a proxy-hot-path RUNTIME resolution
+#: failure — a different situation entirely).
+PLAN_NOT_FOUND = ErrorSpec(404, "ERR_PLAN_NOT_FOUND", "Plan not found")
+
+#: PUT .../plan — target tenant's kind == 'platform' (R4). The platform tenant can never
+#: hold a plan; a DB-level CHECK (ck_tenants_platform_no_plan) is the defense-in-depth
+#: backstop for this same invariant.
+PLAN_TENANT_INELIGIBLE = ErrorSpec(
+    403, "ERR_PLAN_TENANT_INELIGIBLE", "This tenant is not eligible for plan assignment"
+)
+
+# ---------------------------------------------------------------------------
+# Impersonation session lifecycle (impersonation-session-lifecycle task)
+# ---------------------------------------------------------------------------
+
+#: Mint — target tenant's kind == 'platform' (R4), OR target user's role is (defense-in-
+#: depth) superadmin (R6). Same code for both — `detail` distinguishes the reason.
+IMPERSONATION_TARGET_INVALID = ErrorSpec(
+    403, "ERR_IMPERSONATION_TARGET_INVALID", "Target is not eligible for impersonation"
+)
+
+#: Mint — the calling superadmin already holds an active (revoked_at IS NULL AND
+#: expires_at > now()) impersonation session (M7/R7). At most one at a time, per actor.
+IMPERSONATION_SESSION_ALREADY_ACTIVE = ErrorSpec(
+    409,
+    "ERR_IMPERSONATION_SESSION_ALREADY_ACTIVE",
+    "An impersonation session is already active for this superadmin",
+)
+
+#: End — session_id never resolves to any minted row (R8).
+IMPERSONATION_SESSION_NOT_FOUND = ErrorSpec(
+    404, "ERR_IMPERSONATION_SESSION_NOT_FOUND", "Impersonation session not found"
+)
+
+#: End — session_id resolves, but revoked_at IS NOT NULL or expires_at <= now() already
+#: (R9). Covers BOTH a repeat explicit End and a never-explicitly-ended-but-naturally-
+#: expired session under one rule/code.
+IMPERSONATION_SESSION_ALREADY_ENDED = ErrorSpec(
+    409,
+    "ERR_IMPERSONATION_SESSION_ALREADY_ENDED",
+    "Impersonation session already ended or expired",
 )
 
 # ---------------------------------------------------------------------------
