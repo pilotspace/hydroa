@@ -137,7 +137,7 @@ export function PlatformTenantDetail({ tenantId }: PlatformTenantDetailProps) {
           <PlatformKeysTab tenantId={tenantId} />
         </TabsContent>
         <TabsContent value="members">
-          <PlatformMembersTab tenantId={tenantId} />
+          <PlatformMembersTab tenantId={tenantId} tenantKind={tenant.kind} />
         </TabsContent>
         <TabsContent value="plan">
           <PlatformPlanTab tenantId={tenantId} />

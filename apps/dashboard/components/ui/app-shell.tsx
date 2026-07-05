@@ -87,6 +87,14 @@ export interface AppShellProps {
   role?: string | null;
   /** The signed-in user's email, shown in the sidebar footer when present. */
   userEmail?: string | null;
+  /**
+   * impersonation-ui TASK.md §3 CONTRACT M6 — additive, optional. Rendered between
+   * the skip-link and the fixed-viewport `lg:flex-row` row (after the skip-link in
+   * DOM order, so the skip-link stays the first focusable element — the frozen
+   * contract). Absent (every existing call site) → byte-identical default
+   * rendering, including the row's own `lg:h-screen` height class.
+   */
+  banner?: React.ReactNode;
 }
 
 function visibleItems(role?: string | null): NavItem[] {
@@ -183,7 +191,7 @@ function NavLinks({
   );
 }
 
-export function AppShell({ children, activePath, role, userEmail }: AppShellProps) {
+export function AppShell({ children, activePath, role, userEmail, banner }: AppShellProps) {
   const [collapsed, setCollapsed] = React.useState(false);
   const items = visibleItems(role);
   const brandIcon = <Hexagon className="size-5" />;
@@ -237,13 +245,31 @@ export function AppShell({ children, activePath, role, userEmail }: AppShellProp
         Skip to main content
       </a>
 
+      {/* impersonation-ui M6: rendered AFTER the skip-link (so it stays the first
+          focusable element) and BEFORE the fixed-viewport row. Absent by default —
+          every existing call site renders nothing extra here. */}
+      {banner}
+
       <Dialog>
         {/* Fixed-viewport app shell (v54): below lg the page scrolls as one document
             (min-h-screen, stacked). From lg the row is EXACTLY the viewport height and
             clips its own overflow, so the rail spans full height (lg:h-full, no sticky)
             and <main> owns the only scroll region — guaranteed full-height on any
-            browser/zoom, no double scrollbar. */}
-        <div className="flex min-h-screen flex-col lg:h-screen lg:flex-row lg:overflow-hidden">
+            browser/zoom, no double scrollbar.
+            impersonation-ui M6: the row's OWN height class is CONDITIONAL — the
+            literal "lg:h-screen" string when no banner is passed (byte-identical to
+            every existing call site), a calc-based reservation only when one is, so
+            banner-height + row-height always total exactly 100vh at the lg breakpoint
+            (no overlap, no extra page-level scroll). Never an always-on calc class —
+            that would silently break the frozen `toContain("lg:h-screen")` assertion
+            (tests/design-system/app-shell-sidebar.test.tsx) for every banner-less
+            call site. */}
+        <div
+          className={cn(
+            "flex min-h-screen flex-col lg:flex-row lg:overflow-hidden",
+            banner ? "lg:h-[calc(100vh-2.75rem)]" : "lg:h-screen",
+          )}
+        >
           {/* Mobile header — visible below the lg breakpoint; opens the nav sheet. */}
           <header className="flex items-center justify-between gap-2 border-b border-border bg-card p-3 lg:hidden">
             <SidebarBrand title={BRAND} icon={brandIcon} />

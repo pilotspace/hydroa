@@ -47,6 +47,16 @@ export const defaultHandlers = [
     })
   ),
 
+  // impersonation-ui (M7): DashboardShell now calls useImpersonationStatus()
+  // unconditionally, so every existing test that renders DashboardShell (directly,
+  // or via a page that mounts inside it) makes this call for the first time. MUST
+  // be an INITIAL handler (not a runtime server.use) for the same reason as the
+  // /api/auth/me default above — resetHandlers() must preserve it. Tests asserting
+  // impersonation-specific behavior override via their own server.use(...).
+  http.get(`${APP}/api/platform/impersonation`, () =>
+    HttpResponse.json({ active: false })
+  ),
+
   http.post(`${BASE}/admin/auth/signup`, () =>
     HttpResponse.json(
       { tenant_id: "t-1", user_id: "u-1" },
