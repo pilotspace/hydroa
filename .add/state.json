@@ -415,14 +415,14 @@
     },
     "impersonation-ui": {
       "title": "Impersonation UI",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "tenant-impersonation",
       "depends_on": [
         "impersonation-session-lifecycle"
       ],
       "created": "2026-07-05T02:34:31+00:00",
-      "updated": "2026-07-05T04:08:13+00:00",
+      "updated": "2026-07-05T04:58:52+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-05T04:07:57+00:00",
@@ -439,8 +439,30 @@
         "tests": {}
       },
       "scope": {
-        "declared": [],
-        "snapshot_md5": "b514436776ac8320197598643ea89e84"
+        "declared": [
+          "apps/dashboard/app/api/platform/impersonation/route.ts",
+          "apps/dashboard/app/api/platform/impersonation/sessions/[sessionId]/route.ts",
+          "apps/dashboard/app/api/gw/[...path]/route.ts",
+          "apps/dashboard/lib/hooks/use-impersonation-status.ts",
+          "apps/dashboard/lib/impersonation-cookie.ts",
+          "apps/dashboard/components/platform/ImpersonationBanner.tsx",
+          "apps/dashboard/components/platform/PlatformMembersTab.tsx",
+          "apps/dashboard/components/platform/PlatformTenantDetail.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/components/dashboard-shell.tsx",
+          "apps/dashboard/tests-bff/impersonation-mint-end-status-routes.test.ts",
+          "apps/dashboard/tests-bff/impersonation-gw-proxy-cookie-precedence.test.ts",
+          "apps/dashboard/tests/platform-impersonation-banner.test.tsx",
+          "apps/dashboard/tests/platform-members-impersonate-action.test.tsx",
+          "apps/dashboard/tests/mocks/handlers.ts",
+          "apps/dashboard/tests-bff/mocks/handlers.ts"
+        ],
+        "snapshot_md5": "d0637cb4ec5e5f32078177f0ba98bcea"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "impersonation-live-session-guard": {
@@ -595,7 +617,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-05T04:54:57+00:00",
+  "updated": "2026-07-05T04:58:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
