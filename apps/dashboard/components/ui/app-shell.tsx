@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, Layers, LogOut, Menu, MessageSquare, Mic, Receipt, Settings, ShieldCheck, Shuffle, Users } from "lucide-react";
+import { Activity, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, Layers, LogOut, Menu, MessageSquare, Mic, Receipt, Settings, ShieldCheck, Shuffle, Tags, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { bffAuthPost } from "@/lib/bff-client";
 import {
@@ -115,6 +115,13 @@ function showPlatformNav(role?: string | null): boolean {
 }
 
 const PLATFORM_TENANTS_HREF = "/app/platform/tenants";
+/**
+ * "Platform" -> "Plans" (plan-admin-ui, TASK.md M2) — a SECOND entry in the
+ * SAME allowlist-gated group, alongside "Tenants". Same `showPlatformNav`
+ * gate, same fail-CLOSED semantics; zero changes to the "Tenants" entry
+ * above, `visibleItems()`, or any of the 19 `NAV_ITEMS`.
+ */
+const PLATFORM_PLANS_HREF = "/app/platform/plans";
 
 function PlatformNavGroup({
   activePath,
@@ -132,6 +139,13 @@ function PlatformNavGroup({
         icon={<ShieldCheck className="size-4" />}
       >
         <span className={collapsed ? "sr-only" : undefined}>Tenants</span>
+      </SidebarItem>
+      <SidebarItem
+        href={PLATFORM_PLANS_HREF}
+        active={activePath === PLATFORM_PLANS_HREF}
+        icon={<Tags className="size-4" />}
+      >
+        <span className={collapsed ? "sr-only" : undefined}>Plans</span>
       </SidebarItem>
     </SidebarGroup>
   );
