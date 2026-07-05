@@ -291,6 +291,93 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "member-invite-issuance": {
+      "title": "Member invite issuance",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "team-member-invite",
+      "depends_on": [],
+      "created": "2026-07-03T00:00:00+00:00",
+      "updated": "2026-07-04T00:00:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f5837cf10697452ea0a84660cf4721fd",
+        "tests": {}
+      },
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-04T00:00:00+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "plan-catalog": {
+      "title": "Plan/tier data model \u2014 resolves platform-tenant-backed-usage scope",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-access-plan",
+      "depends_on": [],
+      "created": "2026-07-04T00:00:00+00:00",
+      "updated": "2026-07-04T00:00:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "bc70e59754c9b0044522eb31a56e067f",
+        "tests": {}
+      },
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-04T00:00:00+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "impersonation-session-lifecycle": {
+      "title": "Impersonation session lifecycle",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "tenant-impersonation",
+      "depends_on": [],
+      "created": "2026-07-03T00:00:00+00:00",
+      "updated": "2026-07-04T00:00:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0ccd6793805340fd1477dbdb23ad6c85",
+        "tests": {}
+      },
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-04T00:00:00+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -333,10 +420,18 @@
       "status": "queued",
       "created": "2026-07-03T16:30:16+00:00",
       "updated": "2026-07-03T16:30:16+00:00"
+    },
+    "team-member-invite": {
+      "title": "Team Member Invite",
+      "goal": "A tenant owner/admin can invite a new colleague by email into their own tenant with a chosen role, and that colleague can accept the invite and set their own password \u2014 without requiring SSO/domain-mapping to be configured",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-07-03T16:21:50+00:00",
+      "updated": "2026-07-03T16:21:50+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-04T22:35:00+00:00",
+  "updated": "2026-07-05T02:23:50+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
