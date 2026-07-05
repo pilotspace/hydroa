@@ -707,15 +707,49 @@ Tests live in: `apps/dashboard/tests/platform-plan-catalog.test.tsx` (catalog pa
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features>
+Scope (may touch):
+  `apps/dashboard/components/platform/PlatformPlanCatalog.tsx` (NEW — Screen 1, the 3-up card grid)
+  `apps/dashboard/components/platform/PlatformPlanTab.tsx` (NEW — Screen 2's 5th tab content)
+  `apps/dashboard/app/(app)/app/platform/plans/page.tsx` (NEW — thin Server Component wrapper,
+    mirrors `.../platform/tenants/page.tsx` exactly)
+  `apps/dashboard/components/ui/app-shell.tsx` (MODIFIED — additive 2nd `SidebarItem` inside the
+    EXISTING `PlatformNavGroup` only; do not touch `visibleItems()`, `NAV_ITEMS`, or the "Tenants"
+    entry)
+  `apps/dashboard/components/platform/PlatformTenantDetail.tsx` (MODIFIED — `TAB_VALUES` gains
+    `"plan"` + a 5th `TabsTrigger`/`TabsContent` pair only; the existing 4 tabs stay untouched)
+  `apps/dashboard/tests/platform-plan-catalog.test.tsx` (this task's own test file)
+  `apps/dashboard/tests/platform-plan-tab.test.tsx` (this task's own test file)
+  Explicitly OUT of scope: anything under `apps/gateway/` (no gateway-side change needed — a pure
+    UI consumer of plan-catalog's already-shipped, frozen contract) · `apps/dashboard/tests/
+    platform-tenant-detail.test.tsx` / `platform-nav.test.tsx` (read-only regression checks, not
+    edited) · `apps/dashboard/components/platform/PlatformBudgetTab.tsx` /
+    `PlatformKeysTab.tsx` (precedent to mirror, never modify).
+Strategy (ordered batches): 1. `PlatformPlanCatalog.tsx` (Screen 1 — no mutations, the simplest
+  slice; get `platform-plan-catalog.test.tsx`'s catalog-only tests green first) 2. nav wiring
+  (`app-shell.tsx`'s 2nd SidebarItem + the new `plans/page.tsx` route) — re-run the existing
+  `tests/design-system/app-shell-sidebar.test.tsx` immediately after touching `app-shell.tsx`,
+  before moving on 3. `PlatformPlanTab.tsx` read-only rendering (unplanned/assigned states, the
+  platform-tenant `kind==="platform"` pre-empt) 4. the inline seat-cap confirm + PUT mutation
+  (assign/switch/adjust-seat-cap, presence-check semantics for `seat_cap`) 5. the focus-trapped
+  remove-plan-assignment dialog (mirrors `PlatformKeysTab`'s revoke dialog verbatim) 6. wire the
+  5th tab into `PlatformTenantDetail.tsx` — re-run `platform-tenant-detail.test.tsx` immediately
+  after, before moving on 7. full `apps/dashboard` suite (both vitest projects) to confirm zero
+  regression on the two shared files this task edits.
 
-Persona (optional): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; absent = generic>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
+Persona (optional): frontend-engineer (`.add/personas/frontend-engineer.md`); consult
+  `ui-designer`/`ux-researcher` for the 3-up comparison-grid and inline-confirm interaction calls
+  specifically (both already decided at freeze — the personas inform execution polish, not scope).
+Spawn isolation (default): worktree — parallel build alongside 3 sibling tasks in this same round;
+  file scope is disjoint from all 3 (dashboard-only, no shared file with member-invite-acceptance
+  or impersonation-live-session-guard; no shared file with impersonation-ui either).
+Known-problem fixes: shared-file regressions (`app-shell.tsx`, `PlatformTenantDetail.tsx`) — re-run
+  each file's own existing test immediately after editing it (batches 2 and 6 above), not deferred
+  to the final full-suite pass, so a regression is caught at the smallest possible diff.
 Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
+Safety rule (feature-specific): the PUT body's `seat_cap` key is a PRESENCE check (touched-flag),
+  never a value-equality check — mirrors the backend's own `model_fields_set` semantics; getting
+  this wrong silently reintroduces M8/M9's override-vs-inherit bug at the client.
+Code lives in: `apps/dashboard/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token
