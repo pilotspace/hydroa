@@ -755,12 +755,23 @@ Strategy (ordered batches): 1. domain (ImpersonationSessionGuard Protocol in por
   7. the 2 concurrency/fault-injection tests last (highest setup cost, benefit most from the
   mechanism already being proven correct on the simple path).
 
-Persona (optional): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; absent = generic>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
+Persona (optional): appsec-engineer (`.add/personas/appsec-engineer.md` — same persona this task's
+  own design/contract drafting used, given `sensitivity: security`; the fail-closed liveness-check
+  lens carries through Build, not just Specify).
+Spawn isolation (default): worktree — parallel build alongside 3 sibling tasks this round; file
+  scope is disjoint from all 3 (gateway identity/authz files only; member-invite-acceptance touches
+  a different gateway bounded context — tenants/invite* — with zero file overlap).
+Known-problem fixes: the 4 downstream `GetIdentityUseCase(...)` direct-construction call sites
+  (agent_oauth/device_approval_router.py, auth/oidc_admin_router.py,
+  proxy/provider_keys_admin_router.py, plus its DI wiring in tenants/api/deps.py) are easy to miss
+  since they bypass the shared DI wiring — wire all 4 explicitly in batch 4, do not assume grep
+  alone will surface every one; re-confirm against the §0 GROUND list (5 call sites, not 1) before
+  declaring Build done.
 Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
+Safety rule (feature-specific): the liveness check is fail-CLOSED — any exception from
+  `DbImpersonationSessionGuard` (timeout, connection error, unexpected row shape) MUST raise the
+  same `InvalidTokenError` as an explicitly-ended session, never silently pass the caller through.
+Code lives in: `apps/gateway/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token
