@@ -28,16 +28,13 @@ Out (deferred to sibling tasks, not `plan-catalog`'s job):
     `plan-catalog` defines what a plan IS and lets a superadmin attach one; it does not wire any
     enforcement. That is `plan-budget-enforcement` / `plan-rate-enforcement` / `plan-seat-cap`'s job.
   - Any dashboard surface for the catalog or per-tenant plan assignment — `plan-admin-ui`.
-  - ⚠ **GENUINELY OPEN, not silently decided — needs Tin's confirmation:** the goal line's own
-    "platform-tenant-backed usage" reuses the reserved GLOSSARY term "platform tenant" literally,
-    which would scope `plan-budget-enforcement`/`plan-rate-enforcement` to ONLY usage riding on the
-    platform tenant's own credential fallback — a surface that does not exist yet (`platform-key-default`,
-    still queued, 0 tasks started). `plan-catalog` adopted the LOOSE reading as its working default
-    (a plan governs a customer tenant's usage generally, independent of BYOK/credential source),
-    disclosed but not re-litigated, reasoned in full in `plan-catalog` TASK.md §0 GROUND. If Tin
-    intends the literal reading instead, `plan-budget-enforcement`/`plan-rate-enforcement` need
-    re-sequencing to depend on `platform-key-default` shipping first — `plan-catalog`'s own
-    catalog/schema shape is unaffected either way.
+  - ~~GENUINELY OPEN~~ **RESOLVED by Tin 2026-07-05: the LITERAL reading stands.** The goal's
+    "platform-tenant-backed usage" means ONLY usage riding on the platform tenant's own credential
+    fallback. `plan-catalog` had shipped under a LOOSE working default (disclosed, not silent) — its
+    own catalog/schema shape is unaffected by this reversal (unchanged either way), but
+    `plan-budget-enforcement`/`plan-rate-enforcement` are now correctly sequenced (below) to depend
+    on `platform-key-default`, which has 0 tasks started — those two enforcement tasks are BLOCKED
+    until that milestone produces something to enforce against.
 
 ## Shared decisions & glossary deltas   (living — every task must honor these)
 - **Enum-vs-table, decided**: a `plans` reference table (not a hardcoded enum column) — a tier-ceiling
@@ -53,17 +50,17 @@ Out (deferred to sibling tasks, not `plan-catalog`'s job):
   to rediscover it; `plan-catalog`'s schema already leaves the `seat_cap` column additive for this.
 
 ## Shared / risky contracts (freeze these first)
-- The loose-vs-literal "platform-tenant-backed usage" scope reading (above) -> resolution owned by
-  Tin directly, not a task; whichever reading stands, owning task for acting on it is
-  `plan-budget-enforcement`/`plan-rate-enforcement`'s own sequencing.
 - `plans` table shape + `TenantRow.plan_id`/`seat_cap` columns (FROZEN @ v1) -> owning task `plan-catalog`
+- `platform-key-default`'s credential-fallback surface (not yet designed) -> whatever it produces is
+  what `plan-budget-enforcement`/`plan-rate-enforcement` meter against; those two tasks cannot freeze
+  their own §3 until `platform-key-default` exists.
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [x] plan-catalog              depends-on: none            — Plan/tier catalog table + tenant association + superadmin view/assign surface. DONE (PR #58). Absorbed the originally-separate `plan-assignment-admin` task's scope.
-- [ ] plan-admin-ui              depends-on: plan-catalog     — Dashboard surface for the plan catalog + per-tenant plan assignment (superadmin-only).
-- [ ] plan-budget-enforcement    depends-on: plan-catalog     — Wire `plans.budget_usd_monthly_default` (or the tenant's override) into actual spend enforcement. Sequencing depends on the open scope-reading question above.
-- [ ] plan-rate-enforcement      depends-on: plan-catalog     — Wire `plans.rpm_limit_default`/`tpm_limit_default` into actual rate enforcement, composing with (not replacing) the existing per-key rpm/tpm ceiling. Sequencing depends on the open scope-reading question above.
-- [ ] plan-seat-cap              depends-on: plan-catalog, member-invite-issuance   — Enforce `TenantRow.seat_cap` at both user-provisioning entry points (OIDC auto-provision + invite-accept).
+- [x] plan-catalog              depends-on: none                                   — Plan/tier catalog table + tenant association + superadmin view/assign surface. DONE (PR #58). Absorbed the originally-separate `plan-assignment-admin` task's scope.
+- [ ] plan-admin-ui              depends-on: plan-catalog                           — Dashboard surface for the plan catalog + per-tenant plan assignment (superadmin-only). UNBLOCKED — can start now.
+- [ ] plan-seat-cap              depends-on: plan-catalog, member-invite-issuance   — Enforce `TenantRow.seat_cap` at both user-provisioning entry points (OIDC auto-provision + invite-accept). UNBLOCKED — can start now.
+- [ ] plan-budget-enforcement    depends-on: plan-catalog, platform-key-default     — Wire `plans.budget_usd_monthly_default` (or the tenant's override) into actual spend enforcement against platform-tenant-backed usage. BLOCKED on `platform-key-default` (literal reading, confirmed 2026-07-05).
+- [ ] plan-rate-enforcement      depends-on: plan-catalog, platform-key-default     — Wire `plans.rpm_limit_default`/`tpm_limit_default` into actual rate enforcement against platform-tenant-backed usage, composing with (not replacing) the existing per-key rpm/tpm ceiling. BLOCKED on `platform-key-default` (literal reading, confirmed 2026-07-05).
 
 ## Exit criteria (observable; map each to the task that delivers it)
 - [x] A superadmin can view the plan catalog and see/change which plan a tenant is on   (← plan-catalog)
