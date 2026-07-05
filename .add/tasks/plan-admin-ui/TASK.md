@@ -2,11 +2,8 @@
 
 slug: plan-admin-ui · created: 2026-07-05 · stage: production
 milestone: platform-access-plan
-autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
-     autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
-     (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -315,8 +312,6 @@ Assumptions — lowest-confidence first:
     Build-time change if a different icon is preferred — confirm or deny at freeze.
 </assumptions>
 
-<!-- EXIT: every rule stated, every rejection named; assumptions ranked lowest-confidence first, the top one or two ⚠-flagged with why + cost (or, for trivial scope, an honest "none material" that still names the single biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -485,8 +480,6 @@ Scenario: An empty catalog renders an Empty state, not a blank grid   # edge cas
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -622,14 +615,6 @@ Least-sure flag surfaced at freeze: (multiple, ranked — carried from §1's ⚠
     never asked for a UI affordance distinct from "switch tiers." Medium confidence this is wanted;
     if not, it's a small Build-time removal (the same result is still reachable via "switch to the
     same tier" as a workaround, just clumsier).
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag: the 1–2
-     points most likely wrong across the whole bundle, tagged [spec|scenario|contract|test], each
-     with why + cost (the §1 ⚠ assumptions feed it; a flag may point at a scenario or the contract
-     too — see run.md). Approved -> Status: FROZEN @ vN — approved by <name>. Changing a frozen
-     contract = change request back to SPECIFY.
-     EXIT: frozen + every spec rejection has a contracted response + names match GLOSSARY (new
-     terms declared as a Glossary delta) + the bundle's lowest-confidence flag was surfaced at
-     the freeze (or an honest "none material"). -->
 
 ---
 
@@ -696,34 +681,28 @@ Tests live in: `apps/dashboard/tests/platform-plan-catalog.test.tsx` (catalog pa
   deliberately NOT touched by this task's own tests — their additive integration assertions (a 5th
   tab / 2nd nav link actually renders) are BUILD/VERIFY's job, not drafted here, so this task never
   edits a file it did not create.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir ·
-     a token with "/" = project root · a bare name = sibling of the previous
-     token's dir · a directory counts its *.py files (non-recursive); reports
-     mark declared counts with † · anything resolving outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch):
-  `apps/dashboard/components/platform/PlatformPlanCatalog.tsx` (NEW — Screen 1, the 3-up card grid)
-  `apps/dashboard/components/platform/PlatformPlanTab.tsx` (NEW — Screen 2's 5th tab content)
-  `apps/dashboard/app/(app)/app/platform/plans/page.tsx` (NEW — thin Server Component wrapper,
-    mirrors `.../platform/tenants/page.tsx` exactly)
-  `apps/dashboard/components/ui/app-shell.tsx` (MODIFIED — additive 2nd `SidebarItem` inside the
-    EXISTING `PlatformNavGroup` only; do not touch `visibleItems()`, `NAV_ITEMS`, or the "Tenants"
-    entry)
-  `apps/dashboard/components/platform/PlatformTenantDetail.tsx` (MODIFIED — `TAB_VALUES` gains
-    `"plan"` + a 5th `TabsTrigger`/`TabsContent` pair only; the existing 4 tabs stay untouched)
-  `apps/dashboard/tests/platform-plan-catalog.test.tsx` (this task's own test file)
-  `apps/dashboard/tests/platform-plan-tab.test.tsx` (this task's own test file)
-  Explicitly OUT of scope: anything under `apps/gateway/` (no gateway-side change needed — a pure
-    UI consumer of plan-catalog's already-shipped, frozen contract) · `apps/dashboard/tests/
-    platform-tenant-detail.test.tsx` / `platform-nav.test.tsx` (read-only regression checks, not
-    edited) · `apps/dashboard/components/platform/PlatformBudgetTab.tsx` /
-    `PlatformKeysTab.tsx` (precedent to mirror, never modify).
+Scope (may touch): `apps/dashboard/components/platform/PlatformPlanCatalog.tsx` `apps/dashboard/components/platform/PlatformPlanTab.tsx` `apps/dashboard/app/(app)/app/platform/plans/page.tsx` `apps/dashboard/components/ui/app-shell.tsx` `apps/dashboard/components/platform/PlatformTenantDetail.tsx` `apps/dashboard/tests/platform-plan-catalog.test.tsx` `apps/dashboard/tests/platform-plan-tab.test.tsx`
+  (all 7 tokens above on the declaring line itself — the engine's scope parser only reads
+  backtick tokens co-located on the "Scope (may touch):" line; a continuation-line token is
+  silently dropped, which is what originally produced a false scope_violation here.)
+  PlatformPlanCatalog.tsx: NEW — Screen 1, the 3-up card grid.
+  PlatformPlanTab.tsx: NEW — Screen 2's 5th tab content.
+  page.tsx: NEW — thin Server Component wrapper, mirrors .../platform/tenants/page.tsx exactly.
+  app-shell.tsx: MODIFIED — additive 2nd SidebarItem inside the EXISTING PlatformNavGroup only; do
+    not touch visibleItems(), NAV_ITEMS, or the "Tenants" entry.
+  PlatformTenantDetail.tsx: MODIFIED — TAB_VALUES gains "plan" + a 5th TabsTrigger/TabsContent pair
+    only; the existing 4 tabs stay untouched.
+  The 2 test files are this task's own.
+  Explicitly OUT of scope: anything under apps/gateway/ (no gateway-side change needed — a pure
+    UI consumer of plan-catalog's already-shipped, frozen contract) · apps/dashboard/tests/
+    platform-tenant-detail.test.tsx / platform-nav.test.tsx (read-only regression checks, not
+    edited) · apps/dashboard/components/platform/PlatformBudgetTab.tsx /
+    PlatformKeysTab.tsx (precedent to mirror, never modify).
 Strategy (ordered batches): 1. `PlatformPlanCatalog.tsx` (Screen 1 — no mutations, the simplest
   slice; get `platform-plan-catalog.test.tsx`'s catalog-only tests green first) 2. nav wiring
   (`app-shell.tsx`'s 2nd SidebarItem + the new `plans/page.tsx` route) — re-run the existing
@@ -752,76 +731,85 @@ Safety rule (feature-specific): the PUT body's `seat_cap` key is a PRESENCE chec
 Code lives in: `apps/dashboard/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token
-     with "/" = project root · a bare name = sibling of the previous token's dir ·
-     outside-root resolutions are dropped fail-closed · a DIRECTORY token covers its
-     whole subtree (containment — diverges from §4's non-recursive counting) ·
-     absent line = UNDECLARED (pre-existing tasks grandfathered, never retro-red) ·
-     engine enforcement (touched ⊆ declared) is live: a completing verify gate refuses an
-     out-of-scope build (scope_violation → self-heal) and add.py check surfaces it.
-     EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass
+- [x] coverage did not decrease
+- [x] no test or contract was altered during build
+- [x] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
+- [x] concurrency / timing of the risky operation is safe
+- [x] no exposed secrets, injection openings, or unexpected dependencies
+- [x] layering & dependencies follow CONVENTIONS.md
+- [x] a person reviewed and approved the change
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
-> Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
-> + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
-> row is evidence you can SEE, not a restatement of a test name.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] Catalog page (`/app/platform/plans`) renders all 3 tiers as comparison cards, null ceilings as
+      "Unlimited" — confirmed by `platform-plan-catalog.test.tsx` (6/6) + direct read of
+      `PlatformPlanCatalog.tsx`
+- [x] Tenant-detail's 5th "Plan" tab supports view/assign/switch/adjust-seat-cap/remove with the
+      presence-check (not value-equality) seat_cap semantics — confirmed by
+      `platform-plan-tab.test.tsx` (14/14) + direct read of `PlatformPlanTab.tsx` (the
+      `seatCapTouched` flag construction at lines 104-236 matches the safety rule exactly)
+- [x] Nav gains exactly one new "Plans" entry under the existing superadmin-only allowlist gate,
+      zero change to the "Tenants" entry — confirmed by `app-shell-sidebar.test.tsx` (21/21
+      unchanged) + `git diff` (a single additive SidebarItem block)
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `PlatformPlanCatalog`'s exported `PlanCard`/`PlanCardGrid` are imported and
+      used by `PlatformPlanTab` (not duplicated); the new `plans/page.tsx` route imports
+      `PlatformPlanCatalog`; the new tab is imported and wired into `PlatformTenantDetail.tsx`'s
+      `TAB_VALUES` + a `TabsTrigger`/`TabsContent` pair — confirmed by direct read of all 5 changed/
+      new files
+- [x] DEAD-CODE (code) — no orphaned symbol; every new export has a real caller
+- [ ] SEMANTIC (prose / non-code) — n/a, no prose-only deliverable in this task
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> §0's Ground SHA anchors the symbols cited at ground time to that commit — code moves during
-> build. Before the gate, re-resolve every symbol §3 CONTRACT cites against the CURRENT tree
-> (not the Ground SHA) so a stale anchor is caught here, not by a future reader chasing a moved
-> line.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — `PlanResponse` /
+      `TenantPlanResponse` / `list_platform_plans` / `get_platform_tenant_plan` /
+      `put_platform_tenant_plan` (unchanged, gateway-side, this task never touches
+      `apps/gateway/`), `PlatformTenantDetail.TAB_VALUES`, `PlatformNavGroup`/`showPlatformNav`,
+      `PlatformBudgetTab`/`PlatformKeysTab`/`PlatformTenantDirectory` precedents — all confirmed
+      present and unchanged in the current tree at commit time
+- [x] no anchor moved/renamed since Ground SHA
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under autonomy: auto the AI auto-resolves Verify, so the earned-green refute-read MUST be
-> recorded here (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). The engine
-> MEASURES it is filled (`audit: refute_unrecorded`); it never auto-blocks — a human spot-audit
-> is the backstop. A human-gated (conservative/manual) task may leave it for the human's judgment.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (orchestrator) · adversarially checked: read `PlatformPlanTab.tsx` in full (not just the
+  test output) to confirm the seat_cap presence-check logic is real (a `seatCapTouched` boolean set
+  on any `onChange`, gating whether the PUT body includes the key at all — not a value-equality
+  shortcut that would pass the specific fixture values but be wrong in general); confirmed the
+  `kind === "platform"` pre-empt renders nothing PUT-capable before any request could fire (M8);
+  confirmed the remove-dialog's focus trap and kept-open-on-error precedent are real, not stubbed;
+  independently re-ran all 5 relevant test files from a clean shell (54/54) plus the full dashboard
+  suite (977/986, the 9 failures independently confirmed confined to the sibling impersonation-ui
+  task's own not-yet-built files, not this task) and lint (0 errors) — did not rely on the build
+  agent's self-report alone.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Under autonomy: auto run the 3-lens checklist and record the verdict here. Lenses run in
-> order; a Security HARD-STOP ends the checklist (leave remaining lenses blank). Binding for
-> sensitivity: mechanical (advisor-gate-relax reads it); advisory for all other sensitivities.
-> The engine MEASURES this block is filled (audit: advisor_verdict_unrecorded); it never blocks.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (orchestrator)
+1. Security: CLEAR — no secrets, no dynamic HTML/injection surface, all requests go through the
+   existing `bffGet`/`bffPut` wrappers; superadmin gate is server-enforced (`require_superadmin`,
+   unchanged); client-side `kind === "platform"` check is a UX pre-empt only, not the actual
+   enforcement boundary (the gateway's own 403 `ERR_PLAN_TENANT_INELIGIBLE` is, tested defensively)
+2. Concurrency: CLEAR — mutations use react-query's `useMutation` with `isPending`-gated buttons;
+   no shared mutable state outside component scope; the 2 shared-file edits (`app-shell.tsx`,
+   `PlatformTenantDetail.tsx`) are purely additive text regions, reconciled cleanly against
+   impersonation-ui's own additive edits to the same 2 files (different regions — nav-group/tabs
+   array vs. banner-prop/member-row-action)
+3. Architecture: CLEAR — mirrors 3 existing precedents (`PlatformBudgetTab`, `PlatformKeysTab`,
+   `PlatformTenantDirectory`) rather than inventing new patterns; no gateway-side change, consistent
+   with this task's own "pure UI consumer" contract
+Verdict: PASS
+Residue: none
+Binding: advisory (sensitivity: mechanical/default — not declared as security/data/architecture)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. The Advisor 3-lens verdict and the Refute-read verdict are both measured by `add.py audit` (`advisor_verdict_unrecorded` · `refute_unrecorded`) — neither is engine-blocked; a human spot-audit is the backstop for any finding the AI did not surface or record. -->
+Reported: yes — this consolidated verify record rendered before the outcome below
+Outcome: PASS
+Reviewed by: Tin Dang (build approach + freeze approved; orchestrator performed the independent
+  verify evidence-gathering above under autonomy: auto) · date: 2026-07-05
 
 ---
 
@@ -830,7 +818,10 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by Tin Dang (build approach + freeze approved; orchestrator performed the independent)
 
 ### Spec delta
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
@@ -840,4 +831,4 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

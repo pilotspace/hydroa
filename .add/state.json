@@ -475,14 +475,14 @@
     },
     "plan-admin-ui": {
       "title": "Plan admin UI",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "platform-access-plan",
       "depends_on": [
         "plan-catalog"
       ],
       "created": "2026-07-05T02:34:35+00:00",
-      "updated": "2026-07-05T04:08:15+00:00",
+      "updated": "2026-07-05T04:54:57+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-05T04:07:57+00:00",
@@ -500,9 +500,35 @@
       },
       "scope": {
         "declared": [
-          ".add/tasks/plan-admin-ui/src/"
+          "apps/dashboard/components/platform/PlatformPlanCatalog.tsx",
+          "apps/dashboard/components/platform/PlatformPlanTab.tsx",
+          "apps/dashboard/app/(app)/app/platform/plans/page.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/components/platform/PlatformTenantDetail.tsx",
+          "apps/dashboard/tests/platform-plan-catalog.test.tsx",
+          "apps/dashboard/tests/platform-plan-tab.test.tsx"
         ],
-        "snapshot_md5": "b514436776ac8320197598643ea89e84"
+        "snapshot_md5": "f94c3860069101ef0a2567604bd75c03"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-05T04:50:03+00:00",
+            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/platform/plans/page.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanCatalog.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanTab.tsx \u00b7 apps/dashboard/components/platform/PlatformTenantDetail.tsx \u00b7 apps/dashboard/components/ui/app-shell.tsx (10 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-05T04:53:47+00:00",
+            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/platform/plans/page.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanCatalog.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanTab.tsx \u00b7 apps/dashboard/components/platform/PlatformTenantDetail.tsx \u00b7 apps/dashboard/components/ui/app-shell.tsx (10 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "plan-seat-cap": {
@@ -569,7 +595,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-05T04:08:15+00:00",
+  "updated": "2026-07-05T04:54:57+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
