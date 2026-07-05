@@ -138,7 +138,7 @@ async def preview_invite(
     client_ip = _resolve_client_ip(request)
     limiter: InvitePublicRateLimiter = request.app.state.invite_public_limiter
     try:
-        await limiter.check(key=client_ip, limit=settings.invite_preview_rpm)
+        await limiter.check(action="preview", key=client_ip, limit=settings.invite_preview_rpm)
     except InviteRateLimitedError as exc:
         raise RATE_LIMITED.exc(headers={"Retry-After": str(exc.retry_after)}) from None
 
@@ -181,7 +181,7 @@ async def accept_invite(
     client_ip = _resolve_client_ip(request)
     limiter: InvitePublicRateLimiter = request.app.state.invite_public_limiter
     try:
-        await limiter.check(key=client_ip, limit=settings.invite_accept_rpm)
+        await limiter.check(action="accept", key=client_ip, limit=settings.invite_accept_rpm)
     except InviteRateLimitedError as exc:
         raise RATE_LIMITED.exc(headers={"Retry-After": str(exc.retry_after)}) from None
 

@@ -119,10 +119,7 @@ async def _backdate_invite_expiry(
     always a COMPUTED check, never a write); mirrors seed_expired_authorization's role for
     device_authorizations in the device-approval-flow suite."""
     await db_session.execute(
-        text(
-            "UPDATE invites SET expires_at = now() - make_interval(secs => :secs) "
-            "WHERE id = :id"
-        ),
+        text("UPDATE invites SET expires_at = now() - make_interval(secs => :secs) WHERE id = :id"),
         {"id": uuid.UUID(invite_id), "secs": seconds_ago},
     )
     await db_session.commit()
@@ -641,3 +638,41 @@ async def test_concurrent_double_accept_never_two_successes(
     statuses = sorted([r1.status_code, r2.status_code])
     assert statuses == [200, 409], f"expected exactly one 200 and one 409, got {statuses}"
     assert await _users_count_for_email(db_session, "race@co.io") == 1
+
+
+# ---------------------------------------------------------------------------
+# TEST 17: Preview and accept rate limits are independently counted   [review finding, M7]
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_preview_and_accept_rate_limits_counted_independently(
+    low_rpm_app_and_client: tuple[Any, httpx.AsyncClient],
+) -> None:
+    """Exhausting the preview limit must NOT count against the accept limit (or vice versa) —
+    the two endpoints have independently configured rpm knobs (§3), so they must not share one
+    Redis counter. Regression test for a review finding: `InvitePublicRateLimiter`'s window key
+    originally keyed on client IP alone with no action discriminator, so both endpoints spent
+    from the same budget; the FIRST endpoint called in a window would silently consume the
+    OTHER endpoint's allowance.
+
+    With invite_preview_rpm=2 / invite_accept_rpm=2 (`low_rpm_app_and_client`): 2 preview calls
+    exhaust preview's own counter (both still 404, not 429 — the limiter allows exactly `limit`
+    requests before rejecting). A 3rd call, to the DIFFERENT accept endpoint, must still be
+    judged against accept's OWN fresh counter — reaching the token-lookup 404, never a 429 —
+    proving the two counters are independent, not shared.
+    """
+    _application, low_client = low_rpm_app_and_client
+    preview_token = secrets.token_urlsafe(32)
+
+    r1 = await low_client.get(f"/invites/{preview_token}")
+    _assert_error(r1, 404, "ERR_INVITE_NOT_FOUND")
+    r2 = await low_client.get(f"/invites/{preview_token}")
+    _assert_error(r2, 404, "ERR_INVITE_NOT_FOUND")
+
+    accept_token = secrets.token_urlsafe(32)
+    r3 = await low_client.post(
+        f"/invites/{accept_token}/accept",
+        json={"password": "correct horse battery staple"},
+    )
+    _assert_error(r3, 404, "ERR_INVITE_NOT_FOUND")

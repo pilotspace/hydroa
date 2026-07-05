@@ -14,9 +14,12 @@ Design for failure (CLAUDE.md IO rule):
 - Window key uses ``INCR`` + ``EXPIRE`` (set only on the first INCR) so the window is a
   fixed 60-second bucket; a race at key creation double-counts at most one request.
 
-Key format: ``invite:public:rl:{key}:{window_epoch_minute}``
+Key format: ``invite:public:rl:{action}:{key}:{window_epoch_minute}``
   ``window_epoch_minute`` = ``int(time.time() // 60)`` — one bucket per UTC minute.
   ``key`` is the caller's client IP (both GET preview and POST accept key by IP, M7).
+  ``action`` discriminates preview from accept — the two endpoints have independently
+  configured limits (``invite_preview_rpm`` / ``invite_accept_rpm``); without this segment
+  both endpoints would silently share one counter and compete for whichever limit is lower.
 """
 
 from __future__ import annotations
@@ -50,10 +53,10 @@ class InvitePublicRateLimiter:
     def __init__(self, redis: object) -> None:
         self._redis = redis
 
-    def _window_key(self, key: str) -> str:
+    def _window_key(self, *, action: str, key: str) -> str:
         """Return the Redis key for the current 60-second window bucket."""
         bucket = int(time.time() // self._WINDOW_SECONDS)
-        return f"invite:public:rl:{key}:{bucket}"
+        return f"invite:public:rl:{action}:{key}:{bucket}"
 
     def _seconds_to_next_window(self) -> int:
         """Seconds remaining until the next 60-second window starts (1..60)."""
@@ -62,10 +65,12 @@ class InvitePublicRateLimiter:
         remaining = self._WINDOW_SECONDS - elapsed
         return max(1, int(remaining) + 1)
 
-    async def check(self, *, key: str, limit: int) -> None:
+    async def check(self, *, action: str, key: str, limit: int) -> None:
         """Increment the per-key counter and raise ``InviteRateLimitedError`` if over limit.
 
         Args:
+            action: discriminates the endpoint being limited (e.g. ``"preview"`` /
+                ``"accept"``) so two differently-configured limits never share one counter.
             key: the caller's client IP (part of the Redis key).
             limit: maximum allowed requests per 60-second window.
 
@@ -76,7 +81,7 @@ class InvitePublicRateLimiter:
         Returns:
             None on success (counter within limit) or on Redis error (fail-open).
         """
-        window_key = self._window_key(key)
+        window_key = self._window_key(action=action, key=key)
         try:
             count: int = await self._redis.incr(window_key)  # type: ignore[union-attr]
             if count == 1:
