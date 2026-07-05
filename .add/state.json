@@ -267,6 +267,30 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "batch-observability-scaffolding": {
+      "title": "Batch observability scaffolding: window-latency + placeholder completion metrics",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-03T17:25:21+00:00",
+      "updated": "2026-07-04T08:22:24+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "bf1ec333b9b5cc21a392dadf8456ee71",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "94c9a96a63f8c730cf016967cfda6326"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -301,10 +325,18 @@
       "status": "queued",
       "created": "2026-07-02T15:53:54+00:00",
       "updated": "2026-07-02T15:53:54+00:00"
+    },
+    "v58": {
+      "title": "Batch-discounted chat completions: provider integration",
+      "goal": "a tenant can process a set of chat-completion requests as one discounted batch job instead of many synchronous calls, with the existing response cache still applied per item \u2014 real OpenAI/Anthropic Batch API submission, cache pre-filtering, and batch-discount billing",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-03T16:30:16+00:00",
+      "updated": "2026-07-03T16:30:16+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-03T14:42:41+00:00",
+  "updated": "2026-07-04T22:35:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1156,6 +1188,19 @@
         "ops-platform-job-identity",
         "superadmin-login",
         "superadmin-audit-foundation"
+      ],
+      "archived": "2026-07-03"
+    },
+    {
+      "slug": "v57",
+      "title": "Batch-discounted chat completions",
+      "tasks": 5,
+      "task_slugs": [
+        "batch-job-store",
+        "batch-dashboard-surface",
+        "batch-auto-grouping",
+        "batch-window-grouping",
+        "batch-claim-drain-del"
       ],
       "archived": "2026-07-03"
     }

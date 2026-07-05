@@ -308,6 +308,19 @@ async def _real_chat(
             model_router=_model_router,
         )
 
+    # batch-window-grouping (§3, G8): complete()'s return type is now a union
+    # (dict[str, Any] | BatchDivertedStream). This call site never passes a
+    # batch_processor (realtime voice-chat is a synchronous single turn, never
+    # diverted), so a BatchDivertedStream is not reachable here today — guarded
+    # anyway (never assume a union member away): degrade to "no reply text",
+    # exactly like the other malformed-shape cases below, rather than an
+    # AttributeError on a plain dict method.
+    from gateway.proxy.domain.ports import BatchDivertedStream
+
+    if isinstance(_resp_body, BatchDivertedStream):
+        _log.warning("realtime chat completion unexpectedly diverted; returning empty reply")
+        return ""
+
     # Extract reply text from choices[0].message.content
     choices = _resp_body.get("choices", [])
     if choices and isinstance(choices, list):

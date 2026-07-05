@@ -1,0 +1,102 @@
+{
+  "root": "screen",
+  "capture": null,
+  "note": "batch-dashboard-surface, RE-INTAKE 2026-07-03 after the submit+monitor direction (see prototypes/batches-workspace.json, retired) was reversed by Tin. Modeled directly on the shipped components/usage/UsagePage.tsx: hero (headline stat) + StatCard grid, minus UsagePage's Tabs wrapper (no equivalent secondary data here). Divergence from that precedent: minRole:\"admin\" end-to-end (UsagePage/SpendPage are open to every role) — Tin's own words named \"admin\" as the viewer. No local headless-capture tooling in this worktree (same constraint as before) — substituted with a published interactive Artifact: https://claude.ai/code/artifact/59915859-9d30-47dd-bef2-660486a82e65. Design-confirm OUTSTANDING — not yet approved by Tin.",
+  "elements": {
+    "screen": {
+      "type": "Screen",
+      "props": {
+        "bg": "{semantic.color.surface-muted}",
+        "padding": "{semantic.space.inset-lg}"
+      },
+      "children": ["header", "hero_card", "stat_grid", "empty_block"]
+    },
+    "header": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.control}",
+        "gap": "{semantic.space.gap-sm}"
+      },
+      "children": ["title", "subtitle"]
+    },
+    "title": {
+      "type": "Heading",
+      "props": { "text": "Batches (Admin only)", "color": "{semantic.color.text}", "size": "{semantic.font.size.title}", "level": "1" }
+    },
+    "subtitle": {
+      "type": "Text",
+      "props": {
+        "text": "How much this tenant is saving by processing eligible requests as discounted batch jobs instead of standard synchronous calls, and how that traffic is moving through the pipeline.",
+        "color": "{semantic.color.text-muted}",
+        "size": "{semantic.font.size.body}"
+      }
+    },
+    "hero_card": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.card}",
+        "gap": "{semantic.space.gap-md}"
+      },
+      "children": ["savings_stat"]
+    },
+    "savings_stat": {
+      "type": "StatCard",
+      "props": {
+        "label": "Total saved via batching",
+        "value": "$0.00",
+        "bg": "{semantic.color.surface}",
+        "valueColor": "{semantic.color.text}"
+      }
+    },
+    "stat_grid": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface-muted}",
+        "gap": "{semantic.space.gap-md}"
+      },
+      "children": ["volume_stat", "succeeded_stat", "errored_stat", "in_progress_stat"]
+    },
+    "volume_stat": {
+      "type": "StatCard",
+      "props": { "label": "Batched requests", "value": "0", "bg": "{semantic.color.surface}", "valueColor": "{semantic.color.text}" }
+    },
+    "succeeded_stat": {
+      "type": "StatCard",
+      "props": { "label": "Succeeded", "value": "0", "bg": "{semantic.color.surface}", "valueColor": "{semantic.color.success}" }
+    },
+    "errored_stat": {
+      "type": "StatCard",
+      "props": { "label": "Errored", "value": "0", "bg": "{semantic.color.surface}", "valueColor": "{semantic.color.danger}" }
+    },
+    "in_progress_stat": {
+      "type": "StatCard",
+      "props": { "label": "In progress", "value": "0", "bg": "{semantic.color.surface}", "valueColor": "{semantic.color.warning}" }
+    },
+    "empty_block": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.card}",
+        "gap": "{semantic.space.gap-sm}"
+      },
+      "children": ["empty_heading", "empty_desc", "manage_link"]
+    },
+    "empty_heading": {
+      "type": "Heading",
+      "props": { "text": "No batch activity yet", "size": "{semantic.font.size.heading}", "level": "2" }
+    },
+    "empty_desc": {
+      "type": "Text",
+      "props": { "text": "Numbers above are honest zeros, not placeholders — they'll move on their own once batching is active for this tenant. Batch processing is currently off.", "color": "{semantic.color.text-muted}", "size": "{semantic.font.size.caption}" }
+    },
+    "manage_link": {
+      "type": "Button",
+      "props": { "label": "Manage in Settings", "variant": "ghost" }
+    }
+  }
+}

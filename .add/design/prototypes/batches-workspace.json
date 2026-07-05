@@ -1,0 +1,120 @@
+{
+  "root": "screen",
+  "capture": null,
+  "note": "batch-dashboard-surface, DRAFT 2026-07-03 — not yet confirmed by Tin (design-intake axes were derived from precedent + a timed-out AskUserQuestion, see DESIGN.md). No captures/*.png — no local headless-capture tooling in this worktree; substituted with a published interactive Artifact (see TASK.md). Settings-tab half (toggle + savings StatCard) intentionally not modeled here — near-identical CacheSettings.tsx clone, described in TASK.md §1 instead.",
+  "elements": {
+    "screen": {
+      "type": "Screen",
+      "props": {
+        "bg": "{semantic.color.surface-muted}",
+        "padding": "{semantic.space.inset-lg}"
+      },
+      "children": ["header", "composer_card", "joblist_card"]
+    },
+    "header": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.control}",
+        "gap": "{semantic.space.gap-sm}"
+      },
+      "children": ["title", "subtitle"]
+    },
+    "title": {
+      "type": "Heading",
+      "props": { "text": "Batches", "color": "{semantic.color.text}", "size": "{semantic.font.size.title}", "level": "1" }
+    },
+    "subtitle": {
+      "type": "Text",
+      "props": {
+        "text": "Submit many chat-completion requests as one job at the provider's batch rate. Cache hits still resolve at $0 before anything is queued.",
+        "color": "{semantic.color.text-muted}",
+        "size": "{semantic.font.size.body}"
+      }
+    },
+    "composer_card": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.card}",
+        "gap": "{semantic.space.gap-md}"
+      },
+      "children": ["composer_heading", "composer_desc", "jsonl_input", "composer_hint", "clear_button", "submit_button"]
+    },
+    "composer_heading": {
+      "type": "Heading",
+      "props": { "text": "Submit a batch", "size": "{semantic.font.size.heading}", "level": "2" }
+    },
+    "composer_desc": {
+      "type": "Text",
+      "props": { "text": "One JSON object per line (JSONL) — each line is an independent request, same shape as the OpenAI/Anthropic batch file format.", "color": "{semantic.color.text-muted}", "size": "{semantic.font.size.caption}" }
+    },
+    "jsonl_input": {
+      "type": "Textarea",
+      "props": {
+        "placeholder": "{\"custom_id\": \"req-1\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {...}}",
+        "border": "{semantic.color.border}",
+        "ring": "{semantic.color.focus-ring}",
+        "font": "mono"
+      }
+    },
+    "composer_hint": {
+      "type": "Text",
+      "props": { "text": "Duplicate custom_id, empty body, or malformed JSON rejects the whole submission — zero rows created.", "color": "{semantic.color.text-muted}", "size": "{semantic.font.size.caption}" }
+    },
+    "clear_button": {
+      "type": "Button",
+      "props": { "label": "Clear", "variant": "ghost" }
+    },
+    "submit_button": {
+      "type": "Button",
+      "props": { "label": "Submit batch", "variant": "default", "bg": "{semantic.color.accent}", "fg": "{semantic.color.text-on-accent}" }
+    },
+    "joblist_card": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.card}"
+      },
+      "children": ["joblist_heading", "joblist_desc", "jobs_table"]
+    },
+    "joblist_heading": {
+      "type": "Heading",
+      "props": { "text": "Your batch jobs", "size": "{semantic.font.size.heading}", "level": "2" }
+    },
+    "joblist_desc": {
+      "type": "Text",
+      "props": { "text": "Polls while any job is still in progress; stops once every job reaches a terminal state.", "color": "{semantic.color.text-muted}", "size": "{semantic.font.size.caption}" }
+    },
+    "jobs_table": {
+      "type": "DataTable",
+      "props": {
+        "headerBg": "{semantic.color.surface-muted}",
+        "text": "{semantic.color.text}",
+        "border": "{semantic.color.border}",
+        "columns": ["Job", "Status", "Items", "Submitted"],
+        "states": ["loading", "empty", "error", "success"]
+      },
+      "children": ["badge_in_progress", "badge_completed", "badge_failed", "badge_validating"]
+    },
+    "badge_in_progress": {
+      "type": "Badge",
+      "props": { "label": "in_progress", "variant": "warning", "bg": "{semantic.color.warning}" }
+    },
+    "badge_completed": {
+      "type": "Badge",
+      "props": { "label": "completed", "variant": "success", "bg": "{semantic.color.success}" }
+    },
+    "badge_failed": {
+      "type": "Badge",
+      "props": { "label": "failed", "variant": "destructive", "bg": "{semantic.color.danger}" }
+    },
+    "badge_validating": {
+      "type": "Badge",
+      "props": { "label": "validating", "variant": "default", "bg": "{semantic.color.surface-muted}" }
+    }
+  }
+}

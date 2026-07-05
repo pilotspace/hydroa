@@ -411,6 +411,38 @@ class Settings(BaseSettings):
     # is therefore always attempted at least once.
     video_job_max_retries: int = Field(default=3, ge=0)
 
+    # ── Batch job store (batch-job-store task, v57) ───────────────────────────
+    # GATEWAY_BATCH_DURABLE_QUEUE_ENABLED — when True, batch jobs are enqueued to a
+    # Redis list (batch:jobs:pending) and drained by an in-process BatchJobWorker
+    # rather than a fire-and-forget asyncio.create_task. Jobs survive gateway
+    # restarts; orphaned non-terminal rows are re-enqueued on startup.
+    # Default False = opt-in (mirrors video_durable_queue_enabled exactly).
+    # Fail-open: if the Redis enqueue raises, the router falls back to the inline task.
+    batch_durable_queue_enabled: bool = Field(default=False)
+    # GATEWAY_BATCH_JOB_MAX_RETRIES — maximum number of times the durable worker will
+    # attempt a job before setting status=failed error=max_retries_exceeded. **0 =
+    # UNLIMITED** (the codebase convention for a 0-valued cap). Default 3.
+    batch_job_max_retries: int = Field(default=3, ge=0)
+    # GATEWAY_BATCH_JOB_TIMEOUT_SECONDS — per-job asyncio.wait_for timeout for the
+    # BatchProcessor.process() call. 0 = unlimited (no timeout). Default 300 s.
+    batch_job_timeout_seconds: float = Field(default=300.0, ge=0)
+    # GATEWAY_BATCH_MAX_ITEMS_PER_JOB — the maximum number of line items a single
+    # POST /v1/batches submission may contain. Default 500 for this MVP shell (well
+    # under real provider limits of 50k/100k) — operator-configurable. Inclusive cap
+    # (reject fires on ">"). Also doubles as BatchWindowBuffer's early-flush size cap
+    # (batch-window-grouping): a window flushes as soon as its accumulated item count
+    # reaches this value, even if batch_window_seconds has not yet elapsed.
+    batch_max_items_per_job: int = Field(default=500, ge=1)
+    # GATEWAY_BATCH_WINDOW_SECONDS — batch-window-grouping: the fixed-tick accumulation
+    # window (seconds) for BatchWindowBuffer/BatchWindowFlusher. A tenant's FIRST
+    # eligible request opens the window; it flushes as one multi-item batch job when
+    # EITHER this many seconds have elapsed since that first arrival OR
+    # batch_max_items_per_job items have accumulated, whichever comes first — a later
+    # arrival in the same window never resets it (fixed-tick, not debounce). Read
+    # fresh per-call (never snapshotted at construction) so it can be tuned live and
+    # shrunk in tests after app construction. Default 3.0s.
+    batch_window_seconds: float = Field(default=3.0, ge=0)
+
     @field_validator("back_pressure_retry_after_seconds", mode="before")
     @classmethod
     def _coerce_negative_retry_after(cls, v: object) -> object:

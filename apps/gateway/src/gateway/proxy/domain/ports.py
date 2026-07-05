@@ -18,8 +18,9 @@ Additive extension @ chat-modality-guard TASK.md §3:
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Protocol, TypedDict, runtime_checkable
@@ -486,8 +487,74 @@ class TenantCredentialResolver(Protocol):
         ...
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class BatchDivertedStream:
+    """Wraps the SSE lifecycle generator for a genuinely-accumulated request
+    (batch-window-grouping TASK.md §3 CONTRACT, FROZEN @ v1).
+
+    CompletionUseCase.complete() returns this instead of a dict when a request is
+    genuinely accepted into BatchWindowBuffer — the ONLY change to complete()'s
+    external 3-tuple return shape (dict[str, Any] | BatchDivertedStream in the second
+    position). The router distinguishes via isinstance() and wraps body_stream in a
+    StreamingResponse rather than a JSONResponse.
+    """
+
+    body_stream: AsyncIterator[bytes]
+
+
+@runtime_checkable
+class BatchDiversionPort(Protocol):
+    """Attempt to divert an eligible /v1/chat/completions request into the
+    batch-job-store pipeline instead of calling upstream synchronously.
+
+    Additive extension @ batch-auto-grouping TASK.md §3 (FROZEN @ v1).
+    SUPERSEDED @ batch-window-grouping TASK.md §3 (FROZEN @ v1): the flat
+    batch_reference JSON envelope return shape is retired (dead code) for the
+    genuinely-accumulated case — a diverted request now returns a BatchDivertedStream
+    (SSE lifecycle), never a dict.
+
+    Contract (the M4 safety-gate — batch-auto-grouping TASK.md §1, restored verbatim
+    by batch-window-grouping's own build note): try_divert NEVER raises. Any internal
+    failure (policy lookup, buffer append, job-row creation, dispatch hand-off) is
+    caught and logged by the implementation; the caller MUST treat a None result as
+    "proceed synchronously, unchanged" — never as a rejection or an error. A
+    batch_processor of None gates APPEND, not just flush — this keeps an early-enabled
+    tenant (no adapter configured yet) at zero added latency, byte-identical to
+    policy-disabled, rather than sitting "queued" until the window elapses only to
+    learn nothing could process it.
+
+    A non-None (BatchDivertedStream) result means the request was genuinely accepted
+    into the accumulation buffer — the caller returns its body_stream as a
+    text/event-stream response and MUST NOT also call the upstream/model_router for
+    this request.
+    """
+
+    async def try_divert(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        key_id: uuid.UUID,
+        body: dict[str, Any],
+        batch_processor: object | None,
+        sync_fallback: Callable[[], Awaitable[dict[str, Any]]],
+    ) -> BatchDivertedStream | None:
+        """Return a BatchDivertedStream when genuinely accumulated, else None.
+
+        NEVER raises — a None result signals the caller to proceed synchronously.
+
+        sync_fallback is a zero-arg async closure the returned stream's generator
+        calls internally (G10) if this item's flush fails or its window elapses with
+        no recorded flush attempt at all — it must perform the billing-correct
+        equivalent of the existing synchronous upstream call (including usage
+        recording), entirely independent of the ORIGINAL request's own lifetime
+        (already ended by the time a deferred fallback runs).
+        """
+        ...
+
+
 __all__ = [
     "AuthzResult",
+    "BatchDiversionPort",
     "CompletionUpstream",
     "DeploymentLimitGate",
     "DeploymentLoadGate",
