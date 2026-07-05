@@ -220,8 +220,17 @@ export function PlatformPlanTab({ tenantId }: PlatformPlanTabProps) {
     setFieldError(null);
     setConfirmServerError(null);
     if (!seatCapTouched) {
-      // Untouched: inherit the plan's own default — seat_cap key OMITTED
-      // (M5, plan-catalog's own M8).
+      if (targetPlan.id === currentPlanId) {
+        // Adjusting the CURRENT plan without editing the pre-filled value: the
+        // tenant's own custom seat_cap is already known (it's what was pre-filled,
+        // see openConfirm) — send it EXPLICITLY so an un-edited Save preserves it,
+        // rather than omitting and falling through to the plan's generic default
+        // (review finding: omitting here silently reset a negotiated custom cap).
+        assignMutation.mutate({ plan_id: targetPlan.id, seat_cap: tenantPlan.seat_cap });
+        return;
+      }
+      // Assigning/switching to a DIFFERENT plan, untouched: inherit that plan's
+      // own default — seat_cap key OMITTED (M5, plan-catalog's own M8).
       assignMutation.mutate({ plan_id: targetPlan.id });
       return;
     }

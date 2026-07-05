@@ -244,6 +244,40 @@ describe("PlatformPlanTab — adjust seat cap only", () => {
     // Tier is unchanged — still Enterprise, still marked current.
     expect(screen.getByText(/current plan/i)).toBeInTheDocument();
   });
+
+  it("test_adjust_seat_cap_save_without_touching_input_preserves_custom_cap_explicitly", async () => {
+    // Regression test [review finding]: a tenant with a CUSTOM (non-default) seat_cap
+    // on their CURRENT plan opens "Adjust seat cap" (pre-filled with that custom
+    // value, see openConfirm) and clicks Save WITHOUT editing the input. Before the
+    // fix, the untouched-flag branch unconditionally OMITTED seat_cap from the PUT
+    // body — which the backend reads as "inherit the plan's own default" — silently
+    // discarding the tenant's negotiated custom cap. The fix must send seat_cap
+    // EXPLICITLY (the known current value) whenever an untouched Save targets the
+    // tenant's CURRENT plan, distinct from the assign/switch-tier untouched case
+    // (previous test in this file) which correctly still omits it.
+    mockCommon({ plan: ENTERPRISE, seat_cap: 200 });
+    let capturedBody: unknown = null;
+    server.use(
+      http.put(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/plan`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({ tenant_id: TENANT_ID, plan: ENTERPRISE, seat_cap: 200 });
+      }),
+    );
+
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /adjust seat cap/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /adjust seat cap/i }));
+    // Deliberately do NOT touch the seat-cap input — Save immediately.
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+    });
+    expect(capturedBody).toEqual({ plan_id: ENTERPRISE.id, seat_cap: 200 });
+  });
 });
 
 describe("PlatformPlanTab — remove plan assignment", () => {
