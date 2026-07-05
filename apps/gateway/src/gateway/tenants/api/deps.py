@@ -11,6 +11,7 @@ from gateway.tenants.application.use_cases import (
     SignupUseCase,
 )
 from gateway.tenants.domain.ports import PasswordHasher, TokenService
+from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 from gateway.tenants.infrastructure.repository import SqlAlchemyIdentityRepository
 
 
@@ -49,9 +50,17 @@ def get_login_use_case(
 
 
 def get_identity_use_case(
+    request: Request,
     tokens: Annotated[TokenService, Depends(get_token_service)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> GetIdentityUseCase:
-    return GetIdentityUseCase(tokens)
+    return GetIdentityUseCase(
+        tokens,
+        guard_factory=lambda: DbImpersonationSessionGuard(
+            session=session,
+            timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
+        ),
+    )
 
 
 def get_bearer_token(request: Request) -> str:

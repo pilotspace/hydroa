@@ -12,10 +12,15 @@ from gateway.catalog.domain.ports import CatalogSource
 from gateway.catalog.infrastructure.repository import SqlAlchemyCatalogRepository
 from gateway.core.db import get_session
 from gateway.core.error_catalog import AUTH_TOKEN_INVALID, AUTH_TOKEN_MISSING
-from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
+from gateway.tenants.domain.authz import (
+    ROLE_PERMISSIONS,
+    Permission,
+    ensure_impersonation_session_live,
+)
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
+from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 
 
 def get_catalog_source(request: Request) -> CatalogSource:
@@ -43,21 +48,32 @@ def get_list_use_case(
     return ListModelsForTenantUseCase(SqlAlchemyCatalogRepository(session))
 
 
-def get_current_identity(
+async def get_current_identity(
     request: Request,
     tokens: Annotated[TokenService, Depends(get_token_service)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Identity:
     """Validate Bearer JWT and return the decoded Identity.
 
     Raises ProblemError(401) for any token failure (missing, malformed,
     expired, wrong signature) — consistent with the tenants pattern.
+
+    impersonation-live-session-guard TASK.md §3 Part D.3 — call site 3/5.
     """
     header = request.headers.get("Authorization", "")
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token:
         raise AUTH_TOKEN_MISSING.exc()
     try:
-        return tokens.decode(token)
+        identity = tokens.decode(token)
+        await ensure_impersonation_session_live(
+            identity,
+            DbImpersonationSessionGuard(
+                session=session,
+                timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
+            ),
+        )
+        return identity
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
 

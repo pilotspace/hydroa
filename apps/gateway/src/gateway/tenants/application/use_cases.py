@@ -1,14 +1,21 @@
 import asyncio
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gateway.audit.application.audit_writer import record_audit
 from gateway.audit.domain.audit_event import AuditEvent
+from gateway.tenants.domain.authz import ensure_impersonation_session_live
 from gateway.tenants.domain.entities import MIN_PASSWORD_LENGTH, Identity, Role
 from gateway.tenants.domain.errors import InvalidCredentialsError, WeakPasswordError
-from gateway.tenants.domain.ports import IdentityRepository, PasswordHasher, TokenService
+from gateway.tenants.domain.ports import (
+    IdentityRepository,
+    ImpersonationSessionGuard,
+    PasswordHasher,
+    TokenService,
+)
 
 
 class SignupUseCase:
@@ -92,8 +99,22 @@ class LoginUseCase:
 
 
 class GetIdentityUseCase:
-    def __init__(self, tokens: TokenService) -> None:
-        self._tokens = tokens
+    """impersonation-live-session-guard TASK.md §3 Part D.5 — call site 5/5.
 
-    def execute(self, token: str) -> Identity:
-        return self._tokens.decode(token)
+    guard_factory is a domain-Protocol-typed (ImpersonationSessionGuard) zero-arg
+    callable — NEVER a direct infrastructure/ import here (CONVENTIONS.md's
+    application-layer rule). The caller (tenants/api/deps.py::get_identity_use_case,
+    or one of the 3 direct-construction call sites) resolves a session and closes
+    over it + the concrete DbImpersonationSessionGuard when building the factory.
+    """
+
+    def __init__(
+        self, tokens: TokenService, guard_factory: Callable[[], ImpersonationSessionGuard]
+    ) -> None:
+        self._tokens = tokens
+        self._guard_factory = guard_factory
+
+    async def execute(self, token: str) -> Identity:
+        identity = self._tokens.decode(token)
+        await ensure_impersonation_session_live(identity, self._guard_factory())
+        return identity

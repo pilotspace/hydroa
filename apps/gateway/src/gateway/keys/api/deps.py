@@ -19,10 +19,15 @@ from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
-from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission
+from gateway.tenants.domain.authz import (
+    ROLE_PERMISSIONS,
+    Permission,
+    ensure_impersonation_session_live,
+)
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
+from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 
 # Singleton hasher — stateless, safe to share
 _hasher = Sha256SecretHasher()
@@ -42,13 +47,26 @@ def get_bearer_token(request: Request) -> str:
     return token
 
 
-def get_identity(
+async def get_identity(
+    request: Request,
     token: Annotated[str, Depends(get_bearer_token)],
     tokens: Annotated[TokenService, Depends(get_token_service)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Identity:
-    """Decode JWT and return the caller's Identity; raise 401 on any failure."""
+    """Decode JWT and return the caller's Identity; raise 401 on any failure.
+
+    impersonation-live-session-guard TASK.md §3 Part D.2 — call site 2/5.
+    """
     try:
-        return tokens.decode(token)
+        identity = tokens.decode(token)
+        await ensure_impersonation_session_live(
+            identity,
+            DbImpersonationSessionGuard(
+                session=session,
+                timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
+            ),
+        )
+        return identity
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
 

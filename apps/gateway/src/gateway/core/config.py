@@ -985,6 +985,16 @@ class Settings(BaseSettings):
             )
         return v
 
+    # ── Impersonation live-session guard (impersonation-live-session-guard task) ────
+    # GATEWAY_IMPERSONATION_LIVE_CHECK_TIMEOUT_SECONDS — bounds the per-request
+    # DbImpersonationSessionGuard DB read (revoked_at/expires_at). A struggling DB fails
+    # THIS check fast/clean (401) rather than compounding into a long ambient hang —
+    # fail-CLOSED on elapse (DbImpersonationSessionGuard.ensure_live). No ambient
+    # statement_timeout exists today (confirmed at Ground) — this is a new, additive
+    # bound. Mirrors object_store_timeout_seconds's exact style (gt=0, no bespoke
+    # @field_validator beyond Pydantic's own gt-violation message).
+    impersonation_live_check_timeout_seconds: float = Field(default=2.0, gt=0)
+
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":
         """If OIDC is enabled, required fields must be non-empty and domain_mapping valid JSON."""
