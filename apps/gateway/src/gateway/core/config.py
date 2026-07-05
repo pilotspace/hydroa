@@ -962,6 +962,39 @@ class Settings(BaseSettings):
             )
         return v
 
+    # ── Member invite acceptance (member-invite-acceptance task) ────────────────
+    # Per-client-IP fixed-window rate limits for the two PUBLIC, unauthenticated invite
+    # endpoints (M7). Both must be > 0; fails fast at boot when set to 0 or negative.
+    invite_preview_rpm: int = 30  # GATEWAY_INVITE_PREVIEW_RPM
+    invite_accept_rpm: int = 10  # GATEWAY_INVITE_ACCEPT_RPM
+
+    @field_validator("invite_preview_rpm", "invite_accept_rpm")
+    @classmethod
+    def _validate_invite_positive_knobs(cls, v: int) -> int:
+        """Fail loud on a non-positive invite rate-limit knob (member-invite-acceptance).
+
+        A zero or negative value is a misconfiguration, not a disable signal: a functioning
+        per-IP limiter needs a strictly positive ceiling. Kept as its OWN validator (rather
+        than folded into _validate_agent_oauth_positive_knobs above) so a failure here
+        reports an invite-scoped field list, not an unrelated agent_oauth one.
+        """
+        if v <= 0:
+            raise ValueError(
+                "INVALID_INVITE_KNOB: invite_preview_rpm and invite_accept_rpm must each be "
+                f"a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    # ── Impersonation live-session guard (impersonation-live-session-guard task) ────
+    # GATEWAY_IMPERSONATION_LIVE_CHECK_TIMEOUT_SECONDS — bounds the per-request
+    # DbImpersonationSessionGuard DB read (revoked_at/expires_at). A struggling DB fails
+    # THIS check fast/clean (401) rather than compounding into a long ambient hang —
+    # fail-CLOSED on elapse (DbImpersonationSessionGuard.ensure_live). No ambient
+    # statement_timeout exists today (confirmed at Ground) — this is a new, additive
+    # bound. Mirrors object_store_timeout_seconds's exact style (gt=0, no bespoke
+    # @field_validator beyond Pydantic's own gt-violation message).
+    impersonation_live_check_timeout_seconds: float = Field(default=2.0, gt=0)
+
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":
         """If OIDC is enabled, required fields must be non-empty and domain_mapping valid JSON."""

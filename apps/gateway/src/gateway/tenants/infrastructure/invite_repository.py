@@ -14,9 +14,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gateway.tenants.domain.entities import Invite, InviteStatus, Role
-from gateway.tenants.domain.errors import InviteNotFoundError, InviteNotPendingError
-from gateway.tenants.infrastructure.orm import InviteRow, UserRow
+from gateway.core.ids import uuid7
+from gateway.tenants.domain.entities import Invite, InvitePreview, InviteStatus, Role
+from gateway.tenants.domain.errors import (
+    EmailAlreadyRegisteredError,
+    InviteExpiredError,
+    InviteNotFoundError,
+    InviteNotPendingError,
+)
+from gateway.tenants.infrastructure.orm import InviteRow, TenantRow, UserRow
 
 
 def _row_to_invite(row: InviteRow) -> Invite:
@@ -188,3 +194,121 @@ class InviteRepository:
         await self._session.commit()
         await self._session.refresh(row)
         return _row_to_invite(row)
+
+    # -----------------------------------------------------------------------
+    # member-invite-acceptance TASK.md §3 — additive, public-token-keyed reads/writes.
+    # BOTH methods below are keyed PURELY by token_hash — no tenant_id/invite_id input,
+    # unlike get_by_id_and_tenant above (the caller here is unauthenticated and possesses
+    # neither; §3's RESOLVED open question explains why get_by_id_and_tenant is NOT reused).
+    # -----------------------------------------------------------------------
+
+    async def get_preview_by_token_hash(self, *, token_hash: str, now: datetime) -> InvitePreview:
+        """Read-only preview lookup — no lock, no mutation (M1).
+
+        Raises:
+            InviteNotFoundError: no invite has this token_hash.
+            InviteNotPendingError: the resolved invite's status is not 'pending'.
+            InviteExpiredError: status IS 'pending' but expires_at has passed (a COMPUTED
+                check — never a status write, mirrors the accept() method's own check).
+        """
+        result = (
+            await self._session.execute(
+                select(InviteRow, TenantRow.name)
+                .join(TenantRow, TenantRow.id == InviteRow.tenant_id)
+                .where(InviteRow.token_hash == token_hash)
+            )
+        ).one_or_none()
+        if result is None:
+            raise InviteNotFoundError("No invite found for the given token")
+        invite_row, tenant_name = result
+        if invite_row.status != InviteStatus.PENDING.value:
+            raise InviteNotPendingError(
+                f"Invite {invite_row.id} is not pending (status={invite_row.status!r})"
+            )
+        if invite_row.expires_at < now:
+            raise InviteExpiredError(f"Invite {invite_row.id} expired at {invite_row.expires_at}")
+        return InvitePreview(
+            tenant_name=tenant_name,
+            email=invite_row.email,
+            role=Role(invite_row.role),
+            expires_at=invite_row.expires_at,
+        )
+
+    async def accept(
+        self, *, token_hash: str, password_hash: str, now: datetime
+    ) -> tuple[uuid.UUID, uuid.UUID, str]:
+        """Lock, validate pending+not-expired, provision a user, flip to accepted, commit —
+        ALL in ONE atomic transaction (M2/M5). Concurrency-safety primitive: the SAME
+        `SELECT ... FOR UPDATE` row lock `.revoke()` uses above — a concurrent accept and a
+        concurrent revoke of the SAME token can never both "win" (M5).
+
+        NOTE (build-time spec-delta, not a silent contract edit — TASK.md §3 CONTRACT prose
+        types this method's return as ``tuple[uuid.UUID, uuid.UUID]`` = (tenant_id,
+        new_user_id), but AcceptInviteUseCase.execute's OWN frozen signature immediately
+        above it needs a THIRD element (email) to build InviteAcceptResponse, and this
+        method is the ONLY place in the call chain that has it without a second query. This
+        is the SAME class of contract-prose gap CreateInviteUseCase.execute's own docstring
+        already names for its sibling issuance file (`-> Invite` prose vs. the actually-
+        needed `tuple[Invite, str]`) — resolved the same way: implement the shape that is
+        actually needed, flag it here and in the build report, leave TASK.md untouched.
+
+        Returns:
+            (tenant_id, new_user_id, email) of the newly provisioned user.
+
+        Raises:
+            InviteNotFoundError: no invite has this token_hash.
+            InviteNotPendingError: already accepted or already revoked.
+            InviteExpiredError: pending but expires_at has passed.
+            EmailAlreadyRegisteredError: the invited email collides with the GLOBAL
+                users.email uniqueness constraint (M6) — rolls back EVERYTHING, the invite
+                stays pending, unflipped.
+        """
+        row = await self._session.scalar(
+            select(InviteRow).where(InviteRow.token_hash == token_hash).with_for_update()
+        )
+        if row is None:
+            await self._session.rollback()
+            raise InviteNotFoundError("No invite found for the given token")
+
+        # Capture BEFORE any rollback()/commit(): both expire ORM attributes by default
+        # (expire_on_commit), and a post-expiry attribute read triggers a lazy (sync)
+        # reload the async driver can't service outside an awaited call (MissingGreenlet)
+        # — the SAME trap .revoke() above already dodges.
+        current_status = row.status
+        invite_pk = row.id
+        tenant_id = row.tenant_id
+        email = row.email
+        role = row.role
+        expires_at = row.expires_at
+
+        if current_status != InviteStatus.PENDING.value:
+            await self._session.rollback()
+            raise InviteNotPendingError(
+                f"Invite {invite_pk} is not pending (status={current_status!r})"
+            )
+        if expires_at < now:
+            await self._session.rollback()
+            raise InviteExpiredError(f"Invite {invite_pk} expired at {expires_at}")
+
+        new_user_id = uuid7()
+        new_user = UserRow(
+            id=new_user_id,
+            tenant_id=tenant_id,
+            email=email,
+            password_hash=password_hash,
+            role=role,
+            auth_method="password",
+        )
+        self._session.add(new_user)
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            # GLOBAL users.email collision (M6) — roll back EVERYTHING: the invite row
+            # stays 'pending', unflipped, and no orphaned users row survives (M5).
+            await self._session.rollback()
+            raise EmailAlreadyRegisteredError from exc
+
+        row.status = InviteStatus.ACCEPTED.value
+        await self._session.commit()
+
+        return tenant_id, new_user_id, email

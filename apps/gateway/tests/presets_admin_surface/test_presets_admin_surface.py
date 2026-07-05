@@ -519,13 +519,15 @@ async def test_reject_slash_in_preset_name() -> None:
     app.state.tenant_model_preset_store = spy
     fake_request = _FakeRequest(app, token)
 
-    with pytest.raises(ProblemError) as exc_info:
-        await upsert_preset(
-            "cheap/team",
-            "opus",
-            PresetUpsertBody(target_model="gpt5-5"),
-            fake_request,  # type: ignore[arg-type]
-        )
+    async with sessionmaker() as session:
+        with pytest.raises(ProblemError) as exc_info:
+            await upsert_preset(
+                "cheap/team",
+                "opus",
+                PresetUpsertBody(target_model="gpt5-5"),
+                fake_request,  # type: ignore[arg-type]
+                session,
+            )
     assert exc_info.value.status == 400
     assert exc_info.value.code == "ERR_PRESET_SELECTOR_INVALID"
     assert spy.upsert_calls == [], "the guard must fire BEFORE any store call"
@@ -554,13 +556,15 @@ async def test_reject_slash_in_alias_key() -> None:
     app.state.tenant_model_preset_store = spy
     fake_request = _FakeRequest(app, token)
 
-    with pytest.raises(ProblemError) as exc_info:
-        await upsert_preset(
-            "cheap",
-            "opus/team",
-            PresetUpsertBody(target_model="gpt5-5"),
-            fake_request,  # type: ignore[arg-type]
-        )
+    async with sessionmaker() as session:
+        with pytest.raises(ProblemError) as exc_info:
+            await upsert_preset(
+                "cheap",
+                "opus/team",
+                PresetUpsertBody(target_model="gpt5-5"),
+                fake_request,  # type: ignore[arg-type]
+                session,
+            )
     assert exc_info.value.status == 400
     assert exc_info.value.code == "ERR_PRESET_SELECTOR_INVALID"
     assert spy.upsert_calls == [], "the guard must fire BEFORE any store call"
@@ -588,8 +592,14 @@ async def test_reject_slash_on_delete() -> None:
     app.state.tenant_model_preset_store = spy
     fake_request = _FakeRequest(app, token)
 
-    with pytest.raises(ProblemError) as exc_info:
-        await delete_preset("cheap/team", "opus", fake_request)  # type: ignore[arg-type]
+    async with sessionmaker() as session:
+        with pytest.raises(ProblemError) as exc_info:
+            await delete_preset(
+                "cheap/team",
+                "opus",
+                fake_request,
+                session,  # type: ignore[arg-type]
+            )
     assert exc_info.value.status == 400
     assert exc_info.value.code == "ERR_PRESET_SELECTOR_INVALID"
     assert spy.delete_calls == [], "the guard must apply identically on DELETE"

@@ -128,6 +128,16 @@ export const bffHandlers = [
     })
   ),
 
+  // impersonation-ui (M7): DashboardShell now calls useImpersonationStatus()
+  // unconditionally, so every existing test that renders DashboardShell (directly,
+  // e.g. tests-bff/nav-role-filter.test.tsx) makes this call for the first time.
+  // An initial handler (this array, not a runtime server.use) so resetHandlers()
+  // preserves it across tests. Tests asserting impersonation-specific behavior
+  // override via their own server.use(...).
+  http.get(`${APP}/api/platform/impersonation`, () =>
+    HttpResponse.json({ active: false })
+  ),
+
   // NOTE: no broad gateway catch-all wildcard. The shared defaults must be CONCRETE per-path so a
   // forgotten per-test gw handler hits `onUnhandledRequest:"error"` and fails LOUDLY (a broad
   // wildcard returns wrong-but-silent data — the v15-folded convention). Tests that exercise a

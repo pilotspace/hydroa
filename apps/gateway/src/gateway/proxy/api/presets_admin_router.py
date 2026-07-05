@@ -30,11 +30,14 @@ for building a full response object (here, to also surface ``updated_at``).
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     INTERNAL_ERROR,
     PRESET_SELECTOR_INVALID,
@@ -83,9 +86,11 @@ async def _preset_for(
 
 
 @presets_admin_router.get("")
-async def list_presets(request: Request) -> dict[str, list[TenantModelPreset]]:
+async def list_presets(
+    request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> dict[str, list[TenantModelPreset]]:
     """List the caller-tenant's presets ([] when none)."""
-    tenant_id = _require_owner_tenant_id(request)
+    tenant_id = await _require_owner_tenant_id(request, session)
     store = request.app.state.tenant_model_preset_store
     presets: list[TenantModelPreset] = await store.list(tenant_id)
     return {"presets": presets}
@@ -93,10 +98,14 @@ async def list_presets(request: Request) -> dict[str, list[TenantModelPreset]]:
 
 @presets_admin_router.put("/{preset_name}/{alias_key}")
 async def upsert_preset(
-    preset_name: str, alias_key: str, body: PresetUpsertBody, request: Request
+    preset_name: str,
+    alias_key: str,
+    body: PresetUpsertBody,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TenantModelPreset:
     """Create or replace (upsert) the caller-tenant's preset for (preset_name, alias_key)."""
-    tenant_id = _require_owner_tenant_id(request)
+    tenant_id = await _require_owner_tenant_id(request, session)
     _reject_slash(preset_name)
     _reject_slash(alias_key)
 
@@ -120,9 +129,14 @@ async def upsert_preset(
 
 
 @presets_admin_router.delete("/{preset_name}/{alias_key}", status_code=204)
-async def delete_preset(preset_name: str, alias_key: str, request: Request) -> Response:
+async def delete_preset(
+    preset_name: str,
+    alias_key: str,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
     """Delete the caller-tenant's preset; ALWAYS 204 (idempotent — no existence check surfaced)."""
-    tenant_id = _require_owner_tenant_id(request)
+    tenant_id = await _require_owner_tenant_id(request, session)
     _reject_slash(preset_name)
     _reject_slash(alias_key)
 

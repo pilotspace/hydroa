@@ -43,10 +43,16 @@ from gateway.core.error_catalog import (
     PAYLOAD_START_DATE_INVALID,
     PAYLOAD_WINDOW_INVALID,
 )
-from gateway.tenants.domain.authz import ROLE_PERMISSIONS, Permission, require_permission
+from gateway.tenants.domain.authz import (
+    ROLE_PERMISSIONS,
+    Permission,
+    ensure_impersonation_session_live,
+    require_permission,
+)
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
+from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 from gateway.usage.api.schemas import (
     ReconciliationResponse,
     ReconciliationSourceItem,
@@ -66,34 +72,51 @@ _VALID_WINDOWS = {"day", "week", "month"}
 _GRANULARITY = {"day": "day", "week": "week", "month": "month"}
 
 
-def _extract_identity(request: Request) -> Identity:
-    """Extract and validate Bearer JWT; raise 401 on any failure."""
+async def _extract_identity(
+    request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> Identity:
+    """Extract and validate Bearer JWT; raise 401 on any failure.
+
+    impersonation-live-session-guard TASK.md §3 Part D.4 — call site 4/5.
+    """
     header = request.headers.get("Authorization", "")
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token:
         raise AUTH_TOKEN_MISSING.exc()
     token_service = cast(TokenService, request.app.state.token_service)
     try:
-        return token_service.decode(token)
+        identity = token_service.decode(token)
+        await ensure_impersonation_session_live(
+            identity,
+            DbImpersonationSessionGuard(
+                session=session,
+                timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
+            ),
+        )
+        return identity
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
 
 
-def _require_usage_read(request: Request) -> Identity:
+async def _require_usage_read(
+    request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> Identity:
     """Require USAGE_READ permission (owner/admin/operator/billing_admin/viewer)."""
     from gateway.core.error_catalog import AUTH_FORBIDDEN
 
-    identity = _extract_identity(request)
+    identity = await _extract_identity(request, session)
     if Permission.USAGE_READ not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
         raise AUTH_FORBIDDEN.exc()
     return identity
 
 
-def _require_ops_read(request: Request) -> Identity:
+async def _require_ops_read(
+    request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> Identity:
     """Require OPS_READ permission (owner/admin/operator/billing_admin/viewer)."""
     from gateway.core.error_catalog import AUTH_FORBIDDEN
 
-    identity = _extract_identity(request)
+    identity = await _extract_identity(request, session)
     if Permission.OPS_READ not in ROLE_PERMISSIONS.get(identity.role, frozenset()):
         raise AUTH_FORBIDDEN.exc()
     return identity
@@ -105,7 +128,7 @@ async def get_usage(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> UsageTotalsResponse:
     """Return usage totals and 50 newest records for the authenticated tenant."""
-    identity = _extract_identity(request)
+    identity = await _extract_identity(request, session)
     tenant_id: uuid.UUID = identity.tenant_id
 
     # Totals from the ledger (NOT the Redis advisory counter)
@@ -281,7 +304,7 @@ async def get_spend(
     - Empty window → 200 with zero totals + empty buckets (never 404).
     - Invalid window → 422 ERR_PAYLOAD_INVALID.
     """
-    identity = _extract_identity(request)
+    identity = await _extract_identity(request, session)
     tenant_id: uuid.UUID = identity.tenant_id
 
     # Validate window param (422 on invalid)

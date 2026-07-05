@@ -28,11 +28,12 @@ Response shape (§3 CONTRACT, device-approval-flow TASK.md):
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.agent_oauth.domain.errors import (
     AuthorizationExpiredError,
@@ -43,11 +44,13 @@ from gateway.agent_oauth.infrastructure.ip_rate_limiter import (
     RateLimitedError,
 )
 from gateway.agent_oauth.infrastructure.repository import SqlAlchemyAgentOAuthRepository
+from gateway.core.db import get_session
 from gateway.core.error_catalog import AUTH_TOKEN_INVALID
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
 from gateway.tenants.domain.entities import Identity
+from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 
 agent_oauth_approval_router = APIRouter(prefix="/oauth/device", tags=["agent-oauth"])
 
@@ -104,7 +107,9 @@ def _normalize_user_code(raw: str) -> str:
     return normalized
 
 
-def _require_identity(request: Request) -> Identity:
+async def _require_identity(
+    request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> Identity:
     """Resolve the caller's Identity from the verified JWT.
 
     Mirrors ``provider_keys_admin_router._require_owner_identity`` but WITHOUT the
@@ -113,11 +118,20 @@ def _require_identity(request: Request) -> Identity:
     Raises:
         ProblemError 401: missing token (AUTH_TOKEN_MISSING) or invalid/expired token
             (AUTH_TOKEN_INVALID).
+
+    impersonation-live-session-guard TASK.md §3 Part D.5 — one of GetIdentityUseCase's
+    3 direct-construction call sites.
     """
     token = get_bearer_token(request)  # raises AUTH_TOKEN_MISSING (401) when absent
-    use_case = GetIdentityUseCase(request.app.state.token_service)
+    use_case = GetIdentityUseCase(
+        request.app.state.token_service,
+        guard_factory=lambda: DbImpersonationSessionGuard(
+            session=session,
+            timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
+        ),
+    )
     try:
-        return use_case.execute(token)
+        return await use_case.execute(token)
     except Exception as exc:
         raise AUTH_TOKEN_INVALID.exc() from exc
 
@@ -193,7 +207,9 @@ def _outcome_to_response(outcome: str, *, success_status: str) -> JSONResponse:
 
 
 @agent_oauth_approval_router.post("/approve")
-async def device_approve(request: Request) -> JSONResponse:
+async def device_approve(
+    request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> JSONResponse:
     """POST /oauth/device/approve — AUTHENTICATED.
 
     Resolves the caller's Identity from the JWT, normalizes and hashes the user_code,
@@ -204,7 +220,7 @@ async def device_approve(request: Request) -> JSONResponse:
 
     # ── 1. Identity resolution (JWT required) ────────────────────────────────
     # ProblemError 401 is raised and handled by the registered error handler.
-    identity = _require_identity(request)
+    identity = await _require_identity(request, session)
 
     # ── 2. Per-USER rate limit (fail-open on Redis error) ────────────────────
     limiter: AgentOAuthIpRateLimiter = request.app.state.agent_oauth_ip_limiter
@@ -237,7 +253,9 @@ async def device_approve(request: Request) -> JSONResponse:
 
 
 @agent_oauth_approval_router.post("/deny")
-async def device_deny(request: Request) -> JSONResponse:
+async def device_deny(
+    request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> JSONResponse:
     """POST /oauth/device/deny — AUTHENTICATED.
 
     Resolves the caller's Identity from the JWT, normalizes and hashes the user_code,
@@ -246,7 +264,7 @@ async def device_deny(request: Request) -> JSONResponse:
     settings: Any = request.app.state.settings
 
     # ── 1. Identity resolution (JWT required) ────────────────────────────────
-    identity = _require_identity(request)
+    identity = await _require_identity(request, session)
 
     # ── 2. Per-USER rate limit (fail-open on Redis error) ────────────────────
     limiter: AgentOAuthIpRateLimiter = request.app.state.agent_oauth_ip_limiter

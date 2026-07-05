@@ -344,6 +344,13 @@ INVITE_EMAIL_ALREADY_MEMBER = ErrorSpec(
 #: or already revoked; member-invite-issuance TASK.md R9).
 INVITE_NOT_PENDING = ErrorSpec(409, "ERR_INVITE_NOT_PENDING", "Invite is not in pending state")
 
+#: Invite resolved (preview or accept) and its status IS 'pending', but expires_at has
+#: passed — a fresh, invite-scoped 410 (member-invite-acceptance TASK.md R3), sibling to
+#: INVITE_NOT_FOUND/INVITE_NOT_PENDING above. NOT a reuse of agent_oauth's own
+#: AGENT_OAUTH_EXPIRED (differently-scoped resource) — mirrors this codebase's
+#: per-feature-scoped error-naming convention.
+INVITE_EXPIRED = ErrorSpec(410, "ERR_INVITE_EXPIRED", "Invite has expired")
+
 #: User is already a member of the team.
 MEMBER_EXISTS = ErrorSpec(409, "ERR_MEMBER_EXISTS", "User is already a member of this team")
 
