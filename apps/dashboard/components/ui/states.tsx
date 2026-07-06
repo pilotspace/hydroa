@@ -65,7 +65,7 @@ export function ErrorState({ title, description, onRetry, className }: ErrorStat
     <div
       role="alert"
       className={cn(
-        "flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive",
+        "flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive-text",
         className,
       )}
     >
@@ -97,7 +97,7 @@ export function Success({ title, description, className }: SuccessProps) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 p-3 text-success",
+        "flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 p-3 text-success-text",
         className,
       )}
     >

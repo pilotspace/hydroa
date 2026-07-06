@@ -4,16 +4,19 @@ import { cn } from "@/lib/cn";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
-   * Opt-in visual treatment (admin-console-ui, TASK.md §1 Framings weighed —
-   * "Visual treatment... source"): `"flat"` renders a larger radius, no hard
-   * border, and a softer/more diffuse shadow, matching the design-confirmed
-   * platform-admin-console mock. ADDITIVE ONLY — omitted (or `"default"`)
-   * renders BYTE-IDENTICAL classes to before this prop existed, so every one
-   * of the 14 existing shipped pages that already render `Card` is unaffected.
-   * `"flat"` is used only by this task's own new `components/platform/*`
-   * screens — a system-wide rollout remains a separate, explicit future task.
+   * Opt-in visual treatment. ADDITIVE ONLY — omitted (or `"default"`) renders
+   * BYTE-IDENTICAL classes to before this prop existed, so every one of the 14+
+   * existing shipped pages that already render `Card` is unaffected.
+   *
+   * `"soft"` (renamed from "flat", platform-console-flat-redesign 2026-07-06):
+   * admin-console-ui's original treatment — a larger radius, no hard border, a
+   * softer/more diffuse shadow. Used by `components/platform/*` screens.
+   *
+   * `"flat"` (NEW, platform-console-flat-redesign): the opposite of "soft" —
+   * no border, no shadow, the sharp `flat-card` radius step. Not yet consumed
+   * by any page; component-primitive support only.
    */
-  variant?: "default" | "flat";
+  variant?: "default" | "soft" | "flat";
 }
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
@@ -23,7 +26,8 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
       data-variant={variant}
       className={cn(
         "rounded-lg border border-border bg-card text-card-foreground shadow-md transition-shadow duration-200 ease-standard",
-        variant === "flat" && "rounded-2xl border-transparent shadow-lg",
+        variant === "soft" && "rounded-2xl border-transparent shadow-lg",
+        variant === "flat" && "rounded-[var(--radius-flat-card)] border-transparent shadow-none",
         className,
       )}
       {...props}

@@ -99,7 +99,7 @@ export function PlatformTenantDirectory() {
         enableSorting: false,
         cell: ({ row }) =>
           row.original.kind === "platform" ? (
-            <Badge variant="warning">Platform</Badge>
+            <Badge variant="outline">Platform</Badge>
           ) : (
             <Badge variant="secondary">Standard</Badge>
           ),
@@ -140,7 +140,7 @@ export function PlatformTenantDirectory() {
             className="max-w-sm"
           />
 
-          <Card variant="flat">
+          <Card variant="soft">
             <CardContent className="p-0">
               <DataTable
                 columns={columns}

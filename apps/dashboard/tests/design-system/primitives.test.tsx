@@ -112,6 +112,39 @@ describe("Badge — every variant renders the label", () => {
       expect(screen.getByText(`v-${variant}`)).toBeInTheDocument();
     },
   );
+
+  // platform-console-flat-redesign, 2026-07-06 — AA-contrast fix: `warning`'s prior
+  // text-warning (amber-500 on a 10%-tint bg) measured ~2:1, failing WCAG AA at badge
+  // text size. text-warning-foreground (amber-800) already existed for exactly this
+  // ("readable text on a warning surface") but the badge wasn't using it.
+  it("test_badge_warning_uses_aa_safe_foreground_text_color", () => {
+    render(<Badge variant="warning">Experimental</Badge>);
+    // split, not substring-contain: "text-warning-foreground" itself contains the
+    // substring "text-warning", so a naive .not.toContain("text-warning") would pass
+    // even if the stale class were still present alongside the new one.
+    const classes = screen.getByText("Experimental").className.split(" ");
+    expect(classes).toContain("text-warning-foreground");
+    expect(classes).not.toContain("text-warning");
+  });
+
+  // Same class of fix for `success`: text-success (emerald-600) is under AA at small
+  // text sizes; text-success-text (emerald-700, new this pass) is the AA-safe step.
+  it("test_badge_success_uses_aa_safe_text_color", () => {
+    render(<Badge variant="success">On track</Badge>);
+    const classes = screen.getByText("On track").className.split(" ");
+    expect(classes).toContain("text-success-text");
+    expect(classes).not.toContain("text-success");
+  });
+
+  // Same class of fix for `destructive`: text-destructive (red-600) on bg-destructive/10
+  // measured 4.14:1 — under AA. Found by the accessibility-auditor persona's cross-check
+  // sweep, 2026-07-06 (independently confirmed by the ui-designer persona in parallel).
+  it("test_badge_destructive_uses_aa_safe_text_color", () => {
+    render(<Badge variant="destructive">Revoked</Badge>);
+    const classes = screen.getByText("Revoked").className.split(" ");
+    expect(classes).toContain("text-destructive-text");
+    expect(classes).not.toContain("text-destructive");
+  });
 });
 
 describe("Input — is a native input that accepts typing", () => {

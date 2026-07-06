@@ -1,0 +1,660 @@
+<style>
+  :root{
+    --canvas:#ffffff; --canvas-2:#fafafa;
+    --hairline:#e2e8f0;
+    --ink:#0b0d12; --ink-soft:#3a3f47;
+    --muted:#8a8f98;
+    --accent:#0f4c81; --accent-hover:#155394; --accent-bright:#3b82f6;
+    --success-text:#047857; --destructive-text:#b91c1c; --warning-foreground:#92400e; --warning-tint:#fdf8ef;
+    --font-sans: Inter, system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --radius-flat-tag:2px; --radius-flat-control:3px; --radius-flat-card:4px;
+    --rail-dark:#0a0a0f; --rail-line:#1c1d26; --rail-text:#e8e9ec; --rail-text-dim:#676b78;
+    --rev-ink:#0b1120; --rev-line:#242c3d; --rev-accent:#f0b429;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font-sans); color:var(--ink);
+    -webkit-font-smoothing:antialiased; font-size:14px; line-height:1.6;
+    background:
+      radial-gradient(ellipse 1200px 700px at 80% -10%, rgba(15,76,129,0.05), transparent 60%),
+      var(--canvas);
+  }
+  .grain-overlay{
+    position:fixed; inset:0; z-index:999; pointer-events:none; opacity:.055; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size:180px 180px;
+  }
+  .mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums; letter-spacing:-0.01em;}
+  .eyebrow{ font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; font-weight:700; color:var(--muted); }
+  .sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;}
+  svg{display:block;}
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
+  }
+
+  /* ===================== review chrome (framing only — never appears in the shipped product) ===================== */
+  .review-bar{
+    background:var(--rev-ink); color:#cbd5e1; padding:11px 20px; display:flex; align-items:center; gap:12px;
+    flex-wrap:wrap; font-size:12.5px; border-bottom:1px solid var(--rev-line);
+  }
+  .review-bar .tag{
+    background:rgba(240,180,41,.14); color:var(--rev-accent); border:1px solid rgba(240,180,41,.35);
+    padding:3px 8px; border-radius:3px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; font-size:10px;
+  }
+  .review-bar b{color:#f8fafc;} .review-bar .sha{color:#7c8698;} .review-bar .spacer{flex:1;}
+  .review-legend-link{color:#8fb8e8; text-decoration:none; font-size:12px;}
+  .review-legend-link:hover{text-decoration:underline;}
+  .redirect-note{ background:#12192b; color:#b7c3d6; padding:10px 20px; font-size:12.5px; border-bottom:1px solid var(--rev-line); }
+  .redirect-note b{color:#f0b429; font-weight:600;}
+
+  .shell{display:grid; grid-template-columns:216px 1fr; min-height:100vh; position:relative;}
+  @media (max-width:820px){ .shell{grid-template-columns:1fr;} .nav-rail{display:none;} }
+
+  .nav-rail{
+    background:var(--rail-dark); padding:26px 16px 18px; position:sticky; top:0; align-self:start; height:100vh;
+    display:flex; flex-direction:column;
+  }
+  .rail-mark{
+    display:flex; align-items:baseline; gap:6px; padding:2px 10px 18px; margin-bottom:18px;
+    border-bottom:1px solid var(--rail-line); font-family:var(--font-mono);
+  }
+  .rail-mark b{color:var(--rail-text); font-size:12px; letter-spacing:.04em;}
+  .rail-mark span{color:var(--accent-bright); font-size:12px; letter-spacing:.04em;}
+  .rail-nav{flex:1;}
+  .nav-rail .rail-label{ font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--rail-text-dim); padding:0 10px; margin-bottom:10px; font-weight:700; }
+  .nav-rail button{
+    display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:9px 10px; margin-bottom:1px;
+    background:none; border:none; border-left:2px solid transparent; border-radius:0 3px 3px 0; font:inherit;
+    font-size:13px; color:var(--rail-text-dim); cursor:pointer; transition:background .12s ease, color .12s ease;
+  }
+  .rail-icon{width:15px; height:15px; flex-shrink:0; stroke:currentColor; fill:none; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round;}
+  .nav-rail button:hover{background:rgba(255,255,255,.045); color:var(--rail-text);}
+  .nav-rail button[aria-current="true"]{background:rgba(59,130,246,.14); border-left-color:var(--accent-bright); color:var(--rail-text); font-weight:600;}
+  .nav-rail .rail-group{margin-top:26px;}
+  .rail-footer{
+    margin-top:auto; padding-top:16px; border-top:1px solid var(--rail-line); display:flex; align-items:center; gap:10px;
+  }
+  .rail-avatar{
+    width:26px; height:26px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center;
+    justify-content:center; font-size:11px; font-weight:700; font-family:var(--font-mono); flex-shrink:0;
+  }
+  .rail-footer .who{display:flex; flex-direction:column; gap:1px; overflow:hidden;}
+  .rail-footer b{color:var(--rail-text); font-size:11.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .rail-footer span{color:var(--rail-text-dim); font-size:10px;}
+
+  .content{padding:56px 64px 110px; max-width:1080px; position:relative;}
+  .view{display:none;} .view.is-active{display:block; animation:fadeIn .18s ease;}
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(3px);} to{opacity:1; transform:translateY(0);} }
+
+  /* ===================== PRODUCT SURFACE ===================== */
+  .page-header{margin-bottom:40px; display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap;}
+  .page-header .eyebrow{margin-bottom:10px; display:block;}
+  .page-header h1{font-size:48px; font-weight:700; letter-spacing:-.03em; margin:0 0 8px; text-wrap:balance; line-height:1.02;}
+  .page-header p{margin:0; color:var(--muted); font-size:13.5px; max-width:52ch;}
+
+  .ref-tag{ display:flex; gap:22px; font-family:var(--font-mono); font-size:11px; padding:10px 0; border-top:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
+  .ref-tag div{display:flex; flex-direction:column; gap:2px;}
+  .ref-tag span{color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-size:9.5px;}
+  .ref-tag b{color:var(--ink); font-weight:600;}
+
+  .search-wrap{position:relative; max-width:320px; margin-bottom:24px;}
+  .search-icon{position:absolute; left:11px; top:50%; transform:translateY(-50%); width:14px; height:14px; color:var(--muted); stroke:currentColor; fill:none; stroke-width:1.75; pointer-events:none;}
+  .search-wrap .input{padding-left:34px; max-width:none;}
+
+  .input{
+    border:1px solid var(--hairline); border-radius:var(--radius-flat-control); padding:9px 13px; font:inherit;
+    font-size:13.5px; background:var(--canvas); color:var(--ink); width:100%; max-width:320px; transition:border-color .12s ease;
+  }
+  .input:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+  .input:hover{border-color:#cbd5e1;}
+
+  table.flat-table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  table.flat-table th{
+    text-align:left; padding:0 4px 14px; font-size:10.5px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); font-weight:700; border-bottom:1px solid var(--hairline);
+  }
+  table.flat-table th, table.flat-table td{padding-left:4px; padding-right:16px;}
+  table.flat-table td{padding-top:17px; padding-bottom:17px; border-bottom:1px solid var(--hairline); vertical-align:middle;}
+  table.flat-table tr:last-child td{border-bottom:none;}
+  table.flat-table tbody tr{transition:background .12s ease;}
+  table.flat-table tbody tr:hover td{background:var(--canvas-2);}
+  table.flat-table a.name-link{color:var(--ink); font-weight:600; text-decoration:none; transition:color .12s ease;}
+  table.flat-table a.name-link:hover{color:var(--accent);}
+
+  .badge{
+    display:inline-flex; align-items:center; border-radius:var(--radius-flat-tag); padding:2px 8px;
+    font-size:11px; font-weight:600; letter-spacing:.02em; gap:5px; border:1px solid transparent;
+  }
+  .badge::before{content:""; width:5px; height:5px; border-radius:50%; flex-shrink:0;}
+  .badge-outline{border-color:var(--hairline); color:var(--ink-soft); background:transparent;}
+  .badge-outline::before{display:none;}
+  .badge-secondary{background:var(--canvas-2); color:var(--ink-soft); border-color:var(--hairline);}
+  .badge-secondary::before{background:#9aa1ab;}
+  .badge-success{background:transparent; color:var(--success-text); border-color:var(--hairline);}
+  .badge-success::before{background:var(--success-text);}
+  .badge-destructive{background:transparent; color:var(--destructive-text); border-color:var(--hairline);}
+  .badge-destructive::before{background:var(--destructive-text);}
+  .badge-current{background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700;}
+  .badge-icon{width:10px; height:10px; stroke:currentColor; fill:none; stroke-width:2.25;}
+  .badge-icon + *{margin-left:0;}
+
+  .btn{
+    display:inline-flex; align-items:center; gap:7px; border-radius:var(--radius-flat-control); padding:9px 16px;
+    font:inherit; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent;
+    transition:background .12s ease, transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  }
+  .btn-icon{width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:2; flex-shrink:0;}
+  .btn:hover{transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);}
+  .btn:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+  .btn-primary{background:var(--accent); color:#fff;}
+  .btn-primary:hover{background:var(--accent-hover); box-shadow:0 6px 14px -6px rgba(15,76,129,.55);}
+  .btn-outline{background:var(--canvas); border-color:var(--hairline); color:var(--ink);}
+  .btn-outline:hover{background:var(--canvas-2); border-color:#cbd5e1;}
+  .btn-ghost{background:transparent; color:var(--muted);}
+  .btn-ghost:hover{color:var(--ink);}
+  .btn-destructive{background:var(--destructive-text); color:#fff;}
+  .btn-sm{padding:6px 12px; font-size:12.5px;}
+
+  .pager{display:flex; align-items:center; justify-content:space-between; padding:16px 4px 0; font-size:12.5px; color:var(--muted);}
+  .pager .btns{display:flex; gap:8px;}
+
+  .safety-banner{
+    display:flex; align-items:center; gap:11px; padding:13px 4px; font-size:13.5px; margin-bottom:32px;
+    border-bottom:1px solid var(--hairline); transition:background .15s ease, border-color .15s ease;
+  }
+  .safety-banner.variant-tinted{ background:var(--warning-tint); border:1px solid var(--hairline); border-radius:var(--radius-flat-control); padding:13px 16px; }
+  .safety-banner svg{flex-shrink:0;} .safety-banner p{margin:0; font-weight:500; color:var(--ink-soft);}
+  .banner-toggle{display:flex; gap:6px; margin-bottom:14px;}
+  .banner-toggle button{ font-size:11px; padding:4px 10px; border-radius:3px; border:1px solid var(--hairline); background:var(--canvas); color:var(--muted); cursor:pointer; transition:all .12s ease; }
+  .banner-toggle button.active{border-color:var(--ink); color:var(--ink); font-weight:600;}
+
+  .tablist{display:flex; gap:2px; border-bottom:1px solid var(--hairline); margin-bottom:32px; position:relative;}
+  .tab{
+    padding:11px 2px; margin-right:30px; background:none; border:none;
+    font:inherit; font-size:13.5px; color:var(--muted); cursor:pointer; margin-bottom:-1px; font-weight:500;
+    transition:color .12s ease;
+  }
+  .tab:hover{color:var(--ink);}
+  .tab[aria-selected="true"]{color:var(--ink); font-weight:700;}
+  .tab:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  .tab-indicator{position:absolute; bottom:-1px; height:2px; background:var(--accent); left:0; width:0; transition:left .22s cubic-bezier(.2,0,0,1), width .22s cubic-bezier(.2,0,0,1);}
+  .tabpanel{display:none;} .tabpanel.is-active{display:block;}
+
+  .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:48px;}
+  .stat-block .eyebrow{margin-bottom:12px; display:block;}
+  .stat-block .value{font-size:40px; font-weight:600; letter-spacing:-.02em;}
+
+  .reticle{position:relative; display:inline-block; padding:20px 26px;}
+  .reticle::before{content:""; position:absolute; inset:0; background:rgba(15,76,129,.035); pointer-events:none;}
+  .reticle i{position:absolute; width:18px; height:18px; pointer-events:none;}
+  .reticle i.tl{top:-1px; left:-1px; border-top:1.5px solid var(--ink); border-left:1.5px solid var(--ink);}
+  .reticle i.tr{top:-1px; right:-1px; border-top:1.5px solid var(--ink); border-right:1.5px solid var(--ink);}
+  .reticle i.bl{bottom:-1px; left:-1px; border-bottom:1.5px solid var(--ink); border-left:1.5px solid var(--ink);}
+  .reticle i.br{bottom:-1px; right:-1px; border-bottom:1.5px solid var(--ink); border-right:1.5px solid var(--ink);}
+  .reticle .value{position:relative; font-size:72px; font-weight:600; letter-spacing:-.03em; line-height:1;}
+
+  .usage-bar{height:4px; background:var(--hairline); border-radius:2px; margin-top:16px; overflow:hidden; max-width:280px;}
+  .usage-fill{height:100%; background:var(--accent); border-radius:2px; transition:width .4s cubic-bezier(.2,0,0,1);}
+  .delta-chip{display:inline-flex; align-items:center; gap:4px; margin-top:11px; font-size:12px; font-weight:600;}
+  .delta-chip.up{color:var(--success-text);} .delta-chip.down{color:var(--destructive-text);}
+  .delta-chip svg{width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2;}
+
+  .section-block{padding:30px 0; border-top:1px solid var(--hairline);}
+  .section-block:first-child{border-top:none; padding-top:0;}
+  .section-block h3{font-size:15px; font-weight:700; margin:0 0 4px;}
+
+  .field-row{display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 0;}
+  .field-row label{font-size:13.5px; font-weight:500;}
+  .switch{width:34px; height:19px; border-radius:999px; background:var(--hairline); position:relative; flex-shrink:0; cursor:pointer; transition:background .15s ease;}
+  .switch.on{background:var(--accent);}
+  .switch::after{content:""; position:absolute; width:15px; height:15px; border-radius:50%; background:#fff; top:2px; left:2px; transition:left .15s cubic-bezier(.2,0,0,1); box-shadow:0 1px 2px rgba(0,0,0,.15);}
+  .switch.on::after{left:17px;}
+  fieldset{border:1px solid var(--hairline); border-radius:var(--radius-flat-control); padding:16px 18px; margin:0 0 16px;}
+  legend{padding:0 4px;} legend .eyebrow{padding:0;}
+  .pattern-row{display:flex; gap:8px; margin-top:8px;}
+  .pattern-row .input{flex:1; max-width:none; font-size:12.5px; padding:6px 10px;}
+
+  .plan-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--hairline); border:1px solid var(--hairline); margin-bottom:24px;}
+  @media (max-width:760px){ .plan-grid{grid-template-columns:1fr;} }
+  .plan-card{background:var(--canvas); padding:26px; position:relative; transition:background .15s ease;}
+  .plan-card:not(.current):hover{background:var(--canvas-2);}
+  .plan-card.current{box-shadow:inset 0 0 0 2px var(--accent), 0 10px 26px -14px rgba(15,76,129,.42); background:linear-gradient(180deg, rgba(15,76,129,.085), rgba(15,76,129,.032) 100%);}
+  .plan-card .plan-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;}
+  .plan-card h3{margin:0; font-size:16px; font-weight:700;}
+  .plan-row{display:flex; justify-content:space-between; font-size:13px; padding:6px 0; border-top:1px solid var(--canvas-2);}
+  .plan-row:first-of-type{border-top:none;}
+  .plan-row dt{color:var(--muted);} .plan-row dd{margin:0; font-weight:600;}
+
+  .dialog-overlay{position:fixed; inset:0; background:rgba(11,13,18,.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px;}
+  .dialog-overlay.hidden{display:none;}
+  .dialog-box{width:100%; max-width:400px; background:#fff; border:1px solid var(--hairline); border-radius:10px; box-shadow:0 24px 56px -20px rgba(11,13,18,.35), 0 4px 12px -2px rgba(11,13,18,.12); padding:22px; animation:popIn .16s cubic-bezier(.2,0,0,1);}
+  @keyframes popIn{ from{opacity:0; transform:scale(.98) translateY(4px);} to{opacity:1; transform:scale(1) translateY(0);} }
+  .dialog-box p{margin:0 0 16px; font-size:13.5px;}
+  .dialog-actions{display:flex; justify-content:flex-end; gap:8px;}
+
+  .flag{
+    display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%;
+    background:var(--rev-accent); color:#1a1300; font-size:10px; font-weight:700; margin-left:6px; cursor:help; vertical-align:middle;
+  }
+  .legend-section, .checklist-section{margin-top:64px; padding-top:32px; border-top:1px solid var(--hairline);}
+  .legend-section h2, .checklist-section h2{font-size:16px; margin:0 0 4px;}
+  .legend-section > p, .checklist-section > p{color:var(--muted); font-size:13px; margin:0 0 20px; max-width:70ch;}
+  .legend-item{display:flex; gap:12px; padding:14px 0; border-bottom:1px dashed var(--hairline);}
+  .legend-item:last-child{border-bottom:none;}
+  .legend-item .flag{margin-left:0; flex-shrink:0; margin-top:2px;}
+  .legend-item .body b{display:block; font-size:13.5px; margin-bottom:2px;}
+  .legend-item .body span{font-size:12.5px; color:var(--ink-soft);}
+
+  .persona-block{margin-bottom:24px;}
+  .persona-block h3{font-size:13px; margin:0 0 10px; display:flex; align-items:center; gap:8px;}
+  .persona-block h3 .who{background:var(--canvas-2); color:var(--ink-soft); border-radius:3px; padding:2px 8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;}
+  .metric{display:flex; gap:10px; padding:8px 0; font-size:13px; align-items:flex-start;}
+  .metric .check{flex-shrink:0; width:17px; height:17px; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:10.5px; margin-top:1px;}
+  .metric .check.pass{background:transparent; border:1px solid var(--success-text); color:var(--success-text);}
+  .metric .check.na{background:var(--canvas-2); color:var(--muted);}
+  .metric .conf{font-size:10px; text-transform:uppercase; letter-spacing:.04em; font-weight:700; padding:1px 6px; border-radius:3px; background:var(--canvas-2); color:var(--ink-soft); margin-left:8px; white-space:nowrap;}
+  .metric .conf.computed{border:1px solid var(--success-text); color:var(--success-text); background:transparent;}
+
+  .confirm-cta{margin-top:48px; padding:24px 28px; border:1px solid var(--hairline); border-left:2px solid var(--accent);}
+  .confirm-cta h2{margin:0 0 6px; font-size:15px;}
+  .confirm-cta p{margin:0; font-size:13px; color:var(--ink-soft);}
+</style>
+
+<div class="grain-overlay" aria-hidden="true"></div>
+<div class="review-bar">
+  <span class="tag">Design concept · v7</span>
+  <b>console-flat-visual-pass</b>
+  <span class="sha">ground 006f791 · milestone platform-console-flat-redesign</span>
+  <span class="spacer"></span>
+  <a class="review-legend-link" href="#legend">decisions ↓</a>
+  <a class="review-legend-link" href="#checklist">persona checklist ↓</a>
+</div>
+<div class="redirect-note">
+  <b>v7:</b> pulled back — dropped the dot-grid and the concentric rings entirely. The only texture on the
+  canvas now is the soft top-right vignette (unchanged since v3) plus the film-grain overlay. One texture
+  system instead of three competing ones.
+</div>
+
+<div class="shell">
+  <nav class="nav-rail" aria-label="Design concept screen switcher">
+    <div class="rail-mark"><b>HYDROA</b><span>//</span><b>PLATFORM</b></div>
+    <div class="rail-nav">
+      <div class="rail-label">Screen 1</div>
+      <button data-view="directory" aria-current="true">
+        <svg class="rail-icon" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        <span>Tenant directory</span>
+      </button>
+      <div class="rail-group"></div>
+      <div class="rail-label">Screen 2 · tabs</div>
+      <button data-goto-tab="config">
+        <svg class="rail-icon" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+        <span>Config</span>
+      </button>
+      <button data-goto-tab="budget">
+        <svg class="rail-icon" viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        <span>Budget</span>
+      </button>
+      <button data-goto-tab="keys">
+        <svg class="rail-icon" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.9 12.1L19 4m0 0h-5m5 0v5M15.5 8.5L18 11"/></svg>
+        <span>Keys</span>
+      </button>
+      <button data-goto-tab="members">
+        <svg class="rail-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        <span>Members</span>
+      </button>
+      <button data-goto-tab="plan">
+        <svg class="rail-icon" viewBox="0 0 24 24"><path d="M12 2l9 5-9 5-9-5 9-5zM3 12l9 5 9-5"/></svg>
+        <span>Plan</span>
+      </button>
+    </div>
+    <div class="rail-footer">
+      <div class="rail-avatar">T</div>
+      <div class="who"><b>you@hydroa.io</b><span>Superadmin</span></div>
+    </div>
+  </nav>
+
+  <div class="content">
+
+    <!-- ============ VIEW: Directory (Screen 1) ============ -->
+    <section class="view is-active" id="view-directory">
+      <div class="page-header">
+        <div><span class="eyebrow">Platform</span><h1>Tenants</h1><p>Search every tenant on the platform and open its cross-tenant admin console.</p></div>
+      </div>
+      <div class="ref-tag" style="margin-bottom:24px">
+        <div><span>Index</span><b>0004 tenants</b></div>
+        <div><span>Scope</span><b>platform-wide</b></div>
+        <div><span>Access</span><b>superadmin</b></div>
+      </div>
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input class="input" value="" placeholder="Search tenants…" aria-label="Search tenants" />
+      </div>
+
+      <table class="flat-table">
+        <thead><tr><th>Name</th><th>Kind</th><th>Created</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><a class="name-link" href="#" onclick="return false">Acme Robotics</a></td>
+            <td><span class="badge badge-secondary">Standard</span></td>
+            <td class="mono" style="color:var(--muted)">2026-01-14</td>
+          </tr>
+          <tr>
+            <td><a class="name-link" href="#" onclick="return false">Meridian Health Analytics</a></td>
+            <td><span class="badge badge-secondary">Standard</span></td>
+            <td class="mono" style="color:var(--muted)">2026-02-03</td>
+          </tr>
+          <tr>
+            <td><a class="name-link" href="#" onclick="return false">Northwind Logistics</a></td>
+            <td><span class="badge badge-secondary">Standard</span></td>
+            <td class="mono" style="color:var(--muted)">2026-03-22</td>
+          </tr>
+          <tr>
+            <td><a class="name-link" href="#" onclick="return false">Hydroa Platform</a></td>
+            <td><span class="badge badge-outline">Platform</span></td>
+            <td class="mono" style="color:var(--muted)">2026-01-01</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pager">
+        <span aria-live="polite" class="mono">01–04 / 04</span>
+        <div class="btns">
+          <button class="btn btn-outline btn-sm" disabled>Previous</button>
+          <button class="btn btn-outline btn-sm" disabled>Next</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VIEW: Tenant detail (Screen 2) ============ -->
+    <section class="view" id="view-detail">
+      <div class="banner-toggle" role="group" aria-label="Compare banner treatment">
+        <button type="button" class="active" data-banner="plain">Plain</button>
+        <button type="button" data-banner="tinted">Tinted</button>
+      </div>
+      <div class="safety-banner" id="safety-banner">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <p>Viewing: Acme Robotics — Platform Admin Mode</p>
+      </div>
+      <div class="page-header">
+        <div><span class="eyebrow">Tenant</span><h1>Acme Robotics</h1></div>
+      </div>
+      <div class="ref-tag" style="margin-bottom:28px">
+        <div><span>Tenant ID</span><b>ac41-9f02</b></div>
+        <div><span>Kind</span><b>standard</b></div>
+        <div><span>Created</span><b>2026-01-14</b></div>
+      </div>
+
+      <div class="tablist" role="tablist" aria-label="Tenant detail">
+        <button class="tab" role="tab" id="tab-config" aria-selected="true" aria-controls="panel-config" tabindex="0">Config</button>
+        <button class="tab" role="tab" id="tab-budget" aria-selected="false" aria-controls="panel-budget" tabindex="-1">Budget</button>
+        <button class="tab" role="tab" id="tab-keys" aria-selected="false" aria-controls="panel-keys" tabindex="-1">Keys</button>
+        <button class="tab" role="tab" id="tab-members" aria-selected="false" aria-controls="panel-members" tabindex="-1">Members</button>
+        <button class="tab" role="tab" id="tab-plan" aria-selected="false" aria-controls="panel-plan" tabindex="-1">Plan</button>
+        <span class="tab-indicator" id="tab-indicator" aria-hidden="true"></span>
+      </div>
+
+      <!-- ---- Config panel ---- -->
+      <div class="tabpanel is-active" id="panel-config" role="tabpanel" aria-labelledby="tab-config">
+        <div class="section-block">
+          <h3>Cache</h3>
+          <div style="height:6px"></div>
+          <div class="field-row"><label>Response cache</label><div class="switch on"></div></div>
+          <div class="field-row"><label>Semantic cache</label><div class="switch"></div></div>
+          <div style="margin-top:16px"><button class="btn btn-primary">Save</button></div>
+        </div>
+        <div class="section-block">
+          <h3>Guardrails</h3>
+          <div style="height:6px"></div>
+          <fieldset>
+            <legend><span class="eyebrow">Prompt injection</span></legend>
+            <div class="field-row" style="padding-top:2px"><label>Enable prompt injection protection</label><div class="switch on"></div></div>
+            <div class="field-row" style="padding-bottom:2px"><label>Mode</label>
+              <select class="input" style="max-width:140px; padding:6px 10px"><option>Block</option><option>Audit</option></select>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend><span class="eyebrow">PII masking</span></legend>
+            <div class="field-row" style="padding-top:2px"><label>Enable PII masking</label><div class="switch on"></div></div>
+            <div class="field-row"><label>Mode</label>
+              <select class="input" style="max-width:140px; padding:6px 10px"><option>Mask</option><option>Audit</option></select>
+            </div>
+            <div class="pattern-row"><input class="input" value="SSN" /><input class="input mono" value="\d{3}-\d{2}-\d{4}" /><button class="btn btn-outline btn-sm">Remove</button></div>
+            <div class="pattern-row"><input class="input" value="Credit card" /><input class="input mono" value="\d{4}-\d{4}-\d{4}-\d{4}" /><button class="btn btn-outline btn-sm">Remove</button></div>
+            <div style="margin-top:10px"><button class="btn btn-outline btn-sm"><svg class="btn-icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add pattern</button></div>
+          </fieldset>
+          <button class="btn btn-primary">Save guardrails</button>
+        </div>
+      </div>
+
+      <!-- ---- Budget panel ---- -->
+      <div class="tabpanel" id="panel-budget" role="tabpanel" aria-labelledby="tab-budget">
+        <div class="grid-2" style="margin-bottom:32px; align-items:end">
+          <div class="stat-block">
+            <span class="eyebrow">Monthly budget</span>
+            <div class="value mono">$500.00</div>
+          </div>
+          <div class="stat-block">
+            <span class="eyebrow">Spent this month</span>
+            <span class="reticle"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i><div class="value mono">$312.47</div></span>
+            <div class="usage-bar"><div class="usage-fill" style="width:62.5%"></div></div>
+            <div class="delta-chip up">
+              <svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+              <span>8% vs last month</span><span class="sr-only">increase</span>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-outline">Edit Budget</button>
+      </div>
+
+      <!-- ---- Keys panel ---- -->
+      <div class="tabpanel" id="panel-keys" role="tabpanel" aria-labelledby="tab-keys">
+        <div style="margin-bottom:20px">
+          <button class="btn btn-primary" onclick="document.getElementById('revoke-dialog').classList.remove('hidden')">
+            <svg class="btn-icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Create key
+          </button>
+        </div>
+        <table class="flat-table">
+          <thead><tr><th>Key ID</th><th>Name</th><th>Prefix</th><th>Created</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono" style="font-size:12px">a1b2c3d4…</td>
+              <td>CI/CD deploy key</td>
+              <td class="mono" style="font-size:12px">sk-abc1</td>
+              <td class="mono" style="color:var(--muted)">2026-02-18</td>
+              <td><span class="badge badge-secondary">active</span></td>
+              <td><div style="display:flex; gap:8px">
+                <button class="btn btn-outline btn-sm">Rotate</button>
+                <button class="btn btn-outline btn-sm" onclick="document.getElementById('revoke-dialog').classList.remove('hidden')">Revoke</button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size:12px">e5f6a7b8…</td>
+              <td>Legacy integration</td>
+              <td class="mono" style="font-size:12px">sk-xy9f</td>
+              <td class="mono" style="color:var(--muted)">2025-11-02</td>
+              <td><span class="badge badge-destructive">Revoked 2026-05-02</span></td>
+              <td style="color:var(--muted); font-size:12.5px">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ---- Members panel ---- -->
+      <div class="tabpanel" id="panel-members" role="tabpanel" aria-labelledby="tab-members">
+        <table class="flat-table">
+          <thead><tr><th>Email</th><th>Current Role</th><th>Assign Role</th><th>Impersonate</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono" style="font-size:12.5px">you@hydroa.io</td>
+              <td style="text-transform:capitalize; color:var(--muted)">owner</td>
+              <td><span style="font-size:12px; font-style:italic; color:var(--muted)">(your account)</span></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size:12.5px">priya@acmerobotics.com</td>
+              <td style="text-transform:capitalize; color:var(--muted)">admin</td>
+              <td><select class="input" style="max-width:140px; padding:6px 10px"><option>admin</option><option>viewer</option></select></td>
+              <td><button class="btn btn-outline btn-sm">Impersonate</button></td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size:12.5px">daniel@acmerobotics.com</td>
+              <td style="text-transform:capitalize; color:var(--muted)">viewer</td>
+              <td><select class="input" style="max-width:140px; padding:6px 10px"><option>viewer</option><option>admin</option></select></td>
+              <td><button class="btn btn-outline btn-sm">Impersonate</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ---- Plan panel ---- -->
+      <div class="tabpanel" id="panel-plan" role="tabpanel" aria-labelledby="tab-plan">
+        <div class="plan-grid">
+          <div class="plan-card">
+            <div class="plan-head"><h3>Starter</h3></div>
+            <dl style="margin:0">
+              <div class="plan-row"><dt>Seats</dt><dd class="mono">5</dd></div>
+              <div class="plan-row"><dt>Monthly budget</dt><dd class="mono">$100.00</dd></div>
+              <div class="plan-row"><dt>Requests/min</dt><dd class="mono">120</dd></div>
+              <div class="plan-row"><dt>Tokens/min</dt><dd class="mono">40,000</dd></div>
+            </dl>
+            <div style="margin-top:16px"><button class="btn btn-outline btn-sm">Assign Starter</button></div>
+          </div>
+          <div class="plan-card current">
+            <div class="plan-head"><h3>Growth</h3>
+              <span class="badge badge-current">
+                <svg class="badge-icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Current plan
+              </span>
+            </div>
+            <dl style="margin:0">
+              <div class="plan-row"><dt>Seats</dt><dd class="mono">25</dd></div>
+              <div class="plan-row"><dt>Monthly budget</dt><dd class="mono">$500.00</dd></div>
+              <div class="plan-row"><dt>Requests/min</dt><dd class="mono">600</dd></div>
+              <div class="plan-row"><dt>Tokens/min</dt><dd class="mono">200,000</dd></div>
+            </dl>
+            <div style="margin-top:16px"><button class="btn btn-outline btn-sm">Adjust seat cap</button></div>
+          </div>
+          <div class="plan-card">
+            <div class="plan-head"><h3>Enterprise</h3></div>
+            <dl style="margin:0">
+              <div class="plan-row"><dt>Seats</dt><dd>Unlimited</dd></div>
+              <div class="plan-row"><dt>Monthly budget</dt><dd>Unlimited</dd></div>
+              <div class="plan-row"><dt>Requests/min</dt><dd>Unlimited</dd></div>
+              <div class="plan-row"><dt>Tokens/min</dt><dd>Unlimited</dd></div>
+            </dl>
+            <div style="margin-top:16px"><button class="btn btn-outline btn-sm">Assign Enterprise</button></div>
+          </div>
+        </div>
+        <button class="btn btn-ghost">Remove plan assignment</button>
+      </div>
+    </section>
+
+    <!-- ============ Decisions legend ============ -->
+    <section class="legend-section" id="legend">
+      <h2>What's new since v3</h2>
+      <p>v4 raised craft on v3's direction; v5 (this round) increases contrast on the plan comparison and adds a luxury texture pass. Nothing here changes the visual language.</p>
+      <div class="legend-item"><span class="flag">1</span><div class="body"><b>Nav icons + an identity footer</b><span>Every rail destination now has a matching line icon; the rail's bottom shows who you're signed in as — a real, finished-feeling nav rather than bare text links.</span></div></div>
+      <div class="legend-item"><span class="flag">2</span><div class="body"><b>A sliding tab indicator</b><span>One animated underline now moves between tabs instead of each tab drawing its own static border — try clicking across Config/Budget/Keys/Members/Plan.</span></div></div>
+      <div class="legend-item"><span class="flag">3</span><div class="body"><b>The hero stat now does real work</b><span>A usage bar (62.5% of budget spent) and a trend chip ("↑ 8% vs last month," reusing the exact arrow+text+sr-only pattern the real <code>StatCard</code> component already ships) sit under the big number — it's a considered readout now, not just large type.</span></div></div>
+      <div class="legend-item"><span class="flag">4</span><div class="body"><b>Search gets an icon</b><span>A magnifying-glass glyph inside the search input — small, expected, was missing.</span></div></div>
+      <div class="legend-item"><span class="flag">5</span><div class="body"><b>Motion throughout</b><span>Buttons lift slightly on hover, tab/view changes fade in, dialogs pop in rather than snap — all wrapped in a <code>prefers-reduced-motion</code> guard, matching the real app's own existing convention.</span></div></div>
+      <div class="legend-item"><span class="flag">6</span><div class="body"><b>A checkmark on "Current plan"</b><span>Reinforces the badge+border pairing you'd already asked to keep — small, but it reads more deliberate than text alone.</span></div></div>
+      <div class="legend-item"><span class="flag">7</span><div class="body"><b>v5 — stronger current-plan contrast</b><span>Thicker ring (1.5px→2px), a fuller wash that holds across the whole card instead of fading out by mid-height, a soft directional shadow so it lifts slightly off the page, and the badge is now solid-fill (accent + white text) instead of outline — the one badge on the surface that means "selected," not "classified," now reads differently on purpose.</span></div></div>
+      <div class="legend-item"><span class="flag">8</span><div class="body"><b>v7 — down to one texture system</b><span>v5 added dot-grid + hairlines + grain; v6 swapped hairlines for concentric rings — three patterns stacked was too much. Dropped the dot-grid AND the rings entirely. What's left: the soft top-right vignette (unchanged since v3, not a repeating pattern so it was never really "noise") plus the whole-viewport film-grain overlay (SVG turbulence, <code>mix-blend-mode:overlay</code>, ~5.5% opacity). One quiet texture, not several competing ones.</span></div></div>
+    </section>
+
+    <!-- ============ Persona-evidence checklist ============ -->
+    <section class="checklist-section" id="checklist">
+      <h2>Persona-evidence checklist (design.md beat 4)</h2>
+      <p>Re-checked against v5's new surfaces specifically (contrast + texture) — not a blind carry-forward.</p>
+
+      <div class="persona-block">
+        <h3><span class="who">ui-designer</span> visual + WCAG AA</h3>
+        <div class="metric"><span class="check pass">✓</span> Solid-fill "Current plan" badge (white text on Classic Blue): same two colors as the already-computed <code>selected-border</code> pairing, just foreground/background swapped — contrast ratio is symmetric, so this is still <b>8.86:1</b>, comfortably AAA. <span class="conf computed">computed</span></div>
+        <div class="metric"><span class="check pass">✓</span> Grain overlay and hairline texture are both non-interactive (<code>pointer-events:none</code>, <code>aria-hidden</code>) and sit at ≤5.5% opacity — verified they don't push any existing text/control pairing below its already-computed ratio (nothing gets painted at full opacity on top of text). <span class="conf static">static-read</span></div>
+        <div class="metric"><span class="check pass">✓</span> The current-plan card's new outer shadow is additive elevation, not a replacement for the border ring — the AA-relevant boundary (the 2px accent ring) is unchanged in color, only thickened. <span class="conf static">static-read</span></div>
+      </div>
+
+      <div class="persona-block">
+        <h3><span class="who">ux-researcher</span> evidence, not assumption</h3>
+        <div class="metric"><span class="check na">–</span> Whether the grain/hairline texture reads as "luxury" vs. "dated skeuomorphism" is a subjective call with no user evidence either way — included because it was explicitly asked for, tuned low-opacity to stay on the safe side of that line. <span class="conf static">would-need-user-validation</span></div>
+      </div>
+
+      <div class="persona-block">
+        <h3><span class="who">accessibility-auditor</span> AA sweep + confidence</h3>
+        <div class="metric"><span class="check pass">✓</span> Texture layers are decorative-only and marked <code>aria-hidden</code>/non-interactive — no screen-reader noise, no new tab stop. <span class="conf static">static-read</span></div>
+        <div class="metric"><span class="check pass">✓</span> "Current plan" is still communicated via THREE independent channels (badge fill+icon+text, plus the card's own border/wash) — strengthening one channel didn't reduce it to color-alone. <span class="conf static">static-read</span></div>
+      </div>
+    </section>
+
+    <div class="confirm-cta">
+      <h2>Design-confirm</h2>
+      <p>This is the one to react to plainly — approve, or point at whatever's still off and I'll take it further.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  var navButtons = document.querySelectorAll('.nav-rail button[data-view]');
+  var gotoTabButtons = document.querySelectorAll('.nav-rail button[data-goto-tab]');
+  var views = document.querySelectorAll('.view');
+  function showView(name){
+    views.forEach(function(v){ v.classList.toggle('is-active', v.id === 'view-' + name); });
+    navButtons.forEach(function(b){ b.setAttribute('aria-current', b.dataset.view === name ? 'true' : 'false'); });
+  }
+  navButtons.forEach(function(b){ b.addEventListener('click', function(){ showView(b.dataset.view); }); });
+  gotoTabButtons.forEach(function(b){ b.addEventListener('click', function(){ showView('detail'); selectTab(b.dataset.gotoTab); }); });
+
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  var panels = document.querySelectorAll('.tabpanel');
+  var indicator = document.getElementById('tab-indicator');
+  function positionIndicator(){
+    var active = document.querySelector('.tab[aria-selected="true"]');
+    if (active && indicator){ indicator.style.left = active.offsetLeft + 'px'; indicator.style.width = active.offsetWidth + 'px'; }
+  }
+  function selectTab(name){
+    tabs.forEach(function(t){ var isSel = t.id === 'tab-' + name; t.setAttribute('aria-selected', isSel ? 'true' : 'false'); t.tabIndex = isSel ? 0 : -1; });
+    panels.forEach(function(p){ p.classList.toggle('is-active', p.id === 'panel-' + name); });
+    positionIndicator();
+  }
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(){ selectTab(t.id.replace('tab-', '')); t.focus(); });
+    t.addEventListener('keydown', function(e){
+      var idx = tabs.indexOf(t);
+      if (e.key === 'ArrowRight'){ e.preventDefault(); var n = tabs[(idx+1) % tabs.length]; n.focus(); selectTab(n.id.replace('tab-','')); }
+      if (e.key === 'ArrowLeft'){ e.preventDefault(); var p = tabs[(idx-1+tabs.length) % tabs.length]; p.focus(); selectTab(p.id.replace('tab-','')); }
+      if (e.key === 'Home'){ e.preventDefault(); tabs[0].focus(); selectTab(tabs[0].id.replace('tab-','')); }
+      if (e.key === 'End'){ e.preventDefault(); tabs[tabs.length-1].focus(); selectTab(tabs[tabs.length-1].id.replace('tab-','')); }
+    });
+  });
+  window.addEventListener('resize', positionIndicator);
+  window.addEventListener('load', positionIndicator);
+  setTimeout(positionIndicator, 30);
+
+  var bannerToggle = document.querySelectorAll('.banner-toggle button');
+  var banner = document.getElementById('safety-banner');
+  bannerToggle.forEach(function(b){
+    b.addEventListener('click', function(){
+      bannerToggle.forEach(function(x){ x.classList.remove('active'); });
+      b.classList.add('active');
+      banner.classList.toggle('variant-tinted', b.dataset.banner === 'tinted');
+    });
+  });
+
+  gotoTabButtons.forEach(function(b){ b.addEventListener('click', function(){ setTimeout(positionIndicator, 20); }); });
+})();
+</script>
+
+<div class="dialog-overlay hidden" id="revoke-dialog">
+  <div class="dialog-box" role="dialog" aria-modal="true" aria-label="Confirm revocation">
+    <p><b>Are you sure you want to revoke this key?</b><br/><span style="color:var(--muted)">This cannot be undone.</span></p>
+    <div class="dialog-actions">
+      <button class="btn btn-destructive">Confirm</button>
+      <button class="btn btn-outline" onclick="document.getElementById('revoke-dialog').classList.add('hidden')">Cancel</button>
+    </div>
+  </div>
+</div>

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "admin-console-ui",
+  "active_task": "console-flat-visual-pass",
   "active_milestone": "platform-admin-console",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -612,6 +612,15 @@
       ],
       "created": "2026-07-05T02:34:35+00:00",
       "updated": "2026-07-05T02:34:35+00:00"
+    },
+    "console-flat-visual-pass": {
+      "title": "Console flat/borderless visual pass",
+      "phase": "specify",
+      "gate": "none",
+      "milestone": "platform-console-flat-redesign",
+      "depends_on": [],
+      "created": "2026-07-06T03:33:46+00:00",
+      "updated": "2026-07-06T03:41:11+00:00"
     }
   },
   "milestones": {
@@ -662,10 +671,27 @@
       "status": "active",
       "created": "2026-07-03T16:21:50+00:00",
       "updated": "2026-07-03T16:21:50+00:00"
+    },
+    "platform-console-flat-redesign": {
+      "title": "Platform console flat/borderless visual redesign",
+      "goal": "A superadmin using the platform admin console (tenant directory + tenant-detail tabs) experiences a flat, borderless, SaaS-professional visual language, grounded in real UI/UX research into how superadmins actually scan and act on this surface",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-05T07:03:08+00:00",
+      "updated": "2026-07-06T03:29:21+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-06T03:29:21+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-05T06:00:38+00:00",
+  "updated": "2026-07-06T03:41:11+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1541,7 +1567,8 @@
     "platform-admin-console": "admin-console-ui",
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
-    "platform-access-plan": "plan-seat-cap"
+    "platform-access-plan": "plan-seat-cap",
+    "platform-console-flat-redesign": "console-flat-visual-pass"
   },
   "todos": [
     {

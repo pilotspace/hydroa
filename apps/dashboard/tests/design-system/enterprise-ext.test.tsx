@@ -261,6 +261,27 @@ describe("StatCard — label, value, non-color-only trend", () => {
     expect(container.textContent?.toLowerCase()).toMatch(/down|decreas|↓/);
     expect(await axeSeriousCritical(container)).toEqual([]);
   });
+
+  // accessibility-auditor sweep, 2026-07-06: both delta tones used raw text-success/
+  // text-destructive on their own 10%-tint backgrounds (3.34:1 / 4.14:1 — both under AA;
+  // jsdom-axe above can't catch this, see file header). Latent until a caller passes
+  // `delta` — none did yet, but PlatformBudgetTab already imports StatCard. Same AA-safe
+  // aliases as Badge's fix.
+  it("test_statcard_delta_tones_use_aa_safe_text_colors", () => {
+    const { rerender } = render(
+      <StatCard label="New Customers" value="1,234" delta={{ direction: "down", text: "-20%" }} />,
+    );
+    let toneClasses = screen.getByText("-20%").parentElement!.className.split(" ");
+    expect(toneClasses).toContain("text-destructive-text");
+    expect(toneClasses).not.toContain("text-destructive");
+
+    rerender(
+      <StatCard label="New Customers" value="1,234" delta={{ direction: "up", text: "+20%" }} />,
+    );
+    toneClasses = screen.getByText("+20%").parentElement!.className.split(" ");
+    expect(toneClasses).toContain("text-success-text");
+    expect(toneClasses).not.toContain("text-success");
+  });
 });
 
 // ── CHART CARD ───────────────────────────────────────────────────────────────

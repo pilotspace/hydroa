@@ -30,8 +30,8 @@ const DELTA_META: Record<
   StatDelta["direction"],
   { Icon: React.ComponentType<{ className?: string }>; word: string; tone: string }
 > = {
-  up: { Icon: ArrowUpRight, word: "increase", tone: "bg-success/10 text-success" },
-  down: { Icon: ArrowDownRight, word: "decrease", tone: "bg-destructive/10 text-destructive" },
+  up: { Icon: ArrowUpRight, word: "increase", tone: "bg-success/10 text-success-text" },
+  down: { Icon: ArrowDownRight, word: "decrease", tone: "bg-destructive/10 text-destructive-text" },
   neutral: { Icon: Minus, word: "no change", tone: "bg-muted text-muted-foreground" },
 };
 
