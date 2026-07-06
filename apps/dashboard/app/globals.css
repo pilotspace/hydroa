@@ -24,7 +24,7 @@
     --popover: #ffffff;
     --popover-foreground: #0f172a;
     --muted: #f1f5f9;               /* slate-100 */
-    --muted-foreground: #64748b;    /* slate-500 */
+    --muted-foreground: #475569;    /* slate-600 — WCAG AA on tinted bg-muted grounds (persona a11y sweep; was slate-500 #64748b, 4.34:1 on --muted) */
 
     /* brand accent (Hydroa — Pantone Classic Blue 19-4052, luxury/trust) */
     --primary: #0f4c81;             /* Classic Blue */
