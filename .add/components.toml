@@ -1,0 +1,9 @@
+[component.gateway]
+root      = "apps/gateway"
+verify    = "cd apps/gateway && uv run pytest"
+green_bar = "pytest (Makefile:test / ci.yml 'Tests' step)"
+
+[component.dashboard]
+root      = "apps/dashboard"
+verify    = "cd apps/dashboard && npx vitest run"
+green_bar = "vitest (ci.yml dashboard job, working-directory: apps/dashboard)"
