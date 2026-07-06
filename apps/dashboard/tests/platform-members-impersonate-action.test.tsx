@@ -245,4 +245,42 @@ describe("PlatformMembersTab — Impersonate action", () => {
       expect(capturedBody).toEqual({ tenant_id: TENANT_ID, user_id: "u-1" });
     });
   });
+
+  // console-flat-visual-pass, 2026-07-06 (M5) — the Impersonate trigger button
+  // gets the page-local flat-control radius class.
+  it("test_impersonate_button_gets_flat_radius_class", async () => {
+    mockCaller();
+    mockUsers([{ id: "u-1", email: "bob@acme.io", role: "member" }]);
+    mockImpersonationStatus(false);
+
+    renderMembers("customer");
+    await waitFor(() => {
+      expect(screen.getByText(/bob@acme\.io/i)).toBeInTheDocument();
+    });
+
+    const button = screen.getByRole("button", { name: /impersonate/i });
+    expect(button.className).toContain("rounded-[var(--radius-flat-control)]");
+  });
+
+  // console-flat-visual-pass (M6, verify-only) — the impersonate-confirm dialog
+  // keeps its existing elevated treatment unchanged.
+  it("test_impersonate_confirm_dialog_stays_elevated_unchanged", async () => {
+    mockCaller();
+    mockUsers([{ id: "u-1", email: "bob@acme.io", role: "member" }]);
+    mockImpersonationStatus(false);
+
+    renderMembers("customer");
+    await waitFor(() => {
+      expect(screen.getByText(/bob@acme\.io/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /impersonate/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.className).toContain("rounded-lg");
+    expect(dialog.className).toContain("border-border");
+    expect(dialog.className).toContain("shadow-lg");
+    expect(dialog.className).not.toContain("rounded-[var(--radius-flat-card)]");
+    const confirmBtn = within(dialog).getByRole("button", { name: /confirm/i });
+    expect(confirmBtn.className).not.toContain("rounded-[var(--radius-flat-control)]");
+  });
 });

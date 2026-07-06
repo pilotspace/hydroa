@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { useSearchParams } from "next/navigation";
@@ -45,6 +45,14 @@ const GUARDRAILS_OK = { prompt_injection: null, pii_mask: null };
 const BUDGET_OK = { budget_usd_monthly: "500.00", spent_usd_month: "120.00" };
 const KEYS_OK: unknown[] = [];
 const USERS_OK = { users: [{ id: "u-1", email: "bob@acme.io", role: "admin" }] };
+// tenant-overview-strip (M1): the Strip is unconditionally mounted (visible
+// regardless of activeTab), so its own Plan+seat-cap tile fires this GET on
+// EVERY render of PlatformTenantDetail — not just when the Plan tab itself is
+// active. A default handler here (rather than per-test registration) keeps
+// every existing test in this file green under msw's onUnhandledRequest:"error".
+function planOkFor(tenantId: string) {
+  return { tenant_id: tenantId, plan: null, seat_cap: null };
+}
 
 function mockAllTabsHappyPath(tenantId: string, tenant: typeof TENANT_ACME) {
   server.use(
@@ -63,6 +71,9 @@ function mockAllTabsHappyPath(tenantId: string, tenant: typeof TENANT_ACME) {
     ),
     http.get(`${APP}/api/gw/admin/platform/tenants/${tenantId}/users`, () =>
       HttpResponse.json(USERS_OK),
+    ),
+    http.get(`${APP}/api/gw/admin/platform/tenants/${tenantId}/plan`, () =>
+      HttpResponse.json(planOkFor(tenantId)),
     ),
   );
 }
@@ -181,11 +192,31 @@ describe("PlatformTenantDetail — shell", () => {
       http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/keys`, () =>
         HttpResponse.json(KEYS_OK),
       ),
+      // tenant-overview-strip: the Strip is unconditional, so its own Plan and
+      // Seats-used tiles fire regardless of which tab is active here.
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/plan`, () =>
+        HttpResponse.json(planOkFor(TENANT_ID)),
+      ),
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/users`, () =>
+        HttpResponse.json(USERS_OK),
+      ),
     );
     renderDetail();
 
+    // Scoped to the active Budget tabpanel (role="tabpanel", TabsContent's own
+    // rendered role — components/ui/tabs.tsx) rather than a bare page-wide
+    // getByText: the Strip's own Budget tile shares the IDENTICAL cache key
+    // with PlatformBudgetTab (tenant-overview-strip M3/R2's whole point), so
+    // once the Strip mounts alongside, the SAME "Internal Server Error" text
+    // legitimately renders TWICE on this page (the tab's own + the Strip's own
+    // tile) — a query-precision fix for a real, by-design duplicate, not a
+    // weaker assertion (mirrors platform-config-budget.test.tsx's own
+    // test_config_cache_saves_independently_of_guardrails precedent for the
+    // same reason).
     await waitFor(() => {
-      expect(screen.getByText(/internal server error/i)).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("tabpanel")).getByText(/internal server error/i),
+      ).toBeInTheDocument();
     });
     expect(screen.getByTestId("platform-safety-banner")).toHaveTextContent("Acme Robotics");
 
@@ -286,5 +317,124 @@ describe("PlatformTenantDetail — shell", () => {
       expect(screen.getByText(/insufficient role/i)).toBeInTheDocument();
     });
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  // console-flat-visual-pass, 2026-07-06 (M3) — the banner's border swaps from the
+  // amber/accent-colored line to the neutral hairline (border-border); bg-warning/10,
+  // text-warning-foreground, and the ShieldAlert icon's text-warning are deliberately
+  // LEFT UNCHANGED (a literal "divider/line" reading — see TASK.md §5 Known-problem
+  // fixes) — they carry the box's actual warning semantics, not named for change.
+  it("test_safety_banner_divider_quieted_bg_text_icon_unchanged", async () => {
+    mockAllTabsHappyPath(TENANT_ID, TENANT_ACME);
+    renderDetail();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("platform-safety-banner")).toBeInTheDocument();
+    });
+    const banner = screen.getByTestId("platform-safety-banner");
+    expect(banner.className).toContain("border-border");
+    expect(banner.className).not.toContain("border-warning/40");
+    expect(banner.className).toContain("bg-warning/10");
+    expect(banner.className).toContain("text-warning-foreground");
+    const icon = banner.querySelector("svg");
+    expect(icon).not.toBeNull();
+    expect(icon!.getAttribute("class") ?? "").toContain("text-warning");
+  });
+
+  // tenant-overview-strip, 2026-07-06 (M1) — the Strip mounts as a NEW sibling
+  // between PageHeader and Tabs, visible regardless of activeTab. Reuses this
+  // file's own mockAllTabsHappyPath/renderDetail helpers (now covering /plan
+  // too). The existing dom-order test above (banner->heading->tablist) stays
+  // green unmodified — compareDocumentPosition checks relative order, not
+  // immediate adjacency, so heading still precedes tablist with the Strip
+  // mounted between them.
+  it("test_strip_mounts_between_pageheader_and_tabs_and_persists_across_tabs", async () => {
+    mockAllTabsHappyPath(TENANT_ID, TENANT_ACME);
+    renderDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1, name: "Acme Robotics" })).toBeInTheDocument();
+    });
+    const heading = screen.getByRole("heading", { level: 1 });
+    const tablist = screen.getByRole("tablist");
+
+    const strip = await screen.findByRole("region", { name: /tenant overview/i });
+    expect(
+      heading.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      strip.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // The existing frozen banner->heading->tablist assertions still hold with
+    // the Strip inserted between heading and tablist.
+    const banner = screen.getByTestId("platform-safety-banner");
+    expect(
+      banner.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      heading.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // Remains visible and unchanged when activeTab switches — never inside a
+    // TabsContent, so switching tabs never unmounts it.
+    fireEvent.click(screen.getByRole("tab", { name: /budget/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/monthly budget/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("region", { name: /tenant overview/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /members/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/bob@acme\.io/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("region", { name: /tenant overview/i })).toBeInTheDocument();
+  });
+
+  // tenant-activity-tab (M7) — additive 6th tab; the existing 5 tabs' own content and
+  // props stay byte-identical (this test adds a LOCAL /audit handler only, never touching
+  // mockAllTabsHappyPath — the shared helper every pre-existing test in this file relies on).
+  it("test_activity_tab_wired_as_sixth_tab_existing_tabs_byte_identical", async () => {
+    mockAllTabsHappyPath(TENANT_ID, TENANT_ACME);
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/audit`, () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: "audit-1",
+              actor_email: "root@platform.internal",
+              action: "platform.tenant.view",
+              target_type: "tenant",
+              target_id: TENANT_ID,
+              result: "success",
+              metadata: {},
+              created_at: "2026-07-06T12:00:00Z",
+            },
+          ],
+          total: 1,
+        }),
+      ),
+    );
+    renderDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1, name: "Acme Robotics" })).toBeInTheDocument();
+    });
+
+    // A 6th "Activity" tab is present and navigable via ?tab=activity.
+    fireEvent.click(screen.getByRole("tab", { name: /activity/i }));
+    await waitFor(() => {
+      expect(screen.getByText("platform.tenant.view")).toBeInTheDocument();
+    });
+    const router = getRouterMock();
+    const lastCall = router.replace.mock.calls.at(-1)!;
+    expect(String(lastCall[0])).toContain("tab=activity");
+    expect(screen.getByTestId("platform-safety-banner")).toHaveTextContent("Acme Robotics");
+
+    // The existing 5 tabs remain reachable and byte-identical — spot-check Members.
+    fireEvent.click(screen.getByRole("tab", { name: /members/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/bob@acme\.io/i)).toBeInTheDocument();
+    });
   });
 });

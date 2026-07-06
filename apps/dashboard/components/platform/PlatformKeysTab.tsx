@@ -43,7 +43,7 @@ import {
 import { CreateKeyDialog } from "@/components/keys/CreateKeyDialog";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
-interface PlatformApiKey {
+export interface PlatformApiKey {
   key_id: string;
   name: string;
   prefix: string;
@@ -174,7 +174,11 @@ export function PlatformKeysTab({ tenantId }: PlatformKeysTabProps) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <Button type="button" onClick={() => setIsCreateOpen(true)}>
+        <Button
+          type="button"
+          className="rounded-[var(--radius-flat-control)]"
+          onClick={() => setIsCreateOpen(true)}
+        >
           Create key
         </Button>
       </div>
@@ -200,7 +204,7 @@ export function PlatformKeysTab({ tenantId }: PlatformKeysTabProps) {
       {list.length === 0 ? (
         <Empty title="No API keys yet" description="Create the first key for this tenant." />
       ) : (
-        <Card>
+        <Card variant="flat">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -225,9 +229,13 @@ export function PlatformKeysTab({ tenantId }: PlatformKeysTabProps) {
                       <TableCell>{new Date(k.created_at).toLocaleDateString()}</TableCell>
                       <TableCell>
                         {isRevoked ? (
-                          <Badge variant="destructive">Revoked {k.revoked_at}</Badge>
+                          <Badge variant="destructive" className="rounded-[var(--radius-flat-tag)]">
+                            Revoked {k.revoked_at}
+                          </Badge>
                         ) : (
-                          <Badge variant="secondary">active</Badge>
+                          <Badge variant="secondary" className="rounded-[var(--radius-flat-tag)]">
+                            active
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell>
@@ -237,6 +245,7 @@ export function PlatformKeysTab({ tenantId }: PlatformKeysTabProps) {
                               type="button"
                               variant="outline"
                               size="sm"
+                              className="rounded-[var(--radius-flat-control)]"
                               disabled={rotateKeyMutation.isPending}
                               onClick={() => rotateKeyMutation.mutate(k.key_id)}
                             >
@@ -247,6 +256,7 @@ export function PlatformKeysTab({ tenantId }: PlatformKeysTabProps) {
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                className="rounded-[var(--radius-flat-control)]"
                                 onClick={() => setRevokeTargetId(k.key_id)}
                               >
                                 Revoke

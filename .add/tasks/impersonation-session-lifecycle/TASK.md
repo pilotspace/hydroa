@@ -965,20 +965,20 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-- [ADD · open] coverage.py under-reports statement coverage for async router code exercised through
+- [ADD · folded] coverage.py under-reports statement coverage for async router code exercised through [folded foundation-version 48]
   SQLAlchemy's greenlet bridge — 3rd confirmed occurrence this session (member-invite-issuance,
   plan-catalog, now this task: 48% router / 39.27% total reported when run in isolation, despite
   24/24 passing tests with real assertions). This time DIRECTLY FALSIFIED (not just reasoned about):
   the add-verify agent instrumented a "missing" line with a temporary print statement, confirmed it
   fires during a passing test, then reverted. Worth a repo-wide `.coveragerc`/pytest-cov config fix
   now that it has empirical proof behind it, not just pattern-matching across 3 builds.
-- [ADD · open] The "contract-specified-but-unused domain type" failure mode recurred (this task's
+- [ADD · folded] The "contract-specified-but-unused domain type" failure mode recurred (this task's [folded foundation-version 48]
   `ImpersonationSession` plain dataclass, §3 Part D) despite already being folded into
   CONVENTIONS.md from an earlier task (model-mgmt's ModelDisabledError/ModelNotFoundError). Worth a
   sharper trigger at Contract-freeze time: ask "which code path actually constructs this type?" for
   every domain entity named in §3, not just error classes — the existing lesson's phrasing may be too
   narrowly scoped to catch this class of recurrence.
-- [ADD · open] `add.py advance` state silently lagged actual build completion across this
+- [ADD · folded] `add.py advance` state silently lagged actual build completion across this [folded foundation-version 48]
   long-running, compacted, parallel-build session: this task's own phase marker was still `tests`
   (not `verify`) despite its code already being fully built, tested, and independently investigated
   by 2 separate verify attempts — root cause: the orchestrator built directly against the tree in a
@@ -987,7 +987,7 @@ What did this loop teach the foundation? One line each, tagged by competency
   status` at this gate. Lesson: advance state the instant a build completes, not deferred until the
   next check-in — the engine's phase marker is the only authoritative source of truth (TASK.md's own
   header is cosmetic) and desyncs silently otherwise, especially across compaction boundaries.
-- [ADD · open] A background-suite-dependent `add-verify` dispatch can look stalled (a transient API
+- [ADD · folded] A background-suite-dependent `add-verify` dispatch can look stalled (a transient API [folded foundation-version 48]
   error, then a long silent gap around a slow full-suite run) while actually still being alive and
   eventually delivering a complete, high-quality, more-rigorous-than-the-orchestrator's-own verdict
   (this instance: ~23 min wall-clock, 38 tool_uses, 4 self-built forced-race probes, 6 self-built HTTP

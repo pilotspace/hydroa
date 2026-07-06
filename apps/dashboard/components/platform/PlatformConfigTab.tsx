@@ -111,7 +111,7 @@ function PlatformCacheCard({ tenantId }: { tenantId: string }) {
   }
 
   return (
-    <Card>
+    <Card variant="flat">
       <CardHeader>
         <CardTitle>Cache</CardTitle>
       </CardHeader>
@@ -153,6 +153,7 @@ function PlatformCacheCard({ tenantId }: { tenantId: string }) {
         <div>
           <Button
             type="button"
+            className="rounded-[var(--radius-flat-control)]"
             disabled={saveCache.isPending}
             onClick={() => saveCache.mutate({ enabled, semantic_enabled: semanticEnabled })}
           >
@@ -233,7 +234,7 @@ function PlatformGuardrailsCard({ tenantId }: { tenantId: string }) {
   }
 
   return (
-    <Card>
+    <Card variant="flat">
       <CardHeader>
         <CardTitle>Guardrails</CardTitle>
       </CardHeader>
@@ -311,19 +312,20 @@ function PlatformGuardrailsCard({ tenantId }: { tenantId: string }) {
                     placeholder="Name"
                     value={row.name}
                     onChange={(e) => handlePatternChange(idx, "name", e.target.value)}
-                    className="flex-1"
+                    className="flex-1 rounded-[var(--radius-flat-control)]"
                   />
                   <Input
                     aria-label={`Pattern regex ${n}`}
                     placeholder="Regex"
                     value={row.pattern}
                     onChange={(e) => handlePatternChange(idx, "pattern", e.target.value)}
-                    className="flex-1"
+                    className="flex-1 rounded-[var(--radius-flat-control)]"
                   />
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="rounded-[var(--radius-flat-control)]"
                     aria-label={`Remove pattern ${n}`}
                     onClick={() => handleRemovePattern(idx)}
                   >
@@ -336,7 +338,13 @@ function PlatformGuardrailsCard({ tenantId }: { tenantId: string }) {
 
           {patterns.length < 8 && (
             <div>
-              <Button type="button" variant="outline" size="sm" onClick={handleAddPattern}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-[var(--radius-flat-control)]"
+                onClick={handleAddPattern}
+              >
                 Add pattern
               </Button>
             </div>
@@ -352,7 +360,12 @@ function PlatformGuardrailsCard({ tenantId }: { tenantId: string }) {
         <div>
           {/* Deliberately NOT a bare "Save" — see file header: disambiguates this
               card's own save action from the Cache card's "Save" on the same tab. */}
-          <Button type="button" disabled={saveGuardrails.isPending} onClick={handleSave}>
+          <Button
+            type="button"
+            className="rounded-[var(--radius-flat-control)]"
+            disabled={saveGuardrails.isPending}
+            onClick={handleSave}
+          >
             {saveGuardrails.isPending ? "Saving…" : "Save guardrails"}
           </Button>
         </div>

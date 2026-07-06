@@ -34,7 +34,7 @@ export function PlatformSafetyBanner({ tenantName, kind, className }: PlatformSa
     <div
       data-testid="platform-safety-banner"
       className={cn(
-        "flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-foreground",
+        "flex items-start gap-3 rounded-lg border border-border bg-warning/10 px-4 py-3 text-sm text-warning-foreground",
         className,
       )}
     >

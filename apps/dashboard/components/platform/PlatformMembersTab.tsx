@@ -43,7 +43,7 @@ export interface PlatformTenantUser {
   role: string;
 }
 
-interface UsersListResponse {
+export interface UsersListResponse {
   users: PlatformTenantUser[];
 }
 
@@ -219,6 +219,7 @@ export function PlatformMembersTab({ tenantId, tenantKind }: PlatformMembersTabP
                 type="button"
                 variant="outline"
                 size="sm"
+                className="rounded-[var(--radius-flat-control)]"
                 disabled={alreadyActive}
                 aria-label={`Impersonate ${user.email}`}
                 onClick={() => setImpersonateTarget(user)}

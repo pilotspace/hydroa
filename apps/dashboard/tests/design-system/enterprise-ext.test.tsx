@@ -282,6 +282,28 @@ describe("StatCard — label, value, non-color-only trend", () => {
     expect(toneClasses).toContain("text-success-text");
     expect(toneClasses).not.toContain("text-success");
   });
+
+  // console-flat-visual-pass, 2026-07-06 (M2) — StatCard gains an additive `variant`
+  // passthrough to its internal Card. Omitted must stay byte-identical to every
+  // existing dashboard-wide caller (Card's own default kicks in unchanged).
+  it("test_statcard_variant_omitted_renders_default_card_byte_identical", () => {
+    const { container } = render(<StatCard label="Requests" value="42" />);
+    const card = container.querySelector('[data-slot="stat-card"]')!;
+    expect(card).toHaveAttribute("data-variant", "default");
+    expect(card.className).toContain("rounded-lg");
+    expect(card.className).toContain("border-border");
+    expect(card.className).toContain("shadow-md");
+  });
+
+  it("test_statcard_variant_flat_renders_flat_card", () => {
+    const { container } = render(<StatCard label="Requests" value="42" variant="flat" />);
+    const card = container.querySelector('[data-slot="stat-card"]')!;
+    expect(card).toHaveAttribute("data-variant", "flat");
+    expect(card.className).toContain("rounded-[var(--radius-flat-card)]");
+    expect(card.className).toContain("shadow-none");
+    expect(card.className).not.toContain("border-border");
+    expect(card.className).not.toContain("shadow-md");
+  });
 });
 
 // ── CHART CARD ───────────────────────────────────────────────────────────────

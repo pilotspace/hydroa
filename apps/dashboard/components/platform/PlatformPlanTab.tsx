@@ -44,7 +44,7 @@ interface TenantKindSummary {
   created_at: string;
 }
 
-interface TenantPlanResponse {
+export interface TenantPlanResponse {
   tenant_id: string;
   plan: PlanResponse | null;
   seat_cap: number | null;
@@ -258,13 +258,21 @@ export function PlatformPlanTab({ tenantId }: PlatformPlanTabProps) {
               key={plan.id}
               plan={plan}
               displaySeatCap={isCurrent ? tenantPlan.seat_cap : undefined}
-              badge={isCurrent ? <Badge variant="secondary">Current plan</Badge> : undefined}
+              selected={isCurrent}
+              badge={
+                isCurrent ? (
+                  <Badge variant="secondary" className="rounded-[var(--radius-flat-tag)]">
+                    Current plan
+                  </Badge>
+                ) : undefined
+              }
               action={
                 isCurrent ? (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="rounded-[var(--radius-flat-control)]"
                     onClick={() => openConfirm(plan)}
                   >
                     Adjust seat cap
@@ -274,6 +282,7 @@ export function PlatformPlanTab({ tenantId }: PlatformPlanTabProps) {
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="rounded-[var(--radius-flat-control)]"
                     onClick={() => openConfirm(plan)}
                   >
                     Assign {plan.display_name}
@@ -302,6 +311,7 @@ export function PlatformPlanTab({ tenantId }: PlatformPlanTabProps) {
               onChange={handleSeatCapChange}
               placeholder="leave empty for unlimited"
               aria-label="Seats"
+              className="rounded-[var(--radius-flat-control)]"
             />
             {fieldError && (
               <p role="alert" aria-live="assertive" className="text-sm text-destructive">
@@ -315,10 +325,20 @@ export function PlatformPlanTab({ tenantId }: PlatformPlanTabProps) {
             )}
           </div>
           <div className="flex gap-2">
-            <Button type="button" disabled={assignMutation.isPending} onClick={handleSaveConfirm}>
+            <Button
+              type="button"
+              className="rounded-[var(--radius-flat-control)]"
+              disabled={assignMutation.isPending}
+              onClick={handleSaveConfirm}
+            >
               {assignMutation.isPending ? "Saving…" : "Save"}
             </Button>
-            <Button type="button" variant="outline" onClick={closeConfirm}>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-[var(--radius-flat-control)]"
+              onClick={closeConfirm}
+            >
               Cancel
             </Button>
           </div>
@@ -327,7 +347,12 @@ export function PlatformPlanTab({ tenantId }: PlatformPlanTabProps) {
 
       {tenantPlan.plan !== null && (
         <div>
-          <Button type="button" variant="ghost" onClick={() => setRemoveDialogOpen(true)}>
+          <Button
+            type="button"
+            variant="ghost"
+            className="rounded-[var(--radius-flat-control)]"
+            onClick={() => setRemoveDialogOpen(true)}
+          >
             Remove plan assignment
           </Button>
         </div>

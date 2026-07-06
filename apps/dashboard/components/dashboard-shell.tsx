@@ -18,6 +18,17 @@
  * height-class swap keys off whether `banner` is present at all, not what it renders — an
  * always-truthy banner prop would permanently reserve the calc-based height for a banner
  * that's usually invisible.
+ *
+ * command-palette TASK.md §3 CONTRACT — additive: mirrors the `banner` recipe above
+ * byte-for-byte in shape. `PlatformCommandPalette` is passed as AppShell's new
+ * `commandPalette` prop if and only if `data?.role === "superadmin"` EXACTLY — computed
+ * from the SAME useCurrentUser() call already made here (no new network request). This is
+ * the UI-layer, fail-CLOSED mount gate (M1/R2): `undefined` (never a component that itself
+ * renders null) for every other role, including a still-loading/null identity — mirrors
+ * app-shell.tsx's own fail-CLOSED `showPlatformNav(role) => role === "superadmin"` reasoning
+ * (the palette's very EXISTENCE in the tree is the risk, not just its data). The backend's
+ * own unmodified `require_superadmin` / `authorize_tenant_scope` gates remain the
+ * authoritative layer underneath — this is defense-in-depth, never a replacement.
  */
 
 import type { ReactNode } from "react";
@@ -26,6 +37,7 @@ import { AppShell } from "@/components/ui";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { useImpersonationStatus } from "@/lib/hooks/use-impersonation-status";
 import { ImpersonationBanner } from "@/components/platform/ImpersonationBanner";
+import { PlatformCommandPalette } from "@/components/platform/PlatformCommandPalette";
 
 export interface DashboardShellProps {
   children: ReactNode;
@@ -41,6 +53,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
       role={data?.role ?? null}
       userEmail={data?.email ?? null}
       banner={impersonation.data?.active ? <ImpersonationBanner /> : undefined}
+      commandPalette={data?.role === "superadmin" ? <PlatformCommandPalette /> : undefined}
     >
       {children}
     </AppShell>

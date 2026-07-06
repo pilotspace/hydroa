@@ -798,7 +798,7 @@ rotate/revoke/assignRole to confirm the new inline errors are reachable in pract
   column-list prose is drafted, to enumerate every action rather than abbreviate.
 
 ### Competency deltas
-- [TDD · open] A `waitFor` predicate can resolve on a transient intermediate state rather than
+- [TDD · folded] A `waitFor` predicate can resolve on a transient intermediate state rather than [folded foundation-version 48]
   the intended final state when the assertion (e.g. "X is absent") is ALSO true during a loading/
   transition frame, not just at the desired end state — the very next synchronous assertion then
   fails in a way that looks like the earlier `waitFor` "hung," when it actually resolved too
@@ -807,7 +807,7 @@ rotate/revoke/assignRole to confirm the new inline errors are reachable in pract
   `test_directory_search_filters_and_row_links_to_detail` debounce investigation this session —
   cost roughly half a session of bisection before the actual mechanism was found via a DOM-
   rendered debug log, not console.log, since this environment's test runner does not surface it).
-- [TDD · open] A fully-green suite only proves the paths it actually exercises — an independent
+- [TDD · folded] A fully-green suite only proves the paths it actually exercises — an independent [folded foundation-version 48]
   adversarial review (subagent refute-read) found a real, uncovered gap (Rotate/Revoke/assignRole
   mutations had no `onError` handler, silently swallowing a failure — a direct R4 violation) that
   none of the 34 new tests caught, because no test exercised any mutation's FAILURE path on this
@@ -815,7 +815,7 @@ rotate/revoke/assignRole to confirm the new inline errors are reachable in pract
   `CreateKeyDialog.tsx`). Candidate standing checklist item for future test-plans: one
   failure-path test per mutation, not just per screen (evidence: `a885e980fd730c83e`'s review,
   fixed same session, re-verified 17/17 + clean lint/typecheck + clean 944-test regression).
-- [ADD · open] Live mutation-probing (temporarily inverting one meaningful line of production
+- [ADD · folded] Live mutation-probing (temporarily inverting one meaningful line of production [folded foundation-version 48]
   logic, confirming the relevant test fails, then reverting byte-identically) is a materially
   stronger refute-read technique than a read-only review — it converted "the assertions look
   reasonable" into a demonstrated fact for R6, the budget merge logic, and the members self-guard.

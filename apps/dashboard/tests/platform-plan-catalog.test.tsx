@@ -145,6 +145,29 @@ describe("PlatformPlanCatalog", () => {
     });
     expect(screen.queryByText("Starter")).not.toBeInTheDocument();
   });
+
+  // console-flat-visual-pass, 2026-07-06 (M1) — PlanCard is shared by this Screen-1
+  // catalog page and Screen 2's PlatformPlanTab; both go flat via the ONE shared
+  // component (see Issues/Risks #4 — this page never passes `selected`, so no card
+  // here carries the selected-border, only the base flat treatment).
+  it("test_catalog_plan_cards_render_flat_variant", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/plans`, () =>
+        HttpResponse.json({ plans: ALL_PLANS }),
+      ),
+    );
+    const { container } = renderCatalog();
+    await waitFor(() => {
+      expect(screen.getByText("Starter")).toBeInTheDocument();
+    });
+    const flatCards = container.querySelectorAll('[data-variant="flat"]');
+    expect(flatCards.length).toBe(3);
+    flatCards.forEach((card) => {
+      expect(card.className).toContain("rounded-[var(--radius-flat-card)]");
+      expect(card.className).not.toContain("border-border");
+      expect(card.className).not.toContain("border-primary");
+    });
+  });
 });
 
 function primaryNav() {

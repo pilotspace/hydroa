@@ -99,9 +99,13 @@ export function PlatformTenantDirectory() {
         enableSorting: false,
         cell: ({ row }) =>
           row.original.kind === "platform" ? (
-            <Badge variant="outline">Platform</Badge>
+            <Badge variant="outline" className="rounded-[var(--radius-flat-tag)]">
+              Platform
+            </Badge>
           ) : (
-            <Badge variant="secondary">Standard</Badge>
+            <Badge variant="secondary" className="rounded-[var(--radius-flat-tag)]">
+              Standard
+            </Badge>
           ),
       },
       {
@@ -137,10 +141,10 @@ export function PlatformTenantDirectory() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search tenants…"
             aria-label="Search tenants"
-            className="max-w-sm"
+            className="max-w-sm rounded-[var(--radius-flat-control)]"
           />
 
-          <Card variant="soft">
+          <Card variant="flat">
             <CardContent className="p-0">
               <DataTable
                 columns={columns}

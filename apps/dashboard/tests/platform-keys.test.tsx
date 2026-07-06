@@ -176,4 +176,110 @@ describe("PlatformKeysTab", () => {
     });
     expect(screen.getByRole("button", { name: /create key/i })).toBeInTheDocument();
   });
+
+  // console-flat-visual-pass, 2026-07-06 (M1) — the Card wrapping the keys Table
+  // goes from variant omitted (default) to variant="flat".
+  it("test_keys_card_renders_flat_variant", async () => {
+    const KEY_ID = "aaaaaaaa-0000-0000-0000-000000000001";
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/keys`, () =>
+        HttpResponse.json([
+          {
+            key_id: KEY_ID,
+            name: "prod-key",
+            prefix: "sk-abc123",
+            created_at: "2026-01-01T00:00:00Z",
+            revoked_at: null,
+          },
+        ]),
+      ),
+    );
+    const { container } = renderKeys();
+    await waitFor(() => {
+      expect(screen.getByText("prod-key")).toBeInTheDocument();
+    });
+    const card = container.querySelector("[data-variant]")!;
+    expect(card).toHaveAttribute("data-variant", "flat");
+    expect(card.className).toContain("rounded-[var(--radius-flat-card)]");
+    expect(card.className).not.toContain("border-border");
+  });
+
+  // console-flat-visual-pass (M5) — Button×3 (Create key, Rotate, Revoke-trigger)
+  // and Badge×2 (Revoked/active) get the flat-control/flat-tag radius classes.
+  it("test_keys_buttons_and_badges_get_flat_radius_class", async () => {
+    const KEY_ID = "aaaaaaaa-0000-0000-0000-000000000001";
+    const REVOKED_KEY_ID = "bbbbbbbb-0000-0000-0000-000000000002";
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/keys`, () =>
+        HttpResponse.json([
+          {
+            key_id: KEY_ID,
+            name: "prod-key",
+            prefix: "sk-abc123",
+            created_at: "2026-01-01T00:00:00Z",
+            revoked_at: null,
+          },
+          {
+            key_id: REVOKED_KEY_ID,
+            name: "old-key",
+            prefix: "sk-def456",
+            created_at: "2026-01-01T00:00:00Z",
+            revoked_at: "2026-02-01T00:00:00Z",
+          },
+        ]),
+      ),
+    );
+    renderKeys();
+    await waitFor(() => {
+      expect(screen.getByText("prod-key")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /create key/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+    expect(screen.getByRole("button", { name: /rotate/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+    expect(screen.getByRole("button", { name: /^revoke$/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+    expect(screen.getByText(/^active$/i).className).toContain("rounded-[var(--radius-flat-tag)]");
+    expect(screen.getByText(/^revoked/i).className).toContain("rounded-[var(--radius-flat-tag)]");
+  });
+
+  // console-flat-visual-pass (M6, verify-only) — the revoke-confirm dialog keeps
+  // its existing elevated treatment unchanged; no flat/borderless styling here,
+  // and its own Confirm/Cancel buttons are untouched by M5 too.
+  it("test_revoke_confirm_dialog_stays_elevated_unchanged", async () => {
+    const KEY_ID = "aaaaaaaa-0000-0000-0000-000000000001";
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/keys`, () =>
+        HttpResponse.json([
+          {
+            key_id: KEY_ID,
+            name: "prod-key",
+            prefix: "sk-abc123",
+            created_at: "2026-01-01T00:00:00Z",
+            revoked_at: null,
+          },
+        ]),
+      ),
+    );
+    renderKeys();
+    await waitFor(() => {
+      expect(screen.getByText("prod-key")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^revoke$/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.className).toContain("rounded-lg");
+    expect(dialog.className).toContain("border");
+    expect(dialog.className).toContain("border-border");
+    expect(dialog.className).toContain("bg-card");
+    expect(dialog.className).toContain("shadow-lg");
+    expect(dialog.className).not.toContain("rounded-[var(--radius-flat-card)]");
+    const confirmBtn = within(dialog).getByRole("button", { name: /confirm/i });
+    expect(confirmBtn.className).toContain("rounded-md");
+    expect(confirmBtn.className).not.toContain("rounded-[var(--radius-flat-control)]");
+  });
 });

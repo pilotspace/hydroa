@@ -114,48 +114,116 @@ Out:
   used for the `plan-admin-ui`/`impersonation-ui` collision earlier this program).
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] console-flat-visual-pass   depends-on: none   — apply the flat/borderless/sharp treatment
+- [x] console-flat-visual-pass   depends-on: none   — apply the flat/borderless/sharp treatment
       (Card `flat` variant, `flat-tag`/`flat-control` radii, `selected-border`, the quieted
       safety-banner divider) to the tenant directory + all 5 tenant-detail tabs
-- [ ] tenant-overview-strip      depends-on: none   — build the Tenant Overview Strip (4
+- [x] tenant-overview-strip      depends-on: none   — build the Tenant Overview Strip (4
       independent queries, reusing the tabs' existing cache keys)
-- [ ] command-palette            depends-on: none   — build the global ⌘K command palette
+- [x] command-palette            depends-on: none   — build the global ⌘K command palette
       (navigate-only, reuses the existing tenant-search endpoint, real ARIA listbox semantics)
-- [ ] tenant-activity-tab        depends-on: none   — new superadmin-scoped audit-read route +
-      a 5th "Activity" tenant-detail tab rendering it
+- [x] tenant-activity-tab        depends-on: none   — new superadmin-scoped audit-read route +
+      a 5th "Activity" tenant-detail tab rendering it (shipped as the milestone's 6th tab —
+      Overview Strip added a tab slot ahead of it; see Ship-by-domain above)
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A superadmin viewing the tenant directory or any tenant-detail tab sees the flat/borderless/
+- [x] A superadmin viewing the tenant directory or any tenant-detail tab sees the flat/borderless/
       sharp visual treatment; every other dashboard page's existing rounded/shadowed Aurora
       treatment is unchanged        (← console-flat-visual-pass)
-- [ ] A superadmin opening a tenant's detail page sees an Overview Strip showing plan/seats/keys/
+      (verify: console-flat-visual-pass TASK.md §6, gate=PASS, full dashboard suite green)
+- [x] A superadmin opening a tenant's detail page sees an Overview Strip showing plan/seats/keys/
       budget at a glance, each field loading and failing independently of the others
       (← tenant-overview-strip)
-- [ ] A superadmin can open a ⌘K command palette from anywhere in the dashboard, search by tenant
+      (verify: tenant-overview-strip TASK.md §6 gate=PASS + overview-strip-plan-display-name
+      TASK.md §6 gate=PASS follow-up fix, both green)
+- [x] A superadmin can open a ⌘K command palette from anywhere in the dashboard, search by tenant
       name, and navigate directly to that tenant        (← command-palette)
-- [ ] A superadmin viewing a tenant's detail page can open an "Activity" tab and see that
+      (verify: command-palette TASK.md §6, gate=PASS, 1078/1078 full dashboard suite)
+- [x] A superadmin viewing a tenant's detail page can open an "Activity" tab and see that
       tenant's real audit history (actor/action/target/when), authorized the same way as the
       other tenant-detail routes        (← tenant-activity-tab)
+      (verify: tenant-activity-tab TASK.md §6, gate=PASS, 27/27 backend + 1092/1092 dashboard suite)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- tooling : untouched — no `add.py`/`state.json` schema/template change; this milestone is a
+  pure product-feature/visual-redesign body of work
+- skill   : untouched — no `SKILL.md`/`phases/*`/guide change
+- book    : untouched — no `.add/docs/*` change
+- dashboard (frontend) : SHIPPED — flat/borderless design tokens + `Card` `flat`/`soft` variants
+  consumed across the tenant directory + all 5 (now 6) tenant-detail tabs
+  (`console-flat-visual-pass`); a new `PlatformTenantOverviewStrip` (plan/seats/keys/budget, 4
+  independent queries) mounted above the tabs (`tenant-overview-strip` +
+  `overview-strip-plan-display-name`'s display-name fix); a new global ⌘K
+  `PlatformCommandPalette` mounted via an additive `AppShell`/`DashboardShell` prop
+  (`command-palette`); a new `PlatformActivityTab` as a 6th tenant-detail tab, consuming a new
+  backend route (`tenant-activity-tab`)
+- gateway (backend) : SHIPPED — exactly one new file this entire milestone,
+  `platform_audit_router.py` (`GET /admin/platform/tenants/{tenant_id}/audit`), reusing
+  `AuditRepository`/`authz.py` verbatim, registered via one additive `main.py` line
+  (`tenant-activity-tab` only — every other task in this milestone was frontend-only, confirmed
+  via `git status`/`git diff` at each task's own verify gate)
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- console-flat-visual-pass : gate=PASS · tests=full dashboard suite green at the time (1008/1008
+  per its own TASK.md) · residue=none
+- tenant-overview-strip : gate=PASS · tests=green (full dashboard suite) · residue=one spec delta
+  (Plan tile showing the raw `plan.name` slug instead of `display_name`) — resolved same-day by
+  the `overview-strip-plan-display-name` fast-lane follow-up below, not left open
+- overview-strip-plan-display-name : gate=PASS · tests=9 assertions updated + green · residue=none
+  (fast-lane, resolves the spec delta above)
+- command-palette : gate=PASS · tests=1078/1078 full dashboard suite (18 dedicated + 3 mount-gate
+  tests new) · residue=none blocking; one build-agent self-reported near-miss during its own
+  adversarial mutation testing (a misleading `diff` summary on a still-mutated file) was caught by
+  the agent, then independently re-confirmed resolved by the orchestrator reading the file
+  directly as the first verification action
+- tenant-activity-tab : gate=PASS · tests=27/27 new backend (isolated re-run) + 1092/1092 full
+  dashboard suite (14 new) · residue=none blocking; two judgment calls (real pagination vs. bounded
+  fetch; self-audit-of-reads) resolved under AUTO MODE after Tin did not respond to a direct ask —
+  both flagged in TASK.md, both cheaply reversible; one pre-existing, unrelated full-suite flake
+  independently reconfirmed via isolated re-run + git history (predates this session)
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] "flat/borderless/sharp visual treatment on directory + tabs, other pages unchanged" —
+  satisfied by `console-flat-visual-pass`'s Ship-by-domain change (dashboard row above), gate=PASS
+- [x] "Overview Strip showing plan/seats/keys/budget, each independent" — satisfied by
+  `tenant-overview-strip` + `overview-strip-plan-display-name`'s Ship-by-domain change, gate=PASS
+- [x] "⌘K command palette, search by tenant name, navigate directly" — satisfied by
+  `command-palette`'s Ship-by-domain change, gate=PASS
+- [x] "Activity tab showing real audit history, authorized the same way as other tenant-detail
+  routes" — satisfied by `tenant-activity-tab`'s Ship-by-domain change (both the new
+  `platform_audit_router.py` route and the new `PlatformActivityTab` consuming it), gate=PASS
+- goal: "A superadmin using the platform admin console experiences a flat, borderless,
+  SaaS-professional visual language, grounded in real UI/UX research" — met: all 4 Exit criteria
+  above are independently satisfied by their own gated task, each independently re-verified by the
+  orchestrator against real source files (not merely trusted from a build agent's self-report),
+  with zero regression to any existing route/tab/test confirmed via `git diff` at every gate.
+
+### Deferred / explicitly out of this ship (named, not silently dropped)
+- The Tier-3 directory kind/plan filter — deferred per the ux-researcher's own 2026-07-06 verdict
+  (reopens the FROZEN `platform_tenants_router.py` for a job none of this milestone's scenarios
+  need); tracked for real-usage-evidence-gated reconsideration, not this milestone.
+- The 10 still-deferred accessibility findings from the persona-dive sweep (route-change focus
+  management, both banners' live-regions, confirm-dialog button order, heading levels, field-error
+  aria wiring) — pre-date this milestone, aren't specific to its new/touched surfaces, tracked in
+  DESIGN.md as their own follow-up.
+- `DialogContent`'s missing motion-safe entrance/exit transition — a standing `add.py todo` since
+  `tenant-overview-strip`, unchanged by any task in this milestone.
+- The repo-wide `asyncio.sleep(0.05)` fire-and-forget-audit-write test-drain idiom's confirmed
+  load-sensitive flakiness (surfaced by `tenant-activity-tab`'s own verify pass) — a hardening
+  candidate for a future task, not blocking this ship (the one affected test is unrelated to this
+  milestone's own scope).
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [ ] Tin reviews the accumulated diff (5 tasks, currently UNCOMMITTED in the working tree — no
+  commit has been made this session; nothing has been pushed)
+- [ ] once reviewed, commit the work (per this repo's own commit-message process in CLAUDE.md) —
+  human-authorized, not run by the orchestrator without explicit ask
+- [ ] open a PR from the commit(s) above; human reviews + merges
+- [ ] bundle into the next `add.py release <version>` cut alongside the other releasable
+  milestones/tasks already queued (per `add.py status`'s own "releasable" count) — tag/publish/
+  deploy remain human-run, per release.md

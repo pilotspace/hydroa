@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "console-flat-visual-pass",
+  "active_task": null,
   "active_milestone": "platform-admin-console",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -612,15 +612,6 @@
       ],
       "created": "2026-07-05T02:34:35+00:00",
       "updated": "2026-07-05T02:34:35+00:00"
-    },
-    "console-flat-visual-pass": {
-      "title": "Console flat/borderless visual pass",
-      "phase": "specify",
-      "gate": "none",
-      "milestone": "platform-console-flat-redesign",
-      "depends_on": [],
-      "created": "2026-07-06T03:33:46+00:00",
-      "updated": "2026-07-06T03:41:11+00:00"
     }
   },
   "milestones": {
@@ -671,27 +662,10 @@
       "status": "active",
       "created": "2026-07-03T16:21:50+00:00",
       "updated": "2026-07-03T16:21:50+00:00"
-    },
-    "platform-console-flat-redesign": {
-      "title": "Platform console flat/borderless visual redesign",
-      "goal": "A superadmin using the platform admin console (tenant directory + tenant-detail tabs) experiences a flat, borderless, SaaS-professional visual language, grounded in real UI/UX research into how superadmins actually scan and act on this surface",
-      "stage": "production",
-      "status": "queued",
-      "created": "2026-07-05T07:03:08+00:00",
-      "updated": "2026-07-06T03:29:21+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-07-06T03:29:21+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-06T03:41:11+00:00",
+  "updated": "2026-07-06T12:01:14+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1558,17 +1532,29 @@
         "batch-claim-drain-del"
       ],
       "archived": "2026-07-03"
+    },
+    {
+      "slug": "platform-console-flat-redesign",
+      "title": "Platform console flat/borderless visual redesign",
+      "tasks": 5,
+      "task_slugs": [
+        "console-flat-visual-pass",
+        "tenant-overview-strip",
+        "overview-strip-plan-display-name",
+        "command-palette",
+        "tenant-activity-tab"
+      ],
+      "archived": "2026-07-06"
     }
   ],
   "active_milestones": [
     "platform-admin-console"
   ],
   "active_tasks": {
-    "platform-admin-console": "admin-console-ui",
+    "platform-admin-console": "declare-components-registry",
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
-    "platform-access-plan": "plan-seat-cap",
-    "platform-console-flat-redesign": "console-flat-visual-pass"
+    "platform-access-plan": "plan-seat-cap"
   },
   "todos": [
     {
@@ -1593,6 +1579,12 @@
       "id": 4,
       "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
       "created": "2026-06-30T10:57:02+00:00",
+      "status": "open"
+    },
+    {
+      "id": 5,
+      "text": "DialogContent (components/ui/dialog.tsx) has no entrance/exit animation of its own -- only DialogOverlay fades. Every Dialog consumer (AppShell mobile nav sheet, command-palette) snaps the panel open/closed. Existing motion system (Reveal in motion.tsx + the global reduced-motion net in globals.css) already establishes the right pattern (motion-safe: opt-in, unconditional render, global reduced-motion backstop) -- extending DialogContent to match is a good small follow-up. Also worth revisiting: tenant-overview-strip's 4 tiles currently just appear as each query resolves, no progressive-reveal of their own. Raised by Tin 2026-07-06; deferred rather than touching the shared dialog.tsx primitive mid-build of command-palette.",
+      "created": "2026-07-06T09:35:41+00:00",
       "status": "open"
     }
   ]

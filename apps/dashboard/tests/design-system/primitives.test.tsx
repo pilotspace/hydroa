@@ -17,6 +17,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -219,5 +220,41 @@ describe("Select — Radix select opens and selects (keyboard/pointer)", () => {
     const listbox = await screen.findByRole("listbox");
     expect(within(listbox).getByText("Day")).toBeInTheDocument();
     expect(within(listbox).getByText("Week")).toBeInTheDocument();
+  });
+});
+
+// console-flat-visual-pass, 2026-07-06 (M7/R3) — dashboard-wide invariant: the shared
+// Button/Input/Badge/Card primitives are NEVER edited by the flat-visual-pass task;
+// every caller OUTSIDE the 6 in-scope platform screens keeps its existing default
+// radius. This pins the DEFAULT render (no page-local className override) so a future
+// regression that accidentally widens the flat-radius classes into the shared
+// primitive itself is caught here, not visually.
+describe("console-flat-visual-pass — shared primitives stay byte-identical by default", () => {
+  it("test_button_default_radius_untouched_by_flat_visual_pass", () => {
+    render(<Button>Save</Button>);
+    const btn = screen.getByRole("button", { name: "Save" });
+    expect(btn.className).toContain("rounded-md");
+    expect(btn.className).not.toContain("rounded-[var(--radius-flat-control)]");
+  });
+
+  it("test_input_default_radius_untouched_by_flat_visual_pass", () => {
+    render(<Input aria-label="Amount" />);
+    const input = screen.getByLabelText("Amount");
+    expect(input.className).toContain("rounded-md");
+    expect(input.className).not.toContain("rounded-[var(--radius-flat-control)]");
+  });
+
+  it("test_badge_default_radius_untouched_by_flat_visual_pass", () => {
+    render(<Badge>Active</Badge>);
+    const badge = screen.getByText("Active");
+    expect(badge.className).toContain("rounded-full");
+    expect(badge.className).not.toContain("rounded-[var(--radius-flat-tag)]");
+  });
+
+  it("test_card_default_radius_untouched_by_flat_visual_pass", () => {
+    const { container } = render(<Card data-testid="c">x</Card>);
+    const card = container.querySelector('[data-testid="c"]')!;
+    expect(card.className).toContain("rounded-lg");
+    expect(card.className).not.toContain("rounded-[var(--radius-flat-card)]");
   });
 });
