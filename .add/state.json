@@ -612,6 +612,31 @@
       ],
       "created": "2026-07-05T02:34:35+00:00",
       "updated": "2026-07-05T02:34:35+00:00"
+    },
+    "declare-components-registry": {
+      "title": "Declare the components registry for gateway + dashboard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-06T08:08:23+00:00",
+      "updated": "2026-07-06T08:15:14+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "31d1a929f6a5845ef667e5679974b0df",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/declare-components-registry/src/"
+        ],
+        "snapshot_md5": "60a3d8ad1ce05a6789d0ce3e4d628606"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
