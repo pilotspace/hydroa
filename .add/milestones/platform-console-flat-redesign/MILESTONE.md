@@ -219,11 +219,15 @@ Out:
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] Tin reviews the accumulated diff (5 tasks, currently UNCOMMITTED in the working tree — no
-  commit has been made this session; nothing has been pushed)
-- [ ] once reviewed, commit the work (per this repo's own commit-message process in CLAUDE.md) —
-  human-authorized, not run by the orchestrator without explicit ask
-- [ ] open a PR from the commit(s) above; human reviews + merges
+- [x] Tin reviewed the accumulated diff and authorized commit (2026-07-06)
+- [x] committed `0e542d3` (49 files, +7699/-196) on top of the existing `37e55ee` token-foundation
+  commit, after an independent full-diff review pass (general-purpose subagent, verdict=CLEAN) —
+  see commit message for the itemized per-task breakdown
+- [x] pushed `feat/platform-console-flat-redesign` (HTTPS, `pilotspacex-byte` account — this repo's
+  origin is SSH-only for `TinDang97`, which cannot push here) and opened PR #62
+  (https://github.com/pilotspace/hydroa/pull/62, main ← feat/platform-console-flat-redesign,
+  61 files/+9550/-86 for the full branch incl. the token-foundation commit)
+- [ ] Tin reviews + merges PR #62
 - [ ] bundle into the next `add.py release <version>` cut alongside the other releasable
   milestones/tasks already queued (per `add.py status`'s own "releasable" count) — tag/publish/
   deploy remain human-run, per release.md
