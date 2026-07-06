@@ -661,13 +661,13 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
   path in this build) is the primitive it intends to reuse for token-holder lookups.
 
 ### Competency deltas
-- [TDD · open] This repo's `[tool.coverage.run]` config lacks `concurrency = greenlet`, making
+- [TDD · folded] This repo's `[tool.coverage.run]` config lacks `concurrency = greenlet`, making [folded foundation-version 48]
   per-line coverage on SQLAlchemy-async modules structurally unreliable for judging which branches
   actually executed (evidence: `invite_repository.py`'s core INSERT logic showed "uncovered" despite
   being required for 30 passing tests; corroborated against a known-solid pre-existing file showing
   the same "impossible" under-report). Worth fixing repo-wide so future verifies of async code can
   trust coverage numbers directly instead of hand-building a probe.
-- [ADD · open] Worktree isolation (`isolation: "worktree"`) branches from the last git COMMIT, not
+- [ADD · folded] Worktree isolation (`isolation: "worktree"`) branches from the last git COMMIT, not [folded foundation-version 48]
   the current working tree — incompatible with a task whose §0 GROUND anchors (or whose milestone's
   prerequisite work) exist only uncommitted. This task's first build attempt silently ran against a
   stale base missing `Role.SUPERADMIN` entirely and shipped an incomplete security guard before being

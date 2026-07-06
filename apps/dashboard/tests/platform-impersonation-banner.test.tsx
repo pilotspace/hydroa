@@ -170,4 +170,58 @@ describe("ImpersonationBanner", () => {
     // against cross-boundary cache leakage — §1 ⚠).
     expect(client.getQueryData(["some-unrelated-query"])).toBeUndefined();
   });
+
+  // console-flat-visual-pass, 2026-07-06 (M3) — same quieted-divider recipe as
+  // PlatformSafetyBanner (Issues/Risks #2): border-warning/40 -> border-border;
+  // bg-warning/10, text-warning-foreground, and the icon's text-warning stay
+  // unchanged (literal "divider" reading — see TASK.md §5 Known-problem fixes).
+  it("test_banner_divider_quieted_bg_text_icon_unchanged", async () => {
+    mockStatusActive(Date.now() + 15 * 60 * 1000);
+    renderBanner();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("impersonation-banner")).toBeInTheDocument();
+    });
+    const banner = screen.getByTestId("impersonation-banner");
+    expect(banner.className).toContain("border-border");
+    expect(banner.className).not.toContain("border-warning/40");
+    expect(banner.className).toContain("bg-warning/10");
+    expect(banner.className).toContain("text-warning-foreground");
+    const icon = banner.querySelector("svg");
+    expect(icon).not.toBeNull();
+    expect(icon!.getAttribute("class") ?? "").toContain("text-warning");
+  });
+
+  // console-flat-visual-pass (M5, negative) — the banner is shell-level chrome
+  // around the 6 screens, not one of the 6 screens itself; its "End impersonation"
+  // trigger keeps the shared Button default radius, untouched by M5.
+  it("test_end_impersonation_button_not_touched_by_m5_page_local_radius", async () => {
+    mockStatusActive(Date.now() + 15 * 60 * 1000);
+    renderBanner();
+    await waitFor(() => {
+      expect(screen.getByTestId("impersonation-banner")).toBeInTheDocument();
+    });
+    const button = screen.getByRole("button", { name: /end impersonation/i });
+    expect(button.className).toContain("rounded-md");
+    expect(button.className).not.toContain("rounded-[var(--radius-flat-control)]");
+  });
+
+  // console-flat-visual-pass (M6, verify-only) — this banner's own end-confirm
+  // dialog is structurally identical to Keys/Members/Plan's elevated-modal
+  // pattern (same underlying principle, per TASK.md's M6 4th case) and stays
+  // unchanged too.
+  it("test_end_impersonation_confirm_dialog_stays_elevated_unchanged", async () => {
+    mockStatusActive(Date.now() + 15 * 60 * 1000);
+    renderBanner();
+    await waitFor(() => {
+      expect(screen.getByTestId("impersonation-banner")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /end impersonation/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.className).toContain("rounded-lg");
+    expect(dialog.className).toContain("border-border");
+    expect(dialog.className).toContain("shadow-lg");
+    expect(dialog.className).not.toContain("rounded-[var(--radius-flat-card)]");
+  });
 });

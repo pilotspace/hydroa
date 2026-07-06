@@ -107,6 +107,82 @@ describe("PlatformConfigTab", () => {
     // Anchored for the same query-precision reason as the sibling test above.
     expect(screen.getByText(/^prompt injection$/i)).toBeInTheDocument();
   });
+
+  // console-flat-visual-pass, 2026-07-06 (M1) — both Cards go from variant omitted
+  // (default) to variant="flat"; the Guardrails fieldsets are OUTSIDE M1's Card-only
+  // scope and keep their existing rounded-lg border-border treatment unchanged.
+  it("test_config_both_cards_render_flat_and_fieldsets_unchanged", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/cache`, () =>
+        HttpResponse.json({ enabled: false, semantic_enabled: false }),
+      ),
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/guardrails`, () =>
+        HttpResponse.json({ prompt_injection: null, pii_mask: null }),
+      ),
+    );
+
+    const { container } = renderWithClient(<PlatformConfigTab tenantId={TENANT_ID} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/enable response cache/i)).toBeInTheDocument();
+    });
+
+    const flatCards = container.querySelectorAll('[data-variant="flat"]');
+    expect(flatCards.length).toBe(2);
+    flatCards.forEach((card) => {
+      expect(card.className).toContain("rounded-[var(--radius-flat-card)]");
+      expect(card.className).toContain("shadow-none");
+      expect(card.className).not.toContain("border-border");
+    });
+
+    const fieldsets = container.querySelectorAll("fieldset");
+    expect(fieldsets.length).toBe(2);
+    fieldsets.forEach((fs) => {
+      expect(fs.className).toContain("rounded-lg");
+      expect(fs.className).toContain("border-border");
+    });
+  });
+
+  // console-flat-visual-pass (M5) — Input×2 (pattern name/regex) and Button×4 (Save,
+  // Save guardrails, Remove pattern, Add pattern) get the flat-control radius class;
+  // the raw <select> mode pickers are explicitly OUT of M5's scope.
+  it("test_config_inputs_and_buttons_get_flat_radius_class", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/cache`, () =>
+        HttpResponse.json({ enabled: false, semantic_enabled: false }),
+      ),
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/guardrails`, () =>
+        HttpResponse.json({ prompt_injection: null, pii_mask: null }),
+      ),
+    );
+
+    renderWithClient(<PlatformConfigTab tenantId={TENANT_ID} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/enable response cache/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /^save$/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+    expect(screen.getByRole("button", { name: /save guardrails/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+    const addPatternButton = screen.getByRole("button", { name: /add pattern/i });
+    expect(addPatternButton.className).toContain("rounded-[var(--radius-flat-control)]");
+
+    fireEvent.click(addPatternButton);
+    const nameInput = screen.getByLabelText(/pattern name 1/i);
+    const regexInput = screen.getByLabelText(/pattern regex 1/i);
+    expect(nameInput.className).toContain("rounded-[var(--radius-flat-control)]");
+    expect(regexInput.className).toContain("rounded-[var(--radius-flat-control)]");
+    expect(screen.getByRole("button", { name: /remove pattern 1/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+
+    const piModeSelect = screen.getByLabelText(/prompt injection mode/i);
+    expect(piModeSelect.className).toContain("rounded-md");
+    expect(piModeSelect.className).not.toContain("rounded-[var(--radius-flat-control)]");
+  });
 });
 
 describe("PlatformBudgetTab", () => {
@@ -176,5 +252,50 @@ describe("PlatformBudgetTab", () => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
     expect(putCalled).toBe(false);
+  });
+
+  // console-flat-visual-pass, 2026-07-06 (M2) — both StatCard instances pass
+  // variant="flat", wiring the additive passthrough prop end-to-end.
+  it("test_budget_statcards_render_flat_variant", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/budget`, () =>
+        HttpResponse.json({ budget_usd_monthly: "500.00", spent_usd_month: "120.00" }),
+      ),
+    );
+    const { container } = renderWithClient(<PlatformBudgetTab tenantId={TENANT_ID} />);
+    await waitFor(() => {
+      expect(screen.getByText("500.00")).toBeInTheDocument();
+    });
+    const flatStatCards = container.querySelectorAll(
+      '[data-slot="stat-card"][data-variant="flat"]',
+    );
+    expect(flatStatCards.length).toBe(2);
+  });
+
+  // console-flat-visual-pass (M5) — Edit Budget/Save/Cancel Buttons and the budget
+  // amount Input get the page-local flat-control radius class.
+  it("test_budget_buttons_and_input_get_flat_radius_class", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants/${TENANT_ID}/budget`, () =>
+        HttpResponse.json({ budget_usd_monthly: "500.00", spent_usd_month: "120.00" }),
+      ),
+    );
+    renderWithClient(<PlatformBudgetTab tenantId={TENANT_ID} />);
+    await waitFor(() => {
+      expect(screen.getByText("500.00")).toBeInTheDocument();
+    });
+
+    const editButton = screen.getByRole("button", { name: /edit budget/i });
+    expect(editButton.className).toContain("rounded-[var(--radius-flat-control)]");
+    fireEvent.click(editButton);
+
+    const input = screen.getByLabelText(/^budget$/i);
+    expect(input.className).toContain("rounded-[var(--radius-flat-control)]");
+    expect(screen.getByRole("button", { name: /^save$/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+    expect(screen.getByRole("button", { name: /^cancel$/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
   });
 });

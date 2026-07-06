@@ -95,6 +95,17 @@ export interface AppShellProps {
    * rendering, including the row's own `lg:h-screen` height class.
    */
   banner?: React.ReactNode;
+  /**
+   * command-palette TASK.md §3 CONTRACT M2 — additive, optional. Rendered once,
+   * immediately after `{banner}` (before the `Dialog` wrapper) — a
+   * no-visual-footprint insertion, since `PlatformCommandPalette`'s own output is
+   * a Radix-portaled Dialog plus a CSS-`fixed` trigger button, so its literal
+   * position in this JSX tree carries no layout effect, unlike `banner` (which
+   * reserves real in-flow height, see the height-class comment below). Absent
+   * (every session whose role isn't exactly "superadmin") → byte-identical
+   * output to before this task; no other line in this component changes.
+   */
+  commandPalette?: React.ReactNode;
 }
 
 function visibleItems(role?: string | null): NavItem[] {
@@ -191,7 +202,7 @@ function NavLinks({
   );
 }
 
-export function AppShell({ children, activePath, role, userEmail, banner }: AppShellProps) {
+export function AppShell({ children, activePath, role, userEmail, banner, commandPalette }: AppShellProps) {
   const [collapsed, setCollapsed] = React.useState(false);
   const items = visibleItems(role);
   const brandIcon = <Hexagon className="size-5" />;
@@ -249,6 +260,13 @@ export function AppShell({ children, activePath, role, userEmail, banner }: AppS
           focusable element) and BEFORE the fixed-viewport row. Absent by default —
           every existing call site renders nothing extra here. */}
       {banner}
+
+      {/* command-palette M2: rendered immediately after {banner}, before the Dialog
+          wrapper below — see the commandPalette prop's own docblock above for why
+          this position carries no layout effect. Absent by default (every
+          non-superadmin session) — every existing call site renders nothing extra
+          here either. */}
+      {commandPalette}
 
       <Dialog>
         {/* Fixed-viewport app shell (v54): below lg the page scrolls as one document

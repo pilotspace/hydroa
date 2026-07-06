@@ -103,7 +103,7 @@ export function ImpersonationBanner() {
   return (
     <div
       data-testid="impersonation-banner"
-      className="flex items-center justify-between gap-3 border-b border-warning/40 bg-warning/10 px-4 py-2 text-sm text-warning-foreground"
+      className="flex items-center justify-between gap-3 border-b border-border bg-warning/10 px-4 py-2 text-sm text-warning-foreground"
     >
       <div className="flex min-w-0 items-center gap-2">
         <ShieldAlert className="size-4 shrink-0 text-warning" aria-hidden="true" />

@@ -757,13 +757,13 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
   `model_fields_set`-based presence check).
 
 ### Competency deltas
-- [TDD · open] Per-directory `pytest --cov` readings are unreliable for this repo's async route
+- [TDD · folded] Per-directory `pytest --cov` readings are unreliable for this repo's async route [folded foundation-version 48]
   handlers (evidence: `platform_plans_router.py` showed 58% with the entire PUT handler body
   "missing" despite the covering tests passing with real DB-state assertions; the identical
   artifact was confirmed to reproduce on `platform_users_router.py`, a file this build never
   touched). Rely on full-suite coverage numbers, not per-directory ones, when judging "coverage
   did not decrease" for async code in this repo.
-- [ADD · open] A build agent dispatched to independently verify its own long-running background
+- [ADD · folded] A build agent dispatched to independently verify its own long-running background [folded foundation-version 48]
   regression suite twice ended its turn to "wait" rather than actively blocking until the suite
   finished, requiring the orchestrator to resume it via SendMessage and, ultimately, take over
   verification directly rather than continue a resume-and-wait cycle. Future dispatches that

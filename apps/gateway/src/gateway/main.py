@@ -147,6 +147,7 @@ from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.invite_accept_router import invite_accept_router
 from gateway.tenants.api.invites_router import invites_router
+from gateway.tenants.api.platform_audit_router import platform_audit_router
 from gateway.tenants.api.platform_impersonation_router import platform_impersonation_router
 from gateway.tenants.api.platform_plans_router import platform_plans_router
 from gateway.tenants.api.platform_tenant_config_router import platform_tenant_config_router
@@ -1112,6 +1113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(platform_tenant_config_router)
     app.include_router(platform_plans_router)
     app.include_router(platform_impersonation_router)
+    app.include_router(platform_audit_router)
     app.include_router(cache_router)
     app.include_router(batch_policy_router)
     app.include_router(guardrail_router)

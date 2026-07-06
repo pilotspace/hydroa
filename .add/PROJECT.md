@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 47
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 48
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -351,6 +351,7 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+- (UDD) a security-critical access-control feature benefits from BOTH a static presence/absence test (M1) AND a separate, actively-adversarial dynamic test (R2, firing the real trigger and asserting no effect) — the static check alone would not have caught a fail-open bug where only markup was conditionally hidden but a listener was unconditionally attached (evidence: R2's own code comment names this exact failure mode; independently confirmed sound by the orchestrator reading its implementation).  [folded foundation-version 48 · from command-palette]
 
 - (UDD) the "build-grounding scrub" (re-checking an approved mock against the frozen contract and build-time reality immediately before implementing, correcting transparently rather than building blindly or silently deviating) held 3-for-3 within this single task alone (`savings_usd` constant at build time; the `.toggle-row` referencing an unbuilt sibling task's control; the hero-sub copy asserting a live query that doesn't exist) — worth naming as a standing UDD step rather than rediscovering it ad hoc per task (evidence: this task, 2026-07-03).  [folded foundation-version 44 · from batch-dashboard-surface]
 - (UDD) honest gating > silent no-op: disabling + annotating ("Ignored by <Provider>") an unsupported control, and omitting it from the body, is the truthful UI when the backend would silently drop it (evidence: the live-vs-gated capture).  [folded foundation-version 40 · from chat-parameters-panel]
@@ -485,6 +486,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-07-06 | fold all → foundation-version 48 (UDD 1 · TDD 7 · ADD 14) | consolidate captured OBSERVE lessons into the versioned foundation | 22 lessons open→folded; +22 routed bullets; 47→48 |
 | 2026-07-04 | merge reconciliation: main (42→44 via v56+platform-identity folds) + PR #55/batch branch (42→45 via 3 independent task folds, own numbering below) → cumulative foundation-version 47 | two branches independently forked from foundation-version 42 and each folded lessons using their own local counter; a correct merge sums both branches' fold counts rather than picking one side's number | 5 fold-events total (2 main + 3 batch); 44+3=47 |
 | 2026-07-03 | fold all → foundation-version 44 (SDD 3 · TDD 5 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 11 lessons open→folded; +11 routed bullets; 43→44 |
 | 2026-07-02 | fold all → foundation-version 43 (TDD 1 · ADD 3) | consolidate captured OBSERVE lessons into the versioned foundation | 4 lessons open→folded; +4 routed bullets; 42→43 |

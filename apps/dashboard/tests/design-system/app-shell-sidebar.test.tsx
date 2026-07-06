@@ -13,8 +13,9 @@
  * (jsdom has no canvas — true contrast is the standing browser-only residue).
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { axe } from "@/test-support/axe";
 import React from "react";
 
@@ -25,7 +26,16 @@ import { DashboardShell } from "@/components/dashboard-shell";
 import { usePathname } from "next/navigation";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 
-vi.mock("next/navigation", () => ({ usePathname: vi.fn(() => "/") }));
+// command-palette TASK.md: PlatformCommandPalette (mounted by DashboardShell for a
+// superadmin session) calls next/navigation's useRouter() — this file's own
+// pre-existing LOCAL mock only ever provided usePathname, shadowing the global
+// tests/setup.ts mock (which does provide useRouter). A minimal stub is added
+// here rather than switching this whole file to the shared getRouterMock()
+// helper — none of this file's own tests assert on router.push/replace calls.
+vi.mock("next/navigation", () => ({
+  usePathname: vi.fn(() => "/"),
+  useRouter: vi.fn(() => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() })),
+}));
 vi.mock("@/lib/hooks/use-current-user", () => ({ useCurrentUser: vi.fn() }));
 
 async function axeSeriousCritical(container: HTMLElement) {
@@ -431,5 +441,112 @@ describe("DashboardShell — marks route from URL + reuses identity query", () =
     expect(screen.getByText("ada@hydroa.io")).toBeInTheDocument();
     // reuses the existing ["current-user"] query exactly once — no second/new fetch path
     expect(vi.mocked(useCurrentUser)).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── COMMAND PALETTE MOUNT GATE (command-palette TASK.md, M1/M2/R2) ────────────
+// PlatformCommandPalette's OWN behavior (shortcut/focus/search/listbox/render
+// states/etc.) is covered by tests/platform-command-palette.test.tsx; THIS
+// block covers ONLY the access-control mount gate — DashboardShell must mount
+// PlatformCommandPalette if and only if useCurrentUser().data?.role ===
+// "superadmin" EXACTLY, threaded through AppShell's new additive
+// `commandPalette` prop (mirrors the existing `banner` prop's own recipe,
+// tested above by test_dashboard_shell_marks_route_and_reuses_query).
+function makeQueryClient() {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+}
+
+// matches the palette's own trigger aria-label ("Search tenants (Command K)")
+const PALETTE_TRIGGER_NAME = /search tenants.*command k/i;
+
+const NON_SUPERADMIN_CASES: Array<{ role: string | null; isLoading: boolean }> = [
+  { role: "member", isLoading: false },
+  { role: "admin", isLoading: false },
+  { role: "owner", isLoading: false },
+  { role: null, isLoading: false }, // resolved, no role
+  { role: null, isLoading: true }, // still loading
+];
+
+function mockCurrentUserRole(role: string | null, isLoading: boolean) {
+  vi.mocked(useCurrentUser).mockReturnValue({
+    data: role ? { user_id: "u1", tenant_id: "t1", email: "x@hydroa.io", role, exp: null } : null,
+    isLoading,
+    isError: false,
+  });
+}
+
+describe("AppShell — commandPalette prop is additive and absent by default (M2)", () => {
+  it("test_appshell_commandpalette_prop_is_additive_and_absent_by_default", () => {
+    render(
+      <AppShell role="owner">
+        <Body />
+      </AppShell>,
+    );
+    // omitted (every pre-existing call site) -> no palette trigger, no palette
+    // dialog anywhere — byte-identical default output to before this task
+    expect(screen.queryByRole("button", { name: PALETTE_TRIGGER_NAME })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("DashboardShell — command palette mounts iff role is exactly superadmin (M1)", () => {
+  it("test_palette_mounts_only_for_exact_superadmin_role", () => {
+    const client = makeQueryClient();
+
+    // positive: an exact "superadmin" role mounts the always-visible trigger
+    mockCurrentUserRole("superadmin", false);
+    const superadminRender = render(
+      <QueryClientProvider client={client}>
+        <DashboardShell>
+          <Body />
+        </DashboardShell>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole("button", { name: PALETTE_TRIGGER_NAME })).toBeInTheDocument();
+    superadminRender.unmount();
+
+    // negative: every non-exact-superadmin role/state never mounts it (static
+    // presence/absence check — see the reject test below for the adversarial
+    // dynamic check that actively tries the keyboard shortcut too)
+    for (const { role, isLoading } of NON_SUPERADMIN_CASES) {
+      mockCurrentUserRole(role, isLoading);
+      const { unmount } = render(
+        <QueryClientProvider client={client}>
+          <DashboardShell>
+            <Body />
+          </DashboardShell>
+        </QueryClientProvider>,
+      );
+      expect(screen.queryByRole("button", { name: PALETTE_TRIGGER_NAME })).toBeNull();
+      unmount();
+    }
+  });
+});
+
+describe("DashboardShell — reject: palette never mounts for a non-exact-superadmin role (R2)", () => {
+  it("test_reject_palette_never_mounts_for_non_exact_superadmin_role", () => {
+    // The adversarial angle explicitly required at build time: for every
+    // non-superadmin-exact session, ACTIVELY press the global shortcut and
+    // confirm no dialog ever appears — proving no keydown listener was ever
+    // attached (fail-CLOSED). A fail-OPEN bug (e.g. the listener attached
+    // unconditionally while only the trigger BUTTON was conditionally hidden)
+    // would be invisible to M1's own static markup-absence check above but
+    // WOULD be caught here.
+    const client = makeQueryClient();
+    for (const { role, isLoading } of NON_SUPERADMIN_CASES) {
+      mockCurrentUserRole(role, isLoading);
+      const { unmount } = render(
+        <QueryClientProvider client={client}>
+          <DashboardShell>
+            <Body />
+          </DashboardShell>
+        </QueryClientProvider>,
+      );
+      fireEvent.keyDown(document, { key: "k", metaKey: true });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      unmount();
+    }
   });
 });

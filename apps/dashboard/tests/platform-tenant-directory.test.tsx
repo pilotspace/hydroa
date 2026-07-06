@@ -190,4 +190,69 @@ describe("PlatformTenantDirectory", () => {
     const platformBadge = within(section()).getByText("Platform");
     expect(standardBadge.className).not.toEqual(platformBadge.className);
   });
+
+  // console-flat-visual-pass, 2026-07-06 (M1) — the Card wrapping DataTable goes
+  // from variant="soft" to variant="flat" (sharp radius, no border, no shadow).
+  it("test_directory_card_renders_flat_variant", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants`, () => HttpResponse.json(FIVE_TENANTS)),
+    );
+    renderDirectory();
+    await waitFor(() => {
+      expect(within(section()).getByText("Acme Robotics")).toBeInTheDocument();
+    });
+    const table = within(section()).getByRole("table");
+    const card = table.closest("[data-variant]")!;
+    expect(card).toHaveAttribute("data-variant", "flat");
+    expect(card.className).toContain("rounded-[var(--radius-flat-card)]");
+    expect(card.className).toContain("shadow-none");
+    expect(card.className).not.toContain("border-border");
+    expect(card.className).not.toContain("shadow-md");
+    expect(card.className).not.toContain("rounded-2xl");
+  });
+
+  // console-flat-visual-pass (M5) — the search Input and the 2 Kind Badge chips get
+  // a page-local flat-control/flat-tag radius override; the raw pagination <button>s
+  // are hand-rolled HTML (not the Button component) and are explicitly OUT of scope.
+  it("test_directory_search_input_and_kind_badges_get_flat_radius_class", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants`, () => HttpResponse.json(FIVE_TENANTS)),
+    );
+    renderDirectory();
+    await waitFor(() => {
+      expect(within(section()).getByText("Acme Robotics")).toBeInTheDocument();
+    });
+
+    const searchBox = within(section()).getByRole("textbox", { name: /search tenants/i });
+    expect(searchBox.className).toContain("rounded-[var(--radius-flat-control)]");
+
+    const acmeRow = within(section()).getByRole("row", { name: /Acme Robotics/i });
+    const standardBadge = within(acmeRow).getByText("Standard");
+    expect(standardBadge.className).toContain("rounded-[var(--radius-flat-tag)]");
+    const platformBadge = within(section()).getByText("Platform");
+    expect(platformBadge.className).toContain("rounded-[var(--radius-flat-tag)]");
+
+    // Raw pagination <button>s are hand-rolled HTML, explicitly OUT of M5's scope —
+    // they keep their existing rounded-md, never the flat-control override.
+    const prevButton = within(section()).getByRole("button", { name: /previous/i });
+    expect(prevButton.className).toContain("rounded-md");
+    expect(prevButton.className).not.toContain("rounded-[var(--radius-flat-control)]");
+  });
+
+  // console-flat-visual-pass (R2, reject scenario) — visual-only pass: no new
+  // Tier-3 kind/plan filter or bulk-action control anywhere in this screen.
+  it("test_directory_no_new_filter_or_bulk_action_ia_introduced", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/platform/tenants`, () => HttpResponse.json(FIVE_TENANTS)),
+    );
+    renderDirectory();
+    await waitFor(() => {
+      expect(within(section()).getByText("Acme Robotics")).toBeInTheDocument();
+    });
+    expect(within(section()).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(within(section()).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(
+      within(section()).queryByRole("button", { name: /bulk|kind filter|plan filter/i }),
+    ).not.toBeInTheDocument();
+  });
 });

@@ -39,10 +39,12 @@
 
     /* status */
     --success: #059669;             /* emerald-600 */
+    --success-text: #047857;        /* emerald-700 — AA-safe small-text success (platform-console-flat-redesign) */
     --warning: #f59e0b;             /* amber-500 */
     --warning-foreground: #92400e;  /* amber-800 — readable text on a warning surface */
     --destructive: #dc2626;         /* red-600 */
     --destructive-foreground: #ffffff;
+    --destructive-text: #b91c1c;    /* red-700 — AA-safe small-text destructive (accessibility-auditor sweep, platform-console-flat-redesign) */
 
     /* lines & focus */
     --border: #e2e8f0;              /* slate-200 */
@@ -66,6 +68,18 @@
 
     /* radius (control = md 8px; card = lg 10px — retightened, Aurora) */
     --radius: 0.5rem;
+
+    /* flat-recipe radius steps (platform-console-flat-redesign) — deliberately NOT
+       given a Tailwind theme-bridge entry below: tailwind-merge (verified empirically)
+       doesn't recognize a custom-named radius utility as conflicting with the native
+       rounded-lg/md/etc scale, so both classes would silently coexist. Reference these
+       via the arbitrary-value form instead, e.g. rounded-[var(--radius-flat-card)] —
+       tailwind-merge DOES correctly resolve that against rounded-lg. Absolute values,
+       not calc-relative to --radius (see --radius-sm above, which already diverges from
+       tokens.json's declared primitive value for the equivalent step). */
+    --radius-flat-tag: 2px;
+    --radius-flat-control: 3px;
+    --radius-flat-card: 4px;
 
     /* type */
     --font-sans: "Inter", system-ui, sans-serif;
@@ -101,10 +115,12 @@
     --secondary: #1e293b;
     --secondary-foreground: #f8fafc;
     --success: #34d399;
+    --success-text: #34d399;        /* dark not shipped/verified — no identified small-text AA gap yet, reuse as-is */
     --warning: #fbbf24;
     --warning-foreground: #fcd34d;  /* amber-300 — readable on a dark warning surface */
     --destructive: #ef4444;
     --destructive-foreground: #ffffff;
+    --destructive-text: #ef4444;    /* dark not shipped/verified — no identified small-text AA gap yet, reuse as-is */
     --border: #1e293b;
     --input: #1e293b;
     --ring: #3b82f6;                /* blue-500 */
@@ -169,10 +185,12 @@
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-success: var(--success);
+  --color-success-text: var(--success-text);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-text: var(--destructive-text);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

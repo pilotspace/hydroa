@@ -70,14 +70,25 @@ export interface PlanCardProps {
   displaySeatCap?: number | null;
   badge?: ReactNode;
   action?: ReactNode;
+  /**
+   * console-flat-visual-pass, M4 — true renders the selected-border (Classic
+   * Blue, `border-primary`) alongside `badge`, always together, never the
+   * border alone. Omitted (default/false) renders no border override. The
+   * `variant="flat"` Card below sets `border-transparent`; passing
+   * `border-primary` as a later className correctly wins the same
+   * tailwind-merge border-color group (verified empirically via lib/cn.ts's
+   * twMerge — border-transparent is replaced, the bare `border` width utility
+   * from Card's base classes is preserved, so the override is visible).
+   */
+  selected?: boolean;
 }
 
 /** One tier's ceilings, human-labeled — shared by Screen 1 (catalog) and
  * Screen 2 (the per-tenant Plan tab's own comparison grid). */
-export function PlanCard({ plan, displaySeatCap, badge, action }: PlanCardProps) {
+export function PlanCard({ plan, displaySeatCap, badge, action, selected }: PlanCardProps) {
   const seatCapValue = displaySeatCap === undefined ? plan.seat_cap : displaySeatCap;
   return (
-    <Card>
+    <Card variant="flat" className={selected ? "border-primary" : undefined}>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>{plan.display_name}</CardTitle>
         {badge}

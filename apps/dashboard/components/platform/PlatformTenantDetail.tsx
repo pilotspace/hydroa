@@ -36,6 +36,8 @@ import { PlatformBudgetTab } from "./PlatformBudgetTab";
 import { PlatformKeysTab } from "./PlatformKeysTab";
 import { PlatformMembersTab } from "./PlatformMembersTab";
 import { PlatformPlanTab } from "./PlatformPlanTab";
+import { PlatformActivityTab } from "./PlatformActivityTab";
+import { PlatformTenantOverviewStrip } from "./PlatformTenantOverviewStrip";
 
 export interface PlatformTenantSummary {
   id: string;
@@ -44,7 +46,7 @@ export interface PlatformTenantSummary {
   created_at: string;
 }
 
-const TAB_VALUES = ["config", "budget", "keys", "members", "plan"] as const;
+const TAB_VALUES = ["config", "budget", "keys", "members", "plan", "activity"] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 function isTabValue(v: string | null): v is TabValue {
@@ -118,6 +120,8 @@ export function PlatformTenantDetail({ tenantId }: PlatformTenantDetailProps) {
 
       <PageHeader title={tenant.name} titleId="platform-tenant-detail-heading" />
 
+      <PlatformTenantOverviewStrip tenantId={tenantId} />
+
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="config">Config</TabsTrigger>
@@ -125,6 +129,7 @@ export function PlatformTenantDetail({ tenantId }: PlatformTenantDetailProps) {
           <TabsTrigger value="keys">Keys</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="plan">Plan</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
         <TabsContent value="config">
@@ -141,6 +146,9 @@ export function PlatformTenantDetail({ tenantId }: PlatformTenantDetailProps) {
         </TabsContent>
         <TabsContent value="plan">
           <PlatformPlanTab tenantId={tenantId} />
+        </TabsContent>
+        <TabsContent value="activity">
+          <PlatformActivityTab tenantId={tenantId} />
         </TabsContent>
       </Tabs>
     </div>

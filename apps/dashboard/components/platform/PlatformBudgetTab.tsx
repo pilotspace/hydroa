@@ -20,7 +20,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { bffGet, bffPut, BffError } from "@/lib/bff-client";
 import { Input, Button, Loading, ErrorState, StatCard } from "@/components/ui";
 
-interface BudgetData {
+export interface BudgetData {
   budget_usd_monthly: string | null;
   spent_usd_month: string;
 }
@@ -117,13 +117,18 @@ export function PlatformBudgetTab({ tenantId }: PlatformBudgetTabProps) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4">
-        <StatCard label="Monthly Budget" value={ceiling} />
-        <StatCard label="Spent this month" value={data.spent_usd_month} />
+        <StatCard label="Monthly Budget" value={ceiling} variant="flat" />
+        <StatCard label="Spent this month" value={data.spent_usd_month} variant="flat" />
       </div>
 
       {!isEditing && (
         <div>
-          <Button type="button" variant="outline" onClick={openEdit}>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-[var(--radius-flat-control)]"
+            onClick={openEdit}
+          >
             Edit Budget
           </Button>
         </div>
@@ -143,6 +148,7 @@ export function PlatformBudgetTab({ tenantId }: PlatformBudgetTabProps) {
               onChange={(e) => setDraft(e.target.value)}
               placeholder="e.g. 50.00 — leave empty for unlimited"
               aria-label="Budget"
+              className="rounded-[var(--radius-flat-control)]"
             />
             {fieldError && (
               <p role="alert" aria-live="assertive" className="text-sm text-destructive">
@@ -156,10 +162,20 @@ export function PlatformBudgetTab({ tenantId }: PlatformBudgetTabProps) {
             )}
           </div>
           <div className="flex gap-2">
-            <Button type="button" disabled={saveBudget.isPending} onClick={handleSave}>
+            <Button
+              type="button"
+              className="rounded-[var(--radius-flat-control)]"
+              disabled={saveBudget.isPending}
+              onClick={handleSave}
+            >
               {saveBudget.isPending ? "Saving…" : "Save"}
             </Button>
-            <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-[var(--radius-flat-control)]"
+              onClick={() => setIsEditing(false)}
+            >
               Cancel
             </Button>
           </div>

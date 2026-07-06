@@ -492,3 +492,93 @@ describe("PlatformPlanTab — double-submit guard", () => {
     expect(putCallCount).toBe(1);
   });
 });
+
+describe("PlatformPlanTab — console-flat-visual-pass", () => {
+  // M1 — the shared PlanCard goes flat at this Screen-2 call site too (same
+  // component as Screen 1's catalog page — see Issues/Risks #4).
+  it("test_plan_cards_render_flat_variant", async () => {
+    mockCommon({ plan: TEAM, seat_cap: 25 });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByText(/current plan/i)).toBeInTheDocument();
+    });
+    const starterHeading = screen.getByRole("heading", { name: "Starter" });
+    const starterCard = starterHeading.closest("[data-variant]")!;
+    expect(starterCard).toHaveAttribute("data-variant", "flat");
+    expect(starterCard.className).toContain("rounded-[var(--radius-flat-card)]");
+    expect(starterCard.className).not.toContain("border-border");
+  });
+
+  // M4 — the current-assigned PlanCard renders BOTH the selected-border
+  // (border-primary) AND the "Current plan" badge, together; a non-assigned
+  // card renders neither.
+  it("test_current_plan_card_shows_selected_border_and_badge_together", async () => {
+    mockCommon({ plan: TEAM, seat_cap: 25 });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByText(/current plan/i)).toBeInTheDocument();
+    });
+
+    const teamHeading = screen.getByRole("heading", { name: "Team" });
+    const teamCard = teamHeading.closest("[data-variant]")! as HTMLElement;
+    expect(teamCard.className).toContain("border-primary");
+    expect(within(teamCard).getByText(/current plan/i)).toBeInTheDocument();
+
+    const starterHeading = screen.getByRole("heading", { name: "Starter" });
+    const starterCard = starterHeading.closest("[data-variant]")! as HTMLElement;
+    expect(starterCard.className).not.toContain("border-primary");
+    expect(within(starterCard).queryByText(/current plan/i)).not.toBeInTheDocument();
+  });
+
+  // M5 — the "Current plan" Badge, the Adjust/Assign/Save/Cancel/Remove Buttons,
+  // and the seat-cap Input all get the page-local flat-control/flat-tag radius.
+  it("test_plan_tab_badge_button_input_get_flat_radius_class", async () => {
+    mockCommon({ plan: TEAM, seat_cap: 25 });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByText(/current plan/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/current plan/i).className).toContain(
+      "rounded-[var(--radius-flat-tag)]",
+    );
+    expect(screen.getByRole("button", { name: /adjust seat cap/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+    expect(screen.getByRole("button", { name: /^assign starter$/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+    expect(screen.getByRole("button", { name: /remove plan assignment/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /adjust seat cap/i }));
+    const input = screen.getByLabelText(/^seats$/i);
+    expect(input.className).toContain("rounded-[var(--radius-flat-control)]");
+    expect(screen.getByRole("button", { name: /^save$/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+    expect(screen.getByRole("button", { name: /^cancel$/i }).className).toContain(
+      "rounded-[var(--radius-flat-control)]",
+    );
+  });
+
+  // M6 (verify-only) — the remove-plan-assignment confirm dialog keeps its
+  // existing elevated treatment unchanged.
+  it("test_remove_plan_confirm_dialog_stays_elevated_unchanged", async () => {
+    mockCommon({ plan: TEAM, seat_cap: 25 });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /remove plan assignment/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /remove plan assignment/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.className).toContain("rounded-lg");
+    expect(dialog.className).toContain("border-border");
+    expect(dialog.className).toContain("shadow-lg");
+    expect(dialog.className).not.toContain("rounded-[var(--radius-flat-card)]");
+    const confirmBtn = within(dialog).getByRole("button", { name: /confirm/i });
+    expect(confirmBtn.className).not.toContain("rounded-[var(--radius-flat-control)]");
+  });
+});
