@@ -24,6 +24,7 @@ export function RouteError({ error, reset, surface }: RouteErrorProps) {
     <div className="mx-auto flex max-w-md flex-col gap-3 p-6">
       <ErrorState
         title="Something went wrong"
+        titleAs="h1"
         description={`We couldn't load ${where}. Please retry, or come back in a moment.`}
         onRetry={reset}
       />

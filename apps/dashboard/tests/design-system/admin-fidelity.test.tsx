@@ -38,7 +38,7 @@ describe("admin-fidelity · elevated KPI", () => {
 });
 
 describe("admin-fidelity · admin canvas", () => {
-  it("gives the shell main a muted canvas while keeping the frozen v13 landmarks", () => {
+  it("gives the shell main a white-luxury canvas while keeping the frozen v13 landmarks", () => {
     const { container } = render(
       <AppShell activePath="/app/usage">
         <h1>Usage</h1>
@@ -46,7 +46,10 @@ describe("admin-fidelity · admin canvas", () => {
     );
     const main = container.querySelector("main#main");
     expect(main).not.toBeNull();
-    expect(main!.className).toMatch(/bg-muted/);
+    // v7 premium reconciliation (Tin 2026-07-06): the canvas moved from the tinted
+    // bg-muted/30 to the pure-white bg-background "luxury canvas" against the dark nav
+    // rail. This pins the NEW confirmed surface; the v13 landmark guards below are unchanged.
+    expect(main!.className).toMatch(/bg-background/);
     // skip-link is the first focusable element
     const firstLink = container.querySelector("a");
     expect(firstLink!.getAttribute("href")).toBe("#main");

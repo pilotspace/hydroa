@@ -19,6 +19,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } fro
 import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet } from "@/lib/bff-client";
 import { cn } from "@/lib/cn";
+import { formatNumber, formatUsd, formatBucketLabel, formatTimestamp } from "@/lib/format";
 import { Loading, ErrorState } from "@/components/ui/states";
 import {
   Card,
@@ -78,7 +79,6 @@ interface BudgetData {
 
 const RANGES: SpendWindow[] = ["day", "week", "month"];
 const MAX_ROWS = 10;
-const num = (n: number) => n.toLocaleString("en-US");
 
 /**
  * Latest-bucket vs previous-bucket trend, per the frozen §3 formula:
@@ -103,14 +103,14 @@ const ACTIVITY_COLUMNS: ColumnDef<UsageRecord>[] = [
     id: "tokens",
     header: "Tokens",
     accessorFn: (r) => r.prompt_tokens + r.completion_tokens,
-    cell: (info) => num(info.getValue() as number),
+    cell: (info) => formatNumber(info.getValue() as number),
   },
-  { accessorKey: "cost_usd", header: "Cost", cell: (info) => `$${info.getValue() as string}` },
+  { accessorKey: "cost_usd", header: "Cost", cell: (info) => formatUsd(info.getValue() as string) },
   { accessorKey: "status", header: "Status" },
   {
     accessorKey: "created_at",
     header: "Time",
-    cell: (info) => new Date(info.getValue() as string).toLocaleString("en-US"),
+    cell: (info) => formatTimestamp(info.getValue() as string),
   },
 ];
 
@@ -163,8 +163,13 @@ export function OverviewPage() {
   const budget = budgetQuery.data;
 
   const tokens = (totals?.prompt_tokens ?? 0) + (totals?.completion_tokens ?? 0);
-  const chartData = buckets.map((b) => ({ label: b.bucket_start, requests: b.requests }));
-  const budgetCeiling = budget?.budget_usd_monthly === null ? "Unlimited" : `$${budget?.budget_usd_monthly}`;
+  // Humanize the raw UTC bucket_start so the X-axis + tooltip read "Jun 10" not raw ISO.
+  const chartData = buckets.map((b) => ({
+    label: formatBucketLabel(b.bucket_start, range),
+    requests: b.requests,
+  }));
+  const budgetCeiling =
+    budget?.budget_usd_monthly === null ? "Unlimited" : formatUsd(budget?.budget_usd_monthly);
 
   return (
     <div className="flex flex-col gap-6">
@@ -196,25 +201,25 @@ export function OverviewPage() {
       <section aria-label="Key metrics" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total Requests"
-          value={num(totals?.requests ?? 0)}
+          value={formatNumber(totals?.requests ?? 0)}
           delta={trendDelta(buckets, (b) => b.requests)}
           icon={<Activity className="size-4" />}
         />
         <StatCard
           label="Total Cost"
-          value={`$${totals?.cost_usd ?? "0.00"}`}
+          value={formatUsd(totals?.cost_usd ?? "0")}
           delta={trendDelta(buckets, (b) => Number(b.cost_usd))}
           icon={<CreditCard className="size-4" />}
         />
         <StatCard
           label="Total Tokens"
-          value={num(tokens)}
+          value={formatNumber(tokens)}
           delta={trendDelta(buckets, (b) => b.prompt_tokens + b.completion_tokens)}
           icon={<Coins className="size-4" />}
         />
         <StatCard
           label="Monthly Spend"
-          value={`$${budget?.spent_usd_month ?? "0.00"}`}
+          value={formatUsd(budget?.spent_usd_month ?? "0")}
           delta={{ direction: "neutral", text: `of ${budgetCeiling}` }}
           icon={<Wallet className="size-4" />}
           footer="Current billing month"

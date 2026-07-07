@@ -9,7 +9,7 @@
  */
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { DataTable } from "@/components/ui";
+import { Badge, DataTable } from "@/components/ui";
 
 export interface UpstreamRow {
   name: string;
@@ -28,7 +28,12 @@ const COLUMNS: ColumnDef<UpstreamRow>[] = [
   {
     id: "status",
     header: "Status",
-    cell: ({ row }) => (row.original.status === "down" ? "Down" : "Up"),
+    // Status renders as a semantic Badge — the "Up"/"Down" TEXT is the a11y contract
+    // (never color alone, WCAG 1.4.1); the AA-safe success/destructive tone reinforces it.
+    cell: ({ row }) => {
+      const isUp = row.original.status !== "down";
+      return <Badge variant={isUp ? "success" : "destructive"}>{isUp ? "Up" : "Down"}</Badge>;
+    },
   },
   {
     id: "last_event",

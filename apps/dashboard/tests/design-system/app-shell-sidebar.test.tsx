@@ -297,6 +297,58 @@ describe("AppShell — role-filtered nav, fail open", () => {
   });
 });
 
+// ── GROUPED WORKFLOW NAV (v7 premium IA, Tin 2026-07-06) ──────────────────────
+describe("AppShell — primary nav grouped into labeled workflow sections", () => {
+  const GROUP_LABELS = ["Playground", "Insights", "Configure", "Govern"];
+
+  it("test_primary_nav_grouped_into_labeled_sections", () => {
+    render(
+      <AppShell role="owner">
+        <Body />
+      </AppShell>,
+    );
+    const rail = screen.getByRole("navigation", { name: /primary/i });
+    // every workflow section header is present for a full-access owner …
+    for (const label of GROUP_LABELS) {
+      expect(within(rail).getByText(label)).toBeInTheDocument();
+    }
+    // … and grouping never drops a destination — all links still resolve by name
+    for (const label of ALL_LINKS) {
+      expect(within(rail).getByRole("link", { name: new RegExp(`^${label}$`, "i") })).toBeInTheDocument();
+    }
+  });
+
+  it("test_all_gated_group_is_hidden_for_member_no_orphan_header", () => {
+    render(
+      <AppShell role="member">
+        <Body />
+      </AppShell>,
+    );
+    const rail = screen.getByRole("navigation", { name: /primary/i });
+    // "Govern" is entirely admin-gated → the whole section (label included) disappears
+    expect(within(rail).queryByText("Govern")).toBeNull();
+    // ungated sections survive, and Settings is always pinned
+    for (const label of ["Playground", "Insights"]) {
+      expect(within(rail).getByText(label)).toBeInTheDocument();
+    }
+    expect(within(rail).getByRole("link", { name: /^Settings$/i })).toBeInTheDocument();
+    // no admin destination leaks through the grouping
+    for (const label of ADMIN_ONLY) {
+      expect(within(rail).queryByRole("link", { name: new RegExp(`^${label}$`, "i") })).toBeNull();
+    }
+  });
+
+  it("test_settings_pinned_exactly_once_below_the_groups", () => {
+    render(
+      <AppShell role="owner">
+        <Body />
+      </AppShell>,
+    );
+    const rail = screen.getByRole("navigation", { name: /primary/i });
+    expect(within(rail).getAllByRole("link", { name: /^Settings$/i })).toHaveLength(1);
+  });
+});
+
 // ── COLLAPSE ──────────────────────────────────────────────────────────────────
 describe("AppShell — collapsible desktop rail keeps accessible names", () => {
   it("test_desktop_rail_collapses_keeps_names", async () => {
