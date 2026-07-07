@@ -7,6 +7,7 @@
 
 import { BffError } from "@/lib/bff-client";
 import { Loading, ErrorState, StatCard } from "@/components/ui";
+import { formatNumber } from "@/lib/format";
 
 export interface UsageRecord {
   id: string;
@@ -61,10 +62,13 @@ export function UsageStatsCards({
 
   if (!data) return null;
 
+  // Counts route through the shared thousands-separator formatter so real 6–7 digit
+  // volumes read "3,840,211" not "3840211" (consistent with the overview KPIs). Cost
+  // stays the raw NUMERIC string — the "(USD)" label carries the unit.
   const cards = [
-    { label: "Total Requests", value: String(data.total_requests) },
-    { label: "Total Prompt Tokens", value: String(data.total_prompt_tokens) },
-    { label: "Total Completion Tokens", value: String(data.total_completion_tokens) },
+    { label: "Total Requests", value: formatNumber(data.total_requests) },
+    { label: "Total Prompt Tokens", value: formatNumber(data.total_prompt_tokens) },
+    { label: "Total Completion Tokens", value: formatNumber(data.total_completion_tokens) },
     { label: "Total Cost (USD)", value: data.total_cost_usd },
   ];
 

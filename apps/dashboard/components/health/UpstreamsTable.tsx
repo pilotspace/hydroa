@@ -10,6 +10,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { Badge, DataTable } from "@/components/ui";
+import { formatTimestamp } from "@/lib/format";
 
 export interface UpstreamRow {
   name: string;
@@ -41,7 +42,8 @@ const COLUMNS: ColumnDef<UpstreamRow>[] = [
     cell: ({ row }) => {
       const { last_event_type, last_event_at } = row.original;
       if (!last_event_type) return "—";
-      return last_event_at ? `${last_event_type} (${last_event_at})` : last_event_type;
+      // Humanize the ISO timestamp (consistent with the alerts "When" column).
+      return last_event_at ? `${last_event_type} (${formatTimestamp(last_event_at)})` : last_event_type;
     },
   },
 ];

@@ -29,6 +29,7 @@ import { Card, CardHeader, CardContent, Loading, ErrorState, StatCard } from "@/
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/ui/page-header";
 import { BffError } from "@/lib/bff-client";
+import { formatNumber } from "@/lib/format";
 
 function getErrorTitle(err: unknown): string {
   if (err instanceof BffError) return err.problem.title;
@@ -125,15 +126,15 @@ export function UsagePage() {
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <StatCard
                     label="Total Requests"
-                    value={String(usageQuery.data.total_requests)}
+                    value={formatNumber(usageQuery.data.total_requests)}
                   />
                   <StatCard
                     label="Total Prompt Tokens"
-                    value={String(usageQuery.data.total_prompt_tokens)}
+                    value={formatNumber(usageQuery.data.total_prompt_tokens)}
                   />
                   <StatCard
                     label="Total Completion Tokens"
-                    value={String(usageQuery.data.total_completion_tokens)}
+                    value={formatNumber(usageQuery.data.total_completion_tokens)}
                   />
                 </div>
               )}

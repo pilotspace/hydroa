@@ -19,7 +19,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } fro
 import type { ColumnDef } from "@tanstack/react-table";
 import { bffGet } from "@/lib/bff-client";
 import { cn } from "@/lib/cn";
-import { formatNumber, formatUsd, formatBucketLabel, formatTimestamp } from "@/lib/format";
+import { formatNumber, formatUsd, formatBucketLabel, formatCompact, formatTimestamp } from "@/lib/format";
 import { Loading, ErrorState } from "@/components/ui/states";
 import {
   Card,
@@ -164,8 +164,9 @@ export function OverviewPage() {
 
   const tokens = (totals?.prompt_tokens ?? 0) + (totals?.completion_tokens ?? 0);
   // Humanize the raw UTC bucket_start so the X-axis + tooltip read "Jun 10" not raw ISO.
+  // Always month+day so daily buckets stay distinct (never collapse to one "Jul 2026" tick).
   const chartData = buckets.map((b) => ({
-    label: formatBucketLabel(b.bucket_start, range),
+    label: formatBucketLabel(b.bucket_start),
     requests: b.requests,
   }));
   const budgetCeiling =
@@ -237,7 +238,13 @@ export function OverviewPage() {
             <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid vertical={false} className="stroke-border" />
               <XAxis dataKey="label" tickLine={false} axisLine={false} className="text-xs" />
-              <YAxis tickLine={false} axisLine={false} width={40} className="text-xs" />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                width={48}
+                tickFormatter={(v) => formatCompact(v as number)}
+                className="text-xs"
+              />
               <ChartTooltip content={<ChartTooltipContent />} />
               <Area
                 type="monotone"

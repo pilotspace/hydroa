@@ -7,7 +7,13 @@
  * RED before build: `@/lib/format` does not exist yet → MODULE_NOT_FOUND.
  */
 import { describe, it, expect } from "vitest";
-import { formatTimestamp, formatNumber, formatUsd, formatBucketLabel } from "@/lib/format";
+import {
+  formatTimestamp,
+  formatNumber,
+  formatUsd,
+  formatBucketLabel,
+  formatCompact,
+} from "@/lib/format";
 
 describe("formatTimestamp", () => {
   it("humanizes an ISO timestamp — no raw T/Z marker survives", () => {
@@ -71,23 +77,40 @@ describe("formatUsd", () => {
 
 describe("formatBucketLabel", () => {
   it("humanizes a date bucket to a short month/day (no raw ISO survives)", () => {
-    const out = formatBucketLabel("2026-06-10T00:00:00Z", "day");
-    expect(out).toMatch(/Jun/);
-    expect(out).toContain("10");
+    const out = formatBucketLabel("2026-06-10T00:00:00Z");
+    expect(out).toBe("Jun 10");
     expect(out).not.toContain("2026-06-10T00:00:00Z");
     expect(out).not.toMatch(/T\d\d:\d\d/);
   });
 
-  it("renders a month window as month + year", () => {
-    expect(formatBucketLabel("2026-06-01T00:00:00Z", "month")).toBe("Jun 2026");
+  it("keeps daily buckets DISTINCT (never collapses a month window to one tick)", () => {
+    // Regression: month-window daily buckets were all formatted "Jun 2026". Each
+    // day must render its own month/day so the X-axis reads Jul 1, Jul 2, …
+    const labels = ["2026-07-01", "2026-07-02", "2026-07-06"].map(formatBucketLabel);
+    expect(labels).toEqual(["Jul 1", "Jul 2", "Jul 6"]);
+    expect(new Set(labels).size).toBe(3); // all distinct
   });
 
   it("is UTC-stable — a date-only bucket never slips a day", () => {
     // "2026-06-01" (no time) must read as Jun 1 regardless of the runner's timezone.
-    expect(formatBucketLabel("2026-06-01", "day")).toMatch(/Jun 1\b/);
+    expect(formatBucketLabel("2026-06-01")).toBe("Jun 1");
   });
 
   it("falls back to the raw value when unparseable", () => {
-    expect(formatBucketLabel("nope", "day")).toBe("nope");
+    expect(formatBucketLabel("nope")).toBe("nope");
+  });
+});
+
+describe("formatCompact", () => {
+  it("shortens dense counts for a chart axis (no clipping)", () => {
+    expect(formatCompact(2529)).toBe("2.5K");
+    expect(formatCompact(561000)).toBe("561K");
+    expect(formatCompact(0)).toBe("0");
+  });
+
+  it("degrades to an em dash for nullish / non-finite", () => {
+    expect(formatCompact(null)).toBe("—");
+    expect(formatCompact(undefined)).toBe("—");
+    expect(formatCompact(Number.NaN)).toBe("—");
   });
 });

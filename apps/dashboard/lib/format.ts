@@ -51,21 +51,25 @@ export function formatUsd(value: string | number | null | undefined): string {
 }
 
 /**
- * Humanize a spend-window bucket_start (always a UTC date at 00:00 — the gateway
- * truncates per window: day/week → a date, month → the month). Rendered in UTC so
- * a date-only bucket ("2026-06-01") never slips a day in a negative-offset runner.
- * Unparseable input is returned verbatim.
+ * Humanize a spend-window bucket_start (a UTC date at 00:00) for a chart axis as a
+ * short month + day ("Jun 10"). Always month+day — NOT the window granularity — so
+ * that daily buckets inside a month window stay DISTINCT rather than all collapsing
+ * to one "Jun 2026" tick. Rendered in UTC so a date-only bucket ("2026-06-01")
+ * never slips a day in a negative-offset runner. Unparseable input is returned raw.
  */
-export function formatBucketLabel(
-  value: string | null | undefined,
-  window?: "day" | "week" | "month",
-): string {
+export function formatBucketLabel(value: string | null | undefined): string {
   if (value === null || value === undefined || value === "") return EM_DASH;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  const opts: Intl.DateTimeFormatOptions =
-    window === "month"
-      ? { month: "short", year: "numeric", timeZone: "UTC" }
-      : { month: "short", day: "numeric", timeZone: "UTC" };
-  return date.toLocaleDateString("en-US", opts);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+/**
+ * Compact count for dense contexts like a chart axis (2529 → "2.5K", 561000 →
+ * "561K"). Keeps ticks narrow so 4–7 digit values don't clip. Nullish/non-finite
+ * → an em dash.
+ */
+export function formatCompact(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return EM_DASH;
+  return value.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 1 });
 }
