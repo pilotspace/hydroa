@@ -82,6 +82,9 @@ import gateway.artifacts.infrastructure.orm  # noqa: F401 — registers Artifact
 # video-generation job lifecycle: registers VideoGenerationJobRow on Base.metadata.
 import gateway.video.infrastructure.orm  # noqa: F401 — registers VideoGenerationJobRow on Base.metadata
 
+# payload-capture-store: registers RequestLogRow on Base.metadata.
+import gateway.logs.infrastructure.orm  # noqa: F401 — registers RequestLogRow on Base.metadata
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------
