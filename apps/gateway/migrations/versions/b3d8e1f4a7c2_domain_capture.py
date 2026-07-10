@@ -23,7 +23,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 revision: str = "b3d8e1f4a7c2"
-down_revision: str | None = "a1c5e7f9b3d6"
+down_revision: str | None = "a55ddcebaac6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
