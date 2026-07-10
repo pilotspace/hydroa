@@ -4,7 +4,7 @@ slug: output-schema-validation · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 sensitivity: architecture   <!-- supersedes a frozen v11 behavioral pin (translate-don't-enforce); adds a new third-party dependency; additive extension to shared core/errors.py -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -445,8 +445,10 @@ Constraints: do NOT change any test or the contract; allow-list packages only (j
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] with GATEWAY_OUTPUT_VALIDATION_ENABLED off (default) or no validate_output field, the request path is byte-identical to v11 (flag popped pre-dispatch, zero validation work) — confirmed by the two dedicated byte-identical scenarios + 221 re-run neighbor tests green
+- [ ] a schema-mismatched 200 triggers exactly ONE retry (identical routed call, no governance re-run), then 422 ERR_OUTPUT_SCHEMA_VALIDATION_FAILED carrying size-capped raw_output + validation_errors — confirmed by the retry-loop tests asserting call counts and the 422 extra fields
+- [ ] BOTH attempts bill (usage_source=validation_retry on attempt 1 and on a failed attempt 2) — never a silent free retry — confirmed by usage-record assertions counting two rows
+- [ ] stream:true + validate_output:true is hard-rejected 400 before any upstream call — confirmed by the streaming reject test asserting zero upstream calls
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed

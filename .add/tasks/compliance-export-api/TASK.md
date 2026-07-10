@@ -4,7 +4,7 @@ slug: compliance-export-api · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
 sensitivity: data   <!-- read-only over the existing immutable audit store; no new identity/auth surface — data-handling risk (bulk export, filter correctness, honest pagination), not a security HARD-STOP surface. -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -486,8 +486,11 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] GET /admin/audit (frozen v1) stays byte-identical — route, envelope, and its 15-test suite untouched and green — confirmed by the audit_read suite re-run
+- [ ] keyset cursor on (created_at,id) never skips or duplicates rows when rows append between page fetches — confirmed by the concurrent-append pagination test
+- [ ] NDJSON default body stays SIEM-parser-pure (cursor via X-Audit-Export-* headers); ?format=json returns {items,next_cursor,has_more} with no total — confirmed by response-shape assertions on both formats
+- [ ] every 200 export fires an audit.export audit row via the existing fail-open writer — confirmed by the audit-of-export test
+- [ ] the keyset query uses the new index efficiently — confirmed by live EXPLAIN ANALYZE on 200k seeded rows (Index Only Scan Backward, 5.5ms)
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed

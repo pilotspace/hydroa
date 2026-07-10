@@ -640,12 +640,12 @@
     },
     "payload-capture-store": {
       "title": "Opt-in PII-scrubbed request/response payload capture store",
-      "phase": "tests",
+      "phase": "verify",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [],
       "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T13:11:41+00:00",
+      "updated": "2026-07-10T14:26:17+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:02+00:00",
@@ -655,16 +655,43 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a8aeec8c421a5655aebd223f7ec72368",
+        "tests": {
+          "apps/gateway/tests/payload_capture/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/payload_capture/test_payload_capture_store.py": "366123c07bef3b1d42b136bf47522f75"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/logs/",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/migrations/env.py",
+          "apps/gateway/src/gateway/proxy/domain/ports.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/api/deps.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/guardrail_evaluator.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/payload_capture_noop.py",
+          "apps/gateway/src/gateway/keys/",
+          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
+          "apps/gateway/src/gateway/usage/application/retention_sweep.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
       }
     },
     "per-key-guardrail-policies": {
       "title": "Per-key guardrail policy resolution (key > tenant)",
-      "phase": "tests",
+      "phase": "verify",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [],
       "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T13:11:42+00:00",
+      "updated": "2026-07-10T14:26:19+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:02+00:00",
@@ -674,16 +701,37 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "09f557c787f8942a5e7bc0d810cd342d",
+        "tests": {
+          "apps/gateway/tests/per_key_guardrail_policies/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/per_key_guardrail_policies/conftest.py": "7da3e3b5a65c861ef0cfb2aed4fc9c18",
+          "apps/gateway/tests/per_key_guardrail_policies/test_per_key_guardrail_policies.py": "bb17999759b6d0e875d764375ff7037e"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/keys/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/per_key_guardrail_policies/",
+          "proxy/",
+          "tenants/api/guardrail_router.py",
+          "tenants/api/guardrail_evaluator.py"
+        ],
+        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
       }
     },
     "ml-moderation-layer": {
       "title": "ML moderation check class in the guardrail engine",
-      "phase": "tests",
+      "phase": "verify",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [],
       "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T13:11:42+00:00",
+      "updated": "2026-07-10T14:25:12+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:02+00:00",
@@ -693,16 +741,27 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "78db91dc1fcfd42ae4ee5509cac0a22f",
+        "tests": {
+          "apps/gateway/tests/guardrails/test_ml_moderation.py": "d15569e33f6a8edb8919107e8b3d4f70"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
       }
     },
     "output-schema-validation": {
       "title": "Opt-in output JSON-schema validation with bounded retry",
-      "phase": "tests",
+      "phase": "verify",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [],
       "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T13:11:42+00:00",
+      "updated": "2026-07-10T14:26:18+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:02+00:00",
@@ -712,16 +771,39 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "08c78941578d3611570542248ce0d2b3",
+        "tests": {
+          "apps/gateway/tests/output_schema_validation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/output_schema_validation/conftest.py": "d707fccfb65c7170be77b399e385ae71",
+          "apps/gateway/tests/output_schema_validation/test_output_schema_validation.py": "809ca7c3f8c7a74b2bce7ac5a5bc9dc5",
+          "apps/gateway/tests/output_schema_validation/test_output_validation_domain.py": "a766d8243b5b80614fa248a5c4d3414b"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/domain/output_validation.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/api/deps.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/errors.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/pyproject.toml",
+          "apps/gateway/tests/output_schema_validation/"
+        ],
+        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
       }
     },
     "scim-provisioning": {
       "title": "SCIM 2.0 user provisioning (per-tenant token)",
-      "phase": "tests",
+      "phase": "verify",
       "gate": "none",
       "milestone": "enterprise-identity-compliance",
       "depends_on": [],
       "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T13:11:41+00:00",
+      "updated": "2026-07-10T14:26:16+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:02+00:00",
@@ -731,16 +813,42 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "fc8480a9c3607b0fe42ef4426e137662",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/scim-provisioning/src/",
+          "apps/gateway/src/gateway/scim/",
+          "apps/gateway/src/gateway/tenants/domain/entities.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
+          "apps/gateway/src/gateway/tenants/application/use_cases.py",
+          "apps/gateway/src/gateway/auth/application/use_cases.py",
+          "apps/gateway/src/gateway/audit/domain/audit_event.py",
+          "apps/gateway/src/gateway/audit/infrastructure/audit_events_orm.py",
+          "apps/gateway/src/gateway/teams/infrastructure/repository.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "infra/envoy/envoy.yaml",
+          "infra/envoy/envoy-prod.yaml",
+          "charts/ai-proxy/templates/envoy-configmap.yaml",
+          ".add/tasks/scim-provisioning/tests/"
+        ],
+        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
       }
     },
     "saml-sso": {
       "title": "SAML 2.0 SSO alongside OIDC",
-      "phase": "tests",
+      "phase": "verify",
       "gate": "none",
       "milestone": "enterprise-identity-compliance",
       "depends_on": [],
       "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T13:11:41+00:00",
+      "updated": "2026-07-10T14:26:15+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:02+00:00",
@@ -750,16 +858,28 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "22980758b5b5a3f410efbe7e957ccc39",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/auth/",
+          "apps/gateway/src/gateway/tenants/domain/ports.py"
+        ],
+        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
       }
     },
     "tenant-retention-zdr": {
       "title": "Per-tenant retention policy + Zero-Data-Retention mode",
-      "phase": "tests",
+      "phase": "verify",
       "gate": "none",
       "milestone": "enterprise-identity-compliance",
       "depends_on": [],
       "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T13:11:42+00:00",
+      "updated": "2026-07-10T14:25:11+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:02+00:00",
@@ -769,16 +889,44 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b76084d4ab506305d925cd47000225ae",
+        "tests": {
+          "apps/gateway/tests/retention_zdr/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/retention_zdr/conftest.py": "e3b503d09768edf5f7df114c87c372db",
+          "apps/gateway/tests/retention_zdr/test_retention_zdr.py": "03c3df805a106c154af85e6396e57a49"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/application/retention_sweep.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
+          "apps/gateway/src/gateway/tenants/api/",
+          "apps/gateway/src/gateway/keys/domain/entities.py",
+          "apps/gateway/src/gateway/keys/infrastructure/repository.py",
+          "apps/gateway/src/gateway/artifacts/infrastructure/repository.py",
+          "apps/gateway/src/gateway/conversations/infrastructure/repository.py",
+          "apps/gateway/src/gateway/memory/infrastructure/repository.py",
+          "apps/gateway/src/gateway/batches/infrastructure/repository.py",
+          "apps/gateway/src/gateway/video/infrastructure/repository.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
       }
     },
     "compliance-export-api": {
       "title": "Compliance export API over the immutable audit store",
-      "phase": "tests",
+      "phase": "verify",
       "gate": "none",
       "milestone": "enterprise-identity-compliance",
       "depends_on": [],
       "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T13:11:42+00:00",
+      "updated": "2026-07-10T14:26:20+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:03+00:00",
@@ -788,6 +936,23 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6faa34aae98c4da9c34ffa2353a0edd7",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/audit/api/",
+          "apps/gateway/src/gateway/audit/infrastructure/audit_repository.py",
+          "apps/gateway/src/gateway/audit/infrastructure/audit_events_orm.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/audit_export/"
+        ],
+        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
       }
     }
   },
@@ -876,7 +1041,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T13:11:42+00:00",
+  "updated": "2026-07-10T14:26:20+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

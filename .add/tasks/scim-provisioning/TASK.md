@@ -4,7 +4,7 @@ slug: scim-provisioning · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
 sensitivity: security   <!-- unattended machine write-path into tenant identity lifecycle (create/update/deactivate users) — milestone Shared decisions: "every identity surface is security-sensitive: HARD-STOP verify"; never auto-passed even under autonomy:auto -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -461,8 +461,10 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] tenant A's SCIM bearer cannot read or mutate tenant B's users (404, no oracle) — confirmed by the tenant-isolation test, adversarially refute-read verified (filter temporarily broken → test failed → restored)
+- [ ] deactivating a user via SCIM PATCH sets users.deactivated_at and both login call sites reject that user — confirmed by the deactivation-semantics tests asserting login 401 after PATCH
+- [ ] every /scim/v2 mutation writes an audit row attributed to actor_scim_token_id; /admin/scim token CRUD attributes actor_user_id — confirmed by audit-row assertions in the mutation tests
+- [ ] /scim/v2 errors use the RFC 7644 SCIM envelope while /admin/scim stays RFC 9457 — confirmed by response-shape assertions on both surfaces
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed

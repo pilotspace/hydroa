@@ -4,7 +4,7 @@ slug: per-key-guardrail-policies · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 sensitivity: data   <!-- per-key policy CRUD + resolution touches tenant/key data isolation; no new outbound IO seam (reuses the existing auth-time LEFT JOIN) -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -460,8 +460,10 @@ Deviations (recorded per the project's fix-and-record rule): mid-build, a `git s
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] a key with NULL guardrail_policy behaves byte-identically to tenant inheritance across pre-call, post-call, all 3 cache-hit branches, and streaming — confirmed by the inheritance regression test (passed pre-build as a true regression guard) + zero edits to use_cases.py/guardrail_evaluator.py in the diff
+- [ ] a key with its own policy enforces it wholesale (no field-merge with tenant) — confirmed by the override tests asserting key-policy verdicts where tenant policy differs
+- [ ] policy resolution adds zero DB round-trips (rides the existing get_by_id 3-table LEFT JOIN) — confirmed by the M3 query-count assertion (stress-run 5x stable)
+- [ ] DELETE reverts to inherit (204) and PUT partial-merges within the key override — confirmed by the router tests for both verbs
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed

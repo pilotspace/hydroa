@@ -6,7 +6,7 @@ milestone: enterprise-identity-compliance
      session JWT on successful validation; a signature-wrapping or tenant-confusion defect is a
      full account-takeover class bug. autonomy lowered to conservative: build cannot auto-PASS at
      Verify; HARD-STOP verify per the milestone's shared decision (Identity surface). -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -973,8 +973,10 @@ Other build-time deviations (strictly-more-correct, harmless, recorded per the b
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] a tenant with no saml_provider_configs row sees zero behavioral change on every password/OIDC path — confirmed by the untouched sso_oidc suite green + zero edits to shipped OIDC files in the diff
+- [ ] a forged (unsigned/wrong-audience), replayed (reused InResponseTo), or cross-tenant assertion is rejected with the anti-enumeration error, never a session JWT — confirmed by the per-rejection-path red tests (signature/audience/replay/tenant-binding) each asserting no JWT issued
+- [ ] a valid SP-initiated login issues the SAME session JWT shape as OIDC/password (sub claim, standard TTL) — confirmed by decoding the issued JWT in the happy-path test against the existing JwtTokenService contract
+- [ ] the Redis pending-request entry is single-use — a second ACS post with the same AuthnRequest ID fails as replay (GETDEL + tombstone) — confirmed by the replay test's second-post rejection
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed

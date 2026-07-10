@@ -4,7 +4,7 @@ slug: payload-capture-store · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 sensitivity: data   <!-- tenant-isolation + PII-bearing payload store; see MILESTONE.md "Security floor" -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -484,8 +484,11 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] a tenant/key with capture OFF produces zero request_logs rows and a byte-identical proxied response — confirmed by the default-off scenario asserting empty table + unchanged response
+- [ ] a captured row's payload is PII-scrubbed BEFORE persist and size-capped (8KiB field / 64KiB body, truncation-marked) — confirmed by tests asserting masked content and cap markers in the stored row
+- [ ] a ZDR tenant produces zero payload rows even with capture opted-in, and an is_zdr check failure suppresses capture (fail-closed) — confirmed by test_zdr_check_failure_fails_closed_suppresses_capture
+- [ ] a capture-store outage never fails or delays the proxied response (fire-and-forget, bounded timeout, concurrency shed) — confirmed by the outage test asserting 200 completion with the store down
+- [ ] a guardrail-BLOCKed prompt still yields a capture row (the 4 additive BLOCK-path hooks) — confirmed by the BLOCK-path capture tests
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
