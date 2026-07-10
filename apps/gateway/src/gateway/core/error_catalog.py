@@ -522,6 +522,12 @@ OIDC_TENANT_CONFLICT = ErrorSpec(
     403, "ERR_OIDC_TENANT_CONFLICT", "Email is bound to a different tenant"
 )
 
+#: Resolved user's deactivated_at is set (scim-provisioning TASK.md §3, M7) — same
+#: denial family as the password-login path; no session JWT is issued.
+OIDC_ACCOUNT_DEACTIVATED = ErrorSpec(
+    403, "ERR_OIDC_ACCOUNT_DEACTIVATED", "Account is deactivated"
+)
+
 # ---------------------------------------------------------------------------
 # Internal / server errors
 # ---------------------------------------------------------------------------
@@ -741,3 +747,12 @@ BATCH_ITEMS_TOO_MANY = ErrorSpec(
 #: custom_id that duplicates another item in the same submission. The whole
 #: submission is atomic — no row is created on this reject.
 BATCH_ITEM_INVALID = ErrorSpec(422, "batch_item_invalid", "a line item failed validation")
+
+# ---------------------------------------------------------------------------
+# SCIM token management (scim-provisioning task — /admin/scim/tokens, RFC 9457 side only;
+# /scim/v2/* uses the separate SCIM error envelope — gateway.scim.api.errors)
+# ---------------------------------------------------------------------------
+
+#: /admin/scim/tokens/{id}/rotate|DELETE — unknown id, already revoked, or cross-tenant.
+#: Deliberately indistinguishable (no oracle), mirrors INVITE_NOT_FOUND's own precedent.
+SCIM_TOKEN_NOT_FOUND = ErrorSpec(404, "ERR_SCIM_TOKEN_NOT_FOUND", "SCIM token not found")

@@ -96,6 +96,7 @@ class SqlAlchemyIdentityRepository:
             email=row.email,
             password_hash=row.password_hash,
             role=Role(row.role),
+            deactivated_at=row.deactivated_at,
         )
 
     async def get_or_provision_oidc_user(
@@ -127,6 +128,7 @@ class SqlAlchemyIdentityRepository:
                 email=row.email,
                 password_hash=row.password_hash,
                 role=Role(row.role),
+                deactivated_at=row.deactivated_at,
             )
 
         # Provision new user — role is ALWAYS member (never from claims)

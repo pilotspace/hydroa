@@ -45,19 +45,26 @@ class AuditEvent:
     target_id: str | None
     result: str
     actor_key_id: uuid.UUID | None = None
+    # NEW additive field (scim-provisioning TASK.md §3, FROZEN @ v1) — mirrors
+    # actor_key_id's own precedent exactly: the machine actor for a SCIM-token-
+    # authenticated caller (/scim/v2/* mutations), which structurally has no user
+    # identity to supply (same situation actor_key_id was added for). Every existing
+    # call site is unaffected — defaults to None.
+    actor_scim_token_id: uuid.UUID | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(__import__("datetime").UTC))
 
     def __post_init__(self) -> None:
-        """Enforce the (relaxed) audit_missing_actor invariant."""
+        """Enforce the (twice-relaxed) audit_missing_actor invariant."""
         if (
             self.tenant_id is not None
             and self.actor_user_id is None
             and self.actor_key_id is None
+            and self.actor_scim_token_id is None
         ):
             raise ValueError(
                 "audit_missing_actor: a tenant-scoped audit event must carry "
-                "actor_user_id or actor_key_id"
+                "actor_user_id, actor_key_id, or actor_scim_token_id"
             )
 
 

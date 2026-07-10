@@ -35,6 +35,7 @@ import structlog
 from gateway.audit.application.audit_writer import record_audit
 from gateway.audit.domain.audit_event import AuditEvent
 from gateway.auth.domain.errors import (
+    OidcAccountDeactivatedError,
     OidcDomainNotMappedError,
     OidcInvalidCallbackError,
     OidcSessionExpiredError,
@@ -342,6 +343,13 @@ class OidcLoginUseCase:
             tenant_id=mapped_tenant_id,
             password_hash=SSO_PASSWORD_HASH_SENTINEL,
         )
+
+        # NEW (scim-provisioning TASK.md §3, M7 — FROZEN @ v1): a deactivated user's SSO
+        # login is rejected — same denial family as the password-login path, no session
+        # JWT is issued. Checked AFTER provisioning/lookup (an existing SCIM-deactivated
+        # user is never re-activated by an SSO login) and BEFORE minting the JWT below.
+        if user.deactivated_at is not None:
+            raise OidcAccountDeactivatedError(f"User {email!r} is deactivated")
 
         # Step 8: mint session JWT with the user's STORED role.
         # Auto-provisioned users are always member (enforced in the repository),

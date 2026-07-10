@@ -28,6 +28,11 @@ class User:
     email: str
     password_hash: str
     role: Role
+    # NEW additive field (scim-provisioning TASK.md §3, FROZEN @ v1). Default None keeps
+    # every EXISTING User(...) construction call site unaffected. Mirrors api_keys.revoked_at's
+    # nullable-timestamp soft pattern: NULL/None = active; once set, blocks all FUTURE
+    # password/OIDC login (LoginUseCase / OidcLoginUseCase) — see authz enforcement there.
+    deactivated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
