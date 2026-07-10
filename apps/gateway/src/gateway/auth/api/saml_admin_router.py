@@ -48,6 +48,7 @@ from gateway.core.error_catalog import (
     AUTH_TOKEN_INVALID,
     INTERNAL_ERROR,
     SAML_CONFIG_NOT_FOUND,
+    SAML_DOMAIN_ALREADY_CLAIMED,
 )
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
@@ -247,6 +248,33 @@ async def put_saml_config(
         from gateway.core.error_catalog import SAML_CERT_INVALID
 
         raise SAML_CERT_INVALID.exc(detail=cert_error)
+
+    # Collision guard (add-verify Finding 3, 2026-07-10, DoS class): reject an
+    # email_domains entry already claimed by a DIFFERENT tenant's config
+    # BEFORE any write. Without this, two tenants can both claim the same
+    # domain and every GET /auth/saml/login?domain=<that domain> crashes with
+    # an unhandled MultipleResultsFound (db_saml_config_resolver.py). Checked
+    # against ALL other tenants' rows regardless of `enabled` — a disabled
+    # collision only defers the crash to whenever either row is re-enabled,
+    # so it is rejected up front rather than left as a landmine.
+    if body.email_domains:
+        collision_stmt = select(
+            SamlProviderConfigRow.tenant_id, SamlProviderConfigRow.email_domains
+        ).where(
+            SamlProviderConfigRow.tenant_id != tenant_id,
+            SamlProviderConfigRow.email_domains.overlap(body.email_domains),
+        )
+        collision_result = await session.execute(collision_stmt)
+        collision_row = collision_result.first()
+        if collision_row is not None:
+            _other_tenant_id, other_domains = collision_row
+            claimed = sorted(set(other_domains or []) & set(body.email_domains))
+            raise SAML_DOMAIN_ALREADY_CLAIMED.exc(
+                detail=(
+                    "email_domains already claimed by another tenant: "
+                    f"{claimed}"
+                )
+            )
 
     now = datetime.now(UTC)
     stmt = (

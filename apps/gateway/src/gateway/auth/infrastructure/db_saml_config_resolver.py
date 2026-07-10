@@ -61,15 +61,32 @@ class DbSamlConfigResolver:
 
         Returns None when domain is None or no enabled row matches (M1 →
         ERR_SAML_NOT_CONFIGURED).
+
+        Defensive against a cross-tenant email_domains collision (add-verify
+        Finding 3, 2026-07-10): PUT /admin/saml now guards against a NEW
+        collision at write time (saml_admin_router.py), but pre-existing data
+        or a race between two concurrent PUTs (TOCTOU on the guard) could
+        still leave more than one enabled row matching the same domain. A
+        bare `.scalar_one_or_none()` would raise an unhandled
+        `MultipleResultsFound` (a login-crashing DoS) in that case — instead,
+        `ORDER BY created_at, tenant_id` + `LIMIT 1` makes the query itself
+        return AT MOST one row, deterministically (the earliest claimant
+        always wins, never a random per-request pick), so no post-hoc
+        exception handling is needed.
         """
         from gateway.auth.infrastructure.saml_orm import SamlProviderConfigRow
 
         if domain is None:
             return None
 
-        stmt = select(SamlProviderConfigRow).where(
-            SamlProviderConfigRow.email_domains.contains([domain]),
-            SamlProviderConfigRow.enabled.is_(True),
+        stmt = (
+            select(SamlProviderConfigRow)
+            .where(
+                SamlProviderConfigRow.email_domains.contains([domain]),
+                SamlProviderConfigRow.enabled.is_(True),
+            )
+            .order_by(SamlProviderConfigRow.created_at.asc(), SamlProviderConfigRow.tenant_id.asc())
+            .limit(1)
         )
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()

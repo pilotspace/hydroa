@@ -345,6 +345,54 @@ class SamlAcsUseCase:
         # inventing an uncontracted error code.
         return SamlSignatureInvalidError(str(exc))
 
+    def _verify_scd_in_response_to(
+        self, response: OneLogin_Saml2_Response, request_id: str
+    ) -> None:
+        """M5.4 (the trust-bearing check — HARD-STOP fix, add-verify Finding 1,
+        2026-07-10): independently re-verify that the SIGNED
+        SubjectConfirmationData/@InResponseTo is PRESENT and EQUAL to the M3
+        request_id, AFTER response.is_valid() has already succeeded.
+
+        Why this is needed even though is_valid() runs strict-mode checks:
+        python3-saml's own SubjectConfirmation loop
+        (onelogin/saml2/response.py ~line 247-249) treats InResponseTo as
+        OPTIONAL — `if in_response_to and irt and irt != in_response_to:
+        continue` only rejects a MISMATCH, never an ABSENCE. Omitting
+        InResponseTo from SubjectConfirmationData is a legal SAML variant
+        (e.g. IdP-initiated SSO), so `is_valid()` alone lets a validly-signed
+        assertion through with NO cryptographic binding to any specific
+        pending request — an attacker holding any such assertion for a
+        victim can wrap it in a fresh envelope pointing at a
+        self-initiated pending request and mint a session as the victim.
+
+        This reads the SCD via `_query_assertion`, python3-saml's own
+        Reference/URI-scoped accessor — the SAME XSW-safe accessor the
+        library uses internally for every other post-validation claim read
+        (audience, issuer, attributes, NameID) — so this reads from the
+        node the verified <ds:Signature> actually covers, never a raw
+        unverified peek (M4's XSW defense applies here too). This is a
+        plain attribute comparison on already-cryptographically-verified
+        data, not a re-implementation of any XML-signature/crypto logic.
+
+        Raises SamlResponseMismatchError unless at least one
+        SubjectConfirmationData node on the verified assertion carries an
+        InResponseTo equal to request_id.
+        """
+        # library's own XSW-safe (signed-Reference-scoped) assertion accessor;
+        # no public equivalent exists for reading SubjectConfirmationData
+        # post-validation.
+        scd_nodes = response._query_assertion(  # pyright: ignore[reportPrivateUsage]
+            "/saml:Subject/saml:SubjectConfirmation/saml:SubjectConfirmationData"
+        )
+        for scd in scd_nodes:
+            irt = scd.get("InResponseTo")
+            if irt and irt == request_id:
+                return
+        raise SamlResponseMismatchError(
+            "signed SubjectConfirmationData/@InResponseTo is missing or does "
+            f"not match the pending request_id {request_id!r}"
+        )
+
     def _resolve_email(
         self, response: OneLogin_Saml2_Response, config: SamlProviderConfig
     ) -> str | None:
@@ -462,6 +510,25 @@ class SamlAcsUseCase:
                 error_code=_ERROR_CODE_BY_TYPE.get(type(mapped), "ERR_SAML_SIGNATURE_INVALID"),
             )
             raise mapped from exc
+
+        # M5.4 (HARD-STOP fix): independently re-verify the SIGNED
+        # SubjectConfirmationData/@InResponseTo — is_valid() above does NOT
+        # enforce this when the SCD simply omits InResponseTo (see
+        # _verify_scd_in_response_to docstring). This runs OUTSIDE the
+        # try/except above so a SamlResponseMismatchError is never
+        # re-wrapped by the generic "unexpected validation failure" handler.
+        try:
+            self._verify_scd_in_response_to(response, request_id)
+        except SamlResponseMismatchError:
+            await self._audit(
+                tenant_id=pending.tenant_id,
+                user_id=None,
+                email=None,
+                idp_entity_id=pending.idp_entity_id,
+                result="rejected",
+                error_code="ERR_SAML_RESPONSE_MISMATCH",
+            )
+            raise
 
         # M5.6: independent second replay layer, keyed by assertion @ID.
         assertion_id = response.get_assertion_id()
