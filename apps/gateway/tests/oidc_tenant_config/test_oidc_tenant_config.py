@@ -367,6 +367,7 @@ def make_env_oidc_settings(
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         oidc_enabled=True,
         oidc_issuer=issuer,
         oidc_client_id=client_id,
@@ -388,6 +389,7 @@ def make_base_settings(
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         oidc_config_encryption_key=encryption_key,
     )
 

@@ -31,6 +31,7 @@ from typing import Any
 import httpx
 import pytest
 
+from gateway.core.egress_policy import AllowAllEgressPolicy
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
@@ -153,12 +154,17 @@ def _chat_upstream(base_url: str, *, max_retries: int = 0) -> AzureCompletionUps
     """v25 task-3: no ctor config= or token_provider=; credentials travel via contextvar.
 
     RIGHT-REASON RED: existing ctor still requires config= → TypeError until BUILD.
+
+    edge-input-hardening §3 Part B: explicitly injects AllowAllEgressPolicy so this
+    suite's real 127.0.0.1 stub round-trip is unaffected by the real deny-by-default
+    production policy (which would otherwise deny a loopback dial).
     """
     return AzureCompletionUpstream(  # type: ignore[call-arg]
         token_provider_cache=None,
         max_retries=max_retries,
         backoff_base=0.0,  # no real sleep between retries — fast test
         retry_deadline_s=0.0,
+        egress_policy=AllowAllEgressPolicy(),
     )
 
 
@@ -283,8 +289,11 @@ async def test_AV4_real_streaming_accepted_with_usage(stub_server: dict[str, Any
 async def test_AV5_real_embeddings_exact_tokens(stub_server: dict[str, Any]) -> None:
     # v25 task-3: AzureEmbeddingsProvider drops config= ctor arg; credentials via contextvar.
     # RIGHT-REASON RED: existing ctor still requires config= → TypeError until BUILD.
+    # edge-input-hardening §3 Part B: AllowAllEgressPolicy so the loopback stub dial is
+    # unaffected by the real deny-by-default production policy.
     provider = AzureEmbeddingsProvider(  # type: ignore[call-arg]
         token_provider_cache=None,
+        egress_policy=AllowAllEgressPolicy(),
     )
     tok = set_provider_credential(_az_cred(stub_server["base_url"]))
     try:

@@ -1,12 +1,15 @@
 """Domain entity and port for the audit event subsystem.
 
-Contract (audit-log-store TASK.md §3 — FROZEN @ v1):
+Contract (audit-log-store TASK.md §3 — FROZEN @ v1, relaxed by realtime-relay-governance
+TASK.md §3 Option B — Tin's frozen change-request, 2026-07-10):
   - AuditEvent: frozen dataclass representing one immutable audit row.
   - AuditLog: Protocol exposing ONLY record() and list_for_tenant() — NO mutate path.
 
 Rejections enforced here:
-  - audit_missing_actor: a tenant-scoped event (tenant_id is not None) MUST carry actor_user_id.
-    System events (tenant_id=None) may carry actor_user_id=None.
+  - audit_missing_actor: a tenant-scoped event (tenant_id is not None) MUST carry EITHER
+    actor_user_id OR actor_key_id (relaxed from "MUST carry actor_user_id" — a key-
+    authenticated caller, e.g. a realtime relay session, structurally has no user identity
+    to supply). System events (tenant_id=None) may carry both as None.
   - audit_secret_leak: metadata is an opaque dict — callers are responsible for not writing secrets.
     This layer trusts callers (enforcement is at the emit sites and tested by the test suite).
 """
@@ -23,9 +26,14 @@ from typing import Any, Protocol, runtime_checkable
 class AuditEvent:
     """One immutable audit record.
 
-    Invariant: if tenant_id is not None (i.e. a tenant-scoped action),
-    actor_user_id MUST be provided (audit_missing_actor).
-    System-level events (tenant_id=None) may omit actor_user_id.
+    Invariant: if tenant_id is not None (i.e. a tenant-scoped action), EITHER
+    actor_user_id OR actor_key_id MUST be provided (audit_missing_actor).
+    System-level events (tenant_id=None) may omit both.
+
+    actor_key_id (realtime-relay-governance TASK.md §3, Option B — additive, nullable):
+    the key identity for a key-authenticated caller with no user identity to supply
+    (e.g. a realtime relay session, authenticated over WS by an API key alone). Every
+    pre-existing user-actor event is unaffected — actor_key_id stays None for those rows.
     """
 
     id: uuid.UUID
@@ -36,14 +44,20 @@ class AuditEvent:
     target_type: str | None
     target_id: str | None
     result: str
+    actor_key_id: uuid.UUID | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(__import__("datetime").UTC))
 
     def __post_init__(self) -> None:
-        """Enforce audit_missing_actor invariant."""
-        if self.tenant_id is not None and self.actor_user_id is None:
+        """Enforce the (relaxed) audit_missing_actor invariant."""
+        if (
+            self.tenant_id is not None
+            and self.actor_user_id is None
+            and self.actor_key_id is None
+        ):
             raise ValueError(
-                "audit_missing_actor: a tenant-scoped audit event must carry actor_user_id"
+                "audit_missing_actor: a tenant-scoped audit event must carry "
+                "actor_user_id or actor_key_id"
             )
 
 

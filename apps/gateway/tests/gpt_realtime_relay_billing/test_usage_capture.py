@@ -181,14 +181,29 @@ async def test_translate_realtime_usage_splits_combined_cached_into_text_and_aud
 
 
 # ---------------------------------------------------------------------------
-# Scenario 4 — Gemini Live stays byte-identical
+# Scenario 4 — Gemini Live: superseded by realtime-relay-governance (B2 TASK.md §3, M3)
 # ---------------------------------------------------------------------------
+#
+# SANCTIONED SUPERSESSION (2026-07-10): this task (gpt-realtime-relay-billing) originally
+# pinned "GeminiLiveSession must stay untouched — no usage-capture param" because its OWN
+# scope was OpenAI-only (see the docstring this test used to carry). The realtime-relay-
+# governance TASK.md (§3, FROZEN @ v1, M3) explicitly and knowingly extends that boundary:
+# "GeminiLiveSession.__init__ gains: on_usage: Callable[...] | None = None, mirroring
+# OpenAIRealtimeSession's ALREADY-SHIPPED shape verbatim." This is a later, Tin-approved
+# freeze superseding an earlier task's own regression pin — not a weakening of THIS test's
+# original intent (Gemini stays byte-identical when on_usage is unset/None; see
+# test_gemini_usage_capture.py::test_on_usage_absent_is_backward_compatible for that pin).
 
 
-def test_gemini_live_constructor_has_no_on_usage_param() -> None:
+def test_gemini_live_constructor_gained_on_usage_param_per_relay_governance_task() -> None:
+    """Superseded pin: on_usage IS now a param (default None, byte-identical when unset)."""
     from gateway.proxy.infrastructure.gemini_live import GeminiLiveSession
 
     sig = inspect.signature(GeminiLiveSession.__init__)
-    assert "on_usage" not in sig.parameters, (
-        "GeminiLiveSession must stay untouched by this task — no usage-capture param"
+    assert "on_usage" in sig.parameters, (
+        "realtime-relay-governance TASK.md §3 (M3) requires GeminiLiveSession to mirror "
+        "OpenAIRealtimeSession's on_usage shape verbatim"
+    )
+    assert sig.parameters["on_usage"].default is None, (
+        "on_usage must default to None so an unset caller stays byte-identical to today"
     )

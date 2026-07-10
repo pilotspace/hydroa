@@ -191,6 +191,12 @@ class Settings(BaseSettings):
     otel_flush_interval_seconds: float = 5.0  # GATEWAY_OTEL_FLUSH_INTERVAL_SECONDS
     otel_queue_max: int = 2048  # GATEWAY_OTEL_QUEUE_MAX
 
+    # ── Public signup (signup-and-routing-authz S1) ──────────────────────────
+    # Default OFF (invite-only): the unauthenticated POST /admin/auth/signup
+    # new-tenant path is refused unless an operator explicitly opts in. A fresh
+    # deploy bootstraps its first tenant by temporarily flipping this on.
+    public_signup_enabled: bool = False  # GATEWAY_PUBLIC_SIGNUP_ENABLED
+
     # ── OIDC SSO (sso-oidc task) ─────────────────────────────────────────────
     oidc_enabled: bool = False  # GATEWAY_OIDC_ENABLED
     oidc_issuer: str = ""  # GATEWAY_OIDC_ISSUER (e.g. https://accounts.google.com)
@@ -1005,6 +1011,62 @@ class Settings(BaseSettings):
     # bound. Mirrors object_store_timeout_seconds's exact style (gt=0, no bespoke
     # @field_validator beyond Pydantic's own gt-violation message).
     impersonation_live_check_timeout_seconds: float = Field(default=2.0, gt=0)
+
+    # ── Edge input hardening (edge-input-hardening TASK.md §3, S2+S3+S4) ────────
+    # GATEWAY_TRUSTED_PROXY_HOPS — number of trusted XFF hops Envoy appends (default 1:
+    # the single rightmost token, the one hop Envoy itself appends per the compose/Helm
+    # topology confirmed at Ground). resolve_trusted_client_ip trusts ONLY this many
+    # tokens from the right; a value <=0 is a misconfiguration, not a disable signal —
+    # coerced to 1 + startup WARNING (mirrors _coerce_negative_max_concurrent).
+    trusted_proxy_hops: int = Field(default=1)  # GATEWAY_TRUSTED_PROXY_HOPS
+
+    # GATEWAY_EGRESS_ALLOW_PRIVATE_RANGES — operator opt-in allowing a BYOK Azure
+    # endpoint/authority to resolve to a loopback/link-local/RFC1918/ULA address (e.g. a
+    # real Azure Private Link deployment). Default False (deny-by-default, Tin
+    # 2026-07-10). Cloud-metadata addresses are ALWAYS denied regardless of this flag.
+    egress_allow_private_ranges: bool = Field(default=False)  # GATEWAY_EGRESS_ALLOW_PRIVATE_RANGES
+    # GATEWAY_EGRESS_ALLOW_HTTP_DEV — operator opt-in allowing a plain-http (non-https)
+    # BYOK Azure endpoint/authority scheme, for local/dev only. Default False.
+    egress_allow_http_dev: bool = Field(default=False)  # GATEWAY_EGRESS_ALLOW_HTTP_DEV
+    # GATEWAY_EGRESS_DNS_RESOLVE_TIMEOUT_S — bounds the request-time DNS resolution the
+    # egress policy performs before every BYOK-influenced outbound dial (PROJECT.md: no
+    # outbound IO without a timeout). A resolver timeout fails CLOSED (deny the dial).
+    # GATEWAY_EGRESS_DNS_RESOLVE_TIMEOUT_S
+    egress_dns_resolve_timeout_s: float = Field(default=2.0, gt=0)
+
+    # GATEWAY_MAX_JSON_BODY_BYTES — per-request cap for /v1/* JSON bodies (chat/embeddings/
+    # images) and /admin/* write bodies, enforced by BodySizeLimitMiddleware. Default 20 MiB.
+    max_json_body_bytes: int = Field(default=20_971_520, ge=0)  # GATEWAY_MAX_JSON_BODY_BYTES
+    # GATEWAY_MAX_AUDIO_UPLOAD_BYTES — per-request cap for /v1/audio/{transcriptions,
+    # translations} multipart bodies. Default 25 MiB (matches realtime_max_utterance_bytes
+    # and OpenAI Whisper's documented 25 MB file ceiling).
+    max_audio_upload_bytes: int = Field(default=26_214_400, ge=0)  # GATEWAY_MAX_AUDIO_UPLOAD_BYTES
+
+    @field_validator("trusted_proxy_hops", mode="before")
+    @classmethod
+    def _coerce_nonpositive_trusted_proxy_hops(cls, v: object) -> object:
+        """Coerce a non-positive GATEWAY_TRUSTED_PROXY_HOPS to 1 + emit a startup WARNING.
+
+        A hop count <= 0 is a misconfiguration, not a disable signal — trusting ZERO hops
+        would mean falling back to request.client.host unconditionally, which silently
+        defeats the XFF resolver behind a real proxy. Mirrors
+        _coerce_negative_max_concurrent's established convention.
+        """
+        import logging as _logging
+
+        try:
+            n = int(v)  # type: ignore[arg-type]  # try/except is the guard
+        except (TypeError, ValueError):
+            return v  # not an int — let Pydantic raise its normal type error
+        if n <= 0:
+            _logging.getLogger(__name__).warning(
+                "INVALID_TRUSTED_PROXY_HOPS: GATEWAY_TRUSTED_PROXY_HOPS=%r is not positive; "
+                "coercing to 1 (trust only the single rightmost XFF hop). Set to a positive "
+                "integer matching your proxy topology.",
+                v,
+            )
+            return 1
+        return n
 
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":

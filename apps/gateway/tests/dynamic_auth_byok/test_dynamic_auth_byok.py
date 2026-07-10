@@ -38,6 +38,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Stable imports — these exist from tasks 1+2; MUST succeed even in RED state
 # ---------------------------------------------------------------------------
+from gateway.core.egress_policy import AllowAllEgressPolicy
 from gateway.proxy.domain.credential_context import (
     get_provider_credential,
     reset_provider_credential,
@@ -298,10 +299,14 @@ async def test_azure_api_key_mode_reads_from_contextvar() -> None:
 
     # Task-3 ctor: no config or token_provider; gains token_provider_cache
     # We pass a fake cache (None or stub) — the cache test is in test_azure_ad_provider_cache.py
+    # edge-input-hardening §3 Part B: AllowAllEgressPolicy so this MockTransport-backed
+    # adapter's fake endpoint isn't denied by the real deny-by-default production policy
+    # (which would otherwise attempt real DNS resolution on a non-resolving test hostname).
     adapter = AzureCompletionUpstream(  # type: ignore[call-arg]
         max_retries=0,
         backoff_base=0.0,
         retry_deadline_s=0.0,
+        egress_policy=AllowAllEgressPolicy(),
     )
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
         transport=httpx.MockTransport(handler),  # type: ignore[arg-type]
@@ -370,11 +375,14 @@ async def test_azure_aad_mode_reads_from_contextvar() -> None:
         captured["api_key"] = request.headers.get("api-key")
         return httpx.Response(200, json=_AZURE_200)
 
+    # edge-input-hardening §3 Part B: AllowAllEgressPolicy so this MockTransport-backed
+    # adapter's fake endpoint isn't denied by the real deny-by-default production policy.
     adapter = AzureCompletionUpstream(  # type: ignore[call-arg]
         token_provider_cache=fake_cache,  # type: ignore[arg-type]
         max_retries=0,
         backoff_base=0.0,
         retry_deadline_s=0.0,
+        egress_policy=AllowAllEgressPolicy(),
     )
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
         transport=httpx.MockTransport(handler),  # type: ignore[arg-type]

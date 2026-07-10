@@ -11,8 +11,11 @@ success, persists it to the operator-wide singleton. Both render the EFFECTIVE-O
 frozen blocks are byte-identical); a row → the persisted config (read-after-write for the editor).
 candidates[].state always comes from the LIVE cooldown_gate (runtime health, not config).
 
-Auth (both): require_owner_or_admin (Bearer JWT; member → 403; missing/invalid → 401). PUT is
-always-on (Tin-approved 2026-06-23) — any owner/admin may write the operator-wide routing config.
+Auth (both): require_superadmin (Bearer JWT; any non-SUPERADMIN role → 403; missing/invalid → 401).
+The routing config is operator-wide (no tenant_id) — gated by role, never a tenant Permission.
+This SUPERSEDES the 2026-06-23 "any owner/admin, always-on" decision (signup-and-routing-authz S1,
+M7/M9): the single-operator/trusted-owner premise no longer holds now that tenants/plans/billing
+all ship on main. `Permission.ROUTING_MANAGE` is left declared but unused (see that task's §7).
 
 Restart-to-apply: PUT NEVER mutates app.state.settings/model_router. The persisted config is
 adopted by the live router only at the next gateway boot (the shipped boot-merge).
@@ -27,7 +30,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import structlog
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, Body, Depends, Request
 
 from gateway.audit.application.audit_writer import record_audit
 from gateway.audit.domain.audit_event import AuditEvent
@@ -39,7 +42,7 @@ from gateway.proxy.application.routing_config_merge import (
 )
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
-from gateway.tenants.domain.authz import Permission, require_permission
+from gateway.tenants.domain.authz import require_superadmin
 from gateway.tenants.domain.entities import Identity
 
 routing_admin_router = APIRouter(prefix="/admin/routing", tags=["routing-admin"])
@@ -161,7 +164,7 @@ async def _routing_response(request: Request, effective: Settings) -> dict[str, 
 @routing_admin_router.get("")
 async def get_routing_admin(
     request: Request,
-    _identity: Annotated[Identity, require_permission(Permission.ROUTING_MANAGE)],
+    _identity: Annotated[Identity, Depends(require_superadmin)],
 ) -> dict[str, Any]:
     """GET /admin/routing — effective routing config + per-candidate cooldown health."""
     effective = await _effective_settings(request)
@@ -172,7 +175,7 @@ async def get_routing_admin(
 async def put_routing_admin(
     request: Request,
     body: Annotated[dict[str, Any], Body(...)],
-    identity: Annotated[Identity, require_permission(Permission.ROUTING_MANAGE)],
+    identity: Annotated[Identity, Depends(require_superadmin)],
 ) -> dict[str, Any]:
     """PUT /admin/routing — validate (Settings/Deployment parity) then persist; restart-to-apply.
 

@@ -5,11 +5,21 @@ Starlette TestClient with app.state STUB seams (fake authenticate + fake session
 factory) — NO DB, NO network, NO key. Proves auth-over-WS (4401/4408),
 honest-degrade (4404), and a full-duplex relay end-to-end over a fake provider
 session.
+
+Governance stub (realtime-relay-governance TASK.md §3, M1 — added 2026-07-10): the
+endpoint now runs an ADDITIVE connect-time governance step after auth, before session
+build. This suite's own concern is auth-over-WS + relay mechanics, unchanged by M1 — a
+permissive `_permissive_governance` stub is wired by default (mirrors the SAME
+app.state STUB seam convention `realtime_relay_authenticate`/`realtime_relay_session_factory`
+already use) so these DB-free tests keep exercising exactly what they always exercised.
+Every existing assertion (close codes, full-duplex frame order) is byte-identical.
 """
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -45,7 +55,20 @@ class FakeProviderSession:
         self.closed = True
 
 
-def _build_app(*, authenticate, session_factory, auth_timeout: float = 5.0) -> FastAPI:
+async def _permissive_governance(token: str, model_id: str) -> SimpleNamespace:
+    """Default governance stub: always PASSES with a fresh synthetic identity — this
+    suite's own concern is auth-over-WS + relay mechanics, not governance (see M1 note
+    above; governance rejection paths are covered by test_relay_governance.py)."""
+    return SimpleNamespace(tenant_id=uuid.uuid4(), key_id=uuid.uuid4(), team_id=None)
+
+
+def _build_app(
+    *,
+    authenticate,
+    session_factory,
+    auth_timeout: float = 5.0,
+    governance_authorize=None,
+) -> FastAPI:
     from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
 
     app = FastAPI()
@@ -56,11 +79,19 @@ def _build_app(*, authenticate, session_factory, auth_timeout: float = 5.0) -> F
     )
     app.state.realtime_relay_authenticate = authenticate
     app.state.realtime_relay_session_factory = session_factory
+    app.state.realtime_relay_governance_authorize = governance_authorize or _permissive_governance
+    # No real DB in this suite — record_audit's own fail-open contract swallows the
+    # resulting failure when the fire-and-forget session_opened/closed events fire.
+    app.state.sessionmaker = _no_db_sessionmaker
     return app
 
 
+def _no_db_sessionmaker() -> None:
+    raise RuntimeError("no DB wired in this DB-free suite")
+
+
 async def _ok_auth(token, session):
-    return object() if token == "sk-x" else None
+    return SimpleNamespace(tenant_id=uuid.uuid4(), key_id=uuid.uuid4(), team_id=None) if token == "sk-x" else None
 
 
 def test_authed_full_duplex_relay() -> None:

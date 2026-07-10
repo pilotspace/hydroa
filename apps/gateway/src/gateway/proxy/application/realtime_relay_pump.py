@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Any
 
 from gateway.core.config import Settings
@@ -30,6 +31,9 @@ from gateway.proxy.domain.realtime_relay import (
     RealtimeRelaySession,
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
+from gateway.rate_limits.domain.errors import BandwidthExhaustedError
+from gateway.rate_limits.domain.ports import BandwidthBucket
 
 _log = logging.getLogger(__name__)
 
@@ -38,6 +42,10 @@ _CODE_NORMAL = 1000
 _CODE_PROVIDER_ERROR = 1011
 _CODE_PROVIDER_UNAVAILABLE = 4503
 _CODE_IDLE = 4408
+# realtime-relay-governance (B2 TASK.md §3, M5): a self-imposed pace cap is not "the
+# provider is down" — kept distinct from _CODE_PROVIDER_UNAVAILABLE (4503) even though
+# both mean "you're going too fast", same code family as the connect-time RATE_LIMITED.
+_CODE_BANDWIDTH_EXHAUSTED = 4429
 
 
 class _IdleTimeout(Exception):
@@ -62,12 +70,23 @@ class RelayPump:
         settings: Settings,
         *,
         breaker: CircuitBreaker | None = None,
+        bandwidth_bucket: BandwidthBucket | None = None,
+        key_id: uuid.UUID | None = None,
     ) -> None:
         self._t = transport
         self._s = session
         self._connect_timeout = settings.realtime_relay_connect_timeout_seconds
         self._idle_timeout = settings.realtime_relay_idle_timeout_seconds
         self._breaker = breaker or CircuitBreaker()
+        # realtime-relay-governance (B2 TASK.md §3, M5): mirrors the existing optional
+        # `breaker` param — default PassthroughBandwidthBucket() is byte-identical / zero
+        # pacing when unset (matches the v36 bandwidth-token-bucket default-OFF precedent).
+        self._bandwidth_bucket = bandwidth_bucket or PassthroughBandwidthBucket()
+        self._bandwidth_max_wait_s = settings.bandwidth_max_wait_seconds
+        self._key_id = key_id
+        # Observable outcome for the endpoint's session_closed audit event (M6) — set once,
+        # in _teardown, right before the transport close.
+        self.close_code: int | None = None
 
     # -- the two relay directions -------------------------------------------
 
@@ -81,6 +100,18 @@ class RelayPump:
                 raise _IdleTimeout from exc
             except RealtimeRelayClosed:
                 return  # client disconnected — a normal end of session
+            if _is_audio(frame) and self._key_id is not None:
+                # realtime-relay-governance (B2 TASK.md §3, M5): pace each AUDIO frame
+                # (never control frames) BEFORE forwarding it. Outside the connect_timeout
+                # window below — acquire()'s own bounded wait (bandwidth_max_wait_s) is a
+                # separate governance surface from the provider-send timeout.
+                # BandwidthExhaustedError propagates uncaught — handled by run()'s outcome
+                # dispatch (distinct 4429, never the provider-unavailable 4503 path).
+                # key_id is None only when the caller never threaded one through (byte-
+                # identical to the Passthrough default either way — it ignores key_id).
+                await self._bandwidth_bucket.acquire(
+                    self._key_id, len(frame), self._bandwidth_max_wait_s
+                )
             try:
                 async with asyncio.timeout(self._connect_timeout):
                     if _is_audio(frame):
@@ -138,6 +169,10 @@ class RelayPump:
                     continue
                 if isinstance(exc, _IdleTimeout):
                     code = _CODE_IDLE
+                elif isinstance(exc, BandwidthExhaustedError):
+                    # A self-imposed pace cap is not "the provider is down" — the breaker
+                    # tracks PROVIDER health, so it must stay untouched here.
+                    code = _CODE_BANDWIDTH_EXHAUSTED
                 elif isinstance(exc, RealtimeProviderUnavailableError):
                     code = _CODE_PROVIDER_UNAVAILABLE
                     self._breaker.on_upstream_error()
@@ -154,6 +189,7 @@ class RelayPump:
 
         Idempotent and never raises (teardown must not mask the outcome).
         """
+        self.close_code = code
         if error_frame is not None:
             try:
                 await self._t.send_event(error_frame)

@@ -21,6 +21,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from gateway.core.egress_policy import AllowAllEgressPolicy
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
@@ -73,7 +74,9 @@ class _SpyBreaker(CircuitBreaker):
 def _make_adapter(
     handler: object, *, breaker: CircuitBreaker | None = None
 ) -> AzureEmbeddingsProvider:
-    adapter = AzureEmbeddingsProvider(token_provider_cache=None)
+    adapter = AzureEmbeddingsProvider(
+        token_provider_cache=None, egress_policy=AllowAllEgressPolicy()
+    )
     if breaker is not None:
         adapter._breaker = breaker  # type: ignore[attr-defined]
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
@@ -175,7 +178,9 @@ async def test_identity_deployment_for_unmapped_model() -> None:
         deployment_map={},
         api_key="k",
     )
-    adapter = AzureEmbeddingsProvider(token_provider_cache=None)
+    adapter = AzureEmbeddingsProvider(
+        token_provider_cache=None, egress_policy=AllowAllEgressPolicy()
+    )
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
         transport=httpx.MockTransport(handler),  # type: ignore[arg-type]
     )

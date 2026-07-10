@@ -130,6 +130,17 @@ static_resources:
                               - exact: "x-key-id"
                       failure_mode_allow: false
 
+                  # ── Body-size ceiling (S4 edge-input-hardening §3 Part C) ───────────────
+                  # Coarse OUTER ceiling, defense-in-depth alongside the app-level
+                  # BodySizeLimitMiddleware caps (20 MiB JSON / 25 MiB audio) — comfortably
+                  # above both so it only fires on a grossly oversized body. Envoy responds
+                  # with its OWN native 413 body (not the gateway's RFC 9457 problem+json) —
+                  # a documented, accepted inconsistency (contract §3 Reject list).
+                  - name: envoy.filters.http.buffer
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
+                      max_request_bytes: 31457280   # 30 MiB
+
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -154,6 +165,27 @@ static_resources:
                             status: 403
                             body:
                               inline_string: "Forbidden"
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+
+                        # realtime-relay-governance (B2 TASK.md §3, M7): /v1/realtime/ →
+                        # ext_authz DISABLED, placed BEFORE the general /v1/ rule below
+                        # (first-match-wins). A browser cannot set an Authorization header
+                        # on a WS handshake GET, so ext_authz would 401 the upgrade before
+                        # Envoy ever proxies it — the gateway's in-band auth-over-WS (v52,
+                        # first frame {"type":"auth","token":"sk-..."}) is the SOLE
+                        # authenticator on this path. Byte-mirrors the ALREADY-SHIPPED
+                        # charts/ai-proxy/templates/envoy-configmap.yaml:126-138 block —
+                        # this dev-stack file previously lacked the carve-out (a pre-
+                        # existing drift this task's ground pass surfaced, not introduced
+                        # by it). Guarded by tests/realtime_relay/test_carveout_invariant.py
+                        # (every route under this prefix must be WebSocket-only).
+                        - match:
+                            prefix: "/v1/realtime/"
+                          route:
+                            cluster: gateway_cluster
                           typed_per_filter_config:
                             envoy.filters.http.ext_authz:
                               "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute

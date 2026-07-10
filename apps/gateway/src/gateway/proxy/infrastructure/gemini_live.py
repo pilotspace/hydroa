@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
@@ -29,6 +30,7 @@ _DEFAULT_URL = (
     "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 )
 _AUDIO_MIME = "audio/pcm"
+_log = logging.getLogger(__name__)
 
 
 class GeminiLiveSession:
@@ -42,6 +44,7 @@ class GeminiLiveSession:
         ws_connect: Callable[[], Awaitable[RealtimeWebSocket]] | None = None,
         url: str = _DEFAULT_URL,
         connect_timeout: float = 10.0,
+        on_usage: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self._model = model
         self._api_key = api_key
@@ -49,6 +52,10 @@ class GeminiLiveSession:
         self._url = url
         self._connect_timeout = connect_timeout
         self._ws: RealtimeWebSocket | None = None
+        # realtime-relay-governance (B2 TASK.md §3, M3): optional per-turn usage capture
+        # callback, mirroring OpenAIRealtimeSession's ALREADY-SHIPPED shape verbatim.
+        # Never widens the RealtimeRelaySession Protocol.
+        self._on_usage = on_usage
 
     # -- connection ---------------------------------------------------------
 
@@ -121,8 +128,81 @@ class GeminiLiveSession:
                 raise RealtimeProviderUnavailableError(
                     "Gemini Live sent a non-JSON message"
                 ) from exc
+            if self._on_usage is not None:
+                await self._maybe_capture_usage(message)
             for frame in self._translate_server_message(message):
                 yield frame
+
+    async def _maybe_capture_usage(self, message: dict[str, Any]) -> None:
+        """Fire on_usage exactly once per turn boundary (B2 TASK.md §3, M3).
+
+        LIVE-VERIFIED shape (ai.google.dev/api/live, 2026-07-10): `usageMetadata` is a
+        top-level sibling of `serverContent` on the SAME server message — never nested
+        inside it. Gated on the SAME message ALSO carrying serverContent.turnComplete=true
+        (the exact boundary _translate_server_message reads to emit response.done) so a
+        usageMetadata block repeated on an earlier, non-boundary message can never fire a
+        second, over-counted capture for the same turn — mirrors the shipped OpenAI
+        per-turn (never session-aggregate) shape exactly.
+        """
+        server_content = message.get("serverContent")
+        turn_complete = isinstance(server_content, dict) and server_content.get("turnComplete")
+        if not turn_complete:
+            return
+        raw_usage = message.get("usageMetadata")
+        if not isinstance(raw_usage, dict):
+            _log.debug("gemini_usage_absent_skip", extra={"model": self._model})
+            return
+        try:
+            await self._on_usage(self._translate_gemini_usage(raw_usage))  # type: ignore[misc]
+        except Exception:
+            # Mirrors the shipped OpenAI path (TASK.md §5 safety rule): a billing-pipe
+            # failure must never disrupt the live relay session.
+            _log.warning("gemini realtime usage capture failed (swallowed)", exc_info=True)
+
+    @staticmethod
+    def _translate_gemini_usage(raw: dict[str, Any]) -> dict[str, Any]:
+        """Translate Gemini Live's usageMetadata into the recorder-canonical shape.
+
+        Recorder-canonical shape (matches OpenAIRealtimeSession._translate_realtime_usage,
+        read by gateway.usage.application.recorder._record_internal via _safe_tier):
+          prompt_tokens, completion_tokens,
+          prompt_tokens_details.cached_tokens,
+          input_token_details.{audio_tokens,cached_tokens}, output_token_details.audio_tokens.
+
+        Gemini's shape has no modality-split cached-token count (only a single, non-split
+        `cachedContentTokenCount`) — mapped to the TEXT-tier `prompt_tokens_details.
+        cached_tokens` only; the AUDIO-tier `input_token_details.cached_tokens` degrades to
+        0 rather than reusing the combined total a second time (would double-count a
+        fabricated value — never a fabricated non-zero estimate, per TASK.md §1 Reject).
+
+        Never raises — every field degrades to 0 on absence/non-numeric type.
+        """
+
+        def _int(value: Any) -> int:
+            return value if isinstance(value, int) else 0
+
+        def _modality_tokens(details: Any, modality: str) -> int:
+            if not isinstance(details, list):
+                return 0
+            for entry in details:
+                if isinstance(entry, dict) and entry.get("modality") == modality:
+                    return _int(entry.get("tokenCount", 0))
+            return 0
+
+        return {
+            "prompt_tokens": _int(raw.get("promptTokenCount", 0)),
+            "completion_tokens": _int(raw.get("responseTokenCount", 0)),
+            "prompt_tokens_details": {
+                "cached_tokens": _int(raw.get("cachedContentTokenCount", 0)),
+            },
+            "input_token_details": {
+                "audio_tokens": _modality_tokens(raw.get("promptTokensDetails"), "AUDIO"),
+                "cached_tokens": 0,
+            },
+            "output_token_details": {
+                "audio_tokens": _modality_tokens(raw.get("responseTokensDetails"), "AUDIO"),
+            },
+        }
 
     @staticmethod
     def _translate_server_message(message: dict[str, Any]) -> list[RelayFrame]:

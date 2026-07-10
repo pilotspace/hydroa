@@ -101,6 +101,7 @@ from add_engine.io_state import (  # re-exported as module globals: callers use 
     _load_state_for_json,                                          # --json state loader
     _md5_text, _md5_file,                                          # md5 hashing helpers
     _personas_unseeded,                                            # persona-seed-nudge predicate
+    _real_persona_slugs,                                           # persona-fit-nudge slug listing
 )
 
 
@@ -280,10 +281,14 @@ _BLANK_RUN_RE = re.compile(r"\n{3,}")
 def _strip_live_scaffold(text: str) -> str:
     """Remove `<!-- … -->` instruction comments from a TASK.md — fences untouched, idempotent.
 
-    Splits on fenced code blocks so a comment inside a ``` fence (e.g. the frozen §3) is never
-    touched; in the non-fence segments it drops comment spans, trims the trailing whitespace a
-    removal leaves on a line, and collapses 3+ consecutive newlines to one blank line."""
-    segs = re.split(r"(```.*?```)", text, flags=re.DOTALL)
+    Splits on fenced code blocks AND an inline single-backtick span that IS itself a whole
+    `` `<!--...-->` `` (literal comment syntax quoted as an example in prose) so neither is
+    touched; a live comment that merely CONTAINS unrelated backtick-quoted code (e.g. this very
+    template's own `` `add.py autonomy set` ``-style asides) is untouched by this exception and
+    still stripped whole, exactly as before. In the remaining segments it drops comment spans,
+    trims the trailing whitespace a removal leaves on a line, and collapses 3+ consecutive
+    newlines to one blank line."""
+    segs = re.split(r"(```.*?```|`<!--.*?-->`)", text, flags=re.DOTALL)
     for i in range(0, len(segs), 2):                     # even indices = OUTSIDE any fence
         s = _HTML_COMMENT_RE.sub("", segs[i])
         s = _TRAILING_WS_RE.sub("", s)
@@ -395,6 +400,28 @@ def _stamp_gate_record(root: Path, state: dict, slug: str, outcome: str) -> None
         _atomic_write(f, new)
 
 
+def _capture_wrapped(label: str, body: str):
+    """Capture a `<label>: value` field that may WRAP onto continuation lines (a human writing
+    prose in a TASK.md field routinely wraps past one line). Matches the label's first line, then
+    consumes subsequent physical lines while each is non-blank AND does not itself start a new
+    field label — `Word Word:` or `Word Word (parenthetical):` (the real template places labels
+    like `Safety rule (feature-specific):`/`Persona (optional):` immediately after a wrapped field
+    with no blank line; a parenthetical-blind boundary would silently swallow them) — so a wrapped
+    value is captured in full without ever bleeding into the next field or past a blank-line
+    paragraph break. Returns None if the label is absent, matching the single-line behavior it
+    replaces."""
+    m = re.search(rf"(?m)^{re.escape(label)}:[ \t]*(.+)$", body)
+    if not m:
+        return None
+    lines = [m.group(1).strip()]
+    rest = body[m.end():].split("\n")[1:]
+    for line in rest:
+        if not line.strip() or re.match(r"^[A-Z][A-Za-z ]*(\([^)]*\))?[ \t]*:", line):
+            break
+        lines.append(line.strip())
+    return " ".join(lines)
+
+
 def _stamp_adr_record(root: Path, state: dict, slug: str) -> None:
     """Write-back (adr-at-observe): HARVEST a §7 `### Decisions (ADR)` block from the actor-stamps
     ALREADY in the task — §1 framing (AI) · §3 freeze (human) · §5 strategy-actually-used (AI) · §6
@@ -427,11 +454,11 @@ def _stamp_adr_record(root: Path, state: dict, slug: str) -> None:
 
     def _framing():                              # §1 -> [AI]: chosen + rejected
         try:
-            m = re.search(r"(?m)^Framings weighed:[ \t]*(.+)$", bodies.get(1, ""))
-            if not m:
+            val = _capture_wrapped("Framings weighed", bodies.get(1, ""))
+            if val is None:
                 return UN, ""
             chosen, rejected = UN, []
-            for p in (s.strip() for s in m.group(1).split("·") if s.strip()):
+            for p in (s.strip() for s in val.split("·") if s.strip()):
                 cm = re.match(r"(.*?)\s*\(chosen\b.*\)\s*$", p)  # "(chosen)" OR "(chosen — rationale)"
                 if cm:
                     chosen = cm.group(1).strip() or UN
@@ -459,12 +486,11 @@ def _stamp_adr_record(root: Path, state: dict, slug: str) -> None:
 
     def _strategy():                             # §5 -> [AI]: the value, default "as planned"
         try:
-            m = re.search(r"(?m)^Strategy actually used:[ \t]*(.+)$", bodies.get(5, ""))
-            if m:
+            val = _capture_wrapped("Strategy actually used", bodies.get(5, ""))
+            if val:
                 # UNFILLED is the "<fill at …>" template token; a real value may legitimately
                 # contain "<" (quoting `<tag>`, "x < y") and must NOT degrade to the default
-                val = m.group(1).strip()
-                if val and not val.startswith("<fill"):
+                if not val.startswith("<fill"):
                     return val
         except Exception:
             pass
@@ -594,6 +620,26 @@ def cmd_sync_guidelines(args: argparse.Namespace) -> None:
         print(f"{action:>9}  {name}")
 
 
+# fastlane-intake-nudge: a frozen, blunt lexical heuristic — substring match only, no semantic
+# read. Advisory-only (see _fastlane_nudge); never blocks, never selects the lane itself.
+RISK_KEYWORDS = frozenset({
+    "milestone", "release", "security", "auth", "architecture", "migration",
+    "schema", "protocol", "engine", "breaking", "concurrency", "compliance", "payment",
+})
+
+
+def _fastlane_nudge(title: str, slug: str) -> str | None:
+    """PURE. None if any RISK_KEYWORDS token appears in title.lower() or slug.lower();
+    else the one-line advisory recommending the fast lane or a direct edit."""
+    haystack = f"{title} {slug}".lower()
+    if any(word in haystack for word in RISK_KEYWORDS):
+        return None
+    return ("heuristic: this looks like a fast-lane or direct-edit candidate (no --fast, "
+            "no risk keyword in title/slug) — consider `add.py new-task <slug> --fast`, or "
+            "just edit directly for a single-file change. Recommendation only — the lane "
+            "is yours to pick.")
+
+
 def cmd_new_task(args: argparse.Namespace) -> None:
     root = _require_root()
     state = load_state(root)
@@ -718,8 +764,29 @@ def cmd_new_task(args: argparse.Namespace) -> None:
     if from_delta:
         print(f"seeded from '{from_delta}' — its open SPEC delta is now "
               f"[SPEC · seeded] … [→ {slug}]; §1 Feature pre-filled.")
+    if not fast:
+        note = _fastlane_nudge(title, slug)
+        if note:
+            print(note)
     print("active task set. phase: ground. Gather the real codebase (section 0 GROUND).")
     print(_next_footer(root, state))   # converges the old "then: add.py advance" hint
+
+
+def _delta_task_md(root: Path, state: dict, raw_slug: str | None) -> tuple[str, Path, bool]:
+    """Resolve a delta verb's target to its on-disk TASK.md — ACTIVE (state-tracked) or
+    light-ARCHIVED (state entry dropped at archive-milestone, file kept). The SPEC-delta
+    lifecycle lives in the FILE and `deltas` already lists archived ones, so the write verbs
+    reach them too (delta-drain reach-back) — previously that needed a hand edit. An archived
+    target must be named EXPLICITLY: the no-slug active-task fallback never resolves to one.
+    A slug neither in state nor on disk still dies `unknown task` (a compacted bundle under
+    .add/archive/ stays out of reach — recover it first). Returns (slug, task_md, archived)."""
+    if raw_slug and raw_slug not in state.get("tasks", {}):
+        task_md = root / "tasks" / raw_slug / "TASK.md"
+        if task_md.exists():
+            return raw_slug, task_md, True
+        _die(f"unknown task '{raw_slug}'")
+    slug = _resolve_task(state, raw_slug)                   # active path, unchanged semantics
+    return slug, root / "tasks" / slug / "TASK.md", False
 
 
 def cmd_drop_delta(args: argparse.Namespace) -> None:
@@ -730,8 +797,7 @@ def cmd_drop_delta(args: argparse.Namespace) -> None:
     text + `(evidence: …)` are byte-preserved by the pure `_resolve_spec_delta`."""
     root = _require_root()
     state = load_state(root)
-    slug = _resolve_task(state, args.slug)                  # unknown task -> _die
-    task_md = root / "tasks" / slug / "TASK.md"
+    slug, task_md, _arch = _delta_task_md(root, state, args.slug)
     text = task_md.read_text(encoding="utf-8")
     match = getattr(args, "match", None)
     status, idx, _disp = _select_spec_delta(text, match)
@@ -744,7 +810,8 @@ def cmd_drop_delta(args: argparse.Namespace) -> None:
              f"'{slug}' — narrow it")
     new_text = _resolve_spec_delta(text, "dropped", line_index=idx)
     _atomic_write(task_md, new_text)
-    print(f"dropped the {'matched' if match else 'first'} open SPEC delta in '{slug}' -> [SPEC · dropped]")
+    print(f"dropped the {'matched' if match else 'first'} open SPEC delta in "
+          f"'{slug}'{' (archived — on-disk record)' if _arch else ''} -> [SPEC · dropped]")
     print(_next_footer(root, state))
 
 
@@ -764,12 +831,12 @@ def cmd_carry_delta(args: argparse.Namespace) -> None:
     every open delta in the task; `--match` targets the unique one. Validate-then-write."""
     root = _require_root()
     state = load_state(root)
-    slug = _resolve_task(state, args.slug)                  # unknown task -> _die
+    slug, task_md, _arch = _delta_task_md(root, state, args.slug)
+    _arch_note = " (archived — on-disk record)" if _arch else ""
     reason = (getattr(args, "reason", None) or "").strip()
     if not reason:
         _die("carry_reason_required: carry-delta needs a --reason — a deferral must say why "
              "(it is the breadcrumb a future loop reads)")
-    task_md = root / "tasks" / slug / "TASK.md"
     text = task_md.read_text(encoding="utf-8")
     stamp = f"[carried: {reason}]"
     if getattr(args, "all", False):
@@ -779,7 +846,7 @@ def cmd_carry_delta(args: argparse.Namespace) -> None:
         for idx in idxs:                                   # indices stay valid (flip is in-place)
             text = _resolve_spec_delta(text, "carried", line_index=idx, stamp=stamp)
         _atomic_write(task_md, text)
-        print(f"carried {len(idxs)} open SPEC delta(s) in '{slug}' -> [SPEC · carried]  ({reason})")
+        print(f"carried {len(idxs)} open SPEC delta(s) in '{slug}'{_arch_note} -> [SPEC · carried]  ({reason})")
         print(_next_footer(root, state))
         return
     match = getattr(args, "match", None)
@@ -793,7 +860,7 @@ def cmd_carry_delta(args: argparse.Namespace) -> None:
              f"'{slug}' — narrow it, or use --all")
     new_text = _resolve_spec_delta(text, "carried", line_index=idx, stamp=stamp)
     _atomic_write(task_md, new_text)
-    print(f"carried the {'matched' if match else 'first'} open SPEC delta in '{slug}' -> "
+    print(f"carried the {'matched' if match else 'first'} open SPEC delta in '{slug}'{_arch_note} -> "
           f"[SPEC · carried]  ({reason})")
     print(_next_footer(root, state))
 
@@ -805,8 +872,7 @@ def cmd_reopen_delta(args: argparse.Namespace) -> None:
     targets the unique carried delta. Validate-then-write; refuse `no_carried_spec_delta`."""
     root = _require_root()
     state = load_state(root)
-    slug = _resolve_task(state, args.slug)
-    task_md = root / "tasks" / slug / "TASK.md"
+    slug, task_md, _arch = _delta_task_md(root, state, args.slug)
     text = task_md.read_text(encoding="utf-8")
     match = getattr(args, "match", None)
     status, idx, _disp = _select_spec_delta(text, match, status="carried")
@@ -821,7 +887,8 @@ def cmd_reopen_delta(args: argparse.Namespace) -> None:
     eol = lines[idx][len(lines[idx].rstrip("\n")):]
     lines[idx] = re.sub(r"\s*\[carried:[^\]]*\]\s*$", "", lines[idx].rstrip("\n")) + eol
     _atomic_write(task_md, "".join(lines))
-    print(f"reopened the {'matched' if match else 'first'} carried SPEC delta in '{slug}' -> [SPEC · open]")
+    print(f"reopened the {'matched' if match else 'first'} carried SPEC delta in "
+          f"'{slug}'{' (archived — on-disk record)' if _arch else ''} -> [SPEC · open]")
     print(_next_footer(root, state))
 
 
@@ -1033,6 +1100,35 @@ def cmd_phase(args: argparse.Namespace) -> None:
     print(_next_footer(root, state))
 
 
+def cmd_recross(args: argparse.Namespace) -> None:
+    """The RECORDED post-freeze re-cross (bundle-advance): a HUMAN-APPROVED test change after
+    the tests->build crossing (e.g. a test added at review) re-arms the tamper tripwire + §5
+    scope snapshot by re-running the IDENTICAL _build_entry gate stack — never a freeze bypass
+    (a DRAFT §3 still refuses contract_not_frozen). The approver is recorded in state
+    (tasks[slug]["recross"] = {by, at, from_phase}) so an audit can tell a signed re-cross
+    from silent tampering. Replaces the undocumented `phase tests` + `advance` dance."""
+    root = _require_root()
+    state = load_state(root)
+    slug = _resolve_task(state, args.slug)
+    cur = state["tasks"][slug]["phase"]
+    if cur not in ("build", "verify"):
+        _die(f"recross_wrong_phase: re-cross re-arms the tests->build snapshots — only a "
+             f"task at build or verify can re-cross (task '{slug}' is at {cur})")
+    if not (getattr(args, "by", "") or "").strip():
+        _die("recross_unsigned: a post-freeze test change is human-approved — record the "
+             "approver with --by <name>")
+    _build_entry(root, state, slug)          # full gate stack; validate-then-write
+    state["tasks"][slug]["recross"] = {"by": args.by.strip(), "at": _now(),
+                                       "from_phase": cur}
+    state["tasks"][slug]["phase"] = "build"
+    state["tasks"][slug]["updated"] = _now()
+    save_state(root, state)                  # durable state FIRST (source of truth)
+    _sync_task_marker(root, slug, "build")   # then mirror into TASK.md — no split-brain
+    print(f"task '{slug}' re-crossed tests->build — tripwire + scope re-snapshotted "
+          f"(approved by {args.by.strip()})")
+    print(_next_footer(root, state))
+
+
 def cmd_advance(args: argparse.Namespace) -> None:
     root = _require_root()
     state = load_state(root)
@@ -1041,6 +1137,18 @@ def cmd_advance(args: argparse.Namespace) -> None:
     idx = PHASES.index(cur)
     if idx >= len(PHASES) - 1:
         _die(f"task '{slug}' already at final phase ({cur})")
+    # bundle fast-forward (bundle-advance): --to repeats the SINGLE-STEP advance — every
+    # crossing guard below runs per step — and stops hard at `tests`: the tests->build
+    # crossing carries the gate stack (_build_entry) and is never fast-forwarded.
+    _to = getattr(args, "to", None)
+    if _to is not None:
+        if _to not in PHASES:
+            _die(f"advance_to_invalid: --to must be one of: {', '.join(PHASES)}")
+        if PHASES.index(_to) > PHASES.index("tests"):
+            _die("advance_to_stops_at_tests: --to fast-forwards the bundle bookkeeping only — "
+                 "the tests->build crossing carries the gate stack; cross it with a plain advance")
+        if PHASES.index(_to) <= idx:
+            _die(f"advance_to_not_forward: task '{slug}' is already at {cur}")
     nxt = PHASES[idx + 1]
     # build-boundary gate: pre-lock the front (specify..tests) is allowed, but crossing
     # into build/verify/observe/done is refused until `add.py lock`.
@@ -1120,6 +1228,11 @@ def cmd_advance(args: argparse.Namespace) -> None:
         print("  note: record the lessons this loop taught the foundation in §7 "
               "OBSERVE, then update PROJECT.md when ready:")
         print(f"    add.py {_FOLD_VERB} --task {slug}   (review first: add.py deltas)")
+    # bundle fast-forward: keep stepping (each pass re-loads state and re-runs every
+    # crossing guard) until the validated --to target is reached.
+    if _to is not None and PHASES.index(nxt) < PHASES.index(_to):
+        cmd_advance(args)
+        return
     print(_next_footer(root, state))
 
 
@@ -1303,9 +1416,47 @@ def _driver_marker(stop: bool) -> str:
     return " [human gate]" if stop else " [you drive]"
 
 
+def _gate_explain(root: Path, state: dict, slug: str) -> None:
+    """gate-explain (method-ergonomics): compose the gate decision from the SAME predicates
+    cmd_gate enforces, as a READ-ONLY answer — the agent asks instead of recalling run.md.
+    PURE: prints, writes nothing."""
+    hdr = _task_header(root, slug)
+    body6 = _raw_phase_bodies(root, slug).get(6, "")
+    from add_engine.autonomy import _autonomy_level
+    level = _autonomy_level(hdr) or "auto"
+    high = bool(_RISK_HIGH_RE.search(hdr))
+    sens = _task_sensitivity(hdr, valid=_project_sensitivity_values(root)) or "unset"
+    adv_pass = _advisor_verdict_is_pass(body6)
+    adv_clean = adv_pass and _advisor_no_residue(body6)
+    relaxed = sens == "mechanical" and adv_clean
+    print(f"gate-explain {slug}")
+    print(f"  phase: {state['tasks'][slug].get('phase', '?')}")
+    print(f"  autonomy: {level} · risk: {'high' if high else 'unset/low'} · sensitivity: {sens}")
+    print(f"  advisor 3-lens: {'PASS, residue none' if adv_clean else ('PASS with residue' if adv_pass else 'unrecorded or non-PASS')}")
+    print(f"  advisor-gate-relax: {'applies (mechanical + clean advisor verdict)' if relaxed else 'not applicable'}")
+    if _autonomy_lowered(hdr):
+        print("  path: HUMAN — the lowered autonomy level puts a person at this verify gate")
+    elif high and not relaxed:
+        print("  path: REFUSED at completion (unguarded_high_risk_auto) — lower the autonomy "
+              "level (`add.py autonomy set conservative`), or for a mechanical task record a "
+              "clean Advisor 3-lens verdict")
+    elif relaxed:
+        print("  path: RELAX — mechanical sensitivity + advisor PASS/none may complete "
+              "without a lowered level (advisor-gate-relax)")
+    else:
+        print("  path: AUTO — may auto-PASS on complete evidence (tests green · no tamper · "
+              "loops dry · deep check + refute-read + 3-lens recorded) with no residue")
+    print("  floor: a security finding is always HARD-STOP — never auto-passed, on every path")
+
+
 def cmd_gate(args: argparse.Namespace) -> None:
     root = _require_root()
     state = load_state(root)
+    if getattr(args, "explain", False):
+        # slug may have landed in the outcome slot (`gate --explain <slug>`)
+        cand = args.slug or (args.outcome if args.outcome not in GATES else None)
+        _gate_explain(root, state, _resolve_task(state, cand))
+        return
     slug = _resolve_task(state, args.slug)
     # build-boundary gate: no verdict may be recorded before the setup is locked.
     if not _setup_locked(state):
@@ -1491,6 +1642,55 @@ def cmd_autonomy(args: argparse.Namespace) -> None:
     _atomic_write(task_md, _autonomy_decl_line(task_md.read_text(encoding="utf-8"), level))
     print(f"task '{slug}' autonomy -> {level}")
     _print_autonomy(root, state, slug)
+
+
+def cmd_worktree_prep(args: argparse.Namespace) -> None:
+    """Mechanize streams.md's manual worktree recipe (worktree-prep): cut an isolated git
+    worktree at HEAD for a spawned worker, materialize the gitignored engine content a
+    tracked-only checkout lacks (.add/tooling · .add/docs — confirmed absent 3-for-3 when
+    done by hand), and echo the fork base for the WAVE.md ledger. Workspace-only: never
+    writes state.json (prep is not a state transition). validate-then-act — every refusal
+    precedes the first filesystem write; a dirty tree WARNS (streams.md: cut AFTER the
+    bundle commit) but proceeds. Runs git only (identity.py precedent) — the NO-EXEC floor
+    (never run a verify suite) is untouched."""
+    root = _require_root()
+    state = load_state(root)
+    slug = _resolve_task(state, args.slug)                  # unknown task -> _die
+    project = root.parent
+    try:
+        r = subprocess.run(["git", "-C", str(project), "rev-parse", "--short", "HEAD"],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        r = None
+    if r is None or r.returncode != 0:
+        _die("worktree_prep_no_git: the project root is not a git repository with a commit — "
+             "worktree isolation needs git (commit the frozen bundle first)")
+    base = r.stdout.strip()
+    dest = (Path(args.dir).expanduser().resolve() if getattr(args, "dir", None)
+            else project.parent / f"{project.name}-wt-{slug}")
+    if dest.exists():
+        _die(f"worktree_prep_exists: {dest} already exists — remove it or pass --dir <path>")
+    dirty = subprocess.run(["git", "-C", str(project), "status", "--porcelain"],
+                           capture_output=True, text=True, timeout=30).stdout.strip()
+    if dirty:
+        print("warning: worktree_prep_dirty_tree — uncommitted changes will NOT ride into the "
+              "worktree; streams.md cuts AFTER committing the frozen bundle", file=sys.stderr)
+    r = subprocess.run(["git", "-C", str(project), "worktree", "add", str(dest), "HEAD"],
+                       capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        _die(f"worktree_prep_git_failed: git worktree add refused — {r.stderr.strip()[:300]}")
+    copied = []                                             # tracked-only checkout lacks these
+    for name in ("tooling", "docs"):
+        src = root / name
+        if src.is_dir():
+            shutil.copytree(src, dest / ".add" / name, dirs_exist_ok=True)
+            copied.append(f".add/{name}")
+    print(f"worktree ready: {dest}")
+    print(f"fork base: {base}  (record it in the WAVE.md ledger; the worker's step-0 "
+          "re-echoes `git rev-parse HEAD` and wave-verify checks the match)")
+    print(f"materialized (gitignored, absent from a bare checkout): "
+          f"{', '.join(copied) if copied else 'none found'}")
+    print(f"cleanup when merged: git -C {project} worktree remove {dest}")
 
 
 def cmd_streams(args: argparse.Namespace) -> None:
@@ -1944,6 +2144,20 @@ def cmd_status(args: argparse.Namespace) -> None:
     _loose = _releasable_loose_tasks(root, state)
     if _loose:
         print(f"  → releasable: {len(_loose)} loose task(s) since last release")
+
+    # loop-surfacing-nudges: two ADDITIVE cues so the observe loop surfaces its own accumulation
+    # (cues COUNT, never judge; a clean project's output is byte-identical). carried = the deferred
+    # spec-delta backlog (write-only memory otherwise); compaction = the folded tail the
+    # compact-foundation.md ritual exists to roll (threshold 25 keeps young projects quiet).
+    _carried_n = len(_collect_carried_spec_deltas(root))
+    if _carried_n:
+        print(f"  → carried: {_carried_n} deferred spec delta(s) — add.py deltas --carried")
+    _tail = _foundation_tail(root)
+    if _tail["bullets"] >= 25:
+        _rolled = f"fv{_tail['last_settled_fv']}" if _tail["last_settled_fv"] else "never"
+        _now = f"fv{_tail['fv']}" if _tail["fv"] else "fv?"
+        print(f"  → compaction: {_tail['bullets']} consolidated lesson(s) above the settled line "
+              f"(last rolled {_rolled}, now {_now}) — compact-foundation.md")
 
     # fast-lane marker (fast-new-task-flag): tag an ACTIVE fast task so the lane is visible at a
     # glance. Presentation-only, existence-gated — a plain/absent active task is byte-unchanged.
@@ -3448,6 +3662,13 @@ def cmd_new_milestone(args: argparse.Namespace) -> None:
         # (a queued milestone isn't yet in flight, so the nudge would be premature there).
         if _personas_unseeded(root):
             print(f"note: {PERSONA_HINT}")
+        else:
+            # persona-fit-nudge: the opposite branch — ≥1 real persona already exists, so nudge
+            # the AI to confirm domain fit (or draft a new one) rather than silently assuming an
+            # existing persona covers this brand-new milestone. Existence-only, mutually
+            # exclusive with the note above (same predicate, opposite branch — never both).
+            slugs = ", ".join(_real_persona_slugs(root))
+            print(f"persona-fit: {PERSONA_FIT_HINT_TEMPLATE.format(slugs=slugs)}")
     print(_next_footer(root, state))   # converges the old "Decompose it into tasks: …" hint
 
 
@@ -5640,6 +5861,32 @@ def _collect_open_spec_deltas(root: Path) -> list[dict]:
     return _collect_spec_deltas(root, "open")
 
 
+def _foundation_tail(root: Path) -> dict:
+    """Count the un-compacted foundation tail — READ-ONLY facts for the status compaction cue.
+
+    Returns {bullets, last_settled_fv, fv}: live `[folded foundation-version N]` stamps across
+    PROJECT.md + CONVENTIONS.md, the highest fv a `settled …fvK–fvM` rolled line reaches (None
+    when never rolled), and the current header fv (None when unparseable). Judges nothing."""
+    bullets, settled, fv = 0, None, None
+    for name in ("PROJECT.md", "CONVENTIONS.md"):
+        f = root / name
+        if not f.is_file():
+            continue
+        try:
+            s = f.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        bullets += s.count("[folded foundation-version")
+        for m in re.finditer(r"settled[^\n]*?fv\d+[–-]fv(\d+)", s):
+            n = int(m.group(1))
+            settled = n if settled is None else max(settled, n)
+        if fv is None:
+            hm = re.search(r"foundation-version:\s*(\d+)", s)
+            if hm:
+                fv = int(hm.group(1))
+    return {"bullets": bullets, "last_settled_fv": settled, "fv": fv}
+
+
 def _collect_carried_spec_deltas(root: Path) -> list[dict]:
     """Carried (deferred, non-lossy) SPEC deltas — the `deltas --carried` retrieval surface."""
     return _collect_spec_deltas(root, "carried")
@@ -5745,11 +5992,135 @@ _KEY_DECISIONS_HEADING = "## Key Decisions"   # the universal audit-trail sectio
 _TABLE_SEP_RE = re.compile(r"\s*\|[-\s|]+\|\s*$")
 
 # persona-self-improve: a `persona:<slug>` lesson routes into `.add/personas/<slug>.md` instead of a
-# foundation file. The section HINT picks the growable section; only these two are routable.
+# foundation file. The section HINT picks the growable section; only these four are routable
+# (fold-persona-sections widened the pair to the 1.16.1 schema's behavioral sections).
 _PERSONA_FOLD_SECTIONS = {
     "critical-rule": "## Critical Rules",
     "success-metric": "## Success Metrics",
+    "anti-pattern": "## Anti-patterns",
+    "ability": "## Abilities",
 }
+
+# fold-glossary-deltas: a 6th pseudo-competency, `GLOSSARY`, folding a DONE task's own §3
+# `Glossary deltas: <term>: <definition>` line into `.add/GLOSSARY.md` — unstamped, matching
+# that file's own existing convention (provenance lives in the task's OWN stamped line instead).
+_GLOSSARY_LINE_RE = re.compile(r"^Glossary deltas:\s*(.*)$")
+_GLOSSARY_STAMP_RE = re.compile(r"\[" + re.escape(_FOLDED) + r" foundation-version \d+\]\s*$")
+_GLOSSARY_EMBEDDED_TERM_RE = re.compile(r"`[^`\n]{1,80}`\s*:")     # a 2nd `term`: span -> multi-term, reject
+_TASK_ATTR_LINE_RE = re.compile(r"^[A-Z][A-Za-z0-9 /()'-]*:\s")     # a new top-level "Key: value" line ends a wrap
+# (real corpus has hyphenated/apostrophe'd labels too, e.g. "Least-sure flag surfaced at freeze:",
+# "BIND-DON'T-BREAK:" — a narrower class silently over-joins the NEXT field into a Glossary delta)
+
+
+def _parse_glossary_delta(full_text: str) -> tuple[str, str] | None:
+    """Parse a joined Glossary-deltas value into (term, definition), PURE, or None when it does
+    NOT cleanly parse as a single `<term>: <definition>` pair — "none", already resolved (the
+    `[<resolved> foundation-version N]` stamp), no top-level colon, an unmatched backtick before
+    the split (the `roster-portable-shape`-shaped hazard), or a second embedded `` `term`: ``
+    span further in the definition (the `search-index`-shaped two-terms-in-one-line hazard) all
+    reject."""
+    text = full_text.strip()
+    if not text or text.lower().startswith("none"):
+        return None
+    if _GLOSSARY_STAMP_RE.search(text):
+        return None
+    colon = text.find(":")
+    if colon == -1:
+        return None
+    term_candidate, definition = text[:colon], text[colon + 1:].strip()
+    if not definition or term_candidate.count("`") % 2 != 0:
+        return None
+    term = term_candidate.strip()
+    if term.startswith("`") and term.endswith("`") and len(term) >= 2:
+        term = term[1:-1].strip()
+    if not term or _GLOSSARY_EMBEDDED_TERM_RE.search(definition):
+        return None
+    return term, definition
+
+
+def _fold_glossary_delta(text: str, version: int) -> str | None:
+    """Append the resolved-stamp (` [<resolved> foundation-version N]`) to the LAST physical line
+    of the FIRST clean, not-yet-resolved `Glossary deltas:` entry in `text` (joining any wrapped
+    continuation lines the same way `_collect_open_deltas` groups a multi-line delta). PURE — no
+    IO. Returns None when there is no clean, not-yet-resolved candidate (the caller then refuses
+    — validate-all-then-write)."""
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, ln in enumerate(lines) if _GLOSSARY_LINE_RE.match(ln.rstrip("\n"))), None)
+    if start is None:
+        return None
+    end = start
+    unit = [_GLOSSARY_LINE_RE.match(lines[start].rstrip("\n")).group(1).strip()]
+    for j in range(start + 1, len(lines)):
+        stripped = lines[j].strip()
+        if not stripped or _TASK_ATTR_LINE_RE.match(stripped) or stripped.startswith("<!--"):
+            break
+        unit.append(stripped)
+        end = j
+    if _parse_glossary_delta(" ".join(unit)) is None:
+        return None
+    last = lines[end]
+    eol = last[len(last.rstrip("\n")):]
+    lines[end] = last.rstrip("\n") + f" [{_FOLDED} foundation-version {version}]" + eol
+    return "".join(lines)
+
+
+def _collect_glossary_deltas(root: Path) -> tuple[list[dict], int]:
+    """Scan every DONE task's own `Glossary deltas:` line for a clean, not-yet-resolved
+    consolidation candidate.
+
+    Returns (candidates, skipped_count): candidates are {task, term, definition} dicts, READ-ONLY.
+    skipped_count tallies DONE tasks whose line is non-"none", not already resolved-stamped, but
+    does NOT cleanly parse — measured and reported (never silently invisible), per this
+    mechanism's own freeze decision: "count and report skipped/unparseable lines"."""
+    candidates: list[dict] = []
+    skipped = 0
+    tasks_dir = root / "tasks"
+    if not tasks_dir.is_dir():
+        return candidates, skipped
+    for task_md in sorted(tasks_dir.glob("*/TASK.md")):
+        slug = task_md.parent.name
+        if _read_task_phase(root, slug) != "done":
+            continue
+        try:
+            text = task_md.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        lines = text.splitlines()
+        collected = None
+        for i, line in enumerate(lines):
+            m = _GLOSSARY_LINE_RE.match(line)
+            if not m:
+                continue
+            unit = [m.group(1).strip()]
+            for cont in lines[i + 1:]:
+                stripped = cont.strip()
+                if not stripped or _TASK_ATTR_LINE_RE.match(stripped) or stripped.startswith("<!--"):
+                    break
+                unit.append(stripped)
+            collected = " ".join(unit).strip()
+            break
+        if collected is None:
+            continue
+        if not collected or collected.lower().startswith("none") or _GLOSSARY_STAMP_RE.search(collected):
+            continue                                       # not a candidate — already handled or none
+        parsed = _parse_glossary_delta(collected)
+        if parsed is None:
+            skipped += 1
+            continue
+        term, definition = parsed
+        candidates.append({"task": slug, "term": term, "definition": definition})
+    return candidates, skipped
+
+
+def _glossary_has_term(glossary_text: str, term: str) -> bool:
+    """Case-insensitive match of `term` against the text before GLOSSARY.md's own first ': '
+    on each line — the existing-term dup check (`_FOLD_ROUTES`-style, GLOSSARY.md-specific)."""
+    needle = term.strip().lower()
+    for line in glossary_text.splitlines():
+        idx = line.find(": ")
+        if idx != -1 and line[:idx].strip().lower() == needle:
+            return True
+    return False
 
 
 def _fold_competency_delta(text: str, version: int, comps=None) -> str | None:
@@ -5831,7 +6202,16 @@ def cmd_fold(args: argparse.Namespace) -> None:
             if want_task and it["task"] != want_task:
                 continue
             selected.append({**it, "comp": comp})
-    if not selected:
+
+    # fold-glossary-deltas: --comp GLOSSARY | (no --comp) ALSO folds glossary terms; a specific
+    # competency (--comp DDD etc.) narrows AWAY from glossary, matching the frozen contract.
+    glossary_selected: list[dict] = []
+    glossary_skipped = 0
+    if want_comp is None or want_comp == "GLOSSARY":
+        glossary_candidates, glossary_skipped = _collect_glossary_deltas(root)
+        glossary_selected = [it for it in glossary_candidates if not want_task or it["task"] == want_task]
+
+    if not selected and not glossary_selected:
         scope = (f"task '{want_task}'" if want_task else "the project") + \
                 (f", competency {want_comp}" if want_comp else "")
         _die(f"no_open_deltas: no open lesson to consolidate in {scope} (see `add.py deltas`)")
@@ -5878,15 +6258,45 @@ def cmd_fold(args: argparse.Namespace) -> None:
                  "seed the persona first (setup) or fix the slug")
         persona_paths[slug] = ppath
 
+    # glossary routing — GLOSSARY.md must exist to fold into (this mechanism never creates it).
+    glossary_path = root / "GLOSSARY.md"
+    if glossary_selected and not glossary_path.exists():
+        _die("missing_glossary_file: no .add/GLOSSARY.md to consolidate a glossary term into — "
+             "create it first (or narrow away from --comp GLOSSARY) and re-run")
+
     # ── build EVERY edit in memory before writing anything ──────────────────────────────────────
     comps_filter = {want_comp} if want_comp else None
+    comp_task_set = {it["task"] for it in selected}
+    glossary_task_set = {it["task"] for it in glossary_selected}
     task_new: dict[str, str] = {}
-    for slug in dict.fromkeys(it["task"] for it in selected):
+    for slug in list(dict.fromkeys(it["task"] for it in selected)) + [
+            s for s in dict.fromkeys(it["task"] for it in glossary_selected) if s not in comp_task_set]:
         tmd = root / "tasks" / slug / "TASK.md"
-        flipped = _fold_competency_delta(tmd.read_text(encoding="utf-8"), new_v, comps_filter)
-        if flipped is None:                                   # defensive: selected ⇒ ≥1 open here
-            _die(f"no_open_deltas: task '{slug}' lost its open lesson mid-session")
-        task_new[slug] = flipped
+        body = tmd.read_text(encoding="utf-8")
+        if slug in comp_task_set:
+            flipped = _fold_competency_delta(body, new_v, comps_filter)
+            if flipped is None:                               # defensive: selected ⇒ ≥1 open here
+                _die(f"no_open_deltas: task '{slug}' lost its open lesson mid-session")
+            body = flipped
+        if slug in glossary_task_set:
+            gflipped = _fold_glossary_delta(body, new_v)
+            if gflipped is None:                              # defensive: selected ⇒ ≥1 clean candidate here
+                _die(f"no_open_deltas: task '{slug}' lost its glossary delta mid-session")
+            body = gflipped
+        task_new[slug] = body
+
+    # glossary transcription — append clean, UNSTAMPED "Term: definition" lines (GLOSSARY.md's own
+    # existing convention); a case-insensitive-existing term is skipped, never duplicated.
+    glossary_text = glossary_path.read_text(encoding="utf-8") if glossary_selected else ""
+    glossary_new_lines: list[str] = []
+    for it in glossary_selected:
+        if _glossary_has_term(glossary_text, it["term"]):
+            continue
+        line = f"{it['term']}: {it['definition']}"
+        if glossary_text and not glossary_text.endswith("\n"):
+            glossary_text += "\n"
+        glossary_text += line + "\n"
+        glossary_new_lines.append(line)
 
     def _bullet(it):
         ev = f" (evidence: {it['evidence']})" if it["evidence"] else ""
@@ -5928,13 +6338,17 @@ def cmd_fold(args: argparse.Namespace) -> None:
         persona_new[slug] = after
 
     counts = {c: sum(1 for it in selected if it["comp"] == c) for c in _COMPETENCY_ORDER}
-    count_str = " · ".join(f"{c} {counts[c]}" for c in _COMPETENCY_ORDER if counts[c])
+    count_parts = [f"{c} {counts[c]}" for c in _COMPETENCY_ORDER if counts[c]]
+    if glossary_selected:
+        count_parts.append(f"GLOSSARY {len(glossary_selected)}")
+    count_str = " · ".join(count_parts)
     scope = "all" if not (want_task or want_comp) else " ".join(
         filter(None, [f"--task {want_task}" if want_task else "",
                       f"--comp {want_comp}" if want_comp else ""]))
+    glossary_row_note = f"; {len(glossary_new_lines)} glossary term(s) added" if glossary_selected else ""
     row = (f"| {date.today().isoformat()} | {_FOLD_VERB} {scope} → foundation-version {new_v} "
            f"({count_str}) | consolidate captured OBSERVE lessons into the versioned foundation "
-           f"| {len(selected)} lessons open→{_FOLDED}; +{len(selected)} routed bullets; {prev_v}→{new_v} |")
+           f"| {len(selected)} lessons open→{_FOLDED}; +{len(selected)} routed bullets{glossary_row_note}; {prev_v}→{new_v} |")
     proj_text = _prepend_key_decision_row(proj_text, row)
     proj_text = re.sub(r"foundation-version:\s*\d+", f"foundation-version: {new_v}", proj_text, count=1)
 
@@ -5953,11 +6367,22 @@ def cmd_fold(args: argparse.Namespace) -> None:
         writes.append((persona_paths[slug], body))
     if persona_new:
         touched.append(f"{len(persona_new)} persona")
+    if glossary_selected and glossary_new_lines:
+        writes.append((glossary_path, glossary_text))
+        touched.append("GLOSSARY.md")
     _atomic_write_many(writes)
 
-    print(f"{_FOLDED} {len(selected)} lessons -> foundation-version {new_v}")
-    print(f"  {count_str}")
+    print(f"{_FOLDED} {len(selected)} lesson(s) -> foundation-version {new_v}")
+    if count_str:
+        print(f"  {count_str}")
     print(f"  bumped PROJECT.md  {prev_v} -> {new_v}")
+    if glossary_selected:
+        added = len(glossary_new_lines)
+        dup = len(glossary_selected) - added
+        dup_note = f"; {dup} duplicate term(s) skipped" if dup else ""
+        print(f"  glossary: {added} term(s) added{dup_note}")
+    if glossary_skipped:
+        print(f"  glossary: {glossary_skipped} line(s) unparseable, skipped")
     print(f"  files: {', '.join(touched)}")
     print(_next_footer(root, state))
 
@@ -6045,7 +6470,9 @@ def _audit_findings(root: Path, state: dict) -> tuple[int, list[dict]]:
             if marked:
                 f(slug, "risk_accepted_security",
                   "a waiver on a marked security item is never allowed")
-            if not all(re.search(rf"{k}:\s*(?!<)\S", s6)
+            # case-insensitive: human-signed records write Owner:/Ticket:/Expires: —
+            # the seam is the field EXISTING, casing is presentation (waiver-field-case)
+            if not all(re.search(rf"{k}:\s*(?!<)\S", s6, re.IGNORECASE)
                        for k in ("owner", "ticket", "expires")):
                 f(slug, "waiver_incomplete",
                   "RISK-ACCEPTED needs owner · ticket · expires")
@@ -6188,7 +6615,12 @@ def _guarantee_lint_notices(root: Path, state: dict) -> dict:
             "advisor_residue_on_mechanical_mis_tier": advisor_residue_on_mechanical_mis_tier,
             "rule_coverage_gap": rule_coverage_gap,
             "contract_report_unrecorded": contract_report_unrecorded,
-            "verify_report_unrecorded": verify_report_unrecorded}
+            "verify_report_unrecorded": verify_report_unrecorded,
+            # DERIVED rollup (verify-record-rollup): one summary list over the four §6-record
+            # lists — additive; the per-code lists above stay the source of truth.
+            "verify_record_incomplete": sorted(
+                set(shallow) | set(refute_unrecorded)
+                | set(advisor_verdict_unrecorded) | set(verify_report_unrecorded))}
 
 
 def cmd_audit(args: argparse.Namespace) -> None:
@@ -6251,6 +6683,11 @@ def cmd_audit(args: argparse.Namespace) -> None:
             vr = glints["verify_report_unrecorded"]
             print(f"audit: verify_report_unrecorded — {len(vr)} task(s): {', '.join(vr)} "
                   f"— record the rendered gate report (§6 `Reported: yes`); a spot-audit is the backstop")
+        if glints["verify_record_incomplete"]:
+            vi = glints["verify_record_incomplete"]
+            print(f"audit: verify_record_incomplete — {len(vi)} task(s): {', '.join(vi)} "
+                  f"— fill the §6 verify record (rollup of the four detail lines above: "
+                  f"deep-check · refute-read · 3-lens · gate-report)")
         if not findings and not skips and not glints["shallow"] and not glints["risk_unset"] \
                 and not glints["refute_unrecorded"] and not glints["advisor_verdict_unrecorded"] \
                 and not glints["sensitivity_unset"] \
@@ -6579,6 +7016,13 @@ def cmd_release_report(args: argparse.Namespace) -> None:
     for c in d["changed"]:
         L.append(f"  - {c['milestone']}: {c['retro'] or '(no RETRO record)'} "
                  f"({c['carried_deltas']} carried · {len(c['key_decisions'])} key decision(s))")
+    L.append("")
+    _carried = _collect_carried_spec_deltas(root)
+    L.append(f"Carried ({len(_carried)}) — deferred spec deltas riding across releases (re-triage each cut):")
+    for cd in _carried[:10]:
+        L.append(f"  - [{cd['task']}] {cd['text'][:100]}")
+    if len(_carried) > 10:
+        L.append(f"  … and {len(_carried) - 10} more — add.py deltas --carried")
     L.append("")
     L.append(f"Waivers ({s['waivers']}) — open RISK-ACCEPTED riding into the cut, soonest expiry first:")
     for w in d["waivers"]:
@@ -7056,11 +7500,24 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("--skip-freeze", action="store_true",
                     help="cross tests->build on a DRAFT §3, recording an auditable freeze_skipped "
                          "marker (the universal freeze gate's only bypass; never auto-freezes §3)")
+    pa.add_argument("--to", default=None,
+                    help="fast-forward the bundle bookkeeping to this phase (at most `tests`); "
+                         "every crossing guard still runs per step")
     pa.set_defaults(func=cmd_advance, _opt_positionals=("slug",))
 
+    prx = sub.add_parser("re-cross", help="re-arm the tests->build snapshots after a "
+                                          "HUMAN-APPROVED post-freeze test change")
+    prx.add_argument("slug", nargs="?", default=None)
+    prx.add_argument("--by", default="",
+                     help="the human approver (required — a post-freeze test change is human-approved)")
+    prx.set_defaults(func=cmd_recross, _opt_positionals=("slug",))
+
     pg = sub.add_parser("gate", help="record a verify gate outcome")
-    pg.add_argument("outcome", choices=GATES)
-    pg.add_argument("slug", nargs="?", default=None)
+    pg.add_argument("outcome", nargs="?", default=None)   # validated in cmd_gate (gate-explain
+    pg.add_argument("slug", nargs="?", default=None)      # made it optional under --explain)
+    pg.add_argument("--explain", action="store_true",
+                    help="READ-ONLY: print the composed auto-pass/escalation path for the task "
+                         "(autonomy · risk · sensitivity · advisor verdict), then exit")
     pg.add_argument("--owner", help="RISK-ACCEPTED waiver: accountable owner")
     pg.add_argument("--ticket", help="RISK-ACCEPTED waiver: tracking ticket/link")
     pg.add_argument("--expires", help="RISK-ACCEPTED waiver: expiry date")
@@ -7080,6 +7537,13 @@ def build_parser() -> argparse.ArgumentParser:
     pst.add_argument("action", nargs="?", choices=("show", "set"), default="show")
     pst.add_argument("posture", nargs="?", default=None, help="set: <parallel|sequential>")
     pst.set_defaults(func=cmd_streams, _opt_positionals=("posture",))
+
+    pwt = sub.add_parser("worktree-prep",
+                         help="cut a worker worktree at HEAD + materialize gitignored "
+                              ".add/tooling + .add/docs + echo the fork base (streams.md recipe)")
+    pwt.add_argument("slug", nargs="?", default=None, help="task the worktree is for (default: active)")
+    pwt.add_argument("--dir", default=None, help="worktree path (default: ../<project>-wt-<slug>)")
+    pwt.set_defaults(func=cmd_worktree_prep)
 
     pto = sub.add_parser("todo", help="capture / list / close a lightweight backlog todo (jot an idea)")
     pto.add_argument("text", nargs="?", default=None,
@@ -7208,7 +7672,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="record one retrospective consolidation of open lessons into the "
                               "versioned foundation (stamp + route + version-bump, atomic)")
     pfo.add_argument("--task", help="narrow to one task's open lessons")
-    pfo.add_argument("--comp", choices=_COMPETENCY_ORDER, help="narrow to one competency's open lessons")
+    pfo.add_argument("--comp", choices=[*_COMPETENCY_ORDER, "GLOSSARY"],
+                     help="narrow to one competency's open lessons, or GLOSSARY for glossary-only")
     pfo.set_defaults(func=cmd_fold)
 
     pgr = sub.add_parser("graduation-report",

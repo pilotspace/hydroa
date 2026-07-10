@@ -30,6 +30,12 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.core.egress_policy import (
+    DenyPrivateAndMetadataEgressPolicy,
+    EgressDeniedError,
+    EgressPolicy,
+)
+from gateway.core.error_catalog import UPSTREAM_EGRESS_DENIED
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 
 if TYPE_CHECKING:
@@ -72,6 +78,7 @@ class AzureADTokenProvider:
         now_fn: Callable[[], float] = time.monotonic,
         expiry_skew_s: float = 60.0,
         metrics_registry: MetricsRegistry | None = None,
+        egress_policy: EgressPolicy | None = None,
     ) -> None:
         self._config = config
         self._now_fn = now_fn
@@ -87,6 +94,13 @@ class AzureADTokenProvider:
                 write=_TOKEN_TIMEOUT,
                 pool=_CONNECT_TIMEOUT,
             ),
+            follow_redirects=False,
+        )
+        # S3 SSRF/credential-exfiltration deny (edge-input-hardening §3 Part B) — the
+        # client_secret is POSTed to `authority`; DEFAULTS TO THE REAL POLICY (fail-closed
+        # by default); tests must EXPLICITLY opt out via AllowAllEgressPolicy.
+        self._egress_policy: EgressPolicy = (
+            egress_policy if egress_policy is not None else DenyPrivateAndMetadataEgressPolicy()
         )
 
     def _token_url(self) -> str:
@@ -115,8 +129,26 @@ class AzureADTokenProvider:
         """Close the underlying httpx client (fire-and-forget safe)."""
         await self._client.aclose()
 
+    def set_egress_policy(self, policy: EgressPolicy) -> None:
+        """Override the egress policy post-construction.
+
+        Lets ``AzureADTokenProviderCache`` push its ONE shared, settings-derived policy
+        instance into every provider it constructs via its (frozen, single-positional-arg)
+        ``provider_factory`` seam without changing that seam's call signature — additive
+        only; a test's fake provider without this method is simply skipped (``hasattr``
+        guard at the call site).
+        """
+        self._egress_policy = policy
+
     async def _acquire(self) -> str:
         """Acquire a fresh token from the IDP and cache it. Fail-closed on any error."""
+        token_url = self._token_url()
+        # S3 SSRF/credential-exfiltration deny — checked FRESH on every mint, BEFORE the
+        # client_secret is ever placed in the POST form body. Never cached from write time.
+        try:
+            await self._egress_policy.check(token_url)
+        except EgressDeniedError:
+            raise UPSTREAM_EGRESS_DENIED.exc() from None
         form = {
             "grant_type": "client_credentials",
             "client_id": self._config.client_id,
@@ -124,7 +156,7 @@ class AzureADTokenProvider:
             "scope": self._config.scope,
         }
         try:
-            resp = await self._client.post(self._token_url(), data=form)
+            resp = await self._client.post(token_url, data=form)
         except (httpx.TimeoutException, httpx.NetworkError):
             # FAIL-CLOSED — suppress the exception chain: the httpx error carries the
             # request object whose body holds client_secret. `from None` keeps the secret
@@ -173,7 +205,13 @@ def _make_cache_key(config: AzureADConfig) -> _CacheKey:
 
 
 def _default_provider_factory(config: AzureADConfig) -> AzureADTokenProvider:
-    """Default factory: construct a real AzureADTokenProvider from config."""
+    """Default factory: construct a real AzureADTokenProvider from config.
+
+    Signature is deliberately UNCHANGED (single positional arg) — the cache's egress
+    policy is pushed down post-construction via ``set_egress_policy`` (see
+    ``AzureADTokenProviderCache.get_or_create``) so this factory seam stays compatible
+    with the frozen ``tests/dynamic_auth_byok/test_azure_ad_provider_cache.py`` fakes.
+    """
     return AzureADTokenProvider(config=config)
 
 
@@ -207,12 +245,19 @@ class AzureADTokenProviderCache:
         now_fn: Callable[[], float] = time.monotonic,
         provider_factory: Callable[[AzureADConfig], Any] = _default_provider_factory,
         metrics_registry: MetricsRegistry | None = None,
+        egress_policy: EgressPolicy | None = None,
     ) -> None:
         self._ttl_s = ttl_s
         self._max_size = max_size
         self._now_fn = now_fn
         self._factory = provider_factory
         self._metrics_registry = metrics_registry
+        # S3 SSRF/credential-exfiltration deny — when set, pushed into every provider this
+        # cache constructs via set_egress_policy (see get_or_create), so ONE settings-derived
+        # policy instance backs every AAD token mint sharing this cache. None (the default,
+        # e.g. every existing test's fake provider_factory) leaves each constructed
+        # provider's OWN default (the real, fail-closed policy) untouched.
+        self._egress_policy = egress_policy
         # Ordered dict preserves insertion order for oldest-first eviction.
         self._cache: dict[_CacheKey, _ProviderEntry] = {}
 
@@ -255,6 +300,11 @@ class AzureADTokenProviderCache:
             del self._cache[key]
 
         new_provider = self._factory(config)
+        if self._egress_policy is not None and hasattr(new_provider, "set_egress_policy"):
+            # Push the cache's ONE shared, settings-derived policy into the newly-built
+            # provider. hasattr guards a test's fake provider (no such method) — no-op
+            # there, matching the frozen provider_factory single-arg contract exactly.
+            new_provider.set_egress_policy(self._egress_policy)
         self._cache[key] = _ProviderEntry(provider=new_provider, created=now)
 
         # Enforce soft size cap — evict the oldest-created entry when exceeded.

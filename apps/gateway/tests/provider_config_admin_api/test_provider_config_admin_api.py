@@ -94,6 +94,7 @@ def make_settings(*, encryption_key: str = TEST_FERNET_KEY) -> Settings:
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
         redis_url=TEST_REDIS_URL,
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         provider_key_encryption_key=encryption_key,
     )
 

@@ -41,6 +41,7 @@ def _live_settings() -> Settings:
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         object_store_enabled=True,
         object_store_endpoint=os.environ["GATEWAY_OBJECT_STORE_ENDPOINT"],
         object_store_bucket=os.getenv("GATEWAY_OBJECT_STORE_BUCKET", "artifacts"),

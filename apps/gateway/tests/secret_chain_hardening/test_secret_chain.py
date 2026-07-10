@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 import pytest
 
+from gateway.core.egress_policy import AllowAllEgressPolicy
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
@@ -354,6 +355,7 @@ async def test_azure_stream_no_cause() -> None:
     # RIGHT-REASON RED: existing ctor still requires config= → TypeError until BUILD.
     adapter = AzureCompletionUpstream(  # type: ignore[call-arg]
         token_provider_cache=None,
+        egress_policy=AllowAllEgressPolicy(),
     )
     adapter._client = _mock_client()  # type: ignore[attr-defined]
     cred = AzureCredential(

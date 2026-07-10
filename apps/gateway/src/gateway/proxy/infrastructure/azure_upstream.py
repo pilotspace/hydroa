@@ -30,6 +30,12 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.core.egress_policy import (
+    DenyPrivateAndMetadataEgressPolicy,
+    EgressDeniedError,
+    EgressPolicy,
+)
+from gateway.core.error_catalog import UPSTREAM_EGRESS_DENIED
 from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import AzureCredential, ProviderKeyMissing
@@ -67,6 +73,7 @@ class AzureCompletionUpstream:
         backoff_base: float = 0.5,
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
+        egress_policy: EgressPolicy | None = None,
     ) -> None:
         # Credentials resolved per-request from the contextvar (task-3 BYOK).
         self._token_provider_cache = token_provider_cache
@@ -78,11 +85,17 @@ class AzureCompletionUpstream:
                 write=_NON_STREAM_TIMEOUT,
                 pool=_CONNECT_TIMEOUT,
             ),
+            follow_redirects=False,
         )
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
+        # S3 SSRF/IMDS deny (edge-input-hardening §3 Part B) — DEFAULTS TO THE REAL POLICY
+        # (fail-closed by default); tests must EXPLICITLY opt out via AllowAllEgressPolicy.
+        self._egress_policy: EgressPolicy = (
+            egress_policy if egress_policy is not None else DenyPrivateAndMetadataEgressPolicy()
+        )
 
     def _get_credential(self) -> AzureCredential:
         """Read AzureCredential from the request contextvar (fail-closed).
@@ -107,10 +120,13 @@ class AzureCompletionUpstream:
             if self._token_provider_cache is not None:
                 tp = self._token_provider_cache.get_or_create(ad_cfg)
             else:
-                # No cache supplied (e.g. verify tests) — instantiate directly per-call.
+                # No cache supplied (e.g. verify tests) — instantiate directly per-call,
+                # propagating THIS adapter's own egress_policy (e.g. a test's
+                # AllowAllEgressPolicy) so the fallback path isn't silently stricter than
+                # the cached path.
                 from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
 
-                tp = AzureADTokenProvider(config=ad_cfg)
+                tp = AzureADTokenProvider(config=ad_cfg, egress_policy=self._egress_policy)
             token = await tp.get_token()
             return {"Authorization": f"Bearer {token}"}
         # api_key mode
@@ -141,6 +157,12 @@ class AzureCompletionUpstream:
         model = str(payload.get("model", ""))
         deployment = cfg.resolve_deployment(model)
         url = cfg.build_url(deployment, "chat/completions")
+        # S3 SSRF/IMDS deny — checked FRESH on every dial, BEFORE the tenant's secret is
+        # attached (auth headers below). Never cached from the write-time check.
+        try:
+            await self._egress_policy.check(url)
+        except EgressDeniedError:
+            raise UPSTREAM_EGRESS_DENIED.exc() from None
         auth = await self._auth_headers_for_credential(cred)
         headers = {**auth, "content-type": "application/json"}
         # Azure is a non-grounding provider: strip the raw web_search flag so it never
@@ -184,6 +206,12 @@ class AzureCompletionUpstream:
         outbound = {k: v for k, v in payload.items() if k != WEB_SEARCH_FLAG}
 
         async def _gen() -> AsyncIterator[bytes]:
+            # S3 SSRF/IMDS deny — checked FRESH on every dial, BEFORE the tenant's secret
+            # is attached (auth headers below). Never cached from the write-time check.
+            try:
+                await self._egress_policy.check(url)
+            except EgressDeniedError:
+                raise UPSTREAM_EGRESS_DENIED.exc() from None
             # auth headers are awaited INSIDE the generator (the token fetch is async;
             # a token failure raises UpstreamUnavailableError before the first byte).
             auth = await self._auth_headers_for_credential(cred)

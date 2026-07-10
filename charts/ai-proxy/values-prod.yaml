@@ -10,5 +10,8 @@ gateway:
   env:
     databaseUrl: "postgresql+asyncpg://gateway@ai-proxy-prod-postgres.internal:5432/gateway"
     redisUrl: "redis://ai-proxy-prod-redis.internal:6379/0"
+    # Invite-only in prod (Tin, 2026-07-10): the S1 signup-takeover vector is closed at deploy.
+    # Bootstrap the first tenant via the documented temporary flip-on/flip-off (M6).
+    publicSignupEnabled: false                                          # GATEWAY_PUBLIC_SIGNUP_ENABLED
   jwtSecret:
     existingSecret: "ai-proxy-prod-secrets"

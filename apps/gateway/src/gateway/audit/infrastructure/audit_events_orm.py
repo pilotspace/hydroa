@@ -1,10 +1,12 @@
 """SQLAlchemy ORM row for the audit_events table.
 
-Schema contract (audit-log-store TASK.md §3 — FROZEN @ v1):
+Schema contract (audit-log-store TASK.md §3 — FROZEN @ v1; actor_key_id added by
+realtime-relay-governance TASK.md §3 Option B, migration 511ad8a7b65e):
   audit_events (
     id            UUID         PRIMARY KEY,
     tenant_id     UUID         NULL,
     actor_user_id UUID         NULL,
+    actor_key_id  UUID         NULL,  -- additive (B2, Option B)
     actor_email   TEXT         NULL,
     action        TEXT         NOT NULL,
     target_type   TEXT         NULL,
@@ -66,6 +68,15 @@ class AuditEventRow(Base):
         nullable=True,
     )
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=True,
+    )
+    # realtime-relay-governance (B2 TASK.md §3, Option B, migration 511ad8a7b65e): additive,
+    # nullable — the key identity for a key-authenticated caller with no user identity (e.g.
+    # a realtime relay session). No FK to api_keys(id) — mirrors tenant_id's own FK-less
+    # pattern so create_all in tests doesn't require a matching row, and a revoked key's
+    # historical audit rows are never blocked.
+    actor_key_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         nullable=True,
     )

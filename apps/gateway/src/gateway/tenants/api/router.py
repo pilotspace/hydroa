@@ -1,12 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from gateway.core.error_catalog import (
     AUTH_CREDENTIALS_INVALID,
     AUTH_EMAIL_TAKEN,
     AUTH_PASSWORD_WEAK,
     AUTH_TOKEN_INVALID,
+    SIGNUP_INVITE_ONLY,
 )
 from gateway.tenants.api.deps import (
     get_bearer_token,
@@ -38,9 +39,16 @@ router = APIRouter(prefix="/admin/auth", tags=["tenant-identity"])
 
 @router.post("/signup", status_code=201, response_model=SignupResponse)
 async def signup(
+    request: Request,
     body: SignupRequest,
     use_case: Annotated[SignupUseCase, Depends(get_signup_use_case)],
 ) -> SignupResponse:
+    # Invite-only gate (S1): refuse public signup unless explicitly enabled. Checked
+    # FIRST — before the use case is invoked and before any DB IO — so a disabled
+    # gateway never leaks email-uniqueness (409) or password-strength (400) signal
+    # regardless of body validity.
+    if not request.app.state.settings.public_signup_enabled:
+        raise SIGNUP_INVITE_ONLY.exc()
     try:
         tenant_id, user_id = await use_case.execute(
             tenant_name=body.tenant_name, email=body.email, password=body.password

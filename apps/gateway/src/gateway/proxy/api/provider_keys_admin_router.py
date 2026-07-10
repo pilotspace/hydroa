@@ -35,11 +35,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.audit.application.audit_writer import record_audit
 from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.db import get_session
+from gateway.core.egress_policy import EgressDeniedError, assert_literal_host_not_denied
 from gateway.core.error_catalog import (
     AUTH_FORBIDDEN_OWNER_REQUIRED,
     AUTH_TOKEN_INVALID,
     INTERNAL_ERROR,
     PROVIDER_CREDENTIAL_INCOMPLETE,
+    PROVIDER_ENDPOINT_FORBIDDEN,
     PROVIDER_KEY_ENCRYPTION_UNAVAILABLE,
     PROVIDER_KEY_NOT_FOUND,
     PROVIDER_UNKNOWN,
@@ -213,6 +215,27 @@ async def put_provider_key(
     except (ValidationError, ValueError):
         # ``from None`` strips the chain so no field value leaks via exception chaining.
         raise PROVIDER_CREDENTIAL_INCOMPLETE.exc() from None
+
+    # S3 SSRF/IMDS/credential-exfiltration write-time guard (edge-input-hardening TASK.md
+    # §3 Part B) — a cheap, DNS-free literal-IP check on the Azure endpoint/authority BEFORE
+    # persistence. A non-IP hostname always passes here (DNS deferred to request time); this
+    # is the write-time first filter, not the authoritative layer.
+    if provider == "azure":
+        settings = request.app.state.settings
+        try:
+            assert_literal_host_not_denied(
+                body.endpoint or "",
+                allow_private_ranges=settings.egress_allow_private_ranges,
+                allow_http=settings.egress_allow_http_dev,
+            )
+            if body.authority:
+                assert_literal_host_not_denied(
+                    body.authority,
+                    allow_private_ranges=settings.egress_allow_private_ranges,
+                    allow_http=settings.egress_allow_http_dev,
+                )
+        except EgressDeniedError:
+            raise PROVIDER_ENDPOINT_FORBIDDEN.exc() from None
 
     store = request.app.state.tenant_provider_key_store
     try:

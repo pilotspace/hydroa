@@ -165,6 +165,7 @@ def make_oidc_settings(*, tenant_id: str | None = None, domain: str = FAKE_DOMAI
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         oidc_enabled=True,
         oidc_issuer=FAKE_ISSUER,
         oidc_client_id=FAKE_CLIENT_ID,
@@ -180,6 +181,7 @@ def make_disabled_settings() -> Settings:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         # oidc_enabled defaults to False
     )
 
@@ -354,6 +356,7 @@ async def test_happy_path_new_user_provisioned() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -428,6 +431,7 @@ async def test_second_login_no_duplicate() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -489,6 +493,7 @@ async def test_unknown_domain_rejected() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -546,6 +551,7 @@ async def test_state_mismatch_rejected() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -603,6 +609,7 @@ async def test_missing_state_cookie() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -655,6 +662,7 @@ async def test_idp_timeout_returns_502() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -711,6 +719,7 @@ async def test_wrong_issuer_rejected() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -771,6 +780,7 @@ async def test_expired_token_rejected() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -826,6 +836,7 @@ async def test_nonce_mismatch_rejected() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -885,6 +896,7 @@ async def test_provisioned_role_always_member() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -955,6 +967,7 @@ async def test_login_sets_state_nonce_cookies() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         oidc_enabled=True,
         oidc_issuer=FAKE_ISSUER,
         oidc_client_id=FAKE_CLIENT_ID,
@@ -1022,6 +1035,7 @@ async def test_session_cookie_attributes() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -1040,6 +1054,7 @@ async def test_session_cookie_attributes() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         environment="production",
         oidc_enabled=True,
         oidc_issuer=FAKE_ISSUER,
@@ -1110,6 +1125,7 @@ async def test_missing_id_token_in_response() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine
@@ -1166,6 +1182,7 @@ async def test_cross_tenant_email_conflict() -> None:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine

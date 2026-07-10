@@ -120,6 +120,8 @@ spec:
             {{- end }}
             - name: GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
               value: {{ .Values.gateway.env.drainTimeoutSeconds | quote }}
+            - name: GATEWAY_PUBLIC_SIGNUP_ENABLED
+              value: {{ .Values.gateway.env.publicSignupEnabled | quote }}
             - name: GATEWAY_JWT_SECRET
               valueFrom:
                 secretKeyRef:

@@ -41,6 +41,7 @@ from gateway.agent_oauth.infrastructure.ip_rate_limiter import (
     RateLimitedError,
 )
 from gateway.agent_oauth.infrastructure.repository import SqlAlchemyAgentOAuthRepository
+from gateway.core.net import resolve_trusted_client_ip
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 
 logger = logging.getLogger(__name__)
@@ -66,20 +67,6 @@ class _TokenRequestBody(BaseModel):
 
     grant_type: str
     device_code: str | None = None
-
-
-def _resolve_client_ip(request: Request) -> str:
-    """Return the left-most IP from X-Forwarded-For, falling back to request.client.host.
-
-    Behind Envoy the trusted client IP is the left-most token in X-Forwarded-For.
-    In direct/test calls (no proxy) ``request.client.host`` is used.
-    """
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    if request.client is not None:
-        return request.client.host
-    return "unknown"
 
 
 async def _probe_slow_down(redis: Any, device_code_hash: str, interval_seconds: int) -> str:
@@ -138,7 +125,7 @@ async def token_endpoint(request: Request) -> JSONResponse:
         return JSONResponse(status_code=422, content={"error": "invalid_request"})
 
     # ── 2. Per-IP rate limit (fail-OPEN on Redis error) ──────────────────────────
-    client_ip = _resolve_client_ip(request)
+    client_ip = resolve_trusted_client_ip(request, settings.trusted_proxy_hops)
     limiter: AgentOAuthIpRateLimiter = request.app.state.agent_oauth_ip_limiter
     # Namespace the token-poll counter so it does NOT share the per-IP budget with the
     # /oauth/device/authorize endpoint (which keys on the bare IP) — otherwise authorize
