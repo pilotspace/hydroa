@@ -14,6 +14,7 @@ tenants/api/cache_router.py's shape exactly:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -83,6 +84,7 @@ async def get_capture(
 @capture_router.put("", response_model=CapturePutResponse)
 async def put_capture(
     body: CapturePutRequest,
+    request: Request,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
     zdr_port: Annotated[ZdrOverridePort, Depends(get_zdr_port)],
@@ -98,11 +100,20 @@ async def put_capture(
     tenant_id = identity.tenant_id
 
     if body.enabled:
+        # Bounded — mirrors SqlAlchemyPayloadCapture.capture()'s own asyncio.wait_for
+        # around this exact port call (verify fix 2026-07-10): a ZdrOverridePort
+        # implementation that hangs must not hang this admin request forever. A
+        # timeout is a TimeoutError, caught by the same except-Exception below and
+        # mapped to the identical fail-closed 409 — a bounded, honest error rather
+        # than an indefinite hang.
+        settings = getattr(request.app.state, "settings", None)
+        timeout_seconds = getattr(settings, "capture_persist_timeout_seconds", 3.0)
         try:
-            is_zdr = await zdr_port.is_zdr(tenant_id)
+            is_zdr = await asyncio.wait_for(zdr_port.is_zdr(tenant_id), timeout=timeout_seconds)
         except Exception:
             # Defense-in-depth mirror of SqlAlchemyPayloadCapture's own fail-closed
-            # posture: an unconfirmable ZDR status blocks the enable, never accepts it.
+            # posture: an unconfirmable OR unbounded ZDR status blocks the enable,
+            # never accepts it.
             is_zdr = True
         if is_zdr:
             raise CAPTURE_ZDR_BLOCKED.exc()
