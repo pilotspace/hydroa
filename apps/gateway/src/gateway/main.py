@@ -28,6 +28,7 @@ from gateway.artifacts.api.router import artifacts_router
 from gateway.artifacts.infrastructure.orm import (  # noqa: F401 — registers ArtifactRow on Base.metadata
     ArtifactRow as _ArtifactRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.audit.api.router import audit_export_router
 from gateway.auth.api.oidc_admin_router import oidc_admin_router
 from gateway.auth.api.oidc_router import oidc_router
 from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
@@ -1173,6 +1174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(realtime_router)
     app.include_router(realtime_relay_router)
     app.include_router(usage_router)
+    app.include_router(audit_export_router)
     app.include_router(ops_router)
     app.include_router(budget_router)
     app.include_router(conversations_router)
