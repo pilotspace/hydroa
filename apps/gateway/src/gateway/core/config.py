@@ -584,6 +584,25 @@ class Settings(BaseSettings):
     retention_audit_floor_days: int = Field(default=365)
     # env: GATEWAY_RETENTION_BATCH_SIZE (bounds each DELETE)
     retention_batch_size: int = Field(default=1000)
+    # env: GATEWAY_RETENTION_REQUEST_LOGS_DAYS (0=skip) — payload-capture-store §3
+    # Freeze question #2: 30-day privacy-by-default window (shorter than
+    # usage_records' 365d — this store holds PII payloads by design). Tin-approved
+    # 2026-07-10.
+    retention_request_logs_days: int = Field(default=30)
+
+    # ── Payload capture (payload-capture-store task) ─────────────────────────────
+    # Opt-in, PII-scrubbed request/response capture (request_logs). Bounded-timeout,
+    # non-retried, fire-and-forget IO seam (§3 Freeze questions #2/#3, Tin-approved
+    # 2026-07-10 — all agent-recommended defaults accepted).
+    # env: GATEWAY_CAPTURE_PERSIST_TIMEOUT_SECONDS
+    capture_persist_timeout_seconds: float = Field(default=3.0, gt=0)
+    # env: GATEWAY_CAPTURE_MAX_FIELD_BYTES — per message-content-string truncation cap.
+    capture_max_field_bytes: int = Field(default=8192, gt=0)
+    # env: GATEWAY_CAPTURE_MAX_BODY_BYTES — per-row backstop cap (post per-field truncation).
+    capture_max_body_bytes: int = Field(default=65536, gt=0)
+    # env: GATEWAY_CAPTURE_MAX_CONCURRENT_TASKS — bounded-concurrency shed size (non-blocking
+    # semaphore try-acquire; a saturated pool skips the capture, never queues/blocks).
+    capture_max_concurrent_tasks: int = Field(default=50, gt=0)
 
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
