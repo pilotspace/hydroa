@@ -209,6 +209,7 @@ envoy:
     maxTokens: 50
     tokensPerFill: 50
     fillInterval: 1s
+  maxRequestBytes: 31457280    # :8443 envoy.filters.http.buffer coarse ceiling (30 MiB, S4)
   extAuthz:
     timeout: 2s                # ext_authz http_service call timeout
   upstream:

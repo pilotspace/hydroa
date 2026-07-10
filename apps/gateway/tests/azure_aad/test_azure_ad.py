@@ -28,6 +28,7 @@ from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
 )
+from gateway.core.egress_policy import AllowAllEgressPolicy
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import AzureCredential
 
@@ -216,6 +217,7 @@ def _make_adapter(
         token_provider_cache=fake_cache,  # type: ignore[arg-type]
         backoff_base=0.0,
         retry_deadline_s=0.0,
+        egress_policy=AllowAllEgressPolicy(),
     )
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
         transport=httpx.MockTransport(handler),  # type: ignore[arg-type]

@@ -407,6 +407,28 @@ PROVIDER_KEY_ENCRYPTION_UNAVAILABLE = ErrorSpec(
 )
 
 # ---------------------------------------------------------------------------
+# Edge input hardening (edge-input-hardening §3 CONTRACT — S3 SSRF/IMDS deny, S4 body caps)
+# ---------------------------------------------------------------------------
+
+#: Write-time literal check on a BYOK Azure endpoint/authority denied the host
+#: (loopback / link-local / metadata / RFC1918 without opt-in, or a disallowed scheme).
+PROVIDER_ENDPOINT_FORBIDDEN = ErrorSpec(
+    422, "ERR_PROVIDER_ENDPOINT_FORBIDDEN", "Provider endpoint or authority is not permitted"
+)
+
+#: Request-time egress check denied a BYOK-influenced outbound dial (resolved address
+#: is metadata/private/loopback without opt-in, or DNS resolution failed/timed out).
+UPSTREAM_EGRESS_DENIED = ErrorSpec(
+    502, "ERR_UPSTREAM_EGRESS_DENIED", "Upstream host is not permitted for outbound requests"
+)
+
+#: Request body exceeds the applicable app-level size cap (declared Content-Length or
+#: actual streamed size) — S4 body-size guard.
+REQUEST_BODY_TOO_LARGE = ErrorSpec(
+    413, "ERR_REQUEST_BODY_TOO_LARGE", "Request body exceeds the maximum allowed size"
+)
+
+# ---------------------------------------------------------------------------
 # Upstream / catalog service errors
 # ---------------------------------------------------------------------------
 

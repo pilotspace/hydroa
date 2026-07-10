@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 
+from gateway.core.egress_policy import AllowAllEgressPolicy
 from gateway.proxy.application.fallback_triggers import classify_fallback_trigger
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
@@ -56,6 +57,7 @@ def _make_adapter(handler: object, *, max_retries: int = 0) -> AzureCompletionUp
         max_retries=max_retries,
         backoff_base=0.0,
         retry_deadline_s=0.0,
+        egress_policy=AllowAllEgressPolicy(),
     )
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
         transport=httpx.MockTransport(handler),  # type: ignore[arg-type]

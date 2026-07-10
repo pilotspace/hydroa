@@ -130,6 +130,17 @@ static_resources:
                               - exact: "x-key-id"
                       failure_mode_allow: false
 
+                  # ── Body-size ceiling (S4 edge-input-hardening §3 Part C) ───────────────
+                  # Coarse OUTER ceiling, defense-in-depth alongside the app-level
+                  # BodySizeLimitMiddleware caps (20 MiB JSON / 25 MiB audio) — comfortably
+                  # above both so it only fires on a grossly oversized body. Envoy responds
+                  # with its OWN native 413 body (not the gateway's RFC 9457 problem+json) —
+                  # a documented, accepted inconsistency (contract §3 Reject list).
+                  - name: envoy.filters.http.buffer
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
+                      max_request_bytes: 31457280   # 30 MiB
+
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router

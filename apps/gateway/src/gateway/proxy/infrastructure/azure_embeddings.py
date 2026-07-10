@@ -37,6 +37,12 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.core.egress_policy import (
+    DenyPrivateAndMetadataEgressPolicy,
+    EgressDeniedError,
+    EgressPolicy,
+)
+from gateway.core.error_catalog import UPSTREAM_EGRESS_DENIED
 from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import AzureCredential, ProviderKeyMissing
@@ -71,6 +77,7 @@ class AzureOpenAIProvider:
         *,
         token_provider_cache: AzureADTokenProviderCache | None = None,
         metrics_registry: MetricsRegistry | None = None,
+        egress_policy: EgressPolicy | None = None,
     ) -> None:
         # Credentials resolved per-request from the contextvar (task-3 BYOK).
         self._token_provider_cache = token_provider_cache
@@ -84,6 +91,12 @@ class AzureOpenAIProvider:
                 write=_NON_STREAM_TIMEOUT,
                 pool=_CONNECT_TIMEOUT,
             ),
+            follow_redirects=False,
+        )
+        # S3 SSRF/IMDS deny (edge-input-hardening §3 Part B) — DEFAULTS TO THE REAL POLICY
+        # (fail-closed by default); tests must EXPLICITLY opt out via AllowAllEgressPolicy.
+        self._egress_policy: EgressPolicy = (
+            egress_policy if egress_policy is not None else DenyPrivateAndMetadataEgressPolicy()
         )
 
     def _get_credential(self) -> AzureCredential:
@@ -120,9 +133,13 @@ class AzureOpenAIProvider:
             if self._token_provider_cache is not None:
                 tp = self._token_provider_cache.get_or_create(ad_cfg)
             else:
+                # No cache supplied (e.g. verify tests) — instantiate directly per-call,
+                # propagating THIS adapter's own egress_policy (e.g. a test's
+                # AllowAllEgressPolicy) so the fallback path isn't silently stricter than
+                # the cached path.
                 from gateway.proxy.infrastructure.azure_ad import AzureADTokenProvider
 
-                tp = AzureADTokenProvider(config=ad_cfg)
+                tp = AzureADTokenProvider(config=ad_cfg, egress_policy=self._egress_policy)
             token = await tp.get_token()
             return {"Authorization": f"Bearer {token}"}
         cfg: AzureConfig = cred.to_azure_config()
@@ -157,6 +174,13 @@ class AzureOpenAIProvider:
 
         deployment = cfg.resolve_deployment(payload["model"])
         url = cfg.build_url(deployment, "embeddings")
+
+        # S3 SSRF/IMDS deny — checked FRESH on every dial, BEFORE the tenant's secret is
+        # attached (auth headers below). Never cached from the write-time check.
+        try:
+            await self._egress_policy.check(url)
+        except EgressDeniedError:
+            raise UPSTREAM_EGRESS_DENIED.exc() from None
 
         # Auth headers FIRST — a token failure fails closed before the breaker/POST.
         auth = await self._auth_headers_for_credential(cred)
@@ -213,6 +237,12 @@ class AzureOpenAIProvider:
             raise UpstreamUnavailableError(str(exc)) from None
         deployment = cfg.resolve_deployment(data["model"])
         url = cfg.build_url(deployment, "audio/transcriptions")
+        # S3 SSRF/IMDS deny — checked FRESH on every dial, BEFORE the tenant's secret is
+        # attached (auth headers below). Never cached from the write-time check.
+        try:
+            await self._egress_policy.check(url)
+        except EgressDeniedError:
+            raise UPSTREAM_EGRESS_DENIED.exc() from None
         auth = await self._auth_headers_for_credential(cred)
 
         self._breaker.guard()
@@ -263,6 +293,12 @@ class AzureOpenAIProvider:
                 raise UpstreamUnavailableError(str(exc)) from None
             deployment = cfg.resolve_deployment(payload["model"])
             url = cfg.build_url(deployment, "audio/speech")
+            # S3 SSRF/IMDS deny — checked FRESH on every dial, BEFORE the tenant's secret
+            # is attached (auth headers below). Never cached from the write-time check.
+            try:
+                await self._egress_policy.check(url)
+            except EgressDeniedError:
+                raise UPSTREAM_EGRESS_DENIED.exc() from None
             auth = await self._auth_headers_for_credential(cred)
 
             try:

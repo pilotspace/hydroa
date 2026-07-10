@@ -72,7 +72,9 @@ from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registe
 from gateway.conversations.infrastructure.orm import (
     ConversationRow as _ConversationRow,  # noqa: F401  # pyright: ignore[reportUnusedImport]  — side-effect import
 )
+from gateway.core.body_size_guard import BodySizeLimitMiddleware
 from gateway.core.config import Settings
+from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
 from gateway.core.errors import register_error_handlers
 from gateway.keys.api.platform_keys_router import platform_keys_router
 from gateway.keys.api.router import admin_router as keys_admin_router
@@ -867,6 +869,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         metrics_registry=app.state.metrics_registry,
     )
 
+    # S3 SSRF/IMDS/credential-exfiltration egress policy (edge-input-hardening TASK.md §3
+    # Part B) — ONE settings-derived instance shared across every BYOK-influenced Azure
+    # construction site below (token cache + both adapters), so an operator's
+    # GATEWAY_EGRESS_ALLOW_PRIVATE_RANGES / GATEWAY_EGRESS_ALLOW_HTTP_DEV / resolve-timeout
+    # config reaches every dial consistently. This is the REAL, deny-by-default policy —
+    # only test suites explicitly override with AllowAllEgressPolicy at their own
+    # construction sites.
+    _azure_egress_policy = DenyPrivateAndMetadataEgressPolicy(
+        allow_private_ranges=settings.egress_allow_private_ranges,
+        allow_http=settings.egress_allow_http_dev,
+        resolve_timeout_s=settings.egress_dns_resolve_timeout_s,
+    )
+
     # Per-tenant Azure AD token provider cache — one shared instance on app.state,
     # injected into both Azure adapters (chat + embeddings). Keyed by the NON-SECRET
     # AzureADConfig identity (tenant_id, client_id, authority, scope).
@@ -874,6 +889,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ttl_s=settings.azure_ad_provider_cache_ttl_s,
         max_size=settings.azure_ad_provider_cache_max,
         metrics_registry=app.state.metrics_registry,
+        egress_policy=_azure_egress_policy,
     )
     app.state.azure_ad_token_provider_cache = _azure_ad_token_provider_cache
 
@@ -886,6 +902,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         backoff_base=settings.upstream_retry_backoff_base_s,
         retry_deadline_s=settings.upstream_retry_deadline_s,
         metrics_registry=app.state.metrics_registry,
+        egress_policy=_azure_egress_policy,
     )
 
     # Public seam for wiring tests: exposes the adapter map so tests can assert
@@ -1008,6 +1025,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     _providers["azure"] = AzureEmbeddingsProvider(
         token_provider_cache=_azure_ad_token_provider_cache,
         metrics_registry=app.state.metrics_registry,
+        egress_policy=_azure_egress_policy,
     )
     app.state.provider_registry = ProviderRegistry(_providers)
 
@@ -1163,6 +1181,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_concurrent=settings.max_concurrent_requests,
         retry_after_s=settings.back_pressure_retry_after_seconds,
     )
+
+    # BodySizeLimitMiddleware (edge-input-hardening TASK.md §3 Part C) is registered
+    # AFTER GlobalBackPressureMiddleware so it becomes the new OUTERMOST layer — a
+    # request too large to even want back-pressure accounting is rejected before that
+    # accounting runs, and well before auth/routing/governance. Longest-prefix-match:
+    # "/v1/audio/" gets the wider audio cap; "/v1/" and "/admin/" get the JSON cap;
+    # anything unmatched falls back to the JSON cap (fail-closed, never unlimited).
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        route_caps={
+            "/v1/audio/": settings.max_audio_upload_bytes,
+            "/v1/": settings.max_json_body_bytes,
+            "/admin/": settings.max_json_body_bytes,
+        },
+        default_cap=settings.max_json_body_bytes,
+    )
+
     # Expose the back-pressure middleware instance on app.state for tests/metrics.
     # The middleware stack is built lazily on first request; accessing it here forces
     # the build so app.state.back_pressure is available immediately after create_app().

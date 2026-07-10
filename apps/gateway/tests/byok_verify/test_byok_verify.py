@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 import pytest
 
+from gateway.core.egress_policy import AllowAllEgressPolicy
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
@@ -267,7 +268,11 @@ async def test_BV6_bedrock_contextvar_sigv4_accepted(bedrock_server: dict[str, A
 
 async def test_BV7_azure_contextvar_apikey_and_aad_accepted(azure_server: dict[str, Any]) -> None:
     base = azure_server["base_url"]
-    upstream = AzureCompletionUpstream(token_provider_cache=None)
+    # edge-input-hardening §3 Part B: AllowAllEgressPolicy so this loopback stub round-trip
+    # is unaffected by the real deny-by-default production policy.
+    upstream = AzureCompletionUpstream(
+        token_provider_cache=None, egress_policy=AllowAllEgressPolicy()
+    )
 
     # api_key mode — the v21 stub's api-key oracle must ACCEPT.
     api_cred = AzureCredential(

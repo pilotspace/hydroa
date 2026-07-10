@@ -47,6 +47,7 @@ from gateway.core.error_catalog import (
     INVITE_NOT_PENDING,
     RATE_LIMITED,
 )
+from gateway.core.net import resolve_trusted_client_ip
 from gateway.tenants.application.invite_accept_use_cases import (
     AcceptInviteUseCase,
     PreviewInviteUseCase,
@@ -100,21 +101,6 @@ class InviteAcceptResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _resolve_client_ip(request: Request) -> str:
-    """Return the left-most IP from X-Forwarded-For, falling back to request.client.host.
-
-    Byte-identical to agent_oauth's device_authorize_router.py::_resolve_client_ip — behind
-    Envoy the trusted client IP is the left-most token in X-Forwarded-For; in direct/test
-    calls (no proxy) request.client.host is used.
-    """
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    if request.client is not None:
-        return request.client.host
-    return "unknown"
-
-
 def _get_repo(session: Annotated[AsyncSession, Depends(get_session)]) -> InviteRepository:
     return InviteRepository(session)
 
@@ -135,7 +121,7 @@ async def preview_invite(
     Security: per-IP rate limit FIRST (fail-open on Redis outage), before any DB IO.
     """
     settings: Any = request.app.state.settings
-    client_ip = _resolve_client_ip(request)
+    client_ip = resolve_trusted_client_ip(request, settings.trusted_proxy_hops)
     limiter: InvitePublicRateLimiter = request.app.state.invite_public_limiter
     try:
         await limiter.check(action="preview", key=client_ip, limit=settings.invite_preview_rpm)
@@ -178,7 +164,7 @@ async def accept_invite(
     Security: per-IP rate limit FIRST (fail-open on Redis outage), before any DB IO.
     """
     settings: Any = request.app.state.settings
-    client_ip = _resolve_client_ip(request)
+    client_ip = resolve_trusted_client_ip(request, settings.trusted_proxy_hops)
     limiter: InvitePublicRateLimiter = request.app.state.invite_public_limiter
     try:
         await limiter.check(action="accept", key=client_ip, limit=settings.invite_accept_rpm)
