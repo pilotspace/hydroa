@@ -396,14 +396,33 @@ Least-sure flag surfaced at freeze: [contract] PUT semantics = partial-merge wit
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 100% of §2 scenarios (21/21) — one test per Must/Reject scenario.
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_key_override_enforces_ignoring_tenant: key override has only pii_mask; injection block from tenant NOT applied, PII masked per key config · covers: M1
+  - test_key_override_empty_disables_all_guardrails: key PUT as {} disables all guardrails despite tenant config · covers: M1 edge
+  - test_key_null_override_inherits_tenant_byte_identical: NULL key override enforces tenant config unchanged · covers: M2
+  - test_resolution_costs_zero_extra_io: repository.get_by_id() with a key override executes exactly 1 SQL query · covers: M3
+  - test_get_reports_source_key_when_override_exists: GET returns source="key" · covers: M4
+  - test_get_reports_source_tenant_when_no_override: GET returns source="tenant" · covers: M4
+  - test_put_partial_merge_preserves_other_guardrail: second PUT with only prompt_injection preserves prior pii_mask · covers: M5
+  - test_put_null_removes_one_guardrail_from_override: PUT {pii_mask: null} removes just that guardrail · covers: M5
+  - test_delete_reverts_to_tenant_inheritance: DELETE -> 204, GET source=tenant, completion enforces tenant policy · covers: M6
+  - test_delete_idempotent_when_no_existing_override: DELETE on NULL override -> 204 · covers: M6 edge
+  - test_member_cannot_put: member PUT -> 403, column unchanged · covers: M7, R3
+  - test_member_can_get: member GET -> 200 · covers: M7
+  - test_audit_event_recorded_on_put: PUT -> one key_guardrail_policy.put audit row, no pattern/message leak · covers: M9
+  - test_audit_event_recorded_on_delete: DELETE -> one key_guardrail_policy.delete audit row · covers: M9
+  - test_key_override_enforced_on_exact_cache_hit: key pii_mask override masks an exact-hit cached body · covers: M10
+  - test_key_override_enforced_on_semantic_cache_hit: same, on a semantic-hit body · covers: M10
+  - test_key_override_enforced_on_vector_cache_hit: same, on a vector-hit body · covers: M10
+  - test_put_rejects_invalid_custom_pattern: nested-quantifier pattern -> 422, no override stored · covers: R1
+  - test_put_rejects_invalid_mode: prompt_injection mode="mask" -> 422 · covers: R2
+  - test_put_cross_tenant_key_404: PUT on another tenant's key -> 404, not 403 · covers: R4
+  - test_delete_revoked_key_404: DELETE on a revoked key -> 404, column unchanged · covers: R4
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
+Tests live in: `tests/per_key_guardrail_policies/` (`apps/gateway/tests/per_key_guardrail_policies/`) · ran RED (confirmed by temporarily reverting the 5 source-file edits and re-running — 20/21 failed for the right reason: 404 route-not-found or the repository not yet resolving a key override; the 21st (`test_key_null_override_inherits_tenant_byte_identical`) is a byte-identical regression guard for M2 and correctly PASSED pre-build too, since a key with no override always inherited the tenant config even before this task — verified true-red, not a suite gap) before Build.
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
@@ -411,16 +430,18 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch): `apps/gateway/src/gateway/keys/` · `apps/gateway/src/gateway/main.py` · `apps/gateway/migrations/versions/` · `apps/gateway/tests/per_key_guardrail_policies/` — matches §0 GROUND's own Touches list verbatim (ApiKeyRow, SqlAlchemyApiKeyRepository.get_by_id, ApiKey/AuthzResult entities, AuthzUseCase.execute, a new keys/api router, main.py wiring, one migration). Zero touch to `proxy/`, `tenants/api/guardrail_router.py`, or `guardrail_evaluator.py` (M2/M10's "zero proxy-layer code change" invariant held).
+Strategy (ordered batches): 1. ORM column (`ApiKeyRow.guardrail_policy`, nullable JSONB, mirrors `model_allowlist`). 2. Domain entities (`ApiKey.guardrail_policy_source`, `AuthzResult.policy_source` — both additive, default `"none"`, byte-identical for every existing call site). 3. Repository resolution (`_resolve_effective_guardrails` + wire into the existing `get_by_id()` 3-table LEFT JOIN — zero new IO). 4. Thread `policy_source` through `AuthzUseCase.execute`. 5. New `key_guardrail_router.py` (GET/PUT/DELETE), mirroring `tenants/api/guardrail_router.py`'s own inline-session-query shape and reusing its Pydantic models + `_validate_custom_patterns` verbatim (imported, `pyright: ignore[reportPrivateUsage]` — established project pattern for this exact kind of deliberate cross-module reuse). 6. Wire the router into `main.py`. 7. One additive alembic migration (`api_keys.guardrail_policy JSONB NULL`, no server default) parented on the real head.
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
-Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
+Persona (required): Backend Architect (`.add/personas/backend-architect.md`) — ports/layering discipline; the one deliberate exception (raw `text()` SQL in the new router instead of a use-case/repository-port pair) mirrors this project's OWN established precedent for guardrail admin CRUD (`tenants/api/guardrail_router.py` already does the same, and §3's illustrative router code shows `session: Depends(get_session)` directly) — recorded, not silently deviated.
+Spawn isolation (default): worktree (already running in `ai-proxy-builds/per-key-guardrail-policies/`, forked at `2653814`).
+Known-problem fixes: NULL-vs-{} JSONB deserialization ambiguity (asyncpg may hand back dict or str depending on driver version) → the same defensive `isinstance` parse used for `tenants.guardrail_configs` applied to `api_keys.guardrail_policy` too, both in the repository and the new router's raw-SQL fetch. Cross-tenant/revoked-key leak → every write is a single `UPDATE ... WHERE id AND tenant_id AND revoked_at IS NULL RETURNING id`, 0 rows = 404, mirrors `patch_key`'s precedent exactly.
+Strategy actually used: as planned, with one incident-driven detour — see Deviations below.
+Safety rule (feature-specific): every PUT/DELETE write is a single atomic `UPDATE ... RETURNING id` (no read-modify-write TOCTOU window on the tenant/revoked check); the PUT's partial-merge read-then-write is safe because the write's WHERE clause re-validates tenant_id + revoked_at IS NULL at commit time, matching the tenant-level PUT's own concurrency posture (last-write-wins, explicitly accepted in Edge cases).
+Code lives in: `apps/gateway/src/gateway/keys/` (+ `main.py` wiring, + one migration).
+Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear. Held — no test edited, no §3 line edited, no new dependency added.
+
+Deviations (recorded per the project's fix-and-record rule): mid-build, a `git stash pop` (used to temporarily revert source edits and confirm true-RED against pre-build code) collided with a concurrent sibling builder (`compliance-export-api`) on this repo's SHARED stash stack — linked git worktrees share one `.git` dir, and `refs/stash` is NOT worktree-scoped. The pop pulled the sibling's uncommitted diff into this worktree while consuming (and, per the sibling's own `git stash list`, also swapping out) this task's stashed edits into the sibling's worktree. Fully diagnosed and recovered with zero data loss: both worktrees' correct diffs were located, cross-copied back to their owners, and the contamination removed — verified via `git diff --stat` matching the intended 5-file change set on this side and the sibling's own `git status` showing only its own files afterward. No `git stash` used for the remainder of the build. Flagged for the verify phase and for a competency-delta entry (`git stash` is unsafe across this fleet's linked-worktree topology; a future red-confirmation step should use a saved patch/diff instead).
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 

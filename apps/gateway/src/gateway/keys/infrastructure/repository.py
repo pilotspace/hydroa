@@ -3,13 +3,28 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.keys.domain.entities import ApiKey, ApiKeyInfo
 from gateway.keys.infrastructure.orm import ApiKeyRow
+
+
+def _resolve_effective_guardrails(
+    key_policy: dict[str, Any] | None,
+    tenant_configs: dict[str, Any],
+) -> dict[str, Any]:
+    """Key > tenant > default-off. Wholesale override -- no field merge.
+
+    per-key-guardrail-policies §3 CONTRACT. A non-NULL key_policy (including an
+    explicit {}) is used AS-IS; tenant_configs is never consulted when key_policy
+    is not None -- the NULL-vs-{} distinction is the caller's to preserve.
+    """
+    if key_policy is not None:
+        return key_policy
+    return tenant_configs
 
 
 def _row_to_api_key(row: ApiKeyRow) -> ApiKey:
@@ -131,6 +146,9 @@ class SqlAlchemyApiKeyRepository:
         #   → tenants (cache_enabled, guardrail_configs)
         # All LEFT JOINs so un-teamed / un-tenanted keys still authenticate.
         # Zero extra DB reads per contract §3 (response-caching, guardrails-core).
+        # api_keys.guardrail_policy (per-key-guardrail-policies) rides along for free:
+        # ApiKeyRow is already selected wholesale below, so the key-level override
+        # column costs zero extra columns/JOINs/queries (M3).
         stmt = (
             select(
                 ApiKeyRow,
@@ -164,16 +182,44 @@ class SqlAlchemyApiKeyRepository:
 
         raw_gc = tenant_guardrail_configs
         if raw_gc is None:
-            guardrail_configs: dict[str, Any] = {}
+            tenant_guardrails: dict[str, Any] = {}
         elif isinstance(raw_gc, dict):
-            guardrail_configs = raw_gc
+            tenant_guardrails = raw_gc
         elif isinstance(raw_gc, str):
             try:
-                guardrail_configs = _json.loads(raw_gc)
+                tenant_guardrails = _json.loads(raw_gc)
             except Exception:
-                guardrail_configs = {}
+                tenant_guardrails = {}
         else:
-            guardrail_configs = {}
+            tenant_guardrails = {}
+
+        # per-key-guardrail-policies (M1-M3): resolve key > tenant, wholesale, zero
+        # extra IO -- row.guardrail_policy is already part of the ApiKeyRow projection
+        # selected above (no new column/JOIN/query). Same dict-or-str driver quirk as
+        # tenant_guardrail_configs above, so the same defensive parse applies.
+        raw_kp = getattr(row, "guardrail_policy", None)
+        key_guardrail_policy: dict[str, Any] | None
+        if raw_kp is None:
+            key_guardrail_policy = None
+        elif isinstance(raw_kp, dict):
+            key_guardrail_policy = raw_kp
+        elif isinstance(raw_kp, str):
+            try:
+                parsed_kp = _json.loads(raw_kp)
+            except Exception:
+                parsed_kp = None
+            key_guardrail_policy = parsed_kp if isinstance(parsed_kp, dict) else None
+        else:
+            key_guardrail_policy = None
+
+        guardrail_configs = _resolve_effective_guardrails(key_guardrail_policy, tenant_guardrails)
+        guardrail_policy_source: Literal["key", "tenant", "none"]
+        if key_guardrail_policy is not None:
+            guardrail_policy_source = "key"
+        elif tenant_guardrails:
+            guardrail_policy_source = "tenant"
+        else:
+            guardrail_policy_source = "none"
 
         effective_semantic_cache = bool(tenant_semantic_cache_enabled or False)
         effective_batch_grouping = bool(tenant_batch_grouping_enabled or False)
@@ -198,6 +244,7 @@ class SqlAlchemyApiKeyRepository:
             guardrail_configs=guardrail_configs,
             semantic_cache_enabled=effective_semantic_cache,
             batch_grouping_enabled=effective_batch_grouping,
+            guardrail_policy_source=guardrail_policy_source,
         )
 
     async def update(
