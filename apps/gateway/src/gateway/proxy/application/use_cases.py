@@ -510,7 +510,7 @@ async def _run_output_validation_retry(
             headers={"Retry-After": "60"},
         ) from exc
     except UpstreamRateLimitedError as exc:
-        _fire_record(
+        _fire_record_with_raw(
             usage_recorder,
             tenant_id=authz.tenant_id,
             key_id=authz.key_id,
@@ -518,6 +518,7 @@ async def _run_output_validation_retry(
             usage=None,
             status=429,
             team_id=authz.team_id,
+            usage_source="validation_retry",
         )
         if exc.retry_after is not None:
             raise UPSTREAM_RATE_LIMITED.exc(
