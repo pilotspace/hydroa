@@ -1068,6 +1068,21 @@ class Settings(BaseSettings):
             return 1
         return n
 
+    # ── SCIM provisioning (scim-provisioning task, M12) ──────────────────────────
+    # Per-scim_token_id fixed-window write rate limit for /scim/v2/* mutations. Must be
+    # > 0; fails fast at boot when set to 0 or negative (mirrors invite_preview_rpm's own
+    # positive-knob validator).
+    scim_write_rpm: int = 60  # GATEWAY_SCIM_WRITE_RPM
+
+    @field_validator("scim_write_rpm")
+    @classmethod
+    def _validate_scim_write_rpm(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                f"INVALID_SCIM_KNOB: scim_write_rpm must be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":
         """If OIDC is enabled, required fields must be non-empty and domain_mapping valid JSON."""
