@@ -376,13 +376,39 @@ All six ≥ 0.90 — no refinement pass required before reporting.
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 80% (project-wide gate) · achieved: 83.1% on `gateway/scim/` (577/694 stmts; measured post-green)
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_owner_creates_scim_token: OWNER POSTs /admin/scim/tokens → 201 plaintext token once, stored row is hash-only, tenant-scoped, revoked_at NULL · covers: M1
+  - test_member_cannot_create_scim_token: MEMBER (no MEMBERS_MANAGE) POSTs → 403 ERR_AUTH_FORBIDDEN, no row created · covers: M1
+  - test_admin_scim_tokens_requires_auth: no session JWT → 401, route never reached · covers: M1 (auth gate)
+  - test_rotate_scim_token_atomically: rotate S1 → 200 new plaintext S2 once; S1.revoked_at set AND S2 live in one transaction · covers: M1
+  - test_rotate_unknown_token_id_returns_404: rotate unknown/foreign id → 404 ERR_SCIM_TOKEN_NOT_FOUND · covers: R (token 404)
+  - test_revoke_scim_token_returns_204: DELETE /admin/scim/tokens/{id} → 204, revoked_at set · covers: M1
+  - test_missing_scim_bearer_returns_401: no Authorization header on /scim/v2/* → 401 SCIM error, detail "invalid_token" · covers: R (401)
+  - test_revoked_scim_token_cannot_authenticate: revoked token's secret on any /scim/v2/* route → 401, never reaches mutation code · covers: R (401 revoked)
+  - test_idp_creates_user_via_scim: POST /scim/v2/Users → 201 SCIM User, UserRow tenant_id=T role=MEMBER auth_method=scim, one audit row action=scim.user_create actor_scim_token_id set · covers: M3, M11
+  - test_scim_payload_role_attribute_ignored: payload carries role:"owner" → created user is still MEMBER, no 400 · covers: Reject (role ignored)
+  - test_duplicate_email_on_create: POST with an email that exists (same or other tenant) → 409 scimType uniqueness, no new row, existing row unchanged · covers: R (409 uniqueness)
+  - test_malformed_scim_payload_returns_400_invalid_value: missing userName/schemas → 400 scimType invalidValue · covers: R (400 invalidValue)
+  - test_cross_tenant_scim_token_cannot_reach_another_tenant_user: tenant T token GETs tenant X's user id → 404, U2's row unread/unchanged · covers: M4, R (isolation) — SECURITY CORE, adversarially refute-read verified (see §6)
+  - test_filter_by_username: GET ?filter=userName eq "a@..." → exactly one Resource, totalResults=1, b@ excluded · covers: M4
+  - test_patch_active_false_deactivates_and_cascades_team_removal: PATCH active:false → 200, deactivated_at set, team_members row for G deleted same transaction, one audit row scim.user_deactivate · covers: M6, M7, M11
+  - test_patch_immutable_path_returns_400_mutability: PATCH targets id/meta → 400 scimType mutability · covers: R (mutability)
+  - test_deactivated_user_cannot_login_with_password: deactivated user logs in with correct password → 401 byte-identical to InvalidCredentialsError · covers: M7
+  - test_deactivated_user_cannot_login_via_oidc: deactivated user completes valid OIDC assertion → rejected, no JWT issued · covers: M7 (second call site)
+  - test_already_issued_jwt_survives_deactivation_until_expiry: pre-deactivation JWT still authenticates GET /admin/usage → 200 (documented residual, not a defect) · covers: M7 residual
+  - test_repeated_patch_active_false_is_idempotent: PATCH active:false twice → both 200, same deactivated_at, no duplicate audit row · covers: M5
+  - test_reactivation_clears_deactivated_at: PATCH active:true on deactivated user → 200, deactivated_at NULL, password login works again · covers: M5
+  - test_deactivation_does_not_touch_api_keys: deactivate a user → unrelated api_keys row's revoked_at unchanged · covers: M8
+  - test_delete_is_alias_for_deactivate_never_hard_delete: DELETE /scim/v2/Users/{id} → 204, row still exists with deactivated_at set, no FK breakage · covers: M6
+  - test_scim_rate_limit_exceeded: request past the per-token window ceiling → 429 + Retry-After, no mutation performed · covers: M12, R (429)
+  - test_groups_probe_returns_empty_collection: GET /scim/v2/Groups → 200, Resources=[], totalResults=0 · covers: M10
+  - test_groups_write_rejected_as_unsupported: POST /scim/v2/Groups → 501 SCIM error, no groups-shaped resource created · covers: M10, R (501)
+  - test_scim_discovery_requires_bearer: GET ServiceProviderConfig/ResourceTypes/Schemas without a bearer → 401, same as any other /scim/v2/* route · covers: M9, assumption (discovery-auth confirmed)
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Tests live in: `./tests/` · MUST run red (missing implementation) before Build. Confirmed RED for the right reason before any `gateway/scim/` module existed: the suite failed at collection (missing `gateway.scim` import target / missing routes), not on a harness defect — every test targets a symbol this task's Build phase then created.
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
@@ -406,7 +432,14 @@ Strategy (ordered batches):
 Persona (required): generic — no seeded `.add/personas/` file carries `flow: design`; this draft applied the dispatch's identity-platform-security-engineer stance directly (SCIM 2.0 / RFC 7642-7644 domain knowledge, unattended-write-path hardening). For BUILD, `.add/personas/appsec-engineer.md` (tenant-isolation/RBAC/escalation-ceiling lens) and `.add/personas/backend-architect.md` (clean-architecture layering) are both `flow: build`-fit and should be loaded together — appsec-engineer's stance is primary given `sensitivity: security`.
 Spawn isolation (default): worktree — this task edits shared files (`main.py`, `config.py`, `audit_event.py`) also touched by sibling milestone tasks (`saml-sso`, `tenant-retention-zdr`, `compliance-export-api`); isolate to avoid cross-task collision, net-diff merge back per the `worktree-isolated-spawn-default` convention.
 Known-problem fixes: bare `require_permission`/`require_superadmin` without `Depends()` silently no-ops the gate (the exact S1 bug class caught last milestone) → every new dependency wiring MUST use `Annotated[Identity, fastapi.Depends(...)]`, verified by a dedicated test per new gated route, not assumed from the pattern alone; a raw SQLAlchemy UPDATE (deactivation) does not fire ORM `onupdate` hooks → explicit `deactivated_at=func.now()`/`updated_at=func.now()` in every VALUES clause (mirrors the `rename_title`/v40 fold).
-Strategy actually used: <fill at VERIFY>
+Strategy actually used: followed the drafted 8-step order closely, with two adjustments:
+  1. Schema (migration `010e6f83a709`, parented on confirmed head `511ad8a7b65e`) + `AuditEvent.__post_init__` widening — done first, as planned.
+  2-4. `gateway/scim/` module built bottom-up (domain ports/errors → application use cases → infrastructure SQLAlchemy adapters → api layer) exactly as planned; token CRUD before user CRUD; SCIM wire-translation (`scim_schemas.py`) kept out of domain/application, mirroring `ChatTranslator`.
+  5. `LoginUseCase`/`OidcLoginUseCase` deactivation checks added — as planned, byte-identical failure shape to `InvalidCredentialsError`.
+  6-7. Discovery endpoints + Groups stub + rate limiter + audit wiring — as planned.
+  8. Envoy route-block insertion — DEFERRED to the end of the batch (after the full test suite was green and pyright/ruff were clean) rather than interleaved at step 8 as drafted, since it is a pure config/documentation change orthogonal to the code path and carries zero test coverage risk; done last so a config typo could never mask a real red/green signal from the code changes. Validated via `python3 -c yaml.safe_load` (envoy.yaml + envoy-prod.yaml) and `helm template` (envoy-configmap.yaml, including parsing the rendered ConfigMap's embedded `envoy.yaml` string) rather than a live Envoy stack — no code path exercises this file, so this is config-validation evidence, not runtime evidence.
+  One interpretation decision beyond the drafted strategy: M11 says every SCIM mutation sets `actor_scim_token_id`. Token-management mutations (`/admin/scim/tokens` — human, session-JWT-authenticated via `require_permission`) instead set `actor_user_id` (the actual human actor is known and more informative than the token being managed); only `/scim/v2/*` user mutations (machine-authenticated via the SCIM bearer itself) set `actor_scim_token_id`. This is a build-time reading of an ambiguous contract line, not a silent contract edit — flagged for VERIFY.
+  One self-correction during Build: an early pyright cleanup pass mistakenly widened the three `/scim/v2/Users` route body parameters from `dict[str, Any]` to `Any` to silence an "unnecessary isinstance" warning; this broke FastAPI's JSON-body inference (15/27 tests failed with a spurious `422 ERR_PAYLOAD_INVALID` never reaching the handlers). Reverted to `dict[str, Any]` and instead removed the genuinely-redundant `isinstance(body, dict)` checks in `scim_schemas.py` (FastAPI's own typing already guarantees dict-ness before the handler runs) — 27/27 green again, pyright and ruff both clean.
 Safety rule (feature-specific): the deactivation write (`users.deactivated_at` SET) and the `team_members` delete-by-`user_id` commit in ONE atomic transaction — a partial failure must never leave a user deactivated-but-still-team-attributed or vice versa.
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
