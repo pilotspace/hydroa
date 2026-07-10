@@ -1389,6 +1389,274 @@ class CompletionUseCase:
             if _cred_token is not None:
                 reset_provider_credential(_cred_token)  # type: ignore[arg-type]
 
+    async def _try_cache_lookup(
+        self,
+        *,
+        cache: ResponseCache,
+        authz: AuthzResult,
+        body: dict[str, Any],
+        model_id: str,
+        guardrail_evaluator: Any,
+        guardrail_configs: dict[str, Any],
+        metrics_registry: Any,
+        usage_recorder: UsageRecorder,
+        request_headers: dict[str, str] | None,
+    ) -> tuple[tuple[int, dict[str, Any], str | None] | None, str | None]:
+        """Step 4.5a/4.5b/4.5c cache-lookup region (exact → semantic → vector),
+        extracted out of complete() (which already carries ~15 branches of its own,
+        same reason _run_output_validation_retry above was extracted) so
+        CompletionUseCase.complete() stays within pyright's control-flow
+        complexity limit.
+
+        Called only once the caller has already confirmed cache is not None,
+        authz.cache_enabled, and not _output_validation_engaged (M9) — those three
+        gate conditions stay in complete() itself, unchanged.
+
+        Returns (hit, x_cache):
+          - hit is (200, response_body, x_cache) on an exact/semantic/vector HIT —
+            the caller returns this triple immediately, exactly as complete() did
+            inline before this extraction (same short-circuit, before batch
+            diversion / upstream call / anything else runs).
+          - hit is None on MISS or BYPASS — x_cache is "miss" or "bypass" for the
+            caller to thread into its own x_cache local and continue.
+        """
+        from gateway.proxy.infrastructure.response_cache import (
+            build_cache_key,
+            build_semantic_cache_key,
+        )
+
+        no_cache = (request_headers or {}).get("cache-control", "").lower() == "no-cache"
+        cache_key = build_cache_key(str(authz.tenant_id), body)
+
+        if not no_cache:
+            # Step 4.5a: Try exact-match cache lookup
+            cached_body = await cache.get(cache_key)
+            if cached_body is not None:
+                # EXACT HIT: apply post-call guardrails, then return cached body
+                x_cache = "hit"
+                # cache-alias-billing (B6): read+pop the served candidate BEFORE
+                # evaluate_post masking (which may return a fresh dict), so billing keys
+                # on the served catalog id, not the alias, and the stamp never reaches
+                # the client.
+                _served_cached = _read_served_from_cache(cached_body, model_id)
+                if metrics_registry is not None:
+                    try:
+                        metrics_registry.cache_events_total.labels(result="hit").inc()
+                    except Exception:  # noqa: S110
+                        pass
+                # Step 5.5 on cache HIT: apply post-call PII mask if configured
+                # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only).
+                if guardrail_evaluator is not None and guardrail_configs:
+                    if hasattr(guardrail_evaluator, "evaluate_post"):
+                        try:
+                            cached_body = await guardrail_evaluator.evaluate_post(
+                                cached_body, guardrail_configs
+                            )
+                        except Exception as _exc:
+                            _log.warning(
+                                "guardrail evaluate_post raised on cache HIT (fail-OPEN)",
+                                exc_info=_exc,
+                            )
+                cached_usage_raw = cached_body.get("usage")
+                cached_usage: dict[str, Any] | None = (
+                    cached_usage_raw if isinstance(cached_usage_raw, dict) else None
+                )
+                _fire_record_cached(
+                    usage_recorder,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=_served_cached,
+                    usage=cached_usage,
+                    team_id=authz.team_id,
+                )
+                # payload-capture-store §3: exact-cache-HIT capture hook —
+                # cached_body is the SAME post-mask body actually served to the
+                # client (never the raw unmasked Redis-internal representation).
+                _dispatch_capture(
+                    self._payload_capture,
+                    enabled=authz.payload_capture_enabled,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=_served_cached,
+                    request_body=body,
+                    response_body=cached_body,
+                    status=200,
+                    stream=False,
+                    cached=True,
+                    guardrail_configs=guardrail_configs,
+                )
+                # TPM post-accounting uses cached token counts
+                if authz.tpm_limit is not None and cached_usage is not None:
+                    total_tokens = cached_usage.get("total_tokens")
+                    if isinstance(total_tokens, int) and total_tokens > 0:
+                        _fire_record_tpm(
+                            self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
+                        )
+                return (200, cached_body, x_cache), x_cache
+            else:
+                # Step 4.5b: Exact MISS — try semantic lookup if enabled
+                semantic_cache_enabled = getattr(authz, "semantic_cache_enabled", False)
+                if semantic_cache_enabled and hasattr(cache, "get_pointer"):
+                    sem_key = build_semantic_cache_key(str(authz.tenant_id), body)
+                    exact_key_str = await cache.get_pointer(sem_key)  # pyright: ignore[reportAttributeAccessIssue]  — guarded by hasattr; concrete ResponseCache has get_pointer, Protocol doesn't
+                    if exact_key_str is not None:
+                        # Dereference pointer: GET the exact-cache key body
+                        sem_cached_body = await cache.get(exact_key_str)
+                        if sem_cached_body is not None:
+                            # SEMANTIC HIT
+                            x_cache = "semantic_hit"
+                            # cache-alias-billing (B6): read+pop served BEFORE masking.
+                            _served_cached_sem = _read_served_from_cache(
+                                sem_cached_body, model_id
+                            )
+                            if metrics_registry is not None:
+                                try:
+                                    metrics_registry.cache_events_total.labels(
+                                        result="semantic_hit"
+                                    ).inc()
+                                except Exception:  # noqa: S110
+                                    pass
+                            # Apply post-call PII mask on semantic hit (same as exact hit)
+                            if guardrail_evaluator is not None and guardrail_configs:
+                                if hasattr(guardrail_evaluator, "evaluate_post"):
+                                    try:
+                                        sem_cached_body = (
+                                            await guardrail_evaluator.evaluate_post(
+                                                sem_cached_body, guardrail_configs
+                                            )
+                                        )
+                                    except Exception as _exc:
+                                        _log.warning(
+                                            "guardrail evaluate_post raised on"
+                                            " semantic HIT (fail-OPEN)",
+                                            exc_info=_exc,
+                                        )
+                            sem_usage_raw = sem_cached_body.get("usage")
+                            sem_usage: dict[str, Any] | None = (
+                                sem_usage_raw if isinstance(sem_usage_raw, dict) else None
+                            )
+                            _fire_record_cached(
+                                usage_recorder,
+                                tenant_id=authz.tenant_id,
+                                key_id=authz.key_id,
+                                model=_served_cached_sem,
+                                usage=sem_usage,
+                                team_id=authz.team_id,
+                            )
+                            # payload-capture-store §3: semantic-cache-HIT hook.
+                            _dispatch_capture(
+                                self._payload_capture,
+                                enabled=authz.payload_capture_enabled,
+                                tenant_id=authz.tenant_id,
+                                key_id=authz.key_id,
+                                model=_served_cached_sem,
+                                request_body=body,
+                                response_body=sem_cached_body,
+                                status=200,
+                                stream=False,
+                                cached=True,
+                                guardrail_configs=guardrail_configs,
+                            )
+                            if authz.tpm_limit is not None and sem_usage is not None:
+                                total_tokens = sem_usage.get("total_tokens")
+                                if isinstance(total_tokens, int) and total_tokens > 0:
+                                    _fire_record_tpm(
+                                        self._rate_limiter,
+                                        key_id=authz.key_id,
+                                        tokens=total_tokens,
+                                    )
+                            return (200, sem_cached_body, x_cache), x_cache
+                        else:
+                            # Dangling pointer: exact key expired — treat as MISS
+                            _log.debug(
+                                "semantic_cache: dangling pointer (exact key expired), "
+                                "treating as MISS",
+                                extra={"sem_key": sem_key, "exact_key": exact_key_str},
+                            )
+                # Step 4.5c: exact + normalization miss — try the embedding-similarity
+                # (vector) layer when wired. A hit takes the SAME billing/metric/PII/TPM
+                # path as the exact/semantic hit. The internal embed call is NEVER billed.
+                if self._vector_cache is not None:
+                    vec_body = await self._vector_cache.lookup(
+                        tenant_id=str(authz.tenant_id), model=model_id, body=body
+                    )
+                    if vec_body is not None:
+                        x_cache = "vector_hit"
+                        # cache-alias-billing (B6): read+pop served BEFORE masking.
+                        _served_cached_vec = _read_served_from_cache(vec_body, model_id)
+                        if metrics_registry is not None:
+                            try:
+                                metrics_registry.cache_events_total.labels(
+                                    result="vector_hit"
+                                ).inc()
+                            except Exception:  # noqa: S110
+                                pass
+                        if guardrail_evaluator is not None and guardrail_configs:
+                            if hasattr(guardrail_evaluator, "evaluate_post"):
+                                try:
+                                    vec_body = await guardrail_evaluator.evaluate_post(
+                                        vec_body, guardrail_configs
+                                    )
+                                except Exception as _exc:
+                                    _log.warning(
+                                        "guardrail evaluate_post raised on"
+                                        " vector HIT (fail-OPEN)",
+                                        exc_info=_exc,
+                                    )
+                        vec_usage_raw = vec_body.get("usage")
+                        vec_usage: dict[str, Any] | None = (
+                            vec_usage_raw if isinstance(vec_usage_raw, dict) else None
+                        )
+                        _fire_record_cached(
+                            usage_recorder,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=_served_cached_vec,
+                            usage=vec_usage,
+                            team_id=authz.team_id,
+                        )
+                        # payload-capture-store §3: vector (embedding-similarity)
+                        # cache-HIT hook.
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=_served_cached_vec,
+                            request_body=body,
+                            response_body=vec_body,
+                            status=200,
+                            stream=False,
+                            cached=True,
+                            guardrail_configs=guardrail_configs,
+                        )
+                        if authz.tpm_limit is not None and vec_usage is not None:
+                            total_tokens = vec_usage.get("total_tokens")
+                            if isinstance(total_tokens, int) and total_tokens > 0:
+                                _fire_record_tpm(
+                                    self._rate_limiter,
+                                    key_id=authz.key_id,
+                                    tokens=total_tokens,
+                                )
+                        return (200, vec_body, x_cache), x_cache
+                # MISS (exact miss + semantic miss/disabled + vector miss/off)
+                x_cache = "miss"
+                if metrics_registry is not None:
+                    try:
+                        metrics_registry.cache_events_total.labels(result="miss").inc()
+                    except Exception:  # noqa: S110
+                        pass
+                return None, x_cache
+        else:
+            # BYPASS: Cache-Control: no-cache
+            x_cache = "bypass"
+            if metrics_registry is not None:
+                try:
+                    metrics_registry.cache_events_total.labels(result="bypass").inc()
+                except Exception:  # noqa: S110
+                    pass
+            return None, x_cache
+
     async def complete(
         self,
         *,
@@ -1596,247 +1864,25 @@ class CompletionUseCase:
             # response_format is not in _CACHE_KEY_FIELDS (a pre-existing gap this
             # task does not fix), so bypassing is the only way to guarantee a
             # validating caller never silently receives an unvalidated cached body.
+            # Step 4.5a/4.5b/4.5c (exact → semantic → vector) lives in
+            # _try_cache_lookup, extracted out of this already-large method for the
+            # same reason _run_output_validation_retry above was extracted.
             if cache is not None and cache_enabled and not _output_validation_engaged:
-                from gateway.proxy.infrastructure.response_cache import (
-                    build_cache_key,
-                    build_semantic_cache_key,
+                _cache_hit, x_cache = await self._try_cache_lookup(
+                    cache=cache,
+                    authz=authz,
+                    body=body,
+                    model_id=model_id,
+                    guardrail_evaluator=guardrail_evaluator,
+                    guardrail_configs=guardrail_configs,
+                    metrics_registry=metrics_registry,
+                    usage_recorder=usage_recorder,
+                    request_headers=request_headers,
                 )
-
-                no_cache = (request_headers or {}).get("cache-control", "").lower() == "no-cache"
-                cache_key = build_cache_key(str(authz.tenant_id), body)
-
-                if not no_cache:
-                    # Step 4.5a: Try exact-match cache lookup
-                    cached_body = await cache.get(cache_key)
-                    if cached_body is not None:
-                        # EXACT HIT: apply post-call guardrails, then return cached body
-                        x_cache = "hit"
-                        _cached = True
-                        # cache-alias-billing (B6): read+pop the served candidate BEFORE
-                        # evaluate_post masking (which may return a fresh dict), so billing keys
-                        # on the served catalog id, not the alias, and the stamp never reaches
-                        # the client.
-                        _served_cached = _read_served_from_cache(cached_body, model_id)
-                        if metrics_registry is not None:
-                            try:
-                                metrics_registry.cache_events_total.labels(result="hit").inc()
-                            except Exception:  # noqa: S110
-                                pass
-                        # Step 5.5 on cache HIT: apply post-call PII mask if configured
-                        # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only).
-                        if guardrail_evaluator is not None and guardrail_configs:
-                            if hasattr(guardrail_evaluator, "evaluate_post"):
-                                try:
-                                    cached_body = await guardrail_evaluator.evaluate_post(
-                                        cached_body, guardrail_configs
-                                    )
-                                except Exception as _exc:
-                                    _log.warning(
-                                        "guardrail evaluate_post raised on cache HIT (fail-OPEN)",
-                                        exc_info=_exc,
-                                    )
-                        cached_usage_raw = cached_body.get("usage")
-                        cached_usage: dict[str, Any] | None = (
-                            cached_usage_raw if isinstance(cached_usage_raw, dict) else None
-                        )
-                        _fire_record_cached(
-                            usage_recorder,
-                            tenant_id=authz.tenant_id,
-                            key_id=authz.key_id,
-                            model=_served_cached,
-                            usage=cached_usage,
-                            team_id=authz.team_id,
-                        )
-                        # payload-capture-store §3: exact-cache-HIT capture hook —
-                        # cached_body is the SAME post-mask body actually served to the
-                        # client (never the raw unmasked Redis-internal representation).
-                        _dispatch_capture(
-                            self._payload_capture,
-                            enabled=authz.payload_capture_enabled,
-                            tenant_id=authz.tenant_id,
-                            key_id=authz.key_id,
-                            model=_served_cached,
-                            request_body=body,
-                            response_body=cached_body,
-                            status=200,
-                            stream=False,
-                            cached=True,
-                            guardrail_configs=guardrail_configs,
-                        )
-                        # TPM post-accounting uses cached token counts
-                        if authz.tpm_limit is not None and cached_usage is not None:
-                            total_tokens = cached_usage.get("total_tokens")
-                            if isinstance(total_tokens, int) and total_tokens > 0:
-                                _fire_record_tpm(
-                                    self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
-                                )
-                        _status_code = 200
-                        return 200, cached_body, x_cache
-                    else:
-                        # Step 4.5b: Exact MISS — try semantic lookup if enabled
-                        semantic_cache_enabled = getattr(authz, "semantic_cache_enabled", False)
-                        if semantic_cache_enabled and hasattr(cache, "get_pointer"):
-                            sem_key = build_semantic_cache_key(str(authz.tenant_id), body)
-                            exact_key_str = await cache.get_pointer(sem_key)  # pyright: ignore[reportAttributeAccessIssue]  — guarded by hasattr; concrete ResponseCache has get_pointer, Protocol doesn't
-                            if exact_key_str is not None:
-                                # Dereference pointer: GET the exact-cache key body
-                                sem_cached_body = await cache.get(exact_key_str)
-                                if sem_cached_body is not None:
-                                    # SEMANTIC HIT
-                                    x_cache = "semantic_hit"
-                                    _cached = True
-                                    # cache-alias-billing (B6): read+pop served BEFORE masking.
-                                    _served_cached_sem = _read_served_from_cache(
-                                        sem_cached_body, model_id
-                                    )
-                                    if metrics_registry is not None:
-                                        try:
-                                            metrics_registry.cache_events_total.labels(
-                                                result="semantic_hit"
-                                            ).inc()
-                                        except Exception:  # noqa: S110
-                                            pass
-                                    # Apply post-call PII mask on semantic hit (same as exact hit)
-                                    if guardrail_evaluator is not None and guardrail_configs:
-                                        if hasattr(guardrail_evaluator, "evaluate_post"):
-                                            try:
-                                                sem_cached_body = (
-                                                    await guardrail_evaluator.evaluate_post(
-                                                        sem_cached_body, guardrail_configs
-                                                    )
-                                                )
-                                            except Exception as _exc:
-                                                _log.warning(
-                                                    "guardrail evaluate_post raised on"
-                                                    " semantic HIT (fail-OPEN)",
-                                                    exc_info=_exc,
-                                                )
-                                    sem_usage_raw = sem_cached_body.get("usage")
-                                    sem_usage: dict[str, Any] | None = (
-                                        sem_usage_raw if isinstance(sem_usage_raw, dict) else None
-                                    )
-                                    _fire_record_cached(
-                                        usage_recorder,
-                                        tenant_id=authz.tenant_id,
-                                        key_id=authz.key_id,
-                                        model=_served_cached_sem,
-                                        usage=sem_usage,
-                                        team_id=authz.team_id,
-                                    )
-                                    # payload-capture-store §3: semantic-cache-HIT hook.
-                                    _dispatch_capture(
-                                        self._payload_capture,
-                                        enabled=authz.payload_capture_enabled,
-                                        tenant_id=authz.tenant_id,
-                                        key_id=authz.key_id,
-                                        model=_served_cached_sem,
-                                        request_body=body,
-                                        response_body=sem_cached_body,
-                                        status=200,
-                                        stream=False,
-                                        cached=True,
-                                        guardrail_configs=guardrail_configs,
-                                    )
-                                    if authz.tpm_limit is not None and sem_usage is not None:
-                                        total_tokens = sem_usage.get("total_tokens")
-                                        if isinstance(total_tokens, int) and total_tokens > 0:
-                                            _fire_record_tpm(
-                                                self._rate_limiter,
-                                                key_id=authz.key_id,
-                                                tokens=total_tokens,
-                                            )
-                                    _status_code = 200
-                                    return 200, sem_cached_body, x_cache
-                                else:
-                                    # Dangling pointer: exact key expired — treat as MISS
-                                    _log.debug(
-                                        "semantic_cache: dangling pointer (exact key expired), "
-                                        "treating as MISS",
-                                        extra={"sem_key": sem_key, "exact_key": exact_key_str},
-                                    )
-                        # Step 4.5c: exact + normalization miss — try the embedding-similarity
-                        # (vector) layer when wired. A hit takes the SAME billing/metric/PII/TPM
-                        # path as the exact/semantic hit. The internal embed call is NEVER billed.
-                        if self._vector_cache is not None:
-                            vec_body = await self._vector_cache.lookup(
-                                tenant_id=str(authz.tenant_id), model=model_id, body=body
-                            )
-                            if vec_body is not None:
-                                x_cache = "vector_hit"
-                                _cached = True
-                                # cache-alias-billing (B6): read+pop served BEFORE masking.
-                                _served_cached_vec = _read_served_from_cache(vec_body, model_id)
-                                if metrics_registry is not None:
-                                    try:
-                                        metrics_registry.cache_events_total.labels(
-                                            result="vector_hit"
-                                        ).inc()
-                                    except Exception:  # noqa: S110
-                                        pass
-                                if guardrail_evaluator is not None and guardrail_configs:
-                                    if hasattr(guardrail_evaluator, "evaluate_post"):
-                                        try:
-                                            vec_body = await guardrail_evaluator.evaluate_post(
-                                                vec_body, guardrail_configs
-                                            )
-                                        except Exception as _exc:
-                                            _log.warning(
-                                                "guardrail evaluate_post raised on"
-                                                " vector HIT (fail-OPEN)",
-                                                exc_info=_exc,
-                                            )
-                                vec_usage_raw = vec_body.get("usage")
-                                vec_usage: dict[str, Any] | None = (
-                                    vec_usage_raw if isinstance(vec_usage_raw, dict) else None
-                                )
-                                _fire_record_cached(
-                                    usage_recorder,
-                                    tenant_id=authz.tenant_id,
-                                    key_id=authz.key_id,
-                                    model=_served_cached_vec,
-                                    usage=vec_usage,
-                                    team_id=authz.team_id,
-                                )
-                                # payload-capture-store §3: vector (embedding-similarity)
-                                # cache-HIT hook.
-                                _dispatch_capture(
-                                    self._payload_capture,
-                                    enabled=authz.payload_capture_enabled,
-                                    tenant_id=authz.tenant_id,
-                                    key_id=authz.key_id,
-                                    model=_served_cached_vec,
-                                    request_body=body,
-                                    response_body=vec_body,
-                                    status=200,
-                                    stream=False,
-                                    cached=True,
-                                    guardrail_configs=guardrail_configs,
-                                )
-                                if authz.tpm_limit is not None and vec_usage is not None:
-                                    total_tokens = vec_usage.get("total_tokens")
-                                    if isinstance(total_tokens, int) and total_tokens > 0:
-                                        _fire_record_tpm(
-                                            self._rate_limiter,
-                                            key_id=authz.key_id,
-                                            tokens=total_tokens,
-                                        )
-                                _status_code = 200
-                                return 200, vec_body, x_cache
-                        # MISS (exact miss + semantic miss/disabled + vector miss/off)
-                        x_cache = "miss"
-                        if metrics_registry is not None:
-                            try:
-                                metrics_registry.cache_events_total.labels(result="miss").inc()
-                            except Exception:  # noqa: S110
-                                pass
-                else:
-                    # BYPASS: Cache-Control: no-cache
-                    x_cache = "bypass"
-                    if metrics_registry is not None:
-                        try:
-                            metrics_registry.cache_events_total.labels(result="bypass").inc()
-                        except Exception:  # noqa: S110
-                            pass
+                if _cache_hit is not None:
+                    _cached = True
+                    _status_code = _cache_hit[0]
+                    return _cache_hit
 
             # batch-auto-grouping (v57 §3) / batch-window-grouping (§3, supersedes the
             # size-1-job body): diversion check — sits OUTSIDE the cache block above
