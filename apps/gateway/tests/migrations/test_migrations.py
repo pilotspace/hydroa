@@ -60,6 +60,7 @@ EXPECTED_TABLES = frozenset(
         "impersonation_sessions",  # SANCTIONED EDIT — impersonation-session-lifecycle TASK.md §3 manifest maintenance; disposition: additive migration 1d563bf9b143 adds this table
         "tenant_rate_card_entries",  # SANCTIONED EDIT — tiered-rate-cards TASK.md §3 manifest maintenance; disposition: additive migration f70104c27b41 adds this table
         "scim_tokens",  # SANCTIONED EDIT — scim-provisioning TASK.md §3 manifest maintenance; disposition: additive migration 010e6f83a709 adds this table
+        "saml_provider_configs",  # SANCTIONED EDIT — saml-sso TASK.md §3 manifest maintenance; disposition: additive migration c950c528d3d5 adds this table
     }
 )
 
