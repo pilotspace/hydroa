@@ -49,6 +49,39 @@ const DialogContent = React.forwardRef<
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
+/**
+ * DrawerContent — the edge-anchored (right-side), slide-in sibling of DialogContent
+ * (logs-explorer-ui TASK.md §3 CONTRACT — Issue #3). Reuses DialogPortal/DialogOverlay/
+ * DialogPrimitive.Content/Close WHOLESALE (Radix's focus-trap, Escape-to-close, and
+ * focus-return-on-close behavior all apply unchanged) — only the Content positioning
+ * (right-edge slide-in vs. centered) is new. `data-slot="drawer"` mirrors DataTable's
+ * `data-slot="data-table"` marker convention.
+ */
+const DrawerContent = React.forwardRef<
+  React.ComponentRef<typeof DialogPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <DialogPortal>
+    <DialogOverlay />
+    <DialogPrimitive.Content
+      ref={ref}
+      data-slot="drawer"
+      className={cn(
+        "fixed inset-y-0 right-0 z-50 h-full w-full max-w-md overflow-y-auto border-l border-border bg-card p-6 text-card-foreground shadow-lg data-[state=open]:animate-in data-[state=open]:slide-in-from-right data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <X className="size-4" />
+        <span className="sr-only">Close</span>
+      </DialogPrimitive.Close>
+    </DialogPrimitive.Content>
+  </DialogPortal>
+));
+DrawerContent.displayName = "DrawerContent";
+
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("flex flex-col gap-1.5 text-left", className)} {...props} />;
 }
@@ -95,6 +128,7 @@ export {
   DialogTrigger,
   DialogClose,
   DialogContent,
+  DrawerContent,
   DialogHeader,
   DialogFooter,
   DialogTitle,

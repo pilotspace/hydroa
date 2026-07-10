@@ -14,6 +14,7 @@ export {
   DialogTrigger,
   DialogClose,
   DialogContent,
+  DrawerContent,
   DialogHeader,
   DialogFooter,
   DialogTitle,
