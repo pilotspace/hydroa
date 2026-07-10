@@ -142,6 +142,33 @@ async def test_request_time_private_range_allowed_with_opt_in_metadata_still_den
         await policy2.check("https://imds.example.com/x")  # metadata STILL denied
 
 
+# The allow_private_ranges opt-in relaxes ONLY the RFC1918 / IPv6-ULA private class — it does
+# NOT relax link-local / reserved / loopback / multicast. That is the authoritative reason
+# every IPv6 transition-scheme encoding of a metadata IP stays denied under the opt-in
+# (link-local for the mapped forms, is_reserved for NAT64), without enumerating each prefix.
+@pytest.mark.parametrize(
+    ("host", "denied"),
+    [
+        ("[fd12:3456:789a::1]", False),  # IPv6-ULA — a legit Private Link v6 target, ALLOWED
+        ("172.16.5.5", False),  # RFC1918 — legit Private Link, ALLOWED
+        ("[fe80::1]", True),  # link-local (non-metadata) — DENIED even under opt-in
+        ("[64:ff9b::808:808]", True),  # NAT64 of a PUBLIC 8.8.8.8 — is_reserved, DENIED
+        ("[ff02::1]", True),  # multicast — DENIED even under opt-in
+    ],
+)
+def test_write_time_opt_in_relaxes_only_private_class(host: str, denied: bool) -> None:
+    """allow_private_ranges must permit RFC1918/ULA yet still deny the link-local / reserved /
+    multicast classes — the invariant that keeps transition-scheme metadata encodings closed."""
+    call = lambda: assert_literal_host_not_denied(  # noqa: E731
+        f"https://{host}/x", allow_private_ranges=True
+    )
+    if denied:
+        with pytest.raises(EgressDeniedError):
+            call()
+    else:
+        call()  # must NOT raise
+
+
 async def test_request_time_resolver_error_fails_closed() -> None:
     resolver = _FakeResolver(raise_error=True)
     policy = DenyPrivateAndMetadataEgressPolicy(resolver=resolver)
@@ -156,9 +183,11 @@ async def test_request_time_resolver_timeout_fails_closed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# IPv4-mapped / IPv4-compatible / 6to4 IPv6 encodings of a metadata address
-# (regression: an exact-string metadata match let ::ffff:169.254.169.254 slip past
-# the "never toggle-able" guard on the allow_private_ranges=True opt-in path).
+# IPv4-mapped / IPv4-compatible / 6to4 / NAT64 IPv6 encodings of a metadata address
+# (regression: an exact-string metadata match let ::ffff:169.254.169.254 slip past the
+# "never toggle-able" guard on the allow_private_ranges=True opt-in path; a follow-up
+# adversarial pass found NAT64 64:ff9b::a9fe:a9fe reopened the SAME bypass — every one of
+# these must be denied under the opt-in).
 # ---------------------------------------------------------------------------
 
 # Every one of these is the SAME numeric address as 169.254.169.254 (AWS/Azure/GCP IMDS),
@@ -168,6 +197,8 @@ _MAPPED_METADATA_HOSTS = [
     "[::ffff:a9fe:a9fe]",  # IPv4-mapped, hex (a9fe = 169.254)
     "[::169.254.169.254]",  # IPv4-compatible (deprecated)
     "[2002:a9fe:a9fe::]",  # 6to4
+    "[64:ff9b::a9fe:a9fe]",  # RFC 6052 well-known NAT64 (is_reserved class)
+    "[64:ff9b::a9fe:aa02]",  # NAT64 of 169.254.170.2 (ECS metadata)
 ]
 
 
