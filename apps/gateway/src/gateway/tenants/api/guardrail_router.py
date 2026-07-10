@@ -106,6 +106,37 @@ class PiiMaskConfig(BaseModel):
         return v
 
 
+class MlModerationConfig(BaseModel):
+    """Config for the ml_moderation guardrail.
+
+    ml-moderation-layer TASK.md §3 CONTRACT — FROZEN @ v1.
+    Valid modes: block | audit. failure_mode is orthogonal to mode — it governs what
+    happens when the CHECK ITSELF could not be evaluated (missing key, timeout,
+    provider outage), not what happens when content IS flagged. Defaults to
+    "fail_open" when omitted.
+    """
+
+    enabled: bool
+    mode: str
+    failure_mode: str = "fail_open"
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        allowed = {"block", "audit"}
+        if v not in allowed:
+            raise ValueError(f"ml_moderation mode must be one of {allowed!r}, got {v!r}")
+        return v
+
+    @field_validator("failure_mode")
+    @classmethod
+    def validate_failure_mode(cls, v: str) -> str:
+        allowed = {"fail_open", "fail_closed"}
+        if v not in allowed:
+            raise ValueError(f"ml_moderation failure_mode must be one of {allowed!r}, got {v!r}")
+        return v
+
+
 class GuardrailConfigRequest(BaseModel):
     """PUT /admin/guardrails request body.
 
@@ -116,6 +147,7 @@ class GuardrailConfigRequest(BaseModel):
 
     prompt_injection: PromptInjectionConfig | None = None
     pii_mask: PiiMaskConfig | None = None
+    ml_moderation: MlModerationConfig | None = None
 
 
 class GuardrailConfigResponse(BaseModel):
@@ -123,6 +155,7 @@ class GuardrailConfigResponse(BaseModel):
 
     prompt_injection: dict[str, Any] | None = None
     pii_mask: dict[str, Any] | None = None
+    ml_moderation: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -189,9 +222,11 @@ def _build_response(configs: dict[str, Any]) -> GuardrailConfigResponse:
     """Convert raw guardrail_configs dict to GuardrailConfigResponse."""
     pi = configs.get("prompt_injection")
     pm = configs.get("pii_mask")
+    mm = configs.get("ml_moderation")
     return GuardrailConfigResponse(
         prompt_injection=pi if isinstance(pi, dict) else None,
         pii_mask=pm if isinstance(pm, dict) else None,
+        ml_moderation=mm if isinstance(mm, dict) else None,
     )
 
 
@@ -294,6 +329,12 @@ async def put_guardrails(
                     for p in pii_dump["pii_custom_patterns"]
                 ]
             updated["pii_mask"] = pii_dump
+
+    if "ml_moderation" in fields_set:
+        if body.ml_moderation is None:
+            updated.pop("ml_moderation", None)
+        else:
+            updated["ml_moderation"] = body.ml_moderation.model_dump()
 
     # Persist the merged config as JSONB
     await session.execute(

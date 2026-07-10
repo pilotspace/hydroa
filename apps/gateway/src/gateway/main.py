@@ -120,6 +120,7 @@ from gateway.proxy.infrastructure.gemini_upstream import (
     GeminiCompletionUpstream,
     GoogleEmbeddingsProvider,
 )
+from gateway.proxy.infrastructure.ml_moderation_evaluator import OpenAiModerationClient
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
@@ -1038,6 +1039,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.tenant_credential_resolver = CachedTenantCredentialResolver(
         store=app.state.tenant_provider_key_store,
         settings=settings,
+    )
+
+    # ml-moderation-layer (§3 CONTRACT — FROZEN @ v1): a DEDICATED OpenAIDirectProvider
+    # + CircuitBreaker instance for the moderation IO seam, isolated from _openai_direct
+    # (chat/embeddings) so a moderation-provider outage can never trip real completions
+    # and a completions outage can never disable moderation (§0 R3, M8). Tighter
+    # timeouts than the chat default (connect=1.5s/read=2.5s vs. 10s/120s) — a hot-path
+    # pre-call check must fail fast (§0 R1). No separate global kill-switch
+    # (FREEZE-QUESTION 4, decided at freeze): the true off switch is the per-tenant
+    # ml_moderation.enabled flag (guardrail_router.py) — wiring here only makes the
+    # feature REACHABLE; deps.py still gates construction of the composite evaluator
+    # on this being non-None (M9).
+    app.state.ml_moderation_provider = OpenAiModerationClient(
+        OpenAIDirectProvider(
+            base_url=settings.openai_base_url,
+            connect_timeout=1.5,
+            read_timeout=2.5,
+            metrics_registry=app.state.metrics_registry,
+        )
     )
 
     # Tenant model-preset store (tenant-preset-store v56). upsert() constructs its own

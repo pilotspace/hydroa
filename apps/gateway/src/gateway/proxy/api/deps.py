@@ -32,6 +32,10 @@ from gateway.proxy.infrastructure.circuit_breaker_proxy import BoundCircuitBreak
 from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
 from gateway.proxy.infrastructure.guardrail_evaluator import RegexGuardrailEvaluator
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
+from gateway.proxy.infrastructure.ml_moderation_evaluator import (
+    CompositeGuardrailEvaluator,
+    MlModerationGuardrailEvaluator,
+)
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
 from gateway.proxy.infrastructure.provider_registry import select_provider
 from gateway.proxy.infrastructure.response_cache import RedisResponseCache
@@ -135,7 +139,22 @@ def get_completion_use_case(
     # modifying the frozen test suite.
     guardrail_evaluator = getattr(request.app.state, "guardrail_evaluator", None)
     if guardrail_evaluator is None:
-        guardrail_evaluator = RegexGuardrailEvaluator()
+        regex_evaluator = RegexGuardrailEvaluator()
+        # ml-moderation-layer §3 CONTRACT (FROZEN @ v1, M9): additive-only wiring. The
+        # composite is constructed ONLY when app.state.ml_moderation_provider is
+        # present (boot-wired conditionally in main.py); absent it, this branch stays
+        # byte-identical RegexGuardrailEvaluator() — zero behavior change.
+        ml_provider = getattr(request.app.state, "ml_moderation_provider", None)
+        if ml_provider is not None:
+            guardrail_evaluator = CompositeGuardrailEvaluator(
+                regex_evaluator,
+                MlModerationGuardrailEvaluator(
+                    ml_provider,
+                    getattr(request.app.state, "tenant_credential_resolver", None),
+                ),
+            )
+        else:
+            guardrail_evaluator = regex_evaluator
     # OTel span emitter seam — only wired when otel_enabled=True in settings.
     # When otel_enabled=False (default): span_emitter is always None regardless of
     # what may be set on app.state. This enforces the §3 CONTRACT inviolable:

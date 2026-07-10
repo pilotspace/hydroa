@@ -63,6 +63,10 @@ from gateway.proxy.domain.errors import (
     UpstreamRateLimitedError,
     UpstreamUnavailableError,
 )
+from gateway.proxy.domain.guardrail_tenant_context import (
+    reset_guardrail_tenant_id,
+    set_guardrail_tenant_id,
+)
 from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
 from gateway.proxy.domain.ports import (
     BatchDiversionPort,
@@ -1232,6 +1236,12 @@ class CompletionUseCase:
             guardrail_evaluator = self._guardrail_evaluator
             guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
             if guardrail_evaluator is not None and guardrail_configs:
+                # ml-moderation-layer §3 CONTRACT (FROZEN @ v1, §0 R6): the frozen 2-arg
+                # evaluate_pre(messages, guardrail_configs) call below is UNTOUCHED —
+                # tenant identity for BYOK credential resolution flows via this sibling
+                # ContextVar, set immediately before the call and reset in `finally` so
+                # it never leaks across requests.
+                _gtid_token = set_guardrail_tenant_id(authz.tenant_id)
                 try:
                     result = await guardrail_evaluator.evaluate_pre(
                         body.get("messages", []), guardrail_configs
@@ -1274,6 +1284,8 @@ class CompletionUseCase:
                         )
                         # result is not set — fall through without masking/blocking
                         result = None
+                finally:
+                    reset_guardrail_tenant_id(_gtid_token)
 
                 if result is not None:
                     _fire_guardrail_metrics(metrics_registry, result.events, guardrail_configs)
@@ -1857,6 +1869,9 @@ class CompletionUseCase:
             guardrail_evaluator = self._guardrail_evaluator
             guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
             if guardrail_evaluator is not None and guardrail_configs:
+                # ml-moderation-layer §3 CONTRACT (FROZEN @ v1, §0 R6) — same seam as
+                # complete() above: set/reset around the untouched 2-arg call.
+                _gtid_token = set_guardrail_tenant_id(authz.tenant_id)
                 try:
                     stream_result = await guardrail_evaluator.evaluate_pre(
                         body.get("messages", []), guardrail_configs
@@ -1885,6 +1900,8 @@ class CompletionUseCase:
                         _stream_guardrail_blocked = True
                         raise GUARDRAIL_BLOCKED.exc() from None
                     stream_result = None
+                finally:
+                    reset_guardrail_tenant_id(_gtid_token)
 
                 if stream_result is not None:
                     if stream_result.blocked:
