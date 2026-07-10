@@ -435,11 +435,19 @@ SECURITY task: the VERIFY gate remains Tin's HARD-STOP (build is authorized by t
 - [contract] Part B's request-time enforcement point (inside `build_url`/`_token_url` call sites, immediately before the outbound POST) is the authoritative layer; Part B's write-time check (`assert_literal_host_not_denied`) is a cheap, DNS-free, INCOMPLETE first filter (a non-IP hostname always passes it, by design — DNS resolution is deferred to request time). This is intentional layering, not a gap, but a reviewer skimming only the write-time check could mistake it for the full fix — noted here so it isn't missed at review.
 - [test] DNS-rebinding closure (resolve-then-CONNECT IP pinning) is explicitly NOT built in this task (§1 assumption) — accepted residual risk, recorded as a candidate follow-up spec delta (§7), not a blocking gap for this freeze.
 
-**AWAITING FREEZE (Tin)** — this bundle (§0 ground · §1 spec · §2 scenarios · §3 contract · §5
-scope/strategy) is drafted and ready for review. Per this task's SECURITY classification, the
-freeze decision AND the eventual verify gate are both Tin's HARD-STOP — nothing here has been
-auto-approved. Two ⚠-flagged assumptions above need an explicit call before freezing (or an
-explicit "accept the stated default"); the two [test]/[contract] flags are FYI, not blocking.
+**Status: FROZEN @ v1 — approved by Tin Dang (2026-07-10).** SECURITY task: this freeze
+authorizes BUILD only; the VERIFY gate remained Tin's HARD-STOP (exercised — 4 adversarial
+heal rounds, gate PASS approved 2026-07-10). Changing this frozen contract = change request
+back to SPECIFY.
+
+Least-sure flag surfaced at freeze: [contract] `allow_private_ranges` is a single GLOBAL toggle,
+not per-range — an operator who needs Azure Private Link (RFC1918) relaxes the whole RFC1918/ULA
+allow-list at once; a per-range opt-in is deferred to §7. Cost if wrong: an operator relaxes more
+than they intend. (Build note: the allow-list is deliberately a POSITIVE list of exactly
+RFC1918+ULA, so the toggle can never relax the transition-scheme / metadata classes — that turned
+out to be the crux of the whole bypass class.) [test] DNS-rebinding resolve-then-CONNECT IP pinning
+is NOT built (accepted residual → §7); request-time FRESH re-resolution narrows the TOCTOU window
+but does not fully close it. Cost if wrong: a rebind landing between the check and the socket connect.
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag: the 1–2
      points most likely wrong across the whole bundle, tagged [spec|scenario|contract|test], each
      with why + cost (the §1 ⚠ assumptions feed it; a flag may point at a scenario or the contract
