@@ -151,6 +151,11 @@ class FakeSession:
                         str(self.cache_creation_price)
                         if self.cache_creation_price is not None
                         else None,
+                        # gpt-realtime dual-stream audio prices (row[8:11]) — None for
+                        # every model exercised here; only the row SHAPE must match.
+                        None,
+                        None,
+                        None,
                     )
                 )
             )
