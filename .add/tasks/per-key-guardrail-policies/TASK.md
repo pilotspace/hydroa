@@ -490,7 +490,8 @@ Binding: yes — mechanical (sensitivity: data)
 
 ### GATE RECORD
 Reported: no — this verify pass surfaces a HARD-STOP; the orchestrator/human records the outcome, not this agent
-Outcome: HARD-STOP
+Fix-wave remediation (2026-07-10): FINDING 1 fixed — `put_key_guardrails` now carries EVERY `GuardrailConfigRequest` field (generic loop over `model_fields`, so no future field can silently drop), `ml_moderation` persisted + echoed in `KeyGuardrailPolicyResponse`, audit metadata covers it. FINDING 2 (policy_source discriminator) reconciled with an explaining comment; FINDING 3 (stale migration docstring) corrected. The verify-wave repro was authored inverted (asserted the buggy drop); the orchestrator inverted its assertions to a proper red→green (commit 5bf7f22) + a companion `test_ml_moderation_key_override_fix.py`. Evidence: per_key 24/24 (frozen scenarios + companion), inverted repro green; integrated cross-feature set 225 passed/2 skipped; pyright 0; ruff clean. Byte-identical NULL-policy inheritance held.
+Outcome: HARD-STOP → remediated; awaiting human confirmation of PASS (security-classed finding: a dropped content-moderation control).
 If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (never for a security gap)
 Reviewed by: pending human review · date: 2026-07-10
 

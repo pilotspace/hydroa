@@ -2,10 +2,9 @@
 
 slug: output-schema-validation · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
-sensitivity: architecture   <!-- supersedes a frozen v11 behavioral pin (translate-don't-enforce); adds a new third-party dependency; additive extension to shared core/errors.py -->
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+sensitivity: architecture
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -100,8 +99,6 @@ Assumptions — lowest-confidence first:
   - [ ] confirm validating ALL choices (M4, for `n>1` requests) rather than only `choices[0]` is the right scope — medium-high confidence (simplest, safest, and the retry regenerates every choice anyway so partial-index replacement was never viable); flagging since `n>1` + `json_schema` + `validate_output` is an unexercised corner nobody has asked for yet.
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -195,8 +192,6 @@ Scenario: n>1 requires every choice to validate   # M4 edge case
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -362,7 +357,6 @@ Glossary deltas:
 
 Status: DRAFT — awaiting human freeze
 Reported: no — this is the design draft; the freeze report renders when Tin reviews §3
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 Least-sure flag surfaced at freeze: [contract] retry billing = TWO usage records per validated-retry request (usage_source=validation_retry + frame) — an EXPLICIT amendment to the 'every proxied request produces exactly one usage record' invariant, accepted at freeze (v29 alerts-exception precedent); downstream usage_records consumers (dashboards, reconciliation) must be checked for >1-row tolerance at BUILD. Decided at freeze (Tin, 2026-07-10 batch): all 5 agent recommendations accepted (per-request field + kill-switch; 422; jsonschema>=4.23,<5; streaming hard-400).
 
@@ -409,15 +403,12 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · `apps/gateway/tests/output_schema_validation` (34 tests, new dir) · ran RED for the right reason (missing `output_validation_enabled` ctor kwarg — 20/34 integration tests failed via a clean `pytest.fail("RED: ...")` guard; the 14 pure-module unit tests were already green, per the Strategy's own "red/green in isolation" sub-loop for `output_validation.py`) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `apps/gateway/src/gateway/proxy/domain/output_validation.py` (new) `apps/gateway/src/gateway/proxy/application/use_cases.py` `apps/gateway/src/gateway/proxy/api/deps.py` `apps/gateway/src/gateway/core/config.py` `apps/gateway/src/gateway/core/errors.py` `apps/gateway/src/gateway/core/error_catalog.py` `apps/gateway/pyproject.toml` `apps/gateway/tests/output_schema_validation` (new dir)   <!-- every token has "/" = project root, per the scope-token grammar; response_format_translation.py is DELIBERATELY excluded (SUPERSESSION rule — not edited by this task) -->
+Scope (may touch): `apps/gateway/src/gateway/proxy/domain/output_validation.py` (new) `apps/gateway/src/gateway/proxy/application/use_cases.py` `apps/gateway/src/gateway/proxy/api/deps.py` `apps/gateway/src/gateway/core/config.py` `apps/gateway/src/gateway/core/errors.py` `apps/gateway/src/gateway/core/error_catalog.py` `apps/gateway/pyproject.toml` `apps/gateway/tests/output_schema_validation` (new dir)
 Strategy (ordered batches): 1. add `jsonschema` to pyproject.toml + lockfile, confirm `check_schema`/`Draft202012Validator` import cleanly. 2. write `output_validation.py` (pure, no IO) + its own unit tests (schema meta-validation, multi-choice validation, malformed-JSON, missing-content) BEFORE touching use_cases.py — this module has zero dependencies on the use case and can be red/green in isolation. 3. additive-extend `core/errors.py` (`extra` param) + `core/error_catalog.py` (3 new ErrorSpecs, `ERR_INVALID_JSON_SCHEMA` reused) — verify every EXISTING `ProblemError`/`problem_response` call site still compiles/passes untouched (this is the one shared-file edit with the widest blast radius; treat it as its own reviewed sub-step). 4. add `output_validation_enabled` to `config.py` + wire through `deps.py` into `CompletionUseCase.__init__` (mirrors `web_search_enabled` verbatim — diff the two wiring paths side by side). 5. insert the M1-M13 integration into `CompletionUseCase.complete()` at the sketched insertion point (between the upstream-call try/except and the cache-store step); do NOT touch `CompletionUseCase.stream()` beyond the M11 pre-flight reject. 6. wire the cache-bypass (M9) by threading `_validate_flag` into the existing bypass boolean the way `x_cache == "bypass"` already gates the store block. 7. tests last-mile: run the full scenario list from §2 as the red suite before any of steps 2-6's implementation lands.
 
 Persona (required): protocol-translation-engineer (`.add/personas/protocol-translation-engineer.md`) — this task is depth on the same v9-v11 ChatTranslator/response_format seam that persona already owns (multi-provider shape-fidelity + byte-identical-passthrough verification is exactly the M1/M2/M11 discipline this task needs); pair with billing-precision-engineer's lens (not a full persona swap) specifically for M8's two-usage-record write, since that is a money-correctness concern the translation persona alone would not naturally scrutinize.
@@ -427,8 +418,6 @@ Strategy actually used: Materially as planned, steps 1-4 verbatim (jsonschema de
 Safety rule (feature-specific): the bounded retry (M5) and its billing (M8) must be a single linear `await` chain inside `complete()`'s existing `try` block — never a background task — so that a 422 terminal failure can only be returned AFTER both usage records are durably fired (usage recording is fire-and-forget at the Redis-stream level per the existing `_fire_record_with_raw` design, but the CALL to fire it must not be skipped or reordered relative to the retry decision).
 Code lives in: `apps/gateway/src/gateway/`
 Constraints: do NOT change any test or the contract; allow-list packages only (jsonschema, flagged above, needs freeze sign-off); ask if unclear; do NOT edit `apps/gateway/src/gateway/proxy/domain/response_format_translation.py` (SUPERSESSION rule — frozen v11 file).
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -481,10 +470,10 @@ Binding: advisory — sensitivity: architecture (not mechanical)
 
 ### GATE RECORD
 Reported: yes — this verify report is the gate report.
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP> — recorded by the orchestrator, not this agent (see final message: PASS-RECOMMENDED with residue).
-Reviewed by: <name> · date: <date>
+Fix-wave re-verify (2026-07-10): the MAJOR finding — retry-leg `UpstreamRateLimitedError` branch billed via `_fire_record` (defaulting usage_source to "frame") instead of `_fire_record_with_raw(usage_source="validation_retry")` — was remediated (use_cases.py:513,521). Repro `test_verify_ratelimit_retry_billing.py` red→green; task suite 35/35; billing/reconciliation neighbors 97/97; pyright 0; ruff clean. Integrated at 452d013; cross-feature set green in the combined intfix run. No security dimension (billing-tag correctness) → auto-gate on complete evidence.
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Outcome: PASS (auto-gated on complete evidence — non-security billing-correctness task; verify finding remediated + re-verified clean).
+Reviewed by: orchestrator (auto) · date: 2026-07-10
 
 ---
 
@@ -493,11 +482,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: Materially as planned, steps 1-4 verbatim (jsonschema dep -> pure output_validation.py + its own unit tests -> errors.py/error_catalog.py additive extension -> config.py/deps.py wiring). Deviations from the plan: (a) did the FULL red suite (all 34 tests, unit+integration) BEFORE any use_cases.py wiring, not just after steps 2-6 — writing the complete scenario suite up front surfaced the exact insertion-point/exception-mapping questions before code was written, which is stronger red-first discipline than the plan's "tests last-mile" step 7 ordering. (b) inserted validate_output's pop + M3/M4/M11 pre-flight checks into the SHARED `_validate_payload()` (used by both complete() and stream()) rather than a separate call site in complete() only — `_validate_payload` already runs `_strip_web_search_flag` as the identical precedent (pop a gateway-only field pre-dispatch); reusing it means stream()+engaged is rejected for free with zero stream()-specific code, and `_validate_payload`'s return signature grew from 2-tuple to 3-tuple (both of its 2 call sites updated). (c) extracted the M5-M8 retry loop into a NEW module-level function `_run_output_validation_retry()` (not inlined in complete()) after discovering inlining it tipped `CompletionUseCase.complete()` over pyright's control-flow complexity ceiling (`reportGeneralTypeIssues: "Code is too complex to analyze"` at the method, which cascaded into ~70 spurious unused-variable/-import errors across the whole method once pyright gave up analyzing it) — strictly-more-correct AND required for a clean `uv run pyright` (0 errors, full project). (d) added a `truncate_raw_output()` helper to `output_validation.py` beyond the 3 symbols the frozen §3 code block named — the integration sketch referenced a `_truncate(...)` call that was never defined anywhere in the frozen contract text; added as a pure, additive helper in the same module (its natural home, same pattern as `validate_model_output`) rather than duplicating truncation logic inline in `use_cases.py`.
+- [AI] verify — gate PASS (reviewed by orchestrator (auto))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

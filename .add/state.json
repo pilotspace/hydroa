@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "compliance-export-api",
-  "active_milestone": "enterprise-identity-compliance",
+  "active_task": "output-schema-validation",
+  "active_milestone": "logs-explorer-guardrails-v2",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -756,12 +756,12 @@
     },
     "output-schema-validation": {
       "title": "Opt-in output JSON-schema validation with bounded retry",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [],
       "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T14:26:18+00:00",
+      "updated": "2026-07-10T15:37:15+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:02+00:00",
@@ -779,7 +779,8 @@
           "apps/gateway/tests/output_schema_validation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
           "apps/gateway/tests/output_schema_validation/conftest.py": "d707fccfb65c7170be77b399e385ae71",
           "apps/gateway/tests/output_schema_validation/test_output_schema_validation.py": "809ca7c3f8c7a74b2bce7ac5a5bc9dc5",
-          "apps/gateway/tests/output_schema_validation/test_output_validation_domain.py": "a766d8243b5b80614fa248a5c4d3414b"
+          "apps/gateway/tests/output_schema_validation/test_output_validation_domain.py": "a766d8243b5b80614fa248a5c4d3414b",
+          "apps/gateway/tests/output_schema_validation/test_verify_ratelimit_retry_billing.py": "3075c81b8978a4b2ae66df29a02b5578"
         }
       },
       "scope": {
@@ -793,7 +794,22 @@
           "apps/gateway/pyproject.toml",
           "apps/gateway/tests/output_schema_validation/"
         ],
-        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
+        "snapshot_md5": "74fdcf056703df17413a46af4d3943d3"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-10T15:37:04+00:00",
+            "reason": "scope_violation: task 'output-schema-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (38 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "scim-provisioning": {
@@ -1061,7 +1077,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T14:47:09+00:00",
+  "updated": "2026-07-10T15:37:15+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1968,7 +1984,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "logs-explorer-guardrails-v2": "per-key-guardrail-policies",
+    "logs-explorer-guardrails-v2": "output-schema-validation",
     "enterprise-identity-compliance": "compliance-export-api"
   },
   "todos": [
