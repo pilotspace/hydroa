@@ -40,6 +40,10 @@ gateway:
       name: ""
       key: "url"
     drainTimeoutSeconds: 10                                              # GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECONDS
+    # Public (unauthenticated) new-tenant signup. Default OFF = invite-only (S1). A fresh
+    # deploy bootstraps its first tenant by temporarily setting this true, creating the
+    # tenant, then setting it back to false. Existing per-tenant member invites are unaffected.
+    publicSignupEnabled: false                                          # GATEWAY_PUBLIC_SIGNUP_ENABLED
 
   # Migrate-before-boot (v53): a gateway-pod initContainer runs `alembic upgrade head`
   # (after a bounded wait for Postgres) so the gateway never serves an unmigrated DB.

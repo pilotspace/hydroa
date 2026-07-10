@@ -32,6 +32,7 @@ def settings() -> Settings:
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         max_json_body_bytes=SMALL_MAX_JSON_BODY_BYTES,
         max_audio_upload_bytes=SMALL_MAX_AUDIO_UPLOAD_BYTES,
     )

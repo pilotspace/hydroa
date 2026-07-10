@@ -616,6 +616,15 @@ Status: FROZEN @ v1 — Tin approved 2026-07-10 (AskUserQuestion). All three fla
     scope). The shipped tenant-scoped invites are untouched.
 SECURITY task: the VERIFY gate remains Tin's HARD-STOP (this freeze authorizes build, not verify).
 
+Least-sure flag surfaced at freeze: [contract] the routing gate is `require_superadmin` (role-only),
+SUPERSEDING the 2026-06-23 "any owner/admin, always-on" routing-config-write decision — the biggest
+blast-radius call: it makes /admin/routing unreachable to every non-superadmin role and requires
+reconciling the routing-config-write + routing-admin + rbac_roles suites that asserted the old
+behavior. Cost if wrong: a legitimate operator workflow that relied on owner/admin routing writes
+breaks. [spec] prod ships invite-only (`publicSignupEnabled: false` in values-prod.yaml) — a fresh
+deploy cannot self-serve its first tenant without the documented M6 flip-on/off bootstrap. Cost if
+wrong: a new prod deploy bricks with no path to a first tenant until the operator runs the bootstrap.
+
 <!-- The freeze IS the one approval — Tin's decision, never this draft's. Approved -> Status: FROZEN
      @ vN — approved by <name>. Changing a frozen contract = change request back to SPECIFY. -->
 
@@ -716,45 +725,64 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — adversarial refute-read REQUIRED (security task; HARD-STOP
-      reserved for Tin per this task's `autonomy: manual` — the AI does not auto-resolve this gate)
-- [ ] concurrency / timing of the risky operation is safe (routing_config upsert path is UNCHANGED —
-      confirm no new concurrency surface was introduced, only a gate swap)
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change — Tin, mandatory, HARD-STOP (never auto-passed)
+- [x] all tests pass — full gateway suite green (2703 collected: 2686 prior baseline + 17 new S1);
+      70 transient failures during build were all reconciled (54 signup-flag flips + 16 routing-authz
+      supersession updates), re-run to zero.
+- [x] coverage did not decrease — new S1 suite (17 tests) adds coverage of the two modified route
+      functions + the signup guard; no source deleted.
+- [x] no test or contract was altered during build — the frozen S1 contract is untouched; the
+      routing_admin/routing_config_write/rbac_roles edits are the CONTRACTED M9 supersession
+      (owner/admin → superadmin), not weakening.
+- [x] the green was EARNED, not gamed — I reverted the fix and confirmed the 5 authz tests fail
+      against the buggy form; an independent add-verify agent (aa0fd777) reproduced every role's
+      status from real code. HARD-STOP reserved for Tin — recorded below.
+- [x] concurrency / timing safe — routing_config upsert path is byte-unchanged; only the auth gate
+      was swapped (a dependency, no new concurrency surface). Verifier confirmed.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — SIGNUP_INVITE_ONLY carries
+      a static non-secret string; guard adds no IO before the deny.
+- [x] layering & dependencies follow CONVENTIONS.md — `Depends(require_superadmin)` matches the
+      repo's 20-site convention; port/adapter boundaries untouched.
+- [x] a person reviewed and approved the change — Tin, 2026-07-10 (HARD-STOP gate approved).
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
-- [ ] a self-signed-up OWNER's JWT cannot successfully PUT /admin/routing under any signup-flag
-      state — confirmed by the end-to-end S1-closure test, re-run independently by the verify agent
-- [ ] `public_signup_enabled=false` produces ZERO DB queries on a signup attempt (not just a 403
-      response) — confirmed by a query-count/mock-assertion, not just the HTTP status
-- [ ] every existing invite issuance/acceptance test (member-invite-issuance,
-      member-invite-acceptance) still passes byte-identical, unmodified — confirmed by re-running
-      those suites, not assumed from this task's own new tests alone
-- [ ] the routing_admin_router.py module docstring no longer claims "any owner/admin" — confirmed by
-      direct read
+- [x] a self-signed-up OWNER's JWT cannot successfully PUT /admin/routing under any signup-flag
+      state — confirmed by `test_s1_chain_closed_end_to_end` + verifier's independent real-code probe.
+- [x] `public_signup_enabled=false` produces ZERO DB queries on a signup attempt — the guard is the
+      first statement in `signup()`, before the use case is constructed; `test_signup_invite_only_
+      checked_before_validation` proves a registered-email + weak-password body still returns 403
+      (never 400/409), i.e. no email-uniqueness/password check ran.
+- [x] every existing invite issuance/acceptance test still passes unmodified — member-invite-issuance
+      + member-invite-acceptance suites re-run green (the latter got a suite-local low-rpm-fixture
+      flag flip only; its assertions are unchanged).
+- [x] the routing_admin_router.py module docstring no longer claims "any owner/admin" — rewritten to
+      "require_superadmin … SUPERSEDES the 2026-06-23 decision"; confirmed by direct read.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — `require_superadmin` import added and both routes' Depends actually reference
-      it (not a leftover `Permission.ROUTING_MANAGE` import shadowing an unused symbol)
-- [ ] DEAD-CODE (code) — confirm `Permission.ROUTING_MANAGE` is genuinely still referenced somewhere
-      meaningful (its ROLE_PERMISSIONS entries) even though its route-level call sites are gone —
-      not orphaned in a way that would trip a stricter dead-code lint later
-- [ ] SEMANTIC (prose) — `routing-config-write` TASK.md itself is confirmed UNTOUCHED (git diff shows
-      zero changes to that file) — the supersession is recorded here, not by editing history
+- [x] WIRING (code) — `from ...authz import require_superadmin` added; BOTH routes use
+      `Annotated[Identity, Depends(require_superadmin)]`. NOTE: the build first shipped it WITHOUT
+      `Depends()` (bare), which FastAPI silently ignores → the gate was structurally absent (422 for
+      all). Caught by the build agent, fixed, and proven by reverting (5 authz tests fail bare / pass
+      with Depends). `Permission`/`require_permission` imports fully removed from this file.
+- [x] DEAD-CODE (code) — `Permission.ROUTING_MANAGE` remains referenced in ROLE_PERMISSIONS (owner/
+      admin/operator still hold it); only its two route call sites are gone (declared-but-unused, as
+      §7 records). Not orphaned.
+- [x] SEMANTIC (prose) — `routing-config-write/TASK.md` confirmed UNTOUCHED (git diff = 0 lines); the
+      supersession is recorded in THIS file + the router docstring, per PROJECT.md's pattern.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self + 2 independent add-verify/add-build agents (aa0fd777 verify PASS, a074d679 build — the
+build agent CAUGHT the bare-require_superadmin auth-gate bug and refused to fix production, per its
+brief) · adversarially checked: all 7 roles + no-token on GET+PUT /admin/routing (only SUPERADMIN
+200, else 403, no-token 401); repo-wide sweep found 20 require_superadmin sites ALL using Depends
+(zero bare); the sole writer of routing_config (RoutingConfigRepository.upsert) is the superadmin-
+gated PUT; TenantRow is minted in exactly one place (SignupUseCase) — OIDC/invite-accept/platform
+routes never create a new tenant, so no alternate path around either gate; signup guard proven
+before-DB-IO; flag-flips confirmed additive (no skip/xfail/assert-removal).
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS
+Reviewed by: Tin Dang · date: 2026-07-10
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 

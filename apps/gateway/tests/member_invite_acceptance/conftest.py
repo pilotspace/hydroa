@@ -62,6 +62,8 @@ async def low_rpm_app_and_client() -> AsyncIterator[tuple[Any, httpx.AsyncClient
         invite_preview_rpm=2,  # type: ignore[call-arg]
         invite_accept_rpm=2,  # type: ignore[call-arg]
         retention_check_interval_seconds=0,
+        # signup-and-routing-authz S1: this suite bootstraps a tenant via signup
+        public_signup_enabled=True,
     )
     application, c = await _make_app_and_client(s)
     async with c:

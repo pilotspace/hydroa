@@ -132,13 +132,12 @@ async def test_backcompat_owner_admin_member(
     )
     _assert_forbidden(r)
 
-    # --- /admin/routing GET (ROUTING_MANAGE) ---
-    for good_token in (owner_token, admin_token):
-        r = await client.get("/admin/routing", headers=_bearer(good_token))
-        _assert_not_forbidden(r)
-
-    r = await client.get("/admin/routing", headers=_bearer(member_token))
-    _assert_forbidden(r)
+    # --- /admin/routing: NO LONGER a ROUTING_MANAGE probe ---
+    # signup-and-routing-authz S1 (M7/M9) moved /admin/routing to SUPERADMIN-only, so it no
+    # longer maps to the ROUTING_MANAGE permission (which is now declared-but-unused, S1 §7).
+    # The owner/admin/operator → 403 behavior on /admin/routing is covered by
+    # tests/signup_routing_authz/. This matrix test only probes permissions that remain
+    # endpoint-observable.
 
     # --- /admin/cache PUT (maps to KEYS_MANAGE surface — currently require_owner_or_admin) ---
     for good_token in (owner_token, admin_token):
@@ -181,7 +180,12 @@ async def test_operator_permissions(
     seeded_tenant: dict[str, str],
     app: Any,
 ) -> None:
-    """Operator: ROUTING/CATALOG/KEYS/OPS/AUDIT pass; BUDGETS/PROVIDER_SECRETS/OIDC/MEMBERS 403."""
+    """Operator: CATALOG/KEYS/OPS/AUDIT pass; BUDGETS/PROVIDER_SECRETS/OIDC/MEMBERS 403.
+
+    ROUTING_MANAGE dropped from the endpoint-observable probes: /admin/routing is SUPERADMIN-only
+    after signup-and-routing-authz S1 (M7/M9), so it no longer reflects the operator's
+    still-held ROUTING_MANAGE permission (now declared-but-unused, S1 §7). Operator → 403 on
+    /admin/routing is covered by tests/signup_routing_authz/."""
     from gateway.tenants.domain.entities import Role
 
     tenant_id = uuid.UUID(seeded_tenant["tenant_id"])
@@ -193,12 +197,6 @@ async def test_operator_permissions(
     )
 
     # ── should PASS (operator holds these perms) ──────────────────────────────
-    # ROUTING_MANAGE
-    r = await client.get("/admin/routing", headers=_bearer(op_token))
-    _assert_not_forbidden(r)
-    r = await client.put("/admin/routing", json={}, headers=_bearer(op_token))
-    _assert_not_forbidden(r)
-
     # CATALOG_SYNC
     r = await client.post("/admin/catalog/sync", headers=_bearer(op_token))
     _assert_not_forbidden(r)

@@ -99,6 +99,14 @@ def settings() -> Settings:
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        # signup-and-routing-authz TASK.md §3 (S1): public signup now defaults OFF
+        # (`Settings.public_signup_enabled`). Every OTHER suite that inherits this fixture
+        # bootstraps a tenant via POST /admin/auth/signup and always assumed signup was
+        # open — flip it ON here so that assumption keeps holding for everyone EXCEPT the
+        # signup_routing_authz suite's flag-OFF tests, which build their own second app
+        # (tests/signup_routing_authz/conftest.py `second_app_client`) with the flag
+        # explicitly False. The production default itself stays OFF (config.py).
+        public_signup_enabled=True,  # type: ignore[call-arg]
     )
 
 

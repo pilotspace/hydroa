@@ -135,6 +135,14 @@ AUTH_PASSWORD_WEAK = ErrorSpec(
     400, "ERR_AUTH_PASSWORD_WEAK", "Password must be at least 10 characters"
 )
 
+#: Public signup rejected because it is disabled (invite-only). Checked FIRST,
+#: before any body validation or DB IO — see signup-and-routing-authz S1.
+SIGNUP_INVITE_ONLY = ErrorSpec(
+    403,
+    "ERR_SIGNUP_INVITE_ONLY",
+    "Public signup is disabled; ask an existing member for an invite",
+)
+
 # ---------------------------------------------------------------------------
 # Model errors
 # ---------------------------------------------------------------------------

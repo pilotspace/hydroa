@@ -191,6 +191,12 @@ class Settings(BaseSettings):
     otel_flush_interval_seconds: float = 5.0  # GATEWAY_OTEL_FLUSH_INTERVAL_SECONDS
     otel_queue_max: int = 2048  # GATEWAY_OTEL_QUEUE_MAX
 
+    # ── Public signup (signup-and-routing-authz S1) ──────────────────────────
+    # Default OFF (invite-only): the unauthenticated POST /admin/auth/signup
+    # new-tenant path is refused unless an operator explicitly opts in. A fresh
+    # deploy bootstraps its first tenant by temporarily flipping this on.
+    public_signup_enabled: bool = False  # GATEWAY_PUBLIC_SIGNUP_ENABLED
+
     # ── OIDC SSO (sso-oidc task) ─────────────────────────────────────────────
     oidc_enabled: bool = False  # GATEWAY_OIDC_ENABLED
     oidc_issuer: str = ""  # GATEWAY_OIDC_ISSUER (e.g. https://accounts.google.com)

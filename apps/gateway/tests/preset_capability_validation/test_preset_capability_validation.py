@@ -440,6 +440,7 @@ def _make_realtime_settings() -> Settings:
         database_url=REALTIME_TEST_DATABASE_URL,
         jwt_secret=REALTIME_TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         input_modality_guard_enabled=True,
     )
 

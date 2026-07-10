@@ -351,6 +351,7 @@ def make_oidc_settings(*, tenant_id: str | None = None, domain: str = FAKE_DOMAI
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         oidc_enabled=True,
         oidc_issuer=FAKE_ISSUER,
         oidc_client_id=FAKE_CLIENT_ID,
@@ -366,6 +367,7 @@ def make_disabled_settings() -> Settings:
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
 
 
@@ -454,6 +456,7 @@ async def bootstrap_tenant(tenant_name: str, owner_email: str) -> tuple[Any, str
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret=TEST_JWT_SECRET,
         redis_url="redis://localhost:6380/9",
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
     engine = bootstrap_app.state.engine

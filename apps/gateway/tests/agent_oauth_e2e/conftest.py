@@ -66,6 +66,7 @@ def settings() -> Settings:
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
         redis_url=_REDIS_URL,
+        public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         agent_oauth_verification_uri="https://app.test/activate",
         agent_oauth_device_code_ttl_seconds=600,
         agent_oauth_poll_interval_seconds=5,

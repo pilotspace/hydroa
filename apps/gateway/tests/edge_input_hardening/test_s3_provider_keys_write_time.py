@@ -39,6 +39,8 @@ def make_settings(**overrides: Any) -> Settings:
         "jwt_secret": TEST_JWT_SECRET,
         "redis_url": TEST_REDIS_URL,
         "provider_key_encryption_key": TEST_FERNET_KEY,
+        # signup-and-routing-authz S1: this suite bootstraps via signup
+        "public_signup_enabled": True,
     }
     kwargs.update(overrides)
     return Settings(**kwargs)

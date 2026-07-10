@@ -107,7 +107,7 @@ async def test_ra1_full_shape_authenticated_with_cooldown() -> None:
     fake_gate = FakeGate(states={"vendor/a": "closed", "vendor/b": "open"})
     app = _make_app_with_state(settings, cooldown_gate=fake_gate)
 
-    token = issue_jwt(settings, role=Role.OWNER)
+    token = issue_jwt(settings, role=Role.SUPERADMIN)  # S1 M7/M9: routing is now superadmin-only
 
     async for client in _client(app):
         resp = await client.get(ADMIN_ROUTING, headers=auth_header(token))
@@ -172,7 +172,7 @@ async def test_ra2_cooldown_disabled_gate_none_all_closed() -> None:
     # We inject None explicitly to match what create_app() does at threshold=0.
     app = _make_app_with_state(settings, cooldown_gate=None)
 
-    token = issue_jwt(settings, role=Role.OWNER)
+    token = issue_jwt(settings, role=Role.SUPERADMIN)  # S1 M7/M9: routing is now superadmin-only
 
     async for client in _client(app):
         resp = await client.get(ADMIN_ROUTING, headers=auth_header(token))
@@ -231,7 +231,7 @@ async def test_ra3_state_derivation_open_and_half_open() -> None:
     )
 
     app = _make_app_with_state(settings, cooldown_gate=gate)
-    token = issue_jwt(settings, role=Role.OWNER)
+    token = issue_jwt(settings, role=Role.SUPERADMIN)  # S1 M7/M9: routing is now superadmin-only
 
     async for client in _client(app):
         resp = await client.get(ADMIN_ROUTING, headers=auth_header(token))
@@ -269,7 +269,7 @@ async def test_ra4_redis_error_yields_unknown_still_200() -> None:
     )
     error_gate = ErrorGate()
     app = _make_app_with_state(settings, cooldown_gate=error_gate)
-    token = issue_jwt(settings, role=Role.OWNER)
+    token = issue_jwt(settings, role=Role.SUPERADMIN)  # S1 M7/M9: routing is now superadmin-only
 
     async for client in _client(app):
         resp = await client.get(ADMIN_ROUTING, headers=auth_header(token))
@@ -350,7 +350,7 @@ async def test_ra6_secrets_free_sentinel_values() -> None:
         cooldown_failure_threshold=0,
     )
     app = create_app(settings)
-    token = issue_jwt(settings, role=Role.OWNER)
+    token = issue_jwt(settings, role=Role.SUPERADMIN)  # S1 M7/M9: routing is now superadmin-only
 
     async for client in _client(app):
         resp = await client.get(ADMIN_ROUTING, headers=auth_header(token))
@@ -388,7 +388,7 @@ async def test_ra7_empty_groups_returns_retry_cooldown_blocks() -> None:
         upstream_retry_backoff_base_s=0.5,
     )
     app = create_app(settings)
-    token = issue_jwt(settings, role=Role.OWNER)
+    token = issue_jwt(settings, role=Role.SUPERADMIN)  # S1 M7/M9: routing is now superadmin-only
 
     async for client in _client(app):
         resp = await client.get(ADMIN_ROUTING, headers=auth_header(token))
@@ -424,7 +424,7 @@ async def test_ra8_schema_stable_all_top_level_keys_present() -> None:
         cooldown_failure_threshold=0,
     )
     app = create_app(settings)
-    token = issue_jwt(settings, role=Role.OWNER)
+    token = issue_jwt(settings, role=Role.SUPERADMIN)  # S1 M7/M9: routing is now superadmin-only
 
     async for client in _client(app):
         resp = await client.get(ADMIN_ROUTING, headers=auth_header(token))
