@@ -2,6 +2,7 @@
 
 slug: compliance-export-api · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
+sensitivity: data   <!-- read-only over the existing immutable audit store; no new identity/auth surface — data-handling risk (bulk export, filter correctness, honest pagination), not a security HARD-STOP surface. -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
 phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
@@ -12,37 +13,91 @@ phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> buil
 
 ## 0 · GROUND — the real codebase ▸ docs/02-the-flow.md
 
-Touches (files · symbols · signatures): <path:symbol — what it is / how it is keyed>
-Context (working folder): <docs · todos · config · data the task touches — task-delta only>
-Honors (patterns / conventions): <PROJECT.md / CONVENTIONS.md anchors — task-delta only, never a re-scan>
-Seams consulted: <SEAMS.md entry cited instead of re-deriving, e.g. .add/SEAMS.md#scope-token-grammar — optional, omit if none apply>
-Anchors the contract cites: <the symbols §3 will name>
-Issues/Risks (→ feed §1): <problems · traps · untestable risks found in the real code — task-delta; §1 builds on these>
-Related intent: <PROJECT.md § · GLOSSARY term(s) · originating request/milestone rationale — the WHY; task-delta>
-Ground SHA: <`git rev-parse --short HEAD` at ground time — cite symbols, not bare line numbers; any line ref is "as of" this commit>
+Touches (files · symbols · signatures):
+- `apps/gateway/src/gateway/usage/api/router.py:728 get_audit` — the EXISTING tenant-scoped read this task mirrors envelope conventions from. FROZEN @ v1 (audit-log-store TASK.md §3) — do NOT edit; this task adds a sibling route, never widens the frozen one. `AuditEventItem` (line 704) and `AuditListResponse` (line 719) are the item/envelope shapes to reuse field-for-field.
+- `apps/gateway/src/gateway/usage/api/router.py:599 _parse_pagination` — manual limit/offset parsing that raises `PAYLOAD_INVALID` (not FastAPI's 422 auto-shape) on a bad numeric string; this task's own limit/cursor parsing follows the same manual-parse-not-Pydantic-coercion convention so error bodies stay in the `ERR_*` catalog shape.
+- `apps/gateway/src/gateway/audit/infrastructure/audit_repository.py:27 AuditRepository` — append-only repo; exposes `count_for_tenant`, `list_for_tenant_paged` (offset-based, `ORDER BY created_at DESC, id DESC`, line 100). This task ADDS a new keyset method (e.g. `list_for_tenant_export`) rather than reusing the offset method — offset degrades on a live-appending table (the milestone's own "stable across pages even as new rows append" requirement rules out `.offset()`).
+- `apps/gateway/src/gateway/audit/infrastructure/audit_events_orm.py:44 AuditEventRow`, `:57 __table_args__` — only index today is `audit_events_tenant_created_idx (tenant_id, created_at)`, no `id` in the index and no index on `actor_email`. A keyset predicate on `(created_at, id)` and an `actor_email =` filter will both do a partial index-then-filter scan on this index today — acceptable at current audit volumes, but the contract should sanction a follow-up composite index as an additive migration (see §3).
+- `apps/gateway/src/gateway/audit/domain/audit_event.py:26 AuditEvent`, `:64 AuditLog` (Protocol) — frozen dataclass + port; `id` is caller-assigned `uuid.uuid4()` (confirmed at `tenants/api/users_router.py:154` — **not** UUIDv7/time-ordered), so `(created_at, id)` ties are broken by an arbitrary-but-deterministic UUID4, not true insertion order. Deterministic ≠ chronological-on-tie; documented as an accepted limitation (§1 assumption).
+- `apps/gateway/src/gateway/tenants/domain/authz.py:54 Permission`, `:76 ROLE_PERMISSIONS`, `:230 require_permission` — `Permission.AUDIT_READ` (line 66) already grants owner/admin/operator, denies billing_admin/viewer/member (lines 76-121). This is a tenant-scoped permission (not a `require_superadmin` operator-wide gate) — the right fit per dispatch note, and per the PROJECT.md-folded invariant that a `Permission` cannot express "excludes OWNER" so a NEW permission would be pointless overhead here; reusing `AUDIT_READ` is the additive, no-new-enum-member move.
+- `apps/gateway/src/gateway/audit/application/audit_writer.py:30 record_audit` — fire-and-forget, fail-open (separate session, swallows all exceptions, never blocks/rolls back the caller's HTTP response). Call-site pattern confirmed at `tenants/api/users_router.py:148-171`: `asyncio.ensure_future(record_audit(request.app.state.sessionmaker, AuditEvent(...)))`, using `request.app.state.sessionmaker` as the session factory. This task's own "export access is itself audited" Must reuses this exact seam — no new writer.
+- `apps/gateway/src/gateway/usage/application/reconciliation.py:104 _as_naive_utc` — the established fix for the asyncpg aware/naive `created_at` bind mismatch (test schema via `create_all` maps `Mapped[datetime]` to a NAIVE column; prod Alembic column is TIMESTAMPTZ). Any `since`/`until`/cursor `created_at` bound in this task MUST go through the same normalize-to-naive-UTC step before binding, or it 500s only in the test DB (silent prod/test divergence) — a documented, previously-hit gotcha (CONVENTIONS.md TDD delta), not a hypothetical.
+- `apps/gateway/src/gateway/core/error_catalog.py:182 PAYLOAD_INVALID`, `:83 AUTH_FORBIDDEN`, `:77/:80 AUTH_TOKEN_MISSING/AUTH_TOKEN_INVALID` — reused verbatim for the shared rejection shapes. Two NEW `ErrorSpec` constants are needed (§3): a malformed-cursor code and an export-query-timeout code — neither exists in the catalog today.
+- `apps/gateway/src/gateway/usage/application/retention_sweep.py:9 (module docstring)`, `:110 _SET_AUDIT_PURGE_GUC`, `:358` — the operator-wide retention sweeper CAN physically DELETE aged `audit_events` rows past `effective_audit_window` (`SET LOCAL app.audit_purge='on'`, the one sanctioned bypass of the immutability trigger at `migrations/f2a4c6e8b0d3`). An export cursor referencing a row that the sweeper purges mid-session simply stops matching the keyset predicate — no error, the row silently disappears from later pages. This is an honest-degrade case to state explicitly, not a defect to "fix" (§1/§2).
+- `apps/gateway/migrations/versions/511ad8a7b65e_audit_events_actor_key_id.py` — current alembic head (`alembic heads` confirmed single head at ground time: `511ad8a7b65e`). A new migration for the proposed composite export index parents on this revision.
+- `apps/gateway/tests/audit_read/conftest.py:87 seed_audit_event`, `:28-31 SIGNUP/LOGIN/AUDIT` constants, `:60 mint_role_token` — the exact fixture/seed pattern this task's own tests will extend (real Postgres+Redis, direct `audit_events` INSERT via `text()`, role tokens minted via `app.state.token_service.issue`). Confirms `created_at` seeds must be naive UTC (`_naive` helper, line 41-43) — same gotcha as above.
+
+Context (working folder): no existing dashboard/admin UI surface for this task — the milestone's own "UI/UX in scope" list (MILESTONE.md line 16) names SCIM/SAML/domain-verification/retention settings only; compliance export is deliberately API-only in this milestone slice. `GLOSSARY.md` has no existing "cursor" or "compliance export" term — new Glossary delta below.
+
+Honors (patterns / conventions):
+- `.add/CONVENTIONS.md:13-16` — clean-architecture layering (`domain/` ← `application/` ← `infrastructure/` ← `api/`). The `gateway/audit/` bounded context currently has NO `api/` layer of its own (its only HTTP exposure today is a cross-module import inside `usage/api/router.py:741` and the superadmin variant `tenants/api/platform_audit_router.py`). This task is the first to give `audit/` its own `api/` layer — the architecturally correct home for a NEW audit-owned route, not another cross-import into `usage/api/router.py`.
+- `.add/CONVENTIONS.md` (TDD delta, `reconciliation.py:104`) — naive-UTC bind normalization, cited above.
+- `.add/PROJECT.md` Invariants — "Every tenant-owned row carries `tenant_id`; every query is tenant-scoped" and "No outbound IO without timeout + bounded retry (idempotent only) + circuit breaker" (the latter scoped to genuine upstream/network IO — this task's only IO is an internal Postgres read, so the applicable sub-slice is "timeout", matching the existing `get_audit`/`get_alerts` precedent of a bare `asyncio.timeout` with no CB/retry wrapper).
+- MILESTONE.md shared decision (line 19): "All five surfaces are tenant-scoped config on EXISTING primitives... export reads the existing audit store. No parallel identity or audit store." — honored: no new table, no new store, additive index only.
+- MILESTONE.md shared decision (line 23): "Compliance export never mutates... export access is itself audited." — both pinned as Musts below.
+
+Anchors the contract cites: `usage/api/router.py:704 AuditEventItem` (item shape reused), `audit/infrastructure/audit_repository.py:27 AuditRepository` (extended with a new keyset method), `audit/domain/audit_event.py:26 AuditEvent` / `:73 record()` (reused verbatim for audit-of-export), `tenants/domain/authz.py:66 Permission.AUDIT_READ` / `:230 require_permission` (reused verbatim), `usage/application/reconciliation.py:104 _as_naive_utc` (reused pattern), `core/error_catalog.py` (two new `ErrorSpec` constants).
+
+Issues/Risks (→ feed §1):
+- Offset pagination is explicitly wrong for this use case (milestone requirement: stable across pages as new rows append) — must be keyset/cursor on `(created_at, id)`, a genuinely new repository method, not a reuse of `list_for_tenant_paged`.
+- `id` is `uuid4()`, not time-ordered — cursor determinism holds, but "stable across pages" must be worded as deterministic-total-order, not true insertion-order-on-tie.
+- No index covers `actor_email` or includes `id` — an additive composite index is in scope for a correctness-adjacent performance reason (archival page sizes are larger than the interactive 100-row cap), not gold-plating.
+- Existing `get_audit`/`get_alerts` let `asyncio.TimeoutError` propagate uncaught (unhandled → framework default 500, not a catalog `ERR_*` shape) — acceptable at a 100-row interactive cap, but this task's larger page ceiling (§1) raises the odds of hitting it; catching it into an honest `ERR_EXPORT_TIMEOUT` 504 is a deliberate, recorded hardening beyond the mirrored precedent (fix-if-strictly-more-correct, PROJECT.md's own folded convention), not a silent copy.
+- Retention sweeper can purge rows mid-export (rare but real under a short `retention_audit_floor_days`) — must be an explicit, tested, non-error scenario, not an unstated edge case.
+- No "compliance officer" Role/Permission exists distinct from AUDIT_READ's owner/admin/operator set — flagged as a freeze question (§3) rather than silently inventing a narrower gate.
+
+Related intent: MILESTONE.md "enterprise-identity-compliance" §Scope item (5) and Exit criterion "A compliance officer exports the tenant's audit trail filtered by time/actor with stable cursor pagination; the export itself appears in the audit log" (line 44). GLOSSARY.md has no "Audit event" vs "compliance export" distinction yet — new delta below mirrors the already-folded DDD lesson that "audit event" is its own bounded concept (PROJECT.md line 16).
+Ground SHA: `2071046`
 
 ---
 
 ## 1 · SPECIFY — the rules ▸ docs/03-step-1-specify.md
 
-Feature: <name>
-Framings weighed: <chosen> (chosen) · <alternative> · <alternative>
+Feature: GET /admin/audit/export — read-only, cursor-paginated, filtered compliance export over the immutable audit store
+Framings weighed:
+- **(chosen) new sibling route in a new `gateway/audit/api/` layer**, reusing `AuditEventItem`'s field shape + `AUDIT_READ` permission + `record_audit` writer, but with its OWN keyset-pagination repository method and its OWN envelope (no `total`, cursor instead of offset). Keeps the frozen `GET /admin/audit` v1 contract untouched; gives the audit bounded context its first `api/` layer (clean-architecture-correct).
+- (rejected) widen `GET /admin/audit` itself with new query params (`since`/`until`/`actor_email`/`cursor`) — rejected because it is FROZEN @ v1 and archival-scale semantics (page cap 5000 vs interactive 100, NDJSON body) are a different contract, not a widening; touching it would force `total`+offset+cursor to coexist confusingly on one envelope.
+- (rejected) async export job + object-store delivery (matches the milestone's explicit P2 backlog note) — rejected for THIS task: synchronous cursor-paginated pull is sufficient for a SIEM connector's incremental poll loop and needs no new infra (queue, object store, delivery webhook); revisit only if a real export exceeds request-lifetime bounds even at page_size=1.
+
 Must:
 <must>
-  - <required behavior>
+  - M1 AUDIT_READ-gated: reuse `Permission.AUDIT_READ` unchanged (owner/admin/operator → 200; billing_admin/viewer/member → 403) — no new Permission enum member (mirrors `tenants/domain/authz.py:66`, avoids the PROJECT.md-documented "excludes OWNER" footgun for a fresh permission).
+  - M2 Tenant-scoped: every row returned carries the caller's own `identity.tenant_id`; no filter combination (time range, actor, cursor) can widen visibility to another tenant's rows.
+  - M3 Deterministic, append-safe ordering: `ORDER BY created_at DESC, id DESC`; keyset predicate `(created_at, id) < (:cursor_created_at, :cursor_id)` — a row inserted by ANY concurrent write during the export session, with `created_at` newer than the export's first-page boundary, is never re-surfaced or reshuffled into an already-issued page (keyset pagination only walks toward smaller `(created_at, id)`, so it is structurally immune to the classic offset-pagination "duplicate/skip on live append" defect).
+  - M4 Cursor pagination only — no `offset` parameter. Cursor is an opaque base64url-encoded token carrying `{created_at, id}` of the last row of the previous page; absent cursor = first page.
+  - M5 Page size bounded: `limit` 1..5000, default 1000 (materially larger than the interactive `get_audit` cap of 100 — this is an archival/SIEM-connector surface, not a UI page); non-integer or out-of-range → reject.
+  - M6 Optional time-range filter: `since`/`until` (ISO-8601, both inclusive) on `created_at`; normalized via the existing `_as_naive_utc` pattern before binding. Absent = unbounded on that side.
+  - M7 Optional actor filter: `actor_email` (exact match, case-insensitive) against `audit_events.actor_email`. Absent = all actors.
+  - M8 Two response formats: default NDJSON (`Content-Type: application/x-ndjson`, one `AuditEventItem`-shaped JSON object per line, zero non-audit-row lines in the body); `?format=json` opt-in returns `{items: AuditEventItem[], next_cursor: str|null, has_more: bool}` — no `total` field (a second COUNT over an arbitrary/unfiltered range is a real cost with no archival-loop use; explicit, recorded divergence from `AuditListResponse`'s `{items,total}` shape, not a blind mirror).
+  - M9 Cursor delivery for NDJSON: `X-Audit-Export-Next-Cursor` (present iff `has_more`) and `X-Audit-Export-Has-More: true|false` response headers — keeps every NDJSON body line a pure, homogeneous audit record (safe for a SIEM parser that ingests every line as-is; a trailing sentinel line was considered and rejected for exactly this reason).
+  - M10 Read-only: the export path issues SELECT only; `audit_events` is never written by the export query itself.
+  - M11 Export access is itself audited: on every 200, fire-and-forget one `record_audit` call (existing fail-open writer, `request.app.state.sessionmaker`), `action="audit.export"`, `result="success"`, `metadata={since, until, actor_email, cursor_used: bool, limit, row_count, format}`. An audit-write failure MUST NOT fail or delay the export response (reuses the writer's existing fail-open/separate-session contract verbatim — no new rollback logic needed).
+  - M12 Bounded query time: `asyncio.timeout` around the DB read (mirrors `_AUDIT_READ_TIMEOUT_SECONDS` precedent); UNLIKE the mirrored `get_audit`/`get_alerts` precedent (which let `TimeoutError` propagate to an unhandled 500), this task catches it and raises a new catalog `ERR_EXPORT_TIMEOUT` (504) — recorded hardening beyond the mirrored surface, justified by the larger page ceiling (M5) raising real timeout odds; no retry, no circuit breaker (internal Postgres read, not upstream/network IO — matches every existing DB-read route in this codebase, none of which wrap a CB around a SELECT).
+  - M13 Honest purge interaction: a row purged by the retention sweeper between two pages of the same export session simply stops matching the keyset predicate on the next page — no error, no gap marker, silently absent (documented behavior, not a defect).
 </must>
 Reject:
 <reject>
-  - <bad input / situation> -> "<error_code>"
+  - missing/invalid bearer token -> "ERR_AUTH_INVALID_TOKEN" (401, unchanged auth dependency, mirrors get_audit)
+  - caller's role lacks AUDIT_READ (billing_admin/viewer/member) -> "ERR_AUTH_FORBIDDEN" (403)
+  - `since`/`until` not valid ISO-8601 -> "ERR_PAYLOAD_INVALID" (422)
+  - `since` > `until` (inverted range) -> "ERR_PAYLOAD_INVALID" (422)
+  - `limit` non-integer, < 1, or > 5000 -> "ERR_PAYLOAD_INVALID" (422)
+  - `format` present and not one of `json`/`ndjson` -> "ERR_PAYLOAD_INVALID" (422)
+  - `cursor` present but undecodable / malformed / wrong shape -> "ERR_CURSOR_INVALID" (422)
+  - DB read exceeds the bounded query timeout -> "ERR_EXPORT_TIMEOUT" (504)
 </reject>
 After:
 <after>
-  - <state that is true once it succeeds>
+  - A compliance officer (owner/admin/operator) can pull their tenant's full audit trail, optionally time- and actor-filtered, as a sequence of bounded pages via an opaque cursor, in NDJSON (default, SIEM-ready) or JSON, with zero ability to see another tenant's rows and zero risk of a duplicate/skipped row from concurrent audit writes during the pull.
+  - Every successful export page is itself a new `audit_events` row (`action="audit.export"`), fail-open, visible to a subsequent `GET /admin/audit` or export call — satisfying the milestone's "export access is itself audited" exit criterion.
+  - The existing `GET /admin/audit` v1 contract, its tests, and its envelope are untouched.
 </after>
 Assumptions — lowest-confidence first:
 <assumptions>
-  ⚠ <the one assumption most likely to be wrong> — lowest confidence because <why>; if wrong: <cost>
-  - [ ] <next assumption, ranked> — confirm or deny; never carry an open one forward
+  ⚠ **NDJSON as the DEFAULT format** (JSON via `?format=json` opt-in) is the single lowest-confidence call in this draft — lowest confidence because it partially diverges from the project's stated preference ("the project favors mirroring existing frozen read envelopes") for a persona-driven SIEM-ergonomics reason (concatenation-safe across pages, no whole-array buffering, matches Splunk/Datadog/Elastic bulk-ingest convention) that Tin has not weighed in on; if wrong: a build ships the less-useful default and a follow-up task has to flip it (cheap to reverse pre-freeze, awkward post-freeze since `format` default is part of the frozen contract). See FREEZE-QUESTIONS in §3.
+  - [ ] Reusing `Permission.AUDIT_READ` (owner/admin/operator) rather than a narrower "compliance officer" gate — confirm or deny; if a narrower gate is wanted, no such Role/Permission exists today and would be a size-up (new enum member + matrix edit), out of this task's additive scope unless Tin asks for it explicitly.
+  - [ ] `limit` bounds (default 1000, max 5000) are a judgment call with no direct precedent in this codebase (the only sibling, `get_audit`, caps at 100 for an interactive UI, not an archival pull) — confirm the ceiling is acceptable given the `ERR_EXPORT_TIMEOUT` (504) safety valve at M12, or should be lower/higher.
+  - [ ] Composite index `(tenant_id, created_at, id)` (+ `actor_email` as leaf or separate index) as an additive migration is proposed but not load-tested against production audit volume — confirm at BUILD/VERIFY with `EXPLAIN ANALYZE` on a realistic row count rather than assuming it's needed from the schema alone.
 </assumptions>
 
 <!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
@@ -54,11 +109,148 @@ Assumptions — lowest-confidence first:
 <scenarios>
 
 ```gherkin
-Scenario: <short name>   # <Must/Reject item this covers, e.g. M1 or R1>
-  Given <starting situation>
-  When <action>
-  Then <expected result>
-  And <what must remain unchanged>   # required for every rejection
+Scenario: owner/admin/operator can export   # M1
+  Given a tenant with role owner (also: admin, also: operator)
+  When they call GET /admin/audit/export
+  Then the response is 200
+  And the body is a valid NDJSON stream of AuditEventItem-shaped lines
+
+Scenario: billing_admin/viewer/member cannot export   # M1, R2
+  Given a tenant with role billing_admin (also: viewer, also: member)
+  When they call GET /admin/audit/export
+  Then the response is 403 "ERR_AUTH_FORBIDDEN"
+  And no audit_events row is written for this attempt (denied before any DB read)
+
+Scenario: no bearer token   # R1
+  Given no Authorization header
+  When calling GET /admin/audit/export
+  Then the response is 401 "ERR_AUTH_INVALID_TOKEN"
+  And no audit-of-export row is written
+
+Scenario: tenant isolation under export filters   # M2
+  Given tenant A has 2 audit rows and tenant B has 1 audit row
+  When tenant A's owner calls GET /admin/audit/export with no filters
+  Then only tenant A's 2 rows are returned across all pages
+  And tenant B's row never appears, even if actor_email/time-range filters would otherwise match it
+
+Scenario: deterministic keyset ordering survives a concurrent insert   # M3
+  Given a tenant with 5 audit rows seeded at distinct timestamps
+  When the owner requests page 1 (limit=2), THEN a new audit row is inserted with created_at newer than all 5, THEN page 2 is requested with the cursor from page 1
+  Then page 2 contains exactly the 3rd/4th oldest of the ORIGINAL 5 rows (not the new row, not a duplicate/skip of any original row)
+  And the new row only ever appears on a fresh page 1 request (never mid-walk)
+
+Scenario: cursor pagination walks the full set with no gaps or dupes   # M3, M4
+  Given a tenant with 7 audit rows
+  When the owner pages through with limit=3 following next_cursor until has_more=false
+  Then the concatenation of all pages' ids equals the 7 seeded ids, each exactly once, in created_at DESC, id DESC order
+
+Scenario: no offset parameter accepted   # M4
+  Given a tenant owner
+  When calling GET /admin/audit/export?offset=5
+  Then offset is silently ignored (not a recognized parameter — no reject; cursor is the only paging mechanism)
+
+Scenario: default and max page size   # M5
+  Given a tenant with 1200 audit rows
+  When the owner calls GET /admin/audit/export with no limit
+  Then the first page returns exactly 1000 items (the default) with has_more=true
+
+Scenario: limit out of bounds   # M5, R5
+  Given a tenant owner
+  When calling GET /admin/audit/export?limit=0 (also: limit=5001, also: limit=abc)
+  Then the response is 422 "ERR_PAYLOAD_INVALID"
+  And no rows are read or returned
+
+Scenario: since/until filter narrows results   # M6
+  Given a tenant with audit rows at minute 1, 2, and 3
+  When the owner calls GET /admin/audit/export?since=<minute 2 iso>&until=<minute 3 iso>
+  Then only the minute-2 and minute-3 rows are returned (minute-1 excluded)
+
+Scenario: malformed time-range value   # R3
+  Given a tenant owner
+  When calling GET /admin/audit/export?since=not-a-date
+  Then the response is 422 "ERR_PAYLOAD_INVALID"
+
+Scenario: inverted time range   # R4
+  Given a tenant owner
+  When calling GET /admin/audit/export?since=<later iso>&until=<earlier iso>
+  Then the response is 422 "ERR_PAYLOAD_INVALID"
+  And no rows are read
+
+Scenario: actor_email filter narrows results   # M7
+  Given a tenant with audit rows from actor "a@x.io" and actor "b@x.io"
+  When the owner calls GET /admin/audit/export?actor_email=a@x.io
+  Then only the "a@x.io" rows are returned, case-insensitively (e.g. "A@X.IO" matches too)
+
+Scenario: NDJSON is the default format and is line-pure   # M8, M9
+  Given a tenant with 3 audit rows
+  When the owner calls GET /admin/audit/export with no format param
+  Then Content-Type is application/x-ndjson
+  And the body has exactly 3 lines, each a valid JSON object with the AuditEventItem fields, no extra sentinel/marker line
+  And the X-Audit-Export-Has-More header is "false" and X-Audit-Export-Next-Cursor is absent
+
+Scenario: JSON format opt-in   # M8
+  Given a tenant with 3 audit rows
+  When the owner calls GET /admin/audit/export?format=json
+  Then Content-Type is application/json
+  And the body is {"items": [...3 AuditEventItem...], "next_cursor": null, "has_more": false}
+  And the body has no "total" field
+
+Scenario: invalid format value   # R6? (payload-invalid family)
+  Given a tenant owner
+  When calling GET /admin/audit/export?format=csv
+  Then the response is 422 "ERR_PAYLOAD_INVALID"
+
+Scenario: malformed cursor   # R7
+  Given a tenant owner
+  When calling GET /admin/audit/export?cursor=not-valid-base64-or-wrong-shape
+  Then the response is 422 "ERR_CURSOR_INVALID"
+  And no rows are read
+
+Scenario: export never mutates audit_events   # M10
+  Given a tenant with audit rows
+  When the owner calls GET /admin/audit/export (any filters, any page)
+  Then no audit_events row's existing fields change and no row is deleted as a side effect of the read
+
+Scenario: successful export is itself audited   # M11
+  Given a tenant owner exports page 1 successfully
+  When a subsequent GET /admin/audit (or GET /admin/audit/export) call is made
+  Then it includes one new row with action="audit.export", result="success", actor_user_id = the exporting owner, metadata containing since/until/actor_email/cursor_used/limit/row_count/format
+
+Scenario: audit-of-export failure does not fail the export   # M11 (fail-open)
+  Given the audit writer's session/sessionmaker raises on write (simulated)
+  When the owner calls GET /admin/audit/export
+  Then the export response is still 200 with the correct page body
+  And the audit-write failure is only logged, never surfaced to the caller
+
+Scenario: bounded query timeout surfaces honestly   # M12, R8
+  Given a query that exceeds the export timeout budget (simulated slow session)
+  When the owner calls GET /admin/audit/export
+  Then the response is 504 "ERR_EXPORT_TIMEOUT"
+  And no partial/truncated NDJSON body is sent as if it were a complete page
+
+Scenario: purge mid-export is a silent, honest gap   # M13
+  Given a tenant with rows older than the retention floor eligible for the next sweep
+  When the owner holds a cursor from page 1, THEN the retention sweeper purges one of the remaining rows, THEN page 2 is requested
+  Then page 2 returns the remaining un-purged rows with no error and no explicit "row missing" marker
+  And the exported row count for that session is simply smaller than it would have been pre-purge (documented, not a defect)
+
+Scenario: empty result set   # boundary
+  Given a tenant with zero audit rows (or filters matching zero rows)
+  When the owner calls GET /admin/audit/export
+  Then the response is 200 with an empty NDJSON body (0 lines) and X-Audit-Export-Has-More: false
+  And (format=json) {"items": [], "next_cursor": null, "has_more": false}
+
+Scenario: last page boundary — exact multiple of limit
+  Given a tenant with exactly 1000 audit rows and the default limit=1000
+  When the owner requests page 1
+  Then all 1000 rows are returned in one page with has_more=false and no next_cursor
+  (i.e. has_more is computed from "was there a 1001st matching row", never inferred from row_count == limit alone)
+
+Scenario: duplicate cursor request is idempotent   # concurrency/retry-safety
+  Given the owner has a valid cursor from a prior page
+  When the SAME cursor+params request is issued twice (simulating a client-side retry after a dropped response)
+  Then both responses return byte-identical page content (absent an intervening purge/insert)
+  And two separate audit-of-export rows are written (M11 fires per successful read, retries are not deduped — documented, not a defect)
 ```
 
 </scenarios>
@@ -70,15 +262,147 @@ Scenario: <short name>   # <Must/Reject item this covers, e.g. M1 or R1>
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
 ```
-<METHOD> <path>   body: { <fields> }
-  200 -> { <success fields> }
-  4xx -> { error: "<code>" | "<code>" }
-Schema: <tables/fields touched, and access pattern>
+GET /admin/audit/export
+  query: limit?=1000 (1..5000) · cursor?=<opaque base64url> · since?=<ISO-8601> · until?=<ISO-8601>
+       · actor_email?=<string, case-insensitive exact> · format?="ndjson"|"json" (default "ndjson")
+  auth: Bearer JWT, Permission.AUDIT_READ (owner/admin/operator; billing_admin/viewer/member -> 403)
+
+  200 (format=ndjson, default) ->
+    Content-Type: application/x-ndjson
+    Headers: X-Audit-Export-Has-More: "true"|"false"
+             X-Audit-Export-Next-Cursor: <opaque>   # present iff Has-More: true
+    Body: one JSON object per line, each shaped exactly like AuditEventItem:
+      {"id": str, "actor_email": str|null, "action": str, "target_type": str|null,
+       "target_id": str|null, "result": str, "metadata": object, "created_at": str}
+
+  200 (format=json) ->
+    Content-Type: application/json
+    { "items": [ <AuditEventItem...> ], "next_cursor": str|null, "has_more": bool }
+    # deliberately NO "total" field — divergence from AuditListResponse{items,total},
+    # recorded here: a COUNT over an arbitrary/unfiltered range is a real cost with
+    # no archival-loop use.
+
+  401 -> { code: "ERR_AUTH_INVALID_TOKEN" }        # missing/invalid bearer
+  403 -> { code: "ERR_AUTH_FORBIDDEN" }             # role lacks AUDIT_READ
+  422 -> { code: "ERR_PAYLOAD_INVALID" }            # bad since/until/limit/format, since > until
+  422 -> { code: "ERR_CURSOR_INVALID" }             # malformed/undecodable cursor      [NEW]
+  504 -> { code: "ERR_EXPORT_TIMEOUT" }             # query exceeded the bounded budget [NEW]
+
+Schema (no new table — reads audit_events only):
+  audit_events(id, tenant_id, actor_user_id, actor_key_id, actor_email, action,
+               target_type, target_id, result, metadata, created_at)   -- existing, unchanged
+  Access: SELECT ... WHERE tenant_id = :tid
+                       [AND actor_email ILIKE :actor_email]
+                       [AND created_at >= :since] [AND created_at <= :until]
+                       [AND (created_at, id) < (:cursor_created_at, :cursor_id)]
+          ORDER BY created_at DESC, id DESC
+          LIMIT :limit + 1                          -- fetch one extra row to derive has_more
+  Write (side effect, fire-and-forget): one INSERT into audit_events per successful 200
+    via the existing record_audit() writer — action="audit.export".
+
+New repository method (audit/infrastructure/audit_repository.py — additive, AuditRepository
+gains one method; list_for_tenant / list_for_tenant_paged / count_for_tenant untouched):
+  async def list_for_tenant_keyset(
+      self,
+      tenant_id: uuid.UUID,
+      *,
+      limit: int,
+      cursor: tuple[datetime, uuid.UUID] | None = None,
+      since: datetime | None = None,
+      until: datetime | None = None,
+      actor_email: str | None = None,
+  ) -> list[AuditEvent]:
+      """Keyset page over (created_at, id) DESC; caller fetches limit+1 to derive has_more."""
+      ...
+
+New API layer (gateway/audit/api/router.py — NEW file, audit's first api/ layer):
+  audit_export_router = APIRouter(prefix="/admin/audit", tags=["audit"])
+
+  @audit_export_router.get("/export")
+  async def export_audit(
+      request: Request,
+      identity: Annotated[Identity, require_permission(Permission.AUDIT_READ)],
+      session: Annotated[AsyncSession, Depends(get_session)],
+      limit: Annotated[str | None, Query()] = None,
+      cursor: Annotated[str | None, Query()] = None,
+      since: Annotated[str | None, Query()] = None,
+      until: Annotated[str | None, Query()] = None,
+      actor_email: Annotated[str | None, Query()] = None,
+      format: Annotated[str | None, Query()] = None,
+  ) -> Response:
+      """Mounted in main.py alongside platform_audit_router / usage_router (§0 anchors)."""
+      raise NotImplementedError  # build-phase fills this in against the frozen shape above
+
+Mount (main.py, additive import + include_router, mirrors platform_audit_router's own
+two-line pattern at main.py:152/1136):
+  from gateway.audit.api.router import audit_export_router
+  app.include_router(audit_export_router)
+
+Migration sketch (additive, parents on current head 511ad8a7b65e):
+  revision: <new> audit_events_export_index
+  down_revision: "511ad8a7b65e"
+  def upgrade() -> None:
+      op.create_index(
+          "audit_events_tenant_created_id_idx",
+          "audit_events",
+          ["tenant_id", sa.text("created_at DESC"), sa.text("id DESC")],
+      )
+      op.create_index(
+          "audit_events_actor_email_idx",
+          "audit_events",
+          ["actor_email"],
+      )
+  def downgrade() -> None:
+      op.drop_index("audit_events_actor_email_idx", table_name="audit_events")
+      op.drop_index("audit_events_tenant_created_id_idx", table_name="audit_events")
+  # Confirm-at-BUILD per §1 assumption: EXPLAIN ANALYZE against a realistic row count
+  # before committing to both indexes vs one; do not skip the measurement.
+
+New error_catalog.py entries (additive, core/error_catalog.py):
+  CURSOR_INVALID = ErrorSpec(422, "ERR_CURSOR_INVALID", "Export cursor is malformed or unrecognized")
+  EXPORT_QUERY_TIMEOUT = ErrorSpec(
+      504, "ERR_EXPORT_TIMEOUT", "Export query exceeded the time budget; narrow the range or reduce limit"
+  )
 ```
 
-Glossary deltas: <new domain term(s) this task introduces, `Term: definition` — or "none">
+Glossary deltas:
+- **Compliance export**: a read-only, cursor-paginated, time/actor-filtered pull over the existing tenant audit trail (`audit_events`), distinct from the interactive `GET /admin/audit` admin-console read — same store, different envelope (no `total`, cursor not offset), different scale ceiling (limit up to 5000 vs 100), and a different default wire format (NDJSON) aimed at SIEM/archival consumers rather than a UI table.
+- **Export cursor**: an opaque, base64url-encoded `(created_at, id)` keyset marker naming the last row of the previous export page; NOT a row offset — guarantees deterministic, append-safe paging over a live-appending store.
+- **Audit-of-export**: the fire-and-forget `audit_events` row (`action="audit.export"`) that this endpoint itself writes on every successful page read, satisfying "compliance export never mutates [audit_events via the read] / export access is itself audited" (MILESTONE.md shared decision).
+
 Status: DRAFT
-Reported: <yes — the freeze report (banner/ARC/SHAPE) rendered before this froze | no>
+Reported: no — awaiting human freeze (this draft, plus FREEZE-QUESTIONS below, is the freeze report input)
+
+### Scope (for whoever builds it — non-binding preferred plan, human freezes the shape above, not this list)
+May touch:
+- `apps/gateway/src/gateway/audit/api/__init__.py`, `apps/gateway/src/gateway/audit/api/router.py` — NEW (audit's first api/ layer)
+- `apps/gateway/src/gateway/audit/infrastructure/audit_repository.py` — additive method only
+- `apps/gateway/src/gateway/core/error_catalog.py` — two additive `ErrorSpec` constants
+- `apps/gateway/src/gateway/main.py` — additive import + `include_router` (mirrors existing two-line pattern)
+- `apps/gateway/migrations/versions/<new>_audit_events_export_index.py` — NEW, additive indexes only
+- `apps/gateway/tests/audit_export/` — NEW suite (mirrors `tests/audit_read/` fixture pattern)
+Must NOT touch: `usage/api/router.py:728 get_audit` (frozen v1), `audit/domain/audit_event.py` (frozen, no signature change needed), `audit/application/audit_writer.py` (reused verbatim).
+
+### FREEZE-QUESTIONS (Tin decides at freeze — each: options + recommendation)
+1. **NDJSON-default vs JSON-default** (the ⚠ least-sure flag). Options: (a) NDJSON default, `?format=json` opt-in [recommended — SIEM/archival ergonomics, matches Splunk/Datadog/Elastic bulk-ingest convention, concatenation-safe across pages]; (b) JSON default (mirrors `AuditListResponse` exactly, `?format=ndjson` opt-in) [more consistent with "mirror existing frozen envelopes"]. Recommendation: (a), because the milestone explicitly names SIEMs as the consumer and the interactive-UI envelope precedent (`{items,total}`) doesn't fit a cursor/no-total shape anyway — the mirroring benefit is weaker here than for a same-shape UI read.
+2. **AUDIT_READ reuse vs a narrower "compliance officer" gate.** Options: (a) reuse `Permission.AUDIT_READ` unchanged (owner/admin/operator) [recommended — no new enum member, no matrix edit, matches "additive on existing primitives"]; (b) new `Permission.AUDIT_EXPORT` restricted to owner/admin only (bulk pull is a larger exfil surface than a single paginated screen). Recommendation: (a) for this task's `sensitivity: data` framing; if Tin judges bulk export materially riskier than the interactive read, (b) is a small, contained addition (one enum member + 2 matrix rows) that a future task can layer in without touching this contract's shape.
+3. **Page-size ceiling (limit default 1000 / max 5000).** Options: (a) as drafted; (b) lower ceiling (e.g. default 500 / max 2000) leaning on the new `ERR_EXPORT_TIMEOUT` less. Recommendation: (a), reversible via a config constant with zero contract-shape change either way — low cost to get "wrong" at freeze.
+4. **Composite index scope** — one combined `(tenant_id, created_at DESC, id DESC)` index plus a separate `actor_email` index (as drafted), vs a single wider `(tenant_id, actor_email, created_at DESC, id DESC)` index. Recommendation: as drafted (two narrower indexes) — the actor filter is optional and a leading-column actor_email index would not help the (far more common) no-actor-filter keyset walk; confirm at BUILD with `EXPLAIN ANALYZE`, not by inspection alone (§1 assumption).
+
+---
+
+## Design self-score
+
+Illustrative Python (router signature + repository method + ErrorSpec constants + migration sketch) syntax-checked via `python3 -m py_compile` against the exact §3 snippets — both compiled clean (no placeholder-shaped syntax errors, per the PROJECT.md-folded lesson about unverified contract code).
+
+- Completeness: 0.93 — every M/R item has a scenario and a contracted response; migration, index, mount, and error-catalog additions are all named with exact file targets. Slightly short of 1.0 because the exact `record_audit` metadata field list (M11) and the `has_more` derivation (`limit+1` fetch) are specified but not yet cross-checked against a second sibling paginated-export precedent elsewhere in the codebase (none exists to check against — first of its kind here).
+- Clarity: 0.95 — route, envelope, headers, and error codes are each stated once, unambiguously, with the frozen-precedent anchor they mirror or deliberately diverge from (each divergence is labeled, not left implicit).
+- Practicality: 0.92 — every piece (repo method, router, migration, error constants) is additive-only against real, currently-existing symbols (§0 anchors), buildable without touching any frozen file. Held below 0.95 because the index strategy (FREEZE-QUESTION 4) is explicitly unverified pending an `EXPLAIN ANALYZE` at build time — a real, named gap, not hidden.
+- Optimization: 0.91 — page-size ceiling and dual-index choice are reversible, low-blast-radius judgment calls (flagged, not silently asserted); NDJSON-header-cursor design avoids polluting the export stream, the one place a wrong call would have been costly to unwind post-freeze.
+- Edge cases: 0.94 — covers empty result, exact-multiple-of-limit boundary, concurrent insert during pagination, mid-export purge, cursor tampering, timeout, and audit-write fail-open; duplicate-request idempotency is scenario'd explicitly (M11 fires per read, not deduped — documented rather than assumed away).
+- Self-evaluation: 0.93 — the one genuinely open judgment call (format default) is surfaced as the ⚠ least-sure flag and echoed as FREEZE-QUESTION 1 with both options argued, not just recommended; three further judgment calls are also surfaced rather than folded silently into the draft.
+
+All six ≥ 0.9 — no refinement pass required before reporting.
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
