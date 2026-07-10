@@ -206,7 +206,7 @@ describe("v15 verify · SettingsPage surface (tabs)", () => {
     const tablist = await screen.findByRole("tablist");
     expect(within(tablist).getByRole("tab", { name: /cache/i })).toBeInTheDocument();
     expect(within(tablist).getByRole("tab", { name: /guardrails/i })).toBeInTheDocument();
-    expect(within(tablist).getByRole("tab", { name: /sso/i })).toBeInTheDocument();
+    expect(within(tablist).getByRole("tab", { name: /^sso$/i })).toBeInTheDocument();
 
     // the first (default) tab is reachable by role+name and focusable
     const cacheTab = within(tablist).getByRole("tab", { name: /cache/i });
