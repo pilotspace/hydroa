@@ -30,6 +30,25 @@ class IdentityRepository(Protocol):
         """
         ...
 
+    async def get_or_provision_saml_user(
+        self,
+        *,
+        email: str,
+        tenant_id: uuid.UUID,
+        password_hash: str,
+    ) -> User:
+        """Get existing user by email OR create with role=member if absent.
+
+        ADDITIVE (saml-sso TASK.md §3 Part E — FROZEN @ v1): mirrors
+        get_or_provision_oidc_user byte-for-byte (existing method's signature
+        is untouched); both delegate to a shared private repository helper
+        parameterized by auth_method ("oidc" vs "saml").
+
+        Raises SamlTenantConflictError if the user exists bound to a different tenant_id.
+        The provisioned user always has role=member regardless of any assertion attribute.
+        """
+        ...
+
 
 class PasswordHasher(Protocol):
     def hash(self, password: str) -> str: ...
