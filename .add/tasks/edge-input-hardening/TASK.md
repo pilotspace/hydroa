@@ -2,7 +2,7 @@
 
 slug: edge-input-hardening · created: 2026-07-02 · stage: production · risk: high
 autonomy: conservative   <!-- lowered from the project default (auto) per run.md's unguarded_high_risk_auto guard — this is a SECURITY task (S2 rate-limit-bypass, S3 SSRF+credential-exfil, S4 body-size DoS); freeze + verify are Tin's HARD-STOP regardless, but the risk:high + conservative pairing mirrors the repo's own convention (agent-oauth-grant-store, anthropic-provider) rather than leaving an auto-mode gap. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -564,26 +564,28 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
 > Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
 > + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
 > row is evidence you can SEE, not a restatement of a test name.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] A BYOK Azure URL whose host is a metadata IP (169.254.169.254 / 169.254.170.2 / fd00:ec2::254) is denied at BOTH write-time (`assert_literal_host_not_denied`) AND request-time (`EgressPolicy.check`), regardless of `allow_private_ranges` — confirmed by direct real-code probe + `test_write_time_metadata_ip_denied*` / `test_request_time_denies_metadata_and_private_by_default`.
+- [x] Metadata denial holds across EVERY IPv6 encoding of the address (IPv4-mapped, IPv4-compatible, 6to4, NAT64) even under `allow_private_ranges=True` — confirmed by the full adversarial probe matrix (all DENY) + `_MAPPED_METADATA_HOSTS` parametrize (mapped/compat/6to4/NAT64) — the "never toggle-able in any representation" invariant.
+- [x] The `allow_private_ranges=True` opt-in relaxes ONLY the RFC1918/ULA positive allow-list; every other private/special range (Teredo 2001::/32, 6to4 2002::/16, discard 100::/64, link-local, reserved, multicast) stays denied, while legitimate Private Link (RFC1918, ULA, canonical IPv4-mapped-RFC1918) and public egress stay allowed — confirmed by `test_write_time_opt_in_relaxes_only_private_class` + probe (zero false-deny).
+- [x] A hostname that resolves (DNS) to any denied literal is denied FRESH on every dial (re-resolved, never cached), and any resolver error/timeout/empty-answer fails CLOSED — confirmed by `test_request_time_dns_rebind_denied_fresh_every_call`, `test_request_time_dns_answer_as_mapped_metadata_denied_under_opt_in`, `*_resolver_error_fails_closed`, `*_resolver_timeout_fails_closed`.
+- [x] Per-IP identity for rate-limiting uses the RIGHTMOST trusted XFF hop (Envoy's appended peer), never a client-prepended leftmost hop, and combines all XFF header lines; truncated/malformed selection fails closed to `request.client.host` — confirmed by `net.py` re-review + `tests/edge_input_hardening/test_s2_xff_trust.py` (incl. duplicate-header regression).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `DenyPrivateAndMetadataEgressPolicy` built ONCE from settings in `main.py:~879` (`egress_allow_private_ranges` default False, `config.py:~1021`) and injected into all three Azure adapter sites (azure_ad / azure_embeddings / azure_upstream); `resolve_trusted_client_ip` called from the invite + rate-limit paths. Verifier confirmed clean DI, no drift; adapters' no-arg fallback reachable only from direct unit construction.
+- [x] DEAD-CODE (code) — no orphaned symbols; `_embedded_ipv4`, `_in_private_link_allowlist`, `_PRIVATE_LINK_ALLOWED`, `_NAT64_WELL_KNOWN`, `_METADATA_IPS` all referenced by `_is_denied_ip`; ruff clean.
+- [x] SEMANTIC (prose / non-code) — n/a (code task); module docstring re-read in full and corrected (RFC 8215 local-NAT64 residual now documented honestly, no overclaim).
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under autonomy: auto the AI auto-resolves Verify, so the earned-green refute-read MUST be
 > recorded here (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). The engine
 > MEASURES it is filled (`audit: refute_unrecorded`); it never auto-blocks — a human spot-audit
 > is the backstop. A human-gated (conservative/manual) task may leave it for the human's judgment.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: 3 independent add-verify agents (a964b59ad42e / a6afc72bc4fb / a39ad9aa3ea4, model sonnet) + self-probe · adversarially checked: real-code SSRF/metadata bypass reproduction at all three enforcement layers (write-time literal, request-time literal, DNS-answer) across the full IPv6 transition-encoding class. Found 4 real bypasses the green suite could not see (IPv4-mapped → NAT64 → Teredo → 6to4-of-RFC1918); each HARD-STOP-healed (41d748e → b9ede95 → ceb5b56 → 831ca49) and re-attacked. Final tree 831ca49: all metadata encodings DENY under opt-in, zero false-deny of legit Private Link/public, new tests confirmed non-vacuous vs pre-heal code. One residual-by-design (operator-configured RFC 8215 local NAT64 in ULA space) documented — not closable by address inspection, needs network-layer enforcement.
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Outcome: PASS
+Reviewed by: Tin Dang · date: 2026-07-10
 
 <!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
