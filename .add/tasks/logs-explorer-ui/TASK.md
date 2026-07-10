@@ -487,50 +487,55 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — `npx vitest run tests/logs.test.tsx tests-bff/chat-workspace-page.test.tsx`: 38/38 green (2026-07-11)
+- [x] coverage did not decrease — no test deleted/weakened; new suite is additive (22 logs.test.tsx scenarios + 5 chat-workspace-page.test.tsx replay-handoff cases)
+- [x] no test or contract was altered during build — `git log --follow` on both spec files shows no post-freeze edits by the build agent
+- [x] the green was EARNED, not gamed — adversarial refute-read performed (see verdict below); one real defect found (race condition), not a stubbed/vacuous-assert cheat
+- [ ] concurrency / timing of the risky operation is safe — RESIDUE found (composer race, see Advisor lens below)
+- [x] no exposed secrets, injection openings, or unexpected dependencies — no unsafe raw-HTML-injection API used anywhere in the logs/replay surface; all payload rendering is React text nodes (auto-escaped); no tenant-override param ever sent
+- [ ] layering & dependencies follow CONVENTIONS.md — RESIDUE found (status-filter enum silently narrowed from the frozen contract, undocumented as a build deviation)
+- [ ] a person reviewed and approved the change — pending (this is the add-verify recommendation, not the human sign-off)
 
-### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
-> OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+### Build expectations — what "correct" looks like (confirmed at the gate)
+- [x] Replay never fires a chat completion merely by landing on `/app/chat` — confirmed by `tests-bff/chat-workspace-page.test.tsx::test_replay_prefills_composer_and_model_without_sending` (asserts `chatCalled === false` and the empty-state placeholder still shows) + code inspection: no code path in `ChatWorkspace.tsx`'s replay-consume block (lines ~332-361) calls `send()`/`submit()`.
+- [x] The sessionStorage replay entry is consumed exactly once, and a second mount (back-nav) does not re-apply it — confirmed by `test_replay_payload_is_consumed_exactly_once` (unmount + remount, second mount's textarea stays empty) + `lib/logs-replay.ts:consumeReplayPayload` removes the key before returning.
+- [x] An unknown/deprecated `model_id` falls back to the chat default with a visible notice, never a silent substitution — confirmed by `test_replay_falls_back_to_default_model_when_replayed_model_not_in_live_catalog` (asserts `role="status"` notice text + select value falls back).
+- [x] No HTML-injection sink renders attacker-influenced logged payload content — confirmed by grepping `components/logs/` + `components/chat/ChatWorkspace.tsx` + `lib/logs-replay.ts` for the raw-HTML-injection React API → zero hits; `RequestPanel`/`ResponsePanel` (`LogDetailDrawer.tsx:130-172`) render via `{JSON.stringify(...)}` / `{detail.response_body.content}` — React text nodes, auto-escaped.
+- [x] Null request/response payloads render the honest "Content unavailable" message, never a blank/crash — confirmed by `test_metadata_only_row_shows_explicit_unavailable_message` + code (`LogDetailDrawer.tsx:136-149,158-169`).
+- [x] The UI never sends a tenant-override param — confirmed by reading `buildLogsQuery` (`LogsExplorerPage.tsx:81-99`) and `bffGet` call sites in `LogDetailDrawer.tsx`: no `tenant_id`/tenant param constructed anywhere in the logs surface.
+- [x] Cross-tenant / purged log ids read as a generic "Log not found," never distinguishing the two — confirmed by `test_not_found_detail_never_distinguishes_cross_tenant_from_deleted` + code (`LogDetailDrawer.tsx:213,249` — a single `notFound` branch keyed only on `status === 404`).
+- [~] jest-axe sweep covers the drawer's populated state, not just the bare page — NOT CONFIRMED: only one `axe()` call exists in the whole suite (`tests/logs.test.tsx:210`), scoped to the page-level table only; no axe run with the drawer open. Real coverage gap, not a proven violation (Radix Dialog's own accessibility posture is well-audited upstream, which mitigates but does not close it).
 
-### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+### Deep checks — do not skim
+- [x] WIRING (code) — every new symbol referenced: `LogsExplorerPage` wired into `app/(app)/app/logs` route + `app-shell.tsx` nav; `DrawerContent` consumed by `LogDetailDrawer`; `writeReplayPayload`/`consumeReplayPayload` each have exactly one call site (`LogsExplorerPage.tsx:228`, `ChatWorkspace.tsx:340`) — no orphaned export.
+- [x] DEAD-CODE (code) — no unused symbol found in `components/logs/*.tsx` or `lib/logs-replay.ts`.
+- [x] SEMANTIC — read `LogsExplorerPage.tsx`, `LogsTable.tsx`, `LogDetailDrawer.tsx`, `LogsFilterBar.tsx`, `lib/logs-replay.ts`, and the relevant `ChatWorkspace.tsx` replay-consume block (lines 290-361) in full, not skimmed.
 
-### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+### Live-verify evidence — confirm the §0 GROUND anchors still resolve
+- [x] Every symbol §3 CONTRACT cites still resolves in the current tree: `dialog.tsx:DrawerContent` (added, exports at line 131), `app-shell.tsx` new `/app/logs` nav entry present, `ChatWorkspace.tsx:ChatWorkspaceProps` unchanged (`{ defaultModel?: string }`, additive-only per the contract's own promise) — confirmed by direct read of each file.
+- [x] One anchor DIVERGED from the frozen §3 shape, named here rather than left silent: `LogsFilters.status` / the Status `<select>` — §3 froze a 5-way enum (`"all"|"success"|"client_error"|"server_error"|"blocked"`) and the freeze decision note (§3, decided-at-freeze item 3) narrowed it to a 3-way bucket (`success/client_error/server_error`). The SHIPPED code (`LogsFilterBar.tsx:9-16,35`) implements only a 2-way bucket (`"all"|"success"|"error"`), matching the sibling `logs-explorer-api`'s actually-shipped `_STATUS_BUCKETS = ("success", "error")` (`apps/gateway/src/gateway/logs/api/logs_query_router.py:68`). The narrowing is well-reasoned (UI correctly adapts to the real API rather than a stale assumption) but was never recorded as a build deviation in this TASK.md's §5, and no §2 scenario pins the exact enum values, so nothing caught the drift structurally. M2's Must-text ("Status … All / Success / Client Error / Server Error / Blocked") is therefore not literally satisfied by the shipped UI — an admin cannot distinguish a client error (4xx) from a server error (5xx) via the filter, only "error" vs "success."
 
-### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+### Refute-read verdict — the earned-green check
+Verdict: **EARNED** (with one confirmed non-cheat defect — see Findings)
+By: self (add-verify) · adversarially checked:
+1. Replay double-send / StrictMode double-invoke / back-nav re-trigger — held (ref guard + idempotent sessionStorage clear; no `send()`/`submit()` call anywhere in the replay-consume path).
+2. Rendering-sink attack via logged request/response payload content — held (no raw-HTML-injection API used; all payload rendering is React-escaped text nodes).
+3. Tenant-override / cross-tenant oracle via the list or detail fetch — held (no tenant param ever constructed client-side; 404 response never distinguished from a generic not-found).
+4. Replay-vs-user-typing race during the async catalog-fetch window — DID NOT HOLD: reproduced with a throwaway test (delayed `/admin/catalog/models` response + `userEvent.type` during the delay) — the user's own typed composer text is silently overwritten once the catalog resolves and the render-time replay-apply block fires. Not a cheat/stub in the shipped suite (no scenario claims to cover this interleaving) — a genuine, previously-unexercised interaction. Repro test was written to `tests-bff/`, confirmed reproducing, then deleted per instructions (not committed).
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify)
+1. Security: **CLEAR** — no HTML-injection sink, no tenant-override param, no secret exposure, cross-tenant 404 never distinguishes reason, replay structurally cannot auto-send.
+2. Concurrency: **RESIDUE** — the composer-race finding above (Finding 1): a slow `/admin/catalog/models` fetch lets user-typed composer text be silently clobbered by a pending replay payload once the catalog resolves. Low blast radius (data entry annoyance, not data leak/billing/security), but real and reproducible.
+3. Architecture: **RESIDUE** — the status-filter enum divergence above (Finding 2): shipped UI silently narrows the frozen contract's Status enum from 5-way (then 3-way per freeze decision) to the API's actual 2-way bucket, undocumented as a build deviation, untested at the enum-value level.
+Verdict: **PASS** (no security HARD-STOP; both residues are non-security, low/moderate severity, and independently well-understood)
+Residue: composer replay-race (Finding 1, MINOR) · status-enum contract drift (Finding 2, MINOR) · drawer-state axe-sweep gap (Finding 3, MINOR — test-coverage gap, not a proven violation) · Replay/pager hit targets measured below 44px in the Tailwind class list (Finding 4, MINOR — jsdom cannot catch this class of defect; a real CSS gap against M9's own text)
+Binding: advisory — non-security, non-blocking; recommend as follow-up spec/competency deltas rather than a build-blocking re-heal
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: yes — this §6 write-up is the gate report
+Outcome: **PASS**
+Reviewed by: add-verify (self) · date: 2026-07-11
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

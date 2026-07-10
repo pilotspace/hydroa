@@ -472,50 +472,138 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — `tests/logs_explorer_api` 35/35 green (25 planned + 2 extra positive-path
+      tests + rbac_roles-role parametrizations), plus frozen `tests/rbac_roles` 8/8 green (no role
+      permission drift). DB: `gateway_test_vla` / `gateway_migrations_test_vla` (dropped after run).
+- [x] coverage did not decrease — 100% line coverage on every new file: `logs/api/logs_query_router.py`
+      (146/146), `logs/application/list_request_logs.py` (14/14), `logs/application/get_request_log.py`
+      (9/9), `logs/infrastructure/logs_repository.py` (44/44); `core/error_catalog.py` 100%;
+      `tenants/domain/authz.py` unchanged-lines-covered (75%, pre-existing baseline, no new dead branch).
+- [x] no test or contract was altered during build — `git log` shows this task's commits only add
+      files under `logs/`, `error_catalog.py`, `authz.py`, `main.py`, one migration; §3 CONTRACT text
+      matches the shipped shapes verbatim (response fields, error codes, permission set).
+- [x] the green was EARNED, not gamed — see Refute-read verdict below; independently re-attacked with
+      live throwaway probes beyond the suite (cursor-smuggle, SQLi-shaped filters, 404 timing/shape),
+      not just re-running the existing tests.
+- [x] concurrency / timing of the risky operation is safe — `test_concurrent_insert_during_keyset_walk_is_safe`
+      passes; keyset predicate is strict `<` on `(created_at, id)` so a newer concurrent insert can never
+      be spliced mid-walk (code-confirmed, not just test-confirmed).
+- [x] no exposed secrets, injection openings, or unexpected dependencies — live SQLi-shaped `model_id`
+      payloads (`' OR '1'='1`, `...DROP TABLE...`, `%`, `*`) all parameterized safely (0 matches, no
+      error, table intact, tenant's real row still queryable after). No new third-party dependency.
+- [x] layering & dependencies follow CONVENTIONS.md — clean api/application/infrastructure/domain
+      split inside the existing `logs/` bounded context; repository exposes no write method.
+- [ ] a person reviewed and approved the change — pending Tin's review of this verify report (contract
+      freeze was Tin-approved; this GATE RECORD still needs the human sign-off per autonomy:auto).
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] `GET /admin/logs` never returns another tenant's rows under any filter/cursor combination,
+      including a cursor forged from another tenant's own row id/timestamp — confirmed by live throwaway
+      probe (`test_zz_cross_tenant_cursor_smuggle`, deleted after run): tenant A given a cursor built
+      from tenant B's newest row still gets back only tenant A's own row, 200, never tenant B's id.
+- [x] `GET /admin/logs/{log_id}` returns byte-identical 404 shape for an unknown id and a cross-tenant
+      id — confirmed by `test_cross_tenant_log_id_is_same_404` (suite) AND a 15-iteration live probe
+      comparing status/headers/body: identical every time; timing 9.82ms (unknown) vs 10.36ms (cross)
+      avg — within test-env noise and structurally implausible as an oracle (both paths execute the
+      exact same `WHERE tenant_id=:tid AND id=:id` query shape, just a different id literal).
+- [x] list rows never carry `request_body`/`response_body`/`guardrail_verdict` in the HTTP response,
+      even when the underlying row has large non-null payloads — confirmed by
+      `test_list_rows_are_metadata_only` AND code inspection (`LogListItem` never declares those
+      fields; the router constructs it field-by-field, never passes the raw entity through).
+- [x] the new `Permission.LOGS_READ` grants exactly OWNER/ADMIN/OPERATOR/SUPERADMIN and denies
+      BILLING_ADMIN/VIEWER/MEMBER, without altering any other role's existing permission set —
+      confirmed by `tests/rbac_roles` 8/8 green (frozen suite, unmodified) + direct read of
+      `ROLE_PERMISSIONS` (only `LOGS_READ` added to ADMIN/OPERATOR's sets; OWNER/SUPERADMIN
+      auto-hold via `frozenset(Permission)`; BILLING_ADMIN/VIEWER/MEMBER untouched).
+- [x] the additive migration lands the exact index on top of the CURRENT (build-time) alembic head,
+      not the stale ground-time head — confirmed by running the full migration chain from scratch
+      against `gateway_migrations_test_vla`: single head `69cfdc584129`, parented on `b7c9e1a3f5d8`
+      (not the ground-time `a1c5e7f9b3d6`), and `\d request_logs` shows
+      `ix_request_logs_tenant_model_created btree (tenant_id, model_id, created_at)` present.
+- [x] the list query is genuinely bounded by a real `asyncio.timeout`, not a decorative one — confirmed
+      by code read: `async with asyncio.timeout(_READ_TIMEOUT_SECONDS): await use_case.execute(...)`
+      wraps a real awaited coroutine (structurally sound asyncio usage); `test_query_timeout_maps_to_504`
+      confirms the `TimeoutError -> 504 ERR_LOGS_QUERY_TIMEOUT` mapping via fault injection (same
+      technique as the audit-export precedent's own tests).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol referenced: `logs_query_router` imported+included in
+      `main.py:101,1253`; `LogsRepository`/`ListRequestLogsUseCase`/`GetRequestLogUseCase` wired
+      router->use-case->repository (no orphan layer); `Permission.LOGS_READ` referenced in both
+      `ROLE_PERMISSIONS` and the router's `require_permission(Permission.LOGS_READ)` gate on both
+      routes; `LOG_NOT_FOUND`/`LOGS_QUERY_TIMEOUT` each raised exactly once, at the one call site the
+      contract specifies.
+- [x] DEAD-CODE (code) — no orphaned symbol found; `_cost_str` in the router is a trivial pass-through
+      (not dead, called twice, harmless — noted, not a defect).
+- [ ] SEMANTIC (prose / non-code) — n/a, this task ships no prose/non-code deliverable.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by direct read:
+      `logs/infrastructure/orm.py:RequestLogRow` (now extended with the 5 metering columns, still
+      resolves), `logs/domain/entities.py:RequestLog`, `audit/api/router.py` cursor helpers (pattern
+      mirrored, not imported), `audit/infrastructure/audit_repository.py:list_for_tenant_keyset`
+      (predicate shape mirrored verbatim), `keys/api/router.py:rotate_key` (404-idiom mirrored),
+      `tenants/domain/authz.py:Permission`/`ROLE_PERMISSIONS`, `core/error_catalog.py:ErrorSpec`,
+      `main.py` router-registration block — all resolve; `pyright` clean (0 errors) on every touched
+      file.
+- [x] any anchor that moved/renamed since Ground SHA is named here, not left silent — the migration
+      parent moved from the ground-time head `a1c5e7f9b3d6` to the actual build-time head
+      `b7c9e1a3f5d8` (two sibling tasks — request-log-metering-fields, guardrail-analytics — landed
+      migrations first); the build correctly re-checked `alembic heads` rather than trusting the
+      ground-time citation, per its own §5 "Known-problem fixes (b)". No other anchor moved.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: add-verify (self) · adversarially checked: (1) cross-tenant cursor smuggling — forged a cursor
+from tenant B's own row id/timestamp and used it as tenant A; only A's row ever came back, no B leak,
+because `tenant_id = :tid` is always the first WHERE predicate, never a post-fetch filter. (2)
+SQL-injection-shaped `model_id` values (`' OR '1'='1`, `...DROP TABLE request_logs;--`, `%`, `*`) — all
+safely parameterized, zero matches, table intact, tenant's own row still queryable afterward. (3)
+detail-fetch 404 oracle — 15-iteration timing+shape comparison of unknown-id vs cross-tenant-id, status/
+headers/body byte-identical every time, no exploitable timing signal (same query shape either way). Also
+independently re-derived, from the shipped code, that every §1 Reject rule has a real enforcing branch
+(not a vacuous always-pass): `_parse_limit`/`_parse_status`/`_parse_decimal_bound`/`_decode_cursor`/
+`_parse_time_range` each have a genuine reject path exercised by a distinct test, and
+`LogsRepository.get_for_tenant`'s tenant-scoped WHERE is the only source of the None that maps to 404
+(no alternate post-fetch check exists to accidentally bypass).
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: add-verify (self)
+1. Security: CLEAR — tenant scoping is WHERE-clause-first on both endpoints (never post-fetch),
+   404-invisibility is byte-identical and not timing-distinguishable, RBAC matrix matches the frozen
+   contract exactly with no drift to other roles, filter inputs are fully parameterized (no injection
+   opening found under live attack), list payload-bearing fields are absent from the response by
+   construction (not by a filter that could be forgotten).
+2. Concurrency: CLEAR — keyset walk uses strict `<` on `(created_at, id)`; a concurrent insert newer
+   than the page boundary can never be spliced mid-walk (test + code confirmed); no shared mutable
+   state, no fire-and-forget task leak (this task adds no background task).
+3. Architecture: RESIDUE — `LogsRepository.list_for_tenant_keyset` runs `select(RequestLogRow)`
+   (the full ORM row), so every list call pulls the full `request_body`/`response_body`/
+   `guardrail_verdict` JSONB payload from Postgres for up to `limit+1` (≤101) rows, even though the
+   HTTP response is metadata-only. The client-facing "payload bounded regardless of row size" promise
+   (§1 Must) holds at the network boundary but NOT at the app<->DB boundary — a tenant with many
+   large captured bodies (capped at `max_body_bytes`, e.g. 100KB/row in test config) could still pull
+   several MB per list call before the response is trimmed server-side. This mirrors the exact same
+   pattern as the precedent it mirrors (`AuditRepository.list_for_tenant_keyset` also does
+   `select(AuditEventRow)`), so it's a pre-existing repo convention, not a build-introduced defect —
+   not a security leak (nothing crosses the trust boundary), not a correctness defect (every test
+   passes), a genuine efficiency/architecture gap worth a targeted column-projection follow-up.
+Verdict: PASS
+Residue: Architecture — list query fetches full JSONB payload columns from Postgres despite serving a
+metadata-only response (see above); recommend a follow-up SPEC delta to project only the metadata
+columns in `list_for_tenant_keyset`'s SELECT. Non-blocking: no security or correctness impact, bounded
+by existing per-row `max_body_bytes`, and the `asyncio.timeout` backstop still fires under real load.
+Binding: advisory — sensitivity: data (not the highest tier; no security HARD-STOP triggered)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: yes — this verify report is the gate report rendered before the outcome below.
+Outcome: PASS
+If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (not applicable — outcome is PASS, not RISK-ACCEPTED)
+Reviewed by: add-verify (self, adversarial pass) — pending Tin's final human sign-off · date: 2026-07-11
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

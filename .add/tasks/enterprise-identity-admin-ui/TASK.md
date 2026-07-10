@@ -515,39 +515,40 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] Settings hub shows 7 tabs in order, three new tabs' GETs never fire until activated — confirmed: `SettingsPage.tsx:29-67` appends 3 `TabsTrigger`/`TabsContent` pairs after the existing 4, unchanged; `tests-bff/tenant-settings.test.tsx:454-492` (`test_renders_seven_tabs_no_premature_fetch`) asserts tab-bar order + zero SCIM/SAML/retention GETs pre-activation; suite run GREEN (44/44, `npx vitest run tests-bff/tenant-settings.test.tsx`).
+- [x] SCIM plaintext token is shown exactly once and cannot be made to linger — confirmed by re-reading `ScimSettings.tsx:85-166` (local `useState`, never written to TanStack cache/localStorage/URL, cleared on `onDismiss`) AND by 2 throwaway adversarial repros executed and DELETED after use: (1) create → do NOT dismiss → switch tab away and back (TabsContent unmounts on inactive per `components/ui/tabs.tsx:161` `if (active !== value) return null` — full remount resets local state) → plaintext absent from DOM; (2) create → immediately rotate without dismissing → old plaintext absent, only new plaintext shown. Both attacks FAILED to make it linger — PASSED.
+- [x] ZDR enable is gated behind an irreversible-consequence `ConfirmDialog`; disable is not — confirmed: `RetentionZdrSettings.tsx:140-152` (`handleZdrToggle` branches on direction, true→ opens dialog only, false→ mutates directly) + `test_zdr_enable_requires_confirm_dialog`/`test_zdr_enable_confirm_fires_put`/`test_zdr_disable_no_confirm_dialog` all GREEN.
+- [x] SAML cert prefills (unlike OIDC's write-only secret); no actual secret leaks into the DOM — confirmed: `SamlSettings.tsx:83-106` seeds `idpCert` from GET (M6, cited divergence), `sp_entity_id`/`acs_url` are display-only `<code>` blocks never form inputs; `test_saml_tab_prefills_cert_unlike_oidc_secret` asserts `certField.value === SAML_CONF.idp_x509_cert` directly (works around a jsdom whitespace-normalizer gap for multi-line PEM — a deliberate, non-vacuous assertion). No `client_secret`-shaped field exists on this contract to leak.
+- [x] Every BffError surfaces inline via `role="alert" aria-live="polite"`, never swallowed — confirmed by code read (all 3 files) + 10 error-path tests (403/404/422 × 3 tabs, plus the 2 SCIM-race tests) all GREEN, each asserting `role="alert"` text content.
+- [x] a11y floor — `test_scim_saml_retention_axe_clean` (jest-axe, serious/critical) and `test_new_tabs_keyboard_focus_order` both GREEN; PlaintextKeyBanner's own axe-cleanliness and CreateKeyDialog's focus-trap are independently pre-verified in `tests/ui-ux-verify.test.tsx::test_plaintext_banner_passes_axe` and `tests/keys-dialog-a11y.test.tsx` (reused-verbatim components, not re-tested here by design).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `ScimSettings`/`SamlSettings`/`RetentionZdrSettings` are each imported and rendered exactly once from `SettingsPage.tsx`; `CreateKeyDialog`/`PlaintextKeyBanner`/`ConfirmDialog` imported and wired with real props (no stub); `bffGet/bffPost/bffPut/bffDelete/BffError` all imported from `lib/bff-client.ts` (traced through to `lib/resilient-fetch.ts`, cookie-based, no Authorization header, no localStorage) — confirmed by direct read of all 4 touched/new files + `git grep` for each new symbol's usage.
+- [x] DEAD-CODE (code) — no orphaned export found; FE typecheck (`npx tsc --noEmit -p .`) run CLEAN, zero errors.
+- [ ] SEMANTIC (prose) — n/a, this is a code task.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed: `SettingsPage.tsx`, `OidcSettings.tsx`, `GuardrailSettings.tsx`, `CreateKeyDialog.tsx`, `PlaintextKeyBanner.tsx`, `KeyRow.tsx`/`KeysPage.tsx`, `ConfirmDialog.tsx`, `bff-client.ts`, `tests-bff/tenant-settings.test.tsx` all read directly at current HEAD (branch `chore/add-housekeeping-clusters`, `a69930b`) — all resolve, no stale path.
+- [x] no anchor moved/renamed since Ground SHA `443a33a` — `git log --oneline -- apps/dashboard/components/settings/` shows exactly one build commit (`14adcd1`) on top of Ground, no subsequent rename.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (add-verify, appsec-engineer persona lens) · adversarially checked: (1) SCIM reveal-once secret lingering via tab-remount and back-to-back create→rotate, via 2 executed throwaway vitest repros — both FAILED to leak, deleted after use; (2) ZDR destructive-confirm bypass via a forced double-click race on the Switch while its own ConfirmDialog is open, via 1 executed throwaway vitest repro — the confirm-gated (true) direction cannot be bypassed (only reachable through `ConfirmDialog.onConfirm`), but the Switch itself lacks a `disabled={zdrConfirmOpen}` guard, so a non-standard/forced click while the dialog is open fires the non-destructive `zdr_enabled:false` PUT immediately, leaving a stale dialog open — a real, reproduced UI-state race, not a security bypass (see Residue below); (3) SAML 404-vs-403-vs-other branching and cross-tenant-404 non-leak — code + tests confirmed correct, and confirmed the SAML 404 path deliberately does NOT distinguish "not yet configured" from "orphaned tenant" (both return `ERR_SAML_CONFIG_NOT_FOUND`), which is the correct anti-enumeration shape (byte-identical response), not a gap. Suite is non-vacuous: assertions check real DOM state (`.value` property, `role="alert"` text content, request bodies via MSW handlers), not `toBeTruthy()`-class stubs. One noted spec/implementation divergence: `test_scim_tab_lazy_fetches_once` asserts the SCIM GET refires on tab remount (`scimCount === 2`), which contradicts the literal frozen §2 scenario text ("re-clicking away and back does not refire it") — the test's own inline comment documents this as matching the ACTUAL (also-refetching, no `staleTime` anywhere) behavior of all 4 pre-existing tabs, confirmed correct by reading `GuardrailSettings.tsx`/`OidcSettings.tsx` (neither sets `staleTime` either) — this is a scenario-authoring inaccuracy inherited from design, not a build-introduced weakening; recommend a spec delta to correct the scenario wording (see §7).
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify, appsec-engineer persona)
+1. Security: CLEAR — no secret persistence outside narrow `useState` (SCIM plaintext), no write-only-secret pattern violated (SAML cert is correctly non-secret per frozen contract), no cross-tenant leak (404 responses are content-identical whether "not configured" or "orphaned tenant" for SCIM/SAML; Retention explicitly renders `ErrorState` for its `ERR_TENANT_NOT_FOUND`), 403 role-gate is client-hiding only with the real GET 403 as the authoritative gate (per §1 assumption, by design); no raw-HTML injection sink, no `eval`, no URL-based secret exposure anywhere in the 3 new files.
+2. Concurrency: RESIDUE — `RetentionZdrSettings.tsx:250-255` (`Switch` bound to `handleZdrToggle` via `onCheckedChange`, no `disabled` while `zdrConfirmOpen`): reproduced via executed throwaway test — a second click on the Switch while its own irreversible-action ConfirmDialog is open fires the (non-destructive) `zdr_enabled:false` PUT directly and bypasses/ignores the open dialog, leaving a stale "Enable ZDR?" prompt on screen after an unrelated write already landed. Real browsers block this via the dialog's full-viewport CSS overlay + `useFocusTrap`'s keyboard trap (defense layer 1 only) — no defense-in-depth at the component's own state-machine level (layer 2, e.g. `disabled={zdrConfirmOpen}`) the way the appsec lens's "any single layer being wrong or bypassed must not be sufficient" standard asks for elsewhere in this codebase. Does NOT allow bypassing confirmation for the actually-destructive (enable) direction — that PUT only ever fires through `ConfirmDialog`'s own `onConfirm`. Severity: MAJOR (real, reproduced, one-line fix), not HARD-STOP (no privilege/secret impact).
+3. Architecture: CLEAR — layering matches every existing tab (TanStack Query + BFF client only, no direct fetch, no bypass of the BFF seam); zero new visual primitives; `Textarea` substitution for the PEM cert field is the one cited, justified deviation; SCIM/SAML kept as separate tabs per the Framings-weighed decision, no scope creep into `domain-capture`'s territory.
+Verdict: HARD-STOP checklist not triggered by Security (CLEAR); Concurrency RESIDUE recorded and stands.
+Residue: ZDR `Switch` missing `disabled={zdrConfirmOpen}` (or fieldset-level disable) as a second defense layer against a forced/synthetic double-toggle while its own destructive-confirm dialog is open (`RetentionZdrSettings.tsx:250`). Reproducible, not exploitable for privilege/secret impact, one-line fix.
+Binding: advisory — MAJOR-severity UI-state race, not a security class finding; escalates per this task's `autonomy: auto` "any residue" rule rather than auto-passing silently.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: yes — this verify pass rendered before recording.
+Outcome: FINDINGS — not a clean auto-PASS (concurrency residue exists), not HARD-STOP (no security finding). Recommend to orchestrator/Tin: PASS-with-accepted-residue vs. require the one-line `disabled={zdrConfirmOpen}` fix before close.
+If RISK-ACCEPTED -> owner: pending Tin · ticket: pending · expires: pending   (never for a security gap — n/a here, this is non-security)
+Reviewed by: add-verify (appsec-engineer persona) · date: 2026-07-11
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

@@ -920,50 +920,55 @@ Constraints: do NOT change any test or the contract; allow-list packages only (d
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 42/42 (`tests/domain_capture/` 20 + `tests/signup_routing_authz/` 22), real Postgres (`gateway_test_vdc`), `uv run pytest tests/domain_capture/ tests/signup_routing_authz/ -q --no-cov` → `42 passed in 113.52s`
+- [x] coverage did not decrease — new `domain_capture/` module: 90-100% per file except the real DNS adapter (see Residual risks); `tenants/api/router.py` new guard clause fully covered by the combined suite
+- [x] no test or contract was altered during build — `git diff` of `tests/domain_capture/`, `tests/signup_routing_authz/`, and TASK.md §3 shows zero build-phase edits (only my throwaway probe file, created+deleted this pass, never committed)
+- [x] the green was EARNED, not gamed — adversarial refute-read below; 4 live-executed attacks, all held
+- [x] concurrency / timing of the risky operation is safe — TRUE `asyncio.gather` concurrent verify race executed against real Postgres (not the suite's own sequential race test) — exactly 1 winner, 1 loser, structurally enforced by the partial unique index
+- [x] no exposed secrets, injection openings, or unexpected dependencies — `verification_token` is deliberately plaintext (not a secret, disclosed); all SQL is parameterized (SQLAlchemy Core, no string interpolation); `dnspython` promoted to a pinned direct dependency, no new external service
+- [x] layering & dependencies follow CONVENTIONS.md — `domain/` has zero framework imports (confirmed by reading `domain_validation.py`, `entities.py`, `ports.py`); one repository class serves two Protocol ports via structural typing (documented, mirrors `SqlAlchemyIdentityRepository`)
+- [ ] a person reviewed and approved the change — pending Tin's HARD-STOP gate (this task's `sensitivity: security` requires human sign-off regardless of this verdict)
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] An unmatched/pending/expired/revoked domain leaves `signup()` byte-identical to frozen S1 — confirmed by re-running `tests/signup_routing_authz/` unmodified (22/22 green) AND a live throwaway probe: unclaimed-domain signup with flag ON created a new tenant, `tenant_domain_claims` row count unchanged (zero write from the read-only lookup)
+- [x] A verified-domain signup joins the EXISTING tenant even while invite-only, `joined_existing_tenant=true`, zero new `tenants` row — confirmed by `test_verified_domain_signup_joins_existing_tenant_while_invite_only` (green) and by DB row-count assertions in the suite
+- [x] Exactly one tenant may hold a `verified` claim on any domain, enforced at the DB layer under TRUE concurrency, not just app-level ordering — confirmed by my own `asyncio.gather` throwaway probe (real overlapping HTTP requests, real Postgres): statuses `[200, 409]`, `verified_count == 1`
+- [x] A revoked claim stops future signups immediately but never touches already-joined users — confirmed by `test_revoke_verified_claim_stops_future_signups_not_existing_members` (green)
+- [x] A DNS failure (NXDOMAIN/timeout/resolver error) never marks a claim verified — confirmed by suite (`FakeDnsResolver`) AND a live hand-run of the REAL `DnsPythonTxtResolver` against real DNS: NXDOMAIN → `DnsLookupFailedError`, 0.0001s timeout → `DnsLookupFailedError`, real TXT lookup (google.com) → 14 records correctly parsed
+- [x] The join path rejects (never silently logs in) an already-registered email, existing user's credentials untouched — confirmed by suite AND my own throwaway "hijack" probe: attacker-submitted signup against a victim's already-verified-domain email → 409, victim's `password_hash` unchanged before/after
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new repository/use-case method traced to a live caller: `list_for_tenant`→router GET, `get_own`→verify use case, `revoke`→revoke use case, `resolve_verified_tenant`→`tenants/api/router.py:signup()`, `mark_verified`→verify use case, `create_or_reissue`→create use case (grep-confirmed, zero orphans); `main.py` includes `domain_claims_router`, wires `domain_claim_rate_limiter`/`dns_resolver`/`domain_claim_repository`(None sentinel)/`domain_claim_resolver`(None sentinel) on `app.state`, imports `orm.py` to register `TenantDomainClaimRow` on `Base.metadata`
+- [x] DEAD-CODE (code) — no new unused symbol found; pyright clean (`uv run pyright src/gateway/domain_capture/ src/gateway/tenants/api/router.py` → `0 errors, 0 warnings, 0 informations`)
+- [x] SEMANTIC (prose) — §0-§5 read in full; the ⚠-flagged S1 M2 amendment (domain lookup runs BEFORE `public_signup_enabled`) is exactly what's shipped (`tenants/api/router.py` — the guard clause + comment matches §3's access-pattern prose verbatim, incl. the documented `session.rollback()` autobegin workaround)
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed via `mcp__serena`/grep: `signup()` (`tenants/api/router.py:43`), `IdentityRepository.join_verified_tenant_domain` (`tenants/infrastructure/repository.py:88`), `_get_owner_identity` (duplicated verbatim in `domain_claims_router.py:69`, matching the SAML/OIDC precedent's own documented duplication convention), `tenants_platform_kind_uidx`-style partial index → `uq_domain_claims_domain_verified` (migration `b3d8e1f4a7c2`), single alembic head confirmed (`uv run alembic heads` → `69cfdc584129 (head)`, `tenant_domain_claims` correctly parented at `a55ddcebaac6`)
+- [x] no anchor moved/renamed since Ground SHA — one cosmetic-only discrepancy named below (migration docstring vs `down_revision` field), not a functional break
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (add-verify, appsec-engineer persona) · adversarially checked, 4 attacks LIVE-EXECUTED (not argued on paper) via a throwaway pytest file (`tests/domain_capture/test_zz_adversarial_throwaway.py`, deleted after this pass):
+  1. TRUE `asyncio.gather` concurrent verify race (real overlapping requests, real Postgres, both tenants' claims seeded pending beforehand) — HELD: `[200, 409]`, exactly 1 verified row, structural DB-level guard confirmed independent of app-level statement ordering.
+  2. Domain-normalization bypass attempt: `EvilCorp.com` → normalizes to `evilcorp.com`; `evilcorp.com.` (trailing dot / FQDN form) → rejected outright 400 `ERR_DOMAIN_INVALID` (the trailing empty label fails the 1-63-char label check) — HELD, no distinct-domain bypass of the uniqueness guard.
+  3. Unclaimed-domain signup write-side probe: confirmed the new M8 domain-resolver SELECT never writes `tenant_domain_claims` (row count unchanged pre/post), and the S1 fallback path still creates a normal new tenant — HELD, matches "an unverified domain changes nothing" and S1's zero-observable-behavior-change property.
+  4. Account-hijack-via-domain-capture probe: attacker submits a "signup" for a victim's email that's already registered under an already-verified domain, with an attacker-chosen password — 409 `AUTH_EMAIL_TAKEN` (actual wire code `ERR_TENANT_EMAIL_TAKEN`, see Residual risks), victim's `password_hash` byte-identical before/after — HELD, the `_get_or_provision_sso_user` get-or-return-existing bug class this task explicitly designed around is confirmed absent.
+Also live-verified (not stubbed): the REAL `DnsPythonTxtResolver` adapter against real DNS (real TXT lookup succeeds + parses multi-string records; forced NXDOMAIN and forced 0.0001s timeout both fail CLOSED via `DnsLookupFailedError`) — closes a real coverage gap the merged suite itself leaves at 27% (suite only exercises the `FakeDnsResolver` stub, never the real adapter) — see Residual risks.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify, appsec-engineer persona)
+1. Security: CLEAR — OWNER-only gate reused verbatim from the OIDC/SAML precedent; tenant-scoped queries filter in the SAME statement as existence checks (`get_own`, `revoke`) with the mandated indistinguishable 404; `verification_token` plaintext-at-rest is a disclosed, reasoned exception (not a secret, published in public DNS by design) not a violation of the Fernet-at-rest floor (that floor applies to actual secrets); no SQL string interpolation anywhere in the new module; the account-hijack/enumeration attack this task's own §0 Issues names as the reason to avoid `_get_or_provision_sso_user` is confirmed closed by live probe.
+2. Concurrency: CLEAR — the verify-flip race is closed at the DB layer (partial unique index), confirmed under TRUE concurrency, not just sequential test ordering; the create-or-reissue upsert is one atomic statement; one named, accepted, LOW-severity timing residue (see Residual risks: a revoke racing a concurrently in-flight join).
+3. Architecture: CLEAR — clean-architecture-per-module discipline held (`domain/` zero framework imports, confirmed by direct read); one repository class serving two Protocol ports via structural typing is a deliberate, documented choice mirroring an existing precedent, not an accidental God-object; `_get_owner_identity` duplication (not import) matches the project's own stated SAML/OIDC precedent for avoiding a hard dependency on a sibling admin-router file.
+Verdict: PASS (recommended — HARD-STOPs to Tin regardless per this task's `sensitivity: security` header)
+Residue: none BLOCKER-class; 3 named residual risks below (all 💭 note / 🟡 concern severity, none 🔴)
+Binding: advisory — sensitivity: security (Tin's HARD-STOP gate is the binding decision, matches this task's own header discipline)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: yes — this §6 fill is the gate report; verdict below is a RECOMMENDATION to the human HARD-STOP gate, not a self-issued PASS
+Outcome: HARD-STOP (procedural — every security task in this milestone HARD-STOPs to Tin regardless of evidence quality; recommend PASS on the merits above)
+Reviewed by: <Tin Dang — pending> · date: <pending>
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

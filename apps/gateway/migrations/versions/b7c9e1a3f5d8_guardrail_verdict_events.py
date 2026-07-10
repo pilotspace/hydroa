@@ -1,7 +1,7 @@
 """guardrail_verdict_events — append-only ledger for guardrail-verdict analytics.
 
 Revision ID: b7c9e1a3f5d8
-Revises: a1c5e7f9b3d6
+Revises: b3d8e1f4a7c2
 Create Date: 2026-07-10
 
 Creates the guardrail_verdict_events table (guardrail-analytics TASK.md §3, FROZEN @ v1):

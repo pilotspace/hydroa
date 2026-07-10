@@ -10,7 +10,7 @@ New table only — additive, no existing table is altered. Two indexes:
       Postgres itself, never an app-level SELECT-then-INSERT race.
 
 Revision ID: b3d8e1f4a7c2
-Revises: a1c5e7f9b3d6
+Revises: a55ddcebaac6
 Create Date: 2026-07-10
 """
 

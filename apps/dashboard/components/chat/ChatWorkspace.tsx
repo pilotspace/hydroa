@@ -350,13 +350,18 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   // stays clean: this is pure derived-state from `replayPayload`/`catalogModelIds`, and
   // clearing `replayPayload` at the end makes the block self-terminating (no re-entry).
   if (replayPayload && catalogModelIds !== null) {
-    const inCatalog = catalogModelIds.has(replayPayload.modelId);
-    setInput(replayPayload.text);
-    setModel(inCatalog ? replayPayload.modelId : defaultModel);
-    setReplayNotice({
-      fallbackModel: inCatalog ? null : replayPayload.modelId,
-      degraded: replayPayload.degraded,
-    });
+    // Only pre-fill an UNTOUCHED composer: the catalog resolves async, so a user who
+    // started typing before it settled must not have their in-progress text clobbered.
+    // Either way the payload is one-shot — consumed and cleared, never re-applied.
+    if (input === "") {
+      const inCatalog = catalogModelIds.has(replayPayload.modelId);
+      setInput(replayPayload.text);
+      setModel(inCatalog ? replayPayload.modelId : defaultModel);
+      setReplayNotice({
+        fallbackModel: inCatalog ? null : replayPayload.modelId,
+        degraded: replayPayload.degraded,
+      });
+    }
     setReplayPayload(null);
   }
 

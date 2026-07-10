@@ -361,6 +361,26 @@ describe("LogsExplorerPage — detail drawer (M4, M5, R2)", () => {
     expect(screen.getByText(/req-123/)).toBeInTheDocument();
   });
 
+  it("test_axe_no_serious_violations_with_drawer_open", async () => {
+    server.use(
+      http.get(LOGS_URL, () => HttpResponse.json(LOGS_RESPONSE)),
+      http.get(detailUrl(LOG_ITEM_OK.id), () => HttpResponse.json(LOG_DETAIL_FULL)),
+    );
+
+    const user = userEvent.setup();
+    const { container } = renderLogs();
+
+    await waitFor(() => expect(within(section()).getByText("200")).toBeInTheDocument());
+    await user.click(dataRows()[0]);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /overview/i })).toBeInTheDocument();
+    });
+
+    const results = await axe(container, { rules: { "color-contrast": { enabled: false } } });
+    const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious).toHaveLength(0);
+  });
+
   it("test_closing_drawer_returns_focus_and_preserves_table_state", async () => {
     const PAGE1 = { items: [LOG_ITEM_OK], next_cursor: "cursor-abc", has_more: true };
     const PAGE2 = { items: [LOG_ITEM_ERROR], next_cursor: null, has_more: false };

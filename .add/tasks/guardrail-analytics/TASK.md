@@ -479,50 +479,55 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 20/20 `apps/gateway/tests/guardrail_analytics` (targeted, isolated `gateway_test_vga`), 6/6 `apps/gateway/tests/migrations`, 69/69 sibling suites sharing the same `use_cases.py` call sites (`payload_capture` + `guardrails` + `request_log_metering_fields`), 5/5 dashboard `tests-bff/guardrail-analytics.test.tsx`
+- [x] coverage did not decrease — targeted-suite run only (full-suite coverage not re-run here per the wave-2 brief's "targeted suites only" rule); pyright 0 errors / ruff clean on every touched+new file
+- [x] no test or contract was altered during build — §3 CONTRACT block byte-identical to the frozen text; no test file diff beyond the task's own new `tests/guardrail_analytics/`
+- [x] the green was EARNED, not gamed — see Refute-read verdict below
+- [x] concurrency / timing of the risky operation is safe — see Refute-read + Advisor verdict below
+- [x] no exposed secrets, injection openings, or unexpected dependencies — `group_by` is whitelist-validated (`_VALID_GROUP_BY`) BEFORE its value is ever interpolated into the f-string SQL (router.py:141-144, before the SQL built at :161/:209); `tenant_id` in every query comes from server-side `identity.tenant_id`, never from a query param
+- [x] layering & dependencies follow CONVENTIONS.md — new `guardrail_analytics/{domain,application,infrastructure,api}` module mirrors `logs/`'s layering exactly; zero touch to frozen sibling modules (`guardrail_evaluator.py`, `ml_moderation_evaluator.py`, `tenants/api/guardrail_router.py`, `keys/api/key_guardrail_router.py`) confirmed via diff
+- [ ] a person reviewed and approved the change — pending Tin's review of this VERIFY record
 
-### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
-> OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+### Build expectations — what "correct" looks like
+- [x] A `guardrail_verdict_events` row is written for BOTH streaming and non-streaming completions, independent of payload-capture opt-in — confirmed by `test_nonstream_verdict_recorded_independent_of_capture` + `test_stream_verdict_recorded_closes_metrics_gap` (both pass, real Postgres, real HTTP)
+- [x] A verdict-recorder failure (DB error/timeout) NEVER fails or slows the proxied completion — confirmed by `test_verdict_write_failure_never_fails_proxied_request` (monkeypatches `record_guardrail_verdicts` itself to raise; asserts HTTP 200 + zero verdict rows) AND `test_record_guardrail_verdicts_unit_swallows_db_failure` (unit-level, raising session, asserts no exception propagates) — two independent layers both verified, not just the happy path
+- [x] Fire-and-forget task is never orphaned/leaked and its exception is never "never retrieved" — confirmed by reading `_dispatch_guardrail_verdicts` (use_cases.py:644-677): `asyncio.ensure_future(...)` result is captured in `task`, `task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)` retrieves (marks-consumed) any exception without re-raising — same idiom `_dispatch_capture` already uses
+- [x] Exactly ONE verdict-dispatch call executes per request (no double-count across retry/cache branches) — confirmed by code read: `evaluate_pre` is called exactly once per `complete()`/`stream()` invocation, its 3 call sites (error+block / error+fail-open / success) are mutually exclusive branches of the same try/except/if, and `_run_diverted_fallback`/upstream retries occur strictly AFTER the guardrail block — mirrors the pre-existing `_fire_guardrail_metrics` branching 1:1
+- [x] `policy_source` on the recorded row matches `AuthzResult.policy_source` resolved once at auth time (zero extra IO) — confirmed by `test_policy_source_recorded_from_authz_result` (pass) and code read (`getattr(authz, "policy_source", "none")`, defensive default for auth paths that predate the sibling task)
+- [x] `GET /admin/guardrails/analytics` is tenant-scoped and OPS_READ-gated; unknown `group_by` -> 422; cross-tenant `key_id` -> 404 with zero data leak — confirmed by `test_tenant_isolation_no_leak`, `test_cross_tenant_key_id_filter_returns_404`, `test_invalid_group_by_rejected`, `test_member_forbidden` (all pass) + manual attack: traced that `group_by` is checked against a fixed 3-value whitelist BEFORE being placed into the SQL text, so it can never be coerced into a cross-tenant SUM or injected
+- [x] Counts come from `guardrail_verdict_events`, not `request_logs` (capture-OFF tenants still counted) — confirmed by `test_nonstream_verdict_recorded_independent_of_capture` explicitly asserting no `request_logs` row exists for the call while the verdict row does
+- [x] Migration applies/reverts cleanly on the current alembic head with no branching — confirmed via `alembic heads` (single head `69cfdc584129`) and 6/6 `tests/migrations` (upgrade-from-empty parity, autogenerate-empty-diff, idempotent-second-upgrade, clean downgrade, parity-gate-red)
 
-### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+### Deep checks
+- [x] WIRING (code) — `guardrail_analytics_router` included in `main.py:1274`; `GuardrailVerdictEventRow` import registers the table on `Base.metadata` (`main.py:92`, `noqa: F401` documented); nav entry wired in `app-shell.tsx:101-107` (Govern group, `minRole: "admin"`); dashboard route at `apps/dashboard/app/(app)/app/guardrail-analytics/page.tsx` — all confirmed present and referenced, ruff/pyright clean (0 findings)
+- [x] DEAD-CODE (code) — no orphaned symbol found; every new schema class (`GuardrailAnalyticsResponse`, `*BreakdownItem`) is consumed by either `router.py` or `GuardrailAnalyticsPage.tsx`'s mirrored TS interfaces
+- [x] SEMANTIC (prose) — §0/§1/§3 read in full; the two named scope boundaries (coarse-pattern mapping §1⚠#1, `evaluate_post` out-of-v1 §1⚠#3) are correctly NOT implemented (zero touch to `guardrail_evaluator.py`/`ml_moderation_evaluator.py` confirmed by diff) — matches the frozen decision, not silently narrower or wider
 
-### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+### Live-verify evidence
+- [x] Every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by successful imports (`pyright` 0 errors on `router.py` importing `_compute_window_bounds`/`_require_ops_read` from `usage/api/router.py`, `KEY_NOT_FOUND_IN_TENANT`/`PAYLOAD_GROUP_BY_INVALID`/`PAYLOAD_KEY_ID_UUID_INVALID` from `core/error_catalog`) and by the full test suite exercising every cited symbol at runtime (all pass)
+- [x] No anchor moved/renamed since Ground SHA `443a33a` — one COSMETIC drift found and named, not silent: the migration file's own docstring header says "Revises: a1c5e7f9b3d6" but the actual `down_revision` variable (and `alembic history`) correctly chain from `b3d8e1f4a7c2` (an intervening `tenant_domain_claims` migration landed between design and build) — functionally correct (alembic reads the variable, not the docstring; 6/6 migrations tests pass, single head confirmed), but the stale comment should be fixed in a follow-up touch — 💭 note, not a blocker
 
-### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+### Refute-read verdict — the earned-green check
+Verdict: EARNED
+By: self (add-verify, appsec-engineer + sre-reliability-engineer lenses) · adversarially checked:
+  (1) fail-open guarantee at BOTH layers — monkeypatched `record_guardrail_verdicts` itself (not just its internals) to raise, confirming the OUTER `asyncio.ensure_future` + done-callback dispatch in `use_cases.py` swallows it independent of the recorder's own try/except (defense-in-depth, not a single point of failure);
+  (2) cross-tenant leak on `group_by` — traced that the group_by string is whitelist-validated against a fixed 3-value set BEFORE being placed in the f-string SQL (router.py:141-144 precedes :161/:209), so it can never be coerced into a cross-tenant SUM or arbitrary-column read, and confirmed with a live cross-tenant HTTP call (`test_tenant_isolation_no_leak`) seeding 10 real rows for tenant A and asserting tenant B sees exactly zero;
+  (3) double-counting across the streaming/non-streaming split and the 3-way error/block/success branching — read the full control flow in both `complete()` and `stream()`, confirmed the 3 `_dispatch_guardrail_verdicts` call sites per path are mutually exclusive branches of one try/except/if (never more than one fires per request), and that no outer retry wrapper re-invokes `complete()`/`stream()`.
+  All three held — no bypass found.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify)
+1. Security: CLEAR — tenant-scoping enforced server-side on every query (`identity.tenant_id`, never a query param); `group_by` whitelist precedes SQL construction (no injection); cross-tenant `key_id` returns the same 404 `ERR_KEY_NOT_FOUND` as unknown-id (no existence-oracle); OPS_READ gate reused verbatim and confirmed by `test_member_forbidden`/`test_missing_token_rejected`. New table is NOT payload-bearing (counts/labels only).
+2. Concurrency: CLEAR — fire-and-forget write is fail-open at two independent layers (recorder's own try/except + the outer done-callback), bounded by `asyncio.timeout(2.0)`, uses its own DB session (never shares/rolls back the request's transaction), and never retried (correct choice for a best-effort write under a struggling store). No new task-leak: `task` reference is kept and its exception explicitly retrieved via the done callback.
+3. Architecture: CLEAR — new `guardrail_analytics/` module cleanly layered (domain-free here since no new domain logic beyond the ORM row; application/infrastructure/api mirror `logs/`); zero edits to frozen sibling modules; `use_cases.py` touched only with additive call sites mirroring the existing `_fire_guardrail_metrics` pattern 1:1, confirmed by 69/69 passing in the sibling suites that share those same call sites (payload_capture, guardrails, request_log_metering_fields).
+Verdict: PASS
+Residue: 1 cosmetic — migration file's docstring header revision-id comment is stale (says `a1c5e7f9b3d6`, actual parent is `b3d8e1f4a7c2`); functionally inert (alembic reads the code variable), recommend a trivial follow-up fix, not gate-blocking.
+Binding: advisory — non-security data task (per §3 freeze decision: "non-security data task")
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: yes — this VERIFY record is the gate report
+Outcome: PASS
+Reviewed by: add-verify (adversarial pass) · date: 2026-07-11
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

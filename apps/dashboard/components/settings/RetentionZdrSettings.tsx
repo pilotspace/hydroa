@@ -251,6 +251,7 @@ export function RetentionZdrSettings() {
             id="zdr-enabled"
             aria-label="Enable Zero-Data-Retention"
             checked={zdrEnabled}
+            disabled={zdrConfirmOpen}
             onCheckedChange={handleZdrToggle}
           />
         </div>

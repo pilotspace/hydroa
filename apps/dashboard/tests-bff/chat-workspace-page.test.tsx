@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, renderHook, act, waitFor } from "@testing-library/react";
+import { render, screen, renderHook, act, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "./mocks/server";
@@ -344,6 +344,44 @@ describe("replay handoff from Logs Explorer (logs-explorer-ui, M6/M8)", () => {
     // consumeReplayPayload() already cleared it on the first read.
     render(<ChatWorkspace />);
     await waitFor(() => expect(screen.getByRole("textbox", { name: /message/i })).toHaveValue(""));
+  });
+
+  it("test_replay_does_not_clobber_in_progress_typing", async () => {
+    // The catalog resolves async and gates the replay-apply block. A user who starts
+    // typing before it settles must keep their draft — the pre-fill is a convenience,
+    // never an override. Gate the catalog so the composer is interactive first.
+    let releaseCatalog: () => void = () => {};
+    const catalogGate = new Promise<void>((resolve) => {
+      releaseCatalog = resolve;
+    });
+    server.use(
+      http.get("http://localhost:3000/api/gw/admin/catalog/models", async () => {
+        await catalogGate;
+        return HttpResponse.json({
+          object: "list",
+          data: [{ id: "openai/gpt-4o", name: "GPT-4o", context_length: 128000 }],
+        });
+      }),
+    );
+    writeReplayPayload({ text: "REPLAY MUST NOT WIN", modelId: "openai/gpt-4o", degraded: false });
+
+    const user = userEvent.setup();
+    render(<ChatWorkspace />);
+
+    const textarea = (await screen.findByRole("textbox", {
+      name: /message/i,
+    })) as HTMLTextAreaElement;
+    await user.type(textarea, "my own draft");
+    expect(textarea).toHaveValue("my own draft");
+
+    // Let the catalog resolve — the replay-apply block now runs in the same commit that
+    // renders the catalog options; the guarded block must leave the draft intact.
+    releaseCatalog();
+    const select = screen.getByRole("combobox", { name: /model/i });
+    await waitFor(() =>
+      expect(within(select).getByRole("option", { name: /gpt-4o/i })).toBeInTheDocument(),
+    );
+    expect(textarea).toHaveValue("my own draft");
   });
 
   it("test_no_replay_payload_leaves_composer_untouched", async () => {

@@ -391,39 +391,46 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] A non-streaming/streaming/cache-hit/BLOCK completion each produce a `request_logs` row whose `request_id` is byte-identical to the SAME call's `usage_records.raw->>'request_id'` — confirmed by real Postgres HTTP-level tests (`tests/request_log_metering_fields/test_request_log_metering_fields.py::test_non_streaming_capture_carries_latency_tokens_and_correlation_id`, `::test_streaming_clean_close_...`, `::test_request_id_correlates_rows_and_usage_records_has_no_new_column`) AND by my own throwaway 5-concurrent-call probe (deleted after use) asserting `{request_logs.request_id} == {usage_records.raw->>'request_id'}` set-equality with zero cross-contamination.
+- [x] `usage_records` gains NO new column (correlation rides the `raw` JSONB extras seam only) — confirmed by `information_schema.columns` introspection in `test_request_id_correlates_rows_and_usage_records_has_no_new_column` + `test_usage_records_gains_no_new_column_standalone`, and by reading `usage/application/recorder.py:_record_internal` (request_id write is `raw_payload["request_id"] = str(request_id)`, before `event_fields` construction — no schema touch).
+- [x] Guardrail-BLOCK rows have `latency_ms` populated but `prompt_tokens`/`completion_tokens`/`total_tokens` all NULL (never 0) — confirmed by `test_guardrail_block_capture_has_latency_but_no_tokens` (real HTTP call through a block-mode guardrail) AND by reading `sqlalchemy_capture.py:_verbatim_token_count` (`usage=None` → `not isinstance(None, dict)` → `None`, never `0`).
+- [x] `latency_ms` is derived from the SAME `_start_ns`/`_request_id` as the call's OtelSpan, never a second clock — confirmed by `test_latency_ms_derived_from_start_ns_never_second_clock` (monkeypatches `use_cases.time.time_ns` to a constant; asserts `latency_ms == 0`, which only holds if both the start and dispatch reads go through the SAME patched clock).
+- [x] Pre-existing `request_logs` rows read back with all 5 new columns NULL, no backfill, no error — confirmed by `test_pre_existing_rows_read_back_with_new_columns_null` (raw INSERT omitting the 5 new columns, then SELECT) AND by live `alembic upgrade head` on a fresh `gateway_migrations_test_vm` DB (clean single-head run, no errors, `a1c5e7f9b3d6 -> a55ddcebaac6` applies additively).
+- [x] Billing exactness (cost_usd/quantity/prompt_tokens/completion_tokens on `usage_records`) is UNCHANGED by metering, whether capture is ON or OFF — confirmed by my own throwaway probe (`test_billing_cost_and_quantity_unaffected_by_metering`, deleted after use): two tenants, identical call, capture ON vs OFF → byte-identical `cost_usd`/`quantity`/`pricing_unit`/token counts on `usage_records`, and exactly 1 `usage_records` row per call.
+- [x] ZDR-suppressed tenants get NO `request_logs` row at all (metering columns cannot resurrect a suppressed row) — confirmed by reading `sqlalchemy_capture.py:capture()`: the `if is_zdr: return` early-exit is BEFORE `persist_request_log(...)` is ever called, untouched by this task's diff (0 lines changed in that gate).
+- [x] `NoopPayloadCapture`/omitted-kwarg callers stay byte-identical — confirmed by `test_noop_and_omitted_kwargs_stay_byte_identical` (all-3-kwargs-supplied AND all-3-omitted, both no-op, no raise).
+- [x] Capture-store outage stays fail-open, no new failure mode, with the 5 new fields present — confirmed by `test_capture_store_outage_fail_open_with_new_fields_present` (simulated 5s-hung DB session, `timeout_seconds=0.1`, elapsed < 2.0s, no raise).
+- [x] Tokens stored verbatim from the `usage` dict, never re-derived from response-body content — confirmed by `test_tokens_stored_verbatim_never_recomputed_from_response_body` (usage dict deliberately mismatched vs. a much-longer response body; stored values match the usage dict exactly).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol is referenced; record where / how confirmed — `usage`/`latency_ms`/`request_id` on `_dispatch_capture` are read at all 11 call sites (grep-verified `_dispatch_capture(` count = 12 = 1 def + 11 calls, matching TASK.md §5's own self-check); `_request_id`/`start_ns` added to `_try_cache_lookup`'s ONE caller (`complete()`); `request_id` param on `_fire_record`/`_fire_record_cached`/`_fire_record_with_raw` feeds `UsageRecordExtras["request_id"]` at every call site touched; `_verbatim_token_count` is called exactly once, inline in `SqlAlchemyPayloadCapture.capture`, for all 3 token fields.
+- [x] DEAD-CODE (code) — no new unused or orphaned symbol introduced — every new column/kwarg/param traced to a live read (5 ORM columns read back in tests + the INSERT's VALUES list; `UsageRecordExtras["request_id"]` consumed by `_record_internal`'s `supported_extras` filter); no new helper left uncalled.
+- [ ] SEMANTIC (prose / non-code) — not applicable (this is a pure schema+wiring change, no prose/doc artifact in scope).
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by direct read of the integrated diff (`0c46c99..9369cf0`) for all 9 touched files (`orm.py`, `entities.py`, `ports.py`, `payload_capture_noop.py`, `use_cases.py`, `recorder.py`, `capture_writer.py`, `sqlalchemy_capture.py`, the new migration) — every signature matches §3 verbatim (kwarg names, defaults, types).
+- [x] any anchor that moved/renamed since Ground SHA is named here, not left silent — ONE real anchor drift, benign: the migration's `down_revision` (`a1c5e7f9b3d6`) is no longer the alembic HEAD in the fully-integrated tree — `domain-capture` (`b3d8e1f4a7c2`) and later tasks re-parented onto THIS task's own new revision (`a55ddcebaac6`) as the wave-2 integration proceeded (see commit `dca783b` "re-parent domain-capture onto metering head"), which is the CORRECT direction (this task's migration became an intermediate link, not orphaned) — confirmed via a clean `alembic upgrade head` on a fresh `gateway_migrations_test_vm` DB, single head (`69cfdc584129`), no branch/multi-head error.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: add-verify (self) · adversarially checked: (1) union-merge corruption between this task and the concurrently-merged `guardrail-analytics` task, both editing the SAME 2 BLOCK call sites in `use_cases.py` — read the integrated file directly, confirmed both `_dispatch_guardrail_verdicts(...)` and `_dispatch_capture(..., request_id=_request_id)` are present, neither clobbered the other, pyright 0 errors on the file. (2) Billing-exactness + 1:1 usage_records-per-request + concurrent-call request_id non-collision — wrote and RAN a throwaway 2-test probe (5 concurrent calls: unique, non-cross-contaminated request_ids, exact set-equality between `request_logs.request_id` and `usage_records.raw->>'request_id'`; capture-ON vs capture-OFF tenant: byte-identical cost_usd/quantity/tokens, exactly 1 usage_records row) — both passed, then deleted per rules. (3) ZDR-suppression-resurrection — read `sqlalchemy_capture.py:capture()`: the `if is_zdr: return` gate is untouched (0 lines in the diff), sits BEFORE `persist_request_log` is ever called, so the 5 new columns cannot resurrect a suppressed row. (4) Token-verbatim-extraction divergence between the metering read path and the billing read path on the SAME `usage` dict — found and confirmed a REAL (low-probability, non-security, non-billing-affecting) divergence: see FINDINGS below.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: add-verify (self)
+1. Security: CLEAR — no new IO seam, no new secret/credential surface, no injection opening (raw INSERT uses SQLAlchemy `text()` bound params, unchanged idiom); `request_id` is explicitly barred from ever becoming a uniqueness/idempotency constraint (§5 Safety rule honored — no `ON CONFLICT`/unique index added on it, confirmed by reading the migration); tenant-scoping unchanged (every new field rides inside the existing tenant-scoped INSERT/extras path, no new cross-tenant read surface introduced by this task).
+2. Concurrency: CLEAR — fire-and-forget/bounded-timeout/never-retried posture is byte-identical (0 new IO seam per Must); `_request_id`/`_start_ns` are per-call locals (no shared mutable state), confirmed non-colliding under 5 real concurrent HTTP calls in my own probe.
+3. Architecture: CLEAR — additive-only on both sides (5 NULLABLE `request_logs` columns, 1 JSONB extras key on `usage_records`, zero new columns on the FROZEN `usage_records` table); clean-architecture layering unchanged (no new cross-module import beyond stdlib `uuid`/`time`, already present); the union-merge with the concurrently-built `guardrail-analytics` task at the SAME 2 call sites in `use_cases.py` integrated cleanly with no logic loss (verified above).
+Verdict: PASS
+Residue: 1 MINOR/note finding (token-verbatim type-coercion divergence, see FINDINGS) — accepted, not a blocker; see Residual risks.
+Binding: advisory — non-mechanical, standard-sensitivity additive change-request
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: yes — this verify pass (evidence gathered: 12/12 task-suite tests pass, 34/34 sibling payload-capture-store+usage-metering tests pass unmodified, clean single-head migration apply, 2/2 throwaway adversarial probes pass, pyright 0 errors) is the gate report.
+Outcome: PASS
+Reviewed by: add-verify (self, recommendation — human/orchestrator records the binding outcome) · date: 2026-07-11
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

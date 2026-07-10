@@ -952,6 +952,32 @@ describe("SettingsPage — Retention & ZDR tab", () => {
     expect(putCalled).toBe(false);
   });
 
+  it("test_zdr_switch_disabled_while_confirm_open", async () => {
+    // Defense-in-depth: while the enable-confirm dialog is open the switch is optimistically
+    // `true`; a forced/synthetic click would otherwise fire PUT{zdr_enabled:false} past the
+    // open dialog. The switch must be component-level disabled, not merely overlay-blocked.
+    const user = userEvent.setup();
+    let putCalled = false;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      http.put(`${APP}/api/gw/admin/retention-policy`, () => {
+        putCalled = true;
+        return HttpResponse.json(RETENTION_ZDR_ON);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+    await screen.findByLabelText(/window \(days\)/i);
+
+    const zdrSwitch = screen.getByRole("switch", { name: /enable zero-data-retention/i });
+    await user.click(zdrSwitch);
+    await screen.findByRole("dialog");
+
+    expect(zdrSwitch).toBeDisabled();
+    expect(putCalled).toBe(false);
+  });
+
   it("test_zdr_enable_confirm_fires_put", async () => {
     const user = userEvent.setup();
     let putBody: Record<string, unknown> | null = null;
