@@ -235,6 +235,7 @@ async def test_superadmin_views_target_tenant_guardrail_config(
     assert resp.json() == {
         "prompt_injection": {"enabled": True, "mode": "block"},
         "pii_mask": None,
+        "ml_moderation": None,
     }
 
 
@@ -702,7 +703,11 @@ async def test_self_service_routers_remain_byte_identical_for_non_superadmin(
 
     guardrails_get = await client.get("/admin/guardrails", headers=headers)
     assert guardrails_get.status_code == 200, guardrails_get.text
-    assert guardrails_get.json() == {"prompt_injection": None, "pii_mask": None}
+    assert guardrails_get.json() == {
+        "prompt_injection": None,
+        "pii_mask": None,
+        "ml_moderation": None,
+    }
 
     guardrails_put = await client.put(
         "/admin/guardrails",
