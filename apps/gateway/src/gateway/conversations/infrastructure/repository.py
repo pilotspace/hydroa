@@ -14,6 +14,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.conversations.infrastructure.orm import ConversationMessageRow, ConversationRow
+from gateway.tenants.application.retention_policy import raise_if_zdr
 
 
 class ConversationRepository:
@@ -33,7 +34,12 @@ class ConversationRepository:
         key_id: uuid.UUID,
         title: str | None,
     ) -> ConversationRow:
-        """Insert a new conversation row and return it (server-side timestamps populated)."""
+        """Insert a new conversation row and return it (server-side timestamps populated).
+
+        Fail-closed ZDR gate (tenant-retention-zdr TASK.md §3 M5): raises 403
+        ERR_ZDR_PAYLOAD_BLOCKED, checked fresh, BEFORE the row is constructed.
+        """
+        await raise_if_zdr(self._session, tenant_id)
         row = ConversationRow(
             tenant_id=tenant_id,
             key_id=key_id,
@@ -176,7 +182,11 @@ class ConversationRepository:
 
         Returns the new message row on success, None when the conversation does not exist /
         belongs to another tenant / is soft-deleted.
+
+        Fail-closed ZDR gate (tenant-retention-zdr TASK.md §3 M5): raises 403
+        ERR_ZDR_PAYLOAD_BLOCKED, checked fresh, BEFORE anything else in this call.
         """
+        await raise_if_zdr(self._session, tenant_id)
         # Verify ownership + active state (tenant-scoped) in the same session
         conv = await self._session.execute(
             select(ConversationRow).where(

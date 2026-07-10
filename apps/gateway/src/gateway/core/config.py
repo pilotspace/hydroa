@@ -584,6 +584,13 @@ class Settings(BaseSettings):
     retention_audit_floor_days: int = Field(default=365)
     # env: GATEWAY_RETENTION_BATCH_SIZE (bounds each DELETE)
     retention_batch_size: int = Field(default=1000)
+    # ── Per-tenant retention window + ZDR (tenant-retention-zdr TASK.md §3, FROZEN @ v1) ──
+    # The single operator-wide ceiling a tenant's own `retention_window_days` may never
+    # exceed (validated at PUT /admin/retention-policy). Governs the 5 newly-swept payload
+    # tables standalone (no prior per-table knob); usage_records/alert_events keep their
+    # OWN existing knobs as an additional upper bound a tenant override can only shorten.
+    # env: GATEWAY_RETENTION_TENANT_WINDOW_CEILING_DAYS
+    retention_tenant_window_ceiling_days: int = Field(default=365)
 
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip

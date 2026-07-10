@@ -156,6 +156,7 @@ from gateway.tenants.api.platform_tenant_config_router import platform_tenant_co
 from gateway.tenants.api.platform_tenants_router import platform_tenants_router
 from gateway.tenants.api.platform_users_router import platform_users_router
 from gateway.tenants.api.rate_card_router import rate_card_router
+from gateway.tenants.api.retention_policy_router import retention_policy_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.api.users_router import users_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
@@ -512,6 +513,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             retention_sweeper = RetentionSweeper(
                 session_factory=_sessionmaker,
                 settings=_settings,
+                # tenant-retention-zdr TASK.md §3 — the ZDR unconditional purge pass
+                # calls ObjectStore.delete() for s3-backed artifacts and bounded Redis
+                # SCAN/DEL over resp-cache:/vec-cache: namespaces. Both are already
+                # wired on app.state before lifespan startup runs.
+                redis=_redis,
+                object_store=app.state.object_store,
             )
             app.state.retention_sweeper = retention_sweeper
             app.state.retention_sweeper_task = asyncio.create_task(
@@ -1137,6 +1144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(cache_router)
     app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
+    app.include_router(retention_policy_router)
     app.include_router(rate_card_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)

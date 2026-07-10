@@ -41,6 +41,9 @@ class ApiKey:
     # Batch-auto-grouping additive field (batch-auto-grouping migration, v57)
     # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
     batch_grouping_enabled: bool = False
+    # tenant-retention-zdr additive field (tenant-retention-zdr TASK.md §3, FROZEN @ v1)
+    # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
+    zdr_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,3 +106,10 @@ class AuthzResult:
     # Populated at auth time from tenants.batch_grouping_enabled via the existing LEFT JOIN tenants.
     # Default False = diversion inactive (per-tenant opt-in, M9 byte-identical guarantee).
     batch_grouping_enabled: bool = False
+    # tenant-retention-zdr additive field (tenant-retention-zdr TASK.md §3, FROZEN @ v1)
+    # Populated at auth time from tenants.zdr_enabled via the existing LEFT JOIN tenants.
+    # Default False = ZDR inactive. M5's five gated repositories re-check this FRESH per
+    # call (gateway.tenants.application.retention_policy.raise_if_zdr) rather than trust
+    # this value alone — this field is used for M6 (cache-write skip), where the same
+    # per-request freshness the LEFT JOIN already provides is sufficient.
+    zdr_enabled: bool = False

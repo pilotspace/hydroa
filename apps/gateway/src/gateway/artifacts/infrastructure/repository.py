@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
 from gateway.artifacts.infrastructure.orm import ArtifactRow
+from gateway.tenants.application.retention_policy import raise_if_zdr
 
 
 class ArtifactRepository:
@@ -47,7 +48,11 @@ class ArtifactRepository:
         ``id`` is supplied by the caller so the s3 object key is known BEFORE the
         write. ``content`` holds the inline BYTEA for storage_backend='inline'; for
         's3' it is None and the bytes live in the object store at ``object_key``.
+
+        Fail-closed ZDR gate (tenant-retention-zdr TASK.md §3 M5): raises 403
+        ERR_ZDR_PAYLOAD_BLOCKED, checked fresh, BEFORE the row is constructed.
         """
+        await raise_if_zdr(self._session, tenant_id)
         row = ArtifactRow(
             id=id,
             tenant_id=tenant_id,

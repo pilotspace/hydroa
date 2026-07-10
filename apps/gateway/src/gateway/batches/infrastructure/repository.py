@@ -30,6 +30,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.batches.infrastructure.orm import BatchJobItemRow, BatchJobRow
+from gateway.tenants.application.retention_policy import raise_if_zdr
 
 # Job-level non-terminal statuses (OpenAI's vocabulary) — used by the retry/orphan guards.
 _JOB_NONTERMINAL_STATUSES = ("validating", "in_progress", "finalizing", "cancelling")
@@ -56,7 +57,12 @@ class BatchJobRepository:
 
         line_items: [{"custom_id": str, "body": dict}, ...] — already validated (non-empty,
         under the cap, unique custom_id, model+messages present) by the caller.
+
+        Fail-closed ZDR gate (tenant-retention-zdr TASK.md §3 M5): raises 403
+        ERR_ZDR_PAYLOAD_BLOCKED, checked fresh, BEFORE any row is constructed — every
+        line item in this submission carries a request_body, so the whole job is gated.
         """
+        await raise_if_zdr(self._session, tenant_id)
         job = BatchJobRow(
             tenant_id=tenant_id,
             key_id=key_id,
