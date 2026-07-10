@@ -523,6 +523,75 @@ OIDC_TENANT_CONFLICT = ErrorSpec(
 )
 
 # ---------------------------------------------------------------------------
+# SAML 2.0 SSO errors (saml-sso task)
+# ---------------------------------------------------------------------------
+
+#: No enabled SAML config matches the requested domain (M1).
+SAML_NOT_CONFIGURED = ErrorSpec(
+    404, "ERR_SAML_NOT_CONFIGURED", "SAML login is not configured for this domain"
+)
+
+#: No pending-request record matches the (unverified) InResponseTo — includes
+#: genuinely IdP-initiated, unsolicited responses (M6).
+SAML_REQUEST_NOT_FOUND = ErrorSpec(
+    400, "ERR_SAML_REQUEST_NOT_FOUND", "No matching SAML login request found"
+)
+
+#: The pending-request record was already consumed (M3 single-use).
+SAML_REQUEST_ALREADY_USED = ErrorSpec(
+    400, "ERR_SAML_REQUEST_ALREADY_USED", "SAML login request has already been used"
+)
+
+#: XML signature verification failed (M4).
+SAML_SIGNATURE_INVALID = ErrorSpec(
+    401, "ERR_SAML_SIGNATURE_INVALID", "SAML assertion signature validation failed"
+)
+
+#: Assertion/response Issuer does not match the tenant's configured idp_entity_id.
+SAML_ISSUER_MISMATCH = ErrorSpec(401, "ERR_SAML_ISSUER_MISMATCH", "SAML issuer mismatch")
+
+#: Audience does not match the tenant's sp_entity_id.
+SAML_AUDIENCE_MISMATCH = ErrorSpec(401, "ERR_SAML_AUDIENCE_MISMATCH", "SAML audience mismatch")
+
+#: The signed SubjectConfirmationData/@InResponseTo does not match the pending request_id (M5.4).
+SAML_RESPONSE_MISMATCH = ErrorSpec(
+    401, "ERR_SAML_RESPONSE_MISMATCH", "SAML response does not match the pending request"
+)
+
+#: NotBefore/NotOnOrAfter violated outside the configured clock-skew window (M5.5).
+SAML_ASSERTION_EXPIRED = ErrorSpec(401, "ERR_SAML_ASSERTION_EXPIRED", "SAML assertion has expired")
+
+#: Assertion @ID already present in the consumed-assertion cache (M5.6).
+SAML_ASSERTION_REPLAYED = ErrorSpec(
+    401, "ERR_SAML_ASSERTION_REPLAYED", "SAML assertion has already been used"
+)
+
+#: No email resolvable via the M13 ranked lookup.
+SAML_EMAIL_MISSING = ErrorSpec(
+    401, "ERR_SAML_EMAIL_MISSING", "SAML assertion has no resolvable email"
+)
+
+#: The verified email is bound to a different tenant.
+SAML_TENANT_CONFLICT = ErrorSpec(
+    403, "ERR_SAML_TENANT_CONFLICT", "Email is bound to a different tenant"
+)
+
+#: app.state.redis_client unreachable during the M3/M5.6 replay checks (M12, fail-CLOSED).
+SAML_STORE_UNAVAILABLE = ErrorSpec(
+    503, "ERR_SAML_STORE_UNAVAILABLE", "SAML login request store is temporarily unavailable"
+)
+
+#: No saml_provider_configs row found for the tenant (admin GET endpoint).
+SAML_CONFIG_NOT_FOUND = ErrorSpec(
+    404, "ERR_SAML_CONFIG_NOT_FOUND", "No SAML configuration found for this tenant"
+)
+
+#: PUT /admin/saml with an unparseable or expired idp_x509_cert.
+SAML_CERT_INVALID = ErrorSpec(
+    422, "ERR_SAML_CERT_INVALID", "SAML IdP certificate is invalid or expired"
+)
+
+# ---------------------------------------------------------------------------
 # Internal / server errors
 # ---------------------------------------------------------------------------
 
