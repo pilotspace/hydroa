@@ -106,6 +106,11 @@ static_resources:
                             prefix: "/admin/"
                           requires:
                             provider_name: "gateway_jwt"
+                        # scim-provisioning (M2): /scim/v2/* authenticates via its OWN
+                        # in-app bearer-token resolution — no `requires` clause, matching
+                        # today's catch-all behavior byte-for-byte (TASK.md §3 M2).
+                        - match:
+                            prefix: "/scim/"
                         - match:
                             prefix: "/"
 
@@ -204,6 +209,18 @@ static_resources:
 
                         - match:
                             prefix: "/admin/"
+                          route:
+                            cluster: gateway_cluster
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+
+                        # scim-provisioning (M2): /scim/v2/* → gateway upstream, ext_authz
+                        # disabled — byte-identical to today's catch-all behavior, added
+                        # as documentation-as-config insurance against future drift.
+                        - match:
+                            prefix: "/scim/"
                           route:
                             cluster: gateway_cluster
                           typed_per_filter_config:

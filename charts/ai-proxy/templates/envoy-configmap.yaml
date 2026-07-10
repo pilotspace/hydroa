@@ -80,6 +80,10 @@ data:
                             - match: { path: "/admin/auth/login" }
                             - match: { prefix: "/admin/" }
                               requires: { provider_name: "gateway_jwt" }
+                            # scim-provisioning (M2): /scim/v2/* authenticates via its OWN
+                            # in-app bearer-token resolution — no `requires` clause,
+                            # matching today's catch-all behavior byte-for-byte.
+                            - match: { prefix: "/scim/" }
                             - match: { prefix: "/" }
                       - name: envoy.filters.http.ext_authz
                         typed_config:
@@ -153,6 +157,17 @@ data:
                                   check_settings:
                                     context_extensions: { route: "v1" }
                             - match: { prefix: "/admin/" }
+                              route: { cluster: gateway_cluster }
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  disabled: true
+                            # scim-provisioning (M2): /scim/v2/* → ALWAYS gateway_cluster,
+                            # never the dashboard (must precede the catch-all, which
+                            # conditionally routes to dashboard_cluster). ext_authz disabled —
+                            # byte-identical to today's catch-all behavior; explicit block
+                            # is documentation-as-config insurance against future drift.
+                            - match: { prefix: "/scim/" }
                               route: { cluster: gateway_cluster }
                               typed_per_filter_config:
                                 envoy.filters.http.ext_authz:

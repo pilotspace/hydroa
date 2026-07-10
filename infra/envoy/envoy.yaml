@@ -101,6 +101,14 @@ static_resources:
                             prefix: "/admin/"
                           requires:
                             provider_name: "gateway_jwt"
+                        # scim-provisioning (M2): /scim/v2/* authenticates via its OWN
+                        # in-app bearer-token resolution (Authorization: Bearer scim-...),
+                        # never the session JWT — no `requires` clause, matching today's
+                        # catch-all behavior byte-for-byte. Explicit block added as
+                        # documentation-as-config insurance against future catch-all drift
+                        # (belt-and-suspenders, not a behavior change — TASK.md §3 M2).
+                        - match:
+                            prefix: "/scim/"
                         - match:
                             prefix: "/"
 
@@ -208,6 +216,20 @@ static_resources:
                         # M2 / A3: /admin/* → jwt_authn already validated; ext_authz disabled
                         - match:
                             prefix: "/admin/"
+                          route:
+                            cluster: gateway_cluster
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+
+                        # scim-provisioning (M2): /scim/v2/* → gateway upstream, ext_authz
+                        # disabled (SCIM auth is the gateway's own in-app bearer-token
+                        # resolution, mirrors /v1/realtime/'s in-band-auth carve-out above).
+                        # Byte-identical to today's catch-all behavior — explicit block is
+                        # documentation-as-config insurance against future catch-all drift.
+                        - match:
+                            prefix: "/scim/"
                           route:
                             cluster: gateway_cluster
                           typed_per_filter_config:
