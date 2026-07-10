@@ -4,7 +4,7 @@ slug: ml-moderation-layer · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 sensitivity: security   <!-- new outbound egress seam + BYOK credential use + honest-degradation invariant -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -215,6 +215,10 @@ Scenario: absent app.state.ml_moderation_provider wires the unchanged default ev
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
+Status: FROZEN @ v1 — approved by Tin Dang
+Least-sure flag surfaced at freeze: [contract] OpenAI /v1/moderations shape + $0 pricing is trained-knowledge, NOT live-verified — a live-docs check is REQUIRED before the real HTTP call is wired at BUILD (if priced, unbilled real spend accrues; this design never bills moderation). Decided at freeze (Tin, 2026-07-10 batch): all 4 agent recommendations accepted (allow-enable + honest unchecked degrade; connect=1.5s/read=2.5s/1 retry as starting budget; pre-call only v1; no separate global flag).
+
+
 ```
 PUT /admin/guardrails   body: { prompt_injection?, pii_mask?, ml_moderation?: {
     enabled: bool, mode: "block"|"audit", failure_mode?: "fail_open"|"fail_closed" (default "fail_open")
@@ -257,17 +261,14 @@ from gateway.proxy.domain.ports import GuardrailEvaluator, TenantCredentialResol
 # `except Exception` below (M6: EVERY moderation-call failure mode degrades identically —
 # naming subclasses separately would add branches with no behavioral difference).
 
-
 class ModerationVerdict(TypedDict):
     flagged: bool
     categories: list[str]
-
 
 class ModerationProvider(Protocol):
     """Structural port: one dedicated adapter instance, one dedicated breaker."""
 
     async def moderate(self, text: str) -> ModerationVerdict: ...
-
 
 def _concat_user_content(messages: list[dict[str, Any]]) -> str:
     return "\n".join(
@@ -275,7 +276,6 @@ def _concat_user_content(messages: list[dict[str, Any]]) -> str:
         for m in messages
         if isinstance(m, dict) and m.get("role") == "user"
     )
-
 
 class MlModerationGuardrailEvaluator:
     """Implements GuardrailEvaluator structurally (evaluate_pre only — no post-call leg;
@@ -336,7 +336,6 @@ class MlModerationGuardrailEvaluator:
         self, response_body: dict[str, Any], guardrail_configs: dict[str, Any]
     ) -> dict[str, Any]:
         return response_body  # no post-call leg in v1 — see FREEZE-QUESTION 3
-
 
 class CompositeGuardrailEvaluator:
     """Chains the existing RegexGuardrailEvaluator with MlModerationGuardrailEvaluator.
@@ -540,6 +539,7 @@ One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)
 - [SDD · open] a BYOK provider used for an ANCILLARY IO seam (moderation) needs an ISOLATED CircuitBreaker/client instance from the SAME provider's PRIMARY seam (chat completions) — sharing one adapter instance across two independent failure domains would cross-contaminate breaker state; worth a general pattern note for any future secondary use of an existing provider adapter (evidence: §0 R3, §1 M8).
 
 ---
+
 
 ## Design self-score
 

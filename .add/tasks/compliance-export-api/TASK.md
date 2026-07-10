@@ -4,7 +4,7 @@ slug: compliance-export-api · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
 sensitivity: data   <!-- read-only over the existing immutable audit store; no new identity/auth surface — data-handling risk (bulk export, filter correctness, honest pagination), not a security HARD-STOP surface. -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -261,6 +261,9 @@ Scenario: duplicate cursor request is idempotent   # concurrency/retry-safety
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
+Least-sure flag surfaced at freeze: [contract] NDJSON as the DEFAULT export body (cursor via response headers) — a deliberate divergence from the project's mirror-existing-envelope convention, chosen for SIEM/archival ergonomics; ?format=json preserves the house envelope. Decided at freeze (Tin, 2026-07-10 batch): all 4 agent recommendations accepted (NDJSON default; AUDIT_READ reuse; 1000/5000 page sizes; two narrow indexes, EXPLAIN at build).
+
+
 ```
 GET /admin/audit/export
   query: limit?=1000 (1..5000) · cursor?=<opaque base64url> · since?=<ISO-8601> · until?=<ISO-8601>
@@ -370,7 +373,7 @@ Glossary deltas:
 - **Export cursor**: an opaque, base64url-encoded `(created_at, id)` keyset marker naming the last row of the previous export page; NOT a row offset — guarantees deterministic, append-safe paging over a live-appending store.
 - **Audit-of-export**: the fire-and-forget `audit_events` row (`action="audit.export"`) that this endpoint itself writes on every successful page read, satisfying "compliance export never mutates [audit_events via the read] / export access is itself audited" (MILESTONE.md shared decision).
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — awaiting human freeze (this draft, plus FREEZE-QUESTIONS below, is the freeze report input)
 
 ### Scope (for whoever builds it — non-binding preferred plan, human freezes the shape above, not this list)
@@ -390,6 +393,7 @@ Must NOT touch: `usage/api/router.py:728 get_audit` (frozen v1), `audit/domain/a
 4. **Composite index scope** — one combined `(tenant_id, created_at DESC, id DESC)` index plus a separate `actor_email` index (as drafted), vs a single wider `(tenant_id, actor_email, created_at DESC, id DESC)` index. Recommendation: as drafted (two narrower indexes) — the actor filter is optional and a leading-column actor_email index would not help the (far more common) no-actor-filter keyset walk; confirm at BUILD with `EXPLAIN ANALYZE`, not by inspection alone (§1 assumption).
 
 ---
+
 
 ## Design self-score
 

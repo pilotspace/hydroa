@@ -4,7 +4,7 @@ slug: payload-capture-store · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 sensitivity: data   <!-- tenant-isolation + PII-bearing payload store; see MILESTONE.md "Security floor" -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -242,6 +242,9 @@ Scenario: Capture-persist concurrency guard sheds load without blocking   # M11 
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
+Least-sure flag surfaced at freeze: [spec] the pre-call guardrail-BLOCK short-circuit may bypass all 3 grounded capture hook sites, silently dropping the most audit-interesting rows — a targeted grounding sub-pass on the BLOCK path is REQUIRED at BUILD start before the hook-site list locks. Decided at freeze (Tin, 2026-07-10 batch): OR-semantics opt-in; 30-day default retention; 8KiB/64KiB size caps — all agent recommendations accepted.
+
+
 > Status: DRAFT — awaiting human freeze. Every clause below is proposed; the "Freeze questions" block lists the decisions Tin must rule on. The pre-call-BLOCK capture hook (Freeze question #4) is the one clause most likely to change after a targeted grounding sub-pass.
 
 ### API — admin config endpoints
@@ -393,11 +396,12 @@ Glossary deltas:
 3. **Size-cap byte values.** Recommendation: `capture_max_field_bytes=8192`, `capture_max_body_bytes=65536` — no strong existing precedent to anchor to; these are reasonable starting defaults, easy to tune later via config without a schema change.
 4. **Whether a pre-call guardrail-BLOCK request needs its own capture hook** at the (unconfirmed) earlier rejection code path, so blocked prompts still appear in the Logs Explorer's guardrail-verdict view. This grounding pass could not confirm the exact BLOCK short-circuit site in the time available — recommend a targeted follow-up grounding pass BEFORE build locks the final hook-site list, rather than guessing the code path into the frozen contract. This is the single flag most likely to change §3's "Touches" list after that check.
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — awaiting the freeze report / Tin's review of this draft.
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
+
 
 ## Design self-score
 

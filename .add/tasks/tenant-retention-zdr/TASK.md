@@ -3,7 +3,7 @@
 slug: tenant-retention-zdr · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -217,6 +217,9 @@ Scenario: is_zdr() read port answers correctly for a not-yet-existing consumer  
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
+Least-sure flag surfaced at freeze: [spec] window_days scope = ALL 7 swept tables (incl. usage_records/alert_events which carry a FROZEN v1 sweeper contract) — the biggest build-size driver; build in 2 batches so the 5-payload-table subset is a clean fallback. Decided at freeze (Tin, 2026-07-10 batch): all 4 agent recommendations accepted (7 tables; self-healing purge, no job table; operator ceiling Settings knob default 365; proceed independently of the sibling milestone via the is_zdr read port).
+
+
 ```
 GET /admin/retention-policy   (any authenticated role — get_identity)
   200 -> {
@@ -279,12 +282,13 @@ Glossary deltas:
 - `Payload-bearing store`: any table or cache namespace whose primary purpose is to hold request/response CONTENT (prompt text, completion text, binary file bytes, or a content-derived embedding), as distinct from a metadata-only store (token counts, cost, status, audit action tags).
 - `Tenant retention window`: a per-tenant override (in days, bounded by `operator_ceiling_days`) of how long payload-bearing and usage/alert rows are kept before the sweeper purges them; independent of, and subordinate to, ZDR (ZDR always wins).
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — awaiting the human freeze decision (see FREEZE-QUESTIONS in the final report)
 
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
+
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 

@@ -640,75 +640,155 @@
     },
     "payload-capture-store": {
       "title": "Opt-in PII-scrubbed request/response payload capture store",
-      "phase": "ground",
+      "phase": "tests",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [],
       "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T12:19:50+00:00"
+      "updated": "2026-07-10T13:11:41+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T13:11:02+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "per-key-guardrail-policies": {
       "title": "Per-key guardrail policy resolution (key > tenant)",
-      "phase": "ground",
+      "phase": "tests",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [],
       "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T12:19:50+00:00"
+      "updated": "2026-07-10T13:11:42+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T13:11:02+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "ml-moderation-layer": {
       "title": "ML moderation check class in the guardrail engine",
-      "phase": "ground",
+      "phase": "tests",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [],
       "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T12:19:50+00:00"
+      "updated": "2026-07-10T13:11:42+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T13:11:02+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "output-schema-validation": {
       "title": "Opt-in output JSON-schema validation with bounded retry",
-      "phase": "ground",
+      "phase": "tests",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [],
       "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T12:19:50+00:00"
+      "updated": "2026-07-10T13:11:42+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T13:11:02+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "scim-provisioning": {
       "title": "SCIM 2.0 user provisioning (per-tenant token)",
-      "phase": "ground",
+      "phase": "tests",
       "gate": "none",
       "milestone": "enterprise-identity-compliance",
       "depends_on": [],
       "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T12:19:51+00:00"
+      "updated": "2026-07-10T13:11:41+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T13:11:02+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "saml-sso": {
       "title": "SAML 2.0 SSO alongside OIDC",
-      "phase": "ground",
+      "phase": "tests",
       "gate": "none",
       "milestone": "enterprise-identity-compliance",
       "depends_on": [],
       "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T12:19:51+00:00"
+      "updated": "2026-07-10T13:11:41+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T13:11:02+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "tenant-retention-zdr": {
       "title": "Per-tenant retention policy + Zero-Data-Retention mode",
-      "phase": "ground",
+      "phase": "tests",
       "gate": "none",
       "milestone": "enterprise-identity-compliance",
       "depends_on": [],
       "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T12:19:51+00:00"
+      "updated": "2026-07-10T13:11:42+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T13:11:02+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "compliance-export-api": {
       "title": "Compliance export API over the immutable audit store",
-      "phase": "ground",
+      "phase": "tests",
       "gate": "none",
       "milestone": "enterprise-identity-compliance",
       "depends_on": [],
       "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T12:19:51+00:00"
+      "updated": "2026-07-10T13:11:42+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T13:11:03+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     }
   },
   "milestones": {
@@ -796,7 +876,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T12:19:51+00:00",
+  "updated": "2026-07-10T13:11:42+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1703,7 +1783,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "logs-explorer-guardrails-v2": "output-schema-validation",
+    "logs-explorer-guardrails-v2": "per-key-guardrail-policies",
     "enterprise-identity-compliance": "compliance-export-api"
   },
   "todos": [

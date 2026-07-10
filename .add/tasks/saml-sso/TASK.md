@@ -6,7 +6,7 @@ milestone: enterprise-identity-compliance
      session JWT on successful validation; a signature-wrapping or tenant-confusion defect is a
      full account-takeover class bug. autonomy lowered to conservative: build cannot auto-PASS at
      Verify; HARD-STOP verify per the milestone's shared decision (Identity surface). -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -591,6 +591,9 @@ Scenario: a tenant that never configures SAML is fully unaffected   # byte-ident
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
+Least-sure flag surfaced at freeze: [contract] library + build-image risk: python3-saml's xmlsec C-extension may not resolve a prebuilt wheel against the python3.12-bookworm-slim image and may pull apt deps into apps/gateway/Dockerfile — verify at BUILD start, before any code; if the wheel fails, the fallback is pysaml2, not hand-rolled lxml validation. Decided at freeze (Tin, 2026-07-10 batch): all 5 agent recommendations accepted (python3-saml; require-assertion-signed; duplicate SSRF validator; audit every SAML login; Dockerfile in build scope).
+
+
 **STATUS: DRAFT — awaiting human freeze.** Every illustrative snippet below has had a manual
 syntax/import sanity pass (no live `python -c "import ast; ast.parse(...)"` was run in this design
 pass — Build must still re-verify at Tests).
@@ -670,7 +673,6 @@ def upgrade() -> None:
         ["email_domains"],
         postgresql_using="gin",
     )
-
 
 def downgrade() -> None:
     op.drop_index("ix_saml_provider_configs_email_domains", table_name="saml_provider_configs")
@@ -766,13 +768,14 @@ Glossary deltas:
    task's §5 BUILD Scope will need to include `apps/gateway/Dockerfile` for exactly this reason —
    flagging it here so it isn't a surprise mid-build.
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — awaiting the orchestrator's freeze-report render and Tin's decision on the 5
 questions above (question 1 and 5 are coupled: the library choice determines whether the
 Dockerfile touch is required).
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
+
 
 ## Design self-score
 

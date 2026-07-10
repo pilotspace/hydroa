@@ -4,7 +4,7 @@ slug: per-key-guardrail-policies · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 sensitivity: data   <!-- per-key policy CRUD + resolution touches tenant/key data isolation; no new outbound IO seam (reuses the existing auth-time LEFT JOIN) -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -241,6 +241,7 @@ Scenario: PUT/DELETE on a revoked key returns 404   # R4
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
+Status: FROZEN @ v1 — approved by Tin Dang
 ```
 GET /admin/keys/{key_id}/guardrails
   200 -> { prompt_injection: {enabled,mode}|null, pii_mask: {enabled,mode,pii_custom_patterns?}|null,
@@ -366,6 +367,8 @@ Glossary deltas: <new domain term(s) this task introduces, `Term: definition` �
 Status: DRAFT — awaiting human freeze
 Reported: <yes — the freeze report (banner/ARC/SHAPE) rendered before this froze | no>
   no — this is the design-team draft; the orchestrator renders the freeze report when Tin reviews.
+
+Least-sure flag surfaced at freeze: [contract] PUT semantics = partial-merge within the key's override (API symmetry with the tenant endpoint) — a coin-flip not yet empirically observable from the dashboard caller. Decided at freeze (Tin, 2026-07-10 batch): all 4 agent recommendations accepted (merge; DELETE revert-to-inherit; add policy_source to AuthzResult now; source field naming as drafted).
 
 ## Design self-score
 

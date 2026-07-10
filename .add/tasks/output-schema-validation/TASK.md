@@ -4,7 +4,7 @@ slug: output-schema-validation · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 sensitivity: architecture   <!-- supersedes a frozen v11 behavioral pin (translate-don't-enforce); adds a new third-party dependency; additive extension to shared core/errors.py -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -202,6 +202,7 @@ Scenario: n>1 requires every choice to validate   # M4 edge case
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
+Status: FROZEN @ v1 — approved by Tin Dang
 **SUPERSESSION NOTICE**: this contract SUPERSEDES the PROJECT.md v11 fold "the gateway TRANSLATES the directive but does NOT validate/repair the model's output against the schema (translate-don't-enforce)" — ONLY when a request opts in (M1). The v11 pin's own historical record (its archived TASK.md and the PROJECT.md fold text itself) is left untouched, per the PROJECT.md v6 settled SUPERSESSION pattern; a future reader who diffs this task's fold entry against the v11 fold entry will see both, with this one dated later and scoped "opt-in only."
 
 ```
@@ -362,6 +363,8 @@ Glossary deltas:
 Status: DRAFT — awaiting human freeze
 Reported: no — this is the design draft; the freeze report renders when Tin reviews §3
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
+
+Least-sure flag surfaced at freeze: [contract] retry billing = TWO usage records per validated-retry request (usage_source=validation_retry + frame) — an EXPLICIT amendment to the 'every proxied request produces exactly one usage record' invariant, accepted at freeze (v29 alerts-exception precedent); downstream usage_records consumers (dashboards, reconciliation) must be checked for >1-row tolerance at BUILD. Decided at freeze (Tin, 2026-07-10 batch): all 5 agent recommendations accepted (per-request field + kill-switch; 422; jsonschema>=4.23,<5; streaming hard-400).
 
 ## Design self-score
 

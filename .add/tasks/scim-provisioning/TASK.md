@@ -4,7 +4,7 @@ slug: scim-provisioning · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
 sensitivity: security   <!-- unattended machine write-path into tenant identity lifecycle (create/update/deactivate users) — milestone Shared decisions: "every identity surface is security-sensitive: HARD-STOP verify"; never auto-passed even under autonomy:auto -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -244,6 +244,7 @@ Scenario: revoked SCIM token cannot authenticate   # R (401)
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
+Status: FROZEN @ v1 — approved by Tin Dang
 ### Part A — SCIM token management (`/admin/scim/tokens`, RFC 9457 problem+json, session-JWT auth via `require_permission(Permission.MEMBERS_MANAGE)`)
 
 ```
@@ -356,6 +357,8 @@ Glossary deltas:
 
 Status: DRAFT — awaiting human freeze
 Reported: no — freeze report renders when Tin reviews this draft
+
+Least-sure flag surfaced at freeze: [contract] deactivated user's session JWT stays valid up to jwt_ttl (24h default) — accepted at freeze as a DOCUMENTED residual risk (no revocation store this task); Groups→teams DEFERRED (empty-read + 501-write) pending real-IdP behavior. Decided at freeze (Tin, 2026-07-10 batch): all 5 agent recommendations accepted.
 
 ## Design self-score
 
