@@ -22,6 +22,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "tinytag>=2.2,<3",
     "aioboto3>=13",
+    "jsonschema>=4.23,<5",
 ]
 
 [dependency-groups]

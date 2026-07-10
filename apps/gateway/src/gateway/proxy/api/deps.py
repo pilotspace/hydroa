@@ -212,6 +212,12 @@ def get_completion_use_case(
     # batch-auto-grouping (v57): stable app.state-boot singleton — same getattr pattern
     # as tenant_credential_resolver above. None ⇒ feature off ⇒ byte-identical.
     batch_diversion = getattr(request.app.state, "batch_diversion", None)
+    # output-schema-validation: operator kill-switch mirrors web_search_enabled's
+    # getattr pattern exactly. Off (default) ⇒ the use-case pops validate_output
+    # unconditionally and never engages ⇒ byte-identical to today.
+    output_validation_enabled: bool = (
+        bool(getattr(_settings, "output_validation_enabled", False)) if _settings else False
+    )
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -235,4 +241,5 @@ def get_completion_use_case(
         # above — zero new app.state attribute, zero new instance. None ⇒ feature off.
         chat_modality_lookup=provider_resolver,
         batch_diversion=batch_diversion,
+        output_validation_enabled=output_validation_enabled,
     )
