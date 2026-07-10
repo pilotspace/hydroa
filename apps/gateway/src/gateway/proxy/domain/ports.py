@@ -552,6 +552,45 @@ class BatchDiversionPort(Protocol):
         ...
 
 
+@runtime_checkable
+class PayloadCapturePort(Protocol):
+    """Opt-in, PII-scrubbed request/response payload capture.
+
+    payload-capture-store TASK.md §3, FROZEN @ v1.
+
+    Additive — default-None injection into CompletionUseCase is backward-compatible with
+    every existing frozen test fake that does not implement this Protocol.
+
+    Hook sites (§3, locked at BUILD after the mandated pre-call-BLOCK grounding pass):
+      complete() success + both guardrail-BLOCK short-circuits, stream()'s 3 exit
+      branches + both guardrail-BLOCK short-circuits, and all 3 _fire_record_cached
+      call sites (exact/semantic/vector cache HIT).
+    """
+
+    async def capture(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        key_id: uuid.UUID,
+        model: str,
+        request_body: dict[str, Any],
+        response_body: dict[str, Any] | None,
+        status: int,
+        stream: bool,
+        cached: bool,
+        guardrail_configs: dict[str, Any],
+    ) -> None:
+        """Fire-and-forget capture. NEVER raises — all failures (scrub, size, DB,
+        ZDR-check) are caught internally and result in either a metadata-only row
+        or no row at all, never an exception propagated to the caller.
+
+        response_body is None for a pre-call guardrail-BLOCK row (the request never
+        reached upstream) — implementations must handle that as a request-only row,
+        never a crash.
+        """
+        ...
+
+
 __all__ = [
     "AuthzResult",
     "BatchDiversionPort",
@@ -564,6 +603,7 @@ __all__ = [
     "ModelAccess",
     "ModelChecker",
     "ModelHealthGate",
+    "PayloadCapturePort",
     "ProviderCredential",
     "ProviderResolver",
     "ResponseCache",
