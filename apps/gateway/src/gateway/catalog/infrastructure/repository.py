@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from gateway.catalog.domain.errors import CatalogEmptyError
 from gateway.catalog.infrastructure.orm import ModelRow, PricingSnapshotRow
 from gateway.core.ids import uuid7
 from gateway.tenants.infrastructure.orm import TenantRow
+from gateway.tenants.infrastructure.rate_card_orm import TenantRateCardEntry
 
 
 class SqlAlchemyCatalogRepository:
@@ -84,10 +85,16 @@ class SqlAlchemyCatalogRepository:
         return len(all_models)
 
     async def list_active_models_with_markup(self, tenant_id: uuid.UUID) -> list[MarkedUpModel]:
-        """Single joined query: active models x latest snapshot x tenant markup.
+        """Single joined query: active models x latest snapshot x effective markup.
 
         No N+1 — uses a lateral/subquery approach.
         Raises CatalogEmptyError when zero active models exist.
+
+        tiered-rate-cards TASK.md §3: the effective per-row multiplier is
+        COALESCE(tenant_rate_card_entries.markup_pct, tenants.markup_pct) — the
+        bulk-join form of the SAME resolve rule recorder billing and
+        cost_recovery use (gateway.usage.application.rate_card_resolver), so
+        catalog display never drifts from what a request actually bills.
         """
         # Subquery: latest snapshot per model_id
         snap_sub = (
@@ -108,6 +115,10 @@ class SqlAlchemyCatalogRepository:
             .subquery("latest_snap")
         )
 
+        effective_markup_pct = func.coalesce(
+            TenantRateCardEntry.markup_pct, TenantRow.markup_pct
+        ).label("markup_pct")
+
         stmt = (
             select(
                 ModelRow.id,
@@ -120,10 +131,15 @@ class SqlAlchemyCatalogRepository:
                 snap_sub.c.audio_prompt_usd_per_token,
                 snap_sub.c.audio_completion_usd_per_token,
                 snap_sub.c.audio_cached_usd_per_token,
-                TenantRow.markup_pct,
+                effective_markup_pct,
             )
             .join(snap_sub, snap_sub.c.model_id == ModelRow.id)
             .join(TenantRow, TenantRow.id == tenant_id)
+            .outerjoin(
+                TenantRateCardEntry,
+                (TenantRateCardEntry.tenant_id == tenant_id)
+                & (TenantRateCardEntry.model_id == ModelRow.id),
+            )
             .where(ModelRow.active.is_(True))
         )
 

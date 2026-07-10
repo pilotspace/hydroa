@@ -58,6 +58,7 @@ EXPECTED_TABLES = frozenset(
         "invites",  # SANCTIONED EDIT — member-invite-issuance TASK.md §3 manifest maintenance; disposition: additive migration 1193bc6178f3 adds this table
         "plans",  # SANCTIONED EDIT — plan-catalog TASK.md §3 manifest maintenance; disposition: additive migration 1e66a2cb51a6 adds this table
         "impersonation_sessions",  # SANCTIONED EDIT — impersonation-session-lifecycle TASK.md §3 manifest maintenance; disposition: additive migration 1d563bf9b143 adds this table
+        "tenant_rate_card_entries",  # SANCTIONED EDIT — tiered-rate-cards TASK.md §3 manifest maintenance; disposition: additive migration f70104c27b41 adds this table
     }
 )
 

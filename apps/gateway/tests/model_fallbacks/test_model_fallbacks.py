@@ -18,7 +18,11 @@ from __future__ import annotations
 
 import pytest
 
-from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
+from gateway.proxy.domain.errors import (
+    CircuitOpenError,
+    UpstreamRateLimitedError,
+    UpstreamUnavailableError,
+)
 
 from .conftest import (
     ALIAS_FAST,
@@ -264,26 +268,160 @@ async def test_f5_4xx_passthrough_no_fallback() -> None:
 
 
 # ===========================================================================
-# F6 — CircuitOpenError aborts immediately, model-B never called
+# F6 (RE-SPEC, provider-circuit-breakers B3) — CircuitOpenError FALLS OVER
+#   Change-request: this test previously asserted the OPPOSITE (abort, model-B
+#   never called). B3 (frozen @ v1 by Tin Dang) flips the invariant: an open
+#   breaker is a fallover trigger, identical to UpstreamUnavailableError — the
+#   same behavior stream_resilient() already has. See TASK.md §3.
 # ===========================================================================
 
 
 @pytest.mark.asyncio
-async def test_f6_circuit_open_aborts_no_fallback() -> None:
-    """F6 RED: model-A raises CircuitOpenError → propagated immediately; model-B never called.
+async def test_f6_circuit_open_first_candidate_falls_over_to_healthy_sibling() -> None:
+    """F6 RED: alias [A, B]; A raises CircuitOpenError, B returns 200 → serves B.
 
-    Red reason before build: ImportError on FallbackModelRouter.
+    Red reason before build: complete() re-raises CircuitOpenError (aborts) instead of
+    falling over, so the call raises rather than returning B's (200, body, "model-B").
     """
-    upstream = SequencedFakeUpstream([CircuitOpenError("breaker open")])
+    upstream = SequencedFakeUpstream(
+        [
+            CircuitOpenError("A breaker open"),
+            (200, BODY_B),
+        ]
+    )
+    gate = RecordingFakeGate()
+    router = _make_router(upstream, health_gate=gate)
+
+    status, body, served_model = await router.complete(make_payload(ALIAS_FAST))
+
+    assert status == 200
+    assert body == BODY_B
+    assert served_model == CANDIDATE_B, (
+        f"served_model_id must be {CANDIDATE_B!r} after A's breaker opened, got {served_model!r}"
+    )
+    # Fallover HAPPENED: B was called (the whole point of B3).
+    assert upstream.call_count == 2, f"Expected A then B (2 calls), got {upstream.call_count}"
+    assert upstream.calls[0]["model"] == CANDIDATE_A
+    assert upstream.calls[1]["model"] == CANDIDATE_B, (
+        f"model-B MUST be called on CircuitOpenError now (fallover), calls: "
+        f"{[c['model'] for c in upstream.calls]!r}"
+    )
+    # An open breaker is an unhealthy signal → record_failure(A); B answered → record_success(B).
+    assert gate.failure_calls == [CANDIDATE_A], (
+        f"record_failure must be called once with {CANDIDATE_A!r}, got {gate.failure_calls!r}"
+    )
+    assert gate.success_calls == [CANDIDATE_B], (
+        f"record_success must be called once with {CANDIDATE_B!r}, got {gate.success_calls!r}"
+    )
+
+
+# ===========================================================================
+# F6b — all candidates' breakers open → clean exhaustion (UpstreamUnavailableError)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_f6b_all_candidates_circuit_open_raises_upstream_unavailable() -> None:
+    """F6b RED: alias [A, B], both raise CircuitOpenError → exhaustion raises
+    UpstreamUnavailableError (NOT CircuitOpenError), and BOTH candidates were attempted.
+
+    Red reason before build: A's CircuitOpenError propagates immediately, so
+    UpstreamUnavailableError is never raised and B is never attempted.
+    """
+    upstream = SequencedFakeUpstream(
+        [
+            CircuitOpenError("A breaker open"),
+            CircuitOpenError("B breaker open"),
+        ]
+    )
     router = _make_router(upstream)
 
-    with pytest.raises(CircuitOpenError):
+    with pytest.raises(UpstreamUnavailableError) as exc_info:
         await router.complete(make_payload(ALIAS_FAST))
 
-    # model-B must never be called
-    attempted_models = [c["model"] for c in upstream.calls]
-    assert CANDIDATE_B not in attempted_models, (
-        f"model-B must not be called on CircuitOpenError; calls: {attempted_models}"
+    # The terminal error is UpstreamUnavailableError, not the raw CircuitOpenError.
+    assert not isinstance(exc_info.value, CircuitOpenError), (
+        "all-breakers-open must surface UpstreamUnavailableError, not CircuitOpenError"
+    )
+    assert upstream.call_count == 2, (
+        f"both candidates must be attempted before exhaustion, got {upstream.call_count} call(s)"
+    )
+
+
+# ===========================================================================
+# F6c — an open breaker does NOT suppress rate-limit exhaustion semantics
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_f6c_circuit_open_then_rate_limited_raises_rate_limited() -> None:
+    """F6c RED: alias [A, B]; A raises CircuitOpenError, B raises UpstreamRateLimitedError(7).
+    Exhaustion must raise UpstreamRateLimitedError with retry_after=7 (the 429 path),
+    proving the open breaker fell over cleanly and the rate-limit signal survived.
+
+    Red reason before build: A's CircuitOpenError propagates, so B (the rate-limited
+    candidate) is never reached and the 429 path is never taken.
+    """
+    upstream = SequencedFakeUpstream(
+        [
+            CircuitOpenError("A breaker open"),
+            UpstreamRateLimitedError("B rate limited", retry_after=7),
+        ]
+    )
+    router = _make_router(upstream)
+
+    with pytest.raises(UpstreamRateLimitedError) as exc_info:
+        await router.complete(make_payload(ALIAS_FAST))
+
+    assert exc_info.value.retry_after == 7, (
+        f"max Retry-After must survive the open-breaker fallover, got {exc_info.value.retry_after!r}"
+    )
+    assert upstream.call_count == 2, f"both candidates must be attempted, got {upstream.call_count}"
+
+
+# ===========================================================================
+# F6d — plain model id is UNCHANGED: CircuitOpenError propagates, no fallover
+#   (green-by-design regression guard — the plain path has no candidate list)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_f6d_plain_model_id_circuit_open_propagates() -> None:
+    """F6d: a plain (non-alias) model id whose completion raises CircuitOpenError
+    propagates it unchanged, with exactly one upstream call (no fallover loop exists).
+    """
+    upstream = SequencedFakeUpstream([CircuitOpenError("solo breaker open")])
+    # Router knows only ALIAS_FAST → "solo-model" takes the plain pass-through path.
+    router = _make_router(upstream, model_groups={ALIAS_FAST: [CANDIDATE_A, CANDIDATE_B]})
+
+    with pytest.raises(CircuitOpenError):
+        await router.complete(make_payload("solo-model"))
+
+    assert upstream.call_count == 1, (
+        f"plain path must make exactly one call (no fallover), got {upstream.call_count}"
+    )
+
+
+# ===========================================================================
+# F6e — a non-router exception still ABORTS the loop (model-B never called)
+#   (green-by-design regression guard — only Unavailable/CircuitOpen fall over)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_f6e_non_router_exception_aborts_loop() -> None:
+    """F6e: a ValueError (a bug, not a resilience signal) raised by the first candidate
+    propagates out of the loop; model-B is NOT tried.
+    """
+    upstream = SequencedFakeUpstream([ValueError("not a resilience signal")])
+    router = _make_router(upstream)
+
+    with pytest.raises(ValueError):
+        await router.complete(make_payload(ALIAS_FAST))
+
+    attempted = [c["model"] for c in upstream.calls]
+    assert CANDIDATE_B not in attempted, (
+        f"a non-router exception must abort the loop; model-B must NOT be called, calls: {attempted!r}"
     )
 
 

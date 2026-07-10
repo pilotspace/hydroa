@@ -153,6 +153,7 @@ from gateway.tenants.api.platform_plans_router import platform_plans_router
 from gateway.tenants.api.platform_tenant_config_router import platform_tenant_config_router
 from gateway.tenants.api.platform_tenants_router import platform_tenants_router
 from gateway.tenants.api.platform_users_router import platform_users_router
+from gateway.tenants.api.rate_card_router import rate_card_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.api.users_router import users_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
@@ -405,6 +406,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         flusher = UsageLedgerFlusher(
             redis=_redis,
             session_factory=_sessionmaker,
+            pel_reclaim_idle_ms=_settings.usage_pel_reclaim_idle_ms,
         )
         app.state.flusher = flusher
         app.state.flusher_task = asyncio.create_task(flusher.run_forever())
@@ -1117,6 +1119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(cache_router)
     app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
+    app.include_router(rate_card_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)

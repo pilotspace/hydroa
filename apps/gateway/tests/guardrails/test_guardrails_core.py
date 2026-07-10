@@ -1360,6 +1360,11 @@ async def test_guardrails_core_migration_column_exists(
     # registered on Base.metadata via tenants/infrastructure/orm.py (same file as
     # TenantRow, so no separate side-effect import is needed). Guardrails still adds no
     # tables of its own; invariant intent unchanged.
+    # SANCTIONED EDIT (tiered-rate-cards TASK.md §3 manifest maintenance, 2026-07-10):
+    # added tenant_rate_card_entries to this manifest — additive migration f70104c27b41,
+    # registered on Base.metadata via tenants/infrastructure/rate_card_orm.py side-effect
+    # import (same precedent). Guardrails still adds no tables of its own; invariant
+    # intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1373,7 +1378,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'artifacts','memories','video_generation_jobs',"
                 " 'conversations','conversation_messages','tenant_model_presets',"
                 " 'batch_jobs','batch_job_items',"
-                " 'invites','plans','impersonation_sessions')"
+                " 'invites','plans','impersonation_sessions',"
+                " 'tenant_rate_card_entries')"
             )
         )
     ).fetchall()

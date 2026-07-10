@@ -185,9 +185,7 @@ async def _mint_impersonation(
 ) -> tuple[str, str]:
     """Mint via the REAL, already-shipped Mint endpoint (not a hand-rolled token) — returns
     (impersonation_token, session_id)."""
-    resp = await client.post(
-        _mint_url(tenant_id, user_id), headers=_bearer(superadmin_token)
-    )
+    resp = await client.post(_mint_url(tenant_id, user_id), headers=_bearer(superadmin_token))
     assert resp.status_code == 201, resp.text
     body = resp.json()
     return body["token"], body["session_id"]

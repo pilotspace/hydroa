@@ -310,6 +310,34 @@ def _fire_cache_set(
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
+# cache-alias-billing (B6): the served CATALOG candidate is stamped onto the cached VALUE at write
+# time so a later cache HIT bills the candidate that produced the body — never the alias (an alias
+# has no pricing snapshot -> $0). Reserved key; popped on every hit path so the client can't see it.
+_SERVED_STAMP = "__hydroa_served_model__"
+
+
+def _stamp_served(body: dict[str, Any], served_model_id: str) -> dict[str, Any]:
+    """Return a SHALLOW COPY of a cache value carrying the served-candidate stamp.
+
+    The original ``body`` (returned to the client on a MISS) is never mutated.
+    """
+    return {**body, _SERVED_STAMP: served_model_id}
+
+
+def _read_served_from_cache(cached: dict[str, Any], model_id: str) -> str:
+    """Pop the served-candidate stamp off a fetched cache value; return the billing model id.
+
+    Popping strips the reserved key so it never reaches the client. Falls back to the cached
+    provider ``model`` (legacy pre-stamp entries — never the alias), then the request ``model_id``.
+    MUST be called BEFORE any post-call guardrail masking (which may return a fresh dict).
+    """
+    stamped = cached.pop(_SERVED_STAMP, None)
+    if isinstance(stamped, str) and stamped:
+        return stamped
+    fallback = cached.get("model")
+    return fallback if isinstance(fallback, str) and fallback else model_id
+
+
 def _make_error_event(guardrail_configs: dict[str, Any]) -> Any:
     """Build a GuardrailEvent with action='error' for the first active guardrail.
 
@@ -1293,6 +1321,11 @@ class CompletionUseCase:
                         # EXACT HIT: apply post-call guardrails, then return cached body
                         x_cache = "hit"
                         _cached = True
+                        # cache-alias-billing (B6): read+pop the served candidate BEFORE
+                        # evaluate_post masking (which may return a fresh dict), so billing keys
+                        # on the served catalog id, not the alias, and the stamp never reaches
+                        # the client.
+                        _served_cached = _read_served_from_cache(cached_body, model_id)
                         if metrics_registry is not None:
                             try:
                                 metrics_registry.cache_events_total.labels(result="hit").inc()
@@ -1319,7 +1352,7 @@ class CompletionUseCase:
                             usage_recorder,
                             tenant_id=authz.tenant_id,
                             key_id=authz.key_id,
-                            model=model_id,
+                            model=_served_cached,
                             usage=cached_usage,
                             team_id=authz.team_id,
                         )
@@ -1345,6 +1378,10 @@ class CompletionUseCase:
                                     # SEMANTIC HIT
                                     x_cache = "semantic_hit"
                                     _cached = True
+                                    # cache-alias-billing (B6): read+pop served BEFORE masking.
+                                    _served_cached_sem = _read_served_from_cache(
+                                        sem_cached_body, model_id
+                                    )
                                     if metrics_registry is not None:
                                         try:
                                             metrics_registry.cache_events_total.labels(
@@ -1375,7 +1412,7 @@ class CompletionUseCase:
                                         usage_recorder,
                                         tenant_id=authz.tenant_id,
                                         key_id=authz.key_id,
-                                        model=model_id,
+                                        model=_served_cached_sem,
                                         usage=sem_usage,
                                         team_id=authz.team_id,
                                     )
@@ -1406,6 +1443,8 @@ class CompletionUseCase:
                             if vec_body is not None:
                                 x_cache = "vector_hit"
                                 _cached = True
+                                # cache-alias-billing (B6): read+pop served BEFORE masking.
+                                _served_cached_vec = _read_served_from_cache(vec_body, model_id)
                                 if metrics_registry is not None:
                                     try:
                                         metrics_registry.cache_events_total.labels(
@@ -1433,7 +1472,7 @@ class CompletionUseCase:
                                     usage_recorder,
                                     tenant_id=authz.tenant_id,
                                     key_id=authz.key_id,
-                                    model=model_id,
+                                    model=_served_cached_vec,
                                     usage=vec_usage,
                                     team_id=authz.team_id,
                                 )
@@ -1591,7 +1630,11 @@ class CompletionUseCase:
                 # On normal miss (not bypass): always store the exact key (+ pointer).
                 if not (_is_bypass and _sem_enabled):
                     ck = build_cache_key(str(authz.tenant_id), body)
-                    _fire_cache_set(cache, ck, response_body, cache_ttl_seconds)
+                    # cache-alias-billing (B6): stamp the served candidate onto the STORED value
+                    # (shallow copy — response_body returned to the client is untouched).
+                    _fire_cache_set(
+                        cache, ck, _stamp_served(response_body, served_model_id), cache_ttl_seconds
+                    )
 
                     # Also store semantic pointer key if semantic cache is enabled (on MISS only,
                     # not on bypass — bypass leaves the pre-existing semantic pointer intact).
@@ -1634,7 +1677,11 @@ class CompletionUseCase:
 
                     _rtask = asyncio.ensure_future(
                         _refresh_semantic_entry(
-                            cache, _sem_key, _own_ck, response_body, cache_ttl_seconds
+                            cache,
+                            _sem_key,
+                            _own_ck,
+                            _stamp_served(response_body, served_model_id),  # B6: stamp stored value
+                            cache_ttl_seconds,
                         )
                     )
                     _rtask.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)

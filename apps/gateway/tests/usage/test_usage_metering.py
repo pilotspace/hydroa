@@ -681,3 +681,230 @@ async def test_admin_usage_rejected_without_jwt(
     body = resp.json()
     assert "records" not in body
     assert "total_requests" not in body
+
+
+# ===========================================================================
+# usage-flusher-durability (B4) — recorder durable fallback + Redis timeout
+# ===========================================================================
+# Fakes exercised only by the B4 durability tests below.
+
+
+class _XaddFailsRedis:
+    """Redis stand-in whose XADD always fails (Redis unavailable for writes).
+
+    Nothing else is reached in the record path before the XADD, so only xadd
+    (and, defensively, incrbyfloat) need to raise.
+    """
+
+    async def xadd(self, *args: Any, **kwargs: Any) -> None:
+        raise ConnectionError("XADD unavailable (_XaddFailsRedis fake)")
+
+    async def incrbyfloat(self, *args: Any, **kwargs: Any) -> float:
+        # Must never be reached once XADD fails (advisory counters are gated on a
+        # successful XADD); defensive so a regression here fails loudly, not silently.
+        raise ConnectionError("incrbyfloat unavailable (_XaddFailsRedis fake)")
+
+
+class _SlowButLandedRedis:
+    """Wrap a real redis client: the XADD write DOES land in the stream, but the
+    call then raises TimeoutError (a slow ack the client gave up waiting on).
+
+    Models the no-double-bill race: the recorder's bounded timeout fires (→ direct
+    fallback INSERT), yet the event later flushes from the stream. Both must key on
+    the SAME deterministic id and collapse to one row via ON CONFLICT (id).
+    All other calls delegate to the real client so the flusher can read the event.
+    """
+
+    def __init__(self, real: Any) -> None:
+        self._real = real
+
+    async def xadd(self, key: str, fields: dict[str, str]) -> bytes:
+        landed = await self._real.xadd(key, fields)  # the write DID land
+        raise TimeoutError("XADD ack timed out (_SlowButLandedRedis fake)")
+        return landed  # noqa: unreachable — documents the real return contract
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real, name)
+
+
+class _ExplodingSessionFactory:
+    """Session factory whose session is unusable — models Postgres also down.
+
+    Records call count so a test can prove the durable fallback was ATTEMPTED
+    (not merely that record() stayed quiet — the pre-fix code also stays quiet
+    but never reaches the fallback).
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self) -> Any:
+        self.calls += 1
+        raise ConnectionError("Postgres unavailable (_ExplodingSessionFactory fake)")
+
+
+async def test_redis_xadd_failure_falls_back_to_postgres(
+    client: httpx.AsyncClient,
+    app: Any,
+    db_session: AsyncSession,
+    api_key: dict[str, str],
+    active_model_with_pricing: dict[str, Any],
+) -> None:
+    """B4: a failed XADD persists the usage event DIRECTLY to the ledger (durable
+    fallback), and record() does not raise. RED pre-fix: no fallback → 0 rows."""
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
+
+    recorder = RecordingUsageRecorder(
+        redis=_XaddFailsRedis(),  # type: ignore[arg-type]
+        session_factory=app.state.sessionmaker,
+    )
+    result = await recorder.record(
+        tenant_id=uuid.UUID(api_key["tenant_id"]),
+        key_id=uuid.UUID(api_key["key_id"]),
+        model=active_model_with_pricing["model_id"],
+        usage={"prompt_tokens": 10, "completion_tokens": 5},
+        status=200,
+    )
+    assert result is None  # never raises into the proxy path
+
+    rows = (
+        await db_session.execute(
+            text("SELECT * FROM usage_records WHERE tenant_id = :tid"),
+            {"tid": api_key["tenant_id"]},
+        )
+    ).fetchall()
+    assert len(rows) == 1, "XADD failure must leave a durable row via the fallback"
+    row = rows[0]._mapping  # type: ignore[union-attr]
+    assert row["model_id"] == active_model_with_pricing["model_id"]
+    assert row["prompt_tokens"] == 10
+    assert row["completion_tokens"] == 5
+
+
+async def test_slow_redis_no_double_bill(
+    client: httpx.AsyncClient,
+    app: Any,
+    db_session: AsyncSession,
+    api_key: dict[str, str],
+    active_model_with_pricing: dict[str, Any],
+    redis_client: Any,
+) -> None:
+    """B4 invariant: fallback fired AND the same event later flushes → exactly ONE
+    row (same deterministic id → ON CONFLICT). RED pre-fix: 0 rows after record()."""
+    from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
+
+    recorder = RecordingUsageRecorder(
+        redis=_SlowButLandedRedis(redis_client),  # type: ignore[arg-type]
+        session_factory=app.state.sessionmaker,
+    )
+    await recorder.record(
+        tenant_id=uuid.UUID(api_key["tenant_id"]),
+        key_id=uuid.UUID(api_key["key_id"]),
+        model=active_model_with_pricing["model_id"],
+        usage={"prompt_tokens": 10, "completion_tokens": 5},
+        status=200,
+    )
+
+    # The fallback must have persisted exactly one row already (before any flush).
+    count_after_record = (
+        await db_session.execute(
+            text("SELECT COUNT(*) FROM usage_records WHERE tenant_id = :tid"),
+            {"tid": api_key["tenant_id"]},
+        )
+    ).scalar()
+    assert count_after_record == 1, "durable fallback row must exist after record()"
+
+    # The XADD landed too — flushing it must NOT create a second row (same id).
+    flusher = UsageLedgerFlusher(redis=redis_client, session_factory=app.state.sessionmaker)
+    await flusher.flush_once()
+
+    count_after_flush = (
+        await db_session.execute(
+            text("SELECT COUNT(*) FROM usage_records WHERE tenant_id = :tid"),
+            {"tid": api_key["tenant_id"]},
+        )
+    ).scalar()
+    assert count_after_flush == 1, "slow-but-recovered Redis must not double-bill"
+
+
+async def test_both_stores_down_swallows_and_stays_200() -> None:
+    """B4 invariant: Redis XADD AND the Postgres fallback both fail → record()
+    logs, swallows, returns None (never raises). RED pre-fix: fallback not
+    attempted (exploding factory never called)."""
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
+
+    factory = _ExplodingSessionFactory()
+    recorder = RecordingUsageRecorder(
+        redis=_XaddFailsRedis(),  # type: ignore[arg-type]
+        session_factory=factory,  # type: ignore[arg-type]
+    )
+    # cached=True skips the pricing DB read so the exploding factory is only hit at
+    # the fallback — isolating the double-store-down path.
+    result = await recorder.record(
+        tenant_id=uuid.uuid4(),
+        key_id=uuid.uuid4(),
+        model="openai/gpt-4o",
+        usage={"prompt_tokens": 1, "completion_tokens": 1},
+        status=200,
+        cached=True,
+    )
+    assert result is None, "record() must never raise, even with both stores down"
+    assert factory.calls == 1, "the durable fallback must be attempted on XADD failure"
+
+
+async def test_normal_record_carries_explicit_id_and_flusher_uses_it(
+    client: httpx.AsyncClient,
+    app: Any,
+    db_session: AsyncSession,
+    api_key: dict[str, str],
+    active_model_with_pricing: dict[str, Any],
+    redis_client: Any,
+) -> None:
+    """B4-id: a normal record() writes a deterministic explicit "id" into the event,
+    the flusher uses it as the row PK, and a double-flush stays idempotent.
+    RED pre-fix: event carries no "id" field."""
+    from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
+    from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
+    from gateway.usage.infrastructure.redis_stream import STREAM_KEY  # type: ignore[import]
+
+    recorder = RecordingUsageRecorder(
+        redis=redis_client,
+        session_factory=app.state.sessionmaker,
+    )
+    await recorder.record(
+        tenant_id=uuid.UUID(api_key["tenant_id"]),
+        key_id=uuid.UUID(api_key["key_id"]),
+        model=active_model_with_pricing["model_id"],
+        usage={"prompt_tokens": 10, "completion_tokens": 5},
+        status=200,
+    )
+
+    # The stream event must carry an explicit "id".
+    entries = await redis_client.xrange(STREAM_KEY)
+    assert len(entries) == 1
+    _entry_id, fields = entries[0]
+    id_field = fields.get(b"id") if isinstance(next(iter(fields), b""), bytes) else fields.get("id")
+    assert id_field is not None, "normal record() must write an explicit event id"
+    explicit_id = uuid.UUID(id_field.decode() if isinstance(id_field, bytes) else id_field)
+
+    flusher = UsageLedgerFlusher(redis=redis_client, session_factory=app.state.sessionmaker)
+    await flusher.flush_once()
+
+    rows = (
+        await db_session.execute(
+            text("SELECT id FROM usage_records WHERE tenant_id = :tid"),
+            {"tid": api_key["tenant_id"]},
+        )
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]._mapping["id"] == explicit_id, "flusher must use the explicit id as the PK"
+
+    # Second flush of the same (still-pending until ACK) event → still one row.
+    await flusher.flush_once()
+    count_second = (
+        await db_session.execute(
+            text("SELECT COUNT(*) FROM usage_records WHERE tenant_id = :tid"),
+            {"tid": api_key["tenant_id"]},
+        )
+    ).scalar()
+    assert count_second == 1, "double-flush must stay idempotent on the explicit id"

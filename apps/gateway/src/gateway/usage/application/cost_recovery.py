@@ -37,6 +37,7 @@ from gateway.proxy.domain.credential_context import (
     set_provider_credential,
 )
 from gateway.proxy.infrastructure.openrouter_upstream import GenerationCost
+from gateway.usage.application.rate_card_resolver import resolve_markup_pct
 from gateway.usage.application.recorder import RecordingUsageRecorder
 
 _log = logging.getLogger(__name__)
@@ -157,7 +158,7 @@ class OpenRouterCostRecoveryService:
             state = await self._ledger_state(tenant_id, gid)
             if state.recovered_exists:
                 return RecoveryOutcome("skipped:already_recovered")
-            markup = await self._fetch_markup(tenant_id)
+            markup = await self._fetch_markup(tenant_id, model)
             target = cost.total_cost * (Decimal("1") + markup / Decimal("100"))
             delta = target - state.already_billed
             await self._recorder.record_correction(
@@ -212,12 +213,11 @@ class OpenRouterCostRecoveryService:
             recovered_exists=int(row[2]) > 0,
         )
 
-    async def _fetch_markup(self, tenant_id: uuid.UUID) -> Decimal:
+    async def _fetch_markup(self, tenant_id: uuid.UUID, model: str) -> Decimal:
+        """Return the effective per-(tenant, model) markup_pct (tiered-rate-cards).
+
+        Delegates to the shared resolver — the SAME rate recorder billing and
+        catalog display resolve (no third-site drift; TASK.md §3).
+        """
         async with self._session_factory() as session:
-            row = (
-                await session.execute(
-                    text("SELECT markup_pct FROM tenants WHERE id = :t"),
-                    {"t": str(tenant_id)},
-                )
-            ).fetchone()
-        return Decimal(str(row[0])) if row else _ZERO
+            return await resolve_markup_pct(session, tenant_id, model)

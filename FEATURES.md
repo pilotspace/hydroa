@@ -56,9 +56,9 @@ its release-notes credit is pending.
   a single operator-wide setting, not per-alias), health-aware fallback across candidates.
 - **Reliability primitives** — uniform retries, error-aware fallback, a per-model Redis
   cooldown gate (a cooling model is skipped in favor of the next candidate), an in-process
-  per-provider circuit breaker (today an open breaker aborts the request; fallover-on-open is
-  built on the unmerged `enterprise-hardening` branch), and a concurrency/load guard for
-  agent-coding workloads.
+  per-provider circuit breaker whose open state triggers fallover to the next candidate
+  instead of aborting the alias request, and a concurrency/load guard for agent-coding
+  workloads.
 - **Response caching** — exact-match and normalized near-duplicate ("semantic") caching as
   per-tenant/per-key opt-ins (default-off, TTL-capped, per-request `Cache-Control: max-age`
   override, tenant-facing cache admin API), plus an embedding-similarity vector cache
@@ -91,6 +91,13 @@ its release-notes credit is pending.
 - **Reconciliation & drift detection** — provider-cost-vs-billed reconciliation with a
   configurable drift-threshold alert, plus an operator-wide cross-tenant reconciliation view
   (`GET /ops/reconciliation`) gated behind mTLS + XFCC edge-trust (default-off, fail-closed).
+- **Per-model / per-tier rate cards** — an admin-managed markup override per (tenant, model)
+  on top of the tenant's flat markup percentage, resolved by ONE shared resolver so catalog
+  display, recorder billing, and cost recovery can never drift from each other.
+- **Durable usage recording** — a usage event survives a Redis blip via a bounded-timeout
+  Postgres fallback, and a crash mid-flush via Redis-stream PEL reclaim; both paths converge
+  on one idempotent insert (`ON CONFLICT DO NOTHING` on a deterministic id), so no event is
+  double-billed or silently lost.
 - **Budgets & rate limits** — per-tenant/team/key spend budgets, RPM/TPM rate limits, model
   allowlists.
 
@@ -190,19 +197,16 @@ deliberate choice (this is the `add.py release` housekeeping this document accom
 
 ## In progress — not yet shipped
 
-The **enterprise-hardening** milestone (branch `feat/enterprise-hardening`, unmerged) is
-**mid-flight and explicitly excluded from any release** until it's complete and merged:
+The **enterprise-hardening** milestone is partially landed: cache-hit alias billing, durable
+usage recording, circuit-breaker fallover, and per-model/per-tier rate cards (the first four
+tasks) are **merged to `main`** and described in their domain sections above. Still open:
 
-- **Done on that branch, not yet on `main`**: cache-hit billing correctness for the alias path
-  (extends the served-id billing invariant to cache hits), durable usage recording (survives a
-  Redis blip via a bounded-timeout Postgres fallback, and a crash mid-flush via Redis-stream PEL
-  reclaim), provider circuit-breaker fallover in the completion path, and per-model/per-tier
-  rate cards (an admin override on top of a tenant's flat markup percentage).
-- **Not started**: realtime-relay governance (bringing `/v1/realtime/relay` to authz/rate-limit/
-  usage/audit parity with every other `/v1` endpoint — currently mid-build), and two security
-  hardening tasks (edge input hardening: XFF last-hop parsing, SSRF/IMDS deny, body-size caps;
-  and signup/routing authorization: invite-only signup default + a routing-write permission).
-  The two security tasks carry HARD-STOP verifies that this project's method never auto-passes.
+- **Realtime-relay governance** — bringing `/v1/realtime/relay` to authz/rate-limit/usage/audit
+  parity with every other `/v1` endpoint.
+- **Two security hardening tasks** — edge input hardening (XFF last-hop parsing, SSRF/IMDS
+  deny, body-size caps) and signup/routing authorization (invite-only signup default + a
+  routing-write permission). Both carry HARD-STOP verifies that this project's method never
+  auto-passes.
 
 ---
 
