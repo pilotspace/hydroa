@@ -616,6 +616,17 @@ SAML_CERT_INVALID = ErrorSpec(
     422, "ERR_SAML_CERT_INVALID", "SAML IdP certificate is invalid or expired"
 )
 
+#: PUT /admin/saml with an email_domains entry already claimed by a DIFFERENT
+#: tenant's saml_provider_configs row — collision guard added post-freeze
+#: (add-verify Finding 3, 2026-07-10: an unguarded collision crashes GET
+#: /auth/saml/login with an unhandled MultipleResultsFound for every tenant
+#: sharing the domain).
+SAML_DOMAIN_ALREADY_CLAIMED = ErrorSpec(
+    409,
+    "ERR_SAML_DOMAIN_ALREADY_CLAIMED",
+    "One or more email_domains are already claimed by another tenant's SAML configuration",
+)
+
 # ---------------------------------------------------------------------------
 # Internal / server errors
 # ---------------------------------------------------------------------------
