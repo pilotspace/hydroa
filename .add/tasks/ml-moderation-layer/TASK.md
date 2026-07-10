@@ -2,10 +2,9 @@
 
 slug: ml-moderation-layer · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
-sensitivity: security   <!-- new outbound egress seam + BYOK credential use + honest-degradation invariant -->
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+sensitivity: security
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -98,8 +97,6 @@ Assumptions — lowest-confidence first:
   - [ ] Post-call (response) moderation — task scope explicitly ranks this a freeze question, not required for v1. This draft's recommendation: OUT of this task (pre-call/prompt only), a named follow-up — ranked as FREEZE-QUESTION 3.
   - [ ] Whether a GLOBAL operator kill-switch (a settings flag gating whether `app.state.ml_moderation_provider` is ever constructed) is needed on top of the per-tenant `ml_moderation.enabled` flag, or whether always-wiring-when-`tenant_credential_resolver`-is-present is sufficient (this draft's recommendation, to minimize config surface — the true kill switch is the per-tenant flag) — ranked as FREEZE-QUESTION 4.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -209,15 +206,12 @@ Scenario: absent app.state.ml_moderation_provider wires the unchanged default ev
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
 Status: FROZEN @ v1 — approved by Tin Dang
 Least-sure flag surfaced at freeze: [contract] OpenAI /v1/moderations shape + $0 pricing is trained-knowledge, NOT live-verified — a live-docs check is REQUIRED before the real HTTP call is wired at BUILD (if priced, unbilled real spend accrues; this design never bills moderation). Decided at freeze (Tin, 2026-07-10 batch): all 4 agent recommendations accepted (allow-enable + honest unchecked degrade; connect=1.5s/read=2.5s/1 retry as starting budget; pre-call only v1; no separate global flag).
-
 
 ```
 PUT /admin/guardrails   body: { prompt_injection?, pii_mask?, ml_moderation?: {
@@ -403,7 +397,6 @@ Glossary deltas:
 
 Status: DRAFT — awaiting human freeze.
 Reported: no — freeze report renders when Tin reviews this draft.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -452,7 +445,6 @@ neither weakening nor replacing any planned scenario):
   `scim_tokens`→`users` FK) reproduced identically on a clean DB with ALL of this
   task's changes stashed — confirmed unrelated to this build, not investigated further
   (a different sibling task's concern).
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 ---
 
@@ -514,8 +506,6 @@ Deviations from the illustrative §3 Python / Scope note (recorded per the proje
 2. **Architecture fix (Scope note vs. pyright strict gate)**: the Scope note for `openai_provider.py` says "reuse only... unless a constructor param is genuinely needed," and the §3 illustrative prose describes `OpenAiModerationClient` reaching into `OpenAIDirectProvider`'s `_client`/`_breaker`/`_auth_headers()` from a different module. This project's `pyright` runs `typeCheckingMode = "strict"` over `src/gateway` and `reportPrivateUsage` correctly rejects exactly that cross-module private-attribute access (3 errors). Fixed by adding one new PUBLIC method, `OpenAIDirectProvider.post_json_with_retry()` — the same guard→auth→POST→breaker-bookkeeping shape as the existing `post_json`, but wired through `execute_with_retry` for bounded retry, with a `provider_label` override so `openai_moderation` is distinguishable from primary chat/embeddings traffic in `upstream_retries_total`. `OpenAiModerationClient.moderate()` now calls only this public method — zero private-attribute reach-in. `uv run pyright src/gateway` is 0 errors after the fix (was 3 before).
 3. **Test infra parity fix** (`tests/guardrails/conftest.py`): its `TEST_DATABASE_URL` was hardcoded to the un-suffixed `gateway_test` DB, ignoring `GATEWAY_TEST_DATABASE_URL` (unlike the root `tests/conftest.py`, which already reads it) — a real collision risk when multiple worktrees run the guardrails suite concurrently against the shared Postgres. Fixed to read the env var with the identical previous literal as fallback — behavior-preserving for every existing caller, verified by the full `test_guardrails_core.py` suite staying green (17/17) both with and without the env var set.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
@@ -569,11 +559,9 @@ Binding: yes — mechanical (sensitivity: security)
 
 ### GATE RECORD
 Reported: no — orchestrator records the gate outcome, not this agent.
-Outcome: <the orchestrator records exactly one of PASS | RISK-ACCEPTED | HARD-STOP — this agent's recommendation is HARD-STOP, per the Advisor 3-lens verdict above>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap — N/A here, this is a confirmed security finding)
-Reviewed by: <pending human> · date: <pending>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-10
 
 ---
 
@@ -582,7 +570,10 @@ Reviewed by: <pending human> · date: <pending>
 Watch (reuse scenarios as monitors): `gateway_guardrail_events_total{guardrail="ml_moderation"}` broken out by `action` — watch the `unchecked` rate specifically (a sustained non-zero `unchecked` rate for a tenant means their moderation is silently degraded, e.g. missing key or provider outage) alongside the moderation-dedicated breaker's open/close transitions and the added p50/p99 latency on `ml_moderation`-enabled tenants' completion requests.
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: followed the 5 batches as ordered, with two deviations recorded below (both discovered mid-build, both strictly-more-correct + harmless, no test/contract touched): 1. Domain: built `guardrail_tenant_context.py` exactly as planned — line-for-line mirror of `credential_context.py` (ContextVar + set_/get_/reset_, Token-based reset). 2. Infrastructure: built `ml_moderation_evaluator.py` largely as the illustrative §3 Python, with one load-bearing fix (Deviation 1 below) and one architecture fix forced by this project's strict pyright gate (Deviation 2 below — `OpenAIDirectProvider.post_json_with_ retry`, a new public method, instead of `OpenAiModerationClient` reaching into `_client`/`_breaker`/`_auth_headers()` across the module boundary). 3. API: extended `guardrail_router.py` exactly as planned — `MlModerationConfig` mirrors `PromptInjectionConfig`'s validator shape; `_build_response` and the PUT partial-merge `fields_set` branch extended in place. 4. Wiring: `use_cases.py` — added `finally:` clauses to the TWO EXISTING try/except blocks (rather than nesting a new try/finally around them) — smaller diff, same guarantee (the contextvar always resets, including on the `raise GUARDRAIL_BLOCKED.exc()` path). `deps.py` and `main.py` wired exactly as the §3 delta describes. 5. Tests: one file, `test_ml_moderation.py`, 18 tests (16 planned + 2 extra: the live-verified wire-shape test and a terminal-4xx failure-mapping test) — reused `test_guardrails_core.py`'s arrange helpers via import (not duplication) except `active_model`, which is defined locally (importing a fixture across test modules shadows the parameter name in every consuming test signature, which ruff's F811 correctly flags — a local copy was cleaner than fighting the linter). Discovered mid-build that `provider_resolver` IS wired in the shared test `app` fixture (contrary to the design's assumption it would be absent), so the ROUTED completion provider's own credential resolution also calls the SAME fake `tenant_credential_resolver` — `FakeCredentialResolver` was made provider-specific (`missing_for: frozenset[str]`) so a "missing openai moderation key" test doesn't also 402 the routed provider's own resolve().
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
@@ -595,7 +586,6 @@ One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)
 - [SDD · open] a BYOK provider used for an ANCILLARY IO seam (moderation) needs an ISOLATED CircuitBreaker/client instance from the SAME provider's PRIMARY seam (chat completions) — sharing one adapter instance across two independent failure domains would cross-contaminate breaker state; worth a general pattern note for any future secondary use of an existing provider adapter (evidence: §0 R3, §1 M8).
 
 ---
-
 
 ## Design self-score
 

@@ -2,10 +2,9 @@
 
 slug: per-key-guardrail-policies · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
-sensitivity: data   <!-- per-key policy CRUD + resolution touches tenant/key data isolation; no new outbound IO seam (reuses the existing auth-time LEFT JOIN) -->
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+sensitivity: data
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -96,8 +95,6 @@ Assumptions — lowest-confidence first:
   - [ ] #3 Whether to add a `policy_source: "key" | "tenant" | "none"` field to `AuthzResult` NOW (cheap, additive, mirrors every other additive field on that dataclass) so the sibling `guardrail-analytics` task (depends-on this task) can attribute hit-counts to key vs. tenant policy without re-deriving the comparison itself — vs. leaving that entirely to the analytics task to add when it lands. RECOMMEND: add it now (low cost, avoids a second read/compare in the analytics task, and `AuthzResult` is exactly where every other "resolved-once" governance fact already lives) — flagged as a freeze question since it modestly widens this task's own frozen surface for a sibling task's benefit.
   - [ ] #4 Exact GET response envelope naming (`source` field name/values) — low-stakes, cosmetic; default to `"key"`/`"tenant"` unless the freeze prefers different literals.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -234,8 +231,6 @@ Scenario: PUT/DELETE on a revoked key returns 404   # R4
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -390,7 +385,6 @@ Least-sure flag surfaced at freeze: [contract] PUT semantics = partial-merge wit
 - Self-evaluation: 0.9 — the two real judgment calls (PUT partial-merge vs full-replace;
   whether to widen AuthzResult now for the analytics task) are surfaced as ranked, reasoned
   freeze questions with a recommendation each, not resolved by fiat.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -424,8 +418,6 @@ Plan (one test per scenario, asserting behavior not internals):
 
 Tests live in: `tests/per_key_guardrail_policies/` (`apps/gateway/tests/per_key_guardrail_policies/`) · ran RED (confirmed by temporarily reverting the 5 source-file edits and re-running — 20/21 failed for the right reason: 404 route-not-found or the repository not yet resolving a key override; the 21st (`test_key_null_override_inherits_tenant_byte_identical`) is a byte-identical regression guard for M2 and correctly PASSED pre-build too, since a key with no override always inherited the tenant config even before this task — verified true-red, not a suite gap) before Build.
 
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
-
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
@@ -442,8 +434,6 @@ Code lives in: `apps/gateway/src/gateway/keys/` (+ `main.py` wiring, + one migra
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear. Held — no test edited, no §3 line edited, no new dependency added.
 
 Deviations (recorded per the project's fix-and-record rule): mid-build, a `git stash pop` (used to temporarily revert source edits and confirm true-RED against pre-build code) collided with a concurrent sibling builder (`compliance-export-api`) on this repo's SHARED stash stack — linked git worktrees share one `.git` dir, and `refs/stash` is NOT worktree-scoped. The pop pulled the sibling's uncommitted diff into this worktree while consuming (and, per the sibling's own `git stash list`, also swapping out) this task's stashed edits into the sibling's worktree. Fully diagnosed and recovered with zero data loss: both worktrees' correct diffs were located, cross-copied back to their owners, and the contamination removed — verified via `git diff --stat` matching the intended 5-file change set on this side and the sibling's own `git status` showing only its own files afterward. No `git stash` used for the remainder of the build. Flagged for the verify phase and for a competency-delta entry (`git stash` is unsafe across this fleet's linked-worktree topology; a future red-confirmation step should use a saved patch/diff instead).
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -495,8 +485,6 @@ Outcome: HARD-STOP → remediated; awaiting human confirmation of PASS (security
 If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (never for a security gap)
 Reviewed by: pending human review · date: 2026-07-10
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
-
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
@@ -504,11 +492,14 @@ Reviewed by: pending human review · date: 2026-07-10
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose **A — additive nullable JSONB column on `api_keys`, resolved once at auth time inside the existing `SqlAlchemyKeyRepository.get_by_id()` LEFT JOIN**; rejected B — a dedicated relational `key_guardrail_policies` table keyed by `key_id` (rejected: adds a 4th JOIN to the already-3-table hot auth-path query for no benefit — the milestone's own wholesale-override decision means there is no per-field relational structure to model; `api_keys.model_allowlist` is already a nullable-JSONB column on this SAME table, so JSONB is the established local precedent, not a new one) · C — resolve key-vs-tenant precedence at evaluation time inside `guardrail_evaluator.py`/`proxy/application/use_cases.py`, passing both dicts down (rejected: would touch the evaluator plus 6 call sites — pre-call, evaluate_post ×3 cache-hit branches, the streaming branch — breaking the "resolve-once-at-auth into one flat `AuthzResult` field" invariant every other additive config field already follows; A gets identical behavior with ZERO proxy-layer edits).
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned, with one incident-driven detour — see Deviations below.
+- [AI] verify — gate HARD-STOP (reviewed by pending human review)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

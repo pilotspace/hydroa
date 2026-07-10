@@ -2,9 +2,8 @@
 
 slug: tenant-retention-zdr · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -104,8 +103,6 @@ Assumptions — lowest-confidence first:
   - [ ] `operator_ceiling_days` as a NEW single Settings knob (365 default) vs. deriving the ceiling from the MIN of the three existing per-table operator defaults — confirm the simpler single-knob approach at BUILD; both are additive, low cost to flip.
   - [ ] Whether dashboard-session-JWT-authenticated writers (if any) bypass the `ApiKeyRepository.get_by_id` LEFT JOIN convention and need a second identity-resolution path threaded with `zdr_enabled` — flagged as an Issue in §0, needs a BUILD-time trace of every non-`sk-`-key write path into the five gated repositories before claiming M5 complete.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -211,14 +208,11 @@ Scenario: is_zdr() read port answers correctly for a not-yet-existing consumer  
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
 Least-sure flag surfaced at freeze: [spec] window_days scope = ALL 7 swept tables (incl. usage_records/alert_events which carry a FROZEN v1 sweeper contract) — the biggest build-size driver; build in 2 batches so the 5-payload-table subset is a clean fallback. Decided at freeze (Tin, 2026-07-10 batch): all 4 agent recommendations accepted (7 tables; self-healing purge, no job table; operator ceiling Settings knob default 365; proceed independently of the sibling milestone via the is_zdr read port).
-
 
 ```
 GET /admin/retention-policy   (any authenticated role — get_identity)
@@ -285,10 +279,7 @@ Glossary deltas:
 Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — awaiting the human freeze decision (see FREEZE-QUESTIONS in the final report)
 
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
-
 ---
-
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
@@ -314,9 +305,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` (19 new tests in `apps/gateway/tests/retention_zdr/`) · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -347,8 +335,6 @@ Two additional test-only fixture decisions (no production code impact): a `tests
 Safety rule (feature-specific): the ZDR write-path gate (M5) must be checked and enforced BEFORE the ZDR bulk-purge pass ever runs — fail-closed ordering: block new writes first (synchronous, immediate on PUT commit), purge existing rows second (async, self-healing) — never the reverse, which would leave a window where old rows are gone but new ones can still land.
 Code lives in: existing module `infrastructure`/`application`/`api` layers per CONVENTIONS.md (no new top-level module — this task extends `tenants`, `usage`, `keys`, `artifacts`, `conversations`, `memory`, `batches`, `video`).
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -418,9 +404,7 @@ Binding: yes — mechanical (security is always HARD-STOP per ADD's own non-nego
 Reported: no — findings returned to the orchestrator; the human gate decision has not yet been rendered
 Outcome: **HARD-STOP**
 If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (never for a security gap — not applicable here)
-Reviewed by: <pending human> · date: 2026-07-10
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-10
 
 ---
 
@@ -429,7 +413,10 @@ Reviewed by: <pending human> · date: 2026-07-10
 Watch (reuse scenarios as monitors): rate of `ERR_ZDR_PAYLOAD_BLOCKED` per tenant (a ZDR tenant repeatedly hitting artifacts/memory endpoints may indicate a product gap, not a bug) · sweep-cycle duration once tenant-scoped queries are added (regression risk on the operator-wide sweep's own latency) · count of s3 `ObjectStoreUnavailableError` retries during ZDR purges (object-store health signal).
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: Steps 1-7 as planned, with 3 build-time refinements surfaced by the tests (recorded here, not silently absorbed): (a) Step 6's "per-tenant SHORTENING pass" is expressed as `min(tenant_window, operator_default) * interval` in SQL (not two Python-computed cutoffs) so it stays a provable no-op whenever a tenant's window ≥ the operator default — the original 3 unconditional DELETEs remain the outer bound for every tenant, satisfying "shorten only, never lengthen" by construction rather than by a runtime branch. (b) The ZDR purge pass (step 6) was rewritten mid-build from one bulk "all zdr_enabled tenants at once" DELETE per table to a per-tenant loop (SELECT zdr tenant ids, then delete scoped to each `tenant_id`) — the frozen scenario at TASK.md:173 ("each table's purge (>0 rows deleted) emits a record_audit(action='data.purge') event scoped to that tenant") needs a per-tenant rowcount to attribute the audit event to, which the bulk form could not produce. This is additive within the same pass, not a scope change. (c) The tenant-scoped `data.purge` audit event keeps `AuditEvent.tenant_id=None` (not the tenant's id) and instead carries `metadata={"tenant_id": ..., ...}` — discovered mid-build that the pre-existing, unrelated `audit_missing_actor` invariant (`gateway/audit/domain/audit_event.py`, frozen by a different, earlier milestone) rejects any `tenant_id`-bearing `AuditEvent` with no `actor_user_id`/`actor_key_id`, which the background sweeper structurally has neither of. Reconciled against TASK.md's own M10 wording ("system-level for the sweeper-driven bulk purge") — tenant_id=None + metadata satisfies "scoped to that tenant" (queryable) without violating the actor invariant. Not a change to this task's own frozen §3 contract. Two additional test-only fixture decisions (no production code impact): a `tests/retention_zdr/conftest.py` overriding the `app` fixture to run a fast `UsageLedgerFlusher` background task (mirrors `tests/response_caching/conftest.py`'s pre-existing precedent — needed because `httpx.ASGITransport` never triggers the app lifespan, so fire-and-forget usage-recording never reaches Postgres without it), and an `alert_tenant_column` fixture that `ALTER TABLE alert_events ADD COLUMN IF NOT EXISTS tenant_id UUID NULL` — turned out to be a no-op safety net once inspection showed `AlertEventRow` already maps `tenant_id` (nullable, FK omitted only) so `Base.metadata.create_all` already provisions the column; kept for documentation/defensiveness, harmless either way.
+- [AI] verify — gate **HARD-STOP** (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).

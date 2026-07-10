@@ -2,10 +2,9 @@
 
 slug: scim-provisioning · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
-sensitivity: security   <!-- unattended machine write-path into tenant identity lifecycle (create/update/deactivate users) — milestone Shared decisions: "every identity surface is security-sensitive: HARD-STOP verify"; never auto-passed even under autonomy:auto -->
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+sensitivity: security
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -102,8 +101,6 @@ Assumptions — lowest-confidence first:
   - [ ] SCIM-provisioned password_hash sentinel is a NEW distinct value (e.g. `!scim-no-password`) rather than reusing the existing `SSO_PASSWORD_HASH_SENTINEL` verbatim — low material risk either way (both block password login identically; `auth_method="scim"` already disambiguates provisioning origin) but stated as a naming decision, not silently picked.
   - [ ] this task's dispatch scope names only the backend `/scim/v2/*` + `/admin/scim/tokens` surfaces; no sibling task in MILESTONE.md's task list owns a dashboard SCIM-token-management SCREEN even though the milestone's "UI/UX in scope" line covers it — confirmed as OUT of this task's Build scope (backend-only), to be either folded into this task's own follow-up delta or a new sibling task, not silently built here without a UI design pass.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -238,8 +235,6 @@ Scenario: revoked SCIM token cannot authenticate   # R (401)
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -370,7 +365,6 @@ Least-sure flag surfaced at freeze: [contract] deactivated user's session JWT st
 - Self-evaluation: 0.91 — the three ⚠/open assumptions (Groups deferral, discovery-endpoint auth, sentinel-hash naming, UI-scope boundary) are ranked lowest-confidence-first with named costs if wrong, per the co-specify contract; nothing was resolved by silent guess where the milestone or the grounded code left it genuinely open.
 
 All six ≥ 0.90 — no refinement pass required before reporting.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -409,9 +403,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build. Confirmed RED for the right reason before any `gateway/scim/` module existed: the suite failed at collection (missing `gateway.scim` import target / missing routes), not on a harness defect — every test targets a symbol this task's Build phase then created.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -443,8 +434,6 @@ Strategy actually used: followed the drafted 8-step order closely, with two adju
 Safety rule (feature-specific): the deactivation write (`users.deactivated_at` SET) and the `team_members` delete-by-`user_id` commit in ONE atomic transaction — a partial failure must never leave a user deactivated-but-still-team-attributed or vice versa.
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -493,11 +482,9 @@ Binding: yes — mechanical (sensitivity: security)
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-10
 
 ---
 
@@ -506,11 +493,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: followed the drafted 8-step order closely, with two adjustments: 1. Schema (migration `010e6f83a709`, parented on confirmed head `511ad8a7b65e`) + `AuditEvent.__post_init__` widening — done first, as planned. 2-4. `gateway/scim/` module built bottom-up (domain ports/errors → application use cases → infrastructure SQLAlchemy adapters → api layer) exactly as planned; token CRUD before user CRUD; SCIM wire-translation (`scim_schemas.py`) kept out of domain/application, mirroring `ChatTranslator`. 5. `LoginUseCase`/`OidcLoginUseCase` deactivation checks added — as planned, byte-identical failure shape to `InvalidCredentialsError`. 6-7. Discovery endpoints + Groups stub + rate limiter + audit wiring — as planned. 8. Envoy route-block insertion — DEFERRED to the end of the batch (after the full test suite was green and pyright/ruff were clean) rather than interleaved at step 8 as drafted, since it is a pure config/documentation change orthogonal to the code path and carries zero test coverage risk; done last so a config typo could never mask a real red/green signal from the code changes. Validated via `python3 -c yaml.safe_load` (envoy.yaml + envoy-prod.yaml) and `helm template` (envoy-configmap.yaml, including parsing the rendered ConfigMap's embedded `envoy.yaml` string) rather than a live Envoy stack — no code path exercises this file, so this is config-validation evidence, not runtime evidence. One interpretation decision beyond the drafted strategy: M11 says every SCIM mutation sets `actor_scim_token_id`. Token-management mutations (`/admin/scim/tokens` — human, session-JWT-authenticated via `require_permission`) instead set `actor_user_id` (the actual human actor is known and more informative than the token being managed); only `/scim/v2/*` user mutations (machine-authenticated via the SCIM bearer itself) set `actor_scim_token_id`. This is a build-time reading of an ambiguous contract line, not a silent contract edit — flagged for VERIFY. One self-correction during Build: an early pyright cleanup pass mistakenly widened the three `/scim/v2/Users` route body parameters from `dict[str, Any]` to `Any` to silence an "unnecessary isinstance" warning; this broke FastAPI's JSON-body inference (15/27 tests failed with a spurious `422 ERR_PAYLOAD_INVALID` never reaching the handlers). Reverted to `dict[str, Any]` and instead removed the genuinely-redundant `isinstance(body, dict)` checks in `scim_schemas.py` (FastAPI's own typing already guarantees dict-ness before the handler runs) — 27/27 green again, pyright and ruff both clean.
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
