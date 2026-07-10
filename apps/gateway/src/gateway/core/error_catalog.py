@@ -628,6 +628,44 @@ SAML_DOMAIN_ALREADY_CLAIMED = ErrorSpec(
 )
 
 # ---------------------------------------------------------------------------
+# Domain capture — verified email-domain claims (domain-capture TASK.md §3, FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /admin/domain-claims with a malformed/single-label/IP-literal domain (M3, R1).
+DOMAIN_INVALID = ErrorSpec(400, "ERR_DOMAIN_INVALID", "Domain is not a valid claimable hostname")
+
+#: A DIFFERENT tenant already holds a verified claim on this domain — the M4 UX pre-check
+#: (R2) AND the M6 cross-tenant verify-race rejection (R7, M1's partial unique index).
+DOMAIN_ALREADY_VERIFIED = ErrorSpec(
+    409,
+    "ERR_DOMAIN_ALREADY_VERIFIED",
+    "This domain is already verified by another tenant",
+)
+
+#: POST .../verify — the DNS TXT record was missing or did not match this claim's token (R5).
+DOMAIN_VERIFICATION_FAILED = ErrorSpec(
+    400,
+    "ERR_DOMAIN_VERIFICATION_FAILED",
+    "The expected DNS TXT record was not found or did not match",
+)
+
+#: POST .../verify after now > expires_at — caller must re-POST to reissue a fresh token (R6).
+DOMAIN_CLAIM_EXPIRED = ErrorSpec(
+    410,
+    "ERR_DOMAIN_CLAIM_EXPIRED",
+    "This verification challenge has expired; request a new one",
+)
+
+#: Unknown claim_id OR a claim_id belonging to a different tenant — deliberately
+#: indistinguishable (R9), mirrors InviteNotFoundError's own precedent.
+DOMAIN_CLAIM_NOT_FOUND = ErrorSpec(404, "ERR_DOMAIN_CLAIM_NOT_FOUND", "Domain claim not found")
+
+#: DNS resolver error/NXDOMAIN/empty-answer/timeout — fail CLOSED, never a verified match (M13, R8).
+DNS_LOOKUP_FAILED = ErrorSpec(
+    503, "ERR_DNS_LOOKUP_FAILED", "DNS lookup failed or timed out; try again"
+)
+
+# ---------------------------------------------------------------------------
 # Internal / server errors
 # ---------------------------------------------------------------------------
 

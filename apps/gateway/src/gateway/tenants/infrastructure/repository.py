@@ -85,6 +85,32 @@ class SqlAlchemyIdentityRepository:
             raise EmailAlreadyRegisteredError from exc
         return tenant.id, user.id
 
+    async def join_verified_tenant_domain(
+        self, *, tenant_id: uuid.UUID, email: str, password_hash: str
+    ) -> uuid.UUID:
+        """ADDITIVE (domain-capture TASK.md §3 M9 — FROZEN @ v1): ONE INSERT of a new
+        UserRow(tenant_id=<claimed tenant>, role=Role.MEMBER); auth_method keeps its
+        column default ('password') — a domain-capture-joined user is a REAL password
+        user, never a sentinel-hash SSO row.
+
+        Deliberately INSERT-only (mirrors create_tenant_with_owner's own
+        INSERT+catch-IntegrityError shape), NOT the get-or-provision shape
+        _get_or_provision_sso_user uses — see ports.py's own docstring for why.
+        """
+        user = UserRow(
+            id=uuid7(),
+            tenant_id=tenant_id,
+            email=email,
+            password_hash=password_hash,
+            role=Role.MEMBER,
+        )
+        try:
+            async with self._session.begin():
+                self._session.add(user)
+        except IntegrityError as exc:
+            raise EmailAlreadyRegisteredError from exc
+        return user.id
+
     async def get_user_by_email(self, email: str) -> User | None:
         row = (
             await self._session.execute(select(UserRow).where(UserRow.email == email))
