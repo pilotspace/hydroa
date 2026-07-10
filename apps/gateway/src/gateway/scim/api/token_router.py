@@ -20,6 +20,11 @@ Security (server-side, authoritative):
     set (a human OWNER/ADMIN authenticated this call via session JWT — NOT
     actor_scim_token_id, which is reserved for the machine-authenticated /scim/v2/*
     surface where no user identity exists at all).
+  - Deactivation-escalation fix (verify-phase HARD-STOP finding): create/rotate ADDITIONALLY
+    depend on require_active_user — a deactivated caller's still-valid session JWT can no
+    longer mint (or rotate into) a NEW SCIM token, even though the JWT's role claim is
+    unaffected by deactivation. list/revoke are unaffected (they don't mint a NEW
+    credential; the accepted stale-JWT residual — TASK.md §1 M7 — still covers them).
 """
 
 from __future__ import annotations
@@ -46,7 +51,7 @@ from gateway.scim.application.token_use_cases import (
 )
 from gateway.scim.domain.errors import ScimTokenNotFoundError
 from gateway.scim.infrastructure.repository import SqlAlchemyScimTokenRepository
-from gateway.tenants.domain.authz import Permission, require_permission
+from gateway.tenants.domain.authz import Permission, require_active_user, require_permission
 from gateway.tenants.domain.entities import Identity
 
 scim_token_router = APIRouter(prefix="/admin/scim/tokens", tags=["scim-tokens"])
@@ -132,6 +137,7 @@ async def create_scim_token(
     request: Request,
     body: ScimTokenCreateRequest,
     identity: Annotated[Identity, require_permission(Permission.MEMBERS_MANAGE)],
+    _active: Annotated[Identity, Depends(require_active_user)],
     repo: Annotated[SqlAlchemyScimTokenRepository, Depends(_get_repo)],
 ) -> ScimTokenCreateResponse:
     use_case = CreateScimTokenUseCase(repo, _hasher)
@@ -181,6 +187,7 @@ async def rotate_scim_token(
     request: Request,
     token_id: uuid.UUID,
     identity: Annotated[Identity, require_permission(Permission.MEMBERS_MANAGE)],
+    _active: Annotated[Identity, Depends(require_active_user)],
     repo: Annotated[SqlAlchemyScimTokenRepository, Depends(_get_repo)],
 ) -> ScimTokenCreateResponse:
     use_case = RotateScimTokenUseCase(repo, _hasher)

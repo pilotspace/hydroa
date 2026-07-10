@@ -223,9 +223,18 @@ class SqlAlchemyScimUserRepository:
     async def set_active(
         self, *, user_id: uuid.UUID, tenant_id: uuid.UUID, active: bool
     ) -> tuple[User, bool] | None:
+        # SELECT ... FOR UPDATE (concurrency finding, verify-phase MINOR): without the row
+        # lock, two concurrent PATCH active:false calls both read deactivated_at IS NULL
+        # before either writes, both see already_at_target=False, and both proceed to write
+        # + delete team_members + commit — producing a duplicate scim.user_deactivate audit
+        # row for what is really one logical deactivation. Locking here serializes the
+        # second caller behind the first commit, so it re-reads the now-True idempotency
+        # state and takes the no-op branch below instead.
         row = (
             await self._session.execute(
-                select(UserRow).where(UserRow.id == user_id, UserRow.tenant_id == tenant_id)
+                select(UserRow)
+                .where(UserRow.id == user_id, UserRow.tenant_id == tenant_id)
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if row is None:
