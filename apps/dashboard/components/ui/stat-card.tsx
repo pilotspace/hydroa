@@ -65,7 +65,10 @@ export function StatCard({
         ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        <div data-testid={valueTestId} className="text-3xl font-semibold tracking-tight text-foreground">
+        <div
+          data-testid={valueTestId}
+          className="text-3xl font-mono font-semibold tabular-nums tracking-tight text-foreground"
+        >
           {value}
         </div>
         {delta && meta ? (

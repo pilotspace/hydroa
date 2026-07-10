@@ -23,6 +23,9 @@ its release-notes credit is pending.
 - **Endpoints**: chat completions (streaming + non-streaming), embeddings, images, audio
   (speech-to-text, text-to-speech, translations), turn-based realtime voice (WebSocket), and
   full-duplex realtime voice relay (bidirectional WS pump, provider-agnostic).
+- **Batch API** — an OpenAI-compatible `/v1/batches` surface (durable job store, line-item
+  validation, background processing), plus an admin batch-diversion policy that can divert
+  eligible traffic into batch windows.
 - **Model capabilities translated across every provider**: tool-use / function-calling
   (canonical OpenAI vocabulary, provider-native shapes normalized both ways, id-less providers
   get synthesized ids), JSON-mode / structured outputs, vision & multimodal content-parts
@@ -49,11 +52,18 @@ its release-notes credit is pending.
   caught with the same structured error, extended to a coarse per-endpoint modality-mismatch
   guard (images/embeddings/TTS/chat/realtime-WS-chat).
 - **Routing & load-balancing** — model groups (deployments with weight / TPM / RPM limits),
-  multiple routing strategies, health-aware fallback across candidates.
-- **Reliability primitives** — uniform retries, error-aware fallback, a per-provider cooldown
-  circuit breaker (an open breaker now triggers fallover to the next candidate instead of
-  aborting the whole alias request), exact-match + semantic + vector response caching, and a
-  concurrency/load guard for agent-coding workloads.
+  four routing strategies (ordered, weighted-shuffle, least-busy, latency-EWMA; the strategy is
+  a single operator-wide setting, not per-alias), health-aware fallback across candidates.
+- **Reliability primitives** — uniform retries, error-aware fallback, a per-model Redis
+  cooldown gate (a cooling model is skipped in favor of the next candidate), an in-process
+  per-provider circuit breaker (today an open breaker aborts the request; fallover-on-open is
+  built on the unmerged `enterprise-hardening` branch), and a concurrency/load guard for
+  agent-coding workloads.
+- **Response caching** — exact-match and normalized near-duplicate ("semantic") caching as
+  per-tenant/per-key opt-ins (default-off, TTL-capped, per-request `Cache-Control: max-age`
+  override, tenant-facing cache admin API), plus an embedding-similarity vector cache
+  (cosine-threshold, Redis) behind a global operator flag — no per-tenant vector toggle yet. A
+  cache hit bills the served catalog candidate, never the requested alias.
 - **Per-key bandwidth pacing** — a Redis token-bucket paces concurrent same-key throughput
   (bounded-wait → 429/503 + `Retry-After` or a terminal SSE frame); default-off, fail-open.
 
@@ -98,9 +108,23 @@ its release-notes credit is pending.
   rate limits.
 - **RBAC** — six-tier role matrix (owner → member) on a frozen permission allowlist, with an
   admin UI for role assignment and an escalation guard.
+- **Invite-based onboarding** — email invites for tenant/team membership with a dedicated
+  acceptance flow.
+- **Platform (superadmin) console** — a cross-tenant operator surface: tenant directory and
+  per-tenant config management, cross-tenant user/key administration, platform-wide audit
+  read, a plan/tier catalog with per-tenant assignment (catalog-only today — no quota
+  enforcement wired yet), and time-boxed, fully audited support-access impersonation
+  sessions.
 
 ## Enterprise governance & security
 
+- **Guardrails** — a deterministic, tenant-configurable guardrail engine enforced pre- and
+  post-call (including on cache hits): regex prompt-injection detection (7 pattern families,
+  block or audit mode) and PII masking (8 built-in patterns — email / phone / credit-card /
+  SSN / IP / IBAN / API-secret / passport — plus up to 8 tenant-supplied custom patterns,
+  ReDoS-hardened behind a strict time/size budget), managed via `GET/PUT /admin/guardrails`
+  and a dashboard Guardrails settings tab. Default-off until a tenant configures a policy.
+  Deliberately regex-based — no ML moderation layer yet.
 - **Audit log** — append-only, trigger-immutable audit events with an admin read surface
   (`GET /admin/audit`).
 - **Data retention** — an active-by-default, operator-wide retention sweeper (audit retained to

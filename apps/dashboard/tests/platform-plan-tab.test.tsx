@@ -25,7 +25,16 @@ const APP = "http://localhost:3000";
 const TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const PLATFORM_TENANT_ID = "22222222-2222-2222-2222-222222222222";
 
-const STARTER = {
+type PlanFixture = {
+  id: string;
+  name: string;
+  display_name: string;
+  seat_cap: number | null;
+  budget_usd_monthly_default: string | null;
+  rpm_limit_default: number | null;
+  tpm_limit_default: number | null;
+};
+const STARTER: PlanFixture = {
   id: "aaaaaaaa-0000-0000-0000-000000000001",
   name: "starter",
   display_name: "Starter",

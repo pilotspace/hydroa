@@ -58,9 +58,17 @@ export interface ErrorStateProps {
   description?: string;
   onRetry?: () => void;
   className?: string;
+  /**
+   * Element for the title. Default "p" — most callers render ErrorState INSIDE a page that
+   * already owns the sole h1, so a heading here would create a second one (breaking the
+   * dashboard-wide "exactly one h1" contract). Error BOUNDARIES that REPLACE the whole page
+   * segment (RouteError) pass "h1" so the alert carries a real, orienting heading (a11y sweep).
+   */
+  titleAs?: "h1" | "h2" | "p";
 }
 
-export function ErrorState({ title, description, onRetry, className }: ErrorStateProps) {
+export function ErrorState({ title, description, onRetry, className, titleAs = "p" }: ErrorStateProps) {
+  const TitleTag = titleAs;
   return (
     <div
       role="alert"
@@ -71,7 +79,7 @@ export function ErrorState({ title, description, onRetry, className }: ErrorStat
     >
       <div className="flex items-center gap-2">
         <AlertCircle className="size-4" aria-hidden="true" />
-        <p className="text-sm font-medium">{title}</p>
+        <TitleTag className="text-sm font-medium">{title}</TitleTag>
       </div>
       {description ? <p className="text-sm text-foreground">{description}</p> : null}
       {onRetry ? (
