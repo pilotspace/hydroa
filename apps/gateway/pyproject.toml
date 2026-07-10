@@ -22,6 +22,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "tinytag>=2.2,<3",
     "aioboto3>=13",
+    "python3-saml>=1.16.0",
 ]
 
 [dependency-groups]
@@ -159,6 +160,11 @@ reportUnknownVariableType = false
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
 reportUnknownLambdaType = false
+# python3-saml (saml-sso task) ships no py.typed marker / .pyi stubs — same
+# "untyped third-party boundary" class as Redis above; without this the SAML
+# assertion-validation vertical would carry 7+ reportMissingTypeStubs errors
+# unrelated to behavior for every onelogin.saml2.* import.
+reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
