@@ -52,11 +52,13 @@ _INSERT_REQUEST_LOG = text(
     INSERT INTO request_logs
         (id, tenant_id, key_id, team_id, model_id, status_code, stream, cached,
          request_body, response_body, guardrail_verdict, scrub_status, truncated,
-         cost_usd, created_at)
+         cost_usd, created_at, request_id, latency_ms, prompt_tokens, completion_tokens,
+         total_tokens)
     VALUES
         (:id, :tenant_id, :key_id, :team_id, :model_id, :status_code, :stream, :cached,
          :request_body, :response_body, :guardrail_verdict, :scrub_status, :truncated,
-         :cost_usd, now())
+         :cost_usd, now(), :request_id, :latency_ms, :prompt_tokens, :completion_tokens,
+         :total_tokens)
     """
 )
 
@@ -131,8 +133,19 @@ async def _do_persist(
     guardrail_configs: dict[str, Any],
     max_field_bytes: int,
     max_body_bytes: int,
+    request_id: uuid.UUID | None,
+    latency_ms: int | None,
+    prompt_tokens: int | None,
+    completion_tokens: int | None,
+    total_tokens: int | None,
 ) -> None:
-    """Scrub -> truncate -> INSERT (no timeout wrapper — caller applies wait_for)."""
+    """Scrub -> truncate -> INSERT (no timeout wrapper — caller applies wait_for).
+
+    request-log-metering-fields TASK.md §3: the 5 new fields are numeric/uuid pass-through
+    (no scrub/truncate logic applies) — threaded onto EVERY row written below, including
+    the two metadata-only early-return paths (scrub failure / oversize), since they are
+    unrelated to message content.
+    """
     row_id = uuid7()
     scrub_status = "scrubbed"
     truncated = False
@@ -164,6 +177,11 @@ async def _do_persist(
             response_body=None,
             scrub_status="scrub_failed_metadata_only",
             truncated=False,
+            request_id=request_id,
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
         )
         return
 
@@ -197,6 +215,11 @@ async def _do_persist(
             response_body=None,
             scrub_status="oversize_metadata_only",
             truncated=True,
+            request_id=request_id,
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
         )
         return
 
@@ -214,6 +237,11 @@ async def _do_persist(
         response_body=final_response_body,
         scrub_status=scrub_status,
         truncated=truncated,
+        request_id=request_id,
+        latency_ms=latency_ms,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
     )
 
 
@@ -232,6 +260,11 @@ async def _insert(
     response_body: dict[str, Any] | None,
     scrub_status: str,
     truncated: bool,
+    request_id: uuid.UUID | None = None,
+    latency_ms: int | None = None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    total_tokens: int | None = None,
 ) -> None:
     async with session_factory() as session:
         await session.execute(
@@ -251,6 +284,11 @@ async def _insert(
                 "scrub_status": scrub_status,
                 "truncated": truncated,
                 "cost_usd": None,
+                "request_id": str(request_id) if request_id is not None else None,
+                "latency_ms": latency_ms,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
             },
         )
         await session.commit()
@@ -272,12 +310,22 @@ async def persist_request_log(
     timeout_seconds: float,
     max_field_bytes: int,
     max_body_bytes: int,
+    request_id: uuid.UUID | None = None,
+    latency_ms: int | None = None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    total_tokens: int | None = None,
 ) -> None:
     """Persist one scrubbed request_logs row, bounded by timeout_seconds.
 
     NEVER raises — a timeout or any unexpected exception is logged and swallowed
     (no row is written; the caller's fire-and-forget task sees a clean return either
     way). Never retried.
+
+    request_id/latency_ms/prompt_tokens/completion_tokens/total_tokens (request-log-
+    metering-fields TASK.md §3): additive, numeric/uuid pass-through fields — no
+    scrub/truncate logic applies to them, threaded onto every row (including
+    metadata-only ones).
     """
     try:
         await asyncio.wait_for(
@@ -295,6 +343,11 @@ async def persist_request_log(
                 guardrail_configs=guardrail_configs,
                 max_field_bytes=max_field_bytes,
                 max_body_bytes=max_body_bytes,
+                request_id=request_id,
+                latency_ms=latency_ms,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
             ),
             timeout=timeout_seconds,
         )

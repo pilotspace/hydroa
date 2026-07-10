@@ -35,6 +35,24 @@ from gateway.logs.domain.ports import ZdrOverridePort
 _log = logging.getLogger(__name__)
 
 
+def _verbatim_token_count(usage: dict[str, Any] | None, key: str) -> int | None:
+    """Read one token-count field VERBATIM from a usage dict — never recomputed.
+
+    request-log-metering-fields TASK.md §3 Must: prompt_tokens/completion_tokens/
+    total_tokens are read verbatim from the SAME usage dict already passed to the
+    call's billing record — never a second extraction, never re-tokenized. Returns
+    None for a missing/malformed value (never 0, which would misreport "absent" as
+    "confirmed zero") — mirrors the fail-safe posture of recorder.py's own `_safe_tier`.
+    bool is an int subclass — excluded explicitly (a flag is not a token count).
+    """
+    if not isinstance(usage, dict):
+        return None
+    val = usage.get(key)
+    if isinstance(val, bool) or not isinstance(val, int):
+        return None
+    return val
+
+
 class SqlAlchemyPayloadCapture:
     """Postgres-backed PayloadCapturePort implementation."""
 
@@ -67,8 +85,17 @@ class SqlAlchemyPayloadCapture:
         stream: bool,
         cached: bool,
         guardrail_configs: dict[str, Any],
+        usage: dict[str, Any] | None = None,
+        latency_ms: int | None = None,
+        request_id: uuid.UUID | None = None,
     ) -> None:
-        """Fire-and-forget capture — NEVER raises (see module docstring)."""
+        """Fire-and-forget capture — NEVER raises (see module docstring).
+
+        request-log-metering-fields TASK.md §3: prompt_tokens/completion_tokens/
+        total_tokens are read VERBATIM from `usage` here (the ONE place the usage dict
+        is unpacked into individual columns) — never recomputed, never re-tokenized.
+        `usage=None` (e.g. a guardrail-BLOCK hook site) yields all three NULL, never 0.
+        """
         try:
             try:
                 # Bounded — a ZdrOverridePort implementation that never returns (hangs)
@@ -120,6 +147,11 @@ class SqlAlchemyPayloadCapture:
                     timeout_seconds=self._timeout_seconds,
                     max_field_bytes=self._max_field_bytes,
                     max_body_bytes=self._max_body_bytes,
+                    request_id=request_id,
+                    latency_ms=latency_ms,
+                    prompt_tokens=_verbatim_token_count(usage, "prompt_tokens"),
+                    completion_tokens=_verbatim_token_count(usage, "completion_tokens"),
+                    total_tokens=_verbatim_token_count(usage, "total_tokens"),
                 )
             finally:
                 self._semaphore.release()

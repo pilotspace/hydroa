@@ -18,6 +18,16 @@ Schema mirrors §3 CONTRACT (payload-capture-store TASK.md, FROZEN @ v1):
   cost_usd         NUMERIC(14,8) NULL  -- DENORMALIZED DISPLAY SNAPSHOT ONLY, never billing truth
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 
+  -- request-log-metering-fields TASK.md §3 (FROZEN @ v1, additive change-request):
+  -- 5 NULLABLE columns, no default, no backfill. DISPLAY-ONLY metadata snapshots
+  -- (mirrors cost_usd's own "never billing truth" posture) — usage_records remains the
+  -- sole source of truth for tokens/cost.
+  request_id         UUID    NULL  -- correlation key; matches usage_records.raw->>'request_id'
+  latency_ms         INTEGER NULL
+  prompt_tokens      INTEGER NULL
+  completion_tokens  INTEGER NULL
+  total_tokens       INTEGER NULL
+
 The write path (logs/application/capture_writer.py) uses a raw text() INSERT (mirrors
 usage/application/alert_writer.py's own precedent) rather than this ORM object directly
 — this class exists so Base.metadata (tests) and Alembic autogenerate both see the table,
@@ -73,3 +83,11 @@ class RequestLogRow(Base):
     truncated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(14, 8), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # request-log-metering-fields TASK.md §3 (FROZEN @ v1) — 5 additive NULLABLE columns.
+    request_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True, default=None
+    )
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
