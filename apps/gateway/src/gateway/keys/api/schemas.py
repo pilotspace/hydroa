@@ -107,6 +107,8 @@ class PatchKeyRequest(BaseModel):
     team_id: uuid.UUID | None = None
     # response-caching additive field — absent = no change; True/False = set
     cache_enabled: bool | None = None
+    # payload-capture-store additive field — absent = no change; True/False = set
+    capture_enabled: bool | None = None
 
     @field_validator("rpm_limit", mode="before")
     @classmethod
@@ -263,6 +265,8 @@ class KeyInfoResponse(BaseModel):
     team_id: uuid.UUID | None = None
     # response-caching additive field
     cache_enabled: bool = False
+    # payload-capture-store additive field
+    capture_enabled: bool = False
 
 
 class AuthzResponse(BaseModel):

@@ -72,6 +72,9 @@ class _Settings(Protocol):
     retention_audit_events_days: int
     retention_audit_floor_days: int
     retention_batch_size: int
+    # payload-capture-store additive field — request_logs mirrors usage_records exactly
+    # (plain _delete_batched, no immutability trigger).
+    retention_request_logs_days: int
 
 
 def should_start_retention_sweep(settings: _Settings) -> bool:
@@ -124,6 +127,21 @@ _DELETE_ALERT_BATCH = text(
     DELETE FROM alert_events
      WHERE id IN (
            SELECT id FROM alert_events
+            WHERE created_at < :cutoff
+            LIMIT :batch
+     )
+    """
+)
+
+# request_logs: simple age cutoff on created_at — mirrors usage_records exactly
+# (plain _delete_batched, no immutability trigger — request_logs has no compliance
+# requirement for immutability; the whole point of the store is to hold LESS-durable
+# PII, payload-capture-store TASK.md §0 GROUND).
+_DELETE_REQUEST_LOGS_BATCH = text(
+    """
+    DELETE FROM request_logs
+     WHERE id IN (
+           SELECT id FROM request_logs
             WHERE created_at < :cutoff
             LIMIT :batch
      )
@@ -862,6 +880,36 @@ class RetentionSweeper:
                         deleted,
                         cutoff.date(),
                         self._settings.retention_audit_floor_days,
+                    )
+
+            # ── request_logs (payload-capture-store) ──────────────────────
+            # getattr (not direct attribute access): request_logs_days is a NEW
+            # additive field — a pre-existing settings-like object that predates this
+            # task (e.g. a minimal test fake constructed against the OLD _Settings
+            # shape) safely defaults to 0 (skip) rather than raising, mirroring this
+            # codebase's own convention for backward-compatible additive fields
+            # (e.g. getattr(row, "cache_enabled", False) throughout keys/repository.py).
+            request_logs_days = getattr(self._settings, "retention_request_logs_days", 0)
+            if request_logs_days > 0:
+                cutoff = _naive_utc_cutoff(request_logs_days)
+                deleted = await self._delete_batched(
+                    "request_logs", _DELETE_REQUEST_LOGS_BATCH, cutoff, batch_size
+                )
+                results["request_logs"] = deleted
+                if deleted > 0:
+                    _t = asyncio.create_task(
+                        self._emit_purge_audit(
+                            table="request_logs",
+                            cutoff=cutoff,
+                            rows_deleted=deleted,
+                        )
+                    )
+                    _audit_tasks.add(_t)
+                    _t.add_done_callback(_audit_tasks.discard)
+                    _log.info(
+                        "retention_sweep: purged %d request_logs rows older than %s",
+                        deleted,
+                        cutoff.date(),
                     )
 
         except Exception as exc:

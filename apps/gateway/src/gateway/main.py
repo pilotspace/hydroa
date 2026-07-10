@@ -87,6 +87,12 @@ from gateway.keys.api.platform_keys_router import platform_keys_router
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
 from gateway.keys.infrastructure.mint_rate_limiter import PlaygroundMintRateLimiter
+from gateway.logs.api.capture_config_router import capture_router
+from gateway.logs.infrastructure.orm import (  # noqa: F401 — registers RequestLogRow on Base.metadata
+    RequestLogRow as _RequestLogRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.logs.infrastructure.sqlalchemy_capture import SqlAlchemyPayloadCapture
+from gateway.logs.infrastructure.zdr_noop import AlwaysAllowCapture
 from gateway.memory.api.router import memories_router
 from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
     MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -1116,6 +1122,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         buffer=app.state.batch_window_buffer,
     )
 
+    # payload-capture-store (§3): opt-in, PII-scrubbed request/response capture.
+    # zdr_port defaults to the permissive AlwaysAllowCapture (no tenant is ZDR) until
+    # the sibling tenant-retention-zdr task wires a real DB-backed implementation —
+    # tests override via app.state.zdr_port. payload_capture is the REAL DB-backed
+    # adapter (not NoopPayloadCapture — capture is opt-in/default-off via the
+    # per-tenant/per-key toggle, not via a Noop production wiring); tests override via
+    # app.state.payload_capture.
+    app.state.zdr_port = AlwaysAllowCapture()
+    app.state.payload_capture = SqlAlchemyPayloadCapture(
+        session_factory=app.state.sessionmaker,
+        zdr_port=app.state.zdr_port,
+        timeout_seconds=settings.capture_persist_timeout_seconds,
+        max_field_bytes=settings.capture_max_field_bytes,
+        max_body_bytes=settings.capture_max_body_bytes,
+        max_concurrent_tasks=settings.capture_max_concurrent_tasks,
+    )
+
     # openrouter-cost-recovery-wiring (v30 t6.2c): inline authoritative-cost recovery for
     # disconnected OpenRouter streams. Constructed ONLY when the knob is on (default OFF ⇒
     # None ⇒ byte-identical streaming). The use-case schedules recover() fire-and-forget
@@ -1192,6 +1215,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(platform_impersonation_router)
     app.include_router(platform_audit_router)
     app.include_router(cache_router)
+    app.include_router(capture_router)
     app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
     app.include_router(retention_policy_router)

@@ -103,3 +103,7 @@ class ApiKeyRow(Base):
     guardrail_policy: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, nullable=True, default=None
     )
+    # Payload-capture-store additive field (payload-capture-store migration)
+    capture_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )

@@ -237,6 +237,10 @@ def get_completion_use_case(
     output_validation_enabled: bool = (
         bool(getattr(_settings, "output_validation_enabled", False)) if _settings else False
     )
+    # payload-capture-store (§3): stable app.state-boot singleton — same getattr
+    # pattern as tenant_credential_resolver/batch_diversion above. None ⇒ feature off
+    # ⇒ byte-identical (_dispatch_capture no-ops at every hook site).
+    payload_capture = getattr(request.app.state, "payload_capture", None)
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -261,4 +265,5 @@ def get_completion_use_case(
         chat_modality_lookup=provider_resolver,
         batch_diversion=batch_diversion,
         output_validation_enabled=output_validation_enabled,
+        payload_capture=payload_capture,
     )

@@ -161,6 +161,7 @@ class UpdateKeyUseCase:
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
         cache_enabled: bool | None = None,
+        capture_enabled: bool | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey:
         """Update governance fields.
@@ -181,6 +182,7 @@ class UpdateKeyUseCase:
             tpm_limit=tpm_limit,
             team_id=team_id,
             cache_enabled=cache_enabled,
+            capture_enabled=capture_enabled,
             _fields_to_clear=_fields_to_clear,
         )
         if result is None:
@@ -317,6 +319,7 @@ class AuthzUseCase:
             batch_grouping_enabled=getattr(row, "batch_grouping_enabled", False),
             policy_source=getattr(row, "guardrail_policy_source", "none"),
             zdr_enabled=getattr(row, "zdr_enabled", False),
+            payload_capture_enabled=getattr(row, "capture_enabled", False),
         )
 
 

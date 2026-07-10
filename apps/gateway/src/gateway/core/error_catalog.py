@@ -397,6 +397,19 @@ BANDWIDTH_EXHAUSTED = ErrorSpec(503, "ERR_BANDWIDTH_EXHAUSTED", "Bandwidth limit
 GUARDRAIL_BLOCKED = ErrorSpec(400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy")
 
 # ---------------------------------------------------------------------------
+# Payload capture (payload-capture-store TASK.md §3, FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: PUT /admin/capture {enabled: true} rejected — tenant is under Zero-Data-Retention.
+#: Honest-degradation requirement: the toggle must never read as "on" when it can
+#: never actually capture anything.
+CAPTURE_ZDR_BLOCKED = ErrorSpec(
+    409,
+    "ERR_CAPTURE_ZDR_BLOCKED",
+    "Cannot enable payload capture — tenant is under Zero-Data-Retention",
+)
+
+# ---------------------------------------------------------------------------
 # Provider credentials (BYOK admin API — provider-config-admin-api §3 CONTRACT)
 # ---------------------------------------------------------------------------
 

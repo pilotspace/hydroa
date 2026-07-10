@@ -1365,6 +1365,11 @@ async def test_guardrails_core_migration_column_exists(
     # registered on Base.metadata via tenants/infrastructure/rate_card_orm.py side-effect
     # import (same precedent). Guardrails still adds no tables of its own; invariant
     # intent unchanged.
+    # SANCTIONED EDIT (payload-capture-store TASK.md §3 manifest maintenance,
+    # 2026-07-10): added request_logs to this manifest — additive migration
+    # a1c5e7f9b3d6, registered on Base.metadata via logs/infrastructure/orm.py
+    # side-effect import (same precedent). Guardrails still adds no tables of its
+    # own; invariant intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1379,7 +1384,7 @@ async def test_guardrails_core_migration_column_exists(
                 " 'conversations','conversation_messages','tenant_model_presets',"
                 " 'batch_jobs','batch_job_items',"
                 " 'invites','plans','impersonation_sessions',"
-                " 'tenant_rate_card_entries')"
+                " 'tenant_rate_card_entries','request_logs')"
             )
         )
     ).fetchall()

@@ -57,6 +57,7 @@ from gateway.core.error_catalog import (
 from gateway.core.errors import ProblemError
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
+from gateway.logs.domain.sse_content_extractor import extract_content_from_sse
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
@@ -87,6 +88,7 @@ from gateway.proxy.domain.ports import (
     KeyAuthenticator,
     ModelAccess,
     ModelChecker,
+    PayloadCapturePort,
     ProviderResolver,
     ResponseCache,
     TenantCredentialResolver,
@@ -561,6 +563,59 @@ async def _run_output_validation_retry(
             "validation_errors": retry_outcome["errors"],
         }
     )
+def _capture_response_body(collected: list[bytes]) -> dict[str, Any] | None:
+    """Build the capture-hook response_body for a streaming exit branch.
+
+    Wraps the assembled assistant text (extract_content_from_sse) in the same
+    {"content": "<text>"} shape logs/application/capture_writer.py already recognizes
+    for streaming rows — None when no content fragments were found (e.g. an empty or
+    pre-first-byte-failed stream), which capture_writer treats as "no response
+    content", never a crash.
+    """
+    content = extract_content_from_sse(collected)
+    return {"content": content} if content is not None else None
+
+
+def _dispatch_capture(
+    payload_capture: PayloadCapturePort | None,
+    *,
+    enabled: bool,
+    tenant_id: uuid.UUID,
+    key_id: uuid.UUID,
+    model: str,
+    request_body: dict[str, Any],
+    response_body: dict[str, Any] | None,
+    status: int,
+    stream: bool,
+    cached: bool,
+    guardrail_configs: dict[str, Any],
+) -> None:
+    """Schedule a fire-and-forget payload-capture write (payload-capture-store §3).
+
+    No-op when the port is unwired (None, the default — every existing frozen test
+    fake that does not inject one stays byte-identical) or capture is not effectively
+    enabled for this tenant/key. All scrub/truncate/ZDR/timeout/concurrency-shed logic
+    lives INSIDE the port implementation (SqlAlchemyPayloadCapture) — this call site's
+    only job is the enabled-gate + fire-and-forget dispatch, mirroring _dispatch_record's
+    idiom exactly (task reference kept to satisfy RUF006; exception suppressed so a
+    capture-store failure can never surface as "Task exception was never retrieved").
+    """
+    if payload_capture is None or not enabled:
+        return
+    task = asyncio.ensure_future(
+        payload_capture.capture(
+            tenant_id=tenant_id,
+            key_id=key_id,
+            model=model,
+            request_body=request_body,
+            response_body=response_body,
+            status=status,
+            stream=stream,
+            cached=cached,
+            guardrail_configs=guardrail_configs,
+        )
+    )
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
 def _check_expiry(authz: AuthzResult) -> None:
@@ -677,6 +732,7 @@ class CompletionUseCase:
         chat_modality_lookup: ChatModalityLookup | None = None,
         batch_diversion: BatchDiversionPort | None = None,
         output_validation_enabled: bool = False,
+        payload_capture: PayloadCapturePort | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -749,6 +805,12 @@ class CompletionUseCase:
         # in (validate_output:true) engages the pre-flight checks + bounded retry —
         # see complete() for the single insertion point.
         self._output_validation_enabled: bool = output_validation_enabled
+        # payload-capture-store (§3): None (default) => feature off => complete()/
+        # stream() are byte-identical (no capture dispatch at any hook site). When
+        # wired, an opted-in, non-ZDR tenant's proxied call fires a scrubbed
+        # request_logs row via _dispatch_capture at each hook site — see complete()/
+        # stream()/_fire_record_cached call sites for the insertion points.
+        self._payload_capture: PayloadCapturePort | None = payload_capture
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -1454,6 +1516,22 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by="error",
                         )
+                        # payload-capture-store §3: pre-call guardrail-BLOCK hook (locked
+                        # after the mandated BLOCK-path grounding pass — see TASK.md §5).
+                        # response_body=None: the request never reached upstream.
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            request_body=body,
+                            response_body=None,
+                            status=400,
+                            stream=False,
+                            cached=False,
+                            guardrail_configs=guardrail_configs,
+                        )
                         _guardrail_blocked = True
                         _status_code = 400
                         raise GUARDRAIL_BLOCKED.exc() from None
@@ -1482,6 +1560,20 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by=result.blocked_by,
+                        )
+                        # payload-capture-store §3: pre-call guardrail-BLOCK hook.
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            request_body=body,
+                            response_body=None,
+                            status=400,
+                            stream=False,
+                            cached=False,
+                            guardrail_configs=guardrail_configs,
                         )
                         _guardrail_blocked = True
                         _status_code = 400
@@ -1555,6 +1647,22 @@ class CompletionUseCase:
                             usage=cached_usage,
                             team_id=authz.team_id,
                         )
+                        # payload-capture-store §3: exact-cache-HIT capture hook —
+                        # cached_body is the SAME post-mask body actually served to the
+                        # client (never the raw unmasked Redis-internal representation).
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=_served_cached,
+                            request_body=body,
+                            response_body=cached_body,
+                            status=200,
+                            stream=False,
+                            cached=True,
+                            guardrail_configs=guardrail_configs,
+                        )
                         # TPM post-accounting uses cached token counts
                         if authz.tpm_limit is not None and cached_usage is not None:
                             total_tokens = cached_usage.get("total_tokens")
@@ -1615,6 +1723,20 @@ class CompletionUseCase:
                                         usage=sem_usage,
                                         team_id=authz.team_id,
                                     )
+                                    # payload-capture-store §3: semantic-cache-HIT hook.
+                                    _dispatch_capture(
+                                        self._payload_capture,
+                                        enabled=authz.payload_capture_enabled,
+                                        tenant_id=authz.tenant_id,
+                                        key_id=authz.key_id,
+                                        model=_served_cached_sem,
+                                        request_body=body,
+                                        response_body=sem_cached_body,
+                                        status=200,
+                                        stream=False,
+                                        cached=True,
+                                        guardrail_configs=guardrail_configs,
+                                    )
                                     if authz.tpm_limit is not None and sem_usage is not None:
                                         total_tokens = sem_usage.get("total_tokens")
                                         if isinstance(total_tokens, int) and total_tokens > 0:
@@ -1674,6 +1796,21 @@ class CompletionUseCase:
                                     model=_served_cached_vec,
                                     usage=vec_usage,
                                     team_id=authz.team_id,
+                                )
+                                # payload-capture-store §3: vector (embedding-similarity)
+                                # cache-HIT hook.
+                                _dispatch_capture(
+                                    self._payload_capture,
+                                    enabled=authz.payload_capture_enabled,
+                                    tenant_id=authz.tenant_id,
+                                    key_id=authz.key_id,
+                                    model=_served_cached_vec,
+                                    request_body=body,
+                                    response_body=vec_body,
+                                    status=200,
+                                    stream=False,
+                                    cached=True,
+                                    guardrail_configs=guardrail_configs,
                                 )
                                 if authz.tpm_limit is not None and vec_usage is not None:
                                     total_tokens = vec_usage.get("total_tokens")
@@ -1998,6 +2135,23 @@ class CompletionUseCase:
                 # 200 success keeps the default "frame" too (M8's own rule).
                 usage_source=_usage_source_final,
             )
+            # payload-capture-store §3: non-streaming completion capture hook.
+            # response_body is the ALREADY evaluate_post-masked body (when configured) —
+            # capture independently re-scrubs it anyway (its own try/except, never
+            # trusting evaluate_post's fail-open return value as confirmed-scrubbed).
+            _dispatch_capture(
+                self._payload_capture,
+                enabled=authz.payload_capture_enabled,
+                tenant_id=authz.tenant_id,
+                key_id=authz.key_id,
+                model=served_model_id,
+                request_body=body,
+                response_body=response_body,
+                status=status,
+                stream=False,
+                cached=False,
+                guardrail_configs=guardrail_configs,
+            )
             # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
             if authz.tpm_limit is not None and usage is not None:
                 total_tokens = usage.get("total_tokens")
@@ -2152,6 +2306,20 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by="error",
                         )
+                        # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            request_body=body,
+                            response_body=None,
+                            status=400,
+                            stream=True,
+                            cached=False,
+                            guardrail_configs=guardrail_configs,
+                        )
                         _stream_error_status = 400
                         _stream_guardrail_blocked = True
                         raise GUARDRAIL_BLOCKED.exc() from None
@@ -2171,6 +2339,20 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by=stream_result.blocked_by,
+                        )
+                        # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            request_body=body,
+                            response_body=None,
+                            status=400,
+                            stream=True,
+                            cached=False,
+                            guardrail_configs=guardrail_configs,
                         )
                         _stream_error_status = 400
                         _stream_guardrail_blocked = True
@@ -2322,6 +2504,9 @@ class CompletionUseCase:
             team_id = authz.team_id
             tpm_limit = authz.tpm_limit
             rate_limiter = self._rate_limiter
+            # payload-capture-store §3: captured before _wrapped() (mirrors the locals above).
+            _capture_enabled = authz.payload_capture_enabled
+            _payload_capture = self._payload_capture
 
             async def _wrapped() -> AsyncIterator[bytes]:
                 collected: list[bytes] = []
@@ -2389,6 +2574,22 @@ class CompletionUseCase:
                                 team_id=team_id,
                                 pii_masked=_stream_pii_masked,
                                 usage_source=_bw_source,
+                            )
+                            # payload-capture-store §3: bandwidth-shed truncation capture
+                            # hook (1st of stream()'s 3 exit branches) — the assembled
+                            # (partial) assistant text, size-capped like the other 2.
+                            _dispatch_capture(
+                                _payload_capture,
+                                enabled=_capture_enabled,
+                                tenant_id=tenant_id,
+                                key_id=key_id,
+                                model=_stream_model_id,
+                                request_body=body,
+                                response_body=_capture_response_body(collected),
+                                status=200,
+                                stream=True,
+                                cached=False,
+                                guardrail_configs=guardrail_configs,
                             )
                             # record fired — gate the disconnect handler so a drop during the
                             # two yields below cannot double-bill this request.
@@ -2494,6 +2695,21 @@ class CompletionUseCase:
                         usage_source=disconnect_source,
                         provider_generation_id=disconnect_gen_id,
                         disconnect_estimate=disconnect_estimate,
+                    )
+                    # payload-capture-store §3: client-disconnect capture hook (2nd of
+                    # stream()'s 3 exit branches) — the assembled (partial) text.
+                    _dispatch_capture(
+                        _payload_capture,
+                        enabled=_capture_enabled,
+                        tenant_id=tenant_id,
+                        key_id=key_id,
+                        model=_stream_model_id,
+                        request_body=body,
+                        response_body=_capture_response_body(collected),
+                        status=200,
+                        stream=True,
+                        cached=False,
+                        guardrail_configs=guardrail_configs,
                     )
                     # bandwidth-usage-reconcile (v36, Tin): a disconnect ALSO reconciles the
                     # estimate debited so far toward the PARTIAL usage actually generated, when a
@@ -2607,6 +2823,24 @@ class CompletionUseCase:
                     team_id=team_id,
                     pii_masked=_stream_pii_masked,
                     usage_source=usage_source,
+                )
+                # payload-capture-store §3: clean-close capture hook (3rd of stream()'s
+                # 3 exit branches, and the one usual case) — the fully assembled text,
+                # keyed off the SAME stream_usage_is_complete completeness signal the
+                # billing path just used above (§2 scenario: "streaming capture
+                # assembles and writes the full response text").
+                _dispatch_capture(
+                    _payload_capture,
+                    enabled=_capture_enabled,
+                    tenant_id=tenant_id,
+                    key_id=key_id,
+                    model=_stream_model_id,
+                    request_body=body,
+                    response_body=_capture_response_body(collected),
+                    status=200,
+                    stream=True,
+                    cached=False,
+                    guardrail_configs=guardrail_configs,
                 )
                 # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
                 if tpm_limit is not None and isinstance(extracted_usage, dict):

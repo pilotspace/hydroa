@@ -289,6 +289,7 @@ async def patch_key(
     new_tpm: int | None = None
     new_team_id: uuid.UUID | None = None
     new_cache_enabled: bool | None = None
+    new_capture_enabled: bool | None = None
 
     if "monthly_budget_usd" in body.model_fields_set:
         if body.monthly_budget_usd is None:
@@ -340,6 +341,10 @@ async def patch_key(
     if "cache_enabled" in body.model_fields_set:
         new_cache_enabled = body.cache_enabled
 
+    # capture_enabled PATCH: absent = no change; True/False = set (payload-capture-store §3)
+    if "capture_enabled" in body.model_fields_set:
+        new_capture_enabled = body.capture_enabled
+
     try:
         updated = await use_case.execute(
             key_id=key_id,
@@ -353,6 +358,7 @@ async def patch_key(
             tpm_limit=new_tpm,
             team_id=new_team_id,
             cache_enabled=new_cache_enabled,
+            capture_enabled=new_capture_enabled,
             _fields_to_clear=fields_to_clear,
         )
     except ForbiddenError:
@@ -378,6 +384,7 @@ async def patch_key(
         tpm_limit=updated.tpm_limit,
         team_id=updated.team_id,
         cache_enabled=updated.cache_enabled,
+        capture_enabled=updated.capture_enabled,
     )
 
 

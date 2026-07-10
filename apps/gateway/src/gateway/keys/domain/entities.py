@@ -53,6 +53,10 @@ class ApiKey:
     # tenant-retention-zdr additive field (tenant-retention-zdr TASK.md §3, FROZEN @ v1)
     # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
     zdr_enabled: bool = False
+    # Payload-capture-store additive field (payload-capture-store migration)
+    # Raw key-level column value in create()/list_by_tenant(); OR-resolved with
+    # tenants.payload_capture_enabled in get_by_id() (mirrors cache_enabled's dual role).
+    capture_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,3 +131,7 @@ class AuthzResult:
     # this value alone — this field is used for M6 (cache-write skip), where the same
     # per-request freshness the LEFT JOIN already provides is sufficient.
     zdr_enabled: bool = False
+    # Payload-capture-store additive field (payload-capture-store migration)
+    # Effective = api_keys.capture_enabled OR tenants.payload_capture_enabled (resolved at
+    # auth time, mirrors cache_enabled's OR-resolution exactly — key can only turn ON).
+    payload_capture_enabled: bool = False

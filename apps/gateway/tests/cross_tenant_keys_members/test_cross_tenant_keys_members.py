@@ -625,6 +625,9 @@ async def test_redacted_key_list_field_set_exact(
     assert resp.status_code == 200, resp.text
     items = resp.json()
     assert len(items) == 1
+    # SANCTIONED EDIT (payload-capture-store TASK.md §3 manifest maintenance,
+    # 2026-07-10): added capture_enabled to this manifest — additive field on
+    # KeyInfoResponse (same PATCH partial-update idiom precedent as cache_enabled).
     assert set(items[0].keys()) == {
         "key_id",
         "name",
@@ -639,6 +642,7 @@ async def test_redacted_key_list_field_set_exact(
         "tpm_limit",
         "team_id",
         "cache_enabled",
+        "capture_enabled",
     }
 
 
