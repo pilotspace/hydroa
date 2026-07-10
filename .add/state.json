@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "enterprise-identity-admin-ui",
-  "active_milestone": "enterprise-identity-compliance",
+  "active_task": "logs-explorer-ui",
+  "active_milestone": "logs-explorer-guardrails-v2",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1078,25 +1078,45 @@
     },
     "logs-explorer-api": {
       "title": "Tenant-admin request-logs query API (filters, pagination, detail)",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [
         "payload-capture-store"
       ],
       "created": "2026-07-10T15:42:46+00:00",
-      "updated": "2026-07-10T15:42:46+00:00"
+      "updated": "2026-07-10T16:33:28+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T16:33:28+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "logs-explorer-ui": {
       "title": "Console Logs Explorer page (table, detail drawer, replay-in-playground)",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [
         "logs-explorer-api"
       ],
       "created": "2026-07-10T15:42:46+00:00",
-      "updated": "2026-07-10T15:42:46+00:00"
+      "updated": "2026-07-10T16:34:27+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T16:34:27+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "guardrail-analytics": {
       "title": "Guardrail verdict analytics API + dashboard view",
@@ -1165,14 +1185,24 @@
     },
     "request-log-metering-fields": {
       "title": "Add latency + token counts + usage_records correlation to request_logs capture (change-request from Tin's Logs-Explorer freeze)",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "logs-explorer-guardrails-v2",
       "depends_on": [
         "payload-capture-store"
       ],
       "created": "2026-07-10T16:16:02+00:00",
-      "updated": "2026-07-10T16:16:02+00:00"
+      "updated": "2026-07-10T16:32:30+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-10T16:32:30+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     }
   },
   "milestones": {
@@ -1260,7 +1290,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T16:20:02+00:00",
+  "updated": "2026-07-10T16:34:27+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2167,7 +2197,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "logs-explorer-guardrails-v2": "guardrail-analytics",
+    "logs-explorer-guardrails-v2": "logs-explorer-ui",
     "enterprise-identity-compliance": "enterprise-identity-admin-ui"
   },
   "todos": [

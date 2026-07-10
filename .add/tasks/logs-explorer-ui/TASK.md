@@ -3,7 +3,7 @@
 slug: logs-explorer-ui · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -72,7 +72,7 @@ Must:
   - M2. `LogsFilterBar` exposes five controls — Time range (`From`/`To`, native `<input type="datetime-local">`), Model (`Select`, options sourced from the already-fetched `/admin/catalog/models` catalog), Key (`Select`, options sourced from the already-fetched `/admin/keys` list), Status (`Select`: All / Success / Client Error / Server Error / Blocked), Cost (`Min $`/`Max $` number `Input`s) — any control change re-queries `logs-explorer-api` and resets pagination to the first page (cursor cleared).
   - M3. `LogsTable` is cursor-paginated: "Next" advances using the response's `next_cursor`; "Previous" pops a client-held cursor stack (no server-side "previous" — mirrors the `export_audit` forward-only keyset precedent). "Previous" is disabled on the first page; "Next" is disabled/hidden when `has_more=false`.
   - M4. Clicking a row (or pressing Enter/Space on a focused row, `role="button"`/native `<tr tabIndex=0>` equivalent) opens `LogDetailDrawer` for that row's `id`, fetching `GET /admin/logs/{id}` on open. Closing the drawer (Escape, overlay click, or the close control) returns focus to the row that opened it and leaves the table's filter/scroll state untouched.
-  - M5. `LogDetailDrawer` renders four sub-panels: **Overview** (model, key, status badge, cost, timestamp, stream/cached flags), **Request** (scrubbed request messages, monospace/collapsible), **Response** (scrubbed response content), **Guardrail Verdict** (Blocked/Clean badge + `blocked_by` reason text + a PII-masked indicator when `pii_masked=true`) — each independently handles a null value: `request_body`/`response_body: null` renders "Content unavailable — this call's payload wasn't stored (scrub failed or exceeded the size limit)" instead of a blank panel.
+  - M5. `LogDetailDrawer` renders four sub-panels: **Overview** (model, key, status badge, cost, timestamp, stream/cached flags, **latency_ms**, **prompt/completion/total tokens** — each rendering "—" when NULL on a pre-metering row, never 0; and the **request_id** correlation key), **Request** (scrubbed request messages, monospace/collapsible), **Response** (scrubbed response content), **Guardrail Verdict** (Blocked/Clean badge + `blocked_by` reason text + a PII-masked indicator when `pii_masked=true`) — each independently handles a null value: `request_body`/`response_body: null` renders "Content unavailable — this call's payload wasn't stored (scrub failed or exceeded the size limit)" instead of a blank panel.
   - M6. The drawer's Replay action pre-fills `/app/chat`'s composer with the log's request messages (text content only) and pre-selects its model — falling back to the chat default model with a visible "Model no longer available — defaulted to {default}" notice when `model_id` isn't in the live `/admin/catalog/models` list — via a `sessionStorage` handoff object consumed exactly once on `ChatWorkspace` mount and cleared immediately after (so back-navigation never re-triggers a stale replay). It never auto-sends; the admin reviews and clicks Send.
   - M7. Replay is disabled (`aria-disabled="true"` + a visible reason, e.g. a tooltip/inline note "Nothing to replay — this call's request wasn't captured") when the fetched detail's `request_body` is `null`.
   - M8. A captured request containing non-text message content (image/audio parts the capture store cannot reconstruct) degrades replay to text-only content plus a visible "Some content couldn't be replayed" notice — never a silent partial replay presented as complete.
@@ -423,8 +423,19 @@ Glossary deltas:
 - **Detail drawer**: the edge-anchored (right-side), slide-in panel pattern (`DrawerContent`) that fetches and displays one table row's full detail without navigating away from — or losing — the underlying table's filter/pagination/scroll state. Distinct from the existing `Dialog`/`DialogContent` (centered, for confirmations/forms).
 - **Replay (chat-playground handoff)**: a one-way, `sessionStorage`-mediated pre-fill of `/app/chat`'s composer (model + message text) sourced from one `request_logs` row's captured detail. Never auto-sends, never writes back to the log, never round-trips through a new BFF endpoint — consumed exactly once then cleared.
 
-Status: DRAFT
-Reported: no — awaiting the freeze report / Tin's review of this draft, and reconciliation against the sibling `logs-explorer-api` contract's actual frozen shape.
+Status: FROZEN @ v1 — approved by Tin Dang
+Reported: yes — presented for freeze 2026-07-10; reconciled against the now-FROZEN `logs-explorer-api` (v1).
+Decided at freeze (Tin + orchestrator auto-mode, 2026-07-10):
+(1) Replay PRE-FILLS the composer, never auto-sends — confirmed (option A). Cross-log auto-send deferred.
+(2) The `logs-explorer-api` contract is now FROZEN and CONSUMES the `request-log-metering-fields` (v1)
+    columns, so this UI's table + drawer Overview panel now DO show latency_ms + prompt/completion/total
+    tokens (NULL on pre-metering rows → render "—", never 0), and the detail carries request_id
+    (correlation). The `consumes:` block below is reconciled to that frozen envelope.
+(3) Status filter = the client-defined bucket (success/client_error/server_error), matching the frozen
+    logs-explorer-api dual-mode `status` param.
+
+Least-sure flag surfaced at freeze: [spec] replay pre-fills vs auto-sends — RESOLVED at freeze: pre-fill
+only (safer: avoids surprise re-billing + blind resend of guardrail-flagged content); auto-send deferred.
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---

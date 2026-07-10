@@ -4,7 +4,7 @@ slug: logs-explorer-api · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 sensitivity: data   <!-- tenant-isolation + PII-payload exposure surface (list+detail read side); see MILESTONE.md "Security floor" -->
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -266,9 +266,17 @@ Scenario: PATCH-adjacent write surfaces are untouched   # After (byte-identical 
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
-Least-sure flag surfaced at freeze: [spec] `request_logs` has no duration/latency, token-count, or correlation-id column linking it to `usage_records` — the Logs Explorer table/drawer CANNOT show latency or tokens in v1 (confirmed by direct read of both frozen ORM files, not assumed). This is the single item the `logs-explorer-ui` designer most needs to react to before their own contract freezes: either accept the table without latency/tokens for v1, or raise a change request against the already-frozen `payload-capture-store`/`usage_records` schemas.
+Status: FROZEN @ v1 — approved by Tin Dang
+Decided at freeze (Tin, 2026-07-10): the latency/token-absence flag is RESOLVED by change-request —
+Tin chose to add metering rather than ship v1 without. This contract now CONSUMES the FROZEN
+`request-log-metering-fields` (v1) columns: `latency_ms`, `prompt_tokens`, `completion_tokens`,
+`total_tokens` (added to LogListItem) and `request_id` (added to LogDetailItem, correlating to
+`usage_records.raw["request_id"]`). depends-on: payload-capture-store, request-log-metering-fields.
+Pre-metering rows carry NULL for these fields (honest null, not zero).
 
-Status: DRAFT — awaiting human freeze. Freeze questions (below) are the decisions Tin must rule on before Status can move to FROZEN.
+Least-sure flag surfaced at freeze: [contract] latency/token/correlation columns were absent from the
+frozen `request_logs`; RESOLVED at freeze via the `request-log-metering-fields` additive change-request
+(Tin's decision) — this API exposes the new columns, NULL on pre-metering rows.
 
 ### API — read endpoints (new)
 
@@ -311,9 +319,15 @@ class LogListItem(BaseModel):
     truncated: bool
     cost_usd: str | None       # denormalized display snapshot only — NEVER billing truth
     created_at: str            # ISO-8601
+    # metering fields (from request-log-metering-fields, FROZEN @ v1 — additive change-request):
+    latency_ms: int | None     # per-call latency from _start_ns; null on pre-metering rows
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None
 
 class LogDetailItem(LogListItem):
-    """Full single-log detail — adds the three payload-bearing fields."""
+    """Full single-log detail — adds the payload-bearing fields + the usage_records correlation key."""
+    request_id: str | None     # correlation to usage_records.raw["request_id"] (metering; null on pre-metering rows)
     request_body: dict[str, object] | None    # null when metadata-only
     response_body: dict[str, object] | None   # null when metadata-only, or the call errored pre-response
     guardrail_verdict: dict[str, object] | None  # reserved/unpopulated in v1 — always null today, passed through honestly
