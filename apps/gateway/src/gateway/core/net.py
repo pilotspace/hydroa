@@ -45,7 +45,12 @@ def resolve_trusted_client_ip(request: Request, trusted_hops: int) -> str:
            closed, NEVER trust an earlier (more client-controlled) hop just because the
            expected one is missing or malformed.
     """
-    xff = request.headers.get("X-Forwarded-For", "")
+    # Combine EVERY ``X-Forwarded-For`` header LINE, not just the first. A client can send
+    # two distinct ``X-Forwarded-For:`` lines; ``Headers.get()`` returns only the first
+    # (attacker-controlled) one, which would leave Envoy's own appended hop — sent as a
+    # separate line — unread. Joining all lines with ``,`` reconstructs the full ordered
+    # chain so the rightmost token is still the hop Envoy appended last.
+    xff = ",".join(part for part in request.headers.getlist("x-forwarded-for") if part)
     if xff:
         tokens = [t.strip() for t in xff.split(",")]
         index = len(tokens) - trusted_hops

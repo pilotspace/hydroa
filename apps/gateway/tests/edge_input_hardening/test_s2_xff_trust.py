@@ -263,3 +263,42 @@ async def test_s2_regression_invite_rate_limit_uses_shared_resolver(
         "/invites/nonexistent-token-2", headers={"X-Forwarded-For": "1.1.1.1, 2.2.2.2"}
     )
     assert r2.status_code == 404, r2.text
+
+
+# ---------------------------------------------------------------------------
+# Regression — duplicate X-Forwarded-For header LINES (a client can send two
+# separate XFF lines; Headers.get() returns only the first, attacker-controlled
+# one, leaving Envoy's own appended hop — sent as a separate line — unread).
+# The resolver must combine ALL lines so the rightmost trusted hop still wins.
+# ---------------------------------------------------------------------------
+
+
+def _request_with_raw_headers(raw: list[tuple[bytes, bytes]], peer: str) -> Any:
+    from starlette.requests import Request
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": raw,
+        "client": (peer, 12345),
+    }
+    return Request(scope)
+
+
+def test_duplicate_xff_header_lines_still_trust_envoys_appended_hop() -> None:
+    """Two distinct X-Forwarded-For lines: an attacker's forged one FIRST, Envoy's real
+    appended hop SECOND. With trusted_hops=1 the resolver must return the rightmost token
+    of the FULL combined chain (Envoy's), never the attacker's first-line value."""
+    from gateway.core.net import resolve_trusted_client_ip
+
+    req = _request_with_raw_headers(
+        [
+            (b"x-forwarded-for", b"1.2.3.4"),  # attacker-forged separate line
+            (b"x-forwarded-for", b"203.0.113.9, 198.51.100.7"),  # ...Envoy's real chain
+        ],
+        peer="10.0.0.1",
+    )
+    # trusted_hops=1 -> rightmost token of the COMBINED chain = 198.51.100.7 (Envoy's hop),
+    # never 1.2.3.4 (the attacker's first line).
+    assert resolve_trusted_client_ip(req, 1) == "198.51.100.7"

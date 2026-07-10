@@ -155,6 +155,50 @@ async def test_request_time_resolver_timeout_fails_closed() -> None:
         await policy.check("https://slow.example.com/x")
 
 
+# ---------------------------------------------------------------------------
+# IPv4-mapped / IPv4-compatible / 6to4 IPv6 encodings of a metadata address
+# (regression: an exact-string metadata match let ::ffff:169.254.169.254 slip past
+# the "never toggle-able" guard on the allow_private_ranges=True opt-in path).
+# ---------------------------------------------------------------------------
+
+# Every one of these is the SAME numeric address as 169.254.169.254 (AWS/Azure/GCP IMDS),
+# just spelled as an IPv6 literal that str()-formats differently from the canonical form.
+_MAPPED_METADATA_HOSTS = [
+    "[::ffff:169.254.169.254]",  # IPv4-mapped, dotted
+    "[::ffff:a9fe:a9fe]",  # IPv4-mapped, hex (a9fe = 169.254)
+    "[::169.254.169.254]",  # IPv4-compatible (deprecated)
+    "[2002:a9fe:a9fe::]",  # 6to4
+]
+
+
+@pytest.mark.parametrize("host", _MAPPED_METADATA_HOSTS)
+def test_write_time_mapped_metadata_denied_even_with_private_ranges_allowed(host: str) -> None:
+    """An IPv6-encoded metadata literal MUST be denied at write time even under the
+    allow_private_ranges opt-in — metadata is never toggle-able, in ANY representation."""
+    with pytest.raises(EgressDeniedError):
+        assert_literal_host_not_denied(f"https://{host}/openai", allow_private_ranges=True)
+
+
+@pytest.mark.parametrize("host", _MAPPED_METADATA_HOSTS)
+async def test_request_time_mapped_metadata_denied_even_with_private_ranges_allowed(
+    host: str,
+) -> None:
+    """Same, at request time (literal-IP host path) — the authoritative layer must also
+    deny every IPv6 encoding of the metadata address under the opt-in."""
+    policy = DenyPrivateAndMetadataEgressPolicy(allow_private_ranges=True)
+    with pytest.raises(EgressDeniedError):
+        await policy.check(f"https://{host}/openai")
+
+
+async def test_request_time_dns_answer_as_mapped_metadata_denied_under_opt_in() -> None:
+    """A hostname resolving to an IPv4-mapped IPv6 metadata literal is still denied under
+    the private-ranges opt-in (defends the resolver-answer path, not just literal hosts)."""
+    resolver = _FakeResolver({"sneaky.example.com": ["::ffff:169.254.169.254"]})
+    policy = DenyPrivateAndMetadataEgressPolicy(allow_private_ranges=True, resolver=resolver)
+    with pytest.raises(EgressDeniedError):
+        await policy.check("https://sneaky.example.com/x")
+
+
 async def test_request_time_public_hostname_allowed() -> None:
     resolver = _FakeResolver({"api.openai.azure.com": ["20.1.2.3"]})
     policy = DenyPrivateAndMetadataEgressPolicy(resolver=resolver)

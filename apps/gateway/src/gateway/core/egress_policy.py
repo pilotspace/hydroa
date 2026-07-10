@@ -39,12 +39,16 @@ from typing import Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
 #: Cloud-metadata addresses — ALWAYS denied, regardless of allow_private_ranges.
-_METADATA_ADDRESSES: frozenset[str] = frozenset(
-    {
+#: Parsed to ``ipaddress`` objects (NOT compared as raw strings) so an alternate textual
+#: encoding of the SAME numeric address (e.g. an IPv4-mapped IPv6 literal) cannot slip past
+#: an exact-string match — see ``_embedded_ipv4`` / ``_is_denied_ip``.
+_METADATA_IPS: frozenset[ipaddress.IPv4Address | ipaddress.IPv6Address] = frozenset(
+    ipaddress.ip_address(addr)
+    for addr in (
         "169.254.169.254",  # AWS / GCP / Azure IMDS
         "169.254.170.2",  # AWS ECS task metadata
         "fd00:ec2::254",  # AWS IMDS (IPv6)
-    }
+    )
 )
 
 
@@ -84,6 +88,33 @@ class EgressPolicy(Protocol):
         ...
 
 
+def _embedded_ipv4(
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> ipaddress.IPv4Address | None:
+    """Return the IPv4 address embedded in an IPv6 IPv4-mapped / IPv4-compatible / 6to4
+    literal, else None.
+
+    A denied IPv4 address (metadata, RFC1918, loopback, …) has several equivalent IPv6
+    textual encodings — ``::ffff:169.254.169.254`` (IPv4-mapped), ``::169.254.169.254``
+    (IPv4-compatible, deprecated), ``2002:a9fe:a9fe::`` (6to4) — that ``str()`` differently
+    and whose IPv6 range predicates do not always flag them. Collapsing to the embedded IPv4
+    lets a single check cover the whole representation class instead of one literal spelling.
+    """
+    if not isinstance(ip, ipaddress.IPv6Address):
+        return None
+    if ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    if ip.sixtofour is not None:
+        return ip.sixtofour
+    # IPv4-compatible ``::a.b.c.d`` (deprecated): high 96 bits zero, low 32 bits the IPv4.
+    # Guard ``> 0xFFFF`` so ``::``/``::1``/``::ffff`` are left to the native IPv6 predicates
+    # (loopback/unspecified) rather than mis-normalised.
+    as_int = int(ip)
+    if as_int >> 32 == 0 and as_int > 0xFFFF:
+        return ipaddress.IPv4Address(as_int & 0xFFFFFFFF)
+    return None
+
+
 def _is_denied_ip(
     ip: ipaddress.IPv4Address | ipaddress.IPv6Address, *, allow_private_ranges: bool
 ) -> bool:
@@ -91,19 +122,29 @@ def _is_denied_ip(
 
     Metadata addresses are ALWAYS denied (unconditional). Loopback / link-local / private
     (RFC1918/ULA) / multicast / reserved / unspecified addresses are denied unless
-    ``allow_private_ranges`` is set.
+    ``allow_private_ranges`` is set. Every check runs over BOTH the address as given AND any
+    IPv4 it embeds via an IPv6 IPv4-mapped/compatible/6to4 encoding — so a metadata or private
+    address cannot hide behind an alternate representation, including on the
+    ``allow_private_ranges=True`` path where the private-range fallback is skipped.
     """
-    if str(ip) in _METADATA_ADDRESSES:
+    candidates: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = [ip]
+    embedded = _embedded_ipv4(ip)
+    if embedded is not None:
+        candidates.append(embedded)
+
+    # Metadata is ALWAYS denied — check every representation, never toggle-able.
+    if any(candidate in _METADATA_IPS for candidate in candidates):
         return True
     if allow_private_ranges:
         return False
-    return bool(
-        ip.is_loopback
-        or ip.is_link_local
-        or ip.is_private
-        or ip.is_multicast
-        or ip.is_reserved
-        or ip.is_unspecified
+    return any(
+        candidate.is_loopback
+        or candidate.is_link_local
+        or candidate.is_private
+        or candidate.is_multicast
+        or candidate.is_reserved
+        or candidate.is_unspecified
+        for candidate in candidates
     )
 
 
