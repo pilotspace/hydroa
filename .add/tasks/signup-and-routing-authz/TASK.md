@@ -591,7 +591,7 @@ Glossary deltas:
     gated by `require_superadmin` (role-only), never by a tenant-scoped `Permission` — the frozen
     `ROLE_PERMISSIONS[Role.OWNER] == frozenset(Permission)` completeness guard makes a
     tenant-excluding `Permission` structurally impossible, so `Permission` is the wrong tool for
-    any future operator-wide surface, not just this one (see §7 OBSERVE `CATALOG_SYNC` flag).
+    any future operator-wide surface, not just this one (see §7 OBSERVE `CATALOG_SYNC` flag). [folded foundation-version 49]
 
 Status: FROZEN @ v1 — Tin approved 2026-07-10 (AskUserQuestion). All three flags RESOLVED:
   ✅ [spec] `values-prod.yaml`'s `publicSignupEnabled` — RESOLVED: Tin chose invite-only ON by default,
@@ -805,14 +805,14 @@ only while this placeholder stands>
   task deliberately declined to take on) — evidence: M8.
 
 ### Competency deltas
-- [DDD · open] A `Permission`-shaped RBAC gate cannot express "excludes tenant OWNER" under this
+- [DDD · folded] A `Permission`-shaped RBAC gate cannot express "excludes tenant OWNER" under this [folded foundation-version 49]
   matrix's own completeness guard (`ROLE_PERMISSIONS[Role.OWNER] == frozenset(Permission)`) — any
   genuinely operator-wide (non-tenant-scoped) resource needs a role-only gate (`require_superadmin`
   or equivalent), never a new `Permission` enum member, no matter how the feature request is worded
   ("a dedicated permission"). Worth stating explicitly in CONVENTIONS.md or authz.py's own docstring
   so a future task doesn't attempt the structurally-impossible path this draft ruled out (evidence:
   §1 Framings weighed Part B).
-- [ADD · open] A previously HARD-STOP-cleared, Tin-approved security freeze (`routing-config-write`)
+- [ADD · folded] A previously HARD-STOP-cleared, Tin-approved security freeze (`routing-config-write`) [folded foundation-version 49]
   can still need reversal when its own STATED premise (here: "single-operator/trusted-owner
   deployment") is invalidated by later, unrelated shipped work (multi-tenant SaaS features landing
   over the following two weeks). The SUPERSESSION pattern handled this cleanly — record the reversal

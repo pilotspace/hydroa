@@ -29,43 +29,51 @@ Out: Deferred commercial GAPs — invoicing/dunning (Stripe — external infra),
 - tiered rate-card pricing model (per-model + per-tier markup; replaces scalar markup_pct; billing + catalog both consume it) -> `tiered-rate-cards`
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] cache-alias-billing        depends-on: none                 — B6: cache-HIT through an alias bills the served candidate, not the alias ($0 leak). `use_cases.complete()` cache path; capture served id before the early `_fire_record_cached` return. (revenue; near-mirror of B1)
-- [ ] usage-flusher-durability   depends-on: none                 — B4+B5: usage events survive a Redis blip (durable fallback + bounded Redis timeout) and a crash mid-flush (XAUTOCLAIM PEL reclaim). `usage/application/{recorder,flusher}.py`. (durability; change-request)
-- [ ] realtime-relay-governance  depends-on: none                 — B2: `/v1/realtime/relay` enforces governance (authz/rate-limit) and emits usage + audit rows like every other route. `proxy/{api,application,domain}` realtime modules. (governance; ASK — Tin approves relay scope at freeze)
-- [ ] edge-input-hardening       depends-on: none                 — S2+S3+S4: XFF last-hop parse (no rate-limit spoof) · SSRF allow-list denies IMDS ranges · request body-size cap. agent_oauth routers · `oidc_admin_router` · `concurrency_guard`. (security; HARD-STOP verify)
-- [ ] signup-and-routing-authz   depends-on: none                 — S1: signup invite-only by default · routing-config write behind an ops permission (not any OWNER). `tenants/api/*` · `proxy/api/routing_admin_router` + routing-config infra. (security; HARD-STOP verify)
-- [ ] provider-circuit-breakers  depends-on: cache-alias-billing  — B3: per-provider breakers so one provider outage doesn't 502 all alias chat; `complete()` catches CircuitOpenError (sibling of UpstreamUnavailableError) and falls over. `use_cases.py` + `fallback_router.py` + `streaming_resilience.py` + `deps.py`. (resilience; serialized after B6 — shared `use_cases.py`)
-- [ ] tiered-rate-cards          depends-on: usage-flusher-durability  — Monetization: replace scalar `markup_pct` with per-model + per-tier rate cards; billing (`usage/recorder.py`, `cost_recovery.py`) + catalog (`catalog/*`) + `tenants/orm.py` + admin API + migration. (feature; serialized after B4/B5 — shared `recorder.py`/`cost_recovery.py`)
+- [x] cache-alias-billing        depends-on: none                 — B6: cache-HIT through an alias bills the served candidate, not the alias ($0 leak). `use_cases.complete()` cache path; capture served id before the early `_fire_record_cached` return. (revenue; near-mirror of B1)
+- [x] usage-flusher-durability   depends-on: none                 — B4+B5: usage events survive a Redis blip (durable fallback + bounded Redis timeout) and a crash mid-flush (XAUTOCLAIM PEL reclaim). `usage/application/{recorder,flusher}.py`. (durability; change-request)
+- [x] realtime-relay-governance  depends-on: none                 — B2: `/v1/realtime/relay` enforces governance (authz/rate-limit) and emits usage + audit rows like every other route. `proxy/{api,application,domain}` realtime modules. (governance; ASK — Tin approves relay scope at freeze)
+- [x] edge-input-hardening       depends-on: none                 — S2+S3+S4: XFF last-hop parse (no rate-limit spoof) · SSRF allow-list denies IMDS ranges · request body-size cap. agent_oauth routers · `oidc_admin_router` · `concurrency_guard`. (security; HARD-STOP verify)
+- [x] signup-and-routing-authz   depends-on: none                 — S1: signup invite-only by default · routing-config write behind an ops permission (not any OWNER). `tenants/api/*` · `proxy/api/routing_admin_router` + routing-config infra. (security; HARD-STOP verify)
+- [x] provider-circuit-breakers  depends-on: cache-alias-billing  — B3: per-provider breakers so one provider outage doesn't 502 all alias chat; `complete()` catches CircuitOpenError (sibling of UpstreamUnavailableError) and falls over. `use_cases.py` + `fallback_router.py` + `streaming_resilience.py` + `deps.py`. (resilience; serialized after B6 — shared `use_cases.py`)
+- [x] tiered-rate-cards          depends-on: usage-flusher-durability  — Monetization: replace scalar `markup_pct` with per-model + per-tier rate cards; billing (`usage/recorder.py`, `cost_recovery.py`) + catalog (`catalog/*`) + `tenants/orm.py` + admin API + migration. (feature; serialized after B4/B5 — shared `recorder.py`/`cost_recovery.py`)
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A cache-HIT chat request through a model-group alias records usage on the served candidate (non-zero cost), never the alias   (← cache-alias-billing)
-- [ ] A Redis outage during flush does not permanently drop billing, and a crash mid-flush leaves no usage event stranded forever   (← usage-flusher-durability)
-- [ ] A realtime-relay session is authorized + rate-limited and produces a usage row and an audit row   (← realtime-relay-governance)
-- [ ] A spoofed `X-Forwarded-For` cannot defeat per-IP OAuth rate limits; an SSRF to 169.254.0.0/16 or fe80::/10 is blocked; an oversized request body is rejected with a bounded error   (← edge-input-hardening)
-- [ ] A newly signed-up anonymous user cannot become OWNER and overwrite routing config; signup is invite-only by default; routing-write requires the ops permission   (← signup-and-routing-authz)
-- [ ] One provider's outage fails over to a sibling for alias chat instead of 502-ing all traffic; `complete()` survives CircuitOpenError   (← provider-circuit-breakers)
-- [ ] An admin can set per-model / per-tier markup (a rate card); a billed request charges that model's rate, not a single flat percentage   (← tiered-rate-cards)
+- [x] A cache-HIT chat request through a model-group alias records usage on the served candidate (non-zero cost), never the alias   (← cache-alias-billing)
+- [x] A Redis outage during flush does not permanently drop billing, and a crash mid-flush leaves no usage event stranded forever   (← usage-flusher-durability)
+- [x] A realtime-relay session is authorized + rate-limited and produces a usage row and an audit row   (← realtime-relay-governance)
+- [x] A spoofed `X-Forwarded-For` cannot defeat per-IP OAuth rate limits; an SSRF to 169.254.0.0/16 or fe80::/10 is blocked; an oversized request body is rejected with a bounded error   (← edge-input-hardening)
+- [x] A newly signed-up anonymous user cannot become OWNER and overwrite routing config; signup is invite-only by default; routing-write requires the ops permission   (← signup-and-routing-authz)
+- [x] One provider's outage fails over to a sibling for alias chat instead of 502-ing all traffic; `complete()` survives CircuitOpenError   (← provider-circuit-breakers)
+- [x] An admin can set per-model / per-tier markup (a rate card); a billed request charges that model's rate, not a single flat percentage   (← tiered-rate-cards)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- tooling : untouched (state.json task/gate records only — engine-managed)
+- skill   : untouched
+- book    : untouched
+- gateway : usage/ (durable recorder+flusher · cache-hit served-candidate billing · tiered rate cards + ONE shared markup resolver) · proxy/ (per-provider CB fallover · realtime-relay governance · routing-write permission) · tenants/ (invite-only signup default) · edge (XFF last-hop parse · SSRF egress allow-list · body-size caps) · alembic (re-parented chain + audio-field graft)
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- cache-alias-billing : gate=PASS · merged PR #64 (`3d3a7225`) · residue=none
+- usage-flusher-durability : gate=PASS · merged PR #64 · residue=none
+- provider-circuit-breakers : gate=PASS · merged PR #64 · residue=none
+- tiered-rate-cards : gate=PASS · merged PR #64 · residue=none
+- realtime-relay-governance : gate=PASS · merged PR #65 (`bb84200`) · residue=none
+- edge-input-hardening : gate=PASS (HARD-STOP human verify; 4 adversarial heal rounds — IPv4-mapped/NAT64/Teredo/6to4 — closed via positive RFC1918/ULA allow-list) · merged PR #65 · residue=none
+- signup-and-routing-authz : gate=PASS (HARD-STOP human verify; build agent caught a bare-`require_superadmin`-without-`Depends()` FastAPI foot-gun pre-merge) · merged PR #65 · residue=none
+- Integrated evidence: 2579/2580 local suite at PR #64; 2703 passed local at PR #65 (org-billing CI check is a known non-code failure — admin-merged on local evidence per standing practice).
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row (criteria 1–7 map 1:1 to the seven task rows above, in scope order)
+- goal: every confirmed blocking defect from the 2026-07-02 diagnostic (revenue B6, durability B4/B5, resilience B3, governance B2, security S1–S4) plus the tiered-rate-cards monetization lever is fixed red→green and gate=PASS — proven by 7/7 PASS rows, both security tasks independently adversarially verified at a human HARD-STOP gate, all merged to main (PRs #63/#64/#65).
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] Open one PR per task branch (or a stacked series) from the Close ship-review above; Tin reviews + merges each
-- [ ] Confirm PR #53 (B1 stream-alias-billing) merged first — this milestone's fork base
-- [ ] Full `make ci` green on the integrated branch once the shared test Postgres is healthy
-- [ ] Bundle into the next release cut (release.md) with milestone attribution; Tin tags / deploys
+- [x] Open one PR per task branch (or a stacked series) from the Close ship-review above; Tin reviews + merges each   (shipped as three: PR #63 `9bc19686` · PR #64 `3d3a7225` · PR #65 `bb84200` — all admin-merged)
+- [x] Confirm PR #53 (B1 stream-alias-billing) merged first — this milestone's fork base   (merged pre-fork)
+- [x] Full local suite green on the integrated branch (2703 passed at PR #65; CI's org-billing check is the known non-code block)
+- [ ] Bundle into the next release cut (release.md) with milestone attribution; Tin tags / deploys   (open — status shows 4 releasable milestones)

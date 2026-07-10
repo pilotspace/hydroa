@@ -241,4 +241,4 @@ Watch (reuse scenarios as monitors): rate of `model_fallbacks_total{outcome="fel
 - [SPEC · open] fix #1 — per-provider isolation of the app-wide `app.state.circuit_breaker`: plain-model-id traffic to a down provider can open the shared breaker and 502 healthy providers (cross-provider contamination). Touches shared `BoundCircuitBreakerUpstream` (also used by realtime_ws.py:261 / B2) + the single `gateway_circuit_breaker_state` gauge. (evidence: grounding trace during B3; sibling of B3 like B6↔B1)
 
 ### Competency deltas
-- [ADD · open] a diagnostic "single X breaker" headline conflated two fixes with different blast radii; grounding split them — reinforces "ground before you size" (evidence: B3 fix#1/fix#2 split).
+- [ADD · folded] a diagnostic "single X breaker" headline conflated two fixes with different blast radii; grounding split them — reinforces "ground before you size" (evidence: B3 fix#1/fix#2 split). [folded foundation-version 49]

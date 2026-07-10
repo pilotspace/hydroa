@@ -327,7 +327,7 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
   work to avoid touching 30+ unrelated closed tasks in one pass)
 
 ### Competency deltas
-- [ADD · open] a components pillar can sit fully implemented in the engine (schema, validation,
+- [ADD · folded] a components pillar can sit fully implemented in the engine (schema, validation, [folded foundation-version 49]
   scope-join, per-component gate) yet go completely unused for the pillar's entire lifetime in a
   qualifying monorepo — the gap was invisible to `add.py check` (evidence: 87 pre-existing
   failures never once flagged "no components.toml in a 2-app-root repo"; the gap surfaced only

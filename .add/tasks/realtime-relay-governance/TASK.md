@@ -652,6 +652,6 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 
-  - [DDD · open] Gemini Live re-bills the FULL cumulative context every turn (growing per-turn
+  - [DDD · folded] Gemini Live re-bills the FULL cumulative context every turn (growing per-turn [folded foundation-version 49]
     promptTokenCount is real spend, not a double-count bug) — fold into PROJECT.md billing-precision
     notes so a future engineer doesn't "fix" it. (evidence: live forum + docs re-verified at VERIFY)
