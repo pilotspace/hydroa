@@ -224,6 +224,19 @@ class SqlAlchemyApiKeyRepository:
             key_guardrail_policy = None
 
         guardrail_configs = _resolve_effective_guardrails(key_guardrail_policy, tenant_guardrails)
+        # NOTE for the sibling guardrail-analytics task (depends-on this task):
+        # this discriminator is DELIBERATELY finer-grained than
+        # key_guardrail_router.get_key_guardrails()'s GET `source` field. GET's
+        # response Literal is frozen to exactly "key" | "tenant" (§3 CONTRACT) — it
+        # reports "tenant" whenever the key itself has no override, even if the
+        # tenant's own guardrail_configs is empty ({}), because that Literal has no
+        # third state to express "nothing configured anywhere". This internal
+        # AuthzResult/ApiKey discriminator instead distinguishes an ACTUALLY-populated
+        # tenant policy ("tenant") from a genuinely empty one ("none"), which is the
+        # more useful attribution for hit-count analytics: "none" means no guardrail
+        # config exists at either layer, so there is nothing to attribute a hit to.
+        # Not a bug in either place — two different consumers, two different
+        # granularities; recorded here rather than silently left to be rediscovered.
         guardrail_policy_source: Literal["key", "tenant", "none"]
         if key_guardrail_policy is not None:
             guardrail_policy_source = "key"

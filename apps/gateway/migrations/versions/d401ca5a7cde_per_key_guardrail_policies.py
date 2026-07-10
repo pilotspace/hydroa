@@ -1,7 +1,7 @@
 """per_key_guardrail_policies — add guardrail_policy JSONB column to api_keys table.
 
 Revision ID: d401ca5a7cde
-Revises: 511ad8a7b65e
+Revises: c20d0adece0a
 Create Date: 2026-07-10
 
 Additive migration (per-key-guardrail-policies TASK.md §3 DDL):
@@ -21,7 +21,10 @@ Downgrade:
   (safe — additive nullable column, no server default; no pre-migration code
   references it)
 
-Migration chain: ... -> 511ad8a7b65e -> d401ca5a7cde (per-key-guardrail-policies)
+Migration chain: ... -> c20d0adece0a -> d401ca5a7cde (per-key-guardrail-policies)
+  (re-parented from the Ground-time 511ad8a7b65e after a sibling
+  audit_events_export_index migration landed first — down_revision below is the
+  actual, current chain predecessor)
 """
 
 from __future__ import annotations
