@@ -1,11 +1,8 @@
 # TASK: B2: realtime relay authz/rate-limit + usage/audit rows
 
 slug: realtime-relay-governance · created: 2026-07-02 · stage: production
-autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
-     autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
-     (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -216,8 +213,6 @@ Assumptions — lowest-confidence first:
     classic silent-until-deployed failure mode, not because the content itself is in doubt.
 </assumptions>
 
-<!-- EXIT: every rule stated, every rejection named; assumptions ranked lowest-confidence first, the top one or two ⚠-flagged with why + cost (or, for trivial scope, an honest "none material" that still names the single biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -337,8 +332,6 @@ Scenario: the frozen carve-out guard tests stay green (M8, regression guard)
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -451,7 +444,7 @@ Schema: ONE additive nullable-column migration on audit_events (actor_key_id uui
 
 Status: FROZEN @ v1 — Tin approved 2026-07-10 (AskUserQuestion). Audit actor-scoping = Option B (actor_key_id,
 tenant-scoped, sanctioned change-request against audit-log-store). All other §3 clauses frozen as drafted.
-Least-sure flags surfaced at freeze (ranked):
+Least-sure flag surfaced at freeze: (ranked; RESOLVED at build/verify — see notes)
   1. [spec] **TOP** — Gemini Live per-turn usage-field existence/shape is UNVERIFIED against the live
      API/docs (§1 ⚠). BUILD must live-verify before implementing M3's translator; if absent, M3
      degrades to a documented Reject (honest unmetered gap persists), never a guessed field name —
@@ -474,52 +467,104 @@ derived from the shared `ProblemError.status`, never a second hand-rolled table)
 carve-out/Protocol invariants are re-verified, not just trusted). Billing-precision discipline
 (Decimal-only, provenanced, never-silent-$0) shaped M3/M4's honest-degrade requirement; SRE fail-open
 doctrine shaped M5's Redis-error handling and the Envoy-drift finding (M7).
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag: the 1–2
-     points most likely wrong across the whole bundle, tagged [spec|scenario|contract|test], each
-     with why + cost (the §1 ⚠ assumptions feed it; a flag may point at a scenario or the contract
-     too — see run.md). Approved -> Status: FROZEN @ vN — approved by <name>. Changing a frozen
-     contract = change request back to SPECIFY.
-     EXIT: frozen + every spec rejection has a contracted response + names match GLOSSARY + the
-     bundle's lowest-confidence flag was surfaced at the freeze (or an honest "none material"). -->
 
 ---
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: every §2 scenario has one executable test; no test weakened/skipped.
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged>
+  - test_governance_pass_opens_session / test_governance_called_with_estimated_tokens_none —
+    M1 happy path + estimated_tokens=None (TPM skip)
+  - test_model_unknown_closes_4400 / test_model_not_allowed_closes_4403 /
+    test_model_disabled_closes_4403 / test_budget_exceeded_closes_4402 /
+    test_rpm_exceeded_closes_4429 — M2 mechanical close-code mapping
+  - test_bad_token_4401_governance_never_reached / test_auth_timeout_4408_governance_never_reached /
+    test_no_provider_configured_governance_never_reached — M8 regression guard (identity fails
+    first; governance unreached)
+  - test_turn_complete_with_usage_metadata_triggers_capture / ..._maps_cached_content_tokens.../
+    ..._captures_once_per_turn_not_merged — M3 Gemini usage capture (field LIVE-VERIFIED)
+  - test_turn_complete_without_usage_metadata_records_nothing /
+    test_non_turn_boundary_message_never_fires... / test_on_usage_failure_is_swallowed... /
+    test_on_usage_absent_is_backward_compatible — M3 Reject + failure-isolation
+  - test_make_relay_usage_callback_passes_team_id / ..._team_id_defaults_none /
+    test_real_session_factory_wires_team_id_for_openai / ..._wires_on_usage_for_gemini /
+    ..._authz_without_team_id_attr_defensively — M4 team-attribution fix (both providers)
+  - test_bandwidth_grant_within_cap_forwards_frame_unchanged /
+    test_bandwidth_exhausted_mid_session_closes_4429 /
+    test_bandwidth_exhausted_does_not_trip_the_provider_breaker /
+    test_bandwidth_bucket_absent_is_byte_identical_to_today — M5 pacing + Reject + isolation
+  - test_session_opened_audit_scheduled_on_governance_pass /
+    test_session_closed_audit_carries_close_code /
+    test_session_rejected_audit_scheduled_on_governance_failure /
+    test_pre_identity_rejection_not_audited / test_audit_write_failure_does_not_disrupt_relay —
+    M6 audit lifecycle + both Reject scopes
+  - test_envoy_yaml_has_realtime_carveout_before_general_v1 / ..._envoy_prod_yaml_... /
+    ..._dev_stack_carveout_shape_matches_the_shipped_k8s_chart_route — M7 (static YAML pin;
+    no live Envoy in CI, same honest gap realtime-relay-endpoint flagged for itself)
+  - test_only_websocket_routes_under_realtime_carveout / test_relay_ws_is_under_the_carveout —
+    M8 frozen carve-out guard, unmodified
+  - test_tenant_scoped_event_valid_with_only_actor_key_id /
+    ..._still_rejected_when_both_actor_fields_absent / ..._actor_key_id_defaults_to_none... /
+    ..._actor_key_id_persists_and_round_trips / ..._user_actor_events_unaffected... — audit
+    change-request (Option B) re-crossed; audit-log-store's own frozen tests stay green unmodified
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir ·
-     a token with "/" = project root · a bare name = sibling of the previous
-     token's dir · a directory counts its *.py files (non-recursive); reports
-     mark declared counts with † · anything resolving outside the project root counts 0 -->
+Tests live in: `apps/gateway/tests/realtime_relay/` `apps/gateway/tests/audit/`
+  `apps/gateway/tests/gpt_realtime_relay_billing/` (one pre-existing test flipped, see below)
+  `apps/gateway/migrations/versions/` (new file, untested by suite per §3)
+  `infra/envoy/` (edited, pinned by tests/realtime_relay/test_envoy_carveout.py)
+MUST run red (missing implementation) before Build — confirmed 2026-07-10 (32 new tests RED
+for the right reason: TypeError/AttributeError/KeyError on the missing param/field, one
+assertion-mismatch on the not-yet-wired 4400 code — never an import/collection error).
 
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
+Pre-existing test superseded (documented, not silently weakened):
+  `tests/gpt_realtime_relay_billing/test_usage_capture.py::test_gemini_live_constructor_has_no_on_usage_param`
+  renamed to `test_gemini_live_constructor_gained_on_usage_param_per_relay_governance_task` and its
+  assertion flipped (on_usage now REQUIRED, default None) — this task's own frozen §3 (M3)
+  explicitly and knowingly supersedes that earlier task's own regression pin; docstring explains
+  the supersession in place.
+Pre-existing test harness extended, assertions unchanged (necessary consequence of a mandatory
+new connect-time step on a shared endpoint, not a weakening):
+  `tests/realtime_relay/test_relay_endpoint.py` — added a default permissive
+  `realtime_relay_governance_authorize` stub + `app.state.sessionmaker`, mirroring the file's
+  OWN pre-existing authenticate/session-factory stub convention; every existing assertion
+  (close codes, full-duplex frame order) is byte-identical.
 
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
+Scope (may touch): `apps/gateway/src/gateway/proxy/api/realtime_relay_ws.py`
+  `apps/gateway/src/gateway/proxy/application/realtime_relay_pump.py`
+  `apps/gateway/src/gateway/proxy/infrastructure/gemini_live.py`
+  `apps/gateway/src/gateway/audit/domain/audit_event.py`
+  `apps/gateway/src/gateway/audit/infrastructure/audit_events_orm.py`
+  `apps/gateway/src/gateway/audit/infrastructure/audit_repository.py`
+  `apps/gateway/migrations/versions/` `infra/envoy/envoy.yaml` `infra/envoy/envoy-prod.yaml`
+  `apps/gateway/tests/realtime_relay/` `apps/gateway/tests/audit/`
+  `apps/gateway/tests/gpt_realtime_relay_billing/test_usage_capture.py` (one superseded test only)
+Strategy (ordered batches): 1. ground the exact anchors (serena/Read) 2. migration file
+  (parent on current single head) 3. RED suite, one file per M-clause 4. GREEN: audit domain
+  relaxation → ORM/repo → Gemini on_usage + live-verified translator → RelayPump bandwidth
+  pacing → endpoint governance/audit/team_id wiring (last, since it composes everything else)
+  5. Envoy YAML carve-out + its static-shape test 6. full regression pass + ruff + pyright.
+Known-problem fixes: Gemini usage field name unverified → live-verified via WebSearch+WebFetch
+  against ai.google.dev/api/live + a real forum-posted raw payload before writing the
+  translator (never guessed) · pre-existing test_relay_endpoint.py would crash on the new
+  mandatory governance step → added a default permissive governance stub mirroring its own
+  established seam convention · RelayPump.close_code needed for the session_closed audit event
+  → added as a plain attribute set once in _teardown (no Protocol widening) · BandwidthExhaustedError
+  must not trip the provider circuit breaker → explicit isolated branch in run()'s outcome dispatch.
+Strategy actually used: as planned (all 6 batches executed in this order; no deviation).
+Safety rule (feature-specific): governance and audit-scheduling never gate or delay the relay
+  itself — governance raises BEFORE any provider dial (no partial session ever built), and every
+  audit schedule is asyncio.ensure_future + fire-and-forget (record_audit's own fail-open
+  contract already swallows DB/Redis failure; verified by test_audit_write_failure_does_not_disrupt_relay).
+Code lives in: `apps/gateway/src/gateway/` `infra/envoy/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token
-     with "/" = project root · a bare name = sibling of the previous token's dir ·
-     outside-root resolutions are dropped fail-closed · a DIRECTORY token covers its
-     whole subtree (containment — diverges from §4's non-recursive counting) ·
-     absent line = UNDECLARED (pre-existing tasks grandfathered, never retro-red) ·
-     engine enforcement (touched ⊆ declared) is live: a completing verify gate refuses an
-     out-of-scope build (scope_violation → self-heal) and add.py check surfaces it.
-     EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
+  (PyYAML already a project dependency — no new package added.)
 
 ---
 
@@ -538,28 +583,47 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 > Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
 > + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
 > row is evidence you can SEE, not a restatement of a test name.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] A relay connect whose model fails allowlist/catalog/budget/RPM closes with 4000+status
+      (4400/4402/4403/4429) BEFORE any provider dial — confirmed by test_relay_governance.py + adversarial
+      trace of realtime_relay_ws.realtime_relay (governance precedes _build_session on every dialed path).
+- [x] A Gemini relay turn emits exactly ONE usage_records row per turnComplete-boundary message carrying
+      usageMetadata (never on interim messages) — confirmed by test_gemini_usage_capture.py +
+      test_non_turn_boundary_message_never_fires; live-re-verified usageMetadata⇄turnComplete co-occurrence.
+- [x] Relay usage rows carry team_id=authz.team_id (team-budget attribution parity) — confirmed by
+      test_relay_team_id.py.
+- [x] A tenant-scoped audit event is valid with actor_key_id alone and STILL rejected with neither actor —
+      confirmed by test_audit_actor_key_id.py + test_tenant_scoped_event_still_rejected_when_both_absent;
+      migration 511ad8a7b65e additive/nullable, single alembic head, autogenerate-empty-diff green.
+- [x] session_opened/closed/rejected audit rows scheduled fire-and-forget, never gating the relay —
+      confirmed by test_relay_audit.py.
+- [x] bandwidth_bucket default (PassthroughBandwidthBucket) is byte-identical when unset; the 2 dev-stack
+      envoy configs byte-mirror the chart carve-out — confirmed by test_relay_bandwidth.py +
+      test_envoy_carveout.py + frozen test_carveout_invariant.py unchanged/green.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — actor_key_id threaded domain→ORM→repository→INSERT; on_usage wired into GeminiLiveSession
+      via _real_session_factory; bandwidth_bucket threaded into RelayPump; governance called in realtime_relay.
+      Confirmed by adversarial VERIFY (every new symbol referenced; ruff/pyright clean).
+- [x] DEAD-CODE (code) — one dead test helper found (`_drain_ensure_future` in test_relay_audit.py, works
+      today via Starlette teardown) → recorded as §7 spec-delta, non-blocking. No orphaned src symbol.
+- [x] SEMANTIC — Gemini Live usageMetadata shape read in full from ai.google.dev/api/live + a live captured
+      payload (re-verified independently at VERIFY, not trusting the build's own claim).
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under autonomy: auto the AI auto-resolves Verify, so the earned-green refute-read MUST be
 > recorded here (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). The engine
 > MEASURES it is filled (`audit: refute_unrecorded`); it never auto-blocks — a human spot-audit
 > is the backstop. A human-gated (conservative/manual) task may leave it for the human's judgment.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: agent add-verify (a7ba061888524c84e) · adversarially checked: audit-invariant symmetry (actor-less event
+still rejected), Gemini usage double/under-count (live-re-verified field shape + turn-boundary gate),
+governance ordering + close-code mapping + a disconfirmed UnboundLocalError suspicion, bandwidth byte-identity,
+envoy carve-out byte-parity, poison-in-batch resilience. Full suite 2619 passed / 0 failed. VERDICT CLEAN.
 
 ### GATE RECORD
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
+Reviewed by: Tin Dang · date: 2026-07-10
 
 ---
 
@@ -568,14 +632,26 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ <unrecorded> (approved by <unrecorded>)
+- [AI] build — strategy used: as planned (all 6 batches executed in this order; no deviation).
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
 each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
 the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+  - [SPEC · open] collapse bandwidth-pacing gate to one signal — drop the `key_id is not None`
+    co-condition at realtime_relay_pump.py:103; today a configured bucket + missing key_id silently
+    no-ops (unreachable via the endpoint, which always threads authz.key_id). (evidence: adversarial VERIFY 🟡)
+  - [SPEC · open] wire or delete the dead `_drain_ensure_future()` helper in tests/realtime_relay/
+    test_relay_audit.py; standardize on this repo's explicit `asyncio.sleep(0.05)` WS fire-and-forget
+    drain idiom. Works today only via Starlette teardown's implicit loop-iteration. (evidence: adversarial VERIFY 🟡)
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
+  - [DDD · open] Gemini Live re-bills the FULL cumulative context every turn (growing per-turn
+    promptTokenCount is real spend, not a double-count bug) — fold into PROJECT.md billing-precision
+    notes so a future engineer doesn't "fix" it. (evidence: live forum + docs re-verified at VERIFY)

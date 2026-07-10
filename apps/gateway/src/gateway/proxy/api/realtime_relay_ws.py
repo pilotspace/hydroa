@@ -5,10 +5,15 @@ Flow:
    -> first frame {type:"auth", token}  (bounded by realtime_auth_timeout_seconds)
         | close 4401  bad/missing/expired token, or first frame not auth
         | close 4408  no auth frame within the timeout
+   -> CONNECT-TIME GOVERNANCE (realtime-relay-governance TASK.md §3, M1/M2): additive,
+      after auth-over-WS succeeds, before the provider session is built.
+        | close 4000 + exc.status  allowlist/catalog/budget/RPM rejection (4400/4402/4403/4429)
    -> select the configured provider session
         | close 4404  no realtime provider configured (honest-degrade)
-   -> run the t1 RelayPump (it owns connect-timeout / breaker / teardown + the relay
-      outcome close code: 4503 / 1011 / 4408-idle / 1000)
+   -> run the t1 RelayPump (it owns connect-timeout / breaker / bandwidth-pacing /
+      teardown + the relay outcome close code: 4503 / 1011 / 4408-idle / 4429 / 1000)
+   -> fire-and-forget AuditEvents at session_opened / session_closed / session_rejected
+      (realtime-relay-governance TASK.md §3, M6) — never gates the relay's own outcome.
 
 AUTH-OVER-WS (security HARD, inherited from v47): the token is read ONLY from the
 first frame, NEVER from the URL/query, and NO provider session is opened before a
@@ -17,6 +22,7 @@ successful authenticate. Reuses v47 `_authenticate_token` verbatim.
 app.state STUB seams (present → used instead of the real path; DB/key-free WS tests):
   realtime_relay_authenticate(token, session) -> AuthzResult | None
   realtime_relay_session_factory(authz, websocket) -> RealtimeRelaySession | None  (None → 4404)
+  realtime_relay_governance_authorize(token, model_id) -> AuthzResult  (raises ProblemError)
 """
 
 from __future__ import annotations
@@ -25,12 +31,16 @@ import asyncio
 import inspect
 import json
 import logging
+import uuid
 from typing import Any
 
 from fastapi import APIRouter
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.config import Settings
+from gateway.core.errors import ProblemError
 
 # Reuse v47's auth-over-WS helper verbatim (the approved security surface).
 from gateway.proxy.api.realtime_ws import (
@@ -46,6 +56,9 @@ realtime_relay_router = APIRouter(tags=["proxy"])
 _CODE_AUTH_INVALID = 4401
 _CODE_AUTH_TIMEOUT = 4408
 _CODE_NO_PROVIDER = 4404
+# realtime-relay-governance (B2 TASK.md §3, M2): mechanical mapping, never a
+# hand-maintained parallel table — 4000 + the SAME status error_catalog.py already names.
+_GOVERNANCE_CODE_BASE = 4000
 
 
 class _StarletteRelayTransport:
@@ -114,12 +127,24 @@ def _extract_secret(cred: Any) -> str | None:
     return None
 
 
-def _make_relay_usage_callback(usage_recorder: Any, tenant_id: Any, key_id: Any, model: str) -> Any:
+def _make_relay_usage_callback(
+    usage_recorder: Any,
+    tenant_id: Any,
+    key_id: Any,
+    model: str,
+    *,
+    team_id: Any = None,
+) -> Any:
     """Build the per-turn usage capture callback for one relay session (TASK.md §3).
 
-    Captures the ONE-TIME WS-auth identity (tenant_id/key_id) — never re-derived per
-    turn. Reuses RecordingUsageRecorder.record()'s existing signature verbatim; its own
+    Captures the ONE-TIME WS-auth identity (tenant_id/key_id/team_id) — never re-derived
+    per turn. Reuses RecordingUsageRecorder.record()'s existing signature verbatim; its own
     Must #5 (never raise into the caller) already covers the swallow-on-failure guarantee.
+
+    team_id (realtime-relay-governance TASK.md §3, M4): threaded through to
+    usage_recorder.record() so a team-budgeted key's relay usage counts against its team's
+    spend counter — was silently omitted before this fix. Applies to BOTH providers (this
+    is the ONE shared callback builder both OpenAI and Gemini sessions receive).
     """
 
     async def _callback(usage: dict[str, Any]) -> None:
@@ -130,9 +155,108 @@ def _make_relay_usage_callback(usage_recorder: Any, tenant_id: Any, key_id: Any,
             usage=usage,
             status=200,
             usage_source="realtime_relay",
+            team_id=team_id,
         )
 
     return _callback
+
+
+def _dialed_model(settings: Settings) -> str | None:
+    """Resolve the model governance/billing should key on (TASK.md §3).
+
+    The SAME selector `_real_session_factory` already uses — an unconfigured provider
+    (neither "openai" nor "gemini") resolves to None, so governance never runs and the
+    existing 4404 honest-degrade is UNCHANGED.
+    """
+    if settings.realtime_relay_provider == "openai":
+        return settings.realtime_relay_openai_model
+    if settings.realtime_relay_provider == "gemini":
+        return settings.realtime_relay_gemini_model
+    return None
+
+
+async def _authorize_governance(app: Any, token: str, model_id: str) -> Any:
+    """Run connect-time governance via the stub seam, else the real NonChatGovernance gate.
+
+    Mirrors realtime_ws.py:_real_stt's EXACT construction shape (TASK.md §3): a fresh
+    NonChatGovernance built from app.state.budget_guard / app.state.sessionmaker / the
+    SAME getattr(budget_guard, "_redis", None) pattern. Raises ProblemError on rejection —
+    the caller maps it to a WS close code (M2, mechanical: 4000 + exc.status).
+    """
+    stub = getattr(app.state, "realtime_relay_governance_authorize", None)
+    if stub is not None:
+        return await stub(token, model_id)
+
+    async with app.state.sessionmaker() as session:
+        from gateway.keys.application.use_cases import AuthzUseCase as _AuthzUseCase
+        from gateway.keys.infrastructure.repository import (
+            SqlAlchemyApiKeyRepository as _KeyRepo,
+        )
+        from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher as _Hasher
+        from gateway.proxy.application.governance import NonChatGovernance
+        from gateway.proxy.infrastructure.key_authenticator import (
+            SqlAlchemyKeyAuthenticator as _Auth,
+        )
+        from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
+
+        _repo = _KeyRepo(session)
+        _authz_uc = _AuthzUseCase(_repo, _Hasher())
+        _authenticator = _Auth(_authz_uc)
+        _model_checker = SqlAlchemyModelChecker(session)
+        _budget_guard = app.state.budget_guard
+        _rate_limiter = getattr(app.state, "rate_limiter", None)
+        _redis = getattr(_budget_guard, "_redis", None)
+
+        governance = NonChatGovernance(
+            authenticator=_authenticator,
+            model_checker=_model_checker,
+            budget_guard=_budget_guard,
+            rate_limiter=_rate_limiter,
+            redis_client=_redis,
+            session_factory=app.state.sessionmaker,
+        )
+        return await governance.authorize(raw_key=token, model_id=model_id, estimated_tokens=None)
+
+
+def _schedule_audit(app: Any, event: AuditEvent) -> None:
+    """Fire-and-forget an AuditEvent via the existing record_audit() (TASK.md §3, M6).
+
+    Never awaited on the hot path — record_audit's own fail-open contract means a DB/Redis
+    failure here can never disrupt the relay session's own outcome.
+    """
+    _task = asyncio.ensure_future(record_audit(app.state.sessionmaker, event))
+    _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
+def _relay_audit_event(
+    *,
+    authz: Any,
+    action: str,
+    result: str,
+    provider: str,
+    model: str,
+    extra: dict[str, Any] | None = None,
+) -> AuditEvent:
+    """Build one realtime_relay.* audit event (TASK.md §3, Option B — actor_key_id scoped).
+
+    metadata NEVER carries token/key material — only provider/model + event-specific fields
+    (close_code / rejection reason), per M6.
+    """
+    metadata: dict[str, Any] = {"provider": provider, "model": model}
+    if extra:
+        metadata.update(extra)
+    return AuditEvent(
+        id=uuid.uuid4(),
+        tenant_id=authz.tenant_id,
+        actor_user_id=None,
+        actor_key_id=authz.key_id,
+        actor_email=None,
+        action=action,
+        target_type="realtime_relay",
+        target_id=str(authz.key_id),
+        result=result,
+        metadata=metadata,
+    )
 
 
 async def _real_session_factory(app: Any, authz: Any) -> RealtimeRelaySession | None:
@@ -151,6 +275,10 @@ async def _real_session_factory(app: Any, authz: Any) -> RealtimeRelaySession | 
     api_key = _extract_secret(cred)
     if not api_key:
         return None
+    # M4: authz.team_id via getattr — tolerates a duck-typed authz double lacking the
+    # attribute entirely (pre-M4 test fixtures), degrading to team_id=None rather than
+    # AttributeError; a real AuthzResult always carries the field (defaults to None).
+    team_id = getattr(authz, "team_id", None)
     if provider == "openai":
         from gateway.proxy.infrastructure.openai_realtime import OpenAIRealtimeSession
 
@@ -163,14 +291,24 @@ async def _real_session_factory(app: Any, authz: Any) -> RealtimeRelaySession | 
                 authz.tenant_id,
                 authz.key_id,
                 settings.realtime_relay_openai_model,
+                team_id=team_id,
             ),
         )
     from gateway.proxy.infrastructure.gemini_live import GeminiLiveSession
 
+    # M3: Gemini now receives the SAME callback OpenAI already gets (was: none at all —
+    # Gemini relay spend was categorically unmetered before this fix).
     return GeminiLiveSession(
         model=settings.realtime_relay_gemini_model,
         api_key=api_key,
         connect_timeout=settings.realtime_relay_connect_timeout_seconds,
+        on_usage=_make_relay_usage_callback(
+            app.state.usage_recorder,
+            authz.tenant_id,
+            authz.key_id,
+            settings.realtime_relay_gemini_model,
+            team_id=team_id,
+        ),
     )
 
 
@@ -218,14 +356,78 @@ async def realtime_relay(websocket: WebSocket) -> None:
         await websocket.close(_CODE_AUTH_INVALID)
         return
 
+    # 1.5) CONNECT-TIME GOVERNANCE (realtime-relay-governance TASK.md §3, M1/M2) — additive,
+    # after auth-over-WS succeeds, before the provider session is built. Reuses the ONE
+    # shared NonChatGovernance gate (never a second hand-rolled allowlist/budget/RPM copy).
+    # An unconfigured provider (dialed_model is None) is UNCHANGED — governance never runs
+    # for a provider that doesn't exist; falls through to the existing 4404 honest-degrade.
+    dialed_model = _dialed_model(settings)
+    if dialed_model is not None:
+        try:
+            authz = await _authorize_governance(app, token, dialed_model)
+        except ProblemError as exc:
+            await websocket.close(_GOVERNANCE_CODE_BASE + exc.status)
+            # Identity is already known at this point (auth-over-WS succeeded) — a
+            # post-identity rejection IS audited, unlike the pre-identity 4401/4408 paths.
+            _schedule_audit(
+                app,
+                _relay_audit_event(
+                    authz=authz,
+                    action="realtime_relay.session_rejected",
+                    result="rejected",
+                    provider=settings.realtime_relay_provider,
+                    model=dialed_model,
+                    extra={
+                        "close_code": _GOVERNANCE_CODE_BASE + exc.status,
+                        "reason": exc.code,
+                    },
+                ),
+            )
+            return
+        _schedule_audit(
+            app,
+            _relay_audit_event(
+                authz=authz,
+                action="realtime_relay.session_opened",
+                result="success",
+                provider=settings.realtime_relay_provider,
+                model=dialed_model,
+            ),
+        )
+
     # 2) SELECT provider — honest-degrade when none configured.
     session = await _build_session(app, authz, websocket)
     if session is None:
         await websocket.close(_CODE_NO_PROVIDER)
         return
 
-    # 3) RELAY — the pump owns connect/timeout/teardown + the outcome close code.
+    # 3) RELAY — the pump owns connect/timeout/bandwidth-pacing/teardown + the outcome
+    # close code. bandwidth_bucket reuses the SAME app.state singleton the chat streaming
+    # path already reads (deps.py) — this task threads it into the relay endpoint too, it
+    # does not invent a second one.
     transport = _StarletteRelayTransport(websocket)
     breaker = getattr(app.state, "realtime_relay_breaker", None)
-    pump = RelayPump(transport, session, settings, breaker=breaker)
+    bandwidth_bucket = getattr(app.state, "bandwidth_bucket", None)
+    pump = RelayPump(
+        transport,
+        session,
+        settings,
+        breaker=breaker,
+        bandwidth_bucket=bandwidth_bucket,
+        key_id=authz.key_id,
+    )
     await pump.run()
+
+    # session_closed (M6) — scheduled after pump.run() returns; carries the close code.
+    # By this point dialed_model is guaranteed non-None (session-build required it).
+    _schedule_audit(
+        app,
+        _relay_audit_event(
+            authz=authz,
+            action="realtime_relay.session_closed",
+            result="success",
+            provider=settings.realtime_relay_provider,
+            model=dialed_model,  # type: ignore[arg-type]
+            extra={"close_code": pump.close_code},
+        ),
+    )

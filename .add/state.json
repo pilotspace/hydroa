@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "signup-and-routing-authz",
+  "active_task": "realtime-relay-governance",
   "active_milestone": "enterprise-hardening",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -739,12 +739,45 @@
     },
     "realtime-relay-governance": {
       "title": "B2: realtime relay authz/rate-limit + usage/audit rows",
-      "phase": "contract",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-10T06:20:23+00:00"
+      "updated": "2026-07-10T07:17:53+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "70cf9be1733d09877fd86efe3914a59f",
+        "tests": {
+          "apps/gateway/tests/realtime_relay/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/realtime_relay/test_carveout_invariant.py": "dfdea8060e652295bb35d0091ec7889c",
+          "apps/gateway/tests/realtime_relay/test_envoy_carveout.py": "de6642d3cebc7cca367e163c52aac7bc",
+          "apps/gateway/tests/realtime_relay/test_gemini_adapter.py": "01a41f698399f9bdfb4dd501f55a6d37",
+          "apps/gateway/tests/realtime_relay/test_gemini_usage_capture.py": "adec4ce1e674b920f3d8ae40c4c798b5",
+          "apps/gateway/tests/realtime_relay/test_openai_adapter.py": "e271d0df59b3db026e2484731b90ad56",
+          "apps/gateway/tests/realtime_relay/test_relay_audit.py": "200828e5f51a290c1e0b106b35769e13",
+          "apps/gateway/tests/realtime_relay/test_relay_bandwidth.py": "f4f62984c7a44f8ee826cbfaafae22bf",
+          "apps/gateway/tests/realtime_relay/test_relay_endpoint.py": "21f2fa3df6fcc29b879b8e5e142fa0fc",
+          "apps/gateway/tests/realtime_relay/test_relay_governance.py": "21822030ca2c0e30f59362901230c24d",
+          "apps/gateway/tests/realtime_relay/test_relay_live.py": "aaa192644c373cb299967a5792942529",
+          "apps/gateway/tests/realtime_relay/test_relay_pump.py": "dd362d4e4163aab6424331371fdf4f1d",
+          "apps/gateway/tests/realtime_relay/test_relay_team_id.py": "0d132ebe7eab5efe2601eb1e73cfe2a6",
+          "apps/gateway/tests/audit/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/audit/test_audit_actor_key_id.py": "1b5d5031d0d70aa5b262cb1c12acf6b5",
+          "apps/gateway/tests/audit/test_audit_store.py": "b92643fcd1213a017f540767136c9156"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/api/realtime_relay_ws.py"
+        ],
+        "snapshot_md5": "3783ed2ecdafb1dc571846c4cad08b9f"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "edge-input-hardening": {
       "title": "S2+S3+S4: XFF last-hop parse, SSRF IMDS deny, body-size cap",
@@ -907,7 +940,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T06:22:51+00:00",
+  "updated": "2026-07-10T07:17:53+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1798,7 +1831,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "enterprise-hardening": "signup-and-routing-authz"
+    "enterprise-hardening": "realtime-relay-governance"
   },
   "todos": [
     {
