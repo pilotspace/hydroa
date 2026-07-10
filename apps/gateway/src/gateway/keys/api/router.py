@@ -60,6 +60,7 @@ from gateway.keys.infrastructure.mint_rate_limiter import (
 from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
 from gateway.teams.api.deps import get_team_repository
 from gateway.teams.infrastructure.repository import SqlAlchemyTeamRepository
+from gateway.tenants.domain.authz import require_active_user
 from gateway.tenants.domain.entities import Identity
 
 admin_router = APIRouter(prefix="/admin/keys", tags=["api-keys"])
@@ -92,12 +93,19 @@ async def create_key(
     request: Request,
     body: CreateKeyRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    _active: Annotated[Identity, Depends(require_active_user)],
     use_case: Annotated[CreateKeyUseCase, Depends(get_create_key_use_case)],
     team_repo: Annotated[SqlAlchemyTeamRepository, Depends(get_team_repository)],
 ) -> CreateKeyResponse:
     """Issue a new API key for the caller's tenant.
 
     The plaintext key is returned EXACTLY ONCE in this response and never stored.
+
+    Deactivation-escalation fix (verify-phase HARD-STOP finding): ADDITIONALLY depends on
+    require_active_user — a deactivated caller's still-valid session JWT can no longer mint
+    a NEW API key, even though the JWT's role claim is unaffected by deactivation. The
+    accepted stale-JWT residual (scim-provisioning TASK.md §1 M7) still covers ORDINARY
+    reads/writes; it does not extend to minting a new, independently-long-lived credential.
     """
     # Validate team attribution: team_id must belong to the caller's tenant
     if body.team_id is not None:
@@ -289,6 +297,7 @@ async def patch_key(
     new_tpm: int | None = None
     new_team_id: uuid.UUID | None = None
     new_cache_enabled: bool | None = None
+    new_capture_enabled: bool | None = None
 
     if "monthly_budget_usd" in body.model_fields_set:
         if body.monthly_budget_usd is None:
@@ -340,6 +349,10 @@ async def patch_key(
     if "cache_enabled" in body.model_fields_set:
         new_cache_enabled = body.cache_enabled
 
+    # capture_enabled PATCH: absent = no change; True/False = set (payload-capture-store §3)
+    if "capture_enabled" in body.model_fields_set:
+        new_capture_enabled = body.capture_enabled
+
     try:
         updated = await use_case.execute(
             key_id=key_id,
@@ -353,6 +366,7 @@ async def patch_key(
             tpm_limit=new_tpm,
             team_id=new_team_id,
             cache_enabled=new_cache_enabled,
+            capture_enabled=new_capture_enabled,
             _fields_to_clear=fields_to_clear,
         )
     except ForbiddenError:
@@ -378,6 +392,7 @@ async def patch_key(
         tpm_limit=updated.tpm_limit,
         team_id=updated.team_id,
         cache_enabled=updated.cache_enabled,
+        capture_enabled=updated.capture_enabled,
     )
 
 
@@ -387,6 +402,7 @@ async def rotate_key(
     key_id: uuid.UUID,
     body: RotateKeyRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    _active: Annotated[Identity, Depends(require_active_user)],
     use_case: Annotated[RotateKeyUseCase, Depends(get_rotate_key_use_case)],
 ) -> RotateKeyResponse:
     """Rotate an API key: revoke old, issue new atomically.
@@ -395,6 +411,10 @@ async def rotate_key(
     Returns 201 with the new plaintext key (shown once).
     Returns 403 for member-role callers.
     Returns 404 for revoked or cross-tenant keys.
+
+    Deactivation-escalation fix (verify-phase HARD-STOP finding): ADDITIONALLY depends on
+    require_active_user — a deactivated caller cannot rotate a key into a NEW live secret
+    either (rotation mints a new credential exactly like create does).
     """
     # Detect which fields were explicitly provided vs. absent (for inherit semantics)
     budget_provided = "monthly_budget_usd" in body.model_fields_set

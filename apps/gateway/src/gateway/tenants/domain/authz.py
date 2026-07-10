@@ -41,6 +41,7 @@ __all__ = [
     "Role",
     "authorize_tenant_scope",
     "ensure_impersonation_session_live",
+    "require_active_user",
     "require_permission",
     "require_superadmin",
 ]
@@ -67,6 +68,10 @@ class Permission(StrEnum):
     # tiered-rate-cards TASK.md §3: OWNER-only (markup is the platform's margin
     # over provider cost; auto-holds via ROLE_PERMISSIONS[OWNER] = frozenset(Permission)).
     RATE_CARDS_MANAGE = "rate_cards_manage"
+    # logs-explorer-api TASK.md §3: PII-payload-bearing read surface — same additive
+    # precedent as RATE_CARDS_MANAGE, role set mirrors AUDIT_READ exactly (owner/admin/
+    # operator/superadmin; NOT billing_admin/viewer/member).
+    LOGS_READ = "logs_read"
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +90,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.OPS_READ,
             Permission.MEMBERS_MANAGE,
             Permission.AUDIT_READ,
+            Permission.LOGS_READ,
             # NOT PROVIDER_SECRETS, NOT SECURITY_CONFIG (owner-only preserved)
         }
     ),
@@ -96,6 +102,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.USAGE_READ,
             Permission.OPS_READ,
             Permission.AUDIT_READ,
+            Permission.LOGS_READ,
         }
     ),
     Role.BILLING_ADMIN: frozenset(
@@ -220,6 +227,64 @@ async def _resolve_identity(
         return identity
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
+
+
+# ---------------------------------------------------------------------------
+# Credential-minting liveness gate (deactivation-escalation fix — verify-phase HARD-STOP
+# finding, scim-provisioning TASK.md). NOT part of the frozen §3 contract shape (no route
+# signature/response shape changed) — this closes an unintended widening of the CONTRACT's
+# own documented M7 residual, it does not alter it.
+# ---------------------------------------------------------------------------
+
+
+async def require_active_user(
+    request: fastapi.Request,
+    identity: Annotated[Identity, fastapi.Depends(_resolve_identity)],
+    session: Annotated[AsyncSession, fastapi.Depends(get_session)],
+) -> Identity:
+    """Credential-minting liveness gate (scim-provisioning deactivation-escalation fix —
+    verify-phase HARD-STOP finding).
+
+    A session JWT is stateless; its documented residual (scim-provisioning TASK.md §1 M7)
+    is "usable for ORDINARY requests up to jwt_ttl_seconds after deactivation" — role stays
+    baked into the token and deactivation is DB-side only, by design. That residual must
+    NOT extend to minting a NEW, independently-long-lived credential (a fresh SCIM token or
+    API key that would outlive the JWT itself) — doing so would let a deactivated OWNER/
+    ADMIN re-arm their own access indefinitely from an offboarded session. This dependency
+    is wired ONLY onto credential-minting routes (SCIM token / API key create + rotate) —
+    deliberately NOT onto every hot /admin read, which stays covered by the accepted
+    residual above (the builder's own latency tradeoff for ordinary traffic, left intact).
+
+    Fail-CLOSED, bounded-timeout DB read of users.deactivated_at (mirrors
+    DbImpersonationSessionGuard's fail-closed convention exactly — a credential-revocation
+    decision, not an availability gate, so a transient DB blip must not silently reopen the
+    mint-time escalation window this guard exists to close).
+
+    Raises:
+        401 ERR_AUTH_INVALID_TOKEN — missing/invalid Bearer token, OR the identity behind
+            it has since been deactivated (byte-identical status/body to any other
+            invalid-token failure — no oracle distinguishing "deactivated" from
+            "malformed").
+
+    Usage::
+
+        @router.post("/admin/scim/tokens")
+        async def create_scim_token(
+            identity: Annotated[Identity, require_permission(Permission.MEMBERS_MANAGE)],
+            _active: Annotated[Identity, fastapi.Depends(require_active_user)],
+        ) -> ...: ...
+    """
+    from gateway.tenants.infrastructure.user_liveness_guard import DbUserLivenessGuard
+
+    guard = DbUserLivenessGuard(
+        session=session,
+        timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
+    )
+    try:
+        await guard.ensure_active(identity.user_id)
+    except InvalidTokenError:
+        raise AUTH_TOKEN_INVALID.exc() from None
+    return identity
 
 
 # ---------------------------------------------------------------------------

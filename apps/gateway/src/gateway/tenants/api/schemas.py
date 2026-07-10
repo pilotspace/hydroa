@@ -12,6 +12,10 @@ class SignupRequest(BaseModel):
 class SignupResponse(BaseModel):
     tenant_id: uuid.UUID
     user_id: uuid.UUID
+    # ADDITIVE (domain-capture TASK.md §3 M12 — FROZEN @ v1): default False keeps every
+    # EXISTING SignupResponse(...) construction call site (create-new-tenant path)
+    # unaffected. True ONLY on the domain-routed join-existing-tenant path (M9-M11).
+    joined_existing_tenant: bool = False
 
 
 class LoginRequest(BaseModel):

@@ -255,7 +255,7 @@ Least-sure flag surfaced at freeze:
     if wrong: task 4 needs no rework (its depends-on already covers this task), but the WINDOW
     of unaudited access between this task shipping and task 4 shipping is the accepted cost.
     APPROVED by Tin Dang at freeze (2026-07-03) — deferral confirmed, matches
-    platform-identity's capability-first-audit-second precedent.
+    platform-identity's capability-first-audit-second precedent. [folded foundation-version 49]
 Status: FROZEN @ v1 — approved by Tin Dang (2026-07-03)
 
 ---

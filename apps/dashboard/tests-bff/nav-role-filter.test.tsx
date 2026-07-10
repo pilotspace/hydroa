@@ -37,6 +37,15 @@
  * minRole: "admin" — GET /admin/batches/stats is require_owner_or_admin) is added after
  * "Routing" → member sees 10 (unchanged, still hidden); admin now sees 19 (was 18); owner/
  * unknown now see 20 (was 19).
+ * UPDATED by guardrail-analytics: an admin-only "Guardrail Analytics" link
+ * (/app/guardrail-analytics, minRole: "admin" — GET /admin/guardrails/analytics is
+ * OPS_READ gated, owner/admin/operator/billing_admin/viewer, so 403s on member) is
+ * added to the Govern group after "SLO" → member sees 10 (unchanged, still hidden);
+ * admin now sees 20 (was 19); owner/unknown now see 21 (was 20).
+ * UPDATED by logs-explorer-ui: an admin-only "Logs" link (/app/logs, minRole: "admin" —
+ * GET /admin/logs is LOGS_READ gated, owner/admin/operator/superadmin, so 403s on
+ * member) is added to the Govern group after "Audit" → member sees 10 (unchanged,
+ * still hidden); admin now sees 21 (was 20); owner/unknown now see 22 (was 21).
  *
  * AppShell takes an optional `role` prop (presentational); DashboardShell ("use
  * client") feeds it from useCurrentUser().role. The nav filter is UX-only — no
@@ -59,7 +68,7 @@ import { AppShell } from "@/components/ui";
 import { DashboardShell } from "@/components/dashboard-shell";
 
 const APP = "http://localhost:3000";
-const ADMIN_ONLY = [/models/i, /teams/i, /members/i, /routing/i, /^batches$/i, /alerts/i, /audit/i, /health/i, /^slo$/i];
+const ADMIN_ONLY = [/models/i, /teams/i, /members/i, /routing/i, /^batches$/i, /alerts/i, /audit/i, /^logs$/i, /health/i, /^slo$/i, /guardrail analytics/i];
 const OWNER_ONLY = [/model presets/i];
 const MEMBER_OK = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, /settings/i];
 const ADMIN_SEES = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
@@ -117,7 +126,7 @@ describe("AppShell — role-based nav visibility", () => {
     }
     // admin is NOT owner — "Model Presets" (minRole: "owner") stays hidden, unlike every
     // other minRole:"admin" link above it.
-    expect(within(n).getAllByRole("link")).toHaveLength(19);
+    expect(within(n).getAllByRole("link")).toHaveLength(21);
   });
 
   it("test_owner_sees_all_links", () => {
@@ -130,7 +139,7 @@ describe("AppShell — role-based nav visibility", () => {
     for (const re of ALL_TWENTY) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
-    expect(within(n).getAllByRole("link")).toHaveLength(20);
+    expect(within(n).getAllByRole("link")).toHaveLength(22);
   });
 
   it("test_unknown_role_fails_open", () => {
@@ -139,7 +148,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(20);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(22);
     unmount();
 
     // no role prop at all → also fail-open (preserves the prior AppShell behavior)
@@ -148,7 +157,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(20);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(22);
   });
 });
 

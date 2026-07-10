@@ -74,15 +74,22 @@ class OpenAIDirectProvider:
         backoff_base: float = 0.5,
         retry_deadline_s: float = 0.0,
         metrics_registry: MetricsRegistry | None = None,
+        connect_timeout: float = _CONNECT_TIMEOUT,
+        read_timeout: float = _NON_STREAM_TIMEOUT,
     ) -> None:
+        # connect_timeout/read_timeout (ml-moderation-layer §3 CONTRACT — FROZEN @ v1):
+        # optional override so a SECOND, dedicated instance (moderation) can use a
+        # tighter timeout budget than the chat-completion default. Both default to the
+        # existing module constants, so every pre-existing caller (chat/embeddings/
+        # images/audio adapters) is byte-identical.
         self._breaker = CircuitBreaker()
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(
-                connect=_CONNECT_TIMEOUT,
-                read=_NON_STREAM_TIMEOUT,
-                write=_NON_STREAM_TIMEOUT,
-                pool=_CONNECT_TIMEOUT,
+                connect=connect_timeout,
+                read=read_timeout,
+                write=read_timeout,
+                pool=connect_timeout,
             ),
         )
         # Retry knobs — threaded through to the shared execute_with_retry seam by complete().
@@ -231,6 +238,47 @@ class OpenAIDirectProvider:
 
         self._breaker.record_success()
         return status, resp.json()
+
+    async def post_json_with_retry(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        *,
+        max_retries: int,
+        backoff_base: float,
+        deadline_s: float = 0.0,
+        provider_label: str | None = None,
+    ) -> tuple[int, dict[str, Any]]:
+        """POST path with JSON body, retried via the shared execute_with_retry seam.
+
+        Like post_json (guard → auth → POST → breaker bookkeeping) but with bounded
+        retry — for an ancillary IO seam on a DEDICATED instance that needs retry
+        semantics distinct from post_json's single attempt (embeddings/images) or
+        complete()'s pinned /chat/completions path. `provider_label` overrides the
+        metrics/log provider label (e.g. "openai_moderation") so a secondary seam on
+        the same underlying API is distinguishable from primary chat/embeddings
+        traffic in upstream_retries_total.
+
+        ml-moderation-layer §3 CONTRACT (FROZEN @ v1): the moderation adapter
+        (OpenAiModerationClient) is this method's first caller — added here (a public
+        method) rather than reaching into self._client/_breaker/_auth_headers() from
+        a different infrastructure module, which the project's strict pyright config
+        (reportPrivateUsage) correctly rejects.
+        """
+
+        async def _do_request() -> httpx.Response:
+            return await self._client.post(path, json=payload, headers=self._auth_headers())
+
+        return await execute_with_retry(
+            _do_request,
+            lambda resp: (resp.status_code, resp.json()),
+            breaker=self._breaker,
+            provider=provider_label or self._provider_name,
+            max_retries=max_retries,
+            backoff_base=backoff_base,
+            deadline_s=deadline_s,
+            metrics_registry=self._metrics_registry,
+        )
 
     async def post_multipart(
         self,

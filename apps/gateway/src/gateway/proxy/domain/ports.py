@@ -59,6 +59,10 @@ class UsageRecordExtras(TypedDict, total=False):
                           (provider_cost stamped, cost_usd=0, cost_basis='provider')
                           so the drift monitor sees it — never a silent $0
                           (v33 disconnect-provider-cost)
+      request_id        — correlation key: the SAME UUID minted once per proxied call
+                          and also stored on request_logs.request_id, letting a reader
+                          join the two tables (request-log-metering-fields, no new
+                          usage_records column — stored inside the raw JSONB extras)
     """
 
     team_id: uuid.UUID
@@ -71,6 +75,7 @@ class UsageRecordExtras(TypedDict, total=False):
     usage_source: str
     provider_generation_id: str
     disconnect_estimate: bool
+    request_id: uuid.UUID
 
 
 class ModelAccess(Enum):
@@ -552,6 +557,53 @@ class BatchDiversionPort(Protocol):
         ...
 
 
+@runtime_checkable
+class PayloadCapturePort(Protocol):
+    """Opt-in, PII-scrubbed request/response payload capture.
+
+    payload-capture-store TASK.md §3, FROZEN @ v1.
+
+    Additive — default-None injection into CompletionUseCase is backward-compatible with
+    every existing frozen test fake that does not implement this Protocol.
+
+    Hook sites (§3, locked at BUILD after the mandated pre-call-BLOCK grounding pass):
+      complete() success + both guardrail-BLOCK short-circuits, stream()'s 3 exit
+      branches + both guardrail-BLOCK short-circuits, and all 3 _fire_record_cached
+      call sites (exact/semantic/vector cache HIT).
+    """
+
+    async def capture(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        key_id: uuid.UUID,
+        model: str,
+        request_body: dict[str, Any],
+        response_body: dict[str, Any] | None,
+        status: int,
+        stream: bool,
+        cached: bool,
+        guardrail_configs: dict[str, Any],
+        usage: dict[str, Any] | None = None,
+        latency_ms: int | None = None,
+        request_id: uuid.UUID | None = None,
+    ) -> None:
+        """Fire-and-forget capture. NEVER raises — all failures (scrub, size, DB,
+        ZDR-check) are caught internally and result in either a metadata-only row
+        or no row at all, never an exception propagated to the caller.
+
+        response_body is None for a pre-call guardrail-BLOCK row (the request never
+        reached upstream) — implementations must handle that as a request-only row,
+        never a crash.
+
+        usage/latency_ms/request_id (request-log-metering-fields TASK.md §3, additive):
+        DISPLAY-ONLY metadata, verbatim from the SAME values the call's billing/
+        observability paths already computed — never independently recomputed, never
+        billing truth. All 3 default None so every existing caller stays byte-identical.
+        """
+        ...
+
+
 __all__ = [
     "AuthzResult",
     "BatchDiversionPort",
@@ -564,6 +616,7 @@ __all__ = [
     "ModelAccess",
     "ModelChecker",
     "ModelHealthGate",
+    "PayloadCapturePort",
     "ProviderCredential",
     "ProviderResolver",
     "ResponseCache",

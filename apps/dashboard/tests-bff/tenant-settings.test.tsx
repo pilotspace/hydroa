@@ -61,6 +61,63 @@ const OIDC = {
   updated_at: "2026-01-02T00:00:00Z",
 };
 
+const SCIM_TOKEN_ACTIVE = {
+  id: "11111111-1111-1111-1111-111111111111",
+  name: "Okta",
+  created_at: "2026-01-01T00:00:00Z",
+  revoked_at: null as string | null,
+};
+
+const SCIM_CREATE_RESP = {
+  id: "22222222-2222-2222-2222-222222222222",
+  name: "Okta",
+  token: "scim_plaintext_created_abc123",
+  created_at: "2026-01-02T00:00:00Z",
+};
+
+const SCIM_ROTATE_RESP = {
+  id: "11111111-1111-1111-1111-111111111111",
+  name: "Okta",
+  token: "scim_plaintext_rotated_xyz789",
+  created_at: "2026-01-03T00:00:00Z",
+};
+
+const SAML_CONF = {
+  tenant_id: "t1",
+  idp_entity_id: "https://idp.example.com/entity",
+  idp_sso_url: "https://idp.example.com/sso",
+  idp_x509_cert: "-----BEGIN CERTIFICATE-----\nMIIB0zCCA=\n-----END CERTIFICATE-----",
+  sp_entity_id: "https://gw.example.com/saml/t1",
+  acs_url: "https://gw.example.com/saml/acs",
+  email_domains: ["acme.io"],
+  email_attribute_name: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+  enabled: true,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-02T00:00:00Z",
+};
+
+const RETENTION_DEFAULT = {
+  window_days: null as number | null,
+  effective_window_days: {
+    usage_records: 90,
+    alert_events: 90,
+    artifacts: 90,
+    conversations: 90,
+    memories: 90,
+    batch_job_items: 90,
+    video_generation_jobs: 90,
+  },
+  zdr_enabled: false,
+  zdr_enabled_at: null as string | null,
+  operator_ceiling_days: 365,
+};
+
+const RETENTION_ZDR_ON = {
+  ...RETENTION_DEFAULT,
+  zdr_enabled: true,
+  zdr_enabled_at: "2026-07-10T00:00:00Z",
+};
+
 function problem(title: string, status: number, code: string) {
   return HttpResponse.json({ title, status, code }, { status });
 }
@@ -68,6 +125,23 @@ function problem(title: string, status: number, code: string) {
 const cacheGet = (body: unknown = CACHE_ON) =>
   http.get(`${APP}/api/gw/admin/cache`, () =>
     HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
+
+const scimGet = (body: unknown = { tokens: [] }) =>
+  http.get(`${APP}/api/gw/admin/scim/tokens`, () =>
+    HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
+
+const samlGet = (body: unknown = SAML_CONF) =>
+  http.get(`${APP}/api/gw/admin/saml`, () =>
+    HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
+
+const retentionGet = (body: unknown = RETENTION_DEFAULT) =>
+  http.get(`${APP}/api/gw/admin/retention-policy`, () =>
+    HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
+
+async function openTab(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+  await screen.findByRole("tablist");
+  await user.click(screen.getByRole("tab", { name }));
+}
 
 // ── shell + tabs ──────────────────────────────────────────────────────────────
 describe("SettingsPage — tab shell", () => {
@@ -78,7 +152,7 @@ describe("SettingsPage — tab shell", () => {
     const tablist = await screen.findByRole("tablist");
     expect(within(tablist).getByRole("tab", { name: /cache/i })).toBeInTheDocument();
     expect(within(tablist).getByRole("tab", { name: /guardrails/i })).toBeInTheDocument();
-    expect(within(tablist).getByRole("tab", { name: /sso/i })).toBeInTheDocument();
+    expect(within(tablist).getByRole("tab", { name: /^sso$/i })).toBeInTheDocument();
     expect(within(tablist).getByRole("tab", { name: /cache/i })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -232,7 +306,7 @@ describe("SettingsPage — guardrails tab", () => {
 describe("SettingsPage — SSO tab", () => {
   async function openSso(user: ReturnType<typeof userEvent.setup>) {
     await screen.findByRole("tablist");
-    await user.click(screen.getByRole("tab", { name: /sso/i }));
+    await user.click(screen.getByRole("tab", { name: /^sso$/i }));
   }
 
   it("test_owner_views_sso_no_secret", async () => {
@@ -375,6 +449,663 @@ describe("SettingsPage — SSO tab", () => {
   });
 });
 
+// ── new tabs: shell / lazy-load (enterprise-identity-admin-ui) ────────────────────
+describe("SettingsPage — new tabs shell", () => {
+  it("test_renders_seven_tabs_no_premature_fetch", async () => {
+    let scimCount = 0;
+    let samlCount = 0;
+    let retentionCount = 0;
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/scim/tokens`, () => {
+        scimCount += 1;
+        return HttpResponse.json({ tokens: [] });
+      }),
+      http.get(`${APP}/api/gw/admin/saml`, () => {
+        samlCount += 1;
+        return HttpResponse.json(SAML_CONF);
+      }),
+      http.get(`${APP}/api/gw/admin/retention-policy`, () => {
+        retentionCount += 1;
+        return HttpResponse.json(RETENTION_DEFAULT);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+
+    const tablist = await screen.findByRole("tablist");
+    const tabs = within(tablist).getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      "Cache",
+      "Guardrails",
+      "SSO",
+      "Provider Keys",
+      "SCIM",
+      "SAML SSO",
+      "Retention & ZDR",
+    ]);
+
+    // Cache's GET fired (default tab); the three new tabs' GETs must NOT have fired yet.
+    await screen.findByRole("switch", { name: /response cache/i });
+    expect(scimCount).toBe(0);
+    expect(samlCount).toBe(0);
+    expect(retentionCount).toBe(0);
+  });
+
+  it("test_scim_tab_lazy_fetches_once", async () => {
+    const user = userEvent.setup();
+    let scimCount = 0;
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/scim/tokens`, () => {
+        scimCount += 1;
+        return HttpResponse.json({ tokens: [] });
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await screen.findByRole("switch", { name: /response cache/i });
+
+    await openTab(user, /^scim$/i);
+    await screen.findByText(/no scim tokens yet/i);
+    expect(scimCount).toBe(1);
+
+    // Re-clicking away and back: TanStack Query serves the cached data
+    // instantly (no loading spinner — the empty-state text is already there
+    // synchronously) and revalidates in the background, EXACTLY matching the
+    // real, empirically-confirmed behavior of the existing Guardrails/Cache/SSO
+    // tabs (none of which set staleTime, so all refetch on every remount — a
+    // second network call here is the byte-identical M2 outcome, not a
+    // regression; no staleTime override is introduced for SCIM either).
+    await openTab(user, /^cache$/i);
+    await openTab(user, /^scim$/i);
+    await screen.findByText(/no scim tokens yet/i);
+    expect(scimCount).toBe(2);
+  });
+});
+
+// ── SCIM tab ────────────────────────────────────────────────────────────────────
+describe("SettingsPage — SCIM tab", () => {
+  it("test_owner_creates_scim_token_reveals_once", async () => {
+    const user = userEvent.setup();
+    let postBody: Record<string, unknown> | null = null;
+    let listCallCount = 0;
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/scim/tokens`, () => {
+        listCallCount += 1;
+        return HttpResponse.json(listCallCount === 1 ? { tokens: [] } : { tokens: [SCIM_TOKEN_ACTIVE] });
+      }),
+      http.post(`${APP}/api/gw/admin/scim/tokens`, async ({ request }) => {
+        postBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(SCIM_CREATE_RESP, { status: 201 });
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^scim$/i);
+    await screen.findByText(/no scim tokens yet/i);
+
+    await user.click(screen.getByRole("button", { name: /create token/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/key name/i), "Okta");
+    await user.click(within(dialog).getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => expect(postBody).toEqual({ name: "Okta" }));
+    const banner = await screen.findByRole("alert");
+    expect(within(banner).getByText(SCIM_CREATE_RESP.token)).toBeInTheDocument();
+
+    // list re-fetches and shows the new row; no plaintext visible in the row itself.
+    await screen.findByText("Okta");
+    expect(screen.getByText("active")).toBeInTheDocument();
+    expect(screen.queryByText(SCIM_CREATE_RESP.token, { selector: "td" })).not.toBeInTheDocument();
+
+    // dismissing the banner clears the plaintext from component state.
+    await user.click(within(banner).getByRole("button", { name: /done/i }));
+    expect(screen.queryByText(SCIM_CREATE_RESP.token)).not.toBeInTheDocument();
+  });
+
+  it("test_member_cannot_see_scim_affordances", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/scim/tokens`, () =>
+        problem("Forbidden", 403, "ERR_AUTH_FORBIDDEN"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^scim$/i);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/forbidden/i);
+    expect(screen.queryByRole("button", { name: /create token/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /rotate/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /revoke/i })).not.toBeInTheDocument();
+  });
+
+  it("test_scim_create_name_validation_blocks_client_side", async () => {
+    const user = userEvent.setup();
+    let postCalled = false;
+    server.use(
+      cacheGet(),
+      scimGet(),
+      http.post(`${APP}/api/gw/admin/scim/tokens`, () => {
+        postCalled = true;
+        return HttpResponse.json(SCIM_CREATE_RESP, { status: 201 });
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^scim$/i);
+    await screen.findByText(/no scim tokens yet/i);
+
+    await user.click(screen.getByRole("button", { name: /create token/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^create$/i }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/key name is required/i);
+    expect(postCalled).toBe(false);
+  });
+
+  it("test_scim_rotate_reveals_new_plaintext", async () => {
+    const user = userEvent.setup();
+    let rotateBody: unknown = undefined;
+    server.use(
+      cacheGet(),
+      scimGet({ tokens: [SCIM_TOKEN_ACTIVE] }),
+      http.post(`${APP}/api/gw/admin/scim/tokens/:id/rotate`, async ({ request }) => {
+        rotateBody = await request.text();
+        return HttpResponse.json(SCIM_ROTATE_RESP);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^scim$/i);
+    await screen.findByText("Okta");
+
+    await user.click(screen.getByRole("button", { name: /rotate okta/i }));
+    const confirmDialog = await screen.findByRole("dialog");
+    await user.click(within(confirmDialog).getByRole("button", { name: /^rotate$/i }));
+
+    await waitFor(() => expect(rotateBody).toBeDefined());
+    const banner = await screen.findByRole("alert");
+    expect(within(banner).getByText(SCIM_ROTATE_RESP.token)).toBeInTheDocument();
+  });
+
+  it("test_scim_revoke_shows_destructive_badge", async () => {
+    const user = userEvent.setup();
+    let deleteCalled = false;
+    let listCallCount = 0;
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/scim/tokens`, () => {
+        listCallCount += 1;
+        return HttpResponse.json(
+          listCallCount === 1
+            ? { tokens: [SCIM_TOKEN_ACTIVE] }
+            : { tokens: [{ ...SCIM_TOKEN_ACTIVE, revoked_at: "2026-01-05T00:00:00Z" }] },
+        );
+      }),
+      http.delete(`${APP}/api/gw/admin/scim/tokens/:id`, () => {
+        deleteCalled = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^scim$/i);
+    await screen.findByText("Okta");
+
+    await user.click(screen.getByRole("button", { name: /revoke okta/i }));
+    const confirmDialog = await screen.findByRole("dialog");
+    await user.click(within(confirmDialog).getByRole("button", { name: /^revoke$/i }));
+
+    await waitFor(() => expect(deleteCalled).toBe(true));
+    expect(await screen.findByText(/revoked/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /rotate okta/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /revoke okta/i })).not.toBeInTheDocument();
+  });
+
+  it("test_scim_revoke_404_race_stays_open_inline", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      scimGet({ tokens: [SCIM_TOKEN_ACTIVE] }),
+      http.delete(`${APP}/api/gw/admin/scim/tokens/:id`, () =>
+        problem("Token not found", 404, "ERR_SCIM_TOKEN_NOT_FOUND"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^scim$/i);
+    await screen.findByText("Okta");
+
+    await user.click(screen.getByRole("button", { name: /revoke okta/i }));
+    const confirmDialog = await screen.findByRole("dialog");
+    await user.click(within(confirmDialog).getByRole("button", { name: /^revoke$/i }));
+
+    expect(await within(confirmDialog).findByRole("alert")).toHaveTextContent(/not found/i);
+    // dialog stays open — did not silently close as if it succeeded.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("test_scim_rotate_404_race_stays_open_inline", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      scimGet({ tokens: [SCIM_TOKEN_ACTIVE] }),
+      http.post(`${APP}/api/gw/admin/scim/tokens/:id/rotate`, () =>
+        problem("Token not found", 404, "ERR_SCIM_TOKEN_NOT_FOUND"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^scim$/i);
+    await screen.findByText("Okta");
+
+    await user.click(screen.getByRole("button", { name: /rotate okta/i }));
+    const confirmDialog = await screen.findByRole("dialog");
+    await user.click(within(confirmDialog).getByRole("button", { name: /^rotate$/i }));
+
+    expect(await within(confirmDialog).findByRole("alert")).toHaveTextContent(/not found/i);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByText(SCIM_ROTATE_RESP.token)).not.toBeInTheDocument();
+  });
+
+  it("test_scim_create_403_mid_session_stays_open", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      scimGet(),
+      http.post(`${APP}/api/gw/admin/scim/tokens`, () =>
+        problem("Forbidden", 403, "ERR_AUTH_FORBIDDEN"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^scim$/i);
+    await screen.findByText(/no scim tokens yet/i);
+
+    await user.click(screen.getByRole("button", { name: /create token/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/key name/i), "Okta");
+    await user.click(within(dialog).getByRole("button", { name: /^create$/i }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/forbidden/i);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    // no plaintext banner, no token listed — the create never succeeded.
+    expect(screen.queryByText(SCIM_CREATE_RESP.token)).not.toBeInTheDocument();
+  });
+});
+
+// ── SAML SSO tab ──────────────────────────────────────────────────────────────────
+describe("SettingsPage — SAML SSO tab", () => {
+  it("test_saml_tab_first_time_empty_form", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/saml`, () =>
+        problem("Not configured", 404, "ERR_SAML_CONFIG_NOT_FOUND"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^saml sso$/i);
+
+    const entityId = await screen.findByLabelText(/idp entity id/i);
+    expect(entityId).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText(/sp entity id/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/acs url/i)).not.toBeInTheDocument();
+  });
+
+  it("test_saml_tab_prefills_cert_unlike_oidc_secret", async () => {
+    const user = userEvent.setup();
+    server.use(cacheGet(), samlGet());
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^saml sso$/i);
+
+    // Multi-line PEM text defeats getByDisplayValue's whitespace-collapsing
+    // normalizer (it treats embedded newlines as collapsible whitespace on the
+    // query string but not consistently against the raw textarea .value) — assert
+    // the property directly instead of relying on the TextMatch normalizer.
+    const certField = (await screen.findByLabelText(
+      /idp x509 certificate/i,
+    )) as HTMLTextAreaElement;
+    expect(certField.value).toBe(SAML_CONF.idp_x509_cert);
+    expect(screen.getByText(SAML_CONF.sp_entity_id)).toBeInTheDocument();
+    expect(screen.getByText(SAML_CONF.acs_url)).toBeInTheDocument();
+  });
+
+  it("test_saml_put_invalid_cert_422_preserves_form", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      samlGet(),
+      http.put(`${APP}/api/gw/admin/saml`, () =>
+        problem("SAML IdP certificate is invalid or expired", 422, "ERR_SAML_CERT_INVALID"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^saml sso$/i);
+    await screen.findByLabelText(/idp x509 certificate/i);
+
+    const certField = screen.getByLabelText(/idp x509 certificate/i);
+    await user.clear(certField);
+    await user.type(certField, "not a cert");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/certificate is invalid/i);
+    expect(certField).toHaveValue("not a cert");
+  });
+
+  it("test_saml_put_bad_url_422_preserves_form", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      samlGet(),
+      http.put(`${APP}/api/gw/admin/saml`, () =>
+        HttpResponse.json(
+          {
+            detail: [
+              {
+                type: "url_scheme_invalid",
+                loc: ["body", "idp_sso_url"],
+                msg: "idp_sso_url: RFC-1918/loopback IP addresses are not permitted in production",
+                input: "http://192.168.1.1/sso",
+              },
+            ],
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^saml sso$/i);
+    await screen.findByLabelText(/idp x509 certificate/i);
+
+    const urlField = screen.getByLabelText(/idp sso url/i);
+    await user.clear(urlField);
+    await user.type(urlField, "http://192.168.1.1/sso");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/not permitted in production/i);
+    expect(urlField).toHaveValue("http://192.168.1.1/sso");
+  });
+
+  it("test_saml_non_owner_no_form", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/saml`, () =>
+        problem("Owner role required", 403, "ERR_AUTH_FORBIDDEN_OWNER_REQUIRED"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^saml sso$/i);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/owner role required/i);
+    expect(screen.queryByLabelText(/idp entity id/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── Retention & ZDR tab ─────────────────────────────────────────────────────────────
+describe("SettingsPage — Retention & ZDR tab", () => {
+  it("test_retention_tab_default_state_seven_rows_no_audit", async () => {
+    const user = userEvent.setup();
+    server.use(cacheGet(), retentionGet());
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+
+    const windowInput = await screen.findByLabelText(/window \(days\)/i);
+    expect(windowInput).toHaveValue(null);
+    expect(screen.getByRole("switch", { name: /enable zero-data-retention/i })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(screen.getByText(/inherits operator default/i)).toBeInTheDocument();
+    expect(screen.getByText(/operator ceiling: 365 days/i)).toBeInTheDocument();
+
+    for (const label of [
+      "Usage records",
+      "Alert events",
+      "Artifacts",
+      "Conversations",
+      "Memories",
+      "Batch job items",
+      "Video generation jobs",
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    expect(screen.queryByText(/audit_events/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Audit events$/i)).not.toBeInTheDocument();
+  });
+
+  it("test_retention_put_shortens_window", async () => {
+    const user = userEvent.setup();
+    let putBody: Record<string, unknown> | null = null;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      http.put(`${APP}/api/gw/admin/retention-policy`, async ({ request }) => {
+        putBody = (await request.json()) as Record<string, unknown>;
+        const shortened = {
+          ...RETENTION_DEFAULT,
+          window_days: 30,
+          effective_window_days: Object.fromEntries(
+            Object.keys(RETENTION_DEFAULT.effective_window_days).map((k) => [k, 30]),
+          ),
+        };
+        return HttpResponse.json(shortened);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+    const windowInput = await screen.findByLabelText(/window \(days\)/i);
+
+    await user.clear(windowInput);
+    await user.type(windowInput, "30");
+    await user.click(screen.getByRole("button", { name: /save window/i }));
+
+    await waitFor(() => expect(putBody).toEqual({ window_days: 30 }));
+    await waitFor(() => expect(windowInput).toHaveValue(30));
+    const rows = screen.getAllByText("30");
+    expect(rows.length).toBeGreaterThanOrEqual(7);
+  });
+
+  it("test_retention_window_out_of_bounds_422_inline", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      http.put(`${APP}/api/gw/admin/retention-policy`, () =>
+        problem("Window exceeds operator ceiling", 422, "ERR_RETENTION_WINDOW_INVALID"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+    const windowInput = await screen.findByLabelText(/window \(days\)/i);
+
+    await user.clear(windowInput);
+    await user.type(windowInput, "400");
+    await user.click(screen.getByRole("button", { name: /save window/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/exceeds operator ceiling/i);
+    expect(windowInput).toHaveValue(400);
+  });
+
+  it("test_zdr_enable_requires_confirm_dialog", async () => {
+    const user = userEvent.setup();
+    let putCalled = false;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      http.put(`${APP}/api/gw/admin/retention-policy`, () => {
+        putCalled = true;
+        return HttpResponse.json(RETENTION_ZDR_ON);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+    await screen.findByLabelText(/window \(days\)/i);
+
+    const zdrSwitch = screen.getByRole("switch", { name: /enable zero-data-retention/i });
+    await user.click(zdrSwitch);
+
+    const confirmDialog = await screen.findByRole("dialog");
+    expect(putCalled).toBe(false);
+
+    await user.click(within(confirmDialog).getByRole("button", { name: /cancel/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(zdrSwitch).toHaveAttribute("aria-checked", "false");
+    expect(putCalled).toBe(false);
+  });
+
+  it("test_zdr_switch_disabled_while_confirm_open", async () => {
+    // Defense-in-depth: while the enable-confirm dialog is open the switch is optimistically
+    // `true`; a forced/synthetic click would otherwise fire PUT{zdr_enabled:false} past the
+    // open dialog. The switch must be component-level disabled, not merely overlay-blocked.
+    const user = userEvent.setup();
+    let putCalled = false;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      http.put(`${APP}/api/gw/admin/retention-policy`, () => {
+        putCalled = true;
+        return HttpResponse.json(RETENTION_ZDR_ON);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+    await screen.findByLabelText(/window \(days\)/i);
+
+    const zdrSwitch = screen.getByRole("switch", { name: /enable zero-data-retention/i });
+    await user.click(zdrSwitch);
+    await screen.findByRole("dialog");
+
+    expect(zdrSwitch).toBeDisabled();
+    expect(putCalled).toBe(false);
+  });
+
+  it("test_zdr_enable_confirm_fires_put", async () => {
+    const user = userEvent.setup();
+    let putBody: Record<string, unknown> | null = null;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      http.put(`${APP}/api/gw/admin/retention-policy`, async ({ request }) => {
+        putBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(RETENTION_ZDR_ON);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+    await screen.findByLabelText(/window \(days\)/i);
+
+    const zdrSwitch = screen.getByRole("switch", { name: /enable zero-data-retention/i });
+    await user.click(zdrSwitch);
+    const confirmDialog = await screen.findByRole("dialog");
+    await user.click(within(confirmDialog).getByRole("button", { name: /enable zdr/i }));
+
+    await waitFor(() => expect(putBody).toEqual({ zdr_enabled: true }));
+    await waitFor(() => expect(zdrSwitch).toHaveAttribute("aria-checked", "true"));
+  });
+
+  it("test_zdr_disable_no_confirm_dialog", async () => {
+    const user = userEvent.setup();
+    let putBody: Record<string, unknown> | null = null;
+    server.use(
+      cacheGet(),
+      retentionGet(RETENTION_ZDR_ON),
+      http.put(`${APP}/api/gw/admin/retention-policy`, async ({ request }) => {
+        putBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(RETENTION_DEFAULT);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+    const zdrSwitch = await screen.findByRole("switch", { name: /enable zero-data-retention/i });
+    expect(zdrSwitch).toHaveAttribute("aria-checked", "true");
+
+    await user.click(zdrSwitch);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(putBody).toEqual({ zdr_enabled: false }));
+  });
+
+  it("test_zdr_active_deemphasizes_not_hides_window", async () => {
+    const user = userEvent.setup();
+    server.use(cacheGet(), retentionGet(RETENTION_ZDR_ON));
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+
+    const windowInput = await screen.findByLabelText(/window \(days\)/i);
+    expect(windowInput).toBeDisabled();
+    // still present, not removed — the effective-window table remains fully visible.
+    expect(screen.getByText("Usage records")).toBeInTheDocument();
+    expect(screen.getAllByText("90").length).toBeGreaterThanOrEqual(7);
+  });
+
+  it("test_retention_non_owner_no_form", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/retention-policy`, () =>
+        problem("Forbidden", 403, "ERR_AUTH_FORBIDDEN"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/forbidden/i);
+    expect(screen.queryByLabelText(/window \(days\)/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── cross-tenant 404 (representative, one per new tab) ─────────────────────────────
+describe("SettingsPage — new tabs cross-tenant 404", () => {
+  it("test_cross_tenant_404_no_leak_retention", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/retention-policy`, () =>
+        problem("Tenant not found", 404, "ERR_TENANT_NOT_FOUND"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^retention & zdr$/i);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/tenant not found/i);
+    expect(screen.queryByLabelText(/window \(days\)/i)).not.toBeInTheDocument();
+  });
+
+  it("test_cross_tenant_404_no_leak_scim", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/scim/tokens`, () =>
+        problem("Tenant not found", 404, "ERR_TENANT_NOT_FOUND"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^scim$/i);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/tenant not found/i);
+    expect(screen.queryByRole("button", { name: /create token/i })).not.toBeInTheDocument();
+  });
+
+  it("test_cross_tenant_404_no_leak_saml", async () => {
+    // SAML's 404 is the documented "not configured yet" branch (M7), never an error —
+    // it must render the tenant's OWN empty form, not another tenant's data.
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      http.get(`${APP}/api/gw/admin/saml`, () =>
+        problem("Not configured", 404, "ERR_SAML_CONFIG_NOT_FOUND"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^saml sso$/i);
+
+    const entityId = await screen.findByLabelText(/idp entity id/i);
+    expect(entityId).toHaveValue("");
+  });
+});
+
 // ── a11y + nav ────────────────────────────────────────────────────────────────────
 describe("SettingsPage — axe + nav", () => {
   it("test_settings_axe_clean", async () => {
@@ -392,7 +1123,7 @@ describe("SettingsPage — axe + nav", () => {
     await screen.findByRole("switch", { name: /prompt injection/i });
     expect(await axeSeriousCritical(container)).toEqual([]);
 
-    await user.click(screen.getByRole("tab", { name: /sso/i }));
+    await user.click(screen.getByRole("tab", { name: /^sso$/i }));
     await screen.findByDisplayValue("https://idp.example.com");
     expect(await axeSeriousCritical(container)).toEqual([]);
   });
@@ -407,5 +1138,51 @@ describe("SettingsPage — axe + nav", () => {
     const link = within(nav).getByRole("link", { name: /settings/i });
     expect(link).toHaveAttribute("href", "/app/settings");
     expect(link).toHaveAttribute("aria-current", "page");
+  });
+
+  it("test_scim_saml_retention_axe_clean", async () => {
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      scimGet({ tokens: [SCIM_TOKEN_ACTIVE] }),
+      samlGet(),
+      retentionGet(),
+    );
+    const { container } = render(<SettingsPage />, { wrapper: Wrapper });
+    await screen.findByRole("switch", { name: /response cache/i });
+
+    await openTab(user, /^scim$/i);
+    await screen.findByText("Okta");
+    expect(await axeSeriousCritical(container)).toEqual([]);
+
+    await openTab(user, /^saml sso$/i);
+    await screen.findByLabelText(/idp x509 certificate/i);
+    expect(await axeSeriousCritical(container)).toEqual([]);
+
+    await openTab(user, /^retention & zdr$/i);
+    await screen.findByLabelText(/window \(days\)/i);
+    expect(await axeSeriousCritical(container)).toEqual([]);
+  });
+
+  it("test_new_tabs_keyboard_focus_order", async () => {
+    const user = userEvent.setup();
+    server.use(cacheGet(), scimGet());
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await screen.findByRole("switch", { name: /response cache/i });
+
+    await openTab(user, /^scim$/i);
+    await screen.findByText(/no scim tokens yet/i);
+
+    const createButton = screen.getByRole("button", { name: /create token/i });
+    createButton.focus();
+    expect(createButton).toHaveFocus();
+
+    await user.click(createButton);
+    const dialog = await screen.findByRole("dialog");
+    // Focus moves inside the dialog on open (useFocusTrap) and Escape returns it.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(createButton).toHaveFocus();
   });
 });

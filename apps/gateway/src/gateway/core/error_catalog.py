@@ -44,6 +44,7 @@ class ErrorSpec:
         self,
         detail: str | None = None,
         headers: dict[str, str] | None = None,
+        extra: dict[str, object] | None = None,
         **fmt: object,
     ) -> ProblemError:
         """Return a ``ProblemError`` ready to be raised.
@@ -52,6 +53,10 @@ class ErrorSpec:
             detail: optional human-readable elaboration included in the
                 RFC 9457 ``detail`` field.
             headers: optional response headers (e.g. ``Retry-After``).
+            extra: optional additive structured-data fields merged into the
+                response body (e.g. ``raw_output``/``validation_errors`` on
+                ``ERR_OUTPUT_SCHEMA_VALIDATION_FAILED``). None for every other
+                call site — byte-identical by construction.
             **fmt: keyword arguments forwarded to ``title_template.format()``.
                    When the template has no placeholders, pass nothing.
 
@@ -66,6 +71,7 @@ class ErrorSpec:
             title=title,
             detail=detail,
             headers=headers,
+            extra=extra,
         )
 
 
@@ -391,6 +397,19 @@ BANDWIDTH_EXHAUSTED = ErrorSpec(503, "ERR_BANDWIDTH_EXHAUSTED", "Bandwidth limit
 GUARDRAIL_BLOCKED = ErrorSpec(400, "ERR_GUARDRAIL_BLOCKED", "Request blocked by guardrail policy")
 
 # ---------------------------------------------------------------------------
+# Payload capture (payload-capture-store TASK.md §3, FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: PUT /admin/capture {enabled: true} rejected — tenant is under Zero-Data-Retention.
+#: Honest-degradation requirement: the toggle must never read as "on" when it can
+#: never actually capture anything.
+CAPTURE_ZDR_BLOCKED = ErrorSpec(
+    409,
+    "ERR_CAPTURE_ZDR_BLOCKED",
+    "Cannot enable payload capture — tenant is under Zero-Data-Retention",
+)
+
+# ---------------------------------------------------------------------------
 # Provider credentials (BYOK admin API — provider-config-admin-api §3 CONTRACT)
 # ---------------------------------------------------------------------------
 
@@ -520,6 +539,130 @@ OIDC_DOMAIN_NOT_MAPPED = ErrorSpec(
 #: The verified email is bound to a different tenant.
 OIDC_TENANT_CONFLICT = ErrorSpec(
     403, "ERR_OIDC_TENANT_CONFLICT", "Email is bound to a different tenant"
+)
+
+#: Resolved user's deactivated_at is set (scim-provisioning TASK.md §3, M7) — same
+#: denial family as the password-login path; no session JWT is issued.
+OIDC_ACCOUNT_DEACTIVATED = ErrorSpec(
+    403, "ERR_OIDC_ACCOUNT_DEACTIVATED", "Account is deactivated"
+)
+
+# ---------------------------------------------------------------------------
+# SAML 2.0 SSO errors (saml-sso task)
+# ---------------------------------------------------------------------------
+
+#: No enabled SAML config matches the requested domain (M1).
+SAML_NOT_CONFIGURED = ErrorSpec(
+    404, "ERR_SAML_NOT_CONFIGURED", "SAML login is not configured for this domain"
+)
+
+#: No pending-request record matches the (unverified) InResponseTo — includes
+#: genuinely IdP-initiated, unsolicited responses (M6).
+SAML_REQUEST_NOT_FOUND = ErrorSpec(
+    400, "ERR_SAML_REQUEST_NOT_FOUND", "No matching SAML login request found"
+)
+
+#: The pending-request record was already consumed (M3 single-use).
+SAML_REQUEST_ALREADY_USED = ErrorSpec(
+    400, "ERR_SAML_REQUEST_ALREADY_USED", "SAML login request has already been used"
+)
+
+#: XML signature verification failed (M4).
+SAML_SIGNATURE_INVALID = ErrorSpec(
+    401, "ERR_SAML_SIGNATURE_INVALID", "SAML assertion signature validation failed"
+)
+
+#: Assertion/response Issuer does not match the tenant's configured idp_entity_id.
+SAML_ISSUER_MISMATCH = ErrorSpec(401, "ERR_SAML_ISSUER_MISMATCH", "SAML issuer mismatch")
+
+#: Audience does not match the tenant's sp_entity_id.
+SAML_AUDIENCE_MISMATCH = ErrorSpec(401, "ERR_SAML_AUDIENCE_MISMATCH", "SAML audience mismatch")
+
+#: The signed SubjectConfirmationData/@InResponseTo does not match the pending request_id (M5.4).
+SAML_RESPONSE_MISMATCH = ErrorSpec(
+    401, "ERR_SAML_RESPONSE_MISMATCH", "SAML response does not match the pending request"
+)
+
+#: NotBefore/NotOnOrAfter violated outside the configured clock-skew window (M5.5).
+SAML_ASSERTION_EXPIRED = ErrorSpec(401, "ERR_SAML_ASSERTION_EXPIRED", "SAML assertion has expired")
+
+#: Assertion @ID already present in the consumed-assertion cache (M5.6).
+SAML_ASSERTION_REPLAYED = ErrorSpec(
+    401, "ERR_SAML_ASSERTION_REPLAYED", "SAML assertion has already been used"
+)
+
+#: No email resolvable via the M13 ranked lookup.
+SAML_EMAIL_MISSING = ErrorSpec(
+    401, "ERR_SAML_EMAIL_MISSING", "SAML assertion has no resolvable email"
+)
+
+#: The verified email is bound to a different tenant.
+SAML_TENANT_CONFLICT = ErrorSpec(
+    403, "ERR_SAML_TENANT_CONFLICT", "Email is bound to a different tenant"
+)
+
+#: app.state.redis_client unreachable during the M3/M5.6 replay checks (M12, fail-CLOSED).
+SAML_STORE_UNAVAILABLE = ErrorSpec(
+    503, "ERR_SAML_STORE_UNAVAILABLE", "SAML login request store is temporarily unavailable"
+)
+
+#: No saml_provider_configs row found for the tenant (admin GET endpoint).
+SAML_CONFIG_NOT_FOUND = ErrorSpec(
+    404, "ERR_SAML_CONFIG_NOT_FOUND", "No SAML configuration found for this tenant"
+)
+
+#: PUT /admin/saml with an unparseable or expired idp_x509_cert.
+SAML_CERT_INVALID = ErrorSpec(
+    422, "ERR_SAML_CERT_INVALID", "SAML IdP certificate is invalid or expired"
+)
+
+#: PUT /admin/saml with an email_domains entry already claimed by a DIFFERENT
+#: tenant's saml_provider_configs row — collision guard added post-freeze
+#: (add-verify Finding 3, 2026-07-10: an unguarded collision crashes GET
+#: /auth/saml/login with an unhandled MultipleResultsFound for every tenant
+#: sharing the domain).
+SAML_DOMAIN_ALREADY_CLAIMED = ErrorSpec(
+    409,
+    "ERR_SAML_DOMAIN_ALREADY_CLAIMED",
+    "One or more email_domains are already claimed by another tenant's SAML configuration",
+)
+
+# ---------------------------------------------------------------------------
+# Domain capture — verified email-domain claims (domain-capture TASK.md §3, FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /admin/domain-claims with a malformed/single-label/IP-literal domain (M3, R1).
+DOMAIN_INVALID = ErrorSpec(400, "ERR_DOMAIN_INVALID", "Domain is not a valid claimable hostname")
+
+#: A DIFFERENT tenant already holds a verified claim on this domain — the M4 UX pre-check
+#: (R2) AND the M6 cross-tenant verify-race rejection (R7, M1's partial unique index).
+DOMAIN_ALREADY_VERIFIED = ErrorSpec(
+    409,
+    "ERR_DOMAIN_ALREADY_VERIFIED",
+    "This domain is already verified by another tenant",
+)
+
+#: POST .../verify — the DNS TXT record was missing or did not match this claim's token (R5).
+DOMAIN_VERIFICATION_FAILED = ErrorSpec(
+    400,
+    "ERR_DOMAIN_VERIFICATION_FAILED",
+    "The expected DNS TXT record was not found or did not match",
+)
+
+#: POST .../verify after now > expires_at — caller must re-POST to reissue a fresh token (R6).
+DOMAIN_CLAIM_EXPIRED = ErrorSpec(
+    410,
+    "ERR_DOMAIN_CLAIM_EXPIRED",
+    "This verification challenge has expired; request a new one",
+)
+
+#: Unknown claim_id OR a claim_id belonging to a different tenant — deliberately
+#: indistinguishable (R9), mirrors InviteNotFoundError's own precedent.
+DOMAIN_CLAIM_NOT_FOUND = ErrorSpec(404, "ERR_DOMAIN_CLAIM_NOT_FOUND", "Domain claim not found")
+
+#: DNS resolver error/NXDOMAIN/empty-answer/timeout — fail CLOSED, never a verified match (M13, R8).
+DNS_LOOKUP_FAILED = ErrorSpec(
+    503, "ERR_DNS_LOOKUP_FAILED", "DNS lookup failed or timed out; try again"
 )
 
 # ---------------------------------------------------------------------------
@@ -737,7 +880,107 @@ BATCH_ITEMS_TOO_MANY = ErrorSpec(
     422, "batch_items_too_many", "line_items exceeds the maximum allowed"
 )
 
+# ---------------------------------------------------------------------------
+# Tenant retention window + Zero-Data-Retention (tenant-retention-zdr task)
+# ---------------------------------------------------------------------------
+
+#: PUT /admin/retention-policy — window_days is <= 0, non-integer, or exceeds
+#: operator_ceiling_days (Settings.retention_tenant_window_ceiling_days).
+RETENTION_WINDOW_INVALID = ErrorSpec(
+    422,
+    "ERR_RETENTION_WINDOW_INVALID",
+    "window_days must be a positive integer within the operator ceiling",
+)
+
+#: A write to one of the 5 gated payload repositories while tenants.zdr_enabled=true
+#: (read fresh per call, see gateway.tenants.application.retention_policy.raise_if_zdr).
+#: The row is never created — not partially written, not written-then-deleted.
+ZDR_PAYLOAD_BLOCKED = ErrorSpec(
+    403,
+    "ERR_ZDR_PAYLOAD_BLOCKED",
+    "Zero-Data-Retention is enabled for this tenant; payload writes are blocked",
+)
+
 #: A line item failed validation: missing model, missing/empty messages, or a
 #: custom_id that duplicates another item in the same submission. The whole
 #: submission is atomic — no row is created on this reject.
 BATCH_ITEM_INVALID = ErrorSpec(422, "batch_item_invalid", "a line item failed validation")
+
+# ---------------------------------------------------------------------------
+# Compliance export errors (compliance-export-api TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: GET /admin/audit/export?cursor=... is undecodable, malformed, or the wrong shape.
+CURSOR_INVALID = ErrorSpec(422, "ERR_CURSOR_INVALID", "Export cursor is malformed or unrecognized")
+
+#: GET /admin/audit/export's bounded DB read exceeded its time budget (M12).
+EXPORT_QUERY_TIMEOUT = ErrorSpec(
+    504,
+    "ERR_EXPORT_TIMEOUT",
+    "Export query exceeded the time budget; narrow the range or reduce limit",
+)
+
+# ---------------------------------------------------------------------------
+# Output-schema validation errors (output-schema-validation task, TASK.md §3)
+# ---------------------------------------------------------------------------
+
+#: M1 gate engaged (operator flag ON + validate_output:true) + stream:true — the
+#: retry loop has no buffered "final body" to validate-then-swap on a stream
+#: (structurally out of reach, not a scoping preference). Never billed.
+OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM = ErrorSpec(
+    400,
+    "ERR_OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM",
+    "Output validation is not supported on streaming requests",
+)
+
+#: M1 gate engaged but response_format is absent, {type:"text"}, or
+#: {type:"json_object"} — nothing to validate the output against. Never billed.
+OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA = ErrorSpec(
+    400,
+    "ERR_OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA",
+    "validate_output requires response_format.type == 'json_schema'",
+)
+
+#: M1 gate engaged and response_format.json_schema.schema fails JSON-Schema
+#: meta-validation (M3, pre-flight — zero upstream calls) OR extract_response_format
+#: itself raised ERR_INVALID_JSON_SCHEMA for a json_schema directive missing its
+#: schema object. REUSES the v11 response_format_translation.py CODE STRING (same
+#: class of problem, new trigger) per PROJECT.md v8's error-catalog-reuse convention
+#: — response_format_translation.py itself has no HTTP-layer mapping today, so this
+#: is this task's own first wiring of that code to an ErrorSpec, not a duplicate.
+INVALID_JSON_SCHEMA = ErrorSpec(
+    400, "ERR_INVALID_JSON_SCHEMA", "The provided JSON Schema is invalid"
+)
+
+#: Both attempt 1 and attempt 2 (the one bounded retry) failed validation (M5/M8
+#: exhausted). Carries raw_output + validation_errors via ErrorSpec.exc(extra=...).
+#: Both attempts' usage rows are still recorded (M8) — never a silent free retry.
+OUTPUT_SCHEMA_VALIDATION_FAILED = ErrorSpec(
+    422,
+    "ERR_OUTPUT_SCHEMA_VALIDATION_FAILED",
+    "Model output failed schema validation after 1 retry",
+)
+
+# ---------------------------------------------------------------------------
+# SCIM token management (scim-provisioning task — /admin/scim/tokens, RFC 9457 side only;
+# /scim/v2/* uses the separate SCIM error envelope — gateway.scim.api.errors)
+# ---------------------------------------------------------------------------
+
+#: /admin/scim/tokens/{id}/rotate|DELETE — unknown id, already revoked, or cross-tenant.
+#: Deliberately indistinguishable (no oracle), mirrors INVITE_NOT_FOUND's own precedent.
+SCIM_TOKEN_NOT_FOUND = ErrorSpec(404, "ERR_SCIM_TOKEN_NOT_FOUND", "SCIM token not found")
+
+# ---------------------------------------------------------------------------
+# Logs Explorer (logs-explorer-api TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: GET /admin/logs/{log_id} — unknown id OR cross-tenant id. Deliberately indistinguishable
+#: (no oracle), mirrors SCIM_TOKEN_NOT_FOUND / INVITE_NOT_FOUND's own precedent.
+LOG_NOT_FOUND = ErrorSpec(404, "ERR_LOG_NOT_FOUND", "Request log not found")
+
+#: GET /admin/logs's bounded DB read exceeded its time budget (mirrors EXPORT_QUERY_TIMEOUT).
+LOGS_QUERY_TIMEOUT = ErrorSpec(
+    504,
+    "ERR_LOGS_QUERY_TIMEOUT",
+    "Logs query exceeded the time budget; narrow the range or reduce limit",
+)

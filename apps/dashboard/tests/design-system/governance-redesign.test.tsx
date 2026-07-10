@@ -491,7 +491,7 @@ describe("test_settings_pageheader_keeps_four_tabs", () => {
     const tablist = screen.getByRole("tablist");
     expect(within(tablist).getByRole("tab", { name: /cache/i })).toBeInTheDocument();
     expect(within(tablist).getByRole("tab", { name: /guardrails/i })).toBeInTheDocument();
-    expect(within(tablist).getByRole("tab", { name: /sso/i })).toBeInTheDocument();
+    expect(within(tablist).getByRole("tab", { name: /^sso$/i })).toBeInTheDocument();
     expect(within(tablist).getByRole("tab", { name: /provider keys/i })).toBeInTheDocument();
 
     // Cache tab selected by default

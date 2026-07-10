@@ -613,7 +613,7 @@ Glossary deltas:
   that coexists with — and never replaces or is derived by overwriting — the operator's own
   `ai_proxy_session` cookie for the duration of an active impersonation session; cleared on explicit
   End or left to lapse via its own `Max-Age` at the session's natural TTL. Its VALUE is a small,
-  URI-encoded JSON envelope (`{token, session_id, expires_at}`), not a bare JWT — see M1.
+  URI-encoded JSON envelope (`{token, session_id, expires_at}`), not a bare JWT — see M1. [folded foundation-version 49]
 
 Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no

@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +34,9 @@ class ApiKey:
     cache_enabled: bool = False
     # Guardrails-core additive field (guardrails-core migration)
     # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
+    # per-key-guardrail-policies (M1-M3): now the RESOLVED value — key.guardrail_policy
+    # when non-NULL (wholesale override, tenant never consulted), else tenant.guardrail_configs
+    # byte-identically to pre-task behavior.
     guardrail_configs: dict[str, Any] = field(default_factory=dict)
     # Semantic-cache additive field (semantic-cache migration)
     # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
@@ -41,6 +44,19 @@ class ApiKey:
     # Batch-auto-grouping additive field (batch-auto-grouping migration, v57)
     # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
     batch_grouping_enabled: bool = False
+    # Per-key-guardrail-policies additive field: which layer the RESOLVED
+    # guardrail_configs above actually came from — "key" (non-NULL override),
+    # "tenant" (inherited, tenant has a non-empty config), or "none" (neither
+    # configured). Populated in get_by_id() at zero extra DB cost; threaded onward
+    # into AuthzResult.policy_source for the sibling guardrail-analytics task.
+    guardrail_policy_source: Literal["key", "tenant", "none"] = "none"
+    # tenant-retention-zdr additive field (tenant-retention-zdr TASK.md §3, FROZEN @ v1)
+    # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
+    zdr_enabled: bool = False
+    # Payload-capture-store additive field (payload-capture-store migration)
+    # Raw key-level column value in create()/list_by_tenant(); OR-resolved with
+    # tenants.payload_capture_enabled in get_by_id() (mirrors cache_enabled's dual role).
+    capture_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,3 +119,19 @@ class AuthzResult:
     # Populated at auth time from tenants.batch_grouping_enabled via the existing LEFT JOIN tenants.
     # Default False = diversion inactive (per-tenant opt-in, M9 byte-identical guarantee).
     batch_grouping_enabled: bool = False
+    # Per-key-guardrail-policies additive field (freeze question #3, decided: add now).
+    # Mirrors ApiKey.guardrail_policy_source — which layer guardrail_configs above
+    # resolved from. Default "none" preserves byte-identical construction for every
+    # existing AuthzResult(...) call site that predates this task.
+    policy_source: Literal["key", "tenant", "none"] = "none"
+    # tenant-retention-zdr additive field (tenant-retention-zdr TASK.md §3, FROZEN @ v1)
+    # Populated at auth time from tenants.zdr_enabled via the existing LEFT JOIN tenants.
+    # Default False = ZDR inactive. M5's five gated repositories re-check this FRESH per
+    # call (gateway.tenants.application.retention_policy.raise_if_zdr) rather than trust
+    # this value alone — this field is used for M6 (cache-write skip), where the same
+    # per-request freshness the LEFT JOIN already provides is sufficient.
+    zdr_enabled: bool = False
+    # Payload-capture-store additive field (payload-capture-store migration)
+    # Effective = api_keys.capture_enabled OR tenants.payload_capture_enabled (resolved at
+    # auth time, mirrors cache_enabled's OR-resolution exactly — key can only turn ON).
+    payload_capture_enabled: bool = False

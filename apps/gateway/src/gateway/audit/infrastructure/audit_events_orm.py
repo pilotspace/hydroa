@@ -60,6 +60,27 @@ class AuditEventRow(Base):
             "tenant_id",
             "created_at",
         ),
+        # compliance-export-api TASK.md §3 (FROZEN @ v1) — additive, migration
+        # <see migrations/versions/*_audit_events_export_index.py>. Ascending plain-column
+        # composite index (not the frozen sketch's DESC-expression form): Postgres scans an
+        # ascending btree index BACKWARD at equal cost for `ORDER BY created_at DESC, id DESC`,
+        # and plain columns keep this __table_args__ declaration and the migration's
+        # op.create_index call byte-for-byte comparable by `alembic check` (an expression index
+        # via sa.text("created_at DESC") is a known source of noisy/undetected autogenerate
+        # diffs) — recorded build-time deviation, strictly-more-correct + harmless (TASK.md §5).
+        Index(
+            "audit_events_tenant_created_id_idx",
+            "tenant_id",
+            "created_at",
+            "id",
+        ),
+        # Supports the optional actor_email export filter (M7); leaf index — the far more
+        # common no-actor-filter keyset walk uses the composite index above instead (§3
+        # FREEZE-QUESTION 4, "as drafted": two narrower indexes).
+        Index(
+            "audit_events_actor_email_idx",
+            "actor_email",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
@@ -77,6 +98,15 @@ class AuditEventRow(Base):
     # pattern so create_all in tests doesn't require a matching row, and a revoked key's
     # historical audit rows are never blocked.
     actor_key_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=True,
+    )
+    # scim-provisioning (TASK.md §3, migration 010e6f83a709): additive, nullable — the
+    # machine actor for a SCIM-token-authenticated caller with no user identity. No FK
+    # to scim_tokens(id) at the ORM-mapped-column level — mirrors actor_key_id's own
+    # FK-less pattern so create_all in tests doesn't require a matching row, and a
+    # revoked token's historical audit rows are never blocked.
+    actor_scim_token_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         nullable=True,
     )

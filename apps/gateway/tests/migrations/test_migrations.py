@@ -59,6 +59,11 @@ EXPECTED_TABLES = frozenset(
         "plans",  # SANCTIONED EDIT — plan-catalog TASK.md §3 manifest maintenance; disposition: additive migration 1e66a2cb51a6 adds this table
         "impersonation_sessions",  # SANCTIONED EDIT — impersonation-session-lifecycle TASK.md §3 manifest maintenance; disposition: additive migration 1d563bf9b143 adds this table
         "tenant_rate_card_entries",  # SANCTIONED EDIT — tiered-rate-cards TASK.md §3 manifest maintenance; disposition: additive migration f70104c27b41 adds this table
+        "scim_tokens",  # SANCTIONED EDIT — scim-provisioning TASK.md §3 manifest maintenance; disposition: additive migration 010e6f83a709 adds this table
+        "saml_provider_configs",  # SANCTIONED EDIT — saml-sso TASK.md §3 manifest maintenance; disposition: additive migration c950c528d3d5 adds this table
+        "request_logs",  # SANCTIONED EDIT — payload-capture-store TASK.md §3 manifest maintenance; disposition: additive migration a1c5e7f9b3d6 adds this table
+        "guardrail_verdict_events",  # SANCTIONED EDIT — guardrail-analytics TASK.md §3 manifest maintenance; disposition: additive migration b7c9e1a3f5d8 adds this table
+        "tenant_domain_claims",  # SANCTIONED EDIT — domain-capture TASK.md §3 manifest maintenance; disposition: additive migration b3d8e1f4a7c2 adds this table
     }
 )
 

@@ -117,6 +117,29 @@ class TenantRow(Base):
     batch_grouping_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    # tenant-retention-zdr TASK.md §3 (FROZEN @ v1) — additive, no backfill.
+    # NULL = inherits the operator per-table defaults (byte-identical default state).
+    retention_window_days: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # BOOLEAN NOT NULL DEFAULT false — Zero-Data-Retention mode. Fail-closed-blocks new
+    # payload writes at the 5 repository choke points (see
+    # gateway.tenants.application.retention_policy.raise_if_zdr) and drives the
+    # sweeper's unconditional per-tenant purge pass.
+    zdr_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    # ISO-8601 timestamp set on the false->true transition (PUT /admin/retention-policy).
+    # NOT cleared on a later true->false transition — preserves the compliance record of
+    # when ZDR was most recently enabled.
+    zdr_enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    # Payload-capture-store additive field (payload-capture-store migration)
+    # BOOLEAN NOT NULL DEFAULT false — per-tenant opt-in for PII-scrubbed request/
+    # response payload capture (request_logs). OR-resolved with api_keys.capture_enabled
+    # at auth time (mirrors cache_enabled's key-can-only-turn-ON precedent).
+    payload_capture_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # updated_at — NOT in the baseline (ad14442336db created tenants with created_at only);
     # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without
@@ -168,6 +191,13 @@ class UserRow(Base):
         sa.VARCHAR(32), nullable=False, server_default=text("'password'"), default="password"
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # deactivated_at — additive column (scim-provisioning migration 010e6f83a709).
+    # NULL = active (default, all existing rows unaffected). Mirrors api_keys.revoked_at's
+    # nullable-timestamp soft-revoke pattern. Set by SCIM PATCH active:false; cleared by
+    # PATCH active:true (reactivation).
+    deactivated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
 
 class InviteRow(Base):

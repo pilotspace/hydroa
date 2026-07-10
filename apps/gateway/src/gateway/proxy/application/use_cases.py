@@ -39,10 +39,14 @@ from gateway.core.error_catalog import (
     BANDWIDTH_EXHAUSTED,
     BUDGET_EXCEEDED,
     GUARDRAIL_BLOCKED,
+    INVALID_JSON_SCHEMA,
     MODEL_DISABLED,
     MODEL_MODALITY_MISMATCH,
     MODEL_NOT_ALLOWED,
     MODEL_UNKNOWN,
+    OUTPUT_SCHEMA_VALIDATION_FAILED,
+    OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA,
+    OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM,
     PAYLOAD_MESSAGES_REQUIRED,
     PAYLOAD_MODEL_REQUIRED,
     PRESET_NOT_FOUND,
@@ -51,8 +55,10 @@ from gateway.core.error_catalog import (
     UPSTREAM_UNAVAILABLE,
 )
 from gateway.core.errors import ProblemError
+from gateway.guardrail_analytics.application.verdict_recorder import record_guardrail_verdicts
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
+from gateway.logs.domain.sse_content_extractor import extract_content_from_sse
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
@@ -63,7 +69,16 @@ from gateway.proxy.domain.errors import (
     UpstreamRateLimitedError,
     UpstreamUnavailableError,
 )
+from gateway.proxy.domain.guardrail_tenant_context import (
+    reset_guardrail_tenant_id,
+    set_guardrail_tenant_id,
+)
 from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
+from gateway.proxy.domain.output_validation import (
+    check_schema_well_formed,
+    truncate_raw_output,
+    validate_model_output,
+)
 from gateway.proxy.domain.ports import (
     BatchDiversionPort,
     BatchDivertedStream,
@@ -74,6 +89,7 @@ from gateway.proxy.domain.ports import (
     KeyAuthenticator,
     ModelAccess,
     ModelChecker,
+    PayloadCapturePort,
     ProviderResolver,
     ResponseCache,
     TenantCredentialResolver,
@@ -85,6 +101,7 @@ from gateway.proxy.domain.provider_credentials import (
     BYOK_PROVIDERS,
     ProviderKeyMissing,
 )
+from gateway.proxy.domain.response_format_translation import extract_response_format
 from gateway.rate_limits.application.passthrough import (
     PassthroughBandwidthBucket,
     PassthroughRateLimiter,
@@ -255,11 +272,14 @@ def _fire_record(
     usage: dict[str, Any] | None,
     status: int,
     team_id: uuid.UUID | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget usage record; forwards team_id when set (team-governance seam)."""
     extras: UsageRecordExtras = {}
     if team_id is not None:
         extras["team_id"] = team_id
+    if request_id is not None:
+        extras["request_id"] = request_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -279,6 +299,7 @@ def _fire_record_cached(
     model: str,
     usage: dict[str, Any] | None,
     team_id: uuid.UUID | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget usage record for a cache hit (cached=true, cost_usd=0).
 
@@ -288,6 +309,8 @@ def _fire_record_cached(
     extras: UsageRecordExtras = {"cached": True}
     if team_id is not None:
         extras["team_id"] = team_id
+    if request_id is not None:
+        extras["request_id"] = request_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -394,6 +417,7 @@ def _fire_record_with_raw(
     usage_source: str | None = None,
     provider_generation_id: str | None = None,
     disconnect_estimate: bool = False,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
@@ -403,6 +427,9 @@ def _fire_record_with_raw(
     Additive extension (pricing-units TASK.md §3):
       pricing_unit / quantity are forwarded via UsageRecordExtras when set.
       Chat/embeddings callers pass nothing new — defaults None → per_token path.
+
+    request_id (request-log-metering-fields TASK.md §3): correlation key forwarded
+    via the SAME typed extras seam when set.
     """
     extras: UsageRecordExtras = {}
     if team_id is not None:
@@ -423,6 +450,8 @@ def _fire_record_with_raw(
         extras["provider_generation_id"] = provider_generation_id
     if disconnect_estimate:
         extras["disconnect_estimate"] = True
+    if request_id is not None:
+        extras["request_id"] = request_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -432,6 +461,220 @@ def _fire_record_with_raw(
         status=status,
         extras=extras,
     )
+
+
+async def _run_output_validation_retry(
+    *,
+    authz: AuthzResult,
+    body: dict[str, Any],
+    upstream: CompletionUpstream,
+    usage_recorder: UsageRecorder,
+    model_router: FallbackModelRouter | None,
+    model_id: str,
+    schema: dict[str, Any],
+    status: int,
+    response_body: dict[str, Any],
+    served_model_id: str,
+) -> tuple[int, dict[str, Any], str, str | None]:
+    """M5-M8 bounded-retry loop, entered only when attempt 1 (already 200) failed
+    schema validation. Extracted as its own function (not inlined in complete())
+    so CompletionUseCase.complete() stays within pyright's control-flow complexity
+    limit — the mega-method already carries ~15 branches of its own.
+
+    Returns (status, response_body, served_model_id, usage_source_final) for the
+    caller to resume its existing flow with — usage_source_final is None (default
+    "frame") on a validated success, else "validation_retry" for the caller's own
+    final billing call.
+
+    Raises ProblemError exactly like complete()'s own upstream-call handling
+    (429/502) for a transport failure on the retry leg, or 422
+    ERR_OUTPUT_SCHEMA_VALIDATION_FAILED when both attempts fail validation (M5/M8
+    exhausted) — carrying attempt 2's raw output + bounded validation_errors (M12).
+    """
+    # M8: attempt 1 was a REAL, paid upstream call — bill it before the retry fires
+    # (never a free/undisclosed first attempt).
+    usage1_raw = response_body.get("usage")
+    usage1 = usage1_raw if isinstance(usage1_raw, dict) else None
+    _fire_record_with_raw(
+        usage_recorder,
+        tenant_id=authz.tenant_id,
+        key_id=authz.key_id,
+        model=served_model_id,
+        usage=usage1,
+        status=status,
+        team_id=authz.team_id,
+        usage_source="validation_retry",
+    )
+    # M5/M6/M7: exactly ONE bounded retry, the IDENTICAL routed call, same
+    # unmodified body — no re-run of governance/budget/rate-limit (M6); a transport
+    # failure raises the SAME path attempt 1 would (M7 — the breaker is never
+    # bypassed "because it's just a retry").
+    try:
+        if model_router is not None:
+            retry_status, retry_body, retry_served = await model_router.complete(
+                body, upstream=upstream
+            )
+        else:
+            retry_status, retry_body = await upstream.complete(body)
+            retry_served = model_id
+    except AllDeploymentsSaturatedError as exc:
+        raise RATE_LIMITED.exc(
+            detail=f"all deployments for '{exc.alias}' are rate-limited",
+            headers={"Retry-After": "60"},
+        ) from exc
+    except UpstreamRateLimitedError as exc:
+        _fire_record_with_raw(
+            usage_recorder,
+            tenant_id=authz.tenant_id,
+            key_id=authz.key_id,
+            model=model_id,
+            usage=None,
+            status=429,
+            team_id=authz.team_id,
+            usage_source="validation_retry",
+        )
+        if exc.retry_after is not None:
+            raise UPSTREAM_RATE_LIMITED.exc(
+                headers={"Retry-After": str(int(exc.retry_after))}
+            ) from None
+        raise UPSTREAM_RATE_LIMITED.exc() from None
+    except (UpstreamUnavailableError, CircuitOpenError):
+        # Circuit-breaker proxy has already counted the failure.
+        raise UPSTREAM_UNAVAILABLE.exc() from None
+
+    if retry_status != 200:
+        # A genuine upstream pass-through on the retry leg (not a validation
+        # failure) — never a fabricated 422 for a response the provider itself
+        # didn't say was invalid. Billed under validation_retry (it's still the
+        # terminal attempt of this bounded-retry loop, M8); caller's existing
+        # status==200-gated cache-store/evaluate_post steps no-op naturally.
+        return retry_status, retry_body, retry_served, "validation_retry"
+
+    retry_outcome = validate_model_output(schema, retry_body)
+    if retry_outcome["valid"]:
+        # Attempt 2 succeeded — keeps the DEFAULT "frame" usage_source (M8); caller
+        # falls through the rest of complete() (cache-store skip, masking, billing).
+        return retry_status, retry_body, retry_served, None
+
+    # M5/M8 exhausted: both attempts failed validation. Bill attempt 2 (also
+    # real/paid) then raise the terminal 422 — never a silent free retry, never
+    # partial content returned.
+    usage2_raw = retry_body.get("usage")
+    usage2 = usage2_raw if isinstance(usage2_raw, dict) else None
+    _fire_record_with_raw(
+        usage_recorder,
+        tenant_id=authz.tenant_id,
+        key_id=authz.key_id,
+        model=retry_served,
+        usage=usage2,
+        status=retry_status,
+        team_id=authz.team_id,
+        usage_source="validation_retry",
+    )
+    raise OUTPUT_SCHEMA_VALIDATION_FAILED.exc(
+        extra={
+            "raw_output": truncate_raw_output(retry_body),
+            "validation_errors": retry_outcome["errors"],
+        }
+    )
+def _capture_response_body(collected: list[bytes]) -> dict[str, Any] | None:
+    """Build the capture-hook response_body for a streaming exit branch.
+
+    Wraps the assembled assistant text (extract_content_from_sse) in the same
+    {"content": "<text>"} shape logs/application/capture_writer.py already recognizes
+    for streaming rows — None when no content fragments were found (e.g. an empty or
+    pre-first-byte-failed stream), which capture_writer treats as "no response
+    content", never a crash.
+    """
+    content = extract_content_from_sse(collected)
+    return {"content": content} if content is not None else None
+
+
+def _dispatch_capture(
+    payload_capture: PayloadCapturePort | None,
+    *,
+    enabled: bool,
+    tenant_id: uuid.UUID,
+    key_id: uuid.UUID,
+    model: str,
+    request_body: dict[str, Any],
+    response_body: dict[str, Any] | None,
+    status: int,
+    stream: bool,
+    cached: bool,
+    guardrail_configs: dict[str, Any],
+    usage: dict[str, Any] | None = None,
+    latency_ms: int | None = None,
+    request_id: uuid.UUID | None = None,
+) -> None:
+    """Schedule a fire-and-forget payload-capture write (payload-capture-store §3).
+
+    No-op when the port is unwired (None, the default — every existing frozen test
+    fake that does not inject one stays byte-identical) or capture is not effectively
+    enabled for this tenant/key. All scrub/truncate/ZDR/timeout/concurrency-shed logic
+    lives INSIDE the port implementation (SqlAlchemyPayloadCapture) — this call site's
+    only job is the enabled-gate + fire-and-forget dispatch, mirroring _dispatch_record's
+    idiom exactly (task reference kept to satisfy RUF006; exception suppressed so a
+    capture-store failure can never surface as "Task exception was never retrieved").
+
+    usage/latency_ms/request_id (request-log-metering-fields TASK.md §3, additive):
+    forwarded verbatim into payload_capture.capture(...) — never recomputed here.
+    """
+    if payload_capture is None or not enabled:
+        return
+    task = asyncio.ensure_future(
+        payload_capture.capture(
+            tenant_id=tenant_id,
+            key_id=key_id,
+            model=model,
+            request_body=request_body,
+            response_body=response_body,
+            status=status,
+            stream=stream,
+            cached=cached,
+            guardrail_configs=guardrail_configs,
+            usage=usage,
+            latency_ms=latency_ms,
+            request_id=request_id,
+        )
+    )
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
+def _dispatch_guardrail_verdicts(
+    session_factory: Any,
+    *,
+    tenant_id: uuid.UUID,
+    key_id: uuid.UUID,
+    team_id: uuid.UUID | None,
+    policy_source: str,
+    events: list[Any],
+) -> None:
+    """Schedule a fire-and-forget guardrail_verdict_events write (guardrail-analytics §3).
+
+    No-op when session_factory is unwired (None — every existing frozen test fake that
+    does not wire a DB-backed budget_guard stays byte-identical, since session_factory
+    comes from CompletionUseCase._get_session_factory(), the SAME zero-new-dependency
+    extraction the soft-budget-alert seam already uses) or events is empty. All
+    own-session/timeout/swallow-all logic lives INSIDE record_guardrail_verdicts —
+    this call site's only job is the None-gate + fire-and-forget dispatch, mirrors
+    _dispatch_capture's idiom exactly (task reference kept to satisfy RUF006; exception
+    suppressed so a verdict-write failure can never surface as "Task exception was
+    never retrieved").
+    """
+    if session_factory is None or not events:
+        return
+    task = asyncio.ensure_future(
+        record_guardrail_verdicts(
+            session_factory,
+            tenant_id=tenant_id,
+            key_id=key_id,
+            team_id=team_id,
+            policy_source=policy_source,
+            events=events,
+        )
+    )
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
 def _check_expiry(authz: AuthzResult) -> None:
@@ -547,6 +790,8 @@ class CompletionUseCase:
         tenant_model_preset_store: TenantModelPresetStore | None = None,
         chat_modality_lookup: ChatModalityLookup | None = None,
         batch_diversion: BatchDiversionPort | None = None,
+        output_validation_enabled: bool = False,
+        payload_capture: PayloadCapturePort | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -612,6 +857,19 @@ class CompletionUseCase:
         # point, immediately before the upstream call, after every cache tier resolves.
         # stream() is NEVER touched (M2 — streaming always synchronous).
         self._batch_diversion: BatchDiversionPort | None = batch_diversion
+        # output-schema-validation (§3): False (default) ⇒ CENTRAL KNOB-KILL —
+        # _check_output_validation() pops validate_output from the body before
+        # dispatch unconditionally (M1/M2) so complete()/stream() are byte-identical
+        # to the v11 translate-don't-enforce path. True ⇒ a request that ALSO opts
+        # in (validate_output:true) engages the pre-flight checks + bounded retry —
+        # see complete() for the single insertion point.
+        self._output_validation_enabled: bool = output_validation_enabled
+        # payload-capture-store (§3): None (default) => feature off => complete()/
+        # stream() are byte-identical (no capture dispatch at any hook site). When
+        # wired, an opted-in, non-ZDR tenant's proxied call fires a scrubbed
+        # request_logs row via _dispatch_capture at each hook site — see complete()/
+        # stream()/_fire_record_cached call sites for the insertion points.
+        self._payload_capture: PayloadCapturePort | None = payload_capture
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -735,14 +993,57 @@ class CompletionUseCase:
                 detail=f"model '{model_id}' has modality '{modality}', endpoint requires 'chat'",
             )
 
+    def _check_output_validation(self, body: dict[str, Any]) -> bool:
+        """Central knob-kill + pre-flight for output-schema validation (§3 M1-M4, M11).
+
+        Pops ``validate_output`` from body UNCONDITIONALLY (M2 — never forwarded
+        upstream, regardless of engagement). Returns True when the feature engages
+        for THIS request (operator kill-switch AND the request opted in); False
+        means the byte-identical v11 path (M1) — no schema parse, no rejection.
+
+        When engaged, runs the pre-flight checks BEFORE any upstream call (zero
+        calls billed on a reject):
+          - M11: stream:true + engaged ⇒ 400 ERR_OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM
+          - Reject: response_format is not json_schema ⇒ 400
+            ERR_OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA
+          - M3: the schema itself fails JSON-Schema meta-validation ⇒ 400
+            ERR_INVALID_JSON_SCHEMA (REUSES the v11 response_format_translation.py
+            error CODE STRING; this task does not edit that frozen module)
+
+        Mutates body in-place (same pattern as _strip_web_search_flag).
+        """
+        requested = bool(body.pop("validate_output", False))
+        engaged = self._output_validation_enabled and requested
+        if not engaged:
+            return False
+        if body.get("stream"):
+            raise OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM.exc()
+        try:
+            rf = extract_response_format(body)
+        except ValueError as exc:
+            if str(exc) == "ERR_INVALID_JSON_SCHEMA":
+                raise INVALID_JSON_SCHEMA.exc() from None
+            raise OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA.exc() from None
+        if rf is None or rf["type"] != "json_schema":
+            raise OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA.exc()
+        json_schema_spec = rf.get("json_schema")
+        if json_schema_spec is None:
+            raise OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA.exc()
+        schema = json_schema_spec["schema"]
+        reason = check_schema_well_formed(schema)
+        if reason is not None:
+            raise INVALID_JSON_SCHEMA.exc(detail=reason)
+        return True
+
     async def _validate_payload(
         self,
         body: dict[str, Any],
-    ) -> tuple[str, list[dict[str, Any]]]:
+    ) -> tuple[str, list[dict[str, Any]], bool]:
         """Validate model and messages fields (format only — no catalog check here).
 
-        Returns (model_id, messages).
-        Raises ProblemError 422 on validation failure.
+        Returns (model_id, messages, output_validation_engaged).
+        Raises ProblemError 422 on validation failure (400 for the output-validation
+        pre-flight rejects — see _check_output_validation).
 
         NOTE: The catalog active check (ERR_MODEL_UNKNOWN) and tenant-disabled check
         (ERR_MODEL_DISABLED) are performed in _enforce_governance, AFTER the key-level
@@ -756,6 +1057,12 @@ class CompletionUseCase:
         # never reach upstream verbatim. Knob-off ⇒ pop; knob-on ⇒ adapters handle it.
         self._strip_web_search_flag(body)
 
+        # output-schema-validation: pop validate_output centrally (M1/M2) + run the
+        # M3/M11/Reject pre-flight checks BEFORE any field/governance/upstream work —
+        # shared by complete() AND stream() so a stream:true + engaged request is
+        # rejected regardless of which entry point routed it here.
+        output_validation_engaged = self._check_output_validation(body)
+
         model_id = body.get("model")
         if not model_id or not isinstance(model_id, str) or not model_id.strip():
             raise PAYLOAD_MODEL_REQUIRED.exc()
@@ -764,7 +1071,7 @@ class CompletionUseCase:
         if not messages or not isinstance(messages, list) or len(messages) == 0:
             raise PAYLOAD_MESSAGES_REQUIRED.exc()
 
-        return model_id, messages
+        return model_id, messages, output_validation_engaged
 
     async def _check_model_catalog(
         self,
@@ -1141,6 +1448,295 @@ class CompletionUseCase:
             if _cred_token is not None:
                 reset_provider_credential(_cred_token)  # type: ignore[arg-type]
 
+    async def _try_cache_lookup(
+        self,
+        *,
+        cache: ResponseCache,
+        authz: AuthzResult,
+        body: dict[str, Any],
+        model_id: str,
+        guardrail_evaluator: Any,
+        guardrail_configs: dict[str, Any],
+        metrics_registry: Any,
+        usage_recorder: UsageRecorder,
+        request_headers: dict[str, str] | None,
+        start_ns: int,
+        request_id: uuid.UUID,
+    ) -> tuple[tuple[int, dict[str, Any], str | None] | None, str | None]:
+        """Step 4.5a/4.5b/4.5c cache-lookup region (exact → semantic → vector),
+        extracted out of complete() (which already carries ~15 branches of its own,
+        same reason _run_output_validation_retry above was extracted) so
+        CompletionUseCase.complete() stays within pyright's control-flow
+        complexity limit.
+
+        Called only once the caller has already confirmed cache is not None,
+        authz.cache_enabled, and not _output_validation_engaged (M9) — those three
+        gate conditions stay in complete() itself, unchanged.
+
+        Returns (hit, x_cache):
+          - hit is (200, response_body, x_cache) on an exact/semantic/vector HIT —
+            the caller returns this triple immediately, exactly as complete() did
+            inline before this extraction (same short-circuit, before batch
+            diversion / upstream call / anything else runs).
+          - hit is None on MISS or BYPASS — x_cache is "miss" or "bypass" for the
+            caller to thread into its own x_cache local and continue.
+        """
+        from gateway.proxy.infrastructure.response_cache import (
+            build_cache_key,
+            build_semantic_cache_key,
+        )
+
+        no_cache = (request_headers or {}).get("cache-control", "").lower() == "no-cache"
+        cache_key = build_cache_key(str(authz.tenant_id), body)
+
+        if not no_cache:
+            # Step 4.5a: Try exact-match cache lookup
+            cached_body = await cache.get(cache_key)
+            if cached_body is not None:
+                # EXACT HIT: apply post-call guardrails, then return cached body
+                x_cache = "hit"
+                # cache-alias-billing (B6): read+pop the served candidate BEFORE
+                # evaluate_post masking (which may return a fresh dict), so billing keys
+                # on the served catalog id, not the alias, and the stamp never reaches
+                # the client.
+                _served_cached = _read_served_from_cache(cached_body, model_id)
+                if metrics_registry is not None:
+                    try:
+                        metrics_registry.cache_events_total.labels(result="hit").inc()
+                    except Exception:  # noqa: S110
+                        pass
+                # Step 5.5 on cache HIT: apply post-call PII mask if configured
+                # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only).
+                if guardrail_evaluator is not None and guardrail_configs:
+                    if hasattr(guardrail_evaluator, "evaluate_post"):
+                        try:
+                            cached_body = await guardrail_evaluator.evaluate_post(
+                                cached_body, guardrail_configs
+                            )
+                        except Exception as _exc:
+                            _log.warning(
+                                "guardrail evaluate_post raised on cache HIT (fail-OPEN)",
+                                exc_info=_exc,
+                            )
+                cached_usage_raw = cached_body.get("usage")
+                cached_usage: dict[str, Any] | None = (
+                    cached_usage_raw if isinstance(cached_usage_raw, dict) else None
+                )
+                _fire_record_cached(
+                    usage_recorder,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=_served_cached,
+                    usage=cached_usage,
+                    team_id=authz.team_id,
+                    request_id=request_id,
+                )
+                # payload-capture-store §3: exact-cache-HIT capture hook —
+                # cached_body is the SAME post-mask body actually served to the
+                # client (never the raw unmasked Redis-internal representation).
+                # request-log-metering-fields §3: usage=cached_usage (the SAME cached
+                # dict, never re-derived); latency_ms from the SAME start_ns the caller
+                # threaded in — never a second clock.
+                _dispatch_capture(
+                    self._payload_capture,
+                    enabled=authz.payload_capture_enabled,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=_served_cached,
+                    request_body=body,
+                    response_body=cached_body,
+                    status=200,
+                    stream=False,
+                    cached=True,
+                    guardrail_configs=guardrail_configs,
+                    usage=cached_usage,
+                    latency_ms=round((time.time_ns() - start_ns) / 1_000_000),
+                    request_id=request_id,
+                )
+                # TPM post-accounting uses cached token counts
+                if authz.tpm_limit is not None and cached_usage is not None:
+                    total_tokens = cached_usage.get("total_tokens")
+                    if isinstance(total_tokens, int) and total_tokens > 0:
+                        _fire_record_tpm(
+                            self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
+                        )
+                return (200, cached_body, x_cache), x_cache
+            else:
+                # Step 4.5b: Exact MISS — try semantic lookup if enabled
+                semantic_cache_enabled = getattr(authz, "semantic_cache_enabled", False)
+                if semantic_cache_enabled and hasattr(cache, "get_pointer"):
+                    sem_key = build_semantic_cache_key(str(authz.tenant_id), body)
+                    exact_key_str = await cache.get_pointer(sem_key)  # pyright: ignore[reportAttributeAccessIssue]  — guarded by hasattr; concrete ResponseCache has get_pointer, Protocol doesn't
+                    if exact_key_str is not None:
+                        # Dereference pointer: GET the exact-cache key body
+                        sem_cached_body = await cache.get(exact_key_str)
+                        if sem_cached_body is not None:
+                            # SEMANTIC HIT
+                            x_cache = "semantic_hit"
+                            # cache-alias-billing (B6): read+pop served BEFORE masking.
+                            _served_cached_sem = _read_served_from_cache(
+                                sem_cached_body, model_id
+                            )
+                            if metrics_registry is not None:
+                                try:
+                                    metrics_registry.cache_events_total.labels(
+                                        result="semantic_hit"
+                                    ).inc()
+                                except Exception:  # noqa: S110
+                                    pass
+                            # Apply post-call PII mask on semantic hit (same as exact hit)
+                            if guardrail_evaluator is not None and guardrail_configs:
+                                if hasattr(guardrail_evaluator, "evaluate_post"):
+                                    try:
+                                        sem_cached_body = (
+                                            await guardrail_evaluator.evaluate_post(
+                                                sem_cached_body, guardrail_configs
+                                            )
+                                        )
+                                    except Exception as _exc:
+                                        _log.warning(
+                                            "guardrail evaluate_post raised on"
+                                            " semantic HIT (fail-OPEN)",
+                                            exc_info=_exc,
+                                        )
+                            sem_usage_raw = sem_cached_body.get("usage")
+                            sem_usage: dict[str, Any] | None = (
+                                sem_usage_raw if isinstance(sem_usage_raw, dict) else None
+                            )
+                            _fire_record_cached(
+                                usage_recorder,
+                                tenant_id=authz.tenant_id,
+                                key_id=authz.key_id,
+                                model=_served_cached_sem,
+                                usage=sem_usage,
+                                team_id=authz.team_id,
+                                request_id=request_id,
+                            )
+                            # payload-capture-store §3: semantic-cache-HIT hook.
+                            # request-log-metering-fields §3: usage=sem_usage verbatim;
+                            # latency_ms from the SAME threaded-in start_ns.
+                            _dispatch_capture(
+                                self._payload_capture,
+                                enabled=authz.payload_capture_enabled,
+                                tenant_id=authz.tenant_id,
+                                key_id=authz.key_id,
+                                model=_served_cached_sem,
+                                request_body=body,
+                                response_body=sem_cached_body,
+                                status=200,
+                                stream=False,
+                                cached=True,
+                                guardrail_configs=guardrail_configs,
+                                usage=sem_usage,
+                                latency_ms=round((time.time_ns() - start_ns) / 1_000_000),
+                                request_id=request_id,
+                            )
+                            if authz.tpm_limit is not None and sem_usage is not None:
+                                total_tokens = sem_usage.get("total_tokens")
+                                if isinstance(total_tokens, int) and total_tokens > 0:
+                                    _fire_record_tpm(
+                                        self._rate_limiter,
+                                        key_id=authz.key_id,
+                                        tokens=total_tokens,
+                                    )
+                            return (200, sem_cached_body, x_cache), x_cache
+                        else:
+                            # Dangling pointer: exact key expired — treat as MISS
+                            _log.debug(
+                                "semantic_cache: dangling pointer (exact key expired), "
+                                "treating as MISS",
+                                extra={"sem_key": sem_key, "exact_key": exact_key_str},
+                            )
+                # Step 4.5c: exact + normalization miss — try the embedding-similarity
+                # (vector) layer when wired. A hit takes the SAME billing/metric/PII/TPM
+                # path as the exact/semantic hit. The internal embed call is NEVER billed.
+                if self._vector_cache is not None:
+                    vec_body = await self._vector_cache.lookup(
+                        tenant_id=str(authz.tenant_id), model=model_id, body=body
+                    )
+                    if vec_body is not None:
+                        x_cache = "vector_hit"
+                        # cache-alias-billing (B6): read+pop served BEFORE masking.
+                        _served_cached_vec = _read_served_from_cache(vec_body, model_id)
+                        if metrics_registry is not None:
+                            try:
+                                metrics_registry.cache_events_total.labels(
+                                    result="vector_hit"
+                                ).inc()
+                            except Exception:  # noqa: S110
+                                pass
+                        if guardrail_evaluator is not None and guardrail_configs:
+                            if hasattr(guardrail_evaluator, "evaluate_post"):
+                                try:
+                                    vec_body = await guardrail_evaluator.evaluate_post(
+                                        vec_body, guardrail_configs
+                                    )
+                                except Exception as _exc:
+                                    _log.warning(
+                                        "guardrail evaluate_post raised on"
+                                        " vector HIT (fail-OPEN)",
+                                        exc_info=_exc,
+                                    )
+                        vec_usage_raw = vec_body.get("usage")
+                        vec_usage: dict[str, Any] | None = (
+                            vec_usage_raw if isinstance(vec_usage_raw, dict) else None
+                        )
+                        _fire_record_cached(
+                            usage_recorder,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=_served_cached_vec,
+                            usage=vec_usage,
+                            team_id=authz.team_id,
+                            request_id=request_id,
+                        )
+                        # payload-capture-store §3: vector (embedding-similarity)
+                        # cache-HIT hook.
+                        # request-log-metering-fields §3: usage=vec_usage verbatim;
+                        # latency_ms from the SAME threaded-in start_ns.
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=_served_cached_vec,
+                            request_body=body,
+                            response_body=vec_body,
+                            status=200,
+                            stream=False,
+                            cached=True,
+                            guardrail_configs=guardrail_configs,
+                            usage=vec_usage,
+                            latency_ms=round((time.time_ns() - start_ns) / 1_000_000),
+                            request_id=request_id,
+                        )
+                        if authz.tpm_limit is not None and vec_usage is not None:
+                            total_tokens = vec_usage.get("total_tokens")
+                            if isinstance(total_tokens, int) and total_tokens > 0:
+                                _fire_record_tpm(
+                                    self._rate_limiter,
+                                    key_id=authz.key_id,
+                                    tokens=total_tokens,
+                                )
+                        return (200, vec_body, x_cache), x_cache
+                # MISS (exact miss + semantic miss/disabled + vector miss/off)
+                x_cache = "miss"
+                if metrics_registry is not None:
+                    try:
+                        metrics_registry.cache_events_total.labels(result="miss").inc()
+                    except Exception:  # noqa: S110
+                        pass
+                return None, x_cache
+        else:
+            # BYPASS: Cache-Control: no-cache
+            x_cache = "bypass"
+            if metrics_registry is not None:
+                try:
+                    metrics_registry.cache_events_total.labels(result="bypass").inc()
+                except Exception:  # noqa: S110
+                    pass
+            return None, x_cache
+
     async def complete(
         self,
         *,
@@ -1166,6 +1762,9 @@ class CompletionUseCase:
         On upstream 5xx / circuit open: raise ProblemError 502.
         """
         _start_ns = time.time_ns()
+        # request-log-metering-fields TASK.md §3: one correlation UUID minted once per
+        # call, mirroring _emit_span_fire_forget's own local-generation idiom (trace_id).
+        _request_id = uuid.uuid4()
         _authz: AuthzResult | None = None
         _status_code: int = 502
         _model_id: str = ""
@@ -1182,7 +1781,7 @@ class CompletionUseCase:
             # tenant's target model BEFORE payload validation/governance/catalog/upstream.
             await self._resolve_preset(body, authz.tenant_id)
             # Validate payload fields (format only — catalog check is in _enforce_governance).
-            model_id, _ = await self._validate_payload(body)
+            model_id, _, _output_validation_engaged = await self._validate_payload(body)
             _model_id = model_id
             # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
             # Governance ALWAYS runs before cache lookup (contract §3 enforcement order).
@@ -1231,7 +1830,19 @@ class CompletionUseCase:
             # --- Step 4: Pre-call guardrails (after governance, before cache lookup) ---
             guardrail_evaluator = self._guardrail_evaluator
             guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
+            # guardrail-analytics §3 (M1/M9): resolved ONCE per request, zero extra IO
+            # (reuses the SAME getattr(budget_guard, "_session_factory", ...) extraction
+            # the soft-budget-alert seam already uses). None ⇒ feature off ⇒ every
+            # _dispatch_guardrail_verdicts call below no-ops, byte-identical to today.
+            _gv_session_factory = self._get_session_factory()
+            _gv_policy_source = getattr(authz, "policy_source", "none")
             if guardrail_evaluator is not None and guardrail_configs:
+                # ml-moderation-layer §3 CONTRACT (FROZEN @ v1, §0 R6): the frozen 2-arg
+                # evaluate_pre(messages, guardrail_configs) call below is UNTOUCHED —
+                # tenant identity for BYOK credential resolution flows via this sibling
+                # ContextVar, set immediately before the call and reset in `finally` so
+                # it never leaks across requests.
+                _gtid_token = set_guardrail_tenant_id(authz.tenant_id)
                 try:
                     result = await guardrail_evaluator.evaluate_pre(
                         body.get("messages", []), guardrail_configs
@@ -1251,6 +1862,14 @@ class CompletionUseCase:
                             [_make_error_event(guardrail_configs)],
                             guardrail_configs,
                         )
+                        _dispatch_guardrail_verdicts(
+                            _gv_session_factory,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            team_id=authz.team_id,
+                            policy_source=_gv_policy_source,
+                            events=[_make_error_event(guardrail_configs)],
+                        )
                         _fire_record_with_raw(
                             usage_recorder,
                             tenant_id=authz.tenant_id,
@@ -1261,6 +1880,28 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by="error",
+                            request_id=_request_id,
+                        )
+                        # payload-capture-store §3: pre-call guardrail-BLOCK hook (locked
+                        # after the mandated BLOCK-path grounding pass — see TASK.md §5).
+                        # response_body=None: the request never reached upstream.
+                        # request-log-metering-fields §3: usage=None (no upstream call
+                        # was made) -> prompt/completion/total_tokens all NULL, never 0.
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            request_body=body,
+                            response_body=None,
+                            status=400,
+                            stream=False,
+                            cached=False,
+                            guardrail_configs=guardrail_configs,
+                            usage=None,
+                            latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                            request_id=_request_id,
                         )
                         _guardrail_blocked = True
                         _status_code = 400
@@ -1272,11 +1913,29 @@ class CompletionUseCase:
                             [_make_error_event(guardrail_configs)],
                             guardrail_configs,
                         )
+                        _dispatch_guardrail_verdicts(
+                            _gv_session_factory,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            team_id=authz.team_id,
+                            policy_source=_gv_policy_source,
+                            events=[_make_error_event(guardrail_configs)],
+                        )
                         # result is not set — fall through without masking/blocking
                         result = None
+                finally:
+                    reset_guardrail_tenant_id(_gtid_token)
 
                 if result is not None:
                     _fire_guardrail_metrics(metrics_registry, result.events, guardrail_configs)
+                    _dispatch_guardrail_verdicts(
+                        _gv_session_factory,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        team_id=authz.team_id,
+                        policy_source=_gv_policy_source,
+                        events=result.events,
+                    )
                     if result.blocked:
                         _fire_record_with_raw(
                             usage_recorder,
@@ -1288,6 +1947,25 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by=result.blocked_by,
+                            request_id=_request_id,
+                        )
+                        # payload-capture-store §3: pre-call guardrail-BLOCK hook.
+                        # request-log-metering-fields §3: usage=None -> tokens NULL.
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            request_body=body,
+                            response_body=None,
+                            status=400,
+                            stream=False,
+                            cached=False,
+                            guardrail_configs=guardrail_configs,
+                            usage=None,
+                            latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                            request_id=_request_id,
                         )
                         _guardrail_blocked = True
                         _status_code = 400
@@ -1305,202 +1983,32 @@ class CompletionUseCase:
             cache_enabled = authz.cache_enabled
             x_cache: str | None = None
 
-            if cache is not None and cache_enabled:
-                from gateway.proxy.infrastructure.response_cache import (
-                    build_cache_key,
-                    build_semantic_cache_key,
+            # output-schema-validation (M9): an engaged request bypasses BOTH the
+            # read (here) and write (post-upstream store, below) tiers entirely —
+            # response_format is not in _CACHE_KEY_FIELDS (a pre-existing gap this
+            # task does not fix), so bypassing is the only way to guarantee a
+            # validating caller never silently receives an unvalidated cached body.
+            # Step 4.5a/4.5b/4.5c (exact → semantic → vector) lives in
+            # _try_cache_lookup, extracted out of this already-large method for the
+            # same reason _run_output_validation_retry above was extracted.
+            if cache is not None and cache_enabled and not _output_validation_engaged:
+                _cache_hit, x_cache = await self._try_cache_lookup(
+                    cache=cache,
+                    authz=authz,
+                    body=body,
+                    model_id=model_id,
+                    guardrail_evaluator=guardrail_evaluator,
+                    guardrail_configs=guardrail_configs,
+                    metrics_registry=metrics_registry,
+                    usage_recorder=usage_recorder,
+                    request_headers=request_headers,
+                    start_ns=_start_ns,
+                    request_id=_request_id,
                 )
-
-                no_cache = (request_headers or {}).get("cache-control", "").lower() == "no-cache"
-                cache_key = build_cache_key(str(authz.tenant_id), body)
-
-                if not no_cache:
-                    # Step 4.5a: Try exact-match cache lookup
-                    cached_body = await cache.get(cache_key)
-                    if cached_body is not None:
-                        # EXACT HIT: apply post-call guardrails, then return cached body
-                        x_cache = "hit"
-                        _cached = True
-                        # cache-alias-billing (B6): read+pop the served candidate BEFORE
-                        # evaluate_post masking (which may return a fresh dict), so billing keys
-                        # on the served catalog id, not the alias, and the stamp never reaches
-                        # the client.
-                        _served_cached = _read_served_from_cache(cached_body, model_id)
-                        if metrics_registry is not None:
-                            try:
-                                metrics_registry.cache_events_total.labels(result="hit").inc()
-                            except Exception:  # noqa: S110
-                                pass
-                        # Step 5.5 on cache HIT: apply post-call PII mask if configured
-                        # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only).
-                        if guardrail_evaluator is not None and guardrail_configs:
-                            if hasattr(guardrail_evaluator, "evaluate_post"):
-                                try:
-                                    cached_body = await guardrail_evaluator.evaluate_post(
-                                        cached_body, guardrail_configs
-                                    )
-                                except Exception as _exc:
-                                    _log.warning(
-                                        "guardrail evaluate_post raised on cache HIT (fail-OPEN)",
-                                        exc_info=_exc,
-                                    )
-                        cached_usage_raw = cached_body.get("usage")
-                        cached_usage: dict[str, Any] | None = (
-                            cached_usage_raw if isinstance(cached_usage_raw, dict) else None
-                        )
-                        _fire_record_cached(
-                            usage_recorder,
-                            tenant_id=authz.tenant_id,
-                            key_id=authz.key_id,
-                            model=_served_cached,
-                            usage=cached_usage,
-                            team_id=authz.team_id,
-                        )
-                        # TPM post-accounting uses cached token counts
-                        if authz.tpm_limit is not None and cached_usage is not None:
-                            total_tokens = cached_usage.get("total_tokens")
-                            if isinstance(total_tokens, int) and total_tokens > 0:
-                                _fire_record_tpm(
-                                    self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
-                                )
-                        _status_code = 200
-                        return 200, cached_body, x_cache
-                    else:
-                        # Step 4.5b: Exact MISS — try semantic lookup if enabled
-                        semantic_cache_enabled = getattr(authz, "semantic_cache_enabled", False)
-                        if semantic_cache_enabled and hasattr(cache, "get_pointer"):
-                            sem_key = build_semantic_cache_key(str(authz.tenant_id), body)
-                            exact_key_str = await cache.get_pointer(sem_key)  # pyright: ignore[reportAttributeAccessIssue]  — guarded by hasattr; concrete ResponseCache has get_pointer, Protocol doesn't
-                            if exact_key_str is not None:
-                                # Dereference pointer: GET the exact-cache key body
-                                sem_cached_body = await cache.get(exact_key_str)
-                                if sem_cached_body is not None:
-                                    # SEMANTIC HIT
-                                    x_cache = "semantic_hit"
-                                    _cached = True
-                                    # cache-alias-billing (B6): read+pop served BEFORE masking.
-                                    _served_cached_sem = _read_served_from_cache(
-                                        sem_cached_body, model_id
-                                    )
-                                    if metrics_registry is not None:
-                                        try:
-                                            metrics_registry.cache_events_total.labels(
-                                                result="semantic_hit"
-                                            ).inc()
-                                        except Exception:  # noqa: S110
-                                            pass
-                                    # Apply post-call PII mask on semantic hit (same as exact hit)
-                                    if guardrail_evaluator is not None and guardrail_configs:
-                                        if hasattr(guardrail_evaluator, "evaluate_post"):
-                                            try:
-                                                sem_cached_body = (
-                                                    await guardrail_evaluator.evaluate_post(
-                                                        sem_cached_body, guardrail_configs
-                                                    )
-                                                )
-                                            except Exception as _exc:
-                                                _log.warning(
-                                                    "guardrail evaluate_post raised on"
-                                                    " semantic HIT (fail-OPEN)",
-                                                    exc_info=_exc,
-                                                )
-                                    sem_usage_raw = sem_cached_body.get("usage")
-                                    sem_usage: dict[str, Any] | None = (
-                                        sem_usage_raw if isinstance(sem_usage_raw, dict) else None
-                                    )
-                                    _fire_record_cached(
-                                        usage_recorder,
-                                        tenant_id=authz.tenant_id,
-                                        key_id=authz.key_id,
-                                        model=_served_cached_sem,
-                                        usage=sem_usage,
-                                        team_id=authz.team_id,
-                                    )
-                                    if authz.tpm_limit is not None and sem_usage is not None:
-                                        total_tokens = sem_usage.get("total_tokens")
-                                        if isinstance(total_tokens, int) and total_tokens > 0:
-                                            _fire_record_tpm(
-                                                self._rate_limiter,
-                                                key_id=authz.key_id,
-                                                tokens=total_tokens,
-                                            )
-                                    _status_code = 200
-                                    return 200, sem_cached_body, x_cache
-                                else:
-                                    # Dangling pointer: exact key expired — treat as MISS
-                                    _log.debug(
-                                        "semantic_cache: dangling pointer (exact key expired), "
-                                        "treating as MISS",
-                                        extra={"sem_key": sem_key, "exact_key": exact_key_str},
-                                    )
-                        # Step 4.5c: exact + normalization miss — try the embedding-similarity
-                        # (vector) layer when wired. A hit takes the SAME billing/metric/PII/TPM
-                        # path as the exact/semantic hit. The internal embed call is NEVER billed.
-                        if self._vector_cache is not None:
-                            vec_body = await self._vector_cache.lookup(
-                                tenant_id=str(authz.tenant_id), model=model_id, body=body
-                            )
-                            if vec_body is not None:
-                                x_cache = "vector_hit"
-                                _cached = True
-                                # cache-alias-billing (B6): read+pop served BEFORE masking.
-                                _served_cached_vec = _read_served_from_cache(vec_body, model_id)
-                                if metrics_registry is not None:
-                                    try:
-                                        metrics_registry.cache_events_total.labels(
-                                            result="vector_hit"
-                                        ).inc()
-                                    except Exception:  # noqa: S110
-                                        pass
-                                if guardrail_evaluator is not None and guardrail_configs:
-                                    if hasattr(guardrail_evaluator, "evaluate_post"):
-                                        try:
-                                            vec_body = await guardrail_evaluator.evaluate_post(
-                                                vec_body, guardrail_configs
-                                            )
-                                        except Exception as _exc:
-                                            _log.warning(
-                                                "guardrail evaluate_post raised on"
-                                                " vector HIT (fail-OPEN)",
-                                                exc_info=_exc,
-                                            )
-                                vec_usage_raw = vec_body.get("usage")
-                                vec_usage: dict[str, Any] | None = (
-                                    vec_usage_raw if isinstance(vec_usage_raw, dict) else None
-                                )
-                                _fire_record_cached(
-                                    usage_recorder,
-                                    tenant_id=authz.tenant_id,
-                                    key_id=authz.key_id,
-                                    model=_served_cached_vec,
-                                    usage=vec_usage,
-                                    team_id=authz.team_id,
-                                )
-                                if authz.tpm_limit is not None and vec_usage is not None:
-                                    total_tokens = vec_usage.get("total_tokens")
-                                    if isinstance(total_tokens, int) and total_tokens > 0:
-                                        _fire_record_tpm(
-                                            self._rate_limiter,
-                                            key_id=authz.key_id,
-                                            tokens=total_tokens,
-                                        )
-                                _status_code = 200
-                                return 200, vec_body, x_cache
-                        # MISS (exact miss + semantic miss/disabled + vector miss/off)
-                        x_cache = "miss"
-                        if metrics_registry is not None:
-                            try:
-                                metrics_registry.cache_events_total.labels(result="miss").inc()
-                            except Exception:  # noqa: S110
-                                pass
-                else:
-                    # BYPASS: Cache-Control: no-cache
-                    x_cache = "bypass"
-                    if metrics_registry is not None:
-                        try:
-                            metrics_registry.cache_events_total.labels(result="bypass").inc()
-                        except Exception:  # noqa: S110
-                            pass
+                if _cache_hit is not None:
+                    _cached = True
+                    _status_code = _cache_hit[0]
+                    return _cache_hit
 
             # batch-auto-grouping (v57 §3) / batch-window-grouping (§3, supersedes the
             # size-1-job body): diversion check — sits OUTSIDE the cache block above
@@ -1609,9 +2117,68 @@ class CompletionUseCase:
                 _status_code = 502
                 raise UPSTREAM_UNAVAILABLE.exc() from None
 
+            # output-schema-validation (§3): bounded-retry loop. Runs BEFORE cache
+            # store / post-call guardrail masking (M10 — validation must see the RAW,
+            # unmasked content) and only when the M1 gate engaged AND attempt 1 came
+            # back 200 (an upstream 4xx/5xx pass-through is never a "validation
+            # failure" — it falls through unchanged, exactly like today). The retry
+            # mechanics live in the module-level _run_output_validation_retry() —
+            # extracted out of this already-large method (not inlined) so this
+            # method stays within pyright's control-flow complexity limit.
+            # _usage_source_final threads into the EXISTING bottom _fire_record_with_raw
+            # call below (M8): None ⇒ default "frame" (no retry, or retry succeeded);
+            # "validation_retry" ⇒ the retry's own attempt did NOT end in a validated
+            # 200 (a genuine upstream error on the retry leg — never a fabricated 422
+            # for a response the provider itself didn't say was invalid).
+            _usage_source_final: str | None = None
+            if _output_validation_engaged and status == 200:
+                _rf = extract_response_format(body)  # already meta-validated pre-flight (M3)
+                # Unreachable in practice: _check_output_validation already required and
+                # meta-validated this exact shape before any upstream call fired. Narrows
+                # the type for the subscript below without a strippable assert.
+                if (
+                    _rf is None
+                    or _rf["type"] != "json_schema"
+                    or (_json_schema_spec := _rf.get("json_schema")) is None
+                ):
+                    raise INVALID_JSON_SCHEMA.exc()
+                _schema = _json_schema_spec["schema"]
+                _outcome = validate_model_output(_schema, response_body)
+                if not _outcome["valid"]:
+                    # Any ProblemError raised here (429/502/422) propagates up through
+                    # this method's own outer `except ProblemError` handler below —
+                    # no local except clause needed.
+                    (
+                        status,
+                        response_body,
+                        served_model_id,
+                        _usage_source_final,
+                    ) = await _run_output_validation_retry(
+                        authz=authz,
+                        body=body,
+                        upstream=upstream,
+                        usage_recorder=usage_recorder,
+                        model_router=model_router,
+                        model_id=model_id,
+                        schema=_schema,
+                        status=status,
+                        response_body=response_body,
+                        served_model_id=served_model_id,
+                    )
+
             # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
             # Must run BEFORE post-call guardrail masking so the stored body is unmasked.
-            if cache is not None and cache_enabled and status == 200:
+            # output-schema-validation (M9): engaged requests bypass the write tier too.
+            # tenant-retention-zdr TASK.md §3 M6: zdr_enabled=true silently skips BOTH the
+            # exact response cache and the vector-cache store (both live inside this same
+            # gated block) — the proxied completion itself is unaffected either way.
+            if (
+                cache is not None
+                and cache_enabled
+                and status == 200
+                and not _output_validation_engaged
+                and not getattr(authz, "zdr_enabled", False)
+            ):
                 from gateway.proxy.infrastructure.response_cache import (
                     build_cache_key,
                     build_semantic_cache_key,
@@ -1733,6 +2300,36 @@ class CompletionUseCase:
                 status=status,
                 team_id=authz.team_id,
                 pii_masked=_pii_masked,
+                # output-schema-validation (M8): None (default) on every request that
+                # never engaged the retry loop — "frame", unchanged. Set to
+                # "validation_retry" ONLY for a retry leg that ended in a non-200
+                # upstream pass-through (see the retry block above) — a validated
+                # 200 success keeps the default "frame" too (M8's own rule).
+                usage_source=_usage_source_final,
+                request_id=_request_id,
+            )
+            # payload-capture-store §3: non-streaming completion capture hook.
+            # response_body is the ALREADY evaluate_post-masked body (when configured) —
+            # capture independently re-scrubs it anyway (its own try/except, never
+            # trusting evaluate_post's fail-open return value as confirmed-scrubbed).
+            # request-log-metering-fields §3: usage is the SAME dict just recorded above
+            # (never a second extraction); latency_ms derived from the SAME _start_ns
+            # this call's OtelSpan uses — never a second/independent clock read.
+            _dispatch_capture(
+                self._payload_capture,
+                enabled=authz.payload_capture_enabled,
+                tenant_id=authz.tenant_id,
+                key_id=authz.key_id,
+                model=served_model_id,
+                request_body=body,
+                response_body=response_body,
+                status=status,
+                stream=False,
+                cached=False,
+                guardrail_configs=guardrail_configs,
+                usage=usage,
+                latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                request_id=_request_id,
             )
             # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
             if authz.tpm_limit is not None and usage is not None:
@@ -1811,6 +2408,9 @@ class CompletionUseCase:
           - Pre-authz 401 → _authz is None → no span (inviolable).
         """
         _start_ns = time.time_ns()
+        # request-log-metering-fields TASK.md §3: one correlation UUID minted once per
+        # call — captured by _wrapped()'s closure below, same as _start_ns already is.
+        _request_id = uuid.uuid4()
         _authz: AuthzResult | None = None
         _stream_error_status: int | None = None  # set only on pre-generator errors
         _stream_error_code: str | None = None
@@ -1826,7 +2426,11 @@ class CompletionUseCase:
             # tenant's target model BEFORE payload validation/governance/catalog/upstream.
             await self._resolve_preset(body, authz.tenant_id)
             # Validate payload fields (format only — catalog check is in _enforce_governance).
-            model_id, _ = await self._validate_payload(body)
+            # output-schema-validation: the engaged flag is discarded here on purpose —
+            # a stream:true request that engages the M1 gate already raised 400
+            # ERR_OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM inside _validate_payload
+            # itself (M11); stream() has no retry/validate work of its own.
+            model_id, _, _ = await self._validate_payload(body)
             _stream_model_id = model_id
             # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
             # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
@@ -1856,7 +2460,16 @@ class CompletionUseCase:
             # --- Step 4: Pre-call guardrails (after governance, before upstream stream) ---
             guardrail_evaluator = self._guardrail_evaluator
             guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
+            # guardrail-analytics §3 (M1/M9): same resolve-once seam as complete() above —
+            # this is the NEW call site that closes the pre-existing streaming
+            # metrics-coverage gap (§0): _fire_guardrail_metrics never fires for streaming,
+            # but _dispatch_guardrail_verdicts below does, independent of that gap.
+            _gv_session_factory = self._get_session_factory()
+            _gv_policy_source = getattr(authz, "policy_source", "none")
             if guardrail_evaluator is not None and guardrail_configs:
+                # ml-moderation-layer §3 CONTRACT (FROZEN @ v1, §0 R6) — same seam as
+                # complete() above: set/reset around the untouched 2-arg call.
+                _gtid_token = set_guardrail_tenant_id(authz.tenant_id)
                 try:
                     stream_result = await guardrail_evaluator.evaluate_pre(
                         body.get("messages", []), guardrail_configs
@@ -1870,6 +2483,14 @@ class CompletionUseCase:
                         for cfg in guardrail_configs.values()
                     )
                     if _has_block:
+                        _dispatch_guardrail_verdicts(
+                            _gv_session_factory,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            team_id=authz.team_id,
+                            policy_source=_gv_policy_source,
+                            events=[_make_error_event(guardrail_configs)],
+                        )
                         _fire_record_with_raw(
                             usage_recorder,
                             tenant_id=authz.tenant_id,
@@ -1880,13 +2501,50 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by="error",
+                            request_id=_request_id,
+                        )
+                        # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
+                        # request-log-metering-fields §3: usage=None -> tokens NULL.
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            request_body=body,
+                            response_body=None,
+                            status=400,
+                            stream=True,
+                            cached=False,
+                            guardrail_configs=guardrail_configs,
+                            usage=None,
+                            latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                            request_id=_request_id,
                         )
                         _stream_error_status = 400
                         _stream_guardrail_blocked = True
                         raise GUARDRAIL_BLOCKED.exc() from None
+                    _dispatch_guardrail_verdicts(
+                        _gv_session_factory,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        team_id=authz.team_id,
+                        policy_source=_gv_policy_source,
+                        events=[_make_error_event(guardrail_configs)],
+                    )
                     stream_result = None
+                finally:
+                    reset_guardrail_tenant_id(_gtid_token)
 
                 if stream_result is not None:
+                    _dispatch_guardrail_verdicts(
+                        _gv_session_factory,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        team_id=authz.team_id,
+                        policy_source=_gv_policy_source,
+                        events=stream_result.events,
+                    )
                     if stream_result.blocked:
                         _fire_record_with_raw(
                             usage_recorder,
@@ -1898,6 +2556,25 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by=stream_result.blocked_by,
+                            request_id=_request_id,
+                        )
+                        # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
+                        # request-log-metering-fields §3: usage=None -> tokens NULL.
+                        _dispatch_capture(
+                            self._payload_capture,
+                            enabled=authz.payload_capture_enabled,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            model=model_id,
+                            request_body=body,
+                            response_body=None,
+                            status=400,
+                            stream=True,
+                            cached=False,
+                            guardrail_configs=guardrail_configs,
+                            usage=None,
+                            latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                            request_id=_request_id,
                         )
                         _stream_error_status = 400
                         _stream_guardrail_blocked = True
@@ -2049,6 +2726,9 @@ class CompletionUseCase:
             team_id = authz.team_id
             tpm_limit = authz.tpm_limit
             rate_limiter = self._rate_limiter
+            # payload-capture-store §3: captured before _wrapped() (mirrors the locals above).
+            _capture_enabled = authz.payload_capture_enabled
+            _payload_capture = self._payload_capture
 
             async def _wrapped() -> AsyncIterator[bytes]:
                 collected: list[bytes] = []
@@ -2116,6 +2796,29 @@ class CompletionUseCase:
                                 team_id=team_id,
                                 pii_masked=_stream_pii_masked,
                                 usage_source=_bw_source,
+                                request_id=_request_id,
+                            )
+                            # payload-capture-store §3: bandwidth-shed truncation capture
+                            # hook (1st of stream()'s 3 exit branches) — the assembled
+                            # (partial) assistant text, size-capped like the other 2.
+                            # request-log-metering-fields §3: usage=_bw_usage (the SAME
+                            # dict just recorded above); latency_ms from the SAME
+                            # _start_ns this call's OtelSpan uses (closure-captured).
+                            _dispatch_capture(
+                                _payload_capture,
+                                enabled=_capture_enabled,
+                                tenant_id=tenant_id,
+                                key_id=key_id,
+                                model=_stream_model_id,
+                                request_body=body,
+                                response_body=_capture_response_body(collected),
+                                status=200,
+                                stream=True,
+                                cached=False,
+                                guardrail_configs=guardrail_configs,
+                                usage=_bw_usage,
+                                latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                                request_id=_request_id,
                             )
                             # record fired — gate the disconnect handler so a drop during the
                             # two yields below cannot double-bill this request.
@@ -2221,6 +2924,27 @@ class CompletionUseCase:
                         usage_source=disconnect_source,
                         provider_generation_id=disconnect_gen_id,
                         disconnect_estimate=disconnect_estimate,
+                        request_id=_request_id,
+                    )
+                    # payload-capture-store §3: client-disconnect capture hook (2nd of
+                    # stream()'s 3 exit branches) — the assembled (partial) text.
+                    # request-log-metering-fields §3: usage=disconnect_usage (the SAME
+                    # dict just recorded above); latency_ms from the SAME _start_ns.
+                    _dispatch_capture(
+                        _payload_capture,
+                        enabled=_capture_enabled,
+                        tenant_id=tenant_id,
+                        key_id=key_id,
+                        model=_stream_model_id,
+                        request_body=body,
+                        response_body=_capture_response_body(collected),
+                        status=200,
+                        stream=True,
+                        cached=False,
+                        guardrail_configs=guardrail_configs,
+                        usage=disconnect_usage,
+                        latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                        request_id=_request_id,
                     )
                     # bandwidth-usage-reconcile (v36, Tin): a disconnect ALSO reconciles the
                     # estimate debited so far toward the PARTIAL usage actually generated, when a
@@ -2334,6 +3058,30 @@ class CompletionUseCase:
                     team_id=team_id,
                     pii_masked=_stream_pii_masked,
                     usage_source=usage_source,
+                    request_id=_request_id,
+                )
+                # payload-capture-store §3: clean-close capture hook (3rd of stream()'s
+                # 3 exit branches, and the one usual case) — the fully assembled text,
+                # keyed off the SAME stream_usage_is_complete completeness signal the
+                # billing path just used above (§2 scenario: "streaming capture
+                # assembles and writes the full response text").
+                # request-log-metering-fields §3: usage=extracted_usage (the SAME dict
+                # just recorded above); latency_ms from the SAME _start_ns.
+                _dispatch_capture(
+                    _payload_capture,
+                    enabled=_capture_enabled,
+                    tenant_id=tenant_id,
+                    key_id=key_id,
+                    model=_stream_model_id,
+                    request_body=body,
+                    response_body=_capture_response_body(collected),
+                    status=200,
+                    stream=True,
+                    cached=False,
+                    guardrail_configs=guardrail_configs,
+                    usage=extracted_usage,
+                    latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                    request_id=_request_id,
                 )
                 # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
                 if tpm_limit is not None and isinstance(extracted_usage, dict):

@@ -63,6 +63,13 @@ class LoginUseCase:
         # failure paths cost the same time and return the same error.
         if not self._hasher.verify(user.password_hash if user else None, password) or user is None:
             raise InvalidCredentialsError
+        # NEW (scim-provisioning TASK.md §3, M7 — FROZEN @ v1): a deactivated user's
+        # password login is rejected BYTE-IDENTICAL to a wrong-password attempt — same
+        # error, same point in the flow (AFTER the constant-time hash verify above, so
+        # no early-exit timing signal distinguishes "deactivated" from "wrong password").
+        # Anti-enumeration (CONVENTIONS.md fold): never a distinct error/status/detail.
+        if user.deactivated_at is not None:
+            raise InvalidCredentialsError
         token, expires_in = self._tokens.issue(
             user_id=user.id, tenant_id=user.tenant_id, role=user.role, email=user.email
         )

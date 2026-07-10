@@ -57,6 +57,7 @@ class ApiKeyRepository(Protocol):
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
         cache_enabled: bool | None = None,
+        capture_enabled: bool | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey | None:
         """Update governance fields on an active key owned by tenant_id.

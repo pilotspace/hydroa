@@ -14,6 +14,9 @@ import { CacheSettings } from "./CacheSettings";
 import { GuardrailSettings } from "./GuardrailSettings";
 import { OidcSettings } from "./OidcSettings";
 import { ProviderKeysSettings } from "./ProviderKeysSettings";
+import { ScimSettings } from "./ScimSettings";
+import { SamlSettings } from "./SamlSettings";
+import { RetentionZdrSettings } from "./RetentionZdrSettings";
 
 export function SettingsPage() {
   return (
@@ -29,6 +32,9 @@ export function SettingsPage() {
           <TabsTrigger value="guardrails">Guardrails</TabsTrigger>
           <TabsTrigger value="sso">SSO</TabsTrigger>
           <TabsTrigger value="provider-keys">Provider Keys</TabsTrigger>
+          <TabsTrigger value="scim">SCIM</TabsTrigger>
+          <TabsTrigger value="saml">SAML SSO</TabsTrigger>
+          <TabsTrigger value="retention">Retention & ZDR</TabsTrigger>
         </TabsList>
 
         <TabsContent value="cache">
@@ -45,6 +51,18 @@ export function SettingsPage() {
 
         <TabsContent value="provider-keys">
           <ProviderKeysSettings />
+        </TabsContent>
+
+        <TabsContent value="scim">
+          <ScimSettings />
+        </TabsContent>
+
+        <TabsContent value="saml">
+          <SamlSettings />
+        </TabsContent>
+
+        <TabsContent value="retention">
+          <RetentionZdrSettings />
         </TabsContent>
       </Tabs>
     </div>

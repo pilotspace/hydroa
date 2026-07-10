@@ -28,10 +28,16 @@ from gateway.artifacts.api.router import artifacts_router
 from gateway.artifacts.infrastructure.orm import (  # noqa: F401 — registers ArtifactRow on Base.metadata
     ArtifactRow as _ArtifactRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.audit.api.router import audit_export_router
 from gateway.auth.api.oidc_admin_router import oidc_admin_router
 from gateway.auth.api.oidc_router import oidc_router
+from gateway.auth.api.saml_admin_router import saml_admin_router
+from gateway.auth.api.saml_router import saml_router
 from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
     OidcProviderConfigRow as _OidcProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.auth.infrastructure.saml_orm import (  # noqa: F401 — registers SamlProviderConfigRow on Base.metadata
+    SamlProviderConfigRow as _SamlProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.batches.api.router import batch_router
 from gateway.batches.api.stats_router import batch_stats_router
@@ -76,10 +82,28 @@ from gateway.core.body_size_guard import BodySizeLimitMiddleware
 from gateway.core.config import Settings
 from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
 from gateway.core.errors import register_error_handlers
+from gateway.domain_capture.api.domain_claims_router import domain_claims_router
+from gateway.domain_capture.infrastructure.dns_resolver import DnsPythonTxtResolver
+from gateway.domain_capture.infrastructure.orm import (  # noqa: F401 — registers TenantDomainClaimRow on Base.metadata
+    TenantDomainClaimRow as _TenantDomainClaimRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.domain_capture.infrastructure.rate_limiter import DomainClaimRateLimiter
+from gateway.guardrail_analytics.api.router import guardrail_analytics_router
+from gateway.guardrail_analytics.infrastructure.orm import (  # noqa: F401 — registers GuardrailVerdictEventRow on Base.metadata
+    GuardrailVerdictEventRow as _GuardrailVerdictEventRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.keys.api.key_guardrail_router import key_guardrail_router
 from gateway.keys.api.platform_keys_router import platform_keys_router
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
 from gateway.keys.infrastructure.mint_rate_limiter import PlaygroundMintRateLimiter
+from gateway.logs.api.capture_config_router import capture_router
+from gateway.logs.api.logs_query_router import logs_query_router
+from gateway.logs.infrastructure.orm import (  # noqa: F401 — registers RequestLogRow on Base.metadata
+    RequestLogRow as _RequestLogRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.logs.infrastructure.sqlalchemy_capture import SqlAlchemyPayloadCapture
+from gateway.logs.infrastructure.zdr_retention_adapter import RetentionZdrPort
 from gateway.memory.api.router import memories_router
 from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
     MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -120,6 +144,7 @@ from gateway.proxy.infrastructure.gemini_upstream import (
     GeminiCompletionUpstream,
     GoogleEmbeddingsProvider,
 )
+from gateway.proxy.infrastructure.ml_moderation_evaluator import OpenAiModerationClient
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
@@ -140,6 +165,13 @@ from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProvi
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.rate_limits.infrastructure.redis_token_bucket import RedisTokenBucket
+from gateway.scim.api.errors import register_scim_error_handlers
+from gateway.scim.api.scim_router import scim_router
+from gateway.scim.api.token_router import scim_token_router
+from gateway.scim.infrastructure.orm import (  # noqa: F401 — registers ScimTokenRow on Base.metadata
+    ScimTokenRow as _ScimTokenRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.scim.infrastructure.rate_limiter import ScimTokenRateLimiter
 from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
     TeamMemberRow as _TeamMemberRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -156,6 +188,7 @@ from gateway.tenants.api.platform_tenant_config_router import platform_tenant_co
 from gateway.tenants.api.platform_tenants_router import platform_tenants_router
 from gateway.tenants.api.platform_users_router import platform_users_router
 from gateway.tenants.api.rate_card_router import rate_card_router
+from gateway.tenants.api.retention_policy_router import retention_policy_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.api.users_router import users_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
@@ -512,6 +545,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             retention_sweeper = RetentionSweeper(
                 session_factory=_sessionmaker,
                 settings=_settings,
+                # tenant-retention-zdr TASK.md §3 — the ZDR unconditional purge pass
+                # calls ObjectStore.delete() for s3-backed artifacts and bounded Redis
+                # SCAN/DEL over resp-cache:/vec-cache: namespaces. Both are already
+                # wired on app.state before lifespan startup runs.
+                redis=_redis,
+                object_store=app.state.object_store,
             )
             app.state.retention_sweeper = retention_sweeper
             app.state.retention_sweeper_task = asyncio.create_task(
@@ -950,6 +989,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # fail-open on Redis outage.
     app.state.invite_public_limiter = InvitePublicRateLimiter(redis=redis_client)
 
+    # Per-scim_token_id rate limiter for /scim/v2/* writes (scim-provisioning TASK.md §3,
+    # M12). Same redis_client; no IO at construction; fail-open on Redis outage.
+    app.state.scim_rate_limiter = ScimTokenRateLimiter(redis=redis_client)
+
+    # Per-tenant rate limiter for the domain-claims create/verify endpoints (domain-capture
+    # TASK.md §3, M14). Same redis_client; no IO at construction; fail-open on Redis outage.
+    app.state.domain_claim_rate_limiter = DomainClaimRateLimiter(redis=redis_client)
+
+    # DNS TXT resolver for domain-claim verification (domain-capture TASK.md §3, M6/M13).
+    # Stateless — no IO at construction, safe without lifespan. Tests override via
+    # app.state.dns_resolver.
+    app.state.dns_resolver = DnsPythonTxtResolver()
+
+    # Domain-claim repository/resolver — constructed PER-REQUEST in
+    # domain_capture/api/deps.py (needs a request-scoped session); these are the
+    # test-injection seams only (mirrors app.state.saml_config_resolver = None).
+    app.state.domain_claim_repository = None
+    app.state.domain_claim_resolver = None
+
     # Bandwidth pacing (stream-bandwidth-pacing, v36): per-key aggregate token-bucket.
     # rate==0 (default) → PassthroughBandwidthBucket → byte-identical (no pacing, no Redis).
     # Construction does NOT connect to Redis (safe without lifespan); tests override via app.state.
@@ -1040,6 +1098,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings=settings,
     )
 
+    # ml-moderation-layer (§3 CONTRACT — FROZEN @ v1): a DEDICATED OpenAIDirectProvider
+    # + CircuitBreaker instance for the moderation IO seam, isolated from _openai_direct
+    # (chat/embeddings) so a moderation-provider outage can never trip real completions
+    # and a completions outage can never disable moderation (§0 R3, M8). Tighter
+    # timeouts than the chat default (connect=1.5s/read=2.5s vs. 10s/120s) — a hot-path
+    # pre-call check must fail fast (§0 R1). No separate global kill-switch
+    # (FREEZE-QUESTION 4, decided at freeze): the true off switch is the per-tenant
+    # ml_moderation.enabled flag (guardrail_router.py) — wiring here only makes the
+    # feature REACHABLE; deps.py still gates construction of the composite evaluator
+    # on this being non-None (M9).
+    app.state.ml_moderation_provider = OpenAiModerationClient(
+        OpenAIDirectProvider(
+            base_url=settings.openai_base_url,
+            connect_timeout=1.5,
+            read_timeout=2.5,
+            metrics_registry=app.state.metrics_registry,
+        )
+    )
+
     # Tenant model-preset store (tenant-preset-store v56). upsert() constructs its own
     # SqlAlchemyModelChecker per call, scoped to the session it opens (see the store's
     # module docstring) — matching every other call site in the codebase. Consumed by
@@ -1069,6 +1146,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.batch_diversion = BatchDiversionAdapter(
         settings=settings,
         buffer=app.state.batch_window_buffer,
+    )
+
+    # payload-capture-store (§3): opt-in, PII-scrubbed request/response capture.
+    # zdr_port is wired to RetentionZdrPort — a live adapter over the sibling
+    # tenant-retention-zdr task's SHIPPED tenants.zdr_enabled column (via
+    # tenants/application/retention_policy.py:is_zdr), bounded by
+    # capture_persist_timeout_seconds and fail-closed on any error/timeout (verify
+    # fix 2026-07-10: this was previously wired to the permissive AlwaysAllowCapture
+    # no-op, making the entire ZDR fail-closed contract for payload capture dead code
+    # in production). Tests override via app.state.zdr_port. payload_capture is the
+    # REAL DB-backed adapter (not NoopPayloadCapture — capture is opt-in/default-off
+    # via the per-tenant/per-key toggle, not via a Noop production wiring); tests
+    # override via app.state.payload_capture.
+    app.state.zdr_port = RetentionZdrPort(
+        session_factory=app.state.sessionmaker,
+        timeout_seconds=settings.capture_persist_timeout_seconds,
+    )
+    app.state.payload_capture = SqlAlchemyPayloadCapture(
+        session_factory=app.state.sessionmaker,
+        zdr_port=app.state.zdr_port,
+        timeout_seconds=settings.capture_persist_timeout_seconds,
+        max_field_bytes=settings.capture_max_field_bytes,
+        max_body_bytes=settings.capture_max_body_bytes,
+        max_concurrent_tasks=settings.capture_max_concurrent_tasks,
     )
 
     # openrouter-cost-recovery-wiring (v30 t6.2c): inline authoritative-cost recovery for
@@ -1113,12 +1214,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # None here means: use DbOidcConfigResolver (session-scoped) in production.
     app.state.oidc_config_resolver = None
 
+    # SAML seams — always initialized to None (= production adapters constructed
+    # per-request in saml_deps.py; tests override via app.state.saml_config_resolver /
+    # saml_request_store / saml_replay_cache). Mirrors the OIDC seam pattern above.
+    app.state.saml_config_resolver = None
+    app.state.saml_request_store = None
+    app.state.saml_replay_cache = None
+
     register_error_handlers(app)
+    register_scim_error_handlers(app)
     app.include_router(agent_oauth_device_router)
     app.include_router(agent_oauth_approval_router)
     app.include_router(agent_oauth_token_router)
     app.include_router(oidc_router)
+    app.include_router(saml_router)
+    app.include_router(saml_admin_router)
     app.include_router(oidc_admin_router)
+    app.include_router(domain_claims_router)
     app.include_router(provider_keys_admin_router)
     app.include_router(presets_admin_router)
     app.include_router(health_router)
@@ -1128,6 +1240,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users_router)
     app.include_router(invites_router)
     app.include_router(invite_accept_router)
+    app.include_router(scim_token_router)
+    app.include_router(scim_router)
     app.include_router(platform_tenants_router)
     app.include_router(platform_users_router)
     app.include_router(platform_tenant_config_router)
@@ -1135,11 +1249,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(platform_impersonation_router)
     app.include_router(platform_audit_router)
     app.include_router(cache_router)
+    app.include_router(capture_router)
+    app.include_router(logs_query_router)
     app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
+    app.include_router(retention_policy_router)
     app.include_router(rate_card_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
+    app.include_router(key_guardrail_router)
     app.include_router(keys_authz_router)
     app.include_router(platform_keys_router)
     app.include_router(teams_router)
@@ -1153,6 +1271,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(realtime_router)
     app.include_router(realtime_relay_router)
     app.include_router(usage_router)
+    app.include_router(guardrail_analytics_router)
+    app.include_router(audit_export_router)
     app.include_router(ops_router)
     app.include_router(budget_router)
     app.include_router(conversations_router)

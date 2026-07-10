@@ -226,6 +226,50 @@ def _mask_pii_in_body(response_body: dict[str, Any]) -> dict[str, Any]:
     return {**response_body, "choices": new_choices}
 
 
+def mask_pii_in_messages(
+    messages: list[dict[str, Any]],
+    guardrail_configs: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Apply PII masking to a flat list of message-shaped dicts (payload-capture-store §3).
+
+    Shape-generalized sibling of `_mask_pii_in_body` — extracted so BOTH `evaluate_post`
+    (response body, existing caller) and `logs/application/capture_writer.py` (request
+    AND response messages, new caller) apply the SAME regex table (built-ins + tenant
+    custom patterns), never a parallel reimplementation (folded lesson, foundation-version
+    12: "one alert seam not a parallel re-impl").
+
+    UNCONDITIONAL (payload-capture-store verify fix, Tin decision 2026-07-10): built-in
+    PII patterns are ALWAYS applied, regardless of whether the tenant has independently
+    enabled `guardrail_configs["pii_mask"]`. Scrub-before-persist must hold for every
+    tenant that only ever calls `PUT /admin/capture` — gating the capture-path scrub
+    behind a SEPARATE, independently-configured `PUT /admin/guardrails` toggle defeated
+    the "PII-scrubbed capture" invariant for every tenant using the DB default
+    (`guardrail_configs = '{}'`). Tenant custom patterns (`pii_mask.pii_custom_patterns`)
+    are additionally applied whenever configured, also independent of the `enabled`/`mode`
+    gate, for the same reason. This function currently has no OTHER caller (evaluate_post
+    masks response bodies via `_mask_pii_in_body`, a separate, still-toggle-gated code
+    path controlling what is echoed back to the client) — so this change is scoped to the
+    capture-persist path only; it does not alter response-side guardrail behavior.
+
+    Unlike `evaluate_post`, this function does NOT fail-open on error — a bug here is
+    exactly as likely as in `_mask_pii`/`_apply_custom_patterns_to_messages` (both already
+    exception-free for well-formed input), and the payload-capture-store caller owns its
+    OWN independent try/except mapping ANY exception to a metadata-only row (never a
+    silently-unmasked one) — conflating the two failure directions is the single
+    highest-stakes mistake documented in that task's Ground findings.
+    """
+    masked, _any_replaced = _mask_pii(messages)
+    pii_cfg = guardrail_configs.get("pii_mask")
+    if isinstance(pii_cfg, dict):
+        custom_compiled = _compile_custom_patterns(pii_cfg)
+        if custom_compiled:
+            deadline = time.monotonic() + _CUSTOM_BUDGET_SECONDS
+            masked, _custom_any_replaced, _budget_exceeded = _apply_custom_patterns_to_messages(
+                masked, custom_compiled, deadline, "mask", []
+            )
+    return masked
+
+
 def _compile_custom_patterns(
     pii_cfg: dict[str, Any],
 ) -> list[tuple[re.Pattern[str], str]]:

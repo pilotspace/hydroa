@@ -13,6 +13,7 @@ Infrastructure:
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 
 import pytest
@@ -23,7 +24,18 @@ from gateway.main import create_app
 from tests.credential_stub import install_stub_resolver
 from gateway.usage.application.flusher import UsageLedgerFlusher
 
-TEST_DATABASE_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+# payload-capture-store build-time fix: this suite-local override previously
+# hardcoded the shared, un-suffixed `gateway_test` database, bypassing the
+# GATEWAY_TEST_DATABASE_URL convention every other suite (via the root
+# tests/conftest.py) already respects. On a Postgres instance shared across
+# concurrent build worktrees, that hardcode collides with whichever sibling
+# task's tables happen to exist in the literal `gateway_test` DB at the time.
+# Falling back to the SAME literal default when the env var is unset keeps
+# this 100% behavior-preserving for any caller that doesn't set it.
+TEST_DATABASE_URL = os.environ.get(
+    "GATEWAY_TEST_DATABASE_URL",
+    "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+)
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
 

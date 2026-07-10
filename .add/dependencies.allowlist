@@ -21,6 +21,10 @@ prometheus-client
 python-multipart
 tinytag
 aioboto3
+jsonschema
+python3-saml   # saml-sso task (frozen contract §3 freeze question 1) — verified: manylinux wheel
+               # for xmlsec resolves against ghcr.io/astral-sh/uv:python3.12-bookworm-slim,
+               # no apt-get needed (confirmed via `docker build --target builder` + import check)
 
 # --- dev / test ---
 pytest

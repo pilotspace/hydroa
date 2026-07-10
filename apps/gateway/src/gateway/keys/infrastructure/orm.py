@@ -3,6 +3,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, Numeric, func
@@ -93,5 +94,16 @@ class ApiKeyRow(Base):
     )
     # Response-caching additive field (response-caching migration)
     cache_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    # Per-key guardrail policy override (per-key-guardrail-policies migration, additive).
+    # NULL = no override, inherit tenant guardrail_configs (default for all existing +
+    # new keys — byte-identical). Non-NULL (including {}) = explicit key-level override,
+    # wholesale, no field merge with tenant. Mirrors model_allowlist's nullable-JSONB shape.
+    guardrail_policy: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True, default=None
+    )
+    # Payload-capture-store additive field (payload-capture-store migration)
+    capture_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )

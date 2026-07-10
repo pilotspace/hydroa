@@ -214,6 +214,14 @@ class Settings(BaseSettings):
     # GATEWAY_OIDC_ALLOW_HTTP_URLS — dev/test only; never True in production
     oidc_allow_http_urls: bool = False
 
+    # ── SAML 2.0 SSO (saml-sso task) ──────────────────────────────────────────
+    # All optional; absence => SAML fully inert (M11: DB-config-only, no env fallback).
+    saml_sp_entity_id_base: str = ""  # GATEWAY_SAML_SP_ENTITY_ID_BASE (e.g. https://gw.example.com/saml/sp)
+    saml_acs_url: str = ""  # GATEWAY_SAML_ACS_URL (full external URL to /auth/saml/acs)
+    saml_post_login_redirect: str = "/"  # GATEWAY_SAML_POST_LOGIN_REDIRECT
+    saml_clock_skew_seconds: int = 60  # GATEWAY_SAML_CLOCK_SKEW_SECONDS
+    saml_allow_http_urls: bool = False  # GATEWAY_SAML_ALLOW_HTTP_URLS (dev/test only)
+
     # ── Per-tenant provider credentials (provider-credential-store task) ─────
     # GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY — Fernet key (base64url); required for upsert/get.
     # Kept separate from GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY for blast-radius isolation:
@@ -361,6 +369,16 @@ class Settings(BaseSettings):
     # no lookup, no rejection; frozen router + every existing proxy/audio test unchanged).
     # unsupported-input-guard TASK.md §3 (knob frozen default-OFF).
     input_modality_guard_enabled: bool = Field(default=False)
+
+    # GATEWAY_OUTPUT_VALIDATION_ENABLED — when True (AND the request carries
+    # validate_output:true), a response_format:json_schema completion's
+    # message.content is validated against the caller's schema; a mismatch fires
+    # ONE bounded retry (the identical routed call) before a terminal 422
+    # ERR_OUTPUT_SCHEMA_VALIDATION_FAILED. Default False = opt-in: no schema parse,
+    # no extra call, no cache-bypass, byte-identical to the v11 translate-don't-
+    # enforce path. SUPERSEDES v11 ONLY when opted in.
+    # output-schema-validation TASK.md §3 (knob frozen default-OFF).
+    output_validation_enabled: bool = Field(default=False)
     # GATEWAY_OPENROUTER_COST_RECOVERY_ENABLED — when True, an OpenRouter stream aborted by
     # client disconnect schedules an inline fire-and-forget authoritative-cost recovery
     # (OpenRouterCostRecoveryService) from the disconnect handler. Default False = opt-in
@@ -584,6 +602,32 @@ class Settings(BaseSettings):
     retention_audit_floor_days: int = Field(default=365)
     # env: GATEWAY_RETENTION_BATCH_SIZE (bounds each DELETE)
     retention_batch_size: int = Field(default=1000)
+    # ── Per-tenant retention window + ZDR (tenant-retention-zdr TASK.md §3, FROZEN @ v1) ──
+    # The single operator-wide ceiling a tenant's own `retention_window_days` may never
+    # exceed (validated at PUT /admin/retention-policy). Governs the 5 newly-swept payload
+    # tables standalone (no prior per-table knob); usage_records/alert_events keep their
+    # OWN existing knobs as an additional upper bound a tenant override can only shorten.
+    # env: GATEWAY_RETENTION_TENANT_WINDOW_CEILING_DAYS
+    retention_tenant_window_ceiling_days: int = Field(default=365)
+    # env: GATEWAY_RETENTION_REQUEST_LOGS_DAYS (0=skip) — payload-capture-store §3
+    # Freeze question #2: 30-day privacy-by-default window (shorter than
+    # usage_records' 365d — this store holds PII payloads by design). Tin-approved
+    # 2026-07-10.
+    retention_request_logs_days: int = Field(default=30)
+
+    # ── Payload capture (payload-capture-store task) ─────────────────────────────
+    # Opt-in, PII-scrubbed request/response capture (request_logs). Bounded-timeout,
+    # non-retried, fire-and-forget IO seam (§3 Freeze questions #2/#3, Tin-approved
+    # 2026-07-10 — all agent-recommended defaults accepted).
+    # env: GATEWAY_CAPTURE_PERSIST_TIMEOUT_SECONDS
+    capture_persist_timeout_seconds: float = Field(default=3.0, gt=0)
+    # env: GATEWAY_CAPTURE_MAX_FIELD_BYTES — per message-content-string truncation cap.
+    capture_max_field_bytes: int = Field(default=8192, gt=0)
+    # env: GATEWAY_CAPTURE_MAX_BODY_BYTES — per-row backstop cap (post per-field truncation).
+    capture_max_body_bytes: int = Field(default=65536, gt=0)
+    # env: GATEWAY_CAPTURE_MAX_CONCURRENT_TASKS — bounded-concurrency shed size (non-blocking
+    # semaphore try-acquire; a saturated pool skips the capture, never queues/blocks).
+    capture_max_concurrent_tasks: int = Field(default=50, gt=0)
 
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
@@ -1067,6 +1111,43 @@ class Settings(BaseSettings):
             )
             return 1
         return n
+
+    # ── Domain capture (domain-capture TASK.md §3 M13/M14, FROZEN @ v1) ─────────
+    # GATEWAY_DOMAIN_VERIFICATION_DNS_TIMEOUT_SECONDS — bounds the single DNS TXT
+    # lookup at verify time; a slow/non-responding nameserver 503s (fail-CLOSED), never
+    # hangs the request. Mirrors impersonation_live_check_timeout_seconds's exact style.
+    domain_verification_dns_timeout_seconds: float = Field(default=5.0, gt=0)
+    # GATEWAY_DOMAIN_CLAIM_CREATE_RPM / GATEWAY_DOMAIN_CLAIM_VERIFY_RPM — per-tenant
+    # fixed-window rate limits for the two OWNER-only mutating endpoints (M14). Both must
+    # be > 0; fails fast at boot when set to 0 or negative (mirrors invite_preview_rpm's
+    # own positive-knob validator).
+    domain_claim_create_rpm: int = 10  # GATEWAY_DOMAIN_CLAIM_CREATE_RPM
+    domain_claim_verify_rpm: int = 30  # GATEWAY_DOMAIN_CLAIM_VERIFY_RPM
+
+    @field_validator("domain_claim_create_rpm", "domain_claim_verify_rpm")
+    @classmethod
+    def _validate_domain_claim_positive_knobs(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                "INVALID_DOMAIN_CLAIM_KNOB: domain_claim_create_rpm and "
+                f"domain_claim_verify_rpm must each be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    # ── SCIM provisioning (scim-provisioning task, M12) ──────────────────────────
+    # Per-scim_token_id fixed-window write rate limit for /scim/v2/* mutations. Must be
+    # > 0; fails fast at boot when set to 0 or negative (mirrors invite_preview_rpm's own
+    # positive-knob validator).
+    scim_write_rpm: int = 60  # GATEWAY_SCIM_WRITE_RPM
+
+    @field_validator("scim_write_rpm")
+    @classmethod
+    def _validate_scim_write_rpm(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                f"INVALID_SCIM_KNOB: scim_write_rpm must be a positive integer (> 0); got {v!r}"
+            )
+        return v
 
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":

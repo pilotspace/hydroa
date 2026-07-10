@@ -41,6 +41,7 @@ import {
 } from "@/lib/chat/attachments";
 import { StagedAttachments, MessageImages } from "@/components/chat/AttachmentPreview";
 import { bffGet } from "@/lib/bff-client";
+import { consumeReplayPayload, type ReplayPayload } from "@/lib/logs-replay";
 import type { ModelsData } from "@/components/models/ModelCatalogTable";
 import { ChatHistorySidebar } from "@/components/chat/ChatHistorySidebar";
 import { ModelPicker } from "@/components/chat/ModelPicker";
@@ -289,7 +290,12 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
   // Per-model catalog pricing for honest per-turn cost (per-token leaves on the
   // JWT/control-plane twin). Plain bffGet (no react-query) so the component stays
   // standalone; honest degrade to no-cost when a model has no price.
+  //
+  // logs-explorer-ui (v58): this same fetch also captures the live catalog's id set
+  // (`catalogModelIds`), reused below to validate a replayed model_id (M6) — sharing the
+  // one existing request rather than adding a second, redundant /admin/catalog/models call.
   const [priceMap, setPriceMap] = useState<Map<string, { p: number; c: number }>>(new Map());
+  const [catalogModelIds, setCatalogModelIds] = useState<Set<string> | null>(null);
   useEffect(() => {
     let alive = true;
     bffGet<ModelsData>("/admin/catalog/models")
@@ -302,14 +308,62 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
           }
         }
         setPriceMap(m);
+        setCatalogModelIds(new Set((d.data ?? []).map((e) => e.id)));
       })
       .catch(() => {
-        /* honest degrade — turns show tokens but no dollar cost */
+        // honest degrade — turns show tokens but no dollar cost; an empty (non-null) set
+        // lets a pending replay fall back rather than waiting forever (below).
+        if (alive) setCatalogModelIds(new Set());
       });
     return () => {
       alive = false;
     };
   }, []);
+
+  // logs-explorer-ui (v58): consume a one-time Logs Explorer replay handoff. Read exactly
+  // once on mount (the ref guard survives StrictMode's double-invoke) — consumeReplayPayload()
+  // clears the sessionStorage entry immediately, so back-navigation never re-triggers it.
+  const [replayPayload, setReplayPayload] = useState<ReplayPayload | null>(null);
+  const replayConsumedRef = useRef(false);
+  const [replayNotice, setReplayNotice] = useState<{ fallbackModel: string | null; degraded: boolean }>({
+    fallbackModel: null,
+    degraded: false,
+  });
+  useEffect(() => {
+    if (replayConsumedRef.current) return;
+    replayConsumedRef.current = true;
+    // One-shot sync from an external store (sessionStorage) — the SSR-safe pattern for
+    // a browser-only read; not a cascading render. (rule is over-strict here; same
+    // escape hatch as LoginForm's SSO-domain seed.) consumeReplayPayload() also clears
+    // the entry, so this must stay an effect (a mutating external read has no place in
+    // a render body) rather than the render-time "adjust state" pattern used below.
+    const payload = consumeReplayPayload();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (payload) setReplayPayload(payload);
+  }, []);
+
+  // Apply the consumed payload once the live catalog resolves (never hangs: the catalog
+  // fetch above always settles catalogModelIds, success or fail-open-empty). M6: the
+  // composer is pre-filled but NEVER auto-sent — only `input`/`model` state is seeded.
+  // React's documented "adjust state during render" escape hatch (same idiom as
+  // SpendPage's lastGood tracking) — NOT a useEffect, so react-hooks/set-state-in-effect
+  // stays clean: this is pure derived-state from `replayPayload`/`catalogModelIds`, and
+  // clearing `replayPayload` at the end makes the block self-terminating (no re-entry).
+  if (replayPayload && catalogModelIds !== null) {
+    // Only pre-fill an UNTOUCHED composer: the catalog resolves async, so a user who
+    // started typing before it settled must not have their in-progress text clobbered.
+    // Either way the payload is one-shot — consumed and cleared, never re-applied.
+    if (input === "") {
+      const inCatalog = catalogModelIds.has(replayPayload.modelId);
+      setInput(replayPayload.text);
+      setModel(inCatalog ? replayPayload.modelId : defaultModel);
+      setReplayNotice({
+        fallbackModel: inCatalog ? null : replayPayload.modelId,
+        degraded: replayPayload.degraded,
+      });
+    }
+    setReplayPayload(null);
+  }
 
   const costFor = useCallback(
     (tm: TurnMeta | undefined): string | null => {
@@ -574,6 +628,18 @@ export function ChatWorkspace({ defaultModel = DEFAULT_MODEL }: ChatWorkspacePro
 
       <form onSubmit={onSubmit} className="border-t border-border bg-background px-4 py-3">
         <div className="mx-auto flex max-w-3xl flex-col gap-2">
+          {/* logs-explorer-ui (v58): one-time replay notices — the composer is prefilled but
+              never auto-sent (M6/M8); each notice is purely informational (role="status"). */}
+          {replayNotice.fallbackModel ? (
+            <p role="status" className="px-1 text-xs text-muted-foreground">
+              Model no longer available — defaulted to {defaultModel}.
+            </p>
+          ) : null}
+          {replayNotice.degraded ? (
+            <p role="status" className="px-1 text-xs text-muted-foreground">
+              Some content couldn&apos;t be replayed.
+            </p>
+          ) : null}
           {/* Quick-action chips — design parity; prefill the composer when idle+empty. */}
           {input.trim() === "" && !isStreaming ? (
             <div className="flex flex-wrap gap-1.5">
