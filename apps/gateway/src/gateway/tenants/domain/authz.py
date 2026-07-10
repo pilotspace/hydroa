@@ -68,6 +68,10 @@ class Permission(StrEnum):
     # tiered-rate-cards TASK.md §3: OWNER-only (markup is the platform's margin
     # over provider cost; auto-holds via ROLE_PERMISSIONS[OWNER] = frozenset(Permission)).
     RATE_CARDS_MANAGE = "rate_cards_manage"
+    # logs-explorer-api TASK.md §3: PII-payload-bearing read surface — same additive
+    # precedent as RATE_CARDS_MANAGE, role set mirrors AUDIT_READ exactly (owner/admin/
+    # operator/superadmin; NOT billing_admin/viewer/member).
+    LOGS_READ = "logs_read"
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +90,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.OPS_READ,
             Permission.MEMBERS_MANAGE,
             Permission.AUDIT_READ,
+            Permission.LOGS_READ,
             # NOT PROVIDER_SECRETS, NOT SECURITY_CONFIG (owner-only preserved)
         }
     ),
@@ -97,6 +102,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.USAGE_READ,
             Permission.OPS_READ,
             Permission.AUDIT_READ,
+            Permission.LOGS_READ,
         }
     ),
     Role.BILLING_ADMIN: frozenset(
