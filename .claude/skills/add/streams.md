@@ -1,11 +1,11 @@
 # Parallel streams — pipelining independent tasks
 
 Load this when a milestone has more than one task and you want to run them concurrently.
-**Default:** when a project confirms `parallel + auto` as its run mode at setup
-(`phases/0-setup.md` "Run mode"), parallel streaming is the project default — an **opt-out**, not
-the opt-in it once was; downgrade in one step (`add.py autonomy set conservative --project`, or
-just run tasks one at a time). A project that kept the conservative run mode still treats this
-rubric as the opt-in escape hatch.
+**Default:** `sequential + auto` is the project default at setup (`phases/0-setup.md` "Run
+mode") — one task at a time, but Verify still auto-PASSes on evidence. Parallel streaming is an
+**opt-in** for a milestone with genuinely independent tasks: `add.py streams set parallel
+--project`, then read on. A project that raised its gate to `conservative`/`manual` still treats
+this rubric as the same opt-in escape hatch.
 
 It changes **no `add.py` code and no phase semantics**. It is a way *you, the orchestrator*,
 drive several tasks at once by reading the dependency DAG `add.py status` already prints and
@@ -49,8 +49,8 @@ tier hint: top → dag-scheduler, setup-run-mode; mid → the rest
 ```
 
 - **Wave = a fan-out batch.** Every task in a wave has all in-milestone deps PASS, so the whole
-  wave is spawnable at once (`isolation="worktree"`). Finish a wave, gate tasks PASS, then
-  `add.py waves` again — the next wave is unblocked.
+  wave is spawnable at once — worktree isolation is the default for any spawn, not just a wave.
+  Finish a wave, gate tasks PASS, then `add.py waves` again — the next wave is unblocked.
 - **Run the widest wave first** to hide the most build latency under human review latency.
 - **Spend your strongest model on the critical path.** Critical-path tasks gate the most
   downstream work; off-path tasks take **mid**. The tier hint is advisory — override when you
@@ -85,8 +85,9 @@ floor never drops to zero (`run.md:22`). Do not engineer around it.
 - **A worker** owns only its own `.add/tasks/<slug>/` — it builds `src/`, drives tests green,
   gathers evidence, and writes `SUMMARY.md` + OBSERVE deltas. It touches **no sibling stream and
   no shared file** — never write shared state (state.json, MILESTONE.md, a sibling's files).
-- **Isolation**: spawn each worker with `isolation="worktree"` so concurrent builds cannot
-  collide. The worktree is discarded on failure; the task resets to its last-good phase.
+- **Isolation**: `isolation="worktree"` is the default for any agent-spawned step, not only a
+  wave — a shared-tree spawn needs a stated reason. The worktree is discarded on failure; the task
+  resets to its last-good phase.
 </constraints>
 
 ## Design for failure (required)
@@ -100,8 +101,8 @@ floor never drops to zero (`run.md:22`). Do not engineer around it.
   (`wave_ledger_malformed`); `add.py check` is the standing monitor.
 - **Materialize gitignored engine content** — `git worktree add` checks out TRACKED files only;
   `.add/tooling` (engine) and `.add/docs` (book) are gitignored and will be ABSENT even when the
-  worktree's HEAD matches — copy them in before the worker's first `add.py` call, or its
-  `phase`/`advance` commands have no engine to run at all (confirmed 3-for-3 this session).
+  worktree's HEAD matches. `add.py worktree-prep <slug>` mechanizes the recipe: cuts the
+  worktree, copies both trees in, and echoes the fork base for the ledger — one step.
 - **Lease + timeout** — record which worker holds which task (wave ledger); a dead worker releases
   its claim back to READY.
 - **Failure isolates** — a worker's STOP-and-escalate blocks only its own task; siblings run on, the
@@ -248,8 +249,8 @@ always escalates** — no tier auto-passes it.
 
 ## The spawn adapter — one thin mapping per runner
 
-ADD needs six capabilities from any runner. **Isolation ADD owns itself** (a git worktree), so
-streams stay portable even without a native sandbox.
+ADD needs six capabilities from any runner. **Isolation ADD owns itself** (a git worktree,
+default for any spawn), so streams stay portable even without a native sandbox.
 
 | ADD needs | Abstract | Claude Code (verified reference) | Any CLI agent — Codex · opencode · pi-mono · … |
 |-----------|----------|----------------------------------|-----------------------------------------------|
