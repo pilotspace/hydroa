@@ -98,6 +98,7 @@ from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
 from gateway.keys.infrastructure.mint_rate_limiter import PlaygroundMintRateLimiter
 from gateway.logs.api.capture_config_router import capture_router
+from gateway.logs.api.logs_query_router import logs_query_router
 from gateway.logs.infrastructure.orm import (  # noqa: F401 — registers RequestLogRow on Base.metadata
     RequestLogRow as _RequestLogRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
@@ -1249,6 +1250,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(platform_audit_router)
     app.include_router(cache_router)
     app.include_router(capture_router)
+    app.include_router(logs_query_router)
     app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
     app.include_router(retention_policy_router)

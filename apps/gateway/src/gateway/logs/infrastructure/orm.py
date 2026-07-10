@@ -58,6 +58,15 @@ class RequestLogRow(Base):
         Index("ix_request_logs_tenant_created", "tenant_id", "created_at"),
         Index("ix_request_logs_created_at", "created_at"),
         Index("ix_request_logs_tenant_key", "tenant_id", "key_id"),
+        # logs-explorer-api TASK.md §3 (FROZEN @ v1) — additive index-only migration
+        # 69cfdc584129, backing the GET /admin/logs model_id filter. Declared here too
+        # (not just in the migration) so Base.metadata / alembic-check parity stays
+        # honest for THIS task's own addition — see that migration's docstring for the
+        # two PRE-EXISTING parity gaps (ix_request_logs_request_id,
+        # ix_usage_records_request_id) this task inherited un-declared from the sibling
+        # request-log-metering-fields migration a55ddcebaac6 and deliberately leaves
+        # alone (out of this task's Scope on an already-FROZEN file).
+        Index("ix_request_logs_tenant_model_created", "tenant_id", "model_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)

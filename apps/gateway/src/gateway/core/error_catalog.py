@@ -969,3 +969,18 @@ OUTPUT_SCHEMA_VALIDATION_FAILED = ErrorSpec(
 #: /admin/scim/tokens/{id}/rotate|DELETE — unknown id, already revoked, or cross-tenant.
 #: Deliberately indistinguishable (no oracle), mirrors INVITE_NOT_FOUND's own precedent.
 SCIM_TOKEN_NOT_FOUND = ErrorSpec(404, "ERR_SCIM_TOKEN_NOT_FOUND", "SCIM token not found")
+
+# ---------------------------------------------------------------------------
+# Logs Explorer (logs-explorer-api TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: GET /admin/logs/{log_id} — unknown id OR cross-tenant id. Deliberately indistinguishable
+#: (no oracle), mirrors SCIM_TOKEN_NOT_FOUND / INVITE_NOT_FOUND's own precedent.
+LOG_NOT_FOUND = ErrorSpec(404, "ERR_LOG_NOT_FOUND", "Request log not found")
+
+#: GET /admin/logs's bounded DB read exceeded its time budget (mirrors EXPORT_QUERY_TIMEOUT).
+LOGS_QUERY_TIMEOUT = ErrorSpec(
+    504,
+    "ERR_LOGS_QUERY_TIMEOUT",
+    "Logs query exceeded the time budget; narrow the range or reduce limit",
+)
