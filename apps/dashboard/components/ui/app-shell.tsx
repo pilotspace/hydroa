@@ -97,6 +97,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/app/audit", label: "Audit", icon: ClipboardList, minRole: "admin" },
       { href: "/app/health", label: "Health", icon: HeartPulse, minRole: "admin" },
       { href: "/app/slo", label: "SLO", icon: GaugeCircle, minRole: "admin" },
+      {
+        href: "/app/guardrail-analytics",
+        label: "Guardrail Analytics",
+        icon: ShieldCheck,
+        minRole: "admin",
+      },
     ],
   },
 ];

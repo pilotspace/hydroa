@@ -88,6 +88,10 @@ from gateway.domain_capture.infrastructure.orm import (  # noqa: F401 — regist
     TenantDomainClaimRow as _TenantDomainClaimRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.domain_capture.infrastructure.rate_limiter import DomainClaimRateLimiter
+from gateway.guardrail_analytics.api.router import guardrail_analytics_router
+from gateway.guardrail_analytics.infrastructure.orm import (  # noqa: F401 — registers GuardrailVerdictEventRow on Base.metadata
+    GuardrailVerdictEventRow as _GuardrailVerdictEventRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.keys.api.key_guardrail_router import key_guardrail_router
 from gateway.keys.api.platform_keys_router import platform_keys_router
 from gateway.keys.api.router import admin_router as keys_admin_router
@@ -1265,6 +1269,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(realtime_router)
     app.include_router(realtime_relay_router)
     app.include_router(usage_router)
+    app.include_router(guardrail_analytics_router)
     app.include_router(audit_export_router)
     app.include_router(ops_router)
     app.include_router(budget_router)

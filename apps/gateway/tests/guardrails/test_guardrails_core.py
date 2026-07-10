@@ -1375,6 +1375,14 @@ async def test_guardrails_core_migration_column_exists(
     # saml_provider_configs (saml-sso, additive migration c950c528d3d5) — same
     # precedent as every entry above. Guardrails still adds no tables of its own;
     # invariant intent unchanged.
+    # SANCTIONED EDIT (guardrail-analytics TASK.md §3 manifest maintenance,
+    # 2026-07-10): added guardrail_verdict_events to this manifest — additive
+    # migration b7c9e1a3f5d8, registered on Base.metadata via
+    # guardrail_analytics/infrastructure/orm.py side-effect import (same precedent).
+    # This is a NEW table owned by the guardrail-analytics task's own module
+    # (mirrors request_logs/payload-capture-store), not by guardrails-core itself —
+    # the invariant this test checks ("guardrails-core adds no tables") is unchanged;
+    # guardrails-core (this file's own module) still owns zero tables.
     new_tables = (
         await db_session.execute(
             text(
@@ -1390,7 +1398,7 @@ async def test_guardrails_core_migration_column_exists(
                 " 'batch_jobs','batch_job_items',"
                 " 'invites','plans','impersonation_sessions',"
                 " 'tenant_rate_card_entries','request_logs',"
-                " 'scim_tokens','saml_provider_configs')"
+                " 'scim_tokens','saml_provider_configs','guardrail_verdict_events')"
             )
         )
     ).fetchall()
