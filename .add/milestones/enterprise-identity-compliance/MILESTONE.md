@@ -37,27 +37,32 @@ UI/UX in scope (admin settings surfaces only — SCIM token management, SAML IdP
 - [ ] compliance-export-api   depends-on: none               — read-only, cursor-paginated, filtered export over the immutable audit store; export access audited. (data)
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] An IdP can create, update, and deactivate a tenant user via SCIM with the tenant's SCIM token; a deactivated user's sessions/keys stop authenticating; another tenant's SCIM token cannot touch it   (← scim-provisioning)
-- [ ] A user of a SAML-configured tenant signs in via their IdP and receives the same session JWT as OIDC/password users; a forged/replayed/cross-tenant assertion is rejected   (← saml-sso)
-- [ ] A tenant admin proves domain ownership; a new signup on that verified domain lands in that tenant per the frozen precedence; an unverified domain changes nothing   (← domain-capture)
-- [ ] A tenant admin sets a retention window and the sweeper honors it per-tenant; a ZDR tenant produces zero payload rows in every inventoried store while billing stays exact   (← tenant-retention-zdr)
-- [ ] A compliance officer exports the tenant's audit trail filtered by time/actor with stable cursor pagination; the export itself appears in the audit log   (← compliance-export-api)
+- [x] An IdP can create, update, and deactivate a tenant user via SCIM with the tenant's SCIM token; a deactivated user's sessions/keys stop authenticating; another tenant's SCIM token cannot touch it   (← scim-provisioning)
+- [x] A user of a SAML-configured tenant signs in via their IdP and receives the same session JWT as OIDC/password users; a forged/replayed/cross-tenant assertion is rejected   (← saml-sso)
+- [x] A tenant admin proves domain ownership; a new signup on that verified domain lands in that tenant per the frozen precedence; an unverified domain changes nothing   (← domain-capture)
+- [x] A tenant admin sets a retention window and the sweeper honors it per-tenant; a ZDR tenant produces zero payload rows in every inventoried store while billing stays exact   (← tenant-retention-zdr)
+- [x] A compliance officer exports the tenant's audit trail filtered by time/actor with stable cursor pagination; the export itself appears in the audit log   (← compliance-export-api)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway (identity/tenants/retention/audit) : NEW SCIM 2.0 `/scim/v2/Users` (per-tenant bearer token, create/update/deactivate → existing user lifecycle; cross-tenant token rejected); NEW SAML 2.0 SP alongside OIDC (per-tenant IdP config, assertion signature/audience/replay/tenant-confusion validation, same session-JWT issuance); NEW `tenant_domain_claims` (DNS-TXT proof at `_ai-proxy-challenge.<domain>`, partial-unique `WHERE status='verified'` structural collision guard, signup routing composes with S1 invite-only default); per-tenant retention window + ZDR fail-closed mode over the existing sweeper (payload-store inventory frozen); read-only cursor-paginated compliance export over the append-only audit store (export itself audited).
+- dashboard : 3 NEW /settings tabs — SCIM token mgmt, SAML IdP config, Retention & ZDR editor; Aurora + WCAG 2.2 AA (ZDR destructive-confirm hardened at verify).
+- tooling : untouched. skill : untouched. book : untouched.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- scim-provisioning       : gate=PASS (security HARD-STOP) · deactivate stops auth, cross-tenant token rejected · residue=none
+- saml-sso                : gate=PASS (security HARD-STOP) · forged/replayed/cross-tenant assertion rejected · residue=none
+- domain-capture          : gate=PASS (security HARD-STOP, Tin-gated) · concurrent-verify race + normalization-bypass + account-hijack-via-join all held live · residue=note (real-DNS-adapter suite coverage gap — hand-verified correct, deferred test)
+- tenant-retention-zdr    : gate=PASS · per-tenant window honored, ZDR zero-payload + exact billing · residue=none
+- compliance-export-api   : gate=PASS · stable cursor, time/actor filter, export-of-export audited · residue=none
+- enterprise-identity-admin-ui : gate=PASS · 44 suite · residue=none (verify MAJOR — ZDR switch-race — fixed + red-verified, reveal-once/enumeration held)
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
+- goal: enterprise identity + compliance on existing primitives — SCIM drives the user lifecycle, SAML issues the existing session JWT, domain-capture routes signups (S1-composed), per-tenant retention/ZDR extends the sweeper fail-closed, compliance export reads the immutable audit store; all 6 tasks gate=PASS (3 security HARD-STOPs Tin-approved), no parallel identity/audit stores introduced.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one

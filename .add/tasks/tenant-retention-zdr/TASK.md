@@ -424,4 +424,4 @@ One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence �
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-- [DDD · open] a milestone's "the sibling task freezes that hook here" cross-reference can point at a task that is itself still ungrounded — a design agent must verify the CURRENT state of a cited dependency rather than trusting the milestone prose, and record a port/contract the other side can consume later instead of assuming the hook already exists (evidence: `payload-capture-store/TASK.md` read in full — still the blank template).
+- [DDD · folded] a milestone's "the sibling task freezes that hook here" cross-reference can point at a task that is itself still ungrounded — a design agent must verify the CURRENT state of a cited dependency rather than trusting the milestone prose, and record a port/contract the other side can consume later instead of assuming the hook already exists (evidence: `payload-capture-store/TASK.md` read in full — still the blank template). [folded foundation-version 50]

@@ -381,7 +381,7 @@ Guardrail-engine reuse (extend, not duplicate): `proxy/infrastructure/guardrail_
 Glossary deltas:
 - **Request log**: an opt-in, PII-scrubbed, retention-governed capture row of one proxied call's request+response bodies, keyed to tenant/key/team; distinct from `Usage record` (billing truth, never PII-scrubbed, 365d default retention) and `Audit event` (compliance ledger, trigger-immutable, never PII-bearing by design). A ZDR tenant never has request-log rows, regardless of its stored opt-in toggle.
 - **Scrub-before-persist**: the invariant that PII masking (via the existing guardrail masking engine) runs on a payload BEFORE any capture row is written, never as a display-time filter; a scrub failure yields a metadata-only row, never a raw one.
-- **ZDR override hook**: the `ZdrOverridePort.is_zdr(tenant_id) -> bool` Protocol, fail-closed-on-error (unconfirmable -> assume ZDR -> suppress capture), checked live before every persist (not cached from the opt-in toggle) — the frozen seam `tenant-retention-zdr` implements against.
+- **ZDR override hook**: the `ZdrOverridePort.is_zdr(tenant_id) -> bool` Protocol, fail-closed-on-error (unconfirmable -> assume ZDR -> suppress capture), checked live before every persist (not cached from the opt-in toggle) — the frozen seam `tenant-retention-zdr` implements against. [folded foundation-version 50]
 
 ### Freeze questions (Tin rules on these before Status can move to FROZEN)
 

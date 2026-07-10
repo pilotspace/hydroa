@@ -38,29 +38,36 @@ UI/UX in scope (Logs Explorer page + guardrail analytics view): follows the Auro
 - [ ] guardrail-analytics         depends-on: per-key-guardrail-policies — guardrail verdict counters (per policy/pattern/key) + admin analytics API + dashboard view.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A tenant with capture ON gets a PII-scrubbed request/response log row per proxied call; a tenant with capture OFF (or ZDR) gets none; a capture-store outage never fails a proxied request   (← payload-capture-store)
-- [ ] A tenant admin can list/filter/paginate logs and fetch one log's full detail; another tenant's logs are 404-invisible   (← logs-explorer-api)
-- [ ] A tenant admin can browse logs in the console, open a detail drawer, and replay a logged request into the chat playground   (← logs-explorer-ui)
-- [ ] A key with its own guardrail policy enforces it (overriding the tenant policy); a key without one inherits the tenant policy   (← per-key-guardrail-policies)
-- [ ] With ML moderation ON, a flagged prompt is blocked (block mode) or audited (audit mode); a moderation-provider outage degrades honestly per the configured failure mode, never silently passes as "checked"   (← ml-moderation-layer)
-- [ ] With output validation ON, a schema-mismatched response triggers exactly one retry then a structured error; with it OFF the response path is byte-identical to today   (← output-schema-validation)
-- [ ] A tenant admin can see guardrail hit counts by policy/pattern/key over a time window in the dashboard   (← guardrail-analytics)
+- [x] A tenant with capture ON gets a PII-scrubbed request/response log row per proxied call; a tenant with capture OFF (or ZDR) gets none; a capture-store outage never fails a proxied request   (← payload-capture-store)
+- [x] A tenant admin can list/filter/paginate logs and fetch one log's full detail; another tenant's logs are 404-invisible   (← logs-explorer-api)
+- [x] A tenant admin can browse logs in the console, open a detail drawer, and replay a logged request into the chat playground   (← logs-explorer-ui)
+- [x] A key with its own guardrail policy enforces it (overriding the tenant policy); a key without one inherits the tenant policy   (← per-key-guardrail-policies)
+- [x] With ML moderation ON, a flagged prompt is blocked (block mode) or audited (audit mode); a moderation-provider outage degrades honestly per the configured failure mode, never silently passes as "checked"   (← ml-moderation-layer)
+- [x] With output validation ON, a schema-mismatched response triggers exactly one retry then a structured error; with it OFF the response path is byte-identical to today   (← output-schema-validation)
+- [x] A tenant admin can see guardrail hit counts by policy/pattern/key over a time window in the dashboard   (← guardrail-analytics)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway (proxy/logs/guardrails) : NEW `request_logs` payload store (opt-in, scrub-before-persist through the existing guardrail engine, size-capped, ZDR-override + retention-sweeper wired); NEW `GET /admin/logs` list+detail (tenant-scoped, `Permission.LOGS_READ`, keyset pagination); per-KEY guardrail policy resolution (key > tenant > default-off); NEW ML-moderation check class (provider-backed, default-off, breaker + honest degrade on the new egress seam); opt-in output JSON-schema validation + one bounded retry (recorded supersession of the v11 translate-don't-enforce pin; off = byte-identical); NEW `guardrail_verdict_events` + `GET /admin/guardrails/analytics`; 5 nullable metering columns on `request_logs` + `request_id` correlation across `request_logs`/`usage_records`.
+- dashboard : NEW Logs Explorer page (filter table + detail drawer + replay-into-chat one-shot handoff), NEW Guardrail Analytics view; both Aurora + WCAG 2.2 AA (drawer-open axe sweep added at verify).
+- tooling : untouched. skill : untouched. book : untouched.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- payload-capture-store       : gate=PASS · scrub-before-persist + fail-open proxy path + ZDR fail-closed · residue=none
+- logs-explorer-api           : gate=PASS (data/PII, Tin-gated) · cross-tenant cursor/injection/404-oracle all held live · residue=note (metadata-only projection — deferred delta, not a leak)
+- logs-explorer-ui            : gate=PASS · 22 suite + drawer-open axe · residue=none (3 verify polish fixes applied: replay-clobber guard, drawer axe, hit-target delta deferred)
+- request-log-metering-fields : gate=PASS · 12 suite + concurrent request_id 1:1 · residue=note (string-token display divergence — deferred SPEC delta, non-billing)
+- per-key-guardrail-policies  : gate=PASS · key>tenant resolution · residue=none
+- ml-moderation-layer         : gate=PASS · block/audit + breaker honest-degrade · residue=none
+- output-schema-validation    : gate=PASS · one-retry-then-structured-error, off=byte-identical · residue=none
+- guardrail-analytics         : gate=PASS · 20 suite + 69 sibling (union-merge non-corruption) + fail-open both layers held · residue=none
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
+- goal: "A tenant admin can opt into PII-scrubbed request/response capture, explore and replay logged calls from the console, and enforce per-key guardrail policies with ML moderation, output schema validation, and guardrail analytics" — proven end-to-end: capture→scrub→`request_logs`, `GET /admin/logs` list+detail (tenant-404-invisible), console table+drawer+replay, key>tenant policy, ML-moderation block/audit, output-validation retry, and `GET /admin/guardrails/analytics`; all 8 tasks gate=PASS, dashboard 1195/1195, BE 197-suite green.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one

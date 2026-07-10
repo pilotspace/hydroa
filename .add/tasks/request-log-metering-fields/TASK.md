@@ -2,9 +2,8 @@
 
 slug: request-log-metering-fields · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -103,8 +102,6 @@ Assumptions — lowest-confidence first:
   - [ ] Whether the richer per-tier token columns `usage_records` already carries (`cached_tokens`, `reasoning_tokens`, `cache_creation_tokens`, `audio_*_tokens`) should also be mirrored onto `request_logs` in this same pass, or deferred as a spec delta if the Logs Explorer UI later wants tier-level display — recommend DEFER (the stated exit gap is "can't show latency/tokens," not tier-level billing detail; keeps this change-request minimal and matches the dispatch objective's own framing) — confirm at freeze.
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -192,8 +189,6 @@ Scenario: Tokens are stored verbatim from the usage dict, never recomputed from 
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -324,7 +319,7 @@ special handling needed since DELETE doesn't reference a column list).
 
 Glossary deltas:
 - **Metering fields**: the additive `request_logs.latency_ms` / `prompt_tokens` / `completion_tokens` / `total_tokens` columns — DISPLAY-ONLY metadata snapshots sourced verbatim from the SAME in-flight values the proxy already computes for observability (the call's OtelSpan `_start_ns`) and billing (the call's `usage` dict), never independently computed and never billing truth.
-- **Correlation key (request_id)**: a UUID minted once per proxied call in `proxy/application/use_cases.py`, stored verbatim on `request_logs.request_id` AND inside `usage_records.raw->>'request_id'` (no new `usage_records` column) — the join key between a captured log row and its billing-ledger row for the SAME call. Distinct from `RequestIdMiddleware`'s separate ASGI-layer per-HTTP-request id (not reused in this task — see Freeze question #1).
+- **Correlation key (request_id)**: a UUID minted once per proxied call in `proxy/application/use_cases.py`, stored verbatim on `request_logs.request_id` AND inside `usage_records.raw->>'request_id'` (no new `usage_records` column) — the join key between a captured log row and its billing-ledger row for the SAME call. Distinct from `RequestIdMiddleware`'s separate ASGI-layer per-HTTP-request id (not reused in this task — see Freeze question #1). [folded foundation-version 50]
 
 ### Freeze questions (Tin rules on these before Status can move to FROZEN)
 
@@ -355,9 +350,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -373,8 +365,6 @@ Known-problem fixes: 11 mechanical call-site edits is the single biggest risk of
 Safety rule (feature-specific): `request_id` must NEVER be treated as a uniqueness/idempotency key anywhere (no `ON CONFLICT`, no unique constraint) — it is a plain best-effort correlation label on two independent fire-and-forget writes; a build that adds a unique constraint would risk turning a rare, harmless dual-fire (e.g. a retried internal call) into an unhandled IntegrityError on the fail-open capture path, which is exactly the failure mode payload-capture-store's Must #2 (fail-open for the proxied response) forbids.
 Code lives in: the Scope list above (existing `logs/`, `proxy/`, `usage/` bounded contexts — no new module).
 Constraints: do NOT change any test or the contract; allow-list packages only (no new third-party dependency expected — `uuid`, `time` are stdlib, already imported in `use_cases.py`); ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -432,8 +422,6 @@ Reported: yes — this verify pass (evidence gathered: 12/12 task-suite tests pa
 Outcome: PASS
 Reviewed by: add-verify (self, recommendation — human/orchestrator records the binding outcome) · date: 2026-07-11
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
-
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
@@ -441,14 +429,16 @@ Reviewed by: add-verify (self, recommendation — human/orchestrator records the
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by add-verify (self, recommendation — human/orchestrator records the binding outcome))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
 
 ## Design self-score
 

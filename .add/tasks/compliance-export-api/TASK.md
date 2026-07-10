@@ -365,7 +365,7 @@ New error_catalog.py entries (additive, core/error_catalog.py):
 Glossary deltas:
 - **Compliance export**: a read-only, cursor-paginated, time/actor-filtered pull over the existing tenant audit trail (`audit_events`), distinct from the interactive `GET /admin/audit` admin-console read — same store, different envelope (no `total`, cursor not offset), different scale ceiling (limit up to 5000 vs 100), and a different default wire format (NDJSON) aimed at SIEM/archival consumers rather than a UI table.
 - **Export cursor**: an opaque, base64url-encoded `(created_at, id)` keyset marker naming the last row of the previous export page; NOT a row offset — guarantees deterministic, append-safe paging over a live-appending store.
-- **Audit-of-export**: the fire-and-forget `audit_events` row (`action="audit.export"`) that this endpoint itself writes on every successful page read, satisfying "compliance export never mutates [audit_events via the read] / export access is itself audited" (MILESTONE.md shared decision).
+- **Audit-of-export**: the fire-and-forget `audit_events` row (`action="audit.export"`) that this endpoint itself writes on every successful page read, satisfying "compliance export never mutates [audit_events via the read] / export access is itself audited" (MILESTONE.md shared decision). [folded foundation-version 50]
 
 Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — awaiting human freeze (this draft, plus FREEZE-QUESTIONS below, is the freeze report input)

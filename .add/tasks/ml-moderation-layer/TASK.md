@@ -393,7 +393,7 @@ New module `gateway/proxy/domain/guardrail_tenant_context.py` mirrors `credentia
 Glossary deltas:
 - **ML moderation check**: a provider-backed (OpenAI `/v1/moderations`) pre-call guardrail check, default-off, tenant-configured (`block`/`audit`), distinct from the deterministic regex checks (`prompt_injection`, `pii_mask`) in that it performs real outbound IO and can therefore itself fail independently of the content it inspects.
 - **Unchecked (guardrail verdict)**: a THIRD guardrail outcome alongside `passed`/`blocked`/`audited` — the check did not run to completion (provider/credential/timeout failure), so no safety judgement was made. Distinct from `passed`; must never be conflated with it. First guardrail check in this codebase to need this outcome, because it is the first with a real external-failure mode.
-- **failure_mode (guardrail)**: a NEW per-check config axis (`fail_open`|`fail_closed`), orthogonal to `mode` (`block`|`audit`). `mode` governs what happens when content IS flagged; `failure_mode` governs what happens when the check ITSELF could not be evaluated.
+- **failure_mode (guardrail)**: a NEW per-check config axis (`fail_open`|`fail_closed`), orthogonal to `mode` (`block`|`audit`). `mode` governs what happens when content IS flagged; `failure_mode` governs what happens when the check ITSELF could not be evaluated. [folded foundation-version 50]
 
 Status: DRAFT — awaiting human freeze.
 Reported: no — freeze report renders when Tin reviews this draft.
@@ -582,8 +582,8 @@ One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence �
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-- [DDD · open] a guardrail check that performs real outbound IO needs a THIRD verdict state (`unchecked`) beyond the deterministic checks' `passed`/`blocked`/`audited` vocabulary, plus its own config axis (`failure_mode`, orthogonal to `mode`) — the first guardrail in this codebase with an external failure mode of its own (evidence: §1 M6, Glossary delta "Unchecked").
-- [SDD · open] a BYOK provider used for an ANCILLARY IO seam (moderation) needs an ISOLATED CircuitBreaker/client instance from the SAME provider's PRIMARY seam (chat completions) — sharing one adapter instance across two independent failure domains would cross-contaminate breaker state; worth a general pattern note for any future secondary use of an existing provider adapter (evidence: §0 R3, §1 M8).
+- [DDD · folded] a guardrail check that performs real outbound IO needs a THIRD verdict state (`unchecked`) beyond the deterministic checks' `passed`/`blocked`/`audited` vocabulary, plus its own config axis (`failure_mode`, orthogonal to `mode`) — the first guardrail in this codebase with an external failure mode of its own (evidence: §1 M6, Glossary delta "Unchecked"). [folded foundation-version 50]
+- [SDD · folded] a BYOK provider used for an ANCILLARY IO seam (moderation) needs an ISOLATED CircuitBreaker/client instance from the SAME provider's PRIMARY seam (chat completions) — sharing one adapter instance across two independent failure domains would cross-contaminate breaker state; worth a general pattern note for any future secondary use of an existing provider adapter (evidence: §0 R3, §1 M8). [folded foundation-version 50]
 
 ---
 

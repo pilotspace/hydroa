@@ -353,7 +353,7 @@ apps/gateway/pyproject.toml: + "jsonschema>=4.23,<5" (pure-Python, BSD-3, no nat
 
 Glossary deltas:
 - **Output validation**: an opt-in, per-request check (gated by `GATEWAY_OUTPUT_VALIDATION_ENABLED` + the request's `validate_output:true`) that a `response_format.json_schema` completion's `message.content` validates against the caller's JSON Schema, with exactly one bounded retry (a second real upstream call) on mismatch before a structured `ERR_OUTPUT_SCHEMA_VALIDATION_FAILED` (422). SUPERSEDES the v11 translate-don't-enforce pin, opt-in only.
-- **`usage_source="validation_retry"`**: a `usage_records.usage_source` value marking a real, billed upstream call consumed by the bounded-retry loop — either a mismatching first attempt (superseded by a successful retry) or the terminal attempt of a fully-failed validation pair. Distinct from `"frame"` (normal single-attempt billing).
+- **`usage_source="validation_retry"`**: a `usage_records.usage_source` value marking a real, billed upstream call consumed by the bounded-retry loop — either a mismatching first attempt (superseded by a successful retry) or the terminal attempt of a fully-failed validation pair. Distinct from `"frame"` (normal single-attempt billing). [folded foundation-version 50]
 
 Status: DRAFT — awaiting human freeze
 Reported: no — this is the design draft; the freeze report renders when Tin reviews §3

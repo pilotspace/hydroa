@@ -2,13 +2,8 @@
 
 slug: enterprise-identity-admin-ui · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
-<!-- ORCHESTRATOR NOTE: this task was added by the orchestrator (AUTO-MODE) to cover the milestone's
-     "UI/UX in scope" line, which named no owning task in the original breadth-first decomposition.
-     scim-provisioning §1 ⚠ (l.103) and saml-sso independently both flagged the same gap. Needs Tin's
-     explicit confirmation at freeze that this task itself (not just its contract) is wanted. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -100,8 +95,6 @@ Assumptions — lowest-confidence first:
   - [ ] Rotate-token flow reuses `ConfirmDialog` (a plain yes/no) rather than immediately opening `PlaintextKeyBanner` post-confirm — chosen because the frozen `POST /admin/scim/tokens/{id}/rotate` response IS the new plaintext token in one call (no separate reveal step exists server-side); confirm this two-step UI (confirm-dialog → banner) reads clearly rather than needing to be one combined dialog. Low cost if wrong — same components, different composition.
   - [ ] SCIM tab's role gate (M4) checks `MEMBERS_MANAGE` client-side only for AFFORDANCE HIDING (never for enforcement — the 403 from the real GET is still the actual gate, mirrors every other tab's owner-required pattern) — confirm this reads as intended: a MEMBER never sees a Create-token button that would 403, but the button's absence is a UX nicety, not a security control (the backend 403 is authoritative either way).
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -267,8 +260,6 @@ Scenario: Keyboard-only operation reaches every new-tab action   # M12
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -399,7 +390,6 @@ The task's existence (the lead scope flag) is confirmed.
 Least-sure flag surfaced at freeze: [contract] this task's own EXISTENCE/scope as the AUTO-MODE gap-fill
 owner of the milestone's "UI/UX in scope" line — no milestone Task row named an owner; scim-provisioning
 and saml-sso each independently flagged the gap. RESOLVED at freeze: Tin confirmed keep-as-one-task.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -469,9 +459,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `apps/dashboard/tests-bff/tenant-settings.test.tsx` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -497,8 +484,6 @@ Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "
 Safety rule (feature-specific): the plaintext SCIM token (create or rotate response) must never be written to any persisted state (TanStack Query cache, localStorage, URL) — component `useState` only, cleared on dismiss, mirrors `PlaintextKeyBanner`'s existing contract verbatim.
 Code lives in: `apps/dashboard/components/settings/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -550,8 +535,6 @@ Outcome: FINDINGS — not a clean auto-PASS (concurrency residue exists), not HA
 If RISK-ACCEPTED -> owner: pending Tin · ticket: pending · expires: pending   (never for a security gap — n/a here, this is non-security)
 Reviewed by: add-verify (appsec-engineer persona) · date: 2026-07-11
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
-
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
@@ -559,11 +542,14 @@ Reviewed by: add-verify (appsec-engineer persona) · date: 2026-07-11
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate FINDINGS (reviewed by add-verify (appsec-engineer persona))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

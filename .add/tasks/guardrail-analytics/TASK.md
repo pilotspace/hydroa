@@ -2,9 +2,8 @@
 
 slug: guardrail-analytics · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -97,8 +96,6 @@ Assumptions — lowest-confidence first:
   - [ ] #3 `evaluate_post` (response-side pii_mask masking) verdicts are OUT OF SCOPE for v1 — a pre-existing gap (that method returns body only, no events, at 4 call sites) that this task does not close, since doing so would touch the evaluator's contract as invasively as the rejected per-pattern-granularity framing above. If wrong: "guardrail hit counts" undercounts `pii_mask` specifically for any tenant relying mainly on response-side masking rather than request-side. RECOMMEND: ship pre-call-only v1 + file a `[SPEC · open]` delta for `evaluate_post` to return events, as a clearly-named follow-up rather than a silently accepted gap.
   - [ ] #4 `group_by` is single-dimension-at-a-time (mirrors `/admin/spend`) rather than a 3-way cross-tab in one response — low-stakes, matches the one existing precedent exactly; a cross-tab has no precedent anywhere in this codebase's admin API and would be a materially bigger API+UI shape.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -221,8 +218,6 @@ Scenario: missing bearer token is rejected   # R7
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -414,7 +409,6 @@ Glossary deltas: <new domain term(s) this task introduces, `Term: definition` �
     shape.`
 Status: DRAFT
 Reported: no — this is the design-team draft; the orchestrator renders the freeze report when Tin reviews.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ## Design self-score
 
@@ -441,8 +435,6 @@ Reported: no — this is the design-team draft; the orchestrator renders the fre
   cost, not resolved by fiat; the module-placement question (freeze question 4) is flagged as
   low-stakes rather than over-elaborated.
 
-<!-- All six dimensions ≥0.9 — no further refinement needed before freeze. -->
-
 ---
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
@@ -454,9 +446,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -472,8 +461,6 @@ Strategy actually used: <fill at VERIFY>
 Safety rule (feature-specific): the verdict-write hook MUST be wrapped in a bounded `asyncio.timeout` and scheduled via `asyncio.create_task` (never `await`ed inline) so a slow/erroring insert cannot add latency to, or fail, the proxied completion response — mirrors `record_audit`'s own concurrency posture exactly (own session, separate from the request's transaction, so a request-path rollback can never lose a committed verdict row and a verdict-write failure can never roll back the request).
 Code lives in: `apps/gateway/src/gateway/guardrail_analytics/` (+ `apps/dashboard/components/guardrails/` for the UI slice).
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -529,8 +516,6 @@ Reported: yes — this VERIFY record is the gate report
 Outcome: PASS
 Reviewed by: add-verify (adversarial pass) · date: 2026-07-11
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
-
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
@@ -538,11 +523,14 @@ Reviewed by: add-verify (adversarial pass) · date: 2026-07-11
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose **A — a NEW append-only `guardrail_verdict_events` table, written via a fire-and-forget hook at verdict-emission time (mirrors `record_audit`'s own-session/swallow-all pattern), independent of payload-capture opt-in; read via a new windowed aggregation admin API mirroring `get_spend`'s `date_trunc` + `group_by` shape**; rejected B — aggregate over `request_logs.guardrail_verdict` (rejected: that column is reserved/unpopulated by the sibling payload-capture-store's own frozen contract, AND `request_logs` rows only exist for tenants/keys with capture opted IN — guardrails evaluate on 100% of governed traffic regardless of capture, so this source would silently under-report to zero for every capture-off tenant, exactly the tenants most likely to rely on masking/blocking working invisibly) · C — proxy the existing Prometheus `guardrail_events_total` counter through a new admin endpoint (rejected: no tenant_id/key_id label — adding one is a cardinality-unsafe change to an operator-facing metric — and it would introduce a new Prometheus-query dependency into the tenant-facing admin API that nothing else in this codebase's admin surface does).
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by add-verify (adversarial pass))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

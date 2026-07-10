@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "logs-explorer-ui",
-  "active_milestone": "logs-explorer-guardrails-v2",
+  "active_task": "declare-components-registry",
+  "active_milestone": "platform-admin-console",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -637,572 +637,6 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
-    },
-    "payload-capture-store": {
-      "title": "Opt-in PII-scrubbed request/response payload capture store",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "logs-explorer-guardrails-v2",
-      "depends_on": [],
-      "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T16:02:26+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T13:11:02+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "a8aeec8c421a5655aebd223f7ec72368",
-        "tests": {
-          "apps/gateway/tests/payload_capture/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/payload_capture/test_payload_capture_store.py": "366123c07bef3b1d42b136bf47522f75",
-          "apps/gateway/tests/payload_capture/test_verify_repro_scrub_gap.py": "8539c9c5c6705a725400ed17734839f9",
-          "apps/gateway/tests/payload_capture/test_verify_repro_zdr_hang.py": "8fb8948e762c63c046ee1abc48deee87",
-          "apps/gateway/tests/payload_capture/test_verify_repro_zdr_wiring_gap.py": "4b535a9cda39d7fdcae34aa91965d7f4"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/logs/",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/migrations/env.py",
-          "apps/gateway/src/gateway/proxy/domain/ports.py",
-          "apps/gateway/src/gateway/proxy/application/use_cases.py",
-          "apps/gateway/src/gateway/proxy/api/deps.py",
-          "apps/gateway/src/gateway/proxy/infrastructure/guardrail_evaluator.py",
-          "apps/gateway/src/gateway/proxy/infrastructure/payload_capture_noop.py",
-          "apps/gateway/src/gateway/keys/",
-          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
-          "apps/gateway/src/gateway/usage/application/retention_sweep.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/main.py"
-        ],
-        "snapshot_md5": "fa2c52f8062acfde7a01e006329b55c8"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-10T16:01:39+00:00",
-            "reason": "scope_violation: task 'payload-capture-store' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (36 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "per-key-guardrail-policies": {
-      "title": "Per-key guardrail policy resolution (key > tenant)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "logs-explorer-guardrails-v2",
-      "depends_on": [],
-      "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T16:02:35+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T13:11:02+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "09f557c787f8942a5e7bc0d810cd342d",
-        "tests": {
-          "apps/gateway/tests/per_key_guardrail_policies/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/per_key_guardrail_policies/conftest.py": "7da3e3b5a65c861ef0cfb2aed4fc9c18",
-          "apps/gateway/tests/per_key_guardrail_policies/test_ml_moderation_gap_repro.py": "1eb7ed6906ca9f90462e5d38961da85d",
-          "apps/gateway/tests/per_key_guardrail_policies/test_ml_moderation_key_override_fix.py": "2baa35e15ec99d37c7bac3d68896b98f",
-          "apps/gateway/tests/per_key_guardrail_policies/test_per_key_guardrail_policies.py": "bb17999759b6d0e875d764375ff7037e"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/keys/",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/tests/per_key_guardrail_policies/",
-          "proxy/",
-          "tenants/api/guardrail_router.py",
-          "tenants/api/guardrail_evaluator.py"
-        ],
-        "snapshot_md5": "fa2c52f8062acfde7a01e006329b55c8"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "ml-moderation-layer": {
-      "title": "ML moderation check class in the guardrail engine",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "logs-explorer-guardrails-v2",
-      "depends_on": [],
-      "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T16:02:33+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T13:11:02+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "78db91dc1fcfd42ae4ee5509cac0a22f",
-        "tests": {
-          "apps/gateway/tests/guardrails/test_ml_moderation.py": "d15569e33f6a8edb8919107e8b3d4f70"
-        }
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "fa2c52f8062acfde7a01e006329b55c8"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-10T16:01:42+00:00",
-            "reason": "scope_violation: task 'ml-moderation-layer' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (47 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "output-schema-validation": {
-      "title": "Opt-in output JSON-schema validation with bounded retry",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "logs-explorer-guardrails-v2",
-      "depends_on": [],
-      "created": "2026-07-10T12:19:50+00:00",
-      "updated": "2026-07-10T15:37:15+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T13:11:02+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "08c78941578d3611570542248ce0d2b3",
-        "tests": {
-          "apps/gateway/tests/output_schema_validation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/output_schema_validation/conftest.py": "d707fccfb65c7170be77b399e385ae71",
-          "apps/gateway/tests/output_schema_validation/test_output_schema_validation.py": "809ca7c3f8c7a74b2bce7ac5a5bc9dc5",
-          "apps/gateway/tests/output_schema_validation/test_output_validation_domain.py": "a766d8243b5b80614fa248a5c4d3414b",
-          "apps/gateway/tests/output_schema_validation/test_verify_ratelimit_retry_billing.py": "3075c81b8978a4b2ae66df29a02b5578"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/proxy/domain/output_validation.py",
-          "apps/gateway/src/gateway/proxy/application/use_cases.py",
-          "apps/gateway/src/gateway/proxy/api/deps.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/core/errors.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/pyproject.toml",
-          "apps/gateway/tests/output_schema_validation/"
-        ],
-        "snapshot_md5": "74fdcf056703df17413a46af4d3943d3"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-10T15:37:04+00:00",
-            "reason": "scope_violation: task 'output-schema-validation' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (38 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "scim-provisioning": {
-      "title": "SCIM 2.0 user provisioning (per-tenant token)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "enterprise-identity-compliance",
-      "depends_on": [],
-      "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T16:02:30+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T13:11:02+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "fc8480a9c3607b0fe42ef4426e137662",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          ".add/tasks/scim-provisioning/src/",
-          "apps/gateway/src/gateway/scim/",
-          "apps/gateway/src/gateway/tenants/domain/entities.py",
-          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
-          "apps/gateway/src/gateway/tenants/application/use_cases.py",
-          "apps/gateway/src/gateway/auth/application/use_cases.py",
-          "apps/gateway/src/gateway/audit/domain/audit_event.py",
-          "apps/gateway/src/gateway/audit/infrastructure/audit_events_orm.py",
-          "apps/gateway/src/gateway/teams/infrastructure/repository.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "infra/envoy/envoy.yaml",
-          "infra/envoy/envoy-prod.yaml",
-          "charts/ai-proxy/templates/envoy-configmap.yaml",
-          ".add/tasks/scim-provisioning/tests/"
-        ],
-        "snapshot_md5": "fa2c52f8062acfde7a01e006329b55c8"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-10T16:01:41+00:00",
-            "reason": "scope_violation: task 'scim-provisioning' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (43 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "saml-sso": {
-      "title": "SAML 2.0 SSO alongside OIDC",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "enterprise-identity-compliance",
-      "depends_on": [],
-      "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T16:02:28+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T13:11:02+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "22980758b5b5a3f410efbe7e957ccc39",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/auth/",
-          "apps/gateway/src/gateway/tenants/domain/ports.py"
-        ],
-        "snapshot_md5": "fa2c52f8062acfde7a01e006329b55c8"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-10T16:01:40+00:00",
-            "reason": "scope_violation: task 'saml-sso' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (43 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "tenant-retention-zdr": {
-      "title": "Per-tenant retention policy + Zero-Data-Retention mode",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "enterprise-identity-compliance",
-      "depends_on": [],
-      "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T16:02:32+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T13:11:02+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "b76084d4ab506305d925cd47000225ae",
-        "tests": {
-          "apps/gateway/tests/retention_zdr/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/retention_zdr/conftest.py": "e3b503d09768edf5f7df114c87c372db",
-          "apps/gateway/tests/retention_zdr/test_retention_zdr.py": "e70309964ae0e6ba5327e6004e97bfaa"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/usage/application/retention_sweep.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
-          "apps/gateway/src/gateway/tenants/api/",
-          "apps/gateway/src/gateway/keys/domain/entities.py",
-          "apps/gateway/src/gateway/keys/infrastructure/repository.py",
-          "apps/gateway/src/gateway/artifacts/infrastructure/repository.py",
-          "apps/gateway/src/gateway/conversations/infrastructure/repository.py",
-          "apps/gateway/src/gateway/memory/infrastructure/repository.py",
-          "apps/gateway/src/gateway/batches/infrastructure/repository.py",
-          "apps/gateway/src/gateway/video/infrastructure/repository.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/src/gateway/main.py"
-        ],
-        "snapshot_md5": "fa2c52f8062acfde7a01e006329b55c8"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-10T16:01:41+00:00",
-            "reason": "tamper_detected:build_tampered:apps/gateway/tests/retention_zdr/test_retention_zdr.py",
-            "source": "tamper"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "compliance-export-api": {
-      "title": "Compliance export API over the immutable audit store",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "enterprise-identity-compliance",
-      "depends_on": [],
-      "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T14:47:09+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T13:11:03+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "6faa34aae98c4da9c34ffa2353a0edd7",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/audit/api/",
-          "apps/gateway/src/gateway/audit/infrastructure/audit_repository.py",
-          "apps/gateway/src/gateway/audit/infrastructure/audit_events_orm.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/tests/audit_export/"
-        ],
-        "snapshot_md5": "15f6d2cc3a74ffa789eb01d7a871e8d2"
-      },
-      "heal": {
-        "attempts": 2,
-        "history": [
-          {
-            "at": "2026-07-10T14:41:10+00:00",
-            "reason": "scope_violation: task 'compliance-export-api' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (18 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-07-10T14:46:50+00:00",
-            "reason": "scope_violation: task 'compliance-export-api' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (22 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "logs-explorer-api": {
-      "title": "Tenant-admin request-logs query API (filters, pagination, detail)",
-      "phase": "contract",
-      "gate": "none",
-      "milestone": "logs-explorer-guardrails-v2",
-      "depends_on": [
-        "payload-capture-store"
-      ],
-      "created": "2026-07-10T15:42:46+00:00",
-      "updated": "2026-07-10T16:33:28+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T16:33:28+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      }
-    },
-    "logs-explorer-ui": {
-      "title": "Console Logs Explorer page (table, detail drawer, replay-in-playground)",
-      "phase": "contract",
-      "gate": "none",
-      "milestone": "logs-explorer-guardrails-v2",
-      "depends_on": [
-        "logs-explorer-api"
-      ],
-      "created": "2026-07-10T15:42:46+00:00",
-      "updated": "2026-07-10T16:34:27+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T16:34:27+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      }
-    },
-    "guardrail-analytics": {
-      "title": "Guardrail verdict analytics API + dashboard view",
-      "phase": "contract",
-      "gate": "none",
-      "milestone": "logs-explorer-guardrails-v2",
-      "depends_on": [
-        "per-key-guardrail-policies"
-      ],
-      "created": "2026-07-10T15:42:46+00:00",
-      "updated": "2026-07-10T16:18:22+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T16:19:30+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      }
-    },
-    "domain-capture": {
-      "title": "Verified email-domain claim routes signup/join (composes with S1 invite-only)",
-      "phase": "contract",
-      "gate": "none",
-      "milestone": "enterprise-identity-compliance",
-      "depends_on": [
-        "saml-sso"
-      ],
-      "created": "2026-07-10T15:42:47+00:00",
-      "updated": "2026-07-10T16:17:25+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T16:17:25+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      }
-    },
-    "enterprise-identity-admin-ui": {
-      "title": "Admin settings UIs: SCIM token mgmt, SAML IdP config, retention/ZDR editor",
-      "phase": "contract",
-      "gate": "none",
-      "milestone": "enterprise-identity-compliance",
-      "depends_on": [
-        "scim-provisioning",
-        "saml-sso",
-        "tenant-retention-zdr"
-      ],
-      "created": "2026-07-10T15:42:47+00:00",
-      "updated": "2026-07-10T16:18:21+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T16:20:02+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      }
-    },
-    "request-log-metering-fields": {
-      "title": "Add latency + token counts + usage_records correlation to request_logs capture (change-request from Tin's Logs-Explorer freeze)",
-      "phase": "contract",
-      "gate": "none",
-      "milestone": "logs-explorer-guardrails-v2",
-      "depends_on": [
-        "payload-capture-store"
-      ],
-      "created": "2026-07-10T16:16:02+00:00",
-      "updated": "2026-07-10T16:32:30+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-10T16:32:30+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      }
     }
   },
   "milestones": {
@@ -1253,44 +687,10 @@
       "status": "active",
       "created": "2026-07-03T16:21:50+00:00",
       "updated": "2026-07-03T16:21:50+00:00"
-    },
-    "logs-explorer-guardrails-v2": {
-      "title": "Request Logs Explorer + Guardrails v2",
-      "goal": "A tenant admin can opt into PII-scrubbed request/response capture, explore and replay logged calls from the console, and enforce per-key guardrail policies with ML moderation, output schema validation, and guardrail analytics.",
-      "stage": "production",
-      "status": "active",
-      "created": "2026-07-10T12:17:06+00:00",
-      "updated": "2026-07-10T12:19:40+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-07-10T12:19:40+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "enterprise-identity-compliance": {
-      "title": "Enterprise Identity & Compliance Pack",
-      "goal": "An enterprise tenant can provision users via SCIM, sign in via SAML or OIDC, capture its email domain, set its own retention policy including a Zero-Data-Retention mode, and export its audit trail through a compliance API.",
-      "stage": "production",
-      "status": "active",
-      "created": "2026-07-10T12:17:07+00:00",
-      "updated": "2026-07-10T12:19:40+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-07-10T12:19:40+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T16:34:27+00:00",
+  "updated": "2026-07-10T22:52:53+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2185,20 +1585,46 @@
         "tiered-rate-cards"
       ],
       "archived": "2026-07-10"
+    },
+    {
+      "slug": "logs-explorer-guardrails-v2",
+      "title": "Request Logs Explorer + Guardrails v2",
+      "tasks": 8,
+      "task_slugs": [
+        "payload-capture-store",
+        "per-key-guardrail-policies",
+        "ml-moderation-layer",
+        "output-schema-validation",
+        "logs-explorer-api",
+        "logs-explorer-ui",
+        "guardrail-analytics",
+        "request-log-metering-fields"
+      ],
+      "archived": "2026-07-11"
+    },
+    {
+      "slug": "enterprise-identity-compliance",
+      "title": "Enterprise Identity & Compliance Pack",
+      "tasks": 6,
+      "task_slugs": [
+        "scim-provisioning",
+        "saml-sso",
+        "tenant-retention-zdr",
+        "compliance-export-api",
+        "domain-capture",
+        "enterprise-identity-admin-ui"
+      ],
+      "archived": "2026-07-11"
     }
   ],
   "active_milestones": [
-    "platform-admin-console",
-    "logs-explorer-guardrails-v2",
-    "enterprise-identity-compliance"
+    "platform-admin-console"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
-    "platform-access-plan": "plan-seat-cap",
-    "logs-explorer-guardrails-v2": "logs-explorer-ui",
-    "enterprise-identity-compliance": "enterprise-identity-admin-ui"
+    "platform-access-plan": "plan-seat-cap"
   },
   "todos": [
     {

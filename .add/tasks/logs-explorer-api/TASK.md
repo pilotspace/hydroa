@@ -2,10 +2,9 @@
 
 slug: logs-explorer-api · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
-sensitivity: data   <!-- tenant-isolation + PII-payload exposure surface (list+detail read side); see MILESTONE.md "Security floor" -->
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+sensitivity: data
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -101,8 +100,6 @@ Assumptions — lowest-confidence first:
   - [ ] The dual-mode `status` filter (exact 3-digit code OR "success"/"error" bucket, one query param) has no existing precedent anywhere in this codebase — confirm this is the right shape vs. a simpler exact-code-only or bucket-only filter. Recommend keeping dual-mode (one extra parse branch, matches typical logs-explorer UX of both a quick segmented filter and code-level drill-down) — confirm or deny at freeze.
   - [ ] Whether `Permission.LOGS_READ` should also be granted to VIEWER (who already holds `USAGE_READ`+`OPS_READ` but not `AUDIT_READ`) — recommend NO for v1 (the PII-payload floor should mirror `AUDIT_READ`'s stricter set, not `USAGE_READ`'s broader one) — confirm or deny at freeze.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -260,8 +257,6 @@ Scenario: PATCH-adjacent write surfaces are untouched   # After (byte-identical 
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -396,7 +391,6 @@ Glossary deltas: none — reuses `Request log` (payload-capture-store TASK.md §
 4. **`guardrail_verdict` will be `null` for every row in v1** (Issue 3, §0) — confirm `logs-explorer-ui` is briefed to design an honest empty/absent state for the drawer's "guardrail verdicts" section, not a fake "no issues found."
 
 Reported: no — awaiting the freeze report / Tin's review of this draft.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -446,9 +440,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `apps/gateway/tests/logs_explorer_api/` (25 tests, 1-2 new files) · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -465,8 +456,6 @@ Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "
 Safety rule (feature-specific): every query (list AND detail) MUST bind `tenant_id = identity.tenant_id` as the FIRST predicate, never a filter applied after an unscoped fetch — the detail endpoint's 404-invisibility depends on the WHERE clause itself excluding cross-tenant rows, not on a post-fetch tenant check that could be forgotten on one code path.
 Code lives in: `apps/gateway/src/gateway/logs/`
 Constraints: do NOT change any test or the contract; allow-list packages only (no new third-party dependency expected — sqlalchemy/fastapi/pydantic only); ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -605,8 +594,6 @@ Outcome: PASS
 If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (not applicable — outcome is PASS, not RISK-ACCEPTED)
 Reviewed by: add-verify (self, adversarial pass) — pending Tin's final human sign-off · date: 2026-07-11
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
-
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
@@ -614,11 +601,14 @@ Reviewed by: add-verify (self, adversarial pass) — pending Tin's final human s
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by add-verify (self, adversarial pass) — pending Tin's final human sign-off)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

@@ -2,12 +2,8 @@
 
 slug: domain-capture · created: 2026-07-10 · stage: production · sensitivity: security · risk: high · autonomy: conservative
 milestone: enterprise-identity-compliance
-<!-- risk: high — account-takeover surface (milestone shared decision: "verification via DNS TXT or
-     equivalent proof, never email-match alone"). Mirrors saml-sso's own header shape. autonomy
-     lowered to conservative so build cannot auto-PASS at Verify; HARD-STOP verify per the
-     milestone's shared decision (identity surface), never auto-passed even under the project's
-     default autonomy: auto. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -475,8 +471,6 @@ Assumptions — lowest-confidence first:
     out of THIS task's declared scope; flagged forward as an OBSERVE spec-delta candidate.
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -649,8 +643,6 @@ Scenario: The existing S1 bootstrap/regression suite is unaffected              
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -807,7 +799,7 @@ Glossary deltas:
     of a brand-new tenant being created — signaled by `SignupResponse.joined_existing_tenant ==
     true`. An explicit, S1-compatible EXTENSION of the invite-only default (frozen
     `signup-and-routing-authz` TASK.md), scoped to exactly the domains a tenant OWNER has proven
-    control of — never a supersession of S1's own default.
+    control of — never a supersession of S1's own default. [folded foundation-version 50]
 
 Status: FROZEN @ v1 — approved by Tin Dang
 Reported: yes — presented for freeze 2026-07-10.
@@ -843,9 +835,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -914,8 +903,6 @@ Code lives in: `apps/gateway/src/gateway/domain_capture/`
 Constraints: do NOT change any test or the contract; allow-list packages only (dnspython already
   vendored, no new external service); ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
@@ -968,9 +955,7 @@ Binding: advisory — sensitivity: security (Tin's HARD-STOP gate is the binding
 ### GATE RECORD
 Reported: yes — this §6 fill is the gate report; verdict below is a RECOMMENDATION to the human HARD-STOP gate, not a self-issued PASS
 Outcome: HARD-STOP (procedural — every security task in this milestone HARD-STOPs to Tin regardless of evidence quality; recommend PASS on the merits above)
-Reviewed by: <Tin Dang — pending> · date: <pending>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-11
 
 ---
 
@@ -979,11 +964,14 @@ Reviewed by: <Tin Dang — pending> · date: <pending>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [human] verify — gate HARD-STOP (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
