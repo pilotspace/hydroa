@@ -741,3 +741,17 @@ BATCH_ITEMS_TOO_MANY = ErrorSpec(
 #: custom_id that duplicates another item in the same submission. The whole
 #: submission is atomic — no row is created on this reject.
 BATCH_ITEM_INVALID = ErrorSpec(422, "batch_item_invalid", "a line item failed validation")
+
+# ---------------------------------------------------------------------------
+# Compliance export errors (compliance-export-api TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: GET /admin/audit/export?cursor=... is undecodable, malformed, or the wrong shape.
+CURSOR_INVALID = ErrorSpec(422, "ERR_CURSOR_INVALID", "Export cursor is malformed or unrecognized")
+
+#: GET /admin/audit/export's bounded DB read exceeded its time budget (M12).
+EXPORT_QUERY_TIMEOUT = ErrorSpec(
+    504,
+    "ERR_EXPORT_TIMEOUT",
+    "Export query exceeded the time budget; narrow the range or reduce limit",
+)
