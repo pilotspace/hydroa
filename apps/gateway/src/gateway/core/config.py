@@ -214,6 +214,14 @@ class Settings(BaseSettings):
     # GATEWAY_OIDC_ALLOW_HTTP_URLS — dev/test only; never True in production
     oidc_allow_http_urls: bool = False
 
+    # ── SAML 2.0 SSO (saml-sso task) ──────────────────────────────────────────
+    # All optional; absence => SAML fully inert (M11: DB-config-only, no env fallback).
+    saml_sp_entity_id_base: str = ""  # GATEWAY_SAML_SP_ENTITY_ID_BASE (e.g. https://gw.example.com/saml/sp)
+    saml_acs_url: str = ""  # GATEWAY_SAML_ACS_URL (full external URL to /auth/saml/acs)
+    saml_post_login_redirect: str = "/"  # GATEWAY_SAML_POST_LOGIN_REDIRECT
+    saml_clock_skew_seconds: int = 60  # GATEWAY_SAML_CLOCK_SKEW_SECONDS
+    saml_allow_http_urls: bool = False  # GATEWAY_SAML_ALLOW_HTTP_URLS (dev/test only)
+
     # ── Per-tenant provider credentials (provider-credential-store task) ─────
     # GATEWAY_PROVIDER_KEY_ENCRYPTION_KEY — Fernet key (base64url); required for upsert/get.
     # Kept separate from GATEWAY_OIDC_CONFIG_ENCRYPTION_KEY for blast-radius isolation:

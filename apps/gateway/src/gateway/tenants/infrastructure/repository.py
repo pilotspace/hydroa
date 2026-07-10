@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.auth.domain.errors import OidcTenantConflictError
+from gateway.auth.domain.saml_errors import SamlTenantConflictError
 from gateway.core.ids import uuid7
 from gateway.tenants.domain.entities import Role, User
 from gateway.tenants.domain.errors import EmailAlreadyRegisteredError
@@ -111,6 +112,53 @@ class SqlAlchemyIdentityRepository:
         Raises OidcTenantConflictError if user exists bound to a different tenant_id.
         The provisioned role is ALWAYS member — never from any claim.
         """
+        return await self._get_or_provision_sso_user(
+            email=email,
+            tenant_id=tenant_id,
+            password_hash=password_hash,
+            auth_method="oidc",
+            conflict_error_cls=OidcTenantConflictError,
+        )
+
+    async def get_or_provision_saml_user(
+        self,
+        *,
+        email: str,
+        tenant_id: uuid.UUID,
+        password_hash: str,
+    ) -> User:
+        """Get existing user by email OR create with role=member if absent.
+
+        ADDITIVE (saml-sso TASK.md §3 Part E — FROZEN @ v1): byte-identical
+        shape to get_or_provision_oidc_user, delegating to the same shared
+        helper parameterized by auth_method="saml" — no change to the
+        existing OIDC method or its call sites.
+
+        Raises SamlTenantConflictError if user exists bound to a different tenant_id.
+        The provisioned role is ALWAYS member — never from any assertion attribute.
+        """
+        return await self._get_or_provision_sso_user(
+            email=email,
+            tenant_id=tenant_id,
+            password_hash=password_hash,
+            auth_method="saml",
+            conflict_error_cls=SamlTenantConflictError,
+        )
+
+    async def _get_or_provision_sso_user(
+        self,
+        *,
+        email: str,
+        tenant_id: uuid.UUID,
+        password_hash: str,
+        auth_method: str,
+        conflict_error_cls: type[Exception],
+    ) -> User:
+        """Shared JIT-provisioning helper for every federated-identity method
+        (OIDC, SAML, ...) — get existing user by email OR create with
+        role=member if absent; role is ALWAYS member for NEW rows, an
+        EXISTING user's stored role is preserved (never downgraded).
+        """
         row = (
             await self._session.execute(select(UserRow).where(UserRow.email == email))
         ).scalar_one_or_none()
@@ -118,7 +166,7 @@ class SqlAlchemyIdentityRepository:
         if row is not None:
             # User exists — verify tenant matches the domain mapping
             if row.tenant_id != tenant_id:
-                raise OidcTenantConflictError(
+                raise conflict_error_cls(
                     f"User {email!r} exists in tenant {row.tenant_id} but "
                     f"domain mapping targets tenant {tenant_id}"
                 )
@@ -132,15 +180,15 @@ class SqlAlchemyIdentityRepository:
             )
 
         # Provision new user — role is ALWAYS member (never from claims)
-        # auth_method='oidc' — set at INSERT for all SSO-provisioned users
-        # (the migration backfills existing rows with the sentinel hash).
+        # auth_method set at INSERT for all SSO-provisioned users (the
+        # migration backfills existing rows with the sentinel hash).
         new_user = UserRow(
             id=uuid7(),
             tenant_id=tenant_id,
             email=email,
             password_hash=password_hash,
             role=Role.MEMBER,
-            auth_method="oidc",
+            auth_method=auth_method,
         )
         # Use flush() + commit() rather than begin() because the SELECT above
         # already auto-began the session transaction; calling begin() again
