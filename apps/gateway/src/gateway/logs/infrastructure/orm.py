@@ -58,6 +58,9 @@ class RequestLogRow(Base):
         Index("ix_request_logs_tenant_created", "tenant_id", "created_at"),
         Index("ix_request_logs_created_at", "created_at"),
         Index("ix_request_logs_tenant_key", "tenant_id", "key_id"),
+        # usage_records correlation key (added in migration a55ddcebaac6,
+        # request-log-metering-fields) — declared here for alembic autogenerate parity.
+        Index("ix_request_logs_request_id", "request_id"),
         # logs-explorer-api TASK.md §3 (FROZEN @ v1) — additive index-only migration
         # 69cfdc584129, backing the GET /admin/logs model_id filter. Declared here too
         # (not just in the migration) so Base.metadata / alembic-check parity stays

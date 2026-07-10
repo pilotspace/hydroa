@@ -63,6 +63,7 @@ EXPECTED_TABLES = frozenset(
         "saml_provider_configs",  # SANCTIONED EDIT — saml-sso TASK.md §3 manifest maintenance; disposition: additive migration c950c528d3d5 adds this table
         "request_logs",  # SANCTIONED EDIT — payload-capture-store TASK.md §3 manifest maintenance; disposition: additive migration a1c5e7f9b3d6 adds this table
         "guardrail_verdict_events",  # SANCTIONED EDIT — guardrail-analytics TASK.md §3 manifest maintenance; disposition: additive migration b7c9e1a3f5d8 adds this table
+        "tenant_domain_claims",  # SANCTIONED EDIT — domain-capture TASK.md §3 manifest maintenance; disposition: additive migration b3d8e1f4a7c2 adds this table
     }
 )
 

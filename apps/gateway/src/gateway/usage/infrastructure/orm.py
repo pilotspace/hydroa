@@ -59,6 +59,10 @@ class UsageRecordRow(Base):
         # Retention sweep: age-based DELETE WHERE created_at < :cutoff needs this index
         # to avoid a full-table scan on large ledgers. Added in migration f2a4c6e8b0d3.
         Index("ix_usage_records_created_at", "created_at"),
+        # Reverse correlation to request_logs via the JSONB extras request_id (added in
+        # migration a55ddcebaac6, request-log-metering-fields). Expression index on the
+        # raw->>'request_id' extraction — declared here for alembic autogenerate parity.
+        Index("ix_usage_records_request_id", text("(raw ->> 'request_id')")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)

@@ -1398,7 +1398,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'batch_jobs','batch_job_items',"
                 " 'invites','plans','impersonation_sessions',"
                 " 'tenant_rate_card_entries','request_logs',"
-                " 'scim_tokens','saml_provider_configs','guardrail_verdict_events')"
+                " 'scim_tokens','saml_provider_configs','guardrail_verdict_events',"
+                " 'tenant_domain_claims')"
             )
         )
     ).fetchall()

@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -47,9 +47,9 @@ class TenantDomainClaimRow(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="RESTRICT")
     )
-    domain: Mapped[str]
-    verification_token: Mapped[str]
-    status: Mapped[str] = mapped_column(server_default=text("'pending'"))
+    domain: Mapped[str] = mapped_column(Text)
+    verification_token: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
