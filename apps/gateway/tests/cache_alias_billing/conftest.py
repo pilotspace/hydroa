@@ -142,7 +142,9 @@ def stamped_body(
         "id": resp_id,
         "model": model_field if model_field is not None else f"{served}:free",
         "choices": [{"message": {"role": "assistant", "content": "cached"}}],
-        "usage": usage if usage is not None else {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+        "usage": usage
+        if usage is not None
+        else {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
         STAMP: served,
     }
 
@@ -170,7 +172,9 @@ def make_use_case(
     semantic_cache_enabled: bool = False,
 ) -> CompletionUseCase:
     return CompletionUseCase(
-        FakeAuthenticator(cache_enabled=cache_enabled, semantic_cache_enabled=semantic_cache_enabled),  # type: ignore[arg-type]
+        FakeAuthenticator(
+            cache_enabled=cache_enabled, semantic_cache_enabled=semantic_cache_enabled
+        ),  # type: ignore[arg-type]
         FakeModelChecker(),  # type: ignore[arg-type]
         response_cache=response_cache,
         vector_cache=vector_cache,

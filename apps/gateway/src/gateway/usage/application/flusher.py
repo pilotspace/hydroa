@@ -113,9 +113,7 @@ async def insert_usage_row(
         # provider-cost-reconciliation: basis + raw upstream cost (old events → catalog/NULL).
         cost_basis = _event_field(fields, "cost_basis") or "catalog"
         provider_cost_str = _event_field(fields, "provider_cost")
-        provider_cost: Decimal | None = (
-            Decimal(provider_cost_str) if provider_cost_str else None
-        )
+        provider_cost: Decimal | None = Decimal(provider_cost_str) if provider_cost_str else None
         # stream-usage-completeness: usage provenance (old events → 'frame').
         usage_source = _event_field(fields, "usage_source") or "frame"
         # provider-generation-id-capture: ""→NULL (the cost-recovery lookup key).
