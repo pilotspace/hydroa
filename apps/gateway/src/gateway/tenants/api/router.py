@@ -70,7 +70,7 @@ async def me(
     use_case: Annotated[GetIdentityUseCase, Depends(get_identity_use_case)],
 ) -> MeResponse:
     try:
-        identity = use_case.execute(token)
+        identity = await use_case.execute(token)
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
     return MeResponse(

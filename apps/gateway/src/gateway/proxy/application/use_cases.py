@@ -40,10 +40,12 @@ from gateway.core.error_catalog import (
     BUDGET_EXCEEDED,
     GUARDRAIL_BLOCKED,
     MODEL_DISABLED,
+    MODEL_MODALITY_MISMATCH,
     MODEL_NOT_ALLOWED,
     MODEL_UNKNOWN,
     PAYLOAD_MESSAGES_REQUIRED,
     PAYLOAD_MODEL_REQUIRED,
+    PRESET_NOT_FOUND,
     RATE_LIMITED,
     UPSTREAM_RATE_LIMITED,
     UPSTREAM_UNAVAILABLE,
@@ -61,7 +63,11 @@ from gateway.proxy.domain.errors import (
     UpstreamRateLimitedError,
     UpstreamUnavailableError,
 )
+from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
 from gateway.proxy.domain.ports import (
+    BatchDiversionPort,
+    BatchDivertedStream,
+    ChatModalityLookup,
     CompletionUpstream,
     GuardrailEvaluator,
     InputModalityLookup,
@@ -538,6 +544,9 @@ class CompletionUseCase:
         web_search_enabled: bool = False,
         input_modality_lookup: InputModalityLookup | None = None,
         input_modality_guard_enabled: bool = False,
+        tenant_model_preset_store: TenantModelPresetStore | None = None,
+        chat_modality_lookup: ChatModalityLookup | None = None,
+        batch_diversion: BatchDiversionPort | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -584,6 +593,25 @@ class CompletionUseCase:
         # bandwidth acquire / upstream / usage — a refused request is never billed.
         self._input_modality_lookup: InputModalityLookup | None = input_modality_lookup
         self._input_modality_guard_enabled: bool = input_modality_guard_enabled
+        # preset-resolution-ingress (v56 §3): None (default) ⇒ feature off ⇒ complete()/
+        # stream() are byte-identical (no resolve() call, no rewrite). When wired, a
+        # `<preset>:<alias>` selector in body["model"] is resolved to the tenant's target
+        # model BEFORE _validate_payload/governance/catalog/budget/upstream — see complete()
+        # and stream() for the single insertion point each.
+        self._tenant_model_preset_store: TenantModelPresetStore | None = tenant_model_preset_store
+        # chat-modality-guard (v56 §3): None (default) ⇒ feature off ⇒ complete()/stream()
+        # are byte-identical (no lookup call, no rejection). When wired (main.py always wires
+        # the SAME provider_resolver singleton as this lookup — zero new per-request I/O), a
+        # resolved model_id whose CACHED modality is known and != "chat" is rejected via
+        # _check_chat_modality() — see complete()/stream() for the single insertion point each.
+        self._chat_modality_lookup: ChatModalityLookup | None = chat_modality_lookup
+        # batch-auto-grouping (v57 §3): None (default) ⇒ feature off ⇒ complete() is
+        # byte-identical (no try_divert call). When wired, an opted-in tenant's eligible
+        # (non-streaming, past-validation, cache-miss/bypass) request may be diverted
+        # into the batch-job-store pipeline — see complete() for the single insertion
+        # point, immediately before the upstream call, after every cache tier resolves.
+        # stream() is NEVER touched (M2 — streaming always synchronous).
+        self._batch_diversion: BatchDiversionPort | None = batch_diversion
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -602,6 +630,33 @@ class CompletionUseCase:
         # On pre-auth 401 exits above, this line is never reached — field stays absent.
         structlog.contextvars.bind_contextvars(tenant_id=str(result.tenant_id))
         return result
+
+    async def _resolve_preset(self, body: dict[str, Any], tenant_id: uuid.UUID) -> None:
+        """Resolve a `<preset>:<alias>` selector in body["model"], in place.
+
+        preset-resolution-ingress (v56 §3 CONTRACT). Called between _authenticate and
+        _validate_payload in both complete() and stream() — BEFORE any per-model
+        authorization/catalog/budget/billing logic or upstream call.
+
+        No-ops (byte-identical) when: the store is unwired (None), the model field is
+        not a colon selector (bare id), or the model field is present but not a string
+        (defers to _validate_payload's existing type/emptiness check, never crashes here).
+        Raises PRESET_NOT_FOUND (400) when the selector's colon is present but resolve()
+        finds no matching row for the CALLING tenant only (never cross-tenant).
+        """
+        if self._tenant_model_preset_store is None:
+            return
+        raw_model = body.get("model", "")
+        if not isinstance(raw_model, str):
+            return
+        selector = parse_preset_selector(raw_model)
+        if selector is None:
+            return
+        preset_name, alias_key = selector
+        target = await self._tenant_model_preset_store.resolve(tenant_id, preset_name, alias_key)
+        if target is None:
+            raise PRESET_NOT_FOUND.exc() from None
+        body["model"] = target
 
     def _strip_web_search_flag(self, body: dict[str, Any]) -> None:
         """Central knob-kill for the web_search flag (web-search-grounding task).
@@ -657,6 +712,28 @@ class CompletionUseCase:
 
         allowed = await resolve_allowed(model_id, self._input_modality_lookup, model_groups)
         enforce(required, allowed, model_id=model_id)
+
+    async def _check_chat_modality(self, model_id: str) -> None:
+        """Enforce the coarse operation-type guard (chat-modality-guard TASK.md §3).
+
+        Runs AFTER _check_input_modalities and BEFORE credential resolution / upstream /
+        usage. A refused request is never billed (raises ProblemError 400 before any
+        side-effect) — mirrors the images/embeddings/TTS coarse guard precedent.
+
+        Reads from the SAME cached provider-resolver map provider_for() already reads —
+        zero new per-request I/O. Guard is a no-op (fail-open) when:
+          - _chat_modality_lookup is None (not wired — legacy / test compat)
+          - lookup returns None (unknown/uncached model_id) → fail-open by design; the
+            model's existence/active-state was already checked earlier by ModelChecker
+        """
+        if self._chat_modality_lookup is None:
+            return
+        modality = await self._chat_modality_lookup.modality_for(model_id)
+        if modality is not None and modality != "chat":
+            raise MODEL_MODALITY_MISMATCH.exc(
+                model_id=model_id,
+                detail=f"model '{model_id}' has modality '{modality}', endpoint requires 'chat'",
+            )
 
     async def _validate_payload(
         self,
@@ -978,6 +1055,92 @@ class CompletionUseCase:
             self._tenant_credential_resolver, tenant_id, _provider
         )
 
+    async def _run_diverted_fallback(
+        self,
+        *,
+        authz: AuthzResult,
+        body: dict[str, Any],
+        model_id: str,
+        upstream: CompletionUpstream,
+        usage_recorder: UsageRecorder,
+        model_router: FallbackModelRouter | None,
+    ) -> dict[str, Any]:
+        """G10 fallback: run the billing-correct equivalent of the existing
+        synchronous upstream call for ONE accumulated item, entirely independent of
+        the original complete() call's lifetime (batch-window-grouping TASK.md §3).
+
+        Invoked by the SSE generator (BatchDiversionAdapter._lifecycle), potentially
+        seconds after the original complete() call already returned — that call's own
+        credential-resolution contextvar token was already reset by its own `finally`
+        clause. Credential resolution is therefore redone FRESH here, exactly as a
+        brand-new request would, never assumed still in effect.
+
+        Never raises: this is a deferred, best-effort completion for an item whose
+        HTTP response (200 text/event-stream, already committed) cannot change
+        status. Any upstream failure degrades to an error-shaped body rather than an
+        unhandled exception reaching the SSE generator.
+
+        Deliberately does NOT re-apply post-call guardrail masking or cache-store — a
+        conscious, bounded residue for this rare fallback path (this task's own test
+        plan only requires "a real body, never a 5xx" here, not guardrail/cache
+        parity; documented per batch-auto-grouping's own non-blocking-residue
+        convention).
+        """
+        _cred_token: object | None = None
+        try:
+            _cred_token = await self._resolve_credential(authz.tenant_id, model_id)
+            try:
+                if model_router is not None:
+                    status, response_body, served_model_id = await model_router.complete(
+                        body, upstream=upstream
+                    )
+                else:
+                    status, response_body = await upstream.complete(body)
+                    served_model_id = model_id
+            except Exception as exc:
+                _log.warning(
+                    "batch window fallback upstream call failed for tenant %s",
+                    authz.tenant_id,
+                    exc_info=exc,
+                )
+                _fire_record(
+                    usage_recorder,
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    model=model_id,
+                    usage=None,
+                    status=502,
+                    team_id=authz.team_id,
+                )
+                return {
+                    "error": {
+                        "message": "batch window fallback failed",
+                        "type": "internal_error",
+                        "code": "ERR_UPSTREAM_UNAVAILABLE",
+                    }
+                }
+
+            # Mirrors the established idiom at complete()'s own success path above:
+            # response_body's static type is dict[str, Any] | dict[str, object]
+            # (model_router.complete() vs upstream.complete() declare different value
+            # types), so isinstance(response_body, dict) is always true (both arms are
+            # already dicts) — narrow the EXTRACTED usage value instead.
+            usage_raw = response_body.get("usage")
+            usage: dict[str, Any] | None = usage_raw if isinstance(usage_raw, dict) else None
+            _fire_record(
+                usage_recorder,
+                tenant_id=authz.tenant_id,
+                key_id=authz.key_id,
+                model=served_model_id,
+                usage=usage,
+                status=status,
+                team_id=authz.team_id,
+            )
+            return response_body
+        finally:
+            if _cred_token is not None:
+                reset_provider_credential(_cred_token)  # type: ignore[arg-type]
+
     async def complete(
         self,
         *,
@@ -989,10 +1152,15 @@ class CompletionUseCase:
         metrics_registry: Any = None,
         request_headers: dict[str, str] | None = None,
         model_router: FallbackModelRouter | None = None,
-    ) -> tuple[int, dict[str, Any], str | None]:
+        batch_processor: object | None = None,
+    ) -> tuple[int, dict[str, Any] | BatchDivertedStream, str | None]:
         """Handle a non-streaming completion.
 
-        Returns (status_code, json_body, x_cache_value).
+        Returns (status_code, json_body, x_cache_value). json_body is a
+        BatchDivertedStream (batch-window-grouping §3) instead of a dict exactly when
+        this request was genuinely accepted into the batch accumulation buffer — the
+        caller (proxy/api/router.py) MUST check isinstance() and wrap body_stream in a
+        StreamingResponse rather than a JSONResponse in that case.
         x_cache_value is "hit", "miss", "bypass", or None (cache disabled).
         On upstream 4xx: pass-through verbatim.
         On upstream 5xx / circuit open: raise ProblemError 502.
@@ -1010,6 +1178,9 @@ class CompletionUseCase:
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
+            # tenant's target model BEFORE payload validation/governance/catalog/upstream.
+            await self._resolve_preset(body, authz.tenant_id)
             # Validate payload fields (format only — catalog check is in _enforce_governance).
             model_id, _ = await self._validate_payload(body)
             _model_id = model_id
@@ -1022,6 +1193,10 @@ class CompletionUseCase:
             # unsupported-input-guard: check input modalities AFTER governance and BEFORE
             # bandwidth acquire / upstream / usage (contract §3 — refused = never billed).
             await self._check_input_modalities(body, model_id, _model_groups)
+
+            # chat-modality-guard (v56 §3): coarse operation-type guard — a resolved model
+            # whose CACHED modality is known and != "chat" is rejected before any I/O.
+            await self._check_chat_modality(model_id)
 
             # bandwidth-pacing pre-flight (stream-bandwidth-pacing v36): charge the per-key
             # bucket BEFORE the upstream call so a non-stream request is SHED (never paid) when
@@ -1327,6 +1502,52 @@ class CompletionUseCase:
                         except Exception:  # noqa: S110
                             pass
 
+            # batch-auto-grouping (v57 §3) / batch-window-grouping (§3, supersedes the
+            # size-1-job body): diversion check — sits OUTSIDE the cache block above
+            # so it catches every path that would otherwise call upstream (miss,
+            # bypass, cache disabled/unconfigured), and NEVER an exact/semantic/vector
+            # HIT (those already returned above). authz.batch_grouping_enabled was
+            # resolved at authentication time (zero extra DB reads, mirrors
+            # semantic_cache_enabled) — try_divert() itself NEVER raises; a None
+            # result means "proceed synchronously", identical to policy-disabled.
+            if self._batch_diversion is not None and getattr(
+                authz, "batch_grouping_enabled", False
+            ):
+                # G10 fallback closure: captures this call's own local scope (authz/
+                # body/model_id/upstream/usage_recorder/model_router) so a deferred
+                # SSE-generator invocation — potentially seconds later, well after
+                # THIS complete() call has returned and its own credential-resolution
+                # contextvar token has already been reset in the finally below — still
+                # resolves credentials and records usage correctly, entirely on its
+                # own, never assuming any of complete()'s own now-defunct state.
+                async def _sync_fallback(
+                    _authz: AuthzResult = authz,
+                    _body: dict[str, Any] = body,
+                    _model_id: str = model_id,
+                    _upstream: CompletionUpstream = upstream,
+                    _usage_recorder: UsageRecorder = usage_recorder,
+                    _model_router: FallbackModelRouter | None = model_router,
+                ) -> dict[str, Any]:
+                    return await self._run_diverted_fallback(
+                        authz=_authz,
+                        body=_body,
+                        model_id=_model_id,
+                        upstream=_upstream,
+                        usage_recorder=_usage_recorder,
+                        model_router=_model_router,
+                    )
+
+                _diverted = await self._batch_diversion.try_divert(
+                    tenant_id=authz.tenant_id,
+                    key_id=authz.key_id,
+                    body=body,
+                    batch_processor=batch_processor,
+                    sync_fallback=_sync_fallback,
+                )
+                if _diverted is not None:
+                    _status_code = 200
+                    return 200, _diverted, x_cache
+
             try:
                 # Route through model_router when wired (model-fallbacks §3).
                 # The router returns a 3-tuple (status, body, served_model_id).
@@ -1601,6 +1822,9 @@ class CompletionUseCase:
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
+            # tenant's target model BEFORE payload validation/governance/catalog/upstream.
+            await self._resolve_preset(body, authz.tenant_id)
             # Validate payload fields (format only — catalog check is in _enforce_governance).
             model_id, _ = await self._validate_payload(body)
             _stream_model_id = model_id
@@ -1614,6 +1838,10 @@ class CompletionUseCase:
             # unsupported-input-guard: check input modalities AFTER governance and BEFORE
             # credential resolution / upstream stream / usage (contract §3).
             await self._check_input_modalities(body, model_id, _stream_model_groups)
+
+            # chat-modality-guard (v56 §3): coarse operation-type guard — a resolved model
+            # whose CACHED modality is known and != "chat" is rejected before any I/O.
+            await self._check_chat_modality(model_id)
 
             # Credential resolution (credential-resolution-seam §3) — same as complete().
             _stream_cred_token = await self._resolve_credential(authz.tenant_id, model_id)

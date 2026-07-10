@@ -99,6 +99,12 @@ OPS_FORBIDDEN = ErrorSpec(
     403, "ERR_OPS_FORBIDDEN", "Tenant credentials cannot access the operator surface"
 )
 
+#: The reserved kind='platform' tenants row does not exist (unmigrated/pre-seed state).
+#: Fails closed — resolve_platform_credential never fabricates a substitute tenant_id.
+PLATFORM_TENANT_MISSING = ErrorSpec(
+    500, "ERR_PLATFORM_TENANT_MISSING", "Platform tenant not provisioned"
+)
+
 # ---------------------------------------------------------------------------
 # Auth — API key errors
 # ---------------------------------------------------------------------------
@@ -310,8 +316,15 @@ TEAM_NOT_FOUND = ErrorSpec(404, "ERR_TEAM_NOT_FOUND", "Team not found")
 #: User not found in the team / tenant.
 USER_NOT_FOUND = ErrorSpec(404, "ERR_USER_NOT_FOUND", "User not found in this tenant")
 
+#: Invite not found — unknown id OR belongs to a different tenant (no distinguishing oracle;
+#: member-invite-issuance TASK.md R8).
+INVITE_NOT_FOUND = ErrorSpec(404, "ERR_INVITE_NOT_FOUND", "Invite not found")
+
 #: Team member not found.
 MEMBER_NOT_FOUND = ErrorSpec(404, "ERR_MEMBER_NOT_FOUND", "Member not found")
+
+#: Tenant not found (platform-tenant-directory TASK.md §3 — superadmin cross-tenant lookup).
+TENANT_NOT_FOUND = ErrorSpec(404, "ERR_TENANT_NOT_FOUND", "Tenant not found")
 
 # ---------------------------------------------------------------------------
 # Conflict / already exists
@@ -319,6 +332,24 @@ MEMBER_NOT_FOUND = ErrorSpec(404, "ERR_MEMBER_NOT_FOUND", "Member not found")
 
 #: A team with this name already exists in the tenant.
 TEAM_EXISTS = ErrorSpec(409, "ERR_TEAM_EXISTS", "A team with this name already exists")
+
+#: Invite-create rejected — the target email already belongs to a user in the CALLER's own
+#: tenant (member-invite-issuance TASK.md R7; safe to disclose — caller already sees this
+#: roster via GET /admin/users).
+INVITE_EMAIL_ALREADY_MEMBER = ErrorSpec(
+    409, "ERR_INVITE_EMAIL_ALREADY_MEMBER", "This email already belongs to a member of your tenant"
+)
+
+#: Invite-revoke rejected — the resolved invite's status is not 'pending' (already accepted
+#: or already revoked; member-invite-issuance TASK.md R9).
+INVITE_NOT_PENDING = ErrorSpec(409, "ERR_INVITE_NOT_PENDING", "Invite is not in pending state")
+
+#: Invite resolved (preview or accept) and its status IS 'pending', but expires_at has
+#: passed — a fresh, invite-scoped 410 (member-invite-acceptance TASK.md R3), sibling to
+#: INVITE_NOT_FOUND/INVITE_NOT_PENDING above. NOT a reuse of agent_oauth's own
+#: AGENT_OAUTH_EXPIRED (differently-scoped resource) — mirrors this codebase's
+#: per-feature-scoped error-naming convention.
+INVITE_EXPIRED = ErrorSpec(410, "ERR_INVITE_EXPIRED", "Invite has expired")
 
 #: User is already a member of the team.
 MEMBER_EXISTS = ErrorSpec(409, "ERR_MEMBER_EXISTS", "User is already a member of this team")
@@ -525,6 +556,20 @@ UNSUPPORTED_INPUT_MODALITY = ErrorSpec(
     "Model does not accept '{input_type}' input",
 )
 
+#: Coarse operation-type guard (preset-capability-validation task §3).
+#: Fired when a (preset-resolved or directly-named) model's catalog `modality`
+#: (chat/embedding/image/audio_stt/audio_tts) does not match the endpoint's expected
+#: operation type — e.g. a chat model resolved for /v1/images/generations.  400 —
+#: caller-fixable; fired BEFORE select_provider/upstream/billing (single-bill invariant).
+#: Applies to /v1/images/generations, /v1/embeddings, /v1/audio/speech (TTS) only — chat
+#: has no ModelRow query in its seam, and STT is already safe by construction (see
+#: gateway.proxy.infrastructure.openrouter_upstream_provider's post_multipart).
+MODEL_MODALITY_MISMATCH = ErrorSpec(
+    400,
+    "ERR_MODEL_MODALITY_MISMATCH",
+    "Model '{model_id}' does not support this operation",
+)
+
 # ---------------------------------------------------------------------------
 # Video generation job errors (video-generation-jobs task)
 # ---------------------------------------------------------------------------
@@ -568,3 +613,101 @@ AGENT_OAUTH_NOT_PENDING = ErrorSpec(
 
 #: Authorization is pending but its expiry has passed.
 AGENT_OAUTH_EXPIRED = ErrorSpec(410, "ERR_AGENT_OAUTH_EXPIRED", "Authorization has expired")
+
+# ---------------------------------------------------------------------------
+# Tenant model presets (tenant-preset-store task — store layer only, v56)
+# ---------------------------------------------------------------------------
+
+#: Preset upsert target_model is not an active model in the catalog.
+#: Raised by DbTenantModelPresetStore.upsert as ModelPresetError; this entry
+#: exists for the later HTTP admin-API task to surface it as problem+json.
+PRESET_TARGET_UNKNOWN = ErrorSpec(
+    400, "ERR_PRESET_TARGET_UNKNOWN", "Preset target model is not active in the catalog"
+)
+
+#: Preset selector token (preset_name / alias_key) is empty, over 64 chars, or
+#: contains a colon. Raised by DbTenantModelPresetStore.upsert as
+#: ModelPresetError; this entry exists for the later HTTP admin-API task.
+PRESET_SELECTOR_INVALID = ErrorSpec(
+    400, "ERR_PRESET_SELECTOR_INVALID", "Preset selector token is invalid"
+)
+
+#: model field named a `<preset>:<alias>` selector (colon present) but
+#: TenantModelPresetStore.resolve(tenant_id, preset_name, alias_key) returned None
+#: — no matching row for the calling tenant (preset-resolution-ingress task, v56).
+#: Fires BEFORE any authorization/catalog/budget/billing/upstream call, at ingress,
+#: for all 5 entry points (chat, images, embeddings, audio STT, audio TTS).
+PRESET_NOT_FOUND = ErrorSpec(
+    400, "ERR_PRESET_NOT_FOUND", "Preset selector did not resolve to a known model"
+)
+
+# ---------------------------------------------------------------------------
+# Plan catalog (plan-catalog task — superadmin plan/tier assignment surface)
+# ---------------------------------------------------------------------------
+
+#: PUT .../plan — plan_id (non-null) does not resolve to a real plans row (R5). Follows
+#: TENANT_NOT_FOUND/USER_NOT_FOUND's "admin action references an unknown id -> 404" idiom,
+#: NOT PRESET_NOT_FOUND's 400 (that code fires on a proxy-hot-path RUNTIME resolution
+#: failure — a different situation entirely).
+PLAN_NOT_FOUND = ErrorSpec(404, "ERR_PLAN_NOT_FOUND", "Plan not found")
+
+#: PUT .../plan — target tenant's kind == 'platform' (R4). The platform tenant can never
+#: hold a plan; a DB-level CHECK (ck_tenants_platform_no_plan) is the defense-in-depth
+#: backstop for this same invariant.
+PLAN_TENANT_INELIGIBLE = ErrorSpec(
+    403, "ERR_PLAN_TENANT_INELIGIBLE", "This tenant is not eligible for plan assignment"
+)
+
+# ---------------------------------------------------------------------------
+# Impersonation session lifecycle (impersonation-session-lifecycle task)
+# ---------------------------------------------------------------------------
+
+#: Mint — target tenant's kind == 'platform' (R4), OR target user's role is (defense-in-
+#: depth) superadmin (R6). Same code for both — `detail` distinguishes the reason.
+IMPERSONATION_TARGET_INVALID = ErrorSpec(
+    403, "ERR_IMPERSONATION_TARGET_INVALID", "Target is not eligible for impersonation"
+)
+
+#: Mint — the calling superadmin already holds an active (revoked_at IS NULL AND
+#: expires_at > now()) impersonation session (M7/R7). At most one at a time, per actor.
+IMPERSONATION_SESSION_ALREADY_ACTIVE = ErrorSpec(
+    409,
+    "ERR_IMPERSONATION_SESSION_ALREADY_ACTIVE",
+    "An impersonation session is already active for this superadmin",
+)
+
+#: End — session_id never resolves to any minted row (R8).
+IMPERSONATION_SESSION_NOT_FOUND = ErrorSpec(
+    404, "ERR_IMPERSONATION_SESSION_NOT_FOUND", "Impersonation session not found"
+)
+
+#: End — session_id resolves, but revoked_at IS NOT NULL or expires_at <= now() already
+#: (R9). Covers BOTH a repeat explicit End and a never-explicitly-ended-but-naturally-
+#: expired session under one rule/code.
+IMPERSONATION_SESSION_ALREADY_ENDED = ErrorSpec(
+    409,
+    "ERR_IMPERSONATION_SESSION_ALREADY_ENDED",
+    "Impersonation session already ended or expired",
+)
+
+# ---------------------------------------------------------------------------
+# Batch job store errors (batch-job-store task, v57)
+# ---------------------------------------------------------------------------
+
+#: Requested batch job not found, or belongs to another tenant.
+#: NEVER distinguish between "not found" and "belongs to another tenant" — no oracle.
+BATCH_JOB_NOT_FOUND = ErrorSpec(404, "ERR_BATCH_JOB_NOT_FOUND", "Batch job not found")
+
+#: POST /v1/batches with an empty line_items array.
+BATCH_ITEMS_EMPTY = ErrorSpec(422, "batch_items_empty", "line_items must not be empty")
+
+#: POST /v1/batches with more line items than the configured cap
+#: (Settings.batch_max_items_per_job). The cap is inclusive — reject fires on ">".
+BATCH_ITEMS_TOO_MANY = ErrorSpec(
+    422, "batch_items_too_many", "line_items exceeds the maximum allowed"
+)
+
+#: A line item failed validation: missing model, missing/empty messages, or a
+#: custom_id that duplicates another item in the same submission. The whole
+#: submission is atomic — no row is created on this reject.
+BATCH_ITEM_INVALID = ErrorSpec(422, "batch_item_invalid", "a line item failed validation")

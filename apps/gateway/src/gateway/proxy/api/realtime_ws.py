@@ -182,11 +182,21 @@ async def _real_stt(
         )
         _cred_resolver = getattr(app.state, "tenant_credential_resolver", None)
         _settings: Settings = app.state.settings
+        # preset-resolution-ingress (v56 §3): full coverage was the chosen scope for the
+        # realtime-WS voice protocol — thread the SAME `_authenticator` already built above
+        # (no second KeyAuthenticator) plus the real app.state singleton, mirroring _real_chat.
+        _tenant_model_preset_store = getattr(app.state, "tenant_model_preset_store", None)
+        # preset-capability-validation (v56 §3): mirror audio_deps.py:106 exactly — read the
+        # SAME settings flag the HTTP STT path reads (never hardcode a boolean), so
+        # realtime-WS STT behaves identically to HTTP under the same config.
         _uc = TranscriptionUseCase(
             governance=_governance,
             session=session,
             tenant_credential_resolver=_cred_resolver,
             max_duration_seconds=_settings.stt_max_duration_seconds,
+            input_modality_guard_enabled=_settings.input_modality_guard_enabled,
+            authenticator=_authenticator,
+            tenant_model_preset_store=_tenant_model_preset_store,
         )
         _registry: ProviderRegistry = app.state.provider_registry
         _recorder: UsageRecorder = app.state.usage_recorder
@@ -223,6 +233,9 @@ async def _real_chat(
         from gateway.proxy.infrastructure.circuit_breaker_proxy import (
             BoundCircuitBreakerUpstream,
         )
+        from gateway.proxy.infrastructure.input_modality_lookup import (
+            SqlAlchemyInputModalityLookup,
+        )
         from gateway.proxy.infrastructure.key_authenticator import (
             SqlAlchemyKeyAuthenticator as _Auth,
         )
@@ -241,6 +254,16 @@ async def _real_chat(
         _cost_recovery = getattr(app.state, "cost_recovery_service", None)
         _bw_bucket = getattr(app.state, "bandwidth_bucket", None)
         _settings: Settings = app.state.settings
+        # preset-resolution-ingress (v56 §3): full coverage was the chosen scope for
+        # realtime-WS voice chat — thread the REAL app.state singleton (not defaulted
+        # to None here); CompletionUseCase.complete() resolves via the SAME insertion
+        # point as the HTTP chat path.
+        _tenant_model_preset_store = getattr(app.state, "tenant_model_preset_store", None)
+        # preset-capability-validation (v56 §3): mirror deps.py:208-211/228-229 exactly —
+        # build the SAME SqlAlchemyInputModalityLookup over this request's session and read
+        # the SAME settings flag the HTTP chat path reads (never hardcode a boolean), so
+        # realtime-WS chat behaves identically to HTTP under the same config.
+        _input_modality_lookup = SqlAlchemyInputModalityLookup(session)
 
         _use_case = CompletionUseCase(
             authenticator=_authenticator,
@@ -254,6 +277,12 @@ async def _real_chat(
             cost_recovery=_cost_recovery,
             bandwidth_bucket=_bw_bucket,
             bandwidth_max_wait_s=_settings.bandwidth_max_wait_seconds,
+            input_modality_lookup=_input_modality_lookup,
+            input_modality_guard_enabled=_settings.input_modality_guard_enabled,
+            tenant_model_preset_store=_tenant_model_preset_store,
+            # chat-modality-guard (v56 §3): reuses the SAME app.state.provider_resolver
+            # instance fetched above — zero new app.state attribute, zero new instance.
+            chat_modality_lookup=_provider_resolver,
         )
 
         _circuit_breaker = app.state.circuit_breaker
@@ -278,6 +307,19 @@ async def _real_chat(
             usage_recorder=_recorder,
             model_router=_model_router,
         )
+
+    # batch-window-grouping (§3, G8): complete()'s return type is now a union
+    # (dict[str, Any] | BatchDivertedStream). This call site never passes a
+    # batch_processor (realtime voice-chat is a synchronous single turn, never
+    # diverted), so a BatchDivertedStream is not reachable here today — guarded
+    # anyway (never assume a union member away): degrade to "no reply text",
+    # exactly like the other malformed-shape cases below, rather than an
+    # AttributeError on a plain dict method.
+    from gateway.proxy.domain.ports import BatchDivertedStream
+
+    if isinstance(_resp_body, BatchDivertedStream):
+        _log.warning("realtime chat completion unexpectedly diverted; returning empty reply")
+        return ""
 
     # Extract reply text from choices[0].message.content
     choices = _resp_body.get("choices", [])
@@ -334,11 +376,17 @@ async def _real_tts(
             session_factory=app.state.sessionmaker,
         )
         _cred_resolver = getattr(app.state, "tenant_credential_resolver", None)
+        # preset-resolution-ingress (v56 §3): full coverage was the chosen scope for the
+        # realtime-WS voice protocol — thread the SAME `_authenticator` already built above
+        # (no second KeyAuthenticator) plus the real app.state singleton, mirroring _real_chat.
+        _tenant_model_preset_store = getattr(app.state, "tenant_model_preset_store", None)
         _uc = SpeechUseCase(
             governance=_governance,
             session=session,
             tenant_credential_resolver=_cred_resolver,
             max_input_characters=_settings.tts_max_input_characters,
+            authenticator=_authenticator,
+            tenant_model_preset_store=_tenant_model_preset_store,
         )
         _registry: ProviderRegistry = app.state.provider_registry
         _recorder = app.state.usage_recorder

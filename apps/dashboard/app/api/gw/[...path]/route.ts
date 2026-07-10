@@ -24,6 +24,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPlaygroundToken, invalidatePlaygroundToken } from "@/lib/playground-token";
+import { buildClearImpersonationCookie, readImpersonationEnvelope } from "@/lib/impersonation-cookie";
 
 // A response is streamed when its upstream Content-Type matches this allowlist
 // (startsWith), or the request asked stream:true and the upstream is not JSON.
@@ -83,6 +84,37 @@ function getTokenFromRequest(req: NextRequest): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * PATH-AWARE token resolution (impersonation-ui TASK.md §3 CONTRACT Part B, M5):
+ * `admin/platform`(/...) ALWAYS resolves to `ai_proxy_session`, unconditionally —
+ * the Platform admin surface must never be reachable via an impersonation token
+ * (R5), even opportunistically; this prefix check is the ONLY gate, never a "try
+ * original, fall back to impersonation" ordering. Every other path prefers the
+ * impersonation cookie's envelope token when present (a malformed/absent envelope
+ * parses to undefined via the shared decoder, never throws), else falls back to
+ * `ai_proxy_session` — byte-identical to this route's behavior before this task
+ * whenever no impersonation cookie exists.
+ */
+function isPlatformAdminPath(pathStr: string): boolean {
+  return pathStr === "admin/platform" || pathStr.startsWith("admin/platform/");
+}
+
+function resolveUpstreamAuth(
+  req: NextRequest,
+  pathStr: string
+): { token: string; cookieSource: "original" | "impersonation" } | null {
+  const original = getTokenFromRequest(req);
+  if (isPlatformAdminPath(pathStr)) {
+    return original ? { token: original, cookieSource: "original" } : null;
+  }
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const impersonation = readImpersonationEnvelope(cookieHeader)?.token;
+  if (impersonation) {
+    return { token: impersonation, cookieSource: "impersonation" };
+  }
+  return original ? { token: original, cookieSource: "original" } : null;
+}
+
 // Next.js 15 App Router: params is always a Promise.
 // Unit tests pass a plain object which is also thenable via Promise.resolve.
 type RouteContext = { params: Promise<{ path: string[] }> };
@@ -91,19 +123,21 @@ async function proxyRequest(
   req: NextRequest,
   context: RouteContext
 ): Promise<NextResponse> {
-  const token = getTokenFromRequest(req);
+  // Await params — Next.js 15 always passes params as a Promise. Resolved BEFORE
+  // token resolution now: which cookie supplies the token is PATH-AWARE (M5), so
+  // the path must be known first — every other params-handling detail unchanged.
+  const resolvedParams = await context.params;
+  const pathSegments = resolvedParams.path;
+  const pathStr = pathSegments.join("/");
 
-  if (!token) {
+  const resolvedAuth = resolveUpstreamAuth(req, pathStr);
+  if (!resolvedAuth) {
     return NextResponse.json(
       { code: "ERR_AUTH_NO_SESSION" },
       { status: 401 }
     );
   }
-
-  // Await params — Next.js 15 always passes params as a Promise
-  const resolvedParams = await context.params;
-  const pathSegments = resolvedParams.path;
-  const pathStr = pathSegments.join("/");
+  const { token, cookieSource } = resolvedAuth;
 
   // CONTROL-PLANE (/admin/*) uses the session JWT directly. DATA-PLANE (/v1/*)
   // needs an sk-/agent key the cookie can't carry, so the BFF does a SERVER-SIDE
@@ -249,7 +283,16 @@ async function proxyRequest(
       { code: "ERR_AUTH_SESSION_EXPIRED" },
       { status: 401 }
     );
-    res.headers.set("Set-Cookie", buildClearCookieValue());
+    // Source-aware (M5/R6): clear ONLY whichever cookie actually supplied the
+    // rejected token — never unconditionally ai_proxy_session. A naive patch that
+    // kept clearing ai_proxy_session unconditionally would silently log a
+    // superadmin out of their own real session on an impersonation-token
+    // rejection (TASK.md §5 Known-problem fix). The response CODE is unchanged
+    // regardless of which cookie was cleared.
+    res.headers.set(
+      "Set-Cookie",
+      cookieSource === "impersonation" ? buildClearImpersonationCookie() : buildClearCookieValue()
+    );
     return res;
   }
   // A DATA-PLANE 401 means the minted playground key was rejected (expired/revoked

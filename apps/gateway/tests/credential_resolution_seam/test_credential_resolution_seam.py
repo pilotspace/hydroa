@@ -459,7 +459,7 @@ def test_bearer_env_removed_boots_clean(app_no_db: Any) -> None:
     Invariants (already satisfied post-BYOK; re-pinned against a live surface after the
     vestigial empty-key boot guard + its _UPSTREAM_KEY_ENV_VARS constant were retired):
     - Settings has no openrouter_api_key / openai_api_key / anthropic_api_key / google_api_key field.
-    - The 4 Bearer adapters (openrouter / openai / anthropic / google) are present in
+    - The Bearer adapters (openrouter / openai / anthropic / google / minimax) are present in
       app.state.chat_adapters regardless of env keys — registration is UNCONDITIONAL.
     """
     from gateway.core.config import Settings
@@ -478,9 +478,9 @@ def test_bearer_env_removed_boots_clean(app_no_db: Any) -> None:
         "They are still present — BUILD has not run yet."
     )
 
-    # After BUILD: all 4 Bearer adapters must be registered unconditionally
+    # After BUILD: all Bearer adapters must be registered unconditionally
     chat_adapters: dict[str, Any] = app_no_db.state.chat_adapters
-    for provider in ("openrouter", "openai", "anthropic", "google"):
+    for provider in ("openrouter", "openai", "anthropic", "google", "minimax"):
         assert provider in chat_adapters, (
             f"Provider '{provider}' must be registered unconditionally after BUILD. "
             "It is absent — this is the pre-BUILD (RED) state."

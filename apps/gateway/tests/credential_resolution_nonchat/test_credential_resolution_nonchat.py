@@ -66,7 +66,7 @@ async def test_none_resolver_returns_none_and_sets_nothing(tenant_id: uuid.UUID)
     assert get_provider_credential() is None
 
 
-@pytest.mark.parametrize("provider", ["openrouter", "openai", "anthropic", "google"])
+@pytest.mark.parametrize("provider", ["openrouter", "openai", "anthropic", "google", "minimax"])
 async def test_bearer_provider_resolves_and_sets_contextvar(
     tenant_id: uuid.UUID, provider: str
 ) -> None:

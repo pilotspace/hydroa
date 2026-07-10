@@ -21,8 +21,16 @@ import { Button, Loading, ErrorState } from "@/components/ui";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 import { ConfigureProviderDialog } from "./ConfigureProviderDialog";
 
-/** The six BYOK providers, in display order. */
-const PROVIDERS = ["openrouter", "openai", "anthropic", "google", "bedrock", "azure"] as const;
+/** The seven BYOK providers, in display order. */
+const PROVIDERS = [
+  "openrouter",
+  "openai",
+  "anthropic",
+  "google",
+  "bedrock",
+  "azure",
+  "minimax",
+] as const;
 
 /**
  * Friendly labels. Chosen so no label is a substring of another's matcher — e.g. azure
@@ -35,6 +43,7 @@ const DISPLAY: Record<string, string> = {
   google: "Google",
   bedrock: "Bedrock",
   azure: "Azure",
+  minimax: "MiniMax",
 };
 
 interface ProviderKeyStatus {

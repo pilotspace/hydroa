@@ -8,7 +8,7 @@
  */
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { DataTable } from "@/components/ui";
+import { Badge, DataTable } from "@/components/ui";
 import { formatTimestamp } from "@/lib/format";
 
 export interface AlertRow {
@@ -35,7 +35,14 @@ const COLUMNS: ColumnDef<AlertRow>[] = [
   {
     id: "status",
     header: "Status",
-    cell: ({ row }) => (row.original.delivered ? "Delivered" : "Pending"),
+    // Semantic Badge — the "Delivered"/"Pending" TEXT is the a11y contract; delivered reads
+    // as the success tone, pending as a neutral (not-yet-delivered is not an error).
+    cell: ({ row }) =>
+      row.original.delivered ? (
+        <Badge variant="success">Delivered</Badge>
+      ) : (
+        <Badge variant="secondary">Pending</Badge>
+      ),
   },
   {
     id: "payload",

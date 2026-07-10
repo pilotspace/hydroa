@@ -235,6 +235,12 @@ class Settings(BaseSettings):
     # NEVER set to a non-https URL in production deployments.
     openai_base_url: str = "https://api.openai.com/v1"
 
+    # ── MiniMax direct provider (minimax-adapter-registry task) ──────────────
+    # GATEWAY_MINIMAX_BASE_URL — Override in e2e overlays to point at a stub.
+    # NEVER set to a non-https URL in production deployments. BYOK-only — no
+    # operator-level API key Settings field (dynamic-auth-byok precedent).
+    minimax_base_url: str = "https://api.minimax.io/v1"
+
     # ── Anthropic direct provider (provider-chat-dispatch task) ──────────────
     # GATEWAY_ANTHROPIC_BASE_URL — Override in e2e overlays to point at a stub.
     anthropic_base_url: str = "https://api.anthropic.com/v1"
@@ -415,6 +421,38 @@ class Settings(BaseSettings):
     # 0-valued cap — matches video_job_timeout_seconds / *_max_bytes); a fresh job
     # is therefore always attempted at least once.
     video_job_max_retries: int = Field(default=3, ge=0)
+
+    # ── Batch job store (batch-job-store task, v57) ───────────────────────────
+    # GATEWAY_BATCH_DURABLE_QUEUE_ENABLED — when True, batch jobs are enqueued to a
+    # Redis list (batch:jobs:pending) and drained by an in-process BatchJobWorker
+    # rather than a fire-and-forget asyncio.create_task. Jobs survive gateway
+    # restarts; orphaned non-terminal rows are re-enqueued on startup.
+    # Default False = opt-in (mirrors video_durable_queue_enabled exactly).
+    # Fail-open: if the Redis enqueue raises, the router falls back to the inline task.
+    batch_durable_queue_enabled: bool = Field(default=False)
+    # GATEWAY_BATCH_JOB_MAX_RETRIES — maximum number of times the durable worker will
+    # attempt a job before setting status=failed error=max_retries_exceeded. **0 =
+    # UNLIMITED** (the codebase convention for a 0-valued cap). Default 3.
+    batch_job_max_retries: int = Field(default=3, ge=0)
+    # GATEWAY_BATCH_JOB_TIMEOUT_SECONDS — per-job asyncio.wait_for timeout for the
+    # BatchProcessor.process() call. 0 = unlimited (no timeout). Default 300 s.
+    batch_job_timeout_seconds: float = Field(default=300.0, ge=0)
+    # GATEWAY_BATCH_MAX_ITEMS_PER_JOB — the maximum number of line items a single
+    # POST /v1/batches submission may contain. Default 500 for this MVP shell (well
+    # under real provider limits of 50k/100k) — operator-configurable. Inclusive cap
+    # (reject fires on ">"). Also doubles as BatchWindowBuffer's early-flush size cap
+    # (batch-window-grouping): a window flushes as soon as its accumulated item count
+    # reaches this value, even if batch_window_seconds has not yet elapsed.
+    batch_max_items_per_job: int = Field(default=500, ge=1)
+    # GATEWAY_BATCH_WINDOW_SECONDS — batch-window-grouping: the fixed-tick accumulation
+    # window (seconds) for BatchWindowBuffer/BatchWindowFlusher. A tenant's FIRST
+    # eligible request opens the window; it flushes as one multi-item batch job when
+    # EITHER this many seconds have elapsed since that first arrival OR
+    # batch_max_items_per_job items have accumulated, whichever comes first — a later
+    # arrival in the same window never resets it (fixed-tick, not debounce). Read
+    # fresh per-call (never snapshotted at construction) so it can be tuned live and
+    # shrunk in tests after app construction. Default 3.0s.
+    batch_window_seconds: float = Field(default=3.0, ge=0)
 
     @field_validator("back_pressure_retry_after_seconds", mode="before")
     @classmethod
@@ -607,7 +645,10 @@ class Settings(BaseSettings):
     # GATEWAY_REALTIME_RELAY_PROVIDER — which realtime provider /v1/realtime/relay dials.
     # "" = none configured → honest-degrade close 4404; else "openai" | "gemini".
     realtime_relay_provider: str = Field(default="")
-    realtime_relay_openai_model: str = Field(default="gpt-4o-realtime-preview")
+    # gpt-realtime-pricing-fields TASK.md §3: switched from the older "gpt-4o-realtime-preview"
+    # to the current GA "gpt-realtime" model (Tin 2026-07-02, AskUserQuestion) — see
+    # catalog/infrastructure/gpt_realtime_seed.py for the corresponding pricing seed.
+    realtime_relay_openai_model: str = Field(default="gpt-realtime")
     realtime_relay_gemini_model: str = Field(default="gemini-2.0-flash-exp")
 
     # ── Model-group aliases → ordered Deployments (model-fallbacks v6 + deployment-model v8) ──
@@ -912,6 +953,58 @@ class Settings(BaseSettings):
                 f"must be a positive integer (> 0); got {v!r}"
             )
         return v
+
+    # ── Impersonation session (impersonation-session-lifecycle task) ────────────
+    # A time-boxed, revocable, superadmin-initiated session-store record + JWT pair
+    # granting a superadmin the ability to act as one specific, eligible target user.
+    # GATEWAY_IMPERSONATION_SESSION_TTL_SECONDS — hard session TTL; materially shorter
+    # than jwt_ttl_seconds's own 86400s default. Must be > 0; fails fast at boot.
+    impersonation_session_ttl_seconds: int = 900  # GATEWAY_IMPERSONATION_SESSION_TTL_SECONDS
+
+    @field_validator("impersonation_session_ttl_seconds")
+    @classmethod
+    def _validate_impersonation_ttl(cls, v: int) -> int:
+        """Fail loud on a non-positive impersonation TTL (mirrors playground_token_ttl_seconds's
+        own style exactly — a short positive lifetime is the point)."""
+        if v <= 0:
+            raise ValueError(
+                "INVALID_IMPERSONATION_SESSION_TTL: GATEWAY_IMPERSONATION_SESSION_TTL_SECONDS "
+                f"must be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    # ── Member invite acceptance (member-invite-acceptance task) ────────────────
+    # Per-client-IP fixed-window rate limits for the two PUBLIC, unauthenticated invite
+    # endpoints (M7). Both must be > 0; fails fast at boot when set to 0 or negative.
+    invite_preview_rpm: int = 30  # GATEWAY_INVITE_PREVIEW_RPM
+    invite_accept_rpm: int = 10  # GATEWAY_INVITE_ACCEPT_RPM
+
+    @field_validator("invite_preview_rpm", "invite_accept_rpm")
+    @classmethod
+    def _validate_invite_positive_knobs(cls, v: int) -> int:
+        """Fail loud on a non-positive invite rate-limit knob (member-invite-acceptance).
+
+        A zero or negative value is a misconfiguration, not a disable signal: a functioning
+        per-IP limiter needs a strictly positive ceiling. Kept as its OWN validator (rather
+        than folded into _validate_agent_oauth_positive_knobs above) so a failure here
+        reports an invite-scoped field list, not an unrelated agent_oauth one.
+        """
+        if v <= 0:
+            raise ValueError(
+                "INVALID_INVITE_KNOB: invite_preview_rpm and invite_accept_rpm must each be "
+                f"a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    # ── Impersonation live-session guard (impersonation-live-session-guard task) ────
+    # GATEWAY_IMPERSONATION_LIVE_CHECK_TIMEOUT_SECONDS — bounds the per-request
+    # DbImpersonationSessionGuard DB read (revoked_at/expires_at). A struggling DB fails
+    # THIS check fast/clean (401) rather than compounding into a long ambient hang —
+    # fail-CLOSED on elapse (DbImpersonationSessionGuard.ensure_live). No ambient
+    # statement_timeout exists today (confirmed at Ground) — this is a new, additive
+    # bound. Mirrors object_store_timeout_seconds's exact style (gt=0, no bespoke
+    # @field_validator beyond Pydantic's own gt-violation message).
+    impersonation_live_check_timeout_seconds: float = Field(default=2.0, gt=0)
 
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":

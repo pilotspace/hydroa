@@ -52,6 +52,12 @@ EXPECTED_TABLES = frozenset(
         "memories",  # SANCTIONED EDIT — memory-backend (v44) TASK.md §3 manifest maintenance; disposition: additive migration d8f0a2b4c6e8 adds this table
         "artifacts",  # SANCTIONED EDIT — artifacts-backend TASK.md §3 manifest maintenance; disposition: additive migration b3e5f9a7c1d4 adds this table
         "video_generation_jobs",  # SANCTIONED EDIT — video-generation-jobs TASK.md §3 manifest maintenance; disposition: additive migration c1d4f7a9e2b5 adds this table
+        "tenant_model_presets",  # SANCTIONED EDIT — tenant-preset-store TASK.md §3 manifest maintenance; disposition: additive migration b5f8a1d4c7e0 adds this table
+        "batch_jobs",  # SANCTIONED EDIT — batch-job-store TASK.md §3 manifest maintenance; disposition: additive migration e5a7c9b1d3f6 adds this table
+        "batch_job_items",  # SANCTIONED EDIT — batch-job-store TASK.md §3 manifest maintenance; disposition: additive migration e5a7c9b1d3f6 adds this table
+        "invites",  # SANCTIONED EDIT — member-invite-issuance TASK.md §3 manifest maintenance; disposition: additive migration 1193bc6178f3 adds this table
+        "plans",  # SANCTIONED EDIT — plan-catalog TASK.md §3 manifest maintenance; disposition: additive migration 1e66a2cb51a6 adds this table
+        "impersonation_sessions",  # SANCTIONED EDIT — impersonation-session-lifecycle TASK.md §3 manifest maintenance; disposition: additive migration 1d563bf9b143 adds this table
     }
 )
 

@@ -99,3 +99,11 @@ class UsageRecordRow(Base):
     # client-disconnect row — the lookup key for disconnect cost-recovery. NULL on every
     # other row. Additive + nullable; append-only preserved (no UPDATE/DELETE).
     provider_generation_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # gpt-realtime-schema-migration (TASK.md §3): audio-stream token counts, independent of
+    # the text-stream prompt/completion/cached_tokens columns above. Default 0 on every
+    # pre-existing row (only GPT-Realtime rows will ever populate these).
+    audio_prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    audio_completion_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    audio_cached_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

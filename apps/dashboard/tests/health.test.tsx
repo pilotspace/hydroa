@@ -97,6 +97,31 @@ describe("HealthPage", () => {
     expect(within(section()).getByText(/^down$/i)).toBeInTheDocument();
   });
 
+  it("test_health_status_is_a_semantic_badge", async () => {
+    // W4 ops-badge fix: upstream status must render as a semantic Badge (text is the a11y
+    // contract; AA-safe color reinforces) — not bare "Up"/"Down" text with no visual coding.
+    server.use(
+      http.get(`${APP}/api/gw/admin/health/upstreams`, () => HttpResponse.json(HEALTH_DOWN)),
+    );
+    renderHealth();
+    await waitFor(() => {
+      expect(within(section()).getByText(/^down$/i)).toBeInTheDocument();
+    });
+    // a "down" upstream reads as the destructive badge tone
+    expect(within(section()).getByText(/^down$/i).className).toMatch(/destructive/);
+  });
+
+  it("test_health_up_status_is_success_badge", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/health/upstreams`, () => HttpResponse.json(HEALTH_UP)),
+    );
+    renderHealth();
+    await waitFor(() => {
+      expect(within(section()).getByText(/^up$/i)).toBeInTheDocument();
+    });
+    expect(within(section()).getByText(/^up$/i).className).toMatch(/success/);
+  });
+
   it("test_health_empty_state", async () => {
     server.use(
       http.get(`${APP}/api/gw/admin/health/upstreams`, () => HttpResponse.json(HEALTH_EMPTY)),

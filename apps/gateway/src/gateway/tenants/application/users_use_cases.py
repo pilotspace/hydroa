@@ -28,6 +28,46 @@ _ADMIN_ASSIGNABLE: frozenset[Role] = frozenset(
 )
 
 
+def assert_role_within_ceiling(*, caller_role: Role, target_role: Role) -> None:
+    """Enforce the per-caller-role escalation ceiling (member-invite-issuance TASK.md §3
+    NEW shared symbol) — extracted VERBATIM from the SUPERADMIN GUARD + ESCALATION GUARD
+    previously inlined in AssignUserRoleUseCase.execute (ground: ex-lines 64-82, pre-
+    extraction) so role-reassignment (AssignUserRoleUseCase) and invite-issuance
+    (CreateInviteUseCase) can never silently drift apart — ONE shared predicate, never a
+    second hand-rolled copy of ``_ADMIN_ASSIGNABLE`` (§1 Framings weighed; §0 GROUND names
+    this drift as a privilege-escalation-shaped bug, not a style nit).
+
+    - SUPERADMIN GUARD (first, unconditional): ``target_role == SUPERADMIN`` is NEVER
+      assignable through this predicate, for ANY ``caller_role`` — not even OWNER. Defense-
+      in-depth: both routers (users_router.py, invites_router.py, platform_users_router.py)
+      already reject a ``{"role": "superadmin"}`` payload with 422 ERR_PAYLOAD_INVALID
+      BEFORE either use case is ever reached; this guard exists for any future non-HTTP
+      caller of either use case, so even an OWNER caller can never mint a superadmin
+      through this path.
+    - ESCALATION GUARD: OWNER may grant any of the other 6 self-service tiers (no ceiling);
+      ADMIN may grant only ``_ADMIN_ASSIGNABLE`` (operator/billing_admin/viewer/member).
+
+    Raises:
+        EscalationForbiddenError: ``target_role`` is SUPERADMIN, or ``caller_role`` is
+            ADMIN and ``target_role`` is outside ``_ADMIN_ASSIGNABLE``.
+
+    Behavior-preserving for the existing ``PUT /admin/users/{id}/role`` endpoint (and its
+    superadmin-caller variant on platform_users_router.py): both routers'
+    ``except EscalationForbiddenError: raise AUTH_FORBIDDEN.exc()`` never surface this
+    error's internal message, so bundling these two checks ahead of the (still-local)
+    self-guard changes zero observable HTTP responses for either endpoint.
+    """
+    # SUPERADMIN GUARD (first, unconditional — see docstring).
+    if target_role == Role.SUPERADMIN:
+        raise EscalationForbiddenError("superadmin is not assignable via this use case")
+
+    # ESCALATION GUARD
+    if caller_role == Role.ADMIN and target_role not in _ADMIN_ASSIGNABLE:
+        raise EscalationForbiddenError(
+            f"Admin cannot assign role '{target_role}' (escalation forbidden)"
+        )
+
+
 class ListTenantUsersUseCase:
     """Return all users in the caller's tenant (id, email, role)."""
 
@@ -61,15 +101,18 @@ class AssignUserRoleUseCase:
         target_user_id: uuid.UUID,
         new_role: Role,
     ) -> User:
-        # SELF-GUARD (always, even for owner)
+        # SUPERADMIN GUARD + ESCALATION GUARD — shared predicate (member-invite-issuance
+        # TASK.md §3), called BEFORE the self-guard so the superadmin-guard stays
+        # unconditional and first-checked (even an OWNER caller — who has no other
+        # restriction on this endpoint — can never mint a superadmin through this path;
+        # preserves the original guard's ordering intent verbatim). Also called from
+        # CreateInviteUseCase.execute so the two ceilings can never silently drift apart.
+        assert_role_within_ceiling(caller_role=caller_role, target_role=new_role)
+
+        # SELF-GUARD (always, even for owner) — stays local; has no meaning for
+        # invite-creation (an invite has no pre-existing target_user_id to compare against).
         if caller_user_id == target_user_id:
             raise EscalationForbiddenError("Cannot change your own role")
-
-        # ESCALATION GUARD
-        if caller_role == Role.ADMIN and new_role not in _ADMIN_ASSIGNABLE:
-            raise EscalationForbiddenError(
-                f"Admin cannot assign role '{new_role}' (escalation forbidden)"
-            )
 
         # Load the target user (also validates tenant membership)
         user = await self._repo.get_by_id_and_tenant(user_id=target_user_id, tenant_id=tenant_id)

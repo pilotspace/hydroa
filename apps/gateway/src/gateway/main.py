@@ -33,6 +33,26 @@ from gateway.auth.api.oidc_router import oidc_router
 from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
     OidcProviderConfigRow as _OidcProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.batches.api.router import batch_router
+from gateway.batches.api.stats_router import batch_stats_router
+from gateway.batches.application.window_flusher import (
+    DEFAULT_TICK_INTERVAL_SECONDS as BATCH_WINDOW_TICK_INTERVAL_SECONDS,
+)
+from gateway.batches.application.window_flusher import (
+    BatchWindowFlusher,
+    should_start_batch_window_flusher,
+)
+from gateway.batches.application.worker import (
+    BatchJobWorker,
+    RedisBatchJobQueue,
+    should_start_batch_worker,
+)
+from gateway.batches.application.worker import (
+    recover_orphans as recover_batch_orphans,
+)
+from gateway.batches.infrastructure.orm import (  # noqa: F401 — registers BatchJobRow/BatchJobItemRow on Base.metadata
+    BatchJobItemRow as _BatchJobItemRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import (
@@ -41,6 +61,9 @@ from gateway.catalog.api.router import (
     catalog_router,
     internal_catalog_router,
 )
+from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
+from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_MODELS
+from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 from gateway.conversations.api.router import conversations_router
 from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
@@ -51,6 +74,7 @@ from gateway.conversations.infrastructure.orm import (
 )
 from gateway.core.config import Settings
 from gateway.core.errors import register_error_handlers
+from gateway.keys.api.platform_keys_router import platform_keys_router
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
 from gateway.keys.infrastructure.mint_rate_limiter import PlaygroundMintRateLimiter
@@ -67,6 +91,7 @@ from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.concurrency_guard import GlobalBackPressureMiddleware
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
+from gateway.proxy.api.presets_admin_router import presets_admin_router
 from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
 from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
 from gateway.proxy.api.realtime_ws import realtime_router
@@ -80,6 +105,8 @@ from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionU
 from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
 from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
+from gateway.proxy.infrastructure.batch_diversion import BatchDiversionAdapter
+from gateway.proxy.infrastructure.batch_window_buffer import BatchWindowBuffer
 from gateway.proxy.infrastructure.bedrock_embeddings import BedrockEmbeddingsProvider
 from gateway.proxy.infrastructure.bedrock_upstream import BedrockCompletionUpstream
 from gateway.proxy.infrastructure.cached_tenant_credential_resolver import (
@@ -95,6 +122,9 @@ from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 from gateway.proxy.infrastructure.openrouter_upstream_provider import OpenRouterUpstreamFacade
 from gateway.proxy.infrastructure.orm import (
+    TenantModelPresetRow as _TenantModelPresetRow,  # noqa: F401 — registers TenantModelPresetRow on Base.metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.proxy.infrastructure.orm import (
     TenantProviderKeyRow as _TenantProviderKeyRow,  # noqa: F401 — registers TenantProviderKeyRow on Base.metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.proxy.infrastructure.provider_aware_upstream import ProviderAwareCompletionUpstream
@@ -103,6 +133,7 @@ from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate
 from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
+from gateway.proxy.infrastructure.tenant_model_preset_store import DbTenantModelPresetStore
 from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
@@ -111,12 +142,22 @@ from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
     TeamMemberRow as _TeamMemberRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.tenants.api.batch_policy_router import batch_policy_router
 from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
+from gateway.tenants.api.invite_accept_router import invite_accept_router
+from gateway.tenants.api.invites_router import invites_router
+from gateway.tenants.api.platform_audit_router import platform_audit_router
+from gateway.tenants.api.platform_impersonation_router import platform_impersonation_router
+from gateway.tenants.api.platform_plans_router import platform_plans_router
+from gateway.tenants.api.platform_tenant_config_router import platform_tenant_config_router
+from gateway.tenants.api.platform_tenants_router import platform_tenants_router
+from gateway.tenants.api.platform_users_router import platform_users_router
 from gateway.tenants.api.rate_card_router import rate_card_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.api.users_router import users_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
+from gateway.tenants.infrastructure.invite_public_rate_limiter import InvitePublicRateLimiter
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
 from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -495,6 +536,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.video_worker = _video_worker
             app.state.video_worker_task = asyncio.create_task(_video_worker.run_forever())
 
+        # BatchJobWorker — durable Redis-backed in-process worker (batch-job-store, v57).
+        # Default-OFF: started only when batch_durable_queue_enabled=True. Structurally
+        # copied from the VideoJobWorker wiring immediately above.
+        app.state.batch_worker_task = None
+        if should_start_batch_worker(_settings):
+            _batch_queue = RedisBatchJobQueue(_redis)
+            app.state.batch_job_queue = _batch_queue
+            await recover_batch_orphans(_sessionmaker, _batch_queue)
+            _batch_worker = BatchJobWorker(
+                sessionmaker=_sessionmaker,
+                queue=_batch_queue,
+                settings=_settings,
+                get_batch_processor=lambda: getattr(app.state, "batch_processor", None),
+            )
+            app.state.batch_worker = _batch_worker
+            app.state.batch_worker_task = asyncio.create_task(_batch_worker.run_forever())
+
+        # BatchWindowFlusher — background drain of due BatchWindowBuffer windows
+        # (batch-window-grouping §3). The buffer itself (app.state.batch_window_buffer)
+        # is constructed in create_app()'s synchronous body (above) so it's always
+        # present, even under ASGITransport-based tests; only this background
+        # run_forever() task is lifespan-gated here, mirroring RetentionSweeper/
+        # BatchJobWorker's wiring shape exactly. should_start_batch_window_flusher is
+        # an operator escape hatch (batch_window_seconds<=0 disables the loop) —
+        # BatchDiversionAdapter's own append path is unaffected either way.
+        app.state.batch_window_flusher_task = None
+        if should_start_batch_window_flusher(_settings):
+            _batch_window_flusher = BatchWindowFlusher(
+                buffer=app.state.batch_window_buffer,
+                sessionmaker=_sessionmaker,
+                app_state=app.state,
+                settings=_settings,
+                get_batch_processor=lambda: getattr(app.state, "batch_processor", None),
+            )
+            app.state.batch_window_flusher = _batch_window_flusher
+            app.state.batch_window_flusher_task = asyncio.create_task(
+                _batch_window_flusher.run_forever(
+                    interval_seconds=BATCH_WINDOW_TICK_INTERVAL_SECONDS
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -537,6 +619,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await video_worker_task
 
+        batch_worker_task: asyncio.Task[None] | None = getattr(app.state, "batch_worker_task", None)
+        if batch_worker_task is not None:
+            batch_worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await batch_worker_task
+
+        batch_window_flusher_task: asyncio.Task[None] | None = getattr(
+            app.state, "batch_window_flusher_task", None
+        )
+        if batch_window_flusher_task is not None:
+            batch_window_flusher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await batch_window_flusher_task
+
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
             await dispatcher.run_once()
@@ -568,6 +664,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if video_tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await asyncio.gather(*video_tasks, return_exceptions=True)
+
+        # 2d. Cancel outstanding batch job tasks
+        batch_tasks: set[asyncio.Task[None]] = getattr(app.state, "batch_jobs_tasks", set())
+        for _bt in list(batch_tasks):
+            _bt.cancel()
+        if batch_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.gather(*batch_tasks, return_exceptions=True)
 
         # 3. Cancel the flusher background task
         flusher_task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)
@@ -606,6 +710,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.drift_checker_task = None
     app.state.recovery_sweep_task = None
     app.state.retention_sweeper_task = None
+    app.state.batch_window_flusher_task = None
 
     # Video generation seam — default: no provider (honest degradation).
     # Tests override via app.state.video_generator = <stub>.
@@ -617,6 +722,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Set to the running asyncio.Task when video_durable_queue_enabled=True.
     app.state.video_worker_task = None
 
+    # Batch processor seam (batch-job-store, v57) — default: no processor (honest
+    # degradation to status=failed error=no_batch_processor_configured). Tests override
+    # via app.state.batch_processor = <stub>. openai-batch-adapter / anthropic-batch-adapter
+    # (downstream tasks) plug in a real one.
+    app.state.batch_processor = None
+    # Tracked in-process asyncio.Task set for batch jobs — mirrors video_jobs_tasks.
+    app.state.batch_jobs_tasks = set()  # set[asyncio.Task[None]] — no inline type on app.state
+    # Durable batch job worker task. Default None (OFF).
+    # Set to the running asyncio.Task when batch_durable_queue_enabled=True.
+    app.state.batch_worker_task = None
+
     engine = create_async_engine(settings.database_url)
     app.state.settings = settings
     # ObjectStore for the artifacts byte path — None when unconfigured (honest-degrade
@@ -627,7 +743,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.password_hasher = Argon2PasswordHasher()
     app.state.token_service = JwtTokenService(settings)
     # Default catalog source — tests override via app.state.catalog_source
-    app.state.catalog_source = OpenRouterCatalogSource(httpx.AsyncClient())
+    app.state.catalog_source = CompositeCatalogSource(
+        primary=OpenRouterCatalogSource(httpx.AsyncClient()),
+        static_models=MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS,
+    )
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()
     # Raw OpenRouter upstream — used directly by the provider adapter map and the
@@ -655,12 +774,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     from gateway.catalog.infrastructure.orm import ModelRow as _ModelRow
 
+    # chat-modality-guard (v56 §3): a single query fetches id/provider/modality; the
+    # modality column is stashed in this closure-scoped cache so _load_modality_map()
+    # below can hand it to the resolver with ZERO extra I/O (same refresh cycle,
+    # ordered: refresh() always calls _load_provider_map() before _load_modality_map()).
+    _last_modality_cache: dict[str, str] = {}
+
     async def _load_provider_map() -> dict[str, str]:
         async with app.state.sessionmaker() as _session:
-            _rows = (await _session.execute(_sa_select(_ModelRow.id, _ModelRow.provider))).all()
+            _rows = (
+                await _session.execute(
+                    _sa_select(_ModelRow.id, _ModelRow.provider, _ModelRow.modality)
+                )
+            ).all()
+            _last_modality_cache.clear()
+            _last_modality_cache.update({row.id: row.modality for row in _rows if row.modality})
             return {row.id: row.provider for row in _rows}
 
-    app.state.provider_resolver = CatalogProviderResolver(loader=_load_provider_map)
+    async def _load_modality_map() -> dict[str, str]:
+        return dict(_last_modality_cache)
+
+    app.state.provider_resolver = CatalogProviderResolver(
+        loader=_load_provider_map,
+        modality_loader=_load_modality_map,
+    )
 
     # Chat adapter map — ALL providers (openrouter / anthropic / google / openai /
     # bedrock / azure) are registered UNCONDITIONALLY. Per-tenant key gating moved to
@@ -703,6 +840,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         metrics_registry=app.state.metrics_registry,
     )
     _chat_adapters["openai"] = _openai_direct
+
+    # MiniMax direct adapter — UNCONDITIONAL (credential resolved per-request from
+    # contextvar). Chat-only: registered in _chat_adapters ONLY, NOT in _providers
+    # (minimax has no embeddings/images/audio modality — provider is OpenAI-wire
+    # compatible for /chat/completions only). Same shape as _openai_direct above,
+    # base_url swapped, provider_name="minimax" so errors/metrics label correctly.
+    _chat_adapters["minimax"] = OpenAIDirectProvider(
+        base_url=settings.minimax_base_url,
+        provider_name="minimax",
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
+        metrics_registry=app.state.metrics_registry,
+    )
 
     # AWS Bedrock adapter — registered UNCONDITIONALLY (task-3 dynamic-auth-byok).
     # Credentials are resolved per-request from the tenant contextvar; no boot-env
@@ -776,6 +927,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # caller who bypasses the BFF cache to flood POST /admin/keys/playground-token.
     # Same redis_client; no IO at construction; fail-open on Redis outage.
     app.state.playground_mint_limiter = PlaygroundMintRateLimiter(redis=redis_client)
+
+    # Per-client-IP rate limiter for the public invite preview/accept endpoints
+    # (member-invite-acceptance TASK.md §3, M7). Same redis_client; no IO at construction;
+    # fail-open on Redis outage.
+    app.state.invite_public_limiter = InvitePublicRateLimiter(redis=redis_client)
 
     # Bandwidth pacing (stream-bandwidth-pacing, v36): per-key aggregate token-bucket.
     # rate==0 (default) → PassthroughBandwidthBucket → byte-identical (no pacing, no Redis).
@@ -866,6 +1022,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings=settings,
     )
 
+    # Tenant model-preset store (tenant-preset-store v56). upsert() constructs its own
+    # SqlAlchemyModelChecker per call, scoped to the session it opens (see the store's
+    # module docstring) — matching every other call site in the codebase. Consumed by
+    # the proxy ingress via getattr(app.state, "tenant_model_preset_store", None) in
+    # deps.py/images_deps.py/embeddings_deps.py/audio_deps.py/realtime_ws.py
+    # (preset-resolution-ingress v56).
+    app.state.tenant_model_preset_store = DbTenantModelPresetStore(
+        sessionmaker=app.state.sessionmaker,
+    )
+
+    # batch-window-grouping (§3): the per-tenant fixed-tick accumulation buffer.
+    # Constructed here (create_app()'s synchronous body), NOT inside the async
+    # lifespan below — unlike BatchWindowFlusher's background drain loop, the buffer
+    # itself is touched on every eligible request (BatchDiversionAdapter.try_divert),
+    # so it must exist even under ASGITransport-based tests (which never fire
+    # lifespan). No I/O happens at construction (redis.asyncio clients are lazy),
+    # mirroring RedisBatchJobQueue/BatchDiversionAdapter's own safe-without-lifespan
+    # shape. Tests override via app.state.batch_window_buffer.
+    app.state.batch_window_buffer = BatchWindowBuffer(redis=redis_client, settings=settings)
+
+    # Batch-auto-grouping diversion adapter (v57 §3), superseded body @ batch-window-
+    # grouping (§3): safety comes from the per-tenant authz.batch_grouping_enabled
+    # flag (default false, checked in CompletionUseCase.complete()) and the restored
+    # M4 safety-gate inside the adapter itself (batch_processor is None today, pre
+    # openai-batch-adapter/anthropic-batch-adapter, so try_divert() always returns
+    # None ⇒ byte-identical). Tests override via app.state.batch_diversion.
+    app.state.batch_diversion = BatchDiversionAdapter(
+        settings=settings,
+        buffer=app.state.batch_window_buffer,
+    )
+
     # openrouter-cost-recovery-wiring (v30 t6.2c): inline authoritative-cost recovery for
     # disconnected OpenRouter streams. Constructed ONLY when the knob is on (default OFF ⇒
     # None ⇒ byte-identical streaming). The use-case schedules recover() fire-and-forget
@@ -915,17 +1102,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(oidc_router)
     app.include_router(oidc_admin_router)
     app.include_router(provider_keys_admin_router)
+    app.include_router(presets_admin_router)
     app.include_router(health_router)
     app.include_router(internal_router)
     app.include_router(internal_catalog_router)
     app.include_router(tenants_router)
     app.include_router(users_router)
+    app.include_router(invites_router)
+    app.include_router(invite_accept_router)
+    app.include_router(platform_tenants_router)
+    app.include_router(platform_users_router)
+    app.include_router(platform_tenant_config_router)
+    app.include_router(platform_plans_router)
+    app.include_router(platform_impersonation_router)
+    app.include_router(platform_audit_router)
     app.include_router(cache_router)
+    app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
     app.include_router(rate_card_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(keys_authz_router)
+    app.include_router(platform_keys_router)
     app.include_router(teams_router)
     app.include_router(admin_models_router)
     app.include_router(admin_catalog_router)
@@ -943,6 +1141,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(memories_router)
     app.include_router(artifacts_router)
     app.include_router(video_router)
+    app.include_router(batch_router)
+    app.include_router(batch_stats_router)
 
     # RequestIdMiddleware must be added AFTER routers are included so it wraps
     # the full ASGI app and captures final status codes including those set by

@@ -58,20 +58,28 @@ export interface ErrorStateProps {
   description?: string;
   onRetry?: () => void;
   className?: string;
+  /**
+   * Element for the title. Default "p" — most callers render ErrorState INSIDE a page that
+   * already owns the sole h1, so a heading here would create a second one (breaking the
+   * dashboard-wide "exactly one h1" contract). Error BOUNDARIES that REPLACE the whole page
+   * segment (RouteError) pass "h1" so the alert carries a real, orienting heading (a11y sweep).
+   */
+  titleAs?: "h1" | "h2" | "p";
 }
 
-export function ErrorState({ title, description, onRetry, className }: ErrorStateProps) {
+export function ErrorState({ title, description, onRetry, className, titleAs = "p" }: ErrorStateProps) {
+  const TitleTag = titleAs;
   return (
     <div
       role="alert"
       className={cn(
-        "flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive",
+        "flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive-text",
         className,
       )}
     >
       <div className="flex items-center gap-2">
         <AlertCircle className="size-4" aria-hidden="true" />
-        <p className="text-sm font-medium">{title}</p>
+        <TitleTag className="text-sm font-medium">{title}</TitleTag>
       </div>
       {description ? <p className="text-sm text-foreground">{description}</p> : null}
       {onRetry ? (
@@ -97,7 +105,7 @@ export function Success({ title, description, className }: SuccessProps) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 p-3 text-success",
+        "flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 p-3 text-success-text",
         className,
       )}
     >

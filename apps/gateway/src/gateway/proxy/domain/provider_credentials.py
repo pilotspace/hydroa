@@ -33,11 +33,11 @@ from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials
 # Provider name — bounded value-set (TEXT in DB, not a DB ENUM)
 # ---------------------------------------------------------------------------
 
-ProviderName = Literal["openrouter", "openai", "anthropic", "google", "bedrock", "azure"]
+ProviderName = Literal["openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax"]
 
 #: Frozenset of the same values for O(1) membership tests at runtime.
 PROVIDER_VALUE_SET: frozenset[str] = frozenset(
-    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure"}
+    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax"}
 )
 
 #: All providers whose per-request auth is resolved from the credential contextvar.
@@ -45,8 +45,9 @@ PROVIDER_VALUE_SET: frozenset[str] = frozenset(
 #: bedrock and azure now resolve per-request via the contextvar seam, removing the
 #: staged env-bound skip. The use-case raises ERR_PROVIDER_KEY_MISSING (402) for any
 #: provider in this set when the tenant has no enabled credential.
+#: minimax (task minimax-adapter-registry) joins as a plain Bearer BYOK provider.
 BYOK_PROVIDERS: frozenset[str] = frozenset(
-    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure"}
+    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax"}
 )
 
 

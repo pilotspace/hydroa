@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>/app/batches — UDD mock (lo/hi-fi v1)</title>
+<!-- No webfont CDN: the shipped app loads Inter via next/font (self-hosted), not a CDN link.
+     This mock falls back to the system font stack rather than link a URL that would silently
+     fail under a strict CSP — same visual family (Inter is metrics-compatible with San
+     Francisco / Segoe UI), no fidelity claim being faked. -->
+<style>
+  /* Real dashboard tokens, verbatim from apps/dashboard/app/globals.css :root (Classic Blue, v13+v54) */
+  :root{
+    --background:#f8fafc; --foreground:#0f172a; --card:#ffffff; --card-foreground:#0f172a;
+    --muted:#f1f5f9; --muted-foreground:#64748b;
+    --primary:#0f4c81; --primary-foreground:#ffffff; --primary-hover:#155394;
+    --accent:#f1f5f9; --accent-foreground:#0f172a; --secondary:#f1f5f9;
+    --success:#059669; --warning:#f59e0b; --warning-foreground:#92400e;
+    --destructive:#dc2626; --destructive-foreground:#ffffff;
+    --border:#e2e8f0; --input:#e2e8f0; --ring:#2563eb;
+    --sidebar:#ffffff; --sidebar-foreground:#334155; --sidebar-accent:#f1f5f9; --sidebar-border:#e2e8f0;
+    --font-sans:"Inter",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+    --shadow-sm:0 1px 2px rgba(15,23,42,.04);
+    --shadow-md:0 2px 8px -2px rgba(15,23,42,.06),0 1px 2px rgba(15,23,42,.04);
+    --shadow-lg:0 8px 24px -6px rgba(15,23,42,.10);
+    --accent-soft:#eaf1f8; --accent-soft-border:#cfe0f0;
+    --brand-from:#0f4c81; --brand-to:#2563eb;
+    --radius-control:6px; --radius-card:10px; --radius-xl:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font-sans);background:var(--background);color:var(--foreground);
+    -webkit-font-smoothing:antialiased;font-size:14px;line-height:1.55;letter-spacing:-0.006em}
+  .app{display:flex;height:100vh;overflow:hidden}
+  ::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:99px;border:3px solid transparent;background-clip:content-box}
+
+  /* Sidebar — same chrome as every existing playground page */
+  .sidebar{width:236px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--sidebar-border);display:flex;flex-direction:column;padding:16px 12px}
+  .brand{display:flex;align-items:center;gap:9px;padding:6px 8px 18px;font-weight:700;font-size:15px}
+  .brand .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(140deg,var(--brand-to),var(--brand-from));color:#fff;display:grid;place-items:center;font-size:12px;box-shadow:0 3px 10px rgba(15,76,129,.35)}
+  .nav{display:flex;flex-direction:column;gap:1px;overflow-y:auto}
+  .sect{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#94a3b8;padding:14px 10px 4px;font-weight:600}
+  .nav a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;color:var(--sidebar-foreground);text-decoration:none;font-weight:500;font-size:13px;position:relative}
+  .nav a .ic{width:15px;height:15px;opacity:.75;flex-shrink:0}
+  .nav a:hover{background:var(--sidebar-accent)}
+  .nav a.active{background:linear-gradient(90deg,var(--accent-soft),#f3f7fb);color:var(--primary);font-weight:600}
+  .nav a.active .ic{opacity:1}
+  .nav a.active::before{content:"";position:absolute;left:-13px;top:6px;bottom:6px;width:3px;border-radius:0 3px 3px 0;background:var(--primary)}
+  .nav a .new{margin-left:auto;font-size:9px;font-weight:700;color:#fff;background:var(--primary);border-radius:99px;padding:1px 6px;letter-spacing:.02em}
+  .spacer{flex:1}
+  .userchip{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:10px;border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+  .userchip .av{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--primary);display:grid;place-items:center;font-weight:700;font-size:11px}
+  .userchip .meta{font-size:11.5px;line-height:1.3}.userchip .meta b{font-weight:600}.userchip .meta span{color:var(--muted-foreground)}
+
+  /* Main */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 32px 16px;border-bottom:1px solid var(--border);background:#fff}
+  .topbar h1{font-size:20px;font-weight:650;letter-spacing:-0.01em;display:flex;align-items:center;gap:9px}
+  .topbar .beta{font-size:10px;font-weight:700;color:var(--primary);background:var(--accent-soft);border:1px solid var(--accent-soft-border);border-radius:99px;padding:2px 8px;letter-spacing:.03em;text-transform:uppercase}
+  .topbar .sub{font-size:12.5px;color:var(--muted-foreground);margin-top:5px;max-width:56ch;line-height:1.5}
+  .content{flex:1;overflow-y:auto;padding:24px 32px 40px}
+  .col{max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-sm)}
+  .card-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+  .card-hd h2{font-size:14.5px;font-weight:650;letter-spacing:-0.005em}
+  .card-hd p{font-size:12px;color:var(--muted-foreground);margin-top:3px}
+  .card-bd{padding:18px 20px}
+
+  /* Composer */
+  textarea.jsonl{width:100%;min-height:150px;resize:vertical;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:#1e293b;background:#fbfcfe;border:1px solid var(--input);border-radius:8px;padding:12px 14px;outline:none}
+  textarea.jsonl:focus{border-color:var(--ring);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .composer-foot{display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+  .hint{font-size:11.5px;color:var(--muted-foreground);display:flex;align-items:center;gap:6px}
+  .hint code{background:var(--muted);border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:11px}
+  .btn{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;border-radius:8px;padding:8px 16px;border:1px solid transparent;cursor:pointer}
+  .btn.primary{background:var(--primary);color:#fff;box-shadow:0 4px 10px rgba(15,76,129,.22)}
+  .btn.primary:hover{background:var(--primary-hover)}
+  .btn.ghost{background:transparent;color:var(--muted-foreground);border-color:var(--border)}
+
+  /* Job list */
+  table{width:100%;border-collapse:collapse}
+  thead th{text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;padding:0 20px 10px;border-bottom:1px solid var(--border)}
+  tbody td{padding:13px 20px;font-size:13px;border-bottom:1px solid #f1f5f9}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#fafbfd}
+  .jid{font-family:var(--mono);font-size:12px;color:var(--muted-foreground)}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;border-radius:99px;padding:3px 10px;letter-spacing:.01em}
+  .badge.success{background:#ecfdf5;color:var(--success);border:1px solid #a7f3d0}
+  .badge.warning{background:#fffbeb;color:var(--warning-foreground);border:1px solid #fde68a}
+  .badge.destructive{background:#fef2f2;color:var(--destructive);border:1px solid #fecaca}
+  .badge.default{background:var(--muted);color:var(--muted-foreground);border:1px solid var(--border)}
+  .badge i{width:5px;height:5px;border-radius:50%;background:currentColor}
+  .counts{font-size:12px;color:var(--muted-foreground)}
+  .counts b{color:var(--foreground);font-weight:600}
+  .ts{font-size:12px;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
+  .refresh{font-size:11.5px;color:var(--muted-foreground);display:flex;align-items:center;gap:6px}
+  .dot-live{width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px rgba(5,150,105,.15);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+  .annot{position:fixed;right:18px;bottom:18px;max-width:300px;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px 16px;font-size:11.5px;line-height:1.6;box-shadow:0 12px 32px rgba(0,0,0,.25)}
+  .annot b{color:#fff}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">H</span> Hydroa</div>
+    <nav class="nav">
+      <div class="sect">Playgrounds</div>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 19v3"/></svg>Voice</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.5 2a2.5 2.5 0 0 1 2.5 2.5v15a2.5 2.5 0 0 1-4.96.44"/></svg>Memory</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-8l-2-2H5a2 2 0 0 0-2 2z"/></svg>Artifacts</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/></svg>Vision</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>Video</a>
+      <a href="#" class="active"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Batches<span class="new">NEW</span></a>
+      <div class="sect">Account</div>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M18 17V9M13 17V5M8 17v-3"/></svg>Usage</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20"/></svg>Spend</a>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>API Keys</a>
+      <div class="sect">Settings</div>
+      <a href="#"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings<span class="new" style="background:var(--muted-foreground)">•</span></a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="userchip"><span class="av">TD</span><span class="meta"><b>Tin Dang</b><br><span>Owner</span></span></div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Batches <span class="beta">Discount ~50%</span></h1>
+        <p class="sub">Submit many chat-completion requests as one job at the provider's batch rate. Cache hits still resolve at $0 before anything is queued.</p>
+      </div>
+      <div class="refresh"><span class="dot-live"></span>Auto-refreshing every 2s</div>
+    </div>
+
+    <div class="content">
+      <div class="col">
+
+        <!-- Composer -->
+        <section class="card">
+          <div class="card-hd">
+            <div>
+              <h2>Submit a batch</h2>
+              <p>One JSON object per line — each line is an independent request (JSONL), same shape as the OpenAI/Anthropic batch file format.</p>
+            </div>
+          </div>
+          <div class="card-bd">
+            <textarea class="jsonl" spellcheck="false">{"custom_id": "req-1", "method": "POST", "url": "/v1/chat/completions", "body": {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "Summarize this ticket in one sentence."}]}}
+{"custom_id": "req-2", "method": "POST", "url": "/v1/chat/completions", "body": {"model": "claude-4-5-haiku", "messages": [{"role": "user", "content": "Classify sentiment: 'Shipping was late again.'"}]}}
+{"custom_id": "req-3", "method": "POST", "url": "/v1/chat/completions", "body": {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "Extract the order id from: order #48213 delayed."}]}}</textarea>
+            <div class="composer-foot">
+              <span class="hint">Duplicate <code>custom_id</code>, empty body, or malformed JSON rejects the whole submission — zero rows created.</span>
+              <div style="display:flex;gap:8px">
+                <button class="btn ghost">Clear</button>
+                <button class="btn primary">Submit batch</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Job list -->
+        <section class="card">
+          <div class="card-hd">
+            <div>
+              <h2>Your batch jobs</h2>
+              <p>Polls while any job is still in progress; stops once every job reaches a terminal state.</p>
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Job</th><th>Status</th><th>Items</th><th>Submitted</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="jid">batch_7f2a…e91c</td>
+                <td><span class="badge warning"><i></i>in_progress</span></td>
+                <td class="counts"><b>2</b> pending · <b>1</b> succeeded</td>
+                <td class="ts">just now</td>
+              </tr>
+              <tr>
+                <td class="jid">batch_4c18…0b3f</td>
+                <td><span class="badge success"><i></i>completed</span></td>
+                <td class="counts"><b>12</b> succeeded · <b>0</b> errored</td>
+                <td class="ts">14 minutes ago</td>
+              </tr>
+              <tr>
+                <td class="jid">batch_a903…77d2</td>
+                <td><span class="badge destructive"><i></i>failed</span></td>
+                <td class="counts"><b>0</b> succeeded · <b>5</b> errored</td>
+                <td class="ts">2 hours ago</td>
+              </tr>
+              <tr>
+                <td class="jid">batch_1e6d…f420</td>
+                <td><span class="badge default"><i></i>validating</span></td>
+                <td class="counts">—</td>
+                <td class="ts">3 hours ago</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <p style="font-size:11.5px;color:var(--muted-foreground);text-align:center">
+          Loading / empty / error states reuse the shared four-state components verbatim — not re-mocked here.
+        </p>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="annot">
+  <b>UDD design-confirm draft — batch-dashboard-surface</b><br>
+  Job list is <b>flat + polling</b> (VideoWorkspace shape), not master/detail — per-item drill-down
+  is deferred (no real processor yet, would only show errors). Composer is a <b>JSONL textarea</b>
+  (VideoWorkspace precedent + matches the real OpenAI/Anthropic batch-file format). Tokens = shipped
+  Classic-Blue verbatim, no new brand value. Settings-tab toggle + savings StatCard not separately
+  mocked — near-identical clone of CacheSettings.tsx, see TASK.md.
+</div>
+</body>
+</html>

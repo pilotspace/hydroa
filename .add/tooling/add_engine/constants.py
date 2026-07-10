@@ -22,6 +22,9 @@ __all__ = [
     "PHASE_GUIDE",
     "PHASE_OWNER",
     "SETUP_FILES",
+    "PERSONA_FRONTMATTER_KEYS",
+    "PERSONA_REQUIRED_SECTIONS",
+    "PERSONA_HINT",
     "GUIDELINE_FILES",
     "RULES_FILE_REL",
     "WORKFLOW_HEADINGS",
@@ -88,7 +91,22 @@ PHASE_OWNER = {
     "specify": "human", "scenarios": "human", "contract": "seam",
     "tests": "ai", "build": "ai", "verify": "human", "observe": "ai", "done": "human",
 }
-SETUP_FILES = ("PROJECT.md", "CONVENTIONS.md", "GLOSSARY.md", "MODEL_REGISTRY.md", "dependencies.allowlist", "DESIGN.md", "SOUL.md")
+SETUP_FILES = ("PROJECT.md", "CONVENTIONS.md", "GLOSSARY.md", "MODEL_REGISTRY.md", "dependencies.allowlist", "DESIGN.md", "SOUL.md", "personas/_template.md")
+
+# persona-setup: a PERSONA living doc (`.add/personas/<slug>.md`) is a frozen-schema file
+# distilled from the vendored teacher library to its critical-rules + default-requirement +
+# measurable success-metrics. The schema is presence-based (these keys/sections must exist);
+# content quality is the AI's authoring concern, not the engine gate. NO-EXEC: validation is pure.
+PERSONA_FRONTMATTER_KEYS = ("name", "vibe")
+PERSONA_REQUIRED_SECTIONS = ("## Identity", "## Critical Rules", "## Default Requirement", "## Success Metrics")
+
+# persona-seed-nudge v2: ONE hint, single-sourced — `new-milestone`/`check`/`status` all print
+# THIS constant (not their own copy) so the wording can never drift across the three surfaces.
+# Project-scoped (not "this milestone's domain") per the confirmed v2 amendment: the AI should
+# catch up ALL of a project's missing personas, not draft a single milestone-fit one.
+PERSONA_HINT = ("no project-fit persona seeded yet under .add/personas/ — spawn the add-persona "
+                "agent (or read docs/18-personas.md) to seed the project's persona(s) from "
+                "PROJECT.md's domain")
 
 # Scaffolded into .add/.gitignore at init so the engine's transient LOCAL artifacts
 # never reach git. Bare-filename patterns match at any depth under .add/ (tasks/,
@@ -109,12 +127,24 @@ scope-snapshot.json
 pre-archive-state.bak.json
 pre-update-state.bak.json
 .update-cache.json
+
+# ADD-managed vendor trees: regenerable/vendored copies the installer drops in,
+# never project-authored — mirrors the .add/docs/ rationale above, generalized
+# to every consumer project (not just this repo). Patterns are BARE, not repo-
+# root style: this file lives INSIDE .add/, so git resolves its patterns
+# relative to .add/ itself — a ".add/"-prefixed pattern here would look for
+# the non-existent .add/.add/tooling/ and never match anything. (one further
+# managed tree is NOT listed here — the engine's own _GITIGNORE_BODY constant
+# must stay hands-off of it by name; the installer twins seed that pattern
+# themselves, also bare.)
+tooling/
+docs/
 """
 
 # Guideline-injection targets + version-stable markers. NEVER change these marker
 # strings: a re-run finds the old block by exact match, so changing them would
 # orphan every block written by a prior version (see TASK guideline-inject).
-GUIDELINE_FILES = ("AGENTS.md", "CLAUDE.md")
+GUIDELINE_FILES = ("AGENTS.md", "CLAUDE.md", ".clinerules")
 _GUIDE_BEGIN = "<!-- ADD:BEGIN — managed by `add.py sync-guidelines`; do not edit inside -->"
 _GUIDE_END = "<!-- ADD:END -->"
 
@@ -208,14 +238,46 @@ _DEFAULT_WIDTH = 72       # fixed width for the persisted/canonical render (RETR
 
 
 # --- shared delta-parsing regexes (used by taskdoc readers AND the deltas-web lint) ---
+# Groups stay (1) competency, (2) status, (3) text — every caller relies on that. A competency
+# lesson MAY carry an OPTIONAL persona target + section hint between status and `]`
+# (persona-self-improve): `[<comp> · <status> · persona:<slug> · <critical-rule|success-metric>] …`.
+# That clause is NON-capturing here (group numbering unchanged); _PERSONA_TAG_RE below pulls the
+# slug + hint out when a route needs them — permissively, so an unroutable hint still PARSES (and is
+# rejected by code) rather than silently failing to match.
 _DELTA_RE = re.compile(
-    r"\s*-\s*\[\s*(DDD|SDD|UDD|TDD|ADD)\s*·\s*(open|folded|rejected)\s*\]\s*(.+)$"
+    r"\s*-\s*\[\s*(DDD|SDD|UDD|TDD|ADD)\s*·\s*(open|folded|rejected)"
+    r"(?:\s*·\s*persona:[^\s·\]]+\s*·\s*[^·\]]+?)?\s*\]\s*(.+)$"
 )
+# Pull the OPTIONAL persona target + section hint out of a delta tag line (persona-self-improve).
+_PERSONA_TAG_RE = re.compile(r"persona:([^\s·\]]+)\s*·\s*([^·\]]+?)\s*\]")
 _EVIDENCE_RE = re.compile(r"^(.*?)\s*\(evidence:\s*(.*?)\)\s*$")
 _SPEC_DELTA_RE = re.compile(
     r"\s*-\s*\[\s*(SPEC)\s*·\s*(open|seeded|dropped|carried)\s*\]\s*(.+)$"
 )
 
+# delta-task-backlink: reads the `[→ <slug>]` seed stamp `_resolve_spec_delta` appends, so the
+# delta→task lineage can be walked back (check WARNs when a seeded pointer no longer resolves).
+_SEED_POINTER_RE = re.compile(r"\[→\s*([A-Za-z0-9_-]+)\s*\]")
+
+# rule-id-coverage: §1 Must-ID / Reject-code lines, plus the §2 scenario tag and §4 `covers:`
+# back-reference a task uses to claim coverage of a rule. A Reject's ID is its literal error_code
+# string (from `-> "<error_code>"`), never a positional R1/R2 sequence number.
+_MUST_ID_RE = re.compile(r"^\s*-\s*(M\d+)\s*:", re.MULTILINE)
+_REJECT_CODE_RE = re.compile(r'^\s*-\s.*->\s*"([^"]+)"\s*$', re.MULTILINE)
+_SCENARIO_TAG_RE = re.compile(r"^\s*Scenario:.*#\s*(.+?)\s*$", re.MULTILINE)
+_COVERS_LINE_RE = re.compile(r"covers:\s*(.+?)\s*$", re.MULTILINE)
+_TAG_TOKEN_RE = re.compile(r"(M\d+|R:[A-Za-z0-9_]+)")
+
 
 # --- autonomy levels (shared: autonomy resolvers + _AUTONOMY_ORDER/cmd_autonomy) ---
 _AUTONOMY_LEVELS = ("manual", "conservative", "auto")
+
+# --- streams posture (shared: streams resolvers + cmd_streams) — the parallel-vs-sequential
+#     half of the run mode (persist-run-mode); project-scoped, persisted in PROJECT.md beside autonomy ---
+_STREAMS_POSTURES = ("parallel", "sequential")
+
+# --- sensitivity taxonomy (shared: _task_sensitivity reader + cmd_freeze/status/audit) — the
+#     risk-CLASS the human declares in the TASK header at freeze (risk-sensitivity-taxonomy). The
+#     engine validates + surfaces a HUMAN-declared token; it NEVER classifies. A closed enum, sibling
+#     of _AUTONOMY_LEVELS/_STREAMS_POSTURES. Consumed downstream by advisor-gate-relax (mechanical). ---
+_SENSITIVITY_VALUES = ("security", "data", "architecture", "mechanical")

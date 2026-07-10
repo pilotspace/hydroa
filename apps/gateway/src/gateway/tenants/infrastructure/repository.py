@@ -1,7 +1,7 @@
 import uuid
 
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.auth.domain.errors import OidcTenantConflictError
@@ -9,6 +9,55 @@ from gateway.core.ids import uuid7
 from gateway.tenants.domain.entities import Role, User
 from gateway.tenants.domain.errors import EmailAlreadyRegisteredError
 from gateway.tenants.infrastructure.orm import TenantRow, UserRow
+
+
+async def get_platform_tenant(session: AsyncSession) -> TenantRow | None:
+    """Resolve the reserved platform tenant row — the sole sanctioned lookup.
+
+    Returns None (never raises) if the seed migration has not run yet, so
+    callers on an unmigrated DB degrade rather than crash. An unmigrated DB
+    surfaces as a ProgrammingError (undefined column/relation) that aborts the
+    current transaction — rollback so the session stays usable for the caller.
+    """
+    try:
+        return (
+            await session.execute(select(TenantRow).where(TenantRow.kind == "platform"))
+        ).scalar_one_or_none()
+    except ProgrammingError:
+        await session.rollback()
+        return None
+
+
+async def list_tenants(
+    session: AsyncSession, *, q: str | None, limit: int, offset: int
+) -> tuple[list[TenantRow], int]:
+    """List every tenant (kind='customer' AND kind='platform'), optionally filtered by a
+    case-insensitive name substring — the superadmin-only cross-tenant directory
+    (platform-tenant-directory TASK.md §3). Never filters by tenant_id — the deliberate,
+    narrow exception to the WHERE tenant_id = identity.tenant_id default (authz.py docstring).
+    """
+    stmt = select(TenantRow)
+    count_stmt = select(func.count()).select_from(TenantRow)
+    if q:
+        name_filter = TenantRow.name.ilike(f"%{q}%")
+        stmt = stmt.where(name_filter)
+        count_stmt = count_stmt.where(name_filter)
+
+    total = (await session.execute(count_stmt)).scalar_one()
+    rows = (
+        (await session.execute(stmt.order_by(TenantRow.created_at).limit(limit).offset(offset)))
+        .scalars()
+        .all()
+    )
+    return list(rows), total
+
+
+async def get_tenant_by_id(session: AsyncSession, tenant_id: uuid.UUID) -> TenantRow | None:
+    """Resolve any tenant by id, regardless of kind — the superadmin-only cross-tenant
+    get-one (platform-tenant-directory TASK.md §3)."""
+    return (
+        await session.execute(select(TenantRow).where(TenantRow.id == tenant_id))
+    ).scalar_one_or_none()
 
 
 class SqlAlchemyIdentityRepository:

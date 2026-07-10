@@ -1,7 +1,7 @@
 import uuid
 from typing import Protocol
 
-from gateway.tenants.domain.entities import Identity, Role, User
+from gateway.tenants.domain.entities import Identity, ImpersonationContext, Role, User
 
 
 class IdentityRepository(Protocol):
@@ -42,11 +42,33 @@ class PasswordHasher(Protocol):
 
 class TokenService(Protocol):
     def issue(
-        self, *, user_id: uuid.UUID, tenant_id: uuid.UUID, role: Role, email: str
+        self,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        role: Role,
+        email: str,
+        # NEW optional kwargs (impersonation-session-lifecycle TASK.md §3 Part B, FROZEN @
+        # v1) — both None ⇒ byte-identical claims dict to today for every EXISTING caller.
+        impersonation: ImpersonationContext | None = None,
+        ttl_seconds: int | None = None,
     ) -> tuple[str, int]:
         """Returns (signed token, expires_in seconds)."""
         ...
 
     def decode(self, token: str) -> Identity:
         """Raises InvalidTokenError on any failure (signature, expiry, issuer, shape)."""
+        ...
+
+
+class ImpersonationSessionGuard(Protocol):
+    """Per-request liveness check for an impersonation session (impersonation-live-session-
+    guard TASK.md §3 Part A, FROZEN @ v1) — modeled on TokenService above."""
+
+    async def ensure_live(self, impersonation: ImpersonationContext) -> None:
+        """Raise InvalidTokenError (tenants/domain/errors.py) iff the session named by
+        impersonation.session_id is not live, OR liveness cannot be confirmed within the
+        adapter's own bounded timeout (fail-CLOSED — no distinction surfaced to the
+        caller). No-op (returns None) iff the session IS live. Never called for an
+        ordinary (non-impersonation) identity — see ensure_impersonation_session_live."""
         ...

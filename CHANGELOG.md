@@ -3,6 +3,72 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic versioning.
 
+## [0.7.0] — 2026-07-02
+
+Seventh release. Rounds out model management (per-model input-capability guardrails, per-tenant
+model presets), adds a 7th LLM provider (MiniMax), and makes catalog cost display and cache-hit
+billing math trustworthy across every provider. Bundles 6 closed milestones since 0.6.0 (v55 · v56 ·
+catalog-pricing-detail · minimax-provider · openrouter-embeddings · gateway-health) plus 1 loose
+task (stream-alias-billing). No breaking changes — every change is additive or a disclosed
+correctness fix; existing API-key, agent-OAuth, OIDC/SSO, session-JWT, billing, and routing behavior
+is unchanged.
+
+### Added
+
+- **Capability-aware model management** (v55) — every catalog model now declares the input types
+  (text/image/audio) it accepts; a request whose content-parts exceed what the resolved model
+  supports is rejected with a structured `400 unsupported_input_modality` — before the upstream
+  call and before billing — across chat multimodal content and the audio STT endpoint. Default-off
+  rollout knob; exposed read-only on the admin catalog API and the `/app/models` dashboard.
+- **Per-tenant model presets** (v56) — a tenant admin defines named presets that remap a model
+  name to a concrete target (`opus → gpt5-5`), selectable via a `preset:alias` colon-prefix
+  (`cheap:opus`) across all five request entry points (chat, images, embeddings, STT, TTS) plus
+  realtime-WS. A bare/unknown name resolves byte-identical to today. Reuses v55's capability guard
+  (extended to a coarse per-endpoint modality-mismatch check) so a remap to an incompatible model
+  is caught with the same structured error.
+- **MiniMax provider** — a 7th LLM provider joins the registry via its OpenAI-compatible
+  `/v1/chat/completions` surface, with BYOK credential storage and 3 catalog models
+  (MiniMax-M3/M2.7/M2.7-highspeed). Live-verified against `api.minimax.io/v1` with a real billed
+  call and a matching independently-recomputed cost.
+- **Catalog cost transparency** — both `GET /v1/models` and `GET /admin/catalog/models` now expose
+  `prompt_usd_per_1m` / `completion_usd_per_1m` / `cached_input_usd_per_1m`, normalized to the
+  familiar per-1M-token display convention (additive; existing fields byte-identical).
+
+### Fixed
+
+- **OpenRouter embeddings routing** — `POST /v1/embeddings` for an OpenRouter-hosted embedding
+  model (e.g. `google/gemini-embedding-2`) was silently forwarded to `/chat/completions` instead
+  of a real embeddings call; catalog sync also defaulted every OpenRouter row to `modality=chat`
+  regardless of its real type. Both fixed; live-verified end-to-end (real embedding vector, billed
+  usage row, chat path unaffected).
+- **MiniMax cache-hit billing** — MiniMax's real $0.06/1M cache-hit discount was captured at sync
+  time but never actually applied to a billed `cost_usd` (silent no-op). Now genuinely lowers the
+  bill on a cache hit (~26% reduction on the live-verified example call).
+- **Cache-hit alias billing** (`stream-alias-billing`, loose task) — a streaming request routed
+  through a model-group alias now bills the served catalog candidate, never the alias name itself,
+  closing a $0-billing gap on the streaming live-route path.
+- **Gateway static-quality gates** (`gateway-health`, maintenance-only, no behavior change) —
+  restored `make ci` (ruff lint/format + pyright + full pytest) to fully green after CI-billing
+  drift let it slip red; 3 stale tests fixed by correcting their environment-coupling, not by
+  loosening assertions.
+
+### Known deltas (backlog)
+
+- ~220 pre-existing, cross-milestone SPEC deltas ride into this release as documented backlog (the
+  same accumulating-backlog pattern every release since 0.1.0 has carried; e.g. 0.6.0 shipped with
+  35). None are security blockers — this release's own floor check reports 0 open HARD-STOPs.
+
+### Security
+
+- 0 open security HARD-STOPs · 0 RISK-ACCEPTED waivers (release-report clean).
+- **gpt-realtime-pricing held back from this release** (code is merged to `main`, not reverted or
+  flagged — see RELEASES.md) — its dual-stream billing math is unit- and adversarially-tested but
+  was never live-verified against real OpenAI Realtime infrastructure; it will be credited to a
+  release once that live verification happens.
+- The **enterprise-hardening** milestone (branch `feat/enterprise-hardening`) is explicitly **not**
+  part of this release — 4 of 7 tasks are done but unmerged, and the remaining 3 include 2
+  security-governance tasks not yet started. It ships in a future release once complete.
+
 ## [0.6.0] — 2026-06-30
 
 Sixth release. Turns the dashboard's thin AI-feature surfaces into **Console-grade playgrounds** an

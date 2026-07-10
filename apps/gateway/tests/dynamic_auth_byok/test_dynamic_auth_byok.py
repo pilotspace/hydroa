@@ -138,19 +138,25 @@ _AZURE_PAYLOAD = {
 
 
 def test_byok_providers_includes_bedrock_and_azure() -> None:
-    """M1: BYOK_PROVIDERS (renamed from BYOK_BEARER_PROVIDERS) is a frozenset of ALL SIX
-    providers: openrouter, openai, anthropic, google, bedrock, azure.
+    """M1: BYOK_PROVIDERS (renamed from BYOK_BEARER_PROVIDERS) is a frozenset of ALL SEVEN
+    providers: openrouter, openai, anthropic, google, bedrock, azure, minimax.
 
-    RIGHT-REASON RED: AttributeError — BYOK_PROVIDERS does not exist yet in
+    Widened by minimax-adapter-registry (TASK.md §2) to include "minimax" — a pure
+    value-set widening, never a weakening of the original task-3 assertion.
+
+    RIGHT-REASON RED (pre task-3): AttributeError — BYOK_PROVIDERS does not exist yet in
     gateway.proxy.domain.provider_credentials; only BYOK_BEARER_PROVIDERS exists (4 providers).
+    RIGHT-REASON RED (pre minimax-adapter-registry BUILD): AssertionError — "minimax" absent.
     """
     # Import the FUTURE symbol — expected to raise AttributeError or ImportError
     from gateway.proxy.domain.provider_credentials import BYOK_PROVIDERS  # type: ignore[attr-defined]
 
-    expected = frozenset({"openrouter", "openai", "anthropic", "google", "bedrock", "azure"})
+    expected = frozenset(
+        {"openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax"}
+    )
     assert BYOK_PROVIDERS == expected, (
         f"BYOK_PROVIDERS must equal {expected!r}, got {BYOK_PROVIDERS!r}. "
-        "bedrock and azure must be added to the set (task-3 §3 contract point 1)."
+        "bedrock, azure, and minimax must be in the set."
     )
 
 

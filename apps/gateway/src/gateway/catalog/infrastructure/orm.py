@@ -75,6 +75,19 @@ class PricingSnapshotRow(Base):
     cache_creation_usd_per_token: Mapped[Decimal | None] = mapped_column(
         Numeric(20, 10), nullable=True
     )
+    # gpt-realtime-schema-migration (TASK.md §3): a SECOND, independently-priced token stream
+    # (GPT-Realtime bills text and audio tokens at different rates). NULL for every model with
+    # only one stream (everything today) — inert until gpt-realtime-pricing-fields/
+    # gpt-realtime-relay-billing populate/consume them.
+    audio_prompt_usd_per_token: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
+    audio_completion_usd_per_token: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
+    audio_cached_usd_per_token: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 10), nullable=True
+    )
 
 
 class TenantModelOverrideRow(Base):

@@ -41,6 +41,7 @@ from gateway.core.error_catalog import (
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
 from gateway.tenants.domain.entities import Identity, Role
+from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 
 oidc_admin_router = APIRouter(prefix="/admin/oidc", tags=["oidc-admin"])
 
@@ -128,13 +129,23 @@ class OidcConfigResponse(BaseModel):
     updated_at: datetime
 
 
-def _get_owner_identity(request: Request) -> Identity:
-    """Resolve the caller's full Identity, enforcing owner role."""
+async def _get_owner_identity(request: Request, session: AsyncSession) -> Identity:
+    """Resolve the caller's full Identity, enforcing owner role.
+
+    impersonation-live-session-guard TASK.md §3 Part D.5 — one of GetIdentityUseCase's
+    3 direct-construction call sites.
+    """
     token = get_bearer_token(request)
     tokens = request.app.state.token_service
-    use_case = GetIdentityUseCase(tokens)
+    use_case = GetIdentityUseCase(
+        tokens,
+        guard_factory=lambda: DbImpersonationSessionGuard(
+            session=session,
+            timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
+        ),
+    )
     try:
-        identity = use_case.execute(token)
+        identity = await use_case.execute(token)
     except Exception as exc:
         raise AUTH_TOKEN_INVALID.exc() from exc
 
@@ -146,7 +157,8 @@ def _get_owner_identity(request: Request) -> Identity:
 
 async def _get_owner_tenant_id(request: Request, session: AsyncSession) -> str:
     """Resolve the caller's tenant_id, enforcing owner role."""
-    return str(_get_owner_identity(request).tenant_id)
+    identity = await _get_owner_identity(request, session)
+    return str(identity.tenant_id)
 
 
 @oidc_admin_router.get("")
@@ -207,7 +219,7 @@ async def put_oidc_config(
     from gateway.auth.infrastructure.orm import OidcProviderConfigRow
 
     settings = request.app.state.settings
-    actor_identity = _get_owner_identity(request)
+    actor_identity = await _get_owner_identity(request, session)
     tenant_id = actor_identity.tenant_id
 
     # Check encryption key before anything else

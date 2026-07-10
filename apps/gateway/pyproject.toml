@@ -1,6 +1,6 @@
 [project]
 name = "hydroa-gateway"
-version = "0.6.0"
+version = "0.7.0"
 description = "Hydroa gateway: OpenAI-compatible data plane + admin control plane over OpenRouter"
 requires-python = ">=3.12"
 dependencies = [
@@ -172,3 +172,4 @@ addopts = "--cov=gateway --cov-report=term-missing --cov-fail-under=80 -m 'not e
 
 [tool.coverage.run]
 source = ["src/gateway"]
+concurrency = ["greenlet"]

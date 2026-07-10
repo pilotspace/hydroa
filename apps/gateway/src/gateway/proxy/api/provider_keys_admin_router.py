@@ -25,13 +25,16 @@ from __future__ import annotations
 import asyncio
 import uuid as _uuid_mod
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, SecretStr, ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.audit.application.audit_writer import record_audit
 from gateway.audit.domain.audit_event import AuditEvent
+from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_FORBIDDEN_OWNER_REQUIRED,
     AUTH_TOKEN_INVALID,
@@ -53,11 +56,14 @@ from gateway.proxy.domain.provider_credentials import (
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
 from gateway.tenants.domain.entities import Identity, Role
+from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 
 provider_keys_admin_router = APIRouter(prefix="/admin/provider-keys", tags=["provider-keys-admin"])
 
 #: Bearer-auth providers — a single shared secret each.
-_BEARER_PROVIDERS: frozenset[str] = frozenset({"openrouter", "openai", "anthropic", "google"})
+_BEARER_PROVIDERS: frozenset[str] = frozenset(
+    {"openrouter", "openai", "anthropic", "google", "minimax"}
+)
 
 
 class ProviderKeyPutBody(BaseModel):
@@ -93,17 +99,26 @@ class ProviderKeyPutBody(BaseModel):
     enabled: bool = True
 
 
-def _require_owner_identity(request: Request) -> Identity:
+async def _require_owner_identity(request: Request, session: AsyncSession) -> Identity:
     """Resolve the caller's full Identity from the verified JWT, enforcing OWNER role.
 
     Raises 401 ERR_AUTH_INVALID_TOKEN (missing/malformed/invalid token) or
     403 ERR_AUTH_FORBIDDEN (authenticated non-owner).
+
+    impersonation-live-session-guard TASK.md §3 Part D.5 — one of GetIdentityUseCase's
+    3 direct-construction call sites.
     """
 
     token = get_bearer_token(request)  # raises AUTH_TOKEN_MISSING (401) when absent
-    use_case = GetIdentityUseCase(request.app.state.token_service)
+    use_case = GetIdentityUseCase(
+        request.app.state.token_service,
+        guard_factory=lambda: DbImpersonationSessionGuard(
+            session=session,
+            timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
+        ),
+    )
     try:
-        identity = use_case.execute(token)
+        identity = await use_case.execute(token)
     except Exception as exc:
         raise AUTH_TOKEN_INVALID.exc() from exc
     if identity.role != Role.OWNER:
@@ -111,13 +126,14 @@ def _require_owner_identity(request: Request) -> Identity:
     return identity
 
 
-def _require_owner_tenant_id(request: Request) -> UUID:
+async def _require_owner_tenant_id(request: Request, session: AsyncSession) -> UUID:
     """Resolve the caller's tenant_id from the verified JWT, enforcing OWNER role.
 
     Raises 401 ERR_AUTH_INVALID_TOKEN (missing/malformed/invalid token) or
     403 ERR_AUTH_FORBIDDEN (authenticated non-owner).
     """
-    return _require_owner_identity(request).tenant_id
+    identity = await _require_owner_identity(request, session)
+    return identity.tenant_id
 
 
 def _build_credential(provider: str, body: ProviderKeyPutBody) -> ProviderCredential:
@@ -181,10 +197,13 @@ async def _status_for(request: Request, tenant_id: UUID, provider: str) -> Provi
 
 @provider_keys_admin_router.put("/{provider}")
 async def put_provider_key(
-    provider: str, body: ProviderKeyPutBody, request: Request
+    provider: str,
+    body: ProviderKeyPutBody,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProviderKeyStatus:
     """Create or replace (upsert) the caller-tenant's credential for *provider*."""
-    identity = _require_owner_identity(request)
+    identity = await _require_owner_identity(request, session)
     tenant_id = identity.tenant_id
     if provider not in BYOK_PROVIDERS:
         raise PROVIDER_UNKNOWN.exc()
@@ -236,18 +255,22 @@ async def put_provider_key(
 
 
 @provider_keys_admin_router.get("")
-async def list_provider_keys(request: Request) -> dict[str, list[ProviderKeyStatus]]:
+async def list_provider_keys(
+    request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> dict[str, list[ProviderKeyStatus]]:
     """List the caller-tenant's configured providers (no secrets; [] when none)."""
-    tenant_id = _require_owner_tenant_id(request)
+    tenant_id = await _require_owner_tenant_id(request, session)
     store = request.app.state.tenant_provider_key_store
     statuses: list[ProviderKeyStatus] = await store.list(tenant_id)
     return {"keys": statuses}
 
 
 @provider_keys_admin_router.get("/{provider}")
-async def get_provider_key(provider: str, request: Request) -> ProviderKeyStatus:
+async def get_provider_key(
+    provider: str, request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> ProviderKeyStatus:
     """Return one provider's status (no secret); 404 when not configured."""
-    tenant_id = _require_owner_tenant_id(request)
+    tenant_id = await _require_owner_tenant_id(request, session)
     if provider not in BYOK_PROVIDERS:
         raise PROVIDER_UNKNOWN.exc()
     status = await _status_for(request, tenant_id, provider)
@@ -257,9 +280,11 @@ async def get_provider_key(provider: str, request: Request) -> ProviderKeyStatus
 
 
 @provider_keys_admin_router.delete("/{provider}", status_code=204)
-async def delete_provider_key(provider: str, request: Request) -> Response:
+async def delete_provider_key(
+    provider: str, request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> Response:
     """Delete the caller-tenant's credential for *provider*; 204, or 404 if absent."""
-    tenant_id = _require_owner_tenant_id(request)
+    tenant_id = await _require_owner_tenant_id(request, session)
     if provider not in BYOK_PROVIDERS:
         raise PROVIDER_UNKNOWN.exc()
     store = request.app.state.tenant_provider_key_store

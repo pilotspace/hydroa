@@ -17,14 +17,14 @@
 @layer base {
   :root {
     /* surfaces & text (slate ramp) */
-    --background: #f8fafc;          /* slate-50  — app canvas */
+    --background: #ffffff;          /* white — luxury canvas (v7 premium reconciliation) */
     --foreground: #0f172a;          /* slate-900 — primary text */
     --card: #ffffff;                /* white     — raised surface */
     --card-foreground: #0f172a;     /* slate-900 */
     --popover: #ffffff;
     --popover-foreground: #0f172a;
     --muted: #f1f5f9;               /* slate-100 */
-    --muted-foreground: #64748b;    /* slate-500 */
+    --muted-foreground: #475569;    /* slate-600 — WCAG AA on tinted bg-muted grounds (persona a11y sweep; was slate-500 #64748b, 4.34:1 on --muted) */
 
     /* brand accent (Hydroa — Pantone Classic Blue 19-4052, luxury/trust) */
     --primary: #0f4c81;             /* Classic Blue */
@@ -39,10 +39,12 @@
 
     /* status */
     --success: #059669;             /* emerald-600 */
+    --success-text: #047857;        /* emerald-700 — AA-safe small-text success (platform-console-flat-redesign) */
     --warning: #f59e0b;             /* amber-500 */
     --warning-foreground: #92400e;  /* amber-800 — readable text on a warning surface */
     --destructive: #dc2626;         /* red-600 */
     --destructive-foreground: #ffffff;
+    --destructive-text: #b91c1c;    /* red-700 — AA-safe small-text destructive (accessibility-auditor sweep, platform-console-flat-redesign) */
 
     /* lines & focus */
     --border: #e2e8f0;              /* slate-200 */
@@ -56,19 +58,37 @@
     --chart-4: #0ea5e9;             /* sky-500 */
     --chart-5: #f43f5e;             /* rose-500 */
 
-    /* sidebar surface (raised navigation panel — v23 enterprise extension) */
+    /* sidebar surface — light Aurora nav rail (Tin 2026-07-07: reverted the dark v7 rail after
+       seeing it live; kept the theme-independent modern-tech upgrades — grouped nav, hero titles,
+       mono numerals, hairlines, white canvas). Active items use the on-brand accent-soft fill +
+       a Classic-Blue left bar (see SidebarItem); hover uses the neutral slate-100 accent. */
     --sidebar: #ffffff;
     --sidebar-foreground: #334155;          /* slate-700 */
-    --sidebar-accent: #f1f5f9;              /* slate-100 — hover/active */
+    --sidebar-accent: #f1f5f9;              /* slate-100 — neutral hover */
     --sidebar-accent-foreground: #0f172a;   /* slate-900 */
     --sidebar-border: #e2e8f0;             /* slate-200 */
-    --sidebar-ring: #2563eb;               /* blue-600 */
+    --sidebar-ring: #2563eb;               /* blue-600 — focus ring */
 
     /* radius (control = md 8px; card = lg 10px — retightened, Aurora) */
     --radius: 0.5rem;
 
+    /* flat-recipe radius steps (platform-console-flat-redesign) — deliberately NOT
+       given a Tailwind theme-bridge entry below: tailwind-merge (verified empirically)
+       doesn't recognize a custom-named radius utility as conflicting with the native
+       rounded-lg/md/etc scale, so both classes would silently coexist. Reference these
+       via the arbitrary-value form instead, e.g. rounded-[var(--radius-flat-card)] —
+       tailwind-merge DOES correctly resolve that against rounded-lg. Absolute values,
+       not calc-relative to --radius (see --radius-sm above, which already diverges from
+       tokens.json's declared primitive value for the equivalent step). */
+    --radius-flat-tag: 2px;
+    --radius-flat-control: 3px;
+    --radius-flat-card: 4px;
+
     /* type */
     --font-sans: "Inter", system-ui, sans-serif;
+    /* monospace face for tabular numerals/dates/ids — the v7 "spec-sheet" data feel.
+       System mono stack (no webfont): renders everywhere, zero network cost. */
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
     /* elevation — soft, diffuse, low-opacity (Apple-luxury: refined depth, not heavy) */
     --elevation-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
@@ -101,10 +121,12 @@
     --secondary: #1e293b;
     --secondary-foreground: #f8fafc;
     --success: #34d399;
+    --success-text: #34d399;        /* dark not shipped/verified — no identified small-text AA gap yet, reuse as-is */
     --warning: #fbbf24;
     --warning-foreground: #fcd34d;  /* amber-300 — readable on a dark warning surface */
     --destructive: #ef4444;
     --destructive-foreground: #ffffff;
+    --destructive-text: #ef4444;    /* dark not shipped/verified — no identified small-text AA gap yet, reuse as-is */
     --border: #1e293b;
     --input: #1e293b;
     --ring: #3b82f6;                /* blue-500 */
@@ -169,10 +191,12 @@
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-success: var(--success);
+  --color-success-text: var(--success-text);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-text: var(--destructive-text);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -198,6 +222,7 @@
   --radius-xl: calc(var(--radius) + 6px);      /* 14px */
   --radius-2xl: calc(var(--radius) + 12px);    /* 20px */
   --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);   /* → font-mono utility (v7 tabular numerals) */
 
   /* elevation utilities → shadow-sm/md/lg/xl (Aurora depth scale) */
   --shadow-sm: var(--elevation-sm);

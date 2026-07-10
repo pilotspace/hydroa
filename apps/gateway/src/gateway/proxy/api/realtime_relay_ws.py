@@ -114,6 +114,27 @@ def _extract_secret(cred: Any) -> str | None:
     return None
 
 
+def _make_relay_usage_callback(usage_recorder: Any, tenant_id: Any, key_id: Any, model: str) -> Any:
+    """Build the per-turn usage capture callback for one relay session (TASK.md §3).
+
+    Captures the ONE-TIME WS-auth identity (tenant_id/key_id) — never re-derived per
+    turn. Reuses RecordingUsageRecorder.record()'s existing signature verbatim; its own
+    Must #5 (never raise into the caller) already covers the swallow-on-failure guarantee.
+    """
+
+    async def _callback(usage: dict[str, Any]) -> None:
+        await usage_recorder.record(
+            tenant_id=tenant_id,
+            key_id=key_id,
+            model=model,
+            usage=usage,
+            status=200,
+            usage_source="realtime_relay",
+        )
+
+    return _callback
+
+
 async def _real_session_factory(app: Any, authz: Any) -> RealtimeRelaySession | None:
     """Production provider build — honest-degrade (None) when nothing is configured."""
     settings: Settings = app.state.settings
@@ -137,6 +158,12 @@ async def _real_session_factory(app: Any, authz: Any) -> RealtimeRelaySession | 
             model=settings.realtime_relay_openai_model,
             api_key=api_key,
             connect_timeout=settings.realtime_relay_connect_timeout_seconds,
+            on_usage=_make_relay_usage_callback(
+                app.state.usage_recorder,
+                authz.tenant_id,
+                authz.key_id,
+                settings.realtime_relay_openai_model,
+            ),
         )
     from gateway.proxy.infrastructure.gemini_live import GeminiLiveSession
 

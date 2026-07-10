@@ -161,6 +161,10 @@ class RecordingUsageRecorder:
         cached_tokens = 0
         reasoning_tokens = 0
         cache_creation_tokens = 0
+        # gpt-realtime-relay-billing: audio-tier counts, always 0 for every non-realtime usage dict.
+        audio_prompt_tokens = 0
+        audio_completion_tokens = 0
+        audio_cached_tokens = 0
         cost_usd = _ZERO
         pricing_snapshot_id: str = ""
         resolved_pricing_unit = "per_token"
@@ -189,6 +193,9 @@ class RecordingUsageRecorder:
                     cached_input_price,
                     reasoning_price,
                     cache_creation_price,
+                    audio_prompt_price,
+                    audio_completion_price,
+                    audio_cached_price,
                 ) = pricing
                 pricing_snapshot_id = str(snap_id)
 
@@ -216,6 +223,18 @@ class RecordingUsageRecorder:
                         cache_creation_tokens = _safe_tier(
                             usage, "prompt_tokens_details", "cache_creation_tokens"
                         )
+                        # gpt-realtime-relay-billing (TASK.md §3): dual-stream audio tiers, read
+                        # via the SAME _safe_tier fallback — absent for every non-realtime usage
+                        # dict, so these are always 0 there (byte-identical).
+                        audio_prompt_tokens = _safe_tier(
+                            usage, "input_token_details", "audio_tokens"
+                        )
+                        audio_completion_tokens = _safe_tier(
+                            usage, "output_token_details", "audio_tokens"
+                        )
+                        audio_cached_tokens = _safe_tier(
+                            usage, "input_token_details", "cached_tokens"
+                        )
                     # provider-cost-reconciliation: PREFER the upstream-reported cost when
                     # present; otherwise the UNCHANGED catalog path (byte-identical floor).
                     provider_cost = _safe_provider_cost(usage)
@@ -231,11 +250,17 @@ class RecordingUsageRecorder:
                             cached_tokens=cached_tokens,
                             reasoning_tokens=reasoning_tokens,
                             cache_creation_tokens=cache_creation_tokens,
+                            audio_prompt_tokens=audio_prompt_tokens,
+                            audio_completion_tokens=audio_completion_tokens,
+                            audio_cached_tokens=audio_cached_tokens,
                             prompt_price=prompt_price,
                             completion_price=completion_price,
                             cached_price=cached_input_price,
                             reasoning_price=reasoning_price,
                             cache_creation_price=cache_creation_price,
+                            audio_prompt_price=audio_prompt_price,
+                            audio_completion_price=audio_completion_price,
+                            audio_cached_price=audio_cached_price,
                             markup_pct=markup_pct,
                             model=model,
                         )
@@ -355,6 +380,10 @@ class RecordingUsageRecorder:
             "reasoning_tokens": str(reasoning_tokens),
             # prompt-cache-passthrough (TASK.md §3): Anthropic cache-write token count.
             "cache_creation_tokens": str(cache_creation_tokens),
+            # gpt-realtime-relay-billing (TASK.md §3): dual-stream audio token counts.
+            "audio_prompt_tokens": str(audio_prompt_tokens),
+            "audio_completion_tokens": str(audio_completion_tokens),
+            "audio_cached_tokens": str(audio_cached_tokens),
             # provider-cost-reconciliation: billed basis + raw upstream cost (TASK.md §3)
             # provider_cost "" encodes NULL (catalog rows carry no upstream cost).
             "cost_basis": cost_basis,
@@ -577,26 +606,48 @@ def compute_per_token_cost_usd(
     cached_tokens: int,
     reasoning_tokens: int,
     cache_creation_tokens: int = 0,
+    audio_prompt_tokens: int = 0,
+    audio_completion_tokens: int = 0,
+    audio_cached_tokens: int = 0,
     prompt_price: Decimal,
     completion_price: Decimal,
     cached_price: Decimal | None,
     reasoning_price: Decimal | None,
     cache_creation_price: Decimal | None = None,
+    audio_prompt_price: Decimal | None = None,
+    audio_completion_price: Decimal | None = None,
+    audio_cached_price: Decimal | None = None,
     markup_pct: Decimal,
     model: str = "",
 ) -> Decimal:
-    """Per-tier token cost (tiered-token-billing TASK.md §3 + prompt-cache-passthrough §3).
+    """Per-tier token cost (tiered-token-billing TASK.md §3 + prompt-cache-passthrough §3 +
+    gpt-realtime-relay-billing TASK.md §3).
 
     When all tier counts are 0 the FLAT path runs the exact v6 expression verbatim
-    (byte-identical). Otherwise the tiered expression splits fresh/cached/cache_creation
-    input and fresh/reasoning output; a NULL tier price falls back to its base price;
-    fresh counts clamp to max(0, …) so cost is never negative (logs "tier_token_clamped").
+    (byte-identical). Otherwise the tiered expression splits fresh/cached/cache_creation/
+    audio input and fresh/reasoning/audio output; a NULL tier price falls back to its base
+    price; fresh counts clamp to max(0, …) so cost is never negative (logs "tier_token_clamped").
 
     cache_creation_tokens: Anthropic cache-write tokens (billed at cache_creation_price or
     prompt_price when cache_creation_price is NULL — no regression).
+
+    audio_prompt_tokens / audio_completion_tokens: GPT-Realtime dual-stream audio counts.
+    Per OpenAI's Realtime `usage.input_token_details`/`output_token_details` shape, these are
+    a BREAKDOWN (subset) of prompt_tokens/completion_tokens, not additional to them — so they
+    are subtracted out of fresh_in/fresh_out (mirroring how cached_tokens is already a subset
+    of prompt_tokens) and billed separately at the audio rate, never double-counted at both the
+    text rate and the audio rate. audio_cached_tokens is in turn a subset of audio_prompt_tokens
+    (the cheapest of the three input tiers), billed at audio_cached_price.
     """
     markup = Decimal("1") + Decimal(str(markup_pct)) / Decimal("100")
-    if cached_tokens == 0 and reasoning_tokens == 0 and cache_creation_tokens == 0:
+    if (
+        cached_tokens == 0
+        and reasoning_tokens == 0
+        and cache_creation_tokens == 0
+        and audio_prompt_tokens == 0
+        and audio_completion_tokens == 0
+        and audio_cached_tokens == 0
+    ):
         # FLAT PATH — verbatim v6 operand order; byte-identical to the pre-tier code.
         return (
             Decimal(str(prompt_tokens)) * Decimal(str(prompt_price))
@@ -604,9 +655,10 @@ def compute_per_token_cost_usd(
         ) * markup
 
     # TIERED PATH
-    fresh_in = prompt_tokens - cached_tokens - cache_creation_tokens
-    fresh_out = completion_tokens - reasoning_tokens
-    if fresh_in < 0 or fresh_out < 0:
+    fresh_in = prompt_tokens - cached_tokens - cache_creation_tokens - audio_prompt_tokens
+    fresh_out = completion_tokens - reasoning_tokens - audio_completion_tokens
+    fresh_audio_in = audio_prompt_tokens - audio_cached_tokens
+    if fresh_in < 0 or fresh_out < 0 or fresh_audio_in < 0:
         _log.warning(
             "tier_token_clamped",
             extra={
@@ -616,10 +668,14 @@ def compute_per_token_cost_usd(
                 "cache_creation_tokens": cache_creation_tokens,
                 "completion_tokens": completion_tokens,
                 "reasoning_tokens": reasoning_tokens,
+                "audio_prompt_tokens": audio_prompt_tokens,
+                "audio_completion_tokens": audio_completion_tokens,
+                "audio_cached_tokens": audio_cached_tokens,
             },
         )
     fresh_in = max(0, fresh_in)
     fresh_out = max(0, fresh_out)
+    fresh_audio_in = max(0, fresh_audio_in)
     cprice = Decimal(str(cached_price)) if cached_price is not None else Decimal(str(prompt_price))
     rprice = (
         Decimal(str(reasoning_price))
@@ -632,12 +688,30 @@ def compute_per_token_cost_usd(
         if cache_creation_price is not None
         else Decimal(str(prompt_price))
     )
+    # A NULL audio price with a non-zero audio count treats that tier's rate as 0 (never
+    # raises, never silently double-counts at the text rate) — logged for visibility.
+    if audio_prompt_price is None and (audio_prompt_tokens > 0 or audio_cached_tokens > 0):
+        _log.warning("audio_tier_price_missing", extra={"model": model, "tier": "audio_prompt"})
+    if audio_completion_price is None and audio_completion_tokens > 0:
+        _log.warning("audio_tier_price_missing", extra={"model": model, "tier": "audio_completion"})
+    a_prompt_price = Decimal(str(audio_prompt_price)) if audio_prompt_price is not None else _ZERO
+    a_completion_price = (
+        Decimal(str(audio_completion_price)) if audio_completion_price is not None else _ZERO
+    )
+    # audio_cached_price NULL → fall back to audio_prompt_price (mirrors cached_price's
+    # fallback to prompt_price); if BOTH are NULL, falls through to 0 (logged above).
+    a_cached_price = (
+        Decimal(str(audio_cached_price)) if audio_cached_price is not None else a_prompt_price
+    )
     return (
         Decimal(str(fresh_in)) * Decimal(str(prompt_price))
         + Decimal(str(cached_tokens)) * cprice
         + Decimal(str(cache_creation_tokens)) * ccprice
         + Decimal(str(fresh_out)) * Decimal(str(completion_price))
         + Decimal(str(reasoning_tokens)) * rprice
+        + Decimal(str(fresh_audio_in)) * a_prompt_price
+        + Decimal(str(audio_cached_tokens)) * a_cached_price
+        + Decimal(str(audio_completion_tokens)) * a_completion_price
     ) * markup
 
 
@@ -654,11 +728,15 @@ async def _fetch_latest_pricing(
         Decimal | None,
         Decimal | None,
         Decimal | None,
+        Decimal | None,
+        Decimal | None,
+        Decimal | None,
     ]
     | None
 ):
     """Return (snapshot_id, prompt_price, completion_price, pricing_unit,
-    unit_usd_per_unit, cached_input_price, reasoning_price, cache_creation_price).
+    unit_usd_per_unit, cached_input_price, reasoning_price, cache_creation_price,
+    audio_prompt_price, audio_completion_price, audio_cached_price).
 
     Returns None if no pricing snapshot found for the model.
 
@@ -669,6 +747,9 @@ async def _fetch_latest_pricing(
                               fallback. (tiered-token-billing)
       cache_creation_price   — Anthropic ~1.25x write premium; NULL -> prompt-rate
                               fallback (no regression). (prompt-cache-passthrough)
+      audio_prompt_price / audio_completion_price / audio_cached_price — GPT-Realtime
+                              dual-stream audio rates; NULL for every non-realtime model.
+                              (gpt-realtime-relay-billing)
     """
     row = (
         await session.execute(
@@ -676,7 +757,9 @@ async def _fetch_latest_pricing(
                 "SELECT id, prompt_usd_per_token, completion_usd_per_token,"
                 " pricing_unit, unit_usd_per_unit,"
                 " cached_input_usd_per_token, reasoning_usd_per_token,"
-                " cache_creation_usd_per_token"
+                " cache_creation_usd_per_token,"
+                " audio_prompt_usd_per_token, audio_completion_usd_per_token,"
+                " audio_cached_usd_per_token"
                 " FROM pricing_snapshots"
                 " WHERE model_id = :model_id"
                 " ORDER BY captured_at DESC"
@@ -691,6 +774,9 @@ async def _fetch_latest_pricing(
     cached_price: Decimal | None = Decimal(str(row[5])) if row[5] is not None else None
     reasoning_price: Decimal | None = Decimal(str(row[6])) if row[6] is not None else None
     cache_creation_price: Decimal | None = Decimal(str(row[7])) if row[7] is not None else None
+    audio_prompt_price: Decimal | None = Decimal(str(row[8])) if row[8] is not None else None
+    audio_completion_price: Decimal | None = Decimal(str(row[9])) if row[9] is not None else None
+    audio_cached_price: Decimal | None = Decimal(str(row[10])) if row[10] is not None else None
     return (
         uuid.UUID(str(row[0])),
         Decimal(str(row[1])),
@@ -700,6 +786,9 @@ async def _fetch_latest_pricing(
         cached_price,
         reasoning_price,
         cache_creation_price,
+        audio_prompt_price,
+        audio_completion_price,
+        audio_cached_price,
     )
 
 

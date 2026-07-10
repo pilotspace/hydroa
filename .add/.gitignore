@@ -4,3 +4,6 @@ scope-snapshot.json
 pre-archive-state.bak.json
 pre-update-state.bak.json
 .update-cache.json
+tooling/
+docs/
+personas-teacher/

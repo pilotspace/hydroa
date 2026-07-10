@@ -23,7 +23,7 @@ from gateway.proxy.api.deps import (
 )
 from gateway.proxy.application.json_sanitize import sanitize_non_finite
 from gateway.proxy.application.use_cases import CompletionUseCase
-from gateway.proxy.domain.ports import CompletionUpstream, UsageRecorder
+from gateway.proxy.domain.ports import BatchDivertedStream, CompletionUpstream, UsageRecorder
 from gateway.proxy.infrastructure.response_cache import resolve_cache_ttl
 
 _log = logging.getLogger(__name__)
@@ -72,6 +72,11 @@ async def completions(
     effective_ttl = resolve_cache_ttl(req_headers, cache_ttl, cache_max_ttl)
     metrics_registry = getattr(getattr(request.app, "state", None), "metrics_registry", None)
 
+    # Resolve batch_processor from app.state per-request (fail-open: None if not wired —
+    # batch-auto-grouping M4 safety branch (d), makes the diversion a no-op pre-adapter).
+    # NEVER passed to stream() — streaming always bypasses diversion (M2).
+    batch_processor = getattr(getattr(request.app, "state", None), "batch_processor", None)
+
     status, response_body, x_cache = await use_case.complete(
         raw_key=raw_key,
         body=body,
@@ -81,7 +86,16 @@ async def completions(
         metrics_registry=metrics_registry,
         request_headers=req_headers,
         model_router=model_router,
+        batch_processor=batch_processor,
     )
+
+    # batch-window-grouping (§3, G8): a genuinely-accumulated request's response is
+    # ALWAYS 200 text/event-stream, never a JSON body — checked BEFORE the JSON-only
+    # sanitize/x-cache tail below (a BatchDivertedStream carries neither non-finite
+    # floats nor a cache-relevant status).
+    if isinstance(response_body, BatchDivertedStream):
+        return StreamingResponse(response_body.body_stream, media_type="text/event-stream")
+
     # Sanitize non-finite floats (inf/-inf/nan) before render: Starlette serializes with
     # allow_nan=False, so an upstream non-finite anywhere (e.g. a -inf logprob) would 500.
     # Replace with null (degrade, never fail) + WARN once. This is the single non-stream

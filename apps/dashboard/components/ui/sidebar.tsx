@@ -77,7 +77,9 @@ export function SidebarGroup({ className, ...props }: React.HTMLAttributes<HTMLD
 export function SidebarGroupLabel({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("px-2 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground", className)}
+      // Quiet section header on the light rail: muted-foreground (slate-600, AA on the light
+      // surfaces per the W1 contrast fix); uppercase + tracking + semibold reads as a label.
+      className={cn("px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground", className)}
       {...props}
     />
   );
@@ -97,10 +99,13 @@ export function SidebarItem({ href, icon, active, children, className }: Sidebar
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        // border-l-2 on EVERY item (transparent when inactive) reserves the active
+        // accent bar's width so activating never shifts the row — the v7 rail signature.
+        "flex items-center gap-2 rounded-md border-l-2 px-3 py-2 text-sm font-medium transition-colors duration-150 ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         active
-          ? "bg-accent-soft text-primary font-semibold ring-1 ring-inset ring-accent-soft-border"
-          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          ? // on-brand active: Classic-Blue left bar + blue-tinted accent-soft fill + blue text
+            "border-primary bg-accent-soft text-primary font-semibold"
+          : "border-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         className,
       )}
     >

@@ -1,475 +1,9 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "tiered-rate-cards",
-  "active_milestone": "enterprise-hardening",
+  "active_task": null,
+  "active_milestone": "platform-admin-console",
   "tasks": {
-    "operator-wide-reconciliation": {
-      "title": "Cross-tenant reconciliation view behind ops-auth",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v31",
-      "depends_on": [
-        "reconcile-cost-basis-filter"
-      ],
-      "created": "2026-06-18T16:42:11+00:00",
-      "updated": "2026-06-22T14:51:03+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "11043f8802f9d51c16e09ca2b24b2feb",
-        "tests": {
-          "apps/gateway/tests/operator_wide_reconciliation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/operator_wide_reconciliation/conftest.py": "eb884ffe1fde400cf59653d99b53199b",
-          "apps/gateway/tests/operator_wide_reconciliation/test_operator_wide_reconciliation.py": "1a1ca1dce206841a76d3b628af1b49bf"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/ops/",
-          "apps/gateway/src/gateway/usage/application/reconciliation.py",
-          "apps/gateway/src/gateway/tenants/infrastructure/ops_cert_verifier.py",
-          "apps/gateway/src/gateway/usage/api/schemas.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/main.py"
-        ],
-        "snapshot_md5": "9186d7e3719b0bf9df307e2171871838"
-      }
-    },
-    "sso-login-button": {
-      "title": "Sign in with SSO entry on the login page",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v31",
-      "depends_on": [],
-      "created": "2026-06-22T15:24:48+00:00",
-      "updated": "2026-06-22T15:46:40+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "8e221fc1204555e3708a61a726ff5bce",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/auth/LoginForm.tsx"
-        ],
-        "snapshot_md5": "0cfe5e281642ddc0dcd8203e7f80b19e"
-      }
-    },
-    "alerts-events-viewer": {
-      "title": "Alerts & events viewer \u2014 GET /admin/alerts + dashboard Alerts page",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v31",
-      "depends_on": [],
-      "created": "2026-06-22T16:29:20+00:00",
-      "updated": "2026-06-22T16:57:08+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "a2aa9ee06edf39c356db7d27bc670a0b",
-        "tests": {
-          "apps/gateway/tests/alerts_events_viewer/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/alerts_events_viewer/conftest.py": "aa534ad7e8216bb8c6d93e871148ceb4",
-          "apps/gateway/tests/alerts_events_viewer/test_alerts_events_viewer.py": "9d8496dcc1fffc7486415b407378826d"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/usage/api/router.py",
-          "apps/dashboard/app/(dashboard)/alerts/",
-          "apps/dashboard/components/alerts/",
-          "apps/dashboard/components/ui/app-shell.tsx"
-        ],
-        "snapshot_md5": "694cf1014d27477029391f181e9f07a1"
-      }
-    },
-    "catalog-sync-trigger": {
-      "title": "Catalog sync trigger \u2014 POST /admin/catalog/sync + /models re-sync button",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v31",
-      "depends_on": [],
-      "created": "2026-06-22T17:01:00+00:00",
-      "updated": "2026-06-22T17:24:42+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "6c5480a16d74cef9130217958c5753e7",
-        "tests": {
-          "apps/gateway/tests/catalog_sync_trigger/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/catalog_sync_trigger/conftest.py": "14f71b265278fb8451b898164caeac44",
-          "apps/gateway/tests/catalog_sync_trigger/test_catalog_sync_trigger.py": "f2a75adebdeab9f83a078cca9df4337d"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/catalog/api/router.py",
-          "apps/gateway/src/gateway/catalog/api/schemas.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/dashboard/components/models/ModelsPage.tsx"
-        ],
-        "snapshot_md5": "ddf0f466234f6de275bd816b466a3016"
-      }
-    },
-    "upstream-health-view": {
-      "title": "Upstream health view \u2014 GET /admin/health/upstreams + dashboard health panel",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v31",
-      "depends_on": [],
-      "created": "2026-06-22T17:27:20+00:00",
-      "updated": "2026-06-22T17:50:11+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "2c5fe7c5d997a46aa6b5cc930bb3cc21",
-        "tests": {
-          "apps/gateway/tests/upstream_health_view/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/upstream_health_view/conftest.py": "2d632f318699b4eedee4c15c75fe45e1",
-          "apps/gateway/tests/upstream_health_view/test_upstream_health_view.py": "64037f1deae1aa4306ede495d5d3fbf2"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/usage/api/router.py",
-          "apps/dashboard/components/health/",
-          "apps/dashboard/app/(dashboard)/health/page.tsx",
-          "apps/dashboard/components/ui/app-shell.tsx"
-        ],
-        "snapshot_md5": "be109115a2d814e341f91d5217eb2947"
-      }
-    },
-    "ratelimit-counter-view": {
-      "title": "Rate-limit counter view \u2014 GET /admin/ratelimits + read-only counter panel",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v31",
-      "depends_on": [],
-      "created": "2026-06-22T17:51:36+00:00",
-      "updated": "2026-06-22T18:11:44+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "9e578e876139bbaf68707d193917c30b",
-        "tests": {
-          "apps/gateway/tests/ratelimit_counter_view/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/ratelimit_counter_view/conftest.py": "d91c4b412e9ece22af0f11bcf26f841b",
-          "apps/gateway/tests/ratelimit_counter_view/test_ratelimit_counter_view.py": "8c9786a3f063488bde5fad42d937a8fa"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/usage/api/router.py",
-          "apps/dashboard/components/keys/KeysPage.tsx",
-          "apps/dashboard/components/keys/"
-        ],
-        "snapshot_md5": "7f7aff58f7f44c031c14c3c93c18c65c"
-      }
-    },
-    "object-store-port": {
-      "title": "ObjectStore port + S3/MinIO adapter (design-for-failure)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v51",
-      "depends_on": [],
-      "created": "2026-06-26T08:00:57+00:00",
-      "updated": "2026-06-26T08:33:24+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "e2785a3c9a69939bb1e34704c7c9e69a",
-        "tests": {
-          "apps/gateway/tests/objectstore/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/objectstore/test_s3_object_store.py": "d2afff4f56132cd417751cd76255f694",
-          "apps/gateway/tests/objectstore/test_s3_object_store_live.py": "c12b86cc421c0f46a2e35db54c139408"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/objectstore/",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/pyproject.toml",
-          "infra/docker-compose.dev.yml",
-          "infra/.env.example"
-        ],
-        "snapshot_md5": "f429f41782010633cb6e02b209714d16"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-26T08:32:48+00:00",
-            "reason": "tamper_detected:build_tampered:apps/gateway/tests/objectstore/test_s3_object_store.py",
-            "source": "tamper"
-          }
-        ]
-      }
-    },
-    "artifacts-s3-live-verify": {
-      "title": "Live MinIO round-trip verification",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v51",
-      "depends_on": [
-        "artifacts-s3-persistence"
-      ],
-      "created": "2026-06-26T08:00:57+00:00",
-      "updated": "2026-06-26T09:06:42+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "16033d4fb5897eb41e1e5fc1a716acb1",
-        "tests": {
-          "apps/gateway/tests/artifacts/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/artifacts/test_artifacts.py": "74a2c8198e5a4d9abaa89bab9bd3136b",
-          "apps/gateway/tests/artifacts/test_artifacts_s3.py": "7afac3487096fefe92e82345d1c6447e",
-          "apps/gateway/tests/artifacts/test_artifacts_s3_live.py": "f5d3913a317596c43a9b49293b05741d"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/tests/artifacts/test_artifacts_s3_live.py"
-        ],
-        "snapshot_md5": "e2da3b22c56afeb5022e34b403179d74"
-      }
-    },
-    "artifacts-s3-persistence": {
-      "title": "Persist artifact bytes via the ObjectStore (S3) with honest-degrade",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v51",
-      "depends_on": [
-        "object-store-port"
-      ],
-      "created": "2026-06-26T08:01:11+00:00",
-      "updated": "2026-06-26T09:00:55+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "8ed584fdd7cf7edaa416f035e030a8c1",
-        "tests": {
-          "apps/gateway/tests/artifacts/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/artifacts/test_artifacts.py": "74a2c8198e5a4d9abaa89bab9bd3136b",
-          "apps/gateway/tests/artifacts/test_artifacts_s3.py": "7afac3487096fefe92e82345d1c6447e"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/artifacts/infrastructure/orm.py",
-          "apps/gateway/src/gateway/artifacts/infrastructure/repository.py",
-          "apps/gateway/src/gateway/artifacts/api/router.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/src/gateway/video/api/router.py"
-        ],
-        "snapshot_md5": "147b3c8f3f4c451a95e436e7cc784eda"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-26T08:59:48+00:00",
-            "reason": "scope_violation: task 'artifacts-s3-persistence' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/video/api/router.py (1 total)",
-            "source": "scope"
-          }
-        ]
-      }
-    },
-    "model-catalog-paging-search": {
-      "title": "Paginate the Models catalog + fuzzy-search filter",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v54",
-      "depends_on": [],
-      "created": "2026-06-28T06:57:35+00:00",
-      "updated": "2026-06-28T07:28:44+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "fcb29621308a7e1113f2716c9ab5aacf",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/ui/data-table.tsx",
-          "apps/dashboard/components/models/ModelsPage.tsx",
-          "apps/dashboard/lib/fuzzy.ts",
-          "apps/dashboard/package.json",
-          "apps/dashboard/package-lock.json",
-          "apps/dashboard/tests/design-system/allowlist.json",
-          "apps/dashboard/tests-bff/model-catalog-paging-search.test.tsx",
-          "apps/dashboard/tests/fuzzy.test.ts"
-        ],
-        "snapshot_md5": "f4b7cea33e571ec8f97a99487d4d8822"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-28T07:26:18+00:00",
-            "reason": "tamper_detected:contract_tampered",
-            "source": "tamper"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "responsive-app-shell": {
-      "title": "Full-height sidebar + responsive AppShell across breakpoints",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v54",
-      "depends_on": [],
-      "created": "2026-06-28T07:37:33+00:00",
-      "updated": "2026-06-28T08:18:47+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "e8db01fc38934e00d35ea46de68b706e",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/ui/app-shell.tsx",
-          "apps/dashboard/tests/design-system/app-shell-sidebar.test.tsx"
-        ],
-        "snapshot_md5": "5c4bdffc76be749dd6e7909a6b0d6af9"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "aurora-polish-tokens": {
-      "title": "Aurora token + primitive visual uplift (app pages)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v54",
-      "depends_on": [],
-      "created": "2026-06-28T08:21:01+00:00",
-      "updated": "2026-06-28T09:27:12+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "828e16ec877c800c3bf8aaa3f73c971f",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          ".add/design/tokens.json",
-          "apps/dashboard/app/globals.css",
-          "apps/dashboard/components/ui/sidebar.tsx",
-          "apps/dashboard/tests/design-system/tokens.test.ts",
-          "apps/dashboard/tests/design-system/aurora-classic-blue.test.ts",
-          "apps/dashboard/tests/design-system/enterprise-ext.test.tsx"
-        ],
-        "snapshot_md5": "add5e621efdaf99df4f9975bae284113"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-06-28T09:20:58+00:00",
-            "reason": "scope_violation: task 'aurora-polish-tokens' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/palettepreview/page.tsx \u00b7 apps/dashboard/next-env.d.ts \u00b7 apps/dashboard/tests/design-system/enterprise-ext.test.tsx \u00b7 tmp/shellcaps/palette_final.png (4 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "monitoring-pages-redesign": {
-      "title": "Redesign monitoring pages (usage \u00b7 spend \u00b7 slo \u00b7 health) to the refreshed standard",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v54",
-      "depends_on": [],
-      "created": "2026-06-28T09:31:35+00:00",
-      "updated": "2026-06-28T12:46:48+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-06-28T11:04:08+00:00",
-        "approved_by": "Tin",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "0d578cee1387ae782fbe905db44836f4",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/ui/page-header.tsx",
-          "apps/dashboard/components/usage/",
-          "apps/dashboard/components/spend/",
-          "apps/dashboard/components/slo/",
-          "apps/dashboard/components/health/",
-          "apps/dashboard/components/models/ModelCatalogTable.tsx",
-          "apps/dashboard/tests/design-system/monitoring-redesign.test.tsx",
-          "apps/dashboard/tests/design-system/a11y.test.tsx",
-          "apps/dashboard/tests/design-system/components.test.tsx",
-          "apps/dashboard/tests/usage.test.tsx",
-          "apps/dashboard/tests/slo-page.test.tsx",
-          "apps/dashboard/tests/health.test.tsx",
-          "apps/dashboard/tests/ui-ux-verify.test.tsx",
-          "apps/dashboard/tests-bff/spend-chart.test.tsx",
-          "apps/dashboard/tests-bff/spend-breakdown.test.tsx",
-          "apps/dashboard/tests-bff/console-spend-redesign.test.tsx"
-        ],
-        "snapshot_md5": "fa8801a95b5e446d99456a05e6c2e860"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "governance-pages-redesign": {
-      "title": "Redesign governance pages (keys\u00b7members\u00b7routing\u00b7alerts\u00b7audit\u00b7settings) to the refreshed standard",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "v54",
-      "depends_on": [],
-      "created": "2026-06-28T12:55:22+00:00",
-      "updated": "2026-06-28T13:59:53+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "e5cd02dfdc0a2f42bc1ccdff51b6ac33",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/keys/",
-          "apps/dashboard/components/members/",
-          "apps/dashboard/components/routing/",
-          "apps/dashboard/components/alerts/",
-          "apps/dashboard/components/audit/",
-          "apps/dashboard/components/settings/",
-          "apps/dashboard/tests/design-system/governance-redesign.test.tsx",
-          "apps/dashboard/tests/design-system/a11y.test.tsx",
-          "apps/dashboard/tests/routing-edit.test.tsx",
-          "apps/dashboard/tests/keys.test.tsx",
-          "apps/dashboard/tests/keys-dialog-a11y.test.tsx",
-          "apps/dashboard/tests/members.test.tsx",
-          "apps/dashboard/tests/alerts.test.tsx",
-          "apps/dashboard/tests/audit.test.tsx",
-          "apps/dashboard/tests/provider-keys.test.tsx",
-          "apps/dashboard/tests/ui-ux-verify.test.tsx",
-          "apps/dashboard/tests-bff/routing-health.test.tsx",
-          "apps/dashboard/tests-bff/tenant-settings.test.tsx"
-        ],
-        "snapshot_md5": "75f3474097a9620f188db90459ebc5b4"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
       "phase": "specify",
@@ -478,242 +12,6 @@
       "depends_on": [],
       "created": "2026-06-28T14:01:49+00:00",
       "updated": "2026-06-28T14:46:39+00:00"
-    },
-    "voice-playground-shell": {
-      "title": "Console-grade voice workspace shell + design system",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "voice-playground",
-      "depends_on": [],
-      "created": "2026-06-30T10:57:02+00:00",
-      "updated": "2026-06-30T12:01:07+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "56db07de06e16f36afe98287294d2679",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/voice/",
-          "apps/dashboard/tests-bff/voice-playground.test.tsx",
-          "apps/dashboard/app/(app)/app/voice/page.tsx"
-        ],
-        "snapshot_md5": "5929e41b8f0c32d2f65ab54771a08ff2"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "memory-console-rebuild": {
-      "title": "Console-grade memory library rebuild",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "memory-playground",
-      "depends_on": [],
-      "created": "2026-06-30T12:05:20+00:00",
-      "updated": "2026-06-30T12:06:28+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "915034710ee6c801dce1dbebccccf9f0",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/memory/",
-          "apps/dashboard/lib/memories.ts",
-          "apps/dashboard/app/(app)/app/memory/page.tsx",
-          "apps/dashboard/tests-bff/memory-workspace-console.test.tsx"
-        ],
-        "snapshot_md5": "5929e41b8f0c32d2f65ab54771a08ff2"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "artifacts-console-rebuild": {
-      "title": "Console-grade artifact library rebuild",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "artifacts-playground",
-      "depends_on": [],
-      "created": "2026-06-30T12:07:49+00:00",
-      "updated": "2026-06-30T12:11:45+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "1340133c9b7bce6cf43b1096b0671565",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/artifacts/",
-          "apps/dashboard/lib/artifacts.ts",
-          "apps/dashboard/app/(app)/app/artifacts/page.tsx",
-          "apps/dashboard/tests-bff/artifacts-workspace.test.tsx"
-        ],
-        "snapshot_md5": "15fa3eddfe068635194415ab137246a3"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "vision-console-rebuild": {
-      "title": "Console-grade vision workspace rebuild",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "vision-playground",
-      "depends_on": [],
-      "created": "2026-06-30T12:12:31+00:00",
-      "updated": "2026-06-30T12:13:30+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "6d8cca0e9b1fa272c0d21c6cece505bb",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/vision/",
-          "apps/dashboard/lib/vision.ts",
-          "apps/dashboard/app/(app)/app/vision/page.tsx",
-          "apps/dashboard/tests-bff/vision-workspace.test.tsx"
-        ],
-        "snapshot_md5": "15fa3eddfe068635194415ab137246a3"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "video-console-rebuild": {
-      "title": "Console-grade video studio rebuild",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "video-playground",
-      "depends_on": [],
-      "created": "2026-06-30T12:14:08+00:00",
-      "updated": "2026-06-30T12:15:03+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "d90fde7c96eb58346e7665338cb83883",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/video/",
-          "apps/dashboard/lib/video.ts",
-          "apps/dashboard/app/(app)/app/video/page.tsx",
-          "apps/dashboard/tests-bff/video-workspace.test.tsx"
-        ],
-        "snapshot_md5": "15fa3eddfe068635194415ab137246a3"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "adapter-correctness-fixes": {
-      "title": "Provider-adapter docs-faithfulness fixes (TDD)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "proxy-correctness",
-      "depends_on": [],
-      "created": "2026-06-30T12:20:20+00:00",
-      "updated": "2026-06-30T12:47:39+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "5252e7eb8afcfc05c29770f2d31fbe6d",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "7dbd7158f8f0848e1b96091483f0e924"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "voice-mic-capture-deferrals": {
-      "title": "Voice mic capture + autoplay + cost (close deferrals)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "voice-playground",
-      "depends_on": [],
-      "created": "2026-06-30T12:31:48+00:00",
-      "updated": "2026-06-30T12:32:56+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "cc0beebdb2c341dcc8246dff7aa82541",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/voice/*",
-          "apps/dashboard/lib/voice-cost.ts",
-          "apps/dashboard/tests-bff/voice-playground.test.tsx"
-        ],
-        "snapshot_md5": "ded7d303fef6bfbc4deac90e67ac0f5b"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "openrouter-embeddings-routing": {
-      "title": "OpenRouter embeddings: facade routing + catalog modality classification",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "openrouter-embeddings",
-      "depends_on": [],
-      "created": "2026-07-01T04:21:27+00:00",
-      "updated": "2026-07-01T05:34:09+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "ca9a9251265c8f880ed79e7aeb4af8ee",
-        "tests": {
-          "apps/gateway/tests/openrouter_embeddings_routing/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/openrouter_embeddings_routing/test_catalog_source_embeddings.py": "62402c81f2279e632dc84f67dade547a",
-          "apps/gateway/tests/openrouter_embeddings_routing/test_embed_upstream.py": "6f836e91fe7331c36d205d2aa0e01996",
-          "apps/gateway/tests/openrouter_embeddings_routing/test_facade_routing.py": "ca2aa72b849f3e291b927bd8e5700556",
-          "apps/gateway/tests/openrouter_embeddings_routing/test_sync_catalog_embeddings.py": "7cf59f77a906dd8150d94015e6d17b05"
-        }
-      },
-      "scope": {
-        "declared": [
-          ".add/tasks/openrouter-embeddings-routing/src/"
-        ],
-        "snapshot_md5": "5a97f65ea0e779b6daee8f7421e507bf"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-01T05:33:04+00:00",
-            "reason": "scope_violation: task 'openrouter-embeddings-routing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/13696346104343648672 \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/15857191058005275921 (22 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     },
     "stream-alias-billing": {
       "title": "Streaming model-group alias must bill on served candidate, not the alias (B1 revenue leak)",
@@ -754,6 +52,585 @@
             "source": "scope"
           }
         ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "platform-tenant-directory": {
+      "title": "Platform tenant directory \u2014 superadmin list/search/view any tenant",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [],
+      "created": "2026-07-03T06:36:33+00:00",
+      "updated": "2026-07-03T07:12:44+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "d2ff46f41fb1311ebc8b1c6f661cbcfc",
+        "tests": {
+          "apps/gateway/tests/platform_tenant_directory/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/platform_tenant_directory/test_platform_tenant_directory.py": "3a67a75ebc326e32aa4a7d64450c97cf"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "50139056764df67a78747f64844d3c55"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-03T07:10:02+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/platform_tenant_directory/test_platform_tenant_directory.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "cross-tenant-config-budget": {
+      "title": "Cross-tenant config + budget view/edit",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [],
+      "created": "2026-07-03T07:16:57+00:00",
+      "updated": "2026-07-03T08:33:43+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2c55529bfbe606d051cffbb06fb6e569",
+        "tests": {
+          "apps/gateway/tests/cross_tenant_config_budget/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/cross_tenant_config_budget/conftest.py": "756738e13e8b040b372c015b02553081",
+          "apps/gateway/tests/cross_tenant_config_budget/test_cross_tenant_config_budget.py": "1ba213331436d6c69a8e421e6df05b17"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "ffb3ec51c569fb4810119485aaf3ae3a"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-03T08:29:02+00:00",
+            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (9 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-03T08:29:46+00:00",
+            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (34 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "cross-tenant-keys-members": {
+      "title": "Cross-tenant keys + members view/manage",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [],
+      "created": "2026-07-03T07:16:57+00:00",
+      "updated": "2026-07-03T08:48:03+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f303ee3b410ef6e5a1afd281335cdc93",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "a6b23b19cb5b866061149eb4f8f6a6fb"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "role-update-persistence-fix": {
+      "title": "Fix silent role-change rollback in self-service user-role update",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-03T09:21:04+00:00",
+      "updated": "2026-07-03T09:37:03+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "7a6819729ad467f1936ff206da1df990",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/infrastructure/users_repository.py",
+          "apps/gateway/tests/test_users_role.py",
+          "apps/gateway/tests/.pytest_cache",
+          "apps/gateway/tests/.ruff_cache",
+          "apps/gateway/tests/.coverage"
+        ],
+        "snapshot_md5": "f40f056e7f4953a45635bfa21e2cc000"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "admin-console-audit": {
+      "title": "Audit every cross-tenant admin action, attributing the real superadmin actor",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [
+        "platform-tenant-directory",
+        "cross-tenant-config-budget",
+        "cross-tenant-keys-members"
+      ],
+      "created": "2026-07-03T09:25:45+00:00",
+      "updated": "2026-07-03T11:10:56+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2a5b2a2216fd0936bbe274eaa881cb50",
+        "tests": {
+          "apps/gateway/tests/admin_console_audit/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/admin_console_audit/test_admin_console_audit.py": "22174ad2578c53b7bf365578b2abe5e2"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/audit/application/platform_audit.py",
+          "apps/gateway/src/gateway/tenants/api/platform_tenants_router.py",
+          "apps/gateway/src/gateway/tenants/api/platform_tenant_config_router.py",
+          "apps/gateway/src/gateway/keys/api/platform_keys_router.py",
+          "apps/gateway/src/gateway/tenants/api/platform_users_router.py",
+          "apps/gateway/tests/admin_console_audit/",
+          "apps/gateway/tests/cross_tenant_config_budget/test_cross_tenant_config_budget.py",
+          "apps/gateway/tests/cross_tenant_keys_members/test_cross_tenant_keys_members.py",
+          "apps/gateway/.coverage",
+          "apps/gateway/.pytest_cache/",
+          "apps/gateway/.ruff_cache/"
+        ],
+        "snapshot_md5": "02b6d2a7a39969c5e42799b835098cc0"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "admin-console-ui": {
+      "title": "Platform admin console \u2014 dashboard UI (directory + tenant detail)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-admin-console",
+      "depends_on": [],
+      "created": "2026-07-03T11:38:28+00:00",
+      "updated": "2026-07-03T14:42:41+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6351ff899a032835cf3f715d4145c190",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/(app)/app/platform/",
+          "apps/dashboard/components/platform/",
+          "apps/dashboard/components/ui/card.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/tests/platform-tenant-directory.test.tsx",
+          "apps/dashboard/tests/platform-tenant-detail.test.tsx",
+          "apps/dashboard/tests/platform-config-budget.test.tsx",
+          "apps/dashboard/tests/platform-keys.test.tsx",
+          "apps/dashboard/tests/platform-members.test.tsx",
+          "apps/dashboard/tests/platform-nav.test.tsx",
+          "apps/dashboard/tests/platform-card-variant.test.tsx",
+          "apps/dashboard/tests/platform-token-hygiene.test.tsx"
+        ],
+        "snapshot_md5": "7039004880ee44a6553a11929969c411"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "batch-observability-scaffolding": {
+      "title": "Batch observability scaffolding: window-latency + placeholder completion metrics",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-03T17:25:21+00:00",
+      "updated": "2026-07-04T08:22:24+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "bf1ec333b9b5cc21a392dadf8456ee71",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "94c9a96a63f8c730cf016967cfda6326"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "member-invite-issuance": {
+      "title": "Member invite issuance",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "team-member-invite",
+      "depends_on": [],
+      "created": "2026-07-03T00:00:00+00:00",
+      "updated": "2026-07-04T00:00:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f5837cf10697452ea0a84660cf4721fd",
+        "tests": {}
+      },
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-04T00:00:00+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "plan-catalog": {
+      "title": "Plan/tier data model \u2014 resolves platform-tenant-backed-usage scope",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-access-plan",
+      "depends_on": [],
+      "created": "2026-07-04T00:00:00+00:00",
+      "updated": "2026-07-04T00:00:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "bc70e59754c9b0044522eb31a56e067f",
+        "tests": {}
+      },
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-04T00:00:00+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "impersonation-session-lifecycle": {
+      "title": "Impersonation session lifecycle",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "tenant-impersonation",
+      "depends_on": [],
+      "created": "2026-07-03T00:00:00+00:00",
+      "updated": "2026-07-04T00:00:00+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0ccd6793805340fd1477dbdb23ad6c85",
+        "tests": {}
+      },
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-04T00:00:00+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "member-invite-acceptance": {
+      "title": "Member invite acceptance",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "team-member-invite",
+      "depends_on": [
+        "member-invite-issuance"
+      ],
+      "created": "2026-07-05T02:33:58+00:00",
+      "updated": "2026-07-05T05:17:46+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-05T04:07:57+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "abc516cba43f48cbdeaabaf2a641a88d",
+        "tests": {
+          "apps/gateway/tests/member_invite_acceptance/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/member_invite_acceptance/conftest.py": "e82cc55f9de55219f6ee2abfdf6ff7c4",
+          "apps/gateway/tests/member_invite_acceptance/test_member_invite_acceptance.py": "b9676f835ef616b3b76f5d9eb3c8c1c8"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/domain/entities.py",
+          "apps/gateway/src/gateway/tenants/domain/errors.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/invite_repository.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/invite_public_rate_limiter.py",
+          "apps/gateway/src/gateway/tenants/application/invite_accept_use_cases.py",
+          "apps/gateway/src/gateway/tenants/api/invite_accept_router.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/member_invite_acceptance/"
+        ],
+        "snapshot_md5": "78c021d43d710cb3b9afb0a130e7d58a"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "impersonation-ui": {
+      "title": "Impersonation UI",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "tenant-impersonation",
+      "depends_on": [
+        "impersonation-session-lifecycle"
+      ],
+      "created": "2026-07-05T02:34:31+00:00",
+      "updated": "2026-07-05T04:58:52+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-05T04:07:57+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "71a84d8580618517676a67b8620911a8",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/api/platform/impersonation/route.ts",
+          "apps/dashboard/app/api/platform/impersonation/sessions/[sessionId]/route.ts",
+          "apps/dashboard/app/api/gw/[...path]/route.ts",
+          "apps/dashboard/lib/hooks/use-impersonation-status.ts",
+          "apps/dashboard/lib/impersonation-cookie.ts",
+          "apps/dashboard/components/platform/ImpersonationBanner.tsx",
+          "apps/dashboard/components/platform/PlatformMembersTab.tsx",
+          "apps/dashboard/components/platform/PlatformTenantDetail.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/components/dashboard-shell.tsx",
+          "apps/dashboard/tests-bff/impersonation-mint-end-status-routes.test.ts",
+          "apps/dashboard/tests-bff/impersonation-gw-proxy-cookie-precedence.test.ts",
+          "apps/dashboard/tests/platform-impersonation-banner.test.tsx",
+          "apps/dashboard/tests/platform-members-impersonate-action.test.tsx",
+          "apps/dashboard/tests/mocks/handlers.ts",
+          "apps/dashboard/tests-bff/mocks/handlers.ts"
+        ],
+        "snapshot_md5": "d0637cb4ec5e5f32078177f0ba98bcea"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "impersonation-live-session-guard": {
+      "title": "Impersonation live session guard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "tenant-impersonation",
+      "depends_on": [
+        "impersonation-session-lifecycle"
+      ],
+      "created": "2026-07-05T02:34:31+00:00",
+      "updated": "2026-07-05T06:00:38+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-05T04:07:57+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "3e5ffecd29151f478e3a92c21a80fbe3",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/domain/ports.py",
+          "apps/gateway/src/gateway/tenants/domain/authz.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/impersonation_session_guard.py",
+          "apps/gateway/src/gateway/keys/api/deps.py",
+          "apps/gateway/src/gateway/catalog/api/deps.py",
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/gateway/src/gateway/tenants/application/use_cases.py",
+          "apps/gateway/src/gateway/tenants/api/deps.py",
+          "apps/gateway/src/gateway/agent_oauth/api/device_approval_router.py",
+          "apps/gateway/src/gateway/auth/api/oidc_admin_router.py",
+          "apps/gateway/src/gateway/proxy/api/provider_keys_admin_router.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/tests/impersonation_live_session_guard/",
+          "apps/gateway/src/gateway/tenants/api/router.py",
+          "apps/gateway/src/gateway/proxy/api/presets_admin_router.py",
+          "apps/gateway/tests/presets_admin_surface/test_presets_admin_surface.py"
+        ],
+        "snapshot_md5": "9f088f59a5127b55cebe21de4b331d62"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-05T05:59:58+00:00",
+            "reason": "scope_violation: task 'impersonation-live-session-guard' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (3 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "plan-admin-ui": {
+      "title": "Plan admin UI",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-access-plan",
+      "depends_on": [
+        "plan-catalog"
+      ],
+      "created": "2026-07-05T02:34:35+00:00",
+      "updated": "2026-07-05T04:54:57+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-05T04:07:57+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8ee98b9fd62a0333b0910a10f89d0911",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/platform/PlatformPlanCatalog.tsx",
+          "apps/dashboard/components/platform/PlatformPlanTab.tsx",
+          "apps/dashboard/app/(app)/app/platform/plans/page.tsx",
+          "apps/dashboard/components/ui/app-shell.tsx",
+          "apps/dashboard/components/platform/PlatformTenantDetail.tsx",
+          "apps/dashboard/tests/platform-plan-catalog.test.tsx",
+          "apps/dashboard/tests/platform-plan-tab.test.tsx"
+        ],
+        "snapshot_md5": "f94c3860069101ef0a2567604bd75c03"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-05T04:50:03+00:00",
+            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/platform/plans/page.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanCatalog.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanTab.tsx \u00b7 apps/dashboard/components/platform/PlatformTenantDetail.tsx \u00b7 apps/dashboard/components/ui/app-shell.tsx (10 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-05T04:53:47+00:00",
+            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/platform/plans/page.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanCatalog.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanTab.tsx \u00b7 apps/dashboard/components/platform/PlatformTenantDetail.tsx \u00b7 apps/dashboard/components/ui/app-shell.tsx (10 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "plan-seat-cap": {
+      "title": "Plan seat cap enforcement",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "platform-access-plan",
+      "depends_on": [
+        "plan-catalog",
+        "member-invite-acceptance"
+      ],
+      "created": "2026-07-05T02:34:35+00:00",
+      "updated": "2026-07-05T02:34:35+00:00"
+    },
+    "declare-components-registry": {
+      "title": "Declare the components registry for gateway + dashboard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-06T08:08:23+00:00",
+      "updated": "2026-07-06T08:15:14+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "31d1a929f6a5845ef667e5679974b0df",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/declare-components-registry/src/"
+        ],
+        "snapshot_md5": "60a3d8ad1ce05a6789d0ce3e4d628606"
       },
       "gate_actor": {
         "name": "Tin Dang",
@@ -963,160 +840,53 @@
     }
   },
   "milestones": {
-    "v31": {
-      "title": "Operator-wide reconciliation + UI\u2194BE coverage",
-      "goal": "a platform operator reads cross-tenant reconciliation drift through an authorized ops-auth endpoint, and every implemented backend control-plane capability has a dashboard surface",
+    "platform-admin-console": {
+      "title": "Platform Admin Console",
+      "goal": "A superadmin can view and fully manage any tenant (config, budget, keys, members) through a dedicated, fully audited cross-tenant admin surface",
       "stage": "production",
-      "status": "done",
-      "created": "2026-06-22T09:31:42+00:00",
-      "updated": "2026-06-23T02:00:14+00:00"
+      "status": "active",
+      "created": "2026-07-02T15:53:53+00:00",
+      "updated": "2026-07-02T15:53:53+00:00"
     },
-    "v51": {
-      "title": "Artifacts on real object storage (MinIO)",
-      "goal": "An artifact's bytes are persisted to and served from a real self-hosted object store (MinIO), replacing inline Postgres BYTEA, with honest-degrade to inline storage when the store is unconfigured.",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-26T07:45:35+00:00",
-      "updated": "2026-06-26T09:08:28+00:00"
-    },
-    "v54": {
-      "title": "UI refinement \u2014 polished, responsive, scalable app pages",
-      "goal": "Every authenticated dashboard page meets a refreshed UI standard: visually polished, structurally consistent, responsive across screen sizes, and usable at scale.",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-28T06:55:05+00:00",
-      "updated": "2026-06-28T14:47:36+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-06-28T06:57:35+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      },
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "voice-playground": {
-      "title": "Voice Playground",
-      "goal": "",
-      "stage": "mvp",
-      "status": "done",
-      "created": "2026-06-30T10:55:41+00:00",
-      "updated": "2026-06-30T12:33:52+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-06-30T10:57:02+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      },
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "memory-playground": {
-      "title": "Memory Playground",
-      "goal": "The Memory workspace becomes a Console-grade memory library: searchable/sortable semantic memory with a detail inspector and add/delete, over the existing /v1/memories endpoints.",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-30T11:08:38+00:00",
-      "updated": "2026-06-30T12:07:38+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "artifacts-playground": {
-      "title": "Artifacts Playground",
-      "goal": "The Artifacts workspace becomes a Console-grade artifact library/file-manager: typed list with search, inline image/text/JSON preview, drag-drop upload, download and delete, over the existing /v1/artifacts endpoints.",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-30T11:08:38+00:00",
-      "updated": "2026-06-30T12:12:24+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "vision-playground": {
-      "title": "Vision Playground",
-      "goal": "The Vision workspace becomes a Console-grade multimodal inspector: media preview, a multi-turn Q&A thread with markdown answers, and a model picker, over /v1/chat/completions image/video content parts.",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-30T11:08:38+00:00",
-      "updated": "2026-06-30T12:14:08+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "video-playground": {
-      "title": "Video Playground",
-      "goal": "The Video workspace becomes a Console-grade generation studio: prompt+params composer, a job gallery with rich status, inline video preview on success and download, over the existing async /v1/video/generations jobs.",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-06-30T11:08:39+00:00",
-      "updated": "2026-06-30T12:15:37+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "proxy-correctness": {
-      "title": "Proxy Correctness",
-      "goal": "Every gateway provider adapter maps provider responses to the OpenAI-compatible wire shape faithfully per the providers' published API docs \u2014 closing the real docs-vs-code deltas found by the adapter audit (finish_reason/stop_reason completeness, Anthropic in-stream error surfacing, OpenAI STT passthrough), with the Bedrock SigV4 'CRITICAL' recorded as a verified false-positive.",
-      "stage": "mvp",
-      "status": "done",
-      "created": "2026-06-30T12:19:24+00:00",
-      "updated": "2026-06-30T12:48:20+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-06-30T12:20:11+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      },
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "v56": {
-      "title": "Per-tenant model presets",
-      "goal": "A tenant admin defines named presets that remap model names (opus to gpt5-5), selects among multiple presets via a name: prefix (cheap:opus), and requests resolve the preset to a concrete model before the router while the existing fallback seam stays byte-identical.",
+    "tenant-impersonation": {
+      "title": "Tenant Impersonation",
+      "goal": "A superadmin can act as a specific tenant user in a time-boxed, fully audited impersonation session where the real actor stays distinguishable in every downstream record",
       "stage": "production",
       "status": "queued",
-      "created": "2026-06-30T12:11:18+00:00",
-      "updated": "2026-06-30T12:11:18+00:00"
+      "created": "2026-07-02T15:53:53+00:00",
+      "updated": "2026-07-02T15:53:53+00:00"
     },
-    "openrouter-embeddings": {
-      "title": "OpenRouter embeddings routing",
-      "goal": "A client can call POST /v1/embeddings with an OpenRouter-hosted embedding model (e.g. google/gemini-embedding-2) and get a real embedding back, billed correctly \u2014 the facade forwards /embeddings instead of hardcoding /chat/completions, and catalog sync classifies OpenRouter embedding models correctly instead of defaulting every row to modality=chat.",
+    "platform-key-default": {
+      "title": "Platform Key Default Credential",
+      "goal": "A tenant with no configured BYOK key automatically uses the platform tenant credential by default, and a configured tenant key takes precedence once present",
       "stage": "production",
-      "status": "done",
-      "created": "2026-07-01T04:20:38+00:00",
-      "updated": "2026-07-01T05:34:49+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
+      "status": "queued",
+      "created": "2026-07-02T15:53:54+00:00",
+      "updated": "2026-07-02T15:53:54+00:00"
+    },
+    "platform-access-plan": {
+      "title": "Platform Access Subscription Plan",
+      "goal": "A tenant can subscribe to a metered, rate-limited, fully audited plan governing platform-tenant-backed usage",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-02T15:53:54+00:00",
+      "updated": "2026-07-02T15:53:54+00:00"
+    },
+    "v58": {
+      "title": "Batch-discounted chat completions: provider integration",
+      "goal": "a tenant can process a set of chat-completion requests as one discounted batch job instead of many synchronous calls, with the existing response cache still applied per item \u2014 real OpenAI/Anthropic Batch API submission, cache pre-filtering, and batch-discount billing",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-03T16:30:16+00:00",
+      "updated": "2026-07-03T16:30:16+00:00"
+    },
+    "team-member-invite": {
+      "title": "Team Member Invite",
+      "goal": "A tenant owner/admin can invite a new colleague by email into their own tenant with a chosen role, and that colleague can accept the invite and set their own password \u2014 without requiring SSO/domain-mapping to be configured",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-07-03T16:21:50+00:00",
+      "updated": "2026-07-03T16:21:50+00:00"
     },
     "enterprise-hardening": {
       "title": "Enterprise Hardening",
@@ -1137,7 +907,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-02T09:23:28+00:00",
+  "updated": "2026-07-06T12:01:14+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1832,28 +1602,202 @@
         "deterministic-test-isolation"
       ],
       "archived": "2026-07-01"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "catalog-pricing-detail",
+      "task_slugs": [
+        "catalog-pricing-fields"
+      ],
+      "tasks": 1,
+      "title": "Catalog pricing detail (OpenAI-compatible per-1M cost fields)"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "minimax-provider",
+      "task_slugs": [
+        "minimax-adapter-registry",
+        "minimax-catalog-seed",
+        "minimax-live-verify"
+      ],
+      "tasks": 3,
+      "title": "MiniMax provider integration"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "v31",
+      "task_slugs": [
+        "operator-wide-reconciliation",
+        "sso-login-button",
+        "alerts-events-viewer",
+        "catalog-sync-trigger",
+        "upstream-health-view",
+        "ratelimit-counter-view"
+      ],
+      "tasks": 6,
+      "title": "Operator-wide reconciliation + UI\u2194BE coverage"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "v51",
+      "task_slugs": [
+        "object-store-port",
+        "artifacts-s3-live-verify",
+        "artifacts-s3-persistence"
+      ],
+      "tasks": 3,
+      "title": "Artifacts on real object storage (MinIO)"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "v54",
+      "task_slugs": [
+        "model-catalog-paging-search",
+        "responsive-app-shell",
+        "aurora-polish-tokens",
+        "monitoring-pages-redesign",
+        "governance-pages-redesign"
+      ],
+      "tasks": 5,
+      "title": "UI refinement \u2014 polished, responsive, scalable app pages"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "voice-playground",
+      "task_slugs": [
+        "voice-playground-shell",
+        "voice-mic-capture-deferrals"
+      ],
+      "tasks": 2,
+      "title": "Voice Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "memory-playground",
+      "task_slugs": [
+        "memory-console-rebuild"
+      ],
+      "tasks": 1,
+      "title": "Memory Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "artifacts-playground",
+      "task_slugs": [
+        "artifacts-console-rebuild"
+      ],
+      "tasks": 1,
+      "title": "Artifacts Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "vision-playground",
+      "task_slugs": [
+        "vision-console-rebuild"
+      ],
+      "tasks": 1,
+      "title": "Vision Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "video-playground",
+      "task_slugs": [
+        "video-console-rebuild"
+      ],
+      "tasks": 1,
+      "title": "Video Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "proxy-correctness",
+      "task_slugs": [
+        "adapter-correctness-fixes"
+      ],
+      "tasks": 1,
+      "title": "Proxy Correctness"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "openrouter-embeddings",
+      "task_slugs": [
+        "openrouter-embeddings-routing"
+      ],
+      "tasks": 1,
+      "title": "OpenRouter embeddings routing"
+    },
+    {
+      "slug": "gpt-realtime-pricing",
+      "title": "GPT-Realtime cache-discount pricing",
+      "tasks": 3,
+      "task_slugs": [
+        "gpt-realtime-pricing-fields",
+        "gpt-realtime-relay-billing",
+        "gpt-realtime-schema-migration"
+      ],
+      "archived": "2026-07-02"
+    },
+    {
+      "slug": "v56",
+      "title": "Per-tenant model presets",
+      "tasks": 5,
+      "task_slugs": [
+        "tenant-preset-store",
+        "preset-resolution-ingress",
+        "preset-admin-surface",
+        "preset-capability-validation",
+        "chat-modality-guard"
+      ],
+      "archived": "2026-07-02"
+    },
+    {
+      "slug": "platform-identity",
+      "title": "Platform Identity Foundation",
+      "tasks": 5,
+      "task_slugs": [
+        "platform-tenant-seed",
+        "superadmin-role",
+        "ops-platform-job-identity",
+        "superadmin-login",
+        "superadmin-audit-foundation"
+      ],
+      "archived": "2026-07-03"
+    },
+    {
+      "slug": "v57",
+      "title": "Batch-discounted chat completions",
+      "tasks": 5,
+      "task_slugs": [
+        "batch-job-store",
+        "batch-dashboard-surface",
+        "batch-auto-grouping",
+        "batch-window-grouping",
+        "batch-claim-drain-del"
+      ],
+      "archived": "2026-07-03"
+    },
+    {
+      "slug": "platform-console-flat-redesign",
+      "title": "Platform console flat/borderless visual redesign",
+      "tasks": 5,
+      "task_slugs": [
+        "console-flat-visual-pass",
+        "tenant-overview-strip",
+        "overview-strip-plan-display-name",
+        "command-palette",
+        "tenant-activity-tab"
+      ],
+      "archived": "2026-07-06"
     }
   ],
   "active_milestones": [
-    "v54",
-    "voice-playground",
-    "memory-playground",
-    "artifacts-playground",
-    "vision-playground",
-    "video-playground",
-    "proxy-correctness",
-    "openrouter-embeddings",
+    "platform-admin-console",
     "enterprise-hardening"
   ],
   "active_tasks": {
-    "v54": "ai-feature-pages-redesign",
-    "voice-playground": "voice-mic-capture-deferrals",
-    "memory-playground": "memory-console-rebuild",
-    "artifacts-playground": "artifacts-console-rebuild",
-    "vision-playground": "vision-console-rebuild",
-    "video-playground": "video-console-rebuild",
-    "proxy-correctness": "adapter-correctness-fixes",
-    "openrouter-embeddings": "stream-alias-billing",
+    "platform-admin-console": "declare-components-registry",
+    "team-member-invite": "member-invite-acceptance",
+    "tenant-impersonation": "impersonation-live-session-guard",
+    "platform-access-plan": "plan-seat-cap",
     "enterprise-hardening": "tiered-rate-cards"
   },
   "todos": [
@@ -1879,6 +1823,12 @@
       "id": 4,
       "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
       "created": "2026-06-30T10:57:02+00:00",
+      "status": "open"
+    },
+    {
+      "id": 5,
+      "text": "DialogContent (components/ui/dialog.tsx) has no entrance/exit animation of its own -- only DialogOverlay fades. Every Dialog consumer (AppShell mobile nav sheet, command-palette) snaps the panel open/closed. Existing motion system (Reveal in motion.tsx + the global reduced-motion net in globals.css) already establishes the right pattern (motion-safe: opt-in, unconditional render, global reduced-motion backstop) -- extending DialogContent to match is a good small follow-up. Also worth revisiting: tenant-overview-strip's 4 tiles currently just appear as each query resolves, no progressive-reveal of their own. Raised by Tin 2026-07-06; deferred rather than touching the shared dialog.tsx primitive mid-build of command-palette.",
+      "created": "2026-07-06T09:35:41+00:00",
       "status": "open"
     }
   ]

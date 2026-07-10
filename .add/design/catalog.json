@@ -72,6 +72,15 @@
         "ring": { "type": "token", "token": "color" }
       }
     },
+    "Textarea": {
+      "description": "Multi-line free-text input (autosizing or fixed) for prompt/JSONL/long-form entry. Reused from VideoWorkspace's prompt field. (Briefly registered @ batches-workspace as a second consumer 2026-07-03; that composer was retired the same day per a scope correction — see DESIGN.md — so VideoWorkspace remains the sole consumer.)",
+      "props": {
+        "placeholder": { "type": "string" },
+        "border": { "type": "token", "token": "color" },
+        "ring": { "type": "token", "token": "color" },
+        "font": { "type": "enum", "values": ["sans", "mono"] }
+      }
+    },
     "AppSidebar": {
       "description": "Collapsible navigation rail — brand header, grouped items, user footer.",
       "hasChildren": true,
