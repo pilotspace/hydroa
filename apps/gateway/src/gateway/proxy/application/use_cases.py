@@ -1860,11 +1860,15 @@ class CompletionUseCase:
             # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
             # Must run BEFORE post-call guardrail masking so the stored body is unmasked.
             # output-schema-validation (M9): engaged requests bypass the write tier too.
+            # tenant-retention-zdr TASK.md §3 M6: zdr_enabled=true silently skips BOTH the
+            # exact response cache and the vector-cache store (both live inside this same
+            # gated block) — the proxied completion itself is unaffected either way.
             if (
                 cache is not None
                 and cache_enabled
                 and status == 200
                 and not _output_validation_engaged
+                and not getattr(authz, "zdr_enabled", False)
             ):
                 from gateway.proxy.infrastructure.response_cache import (
                     build_cache_key,

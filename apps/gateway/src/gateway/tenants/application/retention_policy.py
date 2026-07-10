@@ -1,0 +1,132 @@
+"""Tenant-scoped retention policy: per-tenant window override + Zero-Data-Retention (ZDR).
+
+Contract (tenant-retention-zdr TASK.md §3 — FROZEN @ v1):
+  - is_zdr(session, tenant_id) -> bool: fresh per-call read of tenants.zdr_enabled, never
+    cached. Published read port for the `payload-capture-store` sibling task to consume
+    once it grounds (TASK.md §0 "Ruled OUT" note / §7 Spec delta) — its shape is pinned.
+  - raise_if_zdr(session, tenant_id): raises 403 ERR_ZDR_PAYLOAD_BLOCKED iff is_zdr() is
+    True. Called as the FIRST line of each of the five gated repository choke points
+    (ArtifactRepository.create, ConversationRepository.create/append_message,
+    MemoryRepository.create, BatchJobRepository.create, VideoJobRepository.create) —
+    fail-closed, checked BEFORE anything else in that call happens (§5 Safety rule).
+  - effective_window_days(table, tenant_window_days, settings) -> int: the per-table
+    effective retention window shown by GET /admin/retention-policy and consumed by the
+    RetentionSweeper's new per-tenant passes.
+
+Table vocabulary:
+  usage_records / alert_events   — the 2 pre-existing swept tables (data-retention-
+    controls v1). Each already has its OWN operator Settings knob; a tenant override can
+    only SHORTEN below that knob, never lengthen past it, because the pre-existing
+    unconditional sweep (RetentionSweeper's 3 original DELETEs) stays untouched and
+    remains an outer bound regardless of any tenant override.
+  artifacts / conversations / memories / batch_job_items / video_generation_jobs — the 5
+    newly-swept payload tables. No prior operator per-table knob exists for them, so a
+    tenant override (or, absent, the single operator ceiling) governs each standalone.
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any, Protocol
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from gateway.core.error_catalog import ZDR_PAYLOAD_BLOCKED
+
+# The 5 newly-swept payload tables (tenant-retention-zdr TASK.md §3 M3).
+NEW_PAYLOAD_TABLES: tuple[str, ...] = (
+    "artifacts",
+    "conversations",
+    "memories",
+    "batch_job_items",
+    "video_generation_jobs",
+)
+
+# The 2 pre-existing swept tables (data-retention-controls v1) — each carries its own
+# operator Settings knob that a tenant override can only shorten below, never lengthen
+# past (see module docstring).
+EXISTING_SWEPT_TABLES: tuple[str, ...] = ("usage_records", "alert_events")
+
+# Every table window_days can apply to (M3) — audit_events is deliberately excluded by
+# construction (R4): no field, no code path, ever touches it.
+ALL_SWEPT_TABLES: tuple[str, ...] = EXISTING_SWEPT_TABLES + NEW_PAYLOAD_TABLES
+
+
+class _RetentionSettings(Protocol):
+    """Minimal protocol for the Settings fields this module reads."""
+
+    retention_usage_records_days: int
+    retention_alert_events_days: int
+    retention_tenant_window_ceiling_days: int
+
+
+async def is_zdr(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    """Fresh per-call read of tenants.zdr_enabled — never cached.
+
+    Returns False for an unknown tenant_id (fail-open on lookup; the actual
+    authorization decision for an unknown tenant is made elsewhere, e.g. the
+    retention-policy router's own 404 TENANT_NOT_FOUND).
+    """
+    row = (
+        await session.execute(
+            text("SELECT zdr_enabled FROM tenants WHERE id = :tid"),
+            {"tid": str(tenant_id)},
+        )
+    ).first()
+    return bool(row[0]) if row is not None else False
+
+
+async def raise_if_zdr(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Raise 403 ERR_ZDR_PAYLOAD_BLOCKED iff the tenant currently has zdr_enabled=true.
+
+    Fresh per-call — no caching beyond this one SELECT. Call as the FIRST line of every
+    gated repository write (fail-closed ordering: block new writes before anything else
+    in that call happens — TASK.md §5 Safety rule).
+    """
+    if await is_zdr(session, tenant_id):
+        raise ZDR_PAYLOAD_BLOCKED.exc()
+
+
+def effective_window_days(
+    table: str,
+    *,
+    tenant_window_days: int | None,
+    settings: _RetentionSettings,
+) -> int:
+    """The effective retention window (days) for one swept table (§3 CONTRACT).
+
+    usage_records / alert_events: an existing operator per-table default is an upper
+    bound the tenant override can only shorten — min(tenant_window, operator_default)
+    when an override is set, else the operator_default alone (byte-identical to the
+    pre-task default state).
+
+    The five newly-swept payload tables have no prior operator per-table knob: the
+    tenant override (or, absent, the single operator ceiling) governs standalone.
+    """
+    if table == "usage_records":
+        operator_default = settings.retention_usage_records_days
+    elif table == "alert_events":
+        operator_default = settings.retention_alert_events_days
+    else:
+        operator_default = settings.retention_tenant_window_ceiling_days
+
+    if tenant_window_days is None:
+        return int(operator_default)
+    if table in EXISTING_SWEPT_TABLES:
+        return min(int(tenant_window_days), int(operator_default))
+    return int(tenant_window_days)
+
+
+def effective_window_map(
+    *,
+    tenant_window_days: int | None,
+    settings: Any,
+) -> dict[str, int]:
+    """The full {table: effective_window_days} map for every swept table (M1's GET shape)."""
+    return {
+        table: effective_window_days(
+            table, tenant_window_days=tenant_window_days, settings=settings
+        )
+        for table in ALL_SWEPT_TABLES
+    }

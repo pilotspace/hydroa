@@ -21,6 +21,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.memory.infrastructure.orm import MemoryRow
+from gateway.tenants.application.retention_policy import raise_if_zdr
 
 
 class MemoryRepository:
@@ -37,7 +38,12 @@ class MemoryRepository:
         content: str,
         meta: dict[str, object] | None,
     ) -> MemoryRow:
-        """Insert a new memory row (embedding NULL initially) and return it."""
+        """Insert a new memory row (embedding NULL initially) and return it.
+
+        Fail-closed ZDR gate (tenant-retention-zdr TASK.md §3 M5): raises 403
+        ERR_ZDR_PAYLOAD_BLOCKED, checked fresh, BEFORE the row is constructed.
+        """
+        await raise_if_zdr(self._session, tenant_id)
         row = MemoryRow(
             tenant_id=tenant_id,
             key_id=key_id,

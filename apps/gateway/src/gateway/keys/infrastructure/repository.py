@@ -157,6 +157,7 @@ class SqlAlchemyApiKeyRepository:
                 TenantRow.guardrail_configs,
                 TenantRow.semantic_cache_enabled,
                 TenantRow.batch_grouping_enabled,
+                TenantRow.zdr_enabled,
             )
             .outerjoin(TeamRow, ApiKeyRow.team_id == TeamRow.id)
             .outerjoin(TenantRow, ApiKeyRow.tenant_id == TenantRow.id)
@@ -172,6 +173,7 @@ class SqlAlchemyApiKeyRepository:
             tenant_guardrail_configs,
             tenant_semantic_cache_enabled,
             tenant_batch_grouping_enabled,
+            tenant_zdr_enabled,
         ) = result
         # Effective cache = key-level OR tenant-level (both default false)
         effective_cache = bool(getattr(row, "cache_enabled", False)) or bool(
@@ -223,6 +225,7 @@ class SqlAlchemyApiKeyRepository:
 
         effective_semantic_cache = bool(tenant_semantic_cache_enabled or False)
         effective_batch_grouping = bool(tenant_batch_grouping_enabled or False)
+        effective_zdr = bool(tenant_zdr_enabled or False)
 
         return ApiKey(
             id=row.id,
@@ -245,6 +248,7 @@ class SqlAlchemyApiKeyRepository:
             semantic_cache_enabled=effective_semantic_cache,
             batch_grouping_enabled=effective_batch_grouping,
             guardrail_policy_source=guardrail_policy_source,
+            zdr_enabled=effective_zdr,
         )
 
     async def update(

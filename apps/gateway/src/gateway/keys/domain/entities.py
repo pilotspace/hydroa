@@ -50,6 +50,9 @@ class ApiKey:
     # configured). Populated in get_by_id() at zero extra DB cost; threaded onward
     # into AuthzResult.policy_source for the sibling guardrail-analytics task.
     guardrail_policy_source: Literal["key", "tenant", "none"] = "none"
+    # tenant-retention-zdr additive field (tenant-retention-zdr TASK.md §3, FROZEN @ v1)
+    # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
+    zdr_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,3 +120,10 @@ class AuthzResult:
     # resolved from. Default "none" preserves byte-identical construction for every
     # existing AuthzResult(...) call site that predates this task.
     policy_source: Literal["key", "tenant", "none"] = "none"
+    # tenant-retention-zdr additive field (tenant-retention-zdr TASK.md §3, FROZEN @ v1)
+    # Populated at auth time from tenants.zdr_enabled via the existing LEFT JOIN tenants.
+    # Default False = ZDR inactive. M5's five gated repositories re-check this FRESH per
+    # call (gateway.tenants.application.retention_policy.raise_if_zdr) rather than trust
+    # this value alone — this field is used for M6 (cache-write skip), where the same
+    # per-request freshness the LEFT JOIN already provides is sufficient.
+    zdr_enabled: bool = False

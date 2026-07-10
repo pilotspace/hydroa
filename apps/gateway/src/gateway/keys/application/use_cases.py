@@ -316,6 +316,7 @@ class AuthzUseCase:
             semantic_cache_enabled=getattr(row, "semantic_cache_enabled", False),
             batch_grouping_enabled=getattr(row, "batch_grouping_enabled", False),
             policy_source=getattr(row, "guardrail_policy_source", "none"),
+            zdr_enabled=getattr(row, "zdr_enabled", False),
         )
 
 

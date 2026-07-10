@@ -749,6 +749,27 @@ BATCH_ITEMS_TOO_MANY = ErrorSpec(
     422, "batch_items_too_many", "line_items exceeds the maximum allowed"
 )
 
+# ---------------------------------------------------------------------------
+# Tenant retention window + Zero-Data-Retention (tenant-retention-zdr task)
+# ---------------------------------------------------------------------------
+
+#: PUT /admin/retention-policy — window_days is <= 0, non-integer, or exceeds
+#: operator_ceiling_days (Settings.retention_tenant_window_ceiling_days).
+RETENTION_WINDOW_INVALID = ErrorSpec(
+    422,
+    "ERR_RETENTION_WINDOW_INVALID",
+    "window_days must be a positive integer within the operator ceiling",
+)
+
+#: A write to one of the 5 gated payload repositories while tenants.zdr_enabled=true
+#: (read fresh per call, see gateway.tenants.application.retention_policy.raise_if_zdr).
+#: The row is never created — not partially written, not written-then-deleted.
+ZDR_PAYLOAD_BLOCKED = ErrorSpec(
+    403,
+    "ERR_ZDR_PAYLOAD_BLOCKED",
+    "Zero-Data-Retention is enabled for this tenant; payload writes are blocked",
+)
+
 #: A line item failed validation: missing model, missing/empty messages, or a
 #: custom_id that duplicates another item in the same submission. The whole
 #: submission is atomic — no row is created on this reject.

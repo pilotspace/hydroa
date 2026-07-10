@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.tenants.application.retention_policy import raise_if_zdr
 from gateway.video.infrastructure.orm import VideoGenerationJobRow
 
 # Terminal statuses — a job in one of these states must not be re-transitioned.
@@ -43,7 +44,12 @@ class VideoJobRepository:
         prompt: str,
         params: dict[str, object] | None,
     ) -> VideoGenerationJobRow:
-        """Insert a new job row (status=queued) and return it (with server defaults populated)."""
+        """Insert a new job row (status=queued) and return it (with server defaults populated).
+
+        Fail-closed ZDR gate (tenant-retention-zdr TASK.md §3 M5): raises 403
+        ERR_ZDR_PAYLOAD_BLOCKED, checked fresh, BEFORE the row is constructed.
+        """
+        await raise_if_zdr(self._session, tenant_id)
         row = VideoGenerationJobRow(
             tenant_id=tenant_id,
             key_id=key_id,
