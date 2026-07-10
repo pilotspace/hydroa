@@ -361,6 +361,16 @@ class Settings(BaseSettings):
     # no lookup, no rejection; frozen router + every existing proxy/audio test unchanged).
     # unsupported-input-guard TASK.md §3 (knob frozen default-OFF).
     input_modality_guard_enabled: bool = Field(default=False)
+
+    # GATEWAY_OUTPUT_VALIDATION_ENABLED — when True (AND the request carries
+    # validate_output:true), a response_format:json_schema completion's
+    # message.content is validated against the caller's schema; a mismatch fires
+    # ONE bounded retry (the identical routed call) before a terminal 422
+    # ERR_OUTPUT_SCHEMA_VALIDATION_FAILED. Default False = opt-in: no schema parse,
+    # no extra call, no cache-bypass, byte-identical to the v11 translate-don't-
+    # enforce path. SUPERSEDES v11 ONLY when opted in.
+    # output-schema-validation TASK.md §3 (knob frozen default-OFF).
+    output_validation_enabled: bool = Field(default=False)
     # GATEWAY_OPENROUTER_COST_RECOVERY_ENABLED — when True, an OpenRouter stream aborted by
     # client disconnect schedules an inline fire-and-forget authoritative-cost recovery
     # (OpenRouterCostRecoveryService) from the disconnect handler. Default False = opt-in

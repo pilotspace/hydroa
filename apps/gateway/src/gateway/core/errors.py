@@ -15,6 +15,7 @@ class ProblemError(Exception):
         title: str,
         detail: str | None = None,
         headers: dict[str, str] | None = None,
+        extra: dict[str, object] | None = None,
     ) -> None:
         super().__init__(code)
         self.status = status
@@ -22,9 +23,19 @@ class ProblemError(Exception):
         self.title = title
         self.detail = detail
         self.headers = headers or {}
+        # output-schema-validation (M13): additive structured-data carrier (e.g.
+        # raw_output / validation_errors on the terminal 422). None for every
+        # OTHER existing raise site — byte-identical by construction.
+        self.extra = extra
 
 
-def problem_response(status: int, code: str, title: str, detail: str | None = None) -> JSONResponse:
+def problem_response(
+    status: int,
+    code: str,
+    title: str,
+    detail: str | None = None,
+    extra: dict[str, object] | None = None,
+) -> JSONResponse:
     body: dict[str, object] = {
         "type": "about:blank",
         "title": title,
@@ -33,13 +44,15 @@ def problem_response(status: int, code: str, title: str, detail: str | None = No
     }
     if detail is not None:
         body["detail"] = detail
+    if extra:
+        body.update(extra)
     return JSONResponse(status_code=status, content=body, media_type=PROBLEM_CONTENT_TYPE)
 
 
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProblemError)
     async def on_problem(_request: Request, exc: ProblemError) -> Response:  # pyright: ignore[reportUnusedFunction]  — registered via decorator; not called directly
-        resp = problem_response(exc.status, exc.code, exc.title, exc.detail)
+        resp = problem_response(exc.status, exc.code, exc.title, exc.detail, exc.extra)
         for key, val in exc.headers.items():
             resp.headers[key] = val
         return resp

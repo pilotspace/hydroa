@@ -39,10 +39,14 @@ from gateway.core.error_catalog import (
     BANDWIDTH_EXHAUSTED,
     BUDGET_EXCEEDED,
     GUARDRAIL_BLOCKED,
+    INVALID_JSON_SCHEMA,
     MODEL_DISABLED,
     MODEL_MODALITY_MISMATCH,
     MODEL_NOT_ALLOWED,
     MODEL_UNKNOWN,
+    OUTPUT_SCHEMA_VALIDATION_FAILED,
+    OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA,
+    OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM,
     PAYLOAD_MESSAGES_REQUIRED,
     PAYLOAD_MODEL_REQUIRED,
     PRESET_NOT_FOUND,
@@ -68,6 +72,11 @@ from gateway.proxy.domain.guardrail_tenant_context import (
     set_guardrail_tenant_id,
 )
 from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
+from gateway.proxy.domain.output_validation import (
+    check_schema_well_formed,
+    truncate_raw_output,
+    validate_model_output,
+)
 from gateway.proxy.domain.ports import (
     BatchDiversionPort,
     BatchDivertedStream,
@@ -89,6 +98,7 @@ from gateway.proxy.domain.provider_credentials import (
     BYOK_PROVIDERS,
     ProviderKeyMissing,
 )
+from gateway.proxy.domain.response_format_translation import extract_response_format
 from gateway.rate_limits.application.passthrough import (
     PassthroughBandwidthBucket,
     PassthroughRateLimiter,
@@ -438,6 +448,121 @@ def _fire_record_with_raw(
     )
 
 
+async def _run_output_validation_retry(
+    *,
+    authz: AuthzResult,
+    body: dict[str, Any],
+    upstream: CompletionUpstream,
+    usage_recorder: UsageRecorder,
+    model_router: FallbackModelRouter | None,
+    model_id: str,
+    schema: dict[str, Any],
+    status: int,
+    response_body: dict[str, Any],
+    served_model_id: str,
+) -> tuple[int, dict[str, Any], str, str | None]:
+    """M5-M8 bounded-retry loop, entered only when attempt 1 (already 200) failed
+    schema validation. Extracted as its own function (not inlined in complete())
+    so CompletionUseCase.complete() stays within pyright's control-flow complexity
+    limit — the mega-method already carries ~15 branches of its own.
+
+    Returns (status, response_body, served_model_id, usage_source_final) for the
+    caller to resume its existing flow with — usage_source_final is None (default
+    "frame") on a validated success, else "validation_retry" for the caller's own
+    final billing call.
+
+    Raises ProblemError exactly like complete()'s own upstream-call handling
+    (429/502) for a transport failure on the retry leg, or 422
+    ERR_OUTPUT_SCHEMA_VALIDATION_FAILED when both attempts fail validation (M5/M8
+    exhausted) — carrying attempt 2's raw output + bounded validation_errors (M12).
+    """
+    # M8: attempt 1 was a REAL, paid upstream call — bill it before the retry fires
+    # (never a free/undisclosed first attempt).
+    usage1_raw = response_body.get("usage")
+    usage1 = usage1_raw if isinstance(usage1_raw, dict) else None
+    _fire_record_with_raw(
+        usage_recorder,
+        tenant_id=authz.tenant_id,
+        key_id=authz.key_id,
+        model=served_model_id,
+        usage=usage1,
+        status=status,
+        team_id=authz.team_id,
+        usage_source="validation_retry",
+    )
+    # M5/M6/M7: exactly ONE bounded retry, the IDENTICAL routed call, same
+    # unmodified body — no re-run of governance/budget/rate-limit (M6); a transport
+    # failure raises the SAME path attempt 1 would (M7 — the breaker is never
+    # bypassed "because it's just a retry").
+    try:
+        if model_router is not None:
+            retry_status, retry_body, retry_served = await model_router.complete(
+                body, upstream=upstream
+            )
+        else:
+            retry_status, retry_body = await upstream.complete(body)
+            retry_served = model_id
+    except AllDeploymentsSaturatedError as exc:
+        raise RATE_LIMITED.exc(
+            detail=f"all deployments for '{exc.alias}' are rate-limited",
+            headers={"Retry-After": "60"},
+        ) from exc
+    except UpstreamRateLimitedError as exc:
+        _fire_record(
+            usage_recorder,
+            tenant_id=authz.tenant_id,
+            key_id=authz.key_id,
+            model=model_id,
+            usage=None,
+            status=429,
+            team_id=authz.team_id,
+        )
+        if exc.retry_after is not None:
+            raise UPSTREAM_RATE_LIMITED.exc(
+                headers={"Retry-After": str(int(exc.retry_after))}
+            ) from None
+        raise UPSTREAM_RATE_LIMITED.exc() from None
+    except (UpstreamUnavailableError, CircuitOpenError):
+        # Circuit-breaker proxy has already counted the failure.
+        raise UPSTREAM_UNAVAILABLE.exc() from None
+
+    if retry_status != 200:
+        # A genuine upstream pass-through on the retry leg (not a validation
+        # failure) — never a fabricated 422 for a response the provider itself
+        # didn't say was invalid. Billed under validation_retry (it's still the
+        # terminal attempt of this bounded-retry loop, M8); caller's existing
+        # status==200-gated cache-store/evaluate_post steps no-op naturally.
+        return retry_status, retry_body, retry_served, "validation_retry"
+
+    retry_outcome = validate_model_output(schema, retry_body)
+    if retry_outcome["valid"]:
+        # Attempt 2 succeeded — keeps the DEFAULT "frame" usage_source (M8); caller
+        # falls through the rest of complete() (cache-store skip, masking, billing).
+        return retry_status, retry_body, retry_served, None
+
+    # M5/M8 exhausted: both attempts failed validation. Bill attempt 2 (also
+    # real/paid) then raise the terminal 422 — never a silent free retry, never
+    # partial content returned.
+    usage2_raw = retry_body.get("usage")
+    usage2 = usage2_raw if isinstance(usage2_raw, dict) else None
+    _fire_record_with_raw(
+        usage_recorder,
+        tenant_id=authz.tenant_id,
+        key_id=authz.key_id,
+        model=retry_served,
+        usage=usage2,
+        status=retry_status,
+        team_id=authz.team_id,
+        usage_source="validation_retry",
+    )
+    raise OUTPUT_SCHEMA_VALIDATION_FAILED.exc(
+        extra={
+            "raw_output": truncate_raw_output(retry_body),
+            "validation_errors": retry_outcome["errors"],
+        }
+    )
+
+
 def _check_expiry(authz: AuthzResult) -> None:
     """Raise ProblemError 401 ERR_AUTH_KEY_EXPIRED if the key has expired (M8).
 
@@ -551,6 +676,7 @@ class CompletionUseCase:
         tenant_model_preset_store: TenantModelPresetStore | None = None,
         chat_modality_lookup: ChatModalityLookup | None = None,
         batch_diversion: BatchDiversionPort | None = None,
+        output_validation_enabled: bool = False,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -616,6 +742,13 @@ class CompletionUseCase:
         # point, immediately before the upstream call, after every cache tier resolves.
         # stream() is NEVER touched (M2 — streaming always synchronous).
         self._batch_diversion: BatchDiversionPort | None = batch_diversion
+        # output-schema-validation (§3): False (default) ⇒ CENTRAL KNOB-KILL —
+        # _check_output_validation() pops validate_output from the body before
+        # dispatch unconditionally (M1/M2) so complete()/stream() are byte-identical
+        # to the v11 translate-don't-enforce path. True ⇒ a request that ALSO opts
+        # in (validate_output:true) engages the pre-flight checks + bounded retry —
+        # see complete() for the single insertion point.
+        self._output_validation_enabled: bool = output_validation_enabled
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -739,14 +872,57 @@ class CompletionUseCase:
                 detail=f"model '{model_id}' has modality '{modality}', endpoint requires 'chat'",
             )
 
+    def _check_output_validation(self, body: dict[str, Any]) -> bool:
+        """Central knob-kill + pre-flight for output-schema validation (§3 M1-M4, M11).
+
+        Pops ``validate_output`` from body UNCONDITIONALLY (M2 — never forwarded
+        upstream, regardless of engagement). Returns True when the feature engages
+        for THIS request (operator kill-switch AND the request opted in); False
+        means the byte-identical v11 path (M1) — no schema parse, no rejection.
+
+        When engaged, runs the pre-flight checks BEFORE any upstream call (zero
+        calls billed on a reject):
+          - M11: stream:true + engaged ⇒ 400 ERR_OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM
+          - Reject: response_format is not json_schema ⇒ 400
+            ERR_OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA
+          - M3: the schema itself fails JSON-Schema meta-validation ⇒ 400
+            ERR_INVALID_JSON_SCHEMA (REUSES the v11 response_format_translation.py
+            error CODE STRING; this task does not edit that frozen module)
+
+        Mutates body in-place (same pattern as _strip_web_search_flag).
+        """
+        requested = bool(body.pop("validate_output", False))
+        engaged = self._output_validation_enabled and requested
+        if not engaged:
+            return False
+        if body.get("stream"):
+            raise OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM.exc()
+        try:
+            rf = extract_response_format(body)
+        except ValueError as exc:
+            if str(exc) == "ERR_INVALID_JSON_SCHEMA":
+                raise INVALID_JSON_SCHEMA.exc() from None
+            raise OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA.exc() from None
+        if rf is None or rf["type"] != "json_schema":
+            raise OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA.exc()
+        json_schema_spec = rf.get("json_schema")
+        if json_schema_spec is None:
+            raise OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA.exc()
+        schema = json_schema_spec["schema"]
+        reason = check_schema_well_formed(schema)
+        if reason is not None:
+            raise INVALID_JSON_SCHEMA.exc(detail=reason)
+        return True
+
     async def _validate_payload(
         self,
         body: dict[str, Any],
-    ) -> tuple[str, list[dict[str, Any]]]:
+    ) -> tuple[str, list[dict[str, Any]], bool]:
         """Validate model and messages fields (format only — no catalog check here).
 
-        Returns (model_id, messages).
-        Raises ProblemError 422 on validation failure.
+        Returns (model_id, messages, output_validation_engaged).
+        Raises ProblemError 422 on validation failure (400 for the output-validation
+        pre-flight rejects — see _check_output_validation).
 
         NOTE: The catalog active check (ERR_MODEL_UNKNOWN) and tenant-disabled check
         (ERR_MODEL_DISABLED) are performed in _enforce_governance, AFTER the key-level
@@ -760,6 +936,12 @@ class CompletionUseCase:
         # never reach upstream verbatim. Knob-off ⇒ pop; knob-on ⇒ adapters handle it.
         self._strip_web_search_flag(body)
 
+        # output-schema-validation: pop validate_output centrally (M1/M2) + run the
+        # M3/M11/Reject pre-flight checks BEFORE any field/governance/upstream work —
+        # shared by complete() AND stream() so a stream:true + engaged request is
+        # rejected regardless of which entry point routed it here.
+        output_validation_engaged = self._check_output_validation(body)
+
         model_id = body.get("model")
         if not model_id or not isinstance(model_id, str) or not model_id.strip():
             raise PAYLOAD_MODEL_REQUIRED.exc()
@@ -768,7 +950,7 @@ class CompletionUseCase:
         if not messages or not isinstance(messages, list) or len(messages) == 0:
             raise PAYLOAD_MESSAGES_REQUIRED.exc()
 
-        return model_id, messages
+        return model_id, messages, output_validation_engaged
 
     async def _check_model_catalog(
         self,
@@ -1186,7 +1368,7 @@ class CompletionUseCase:
             # tenant's target model BEFORE payload validation/governance/catalog/upstream.
             await self._resolve_preset(body, authz.tenant_id)
             # Validate payload fields (format only — catalog check is in _enforce_governance).
-            model_id, _ = await self._validate_payload(body)
+            model_id, _, _output_validation_engaged = await self._validate_payload(body)
             _model_id = model_id
             # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
             # Governance ALWAYS runs before cache lookup (contract §3 enforcement order).
@@ -1317,7 +1499,12 @@ class CompletionUseCase:
             cache_enabled = authz.cache_enabled
             x_cache: str | None = None
 
-            if cache is not None and cache_enabled:
+            # output-schema-validation (M9): an engaged request bypasses BOTH the
+            # read (here) and write (post-upstream store, below) tiers entirely —
+            # response_format is not in _CACHE_KEY_FIELDS (a pre-existing gap this
+            # task does not fix), so bypassing is the only way to guarantee a
+            # validating caller never silently receives an unvalidated cached body.
+            if cache is not None and cache_enabled and not _output_validation_engaged:
                 from gateway.proxy.infrastructure.response_cache import (
                     build_cache_key,
                     build_semantic_cache_key,
@@ -1621,9 +1808,64 @@ class CompletionUseCase:
                 _status_code = 502
                 raise UPSTREAM_UNAVAILABLE.exc() from None
 
+            # output-schema-validation (§3): bounded-retry loop. Runs BEFORE cache
+            # store / post-call guardrail masking (M10 — validation must see the RAW,
+            # unmasked content) and only when the M1 gate engaged AND attempt 1 came
+            # back 200 (an upstream 4xx/5xx pass-through is never a "validation
+            # failure" — it falls through unchanged, exactly like today). The retry
+            # mechanics live in the module-level _run_output_validation_retry() —
+            # extracted out of this already-large method (not inlined) so this
+            # method stays within pyright's control-flow complexity limit.
+            # _usage_source_final threads into the EXISTING bottom _fire_record_with_raw
+            # call below (M8): None ⇒ default "frame" (no retry, or retry succeeded);
+            # "validation_retry" ⇒ the retry's own attempt did NOT end in a validated
+            # 200 (a genuine upstream error on the retry leg — never a fabricated 422
+            # for a response the provider itself didn't say was invalid).
+            _usage_source_final: str | None = None
+            if _output_validation_engaged and status == 200:
+                _rf = extract_response_format(body)  # already meta-validated pre-flight (M3)
+                # Unreachable in practice: _check_output_validation already required and
+                # meta-validated this exact shape before any upstream call fired. Narrows
+                # the type for the subscript below without a strippable assert.
+                if (
+                    _rf is None
+                    or _rf["type"] != "json_schema"
+                    or (_json_schema_spec := _rf.get("json_schema")) is None
+                ):
+                    raise INVALID_JSON_SCHEMA.exc()
+                _schema = _json_schema_spec["schema"]
+                _outcome = validate_model_output(_schema, response_body)
+                if not _outcome["valid"]:
+                    # Any ProblemError raised here (429/502/422) propagates up through
+                    # this method's own outer `except ProblemError` handler below —
+                    # no local except clause needed.
+                    (
+                        status,
+                        response_body,
+                        served_model_id,
+                        _usage_source_final,
+                    ) = await _run_output_validation_retry(
+                        authz=authz,
+                        body=body,
+                        upstream=upstream,
+                        usage_recorder=usage_recorder,
+                        model_router=model_router,
+                        model_id=model_id,
+                        schema=_schema,
+                        status=status,
+                        response_body=response_body,
+                        served_model_id=served_model_id,
+                    )
+
             # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
             # Must run BEFORE post-call guardrail masking so the stored body is unmasked.
-            if cache is not None and cache_enabled and status == 200:
+            # output-schema-validation (M9): engaged requests bypass the write tier too.
+            if (
+                cache is not None
+                and cache_enabled
+                and status == 200
+                and not _output_validation_engaged
+            ):
                 from gateway.proxy.infrastructure.response_cache import (
                     build_cache_key,
                     build_semantic_cache_key,
@@ -1745,6 +1987,12 @@ class CompletionUseCase:
                 status=status,
                 team_id=authz.team_id,
                 pii_masked=_pii_masked,
+                # output-schema-validation (M8): None (default) on every request that
+                # never engaged the retry loop — "frame", unchanged. Set to
+                # "validation_retry" ONLY for a retry leg that ended in a non-200
+                # upstream pass-through (see the retry block above) — a validated
+                # 200 success keeps the default "frame" too (M8's own rule).
+                usage_source=_usage_source_final,
             )
             # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
             if authz.tpm_limit is not None and usage is not None:
@@ -1838,7 +2086,11 @@ class CompletionUseCase:
             # tenant's target model BEFORE payload validation/governance/catalog/upstream.
             await self._resolve_preset(body, authz.tenant_id)
             # Validate payload fields (format only — catalog check is in _enforce_governance).
-            model_id, _ = await self._validate_payload(body)
+            # output-schema-validation: the engaged flag is discarded here on purpose —
+            # a stream:true request that engages the M1 gate already raised 400
+            # ERR_OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM inside _validate_payload
+            # itself (M11); stream() has no retry/validate work of its own.
+            model_id, _, _ = await self._validate_payload(body)
             _stream_model_id = model_id
             # Enforce governance: expiry → allowlist → catalog+tenant check → budget → rate limits
             # Pass model_groups from model_router for alias-aware catalog check (§3 A4).

@@ -44,6 +44,7 @@ class ErrorSpec:
         self,
         detail: str | None = None,
         headers: dict[str, str] | None = None,
+        extra: dict[str, object] | None = None,
         **fmt: object,
     ) -> ProblemError:
         """Return a ``ProblemError`` ready to be raised.
@@ -52,6 +53,10 @@ class ErrorSpec:
             detail: optional human-readable elaboration included in the
                 RFC 9457 ``detail`` field.
             headers: optional response headers (e.g. ``Retry-After``).
+            extra: optional additive structured-data fields merged into the
+                response body (e.g. ``raw_output``/``validation_errors`` on
+                ``ERR_OUTPUT_SCHEMA_VALIDATION_FAILED``). None for every other
+                call site — byte-identical by construction.
             **fmt: keyword arguments forwarded to ``title_template.format()``.
                    When the template has no placeholders, pass nothing.
 
@@ -66,6 +71,7 @@ class ErrorSpec:
             title=title,
             detail=detail,
             headers=headers,
+            extra=extra,
         )
 
 
@@ -754,4 +760,45 @@ EXPORT_QUERY_TIMEOUT = ErrorSpec(
     504,
     "ERR_EXPORT_TIMEOUT",
     "Export query exceeded the time budget; narrow the range or reduce limit",
+)
+
+# ---------------------------------------------------------------------------
+# Output-schema validation errors (output-schema-validation task, TASK.md §3)
+# ---------------------------------------------------------------------------
+
+#: M1 gate engaged (operator flag ON + validate_output:true) + stream:true — the
+#: retry loop has no buffered "final body" to validate-then-swap on a stream
+#: (structurally out of reach, not a scoping preference). Never billed.
+OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM = ErrorSpec(
+    400,
+    "ERR_OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM",
+    "Output validation is not supported on streaming requests",
+)
+
+#: M1 gate engaged but response_format is absent, {type:"text"}, or
+#: {type:"json_object"} — nothing to validate the output against. Never billed.
+OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA = ErrorSpec(
+    400,
+    "ERR_OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA",
+    "validate_output requires response_format.type == 'json_schema'",
+)
+
+#: M1 gate engaged and response_format.json_schema.schema fails JSON-Schema
+#: meta-validation (M3, pre-flight — zero upstream calls) OR extract_response_format
+#: itself raised ERR_INVALID_JSON_SCHEMA for a json_schema directive missing its
+#: schema object. REUSES the v11 response_format_translation.py CODE STRING (same
+#: class of problem, new trigger) per PROJECT.md v8's error-catalog-reuse convention
+#: — response_format_translation.py itself has no HTTP-layer mapping today, so this
+#: is this task's own first wiring of that code to an ErrorSpec, not a duplicate.
+INVALID_JSON_SCHEMA = ErrorSpec(
+    400, "ERR_INVALID_JSON_SCHEMA", "The provided JSON Schema is invalid"
+)
+
+#: Both attempt 1 and attempt 2 (the one bounded retry) failed validation (M5/M8
+#: exhausted). Carries raw_output + validation_errors via ErrorSpec.exc(extra=...).
+#: Both attempts' usage rows are still recorded (M8) — never a silent free retry.
+OUTPUT_SCHEMA_VALIDATION_FAILED = ErrorSpec(
+    422,
+    "ERR_OUTPUT_SCHEMA_VALIDATION_FAILED",
+    "Model output failed schema validation after 1 retry",
 )
