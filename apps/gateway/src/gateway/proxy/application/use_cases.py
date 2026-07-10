@@ -55,6 +55,7 @@ from gateway.core.error_catalog import (
     UPSTREAM_UNAVAILABLE,
 )
 from gateway.core.errors import ProblemError
+from gateway.guardrail_analytics.application.verdict_recorder import record_guardrail_verdicts
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.logs.domain.sse_content_extractor import extract_content_from_sse
@@ -614,6 +615,42 @@ def _dispatch_capture(
             stream=stream,
             cached=cached,
             guardrail_configs=guardrail_configs,
+        )
+    )
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
+def _dispatch_guardrail_verdicts(
+    session_factory: Any,
+    *,
+    tenant_id: uuid.UUID,
+    key_id: uuid.UUID,
+    team_id: uuid.UUID | None,
+    policy_source: str,
+    events: list[Any],
+) -> None:
+    """Schedule a fire-and-forget guardrail_verdict_events write (guardrail-analytics §3).
+
+    No-op when session_factory is unwired (None — every existing frozen test fake that
+    does not wire a DB-backed budget_guard stays byte-identical, since session_factory
+    comes from CompletionUseCase._get_session_factory(), the SAME zero-new-dependency
+    extraction the soft-budget-alert seam already uses) or events is empty. All
+    own-session/timeout/swallow-all logic lives INSIDE record_guardrail_verdicts —
+    this call site's only job is the None-gate + fire-and-forget dispatch, mirrors
+    _dispatch_capture's idiom exactly (task reference kept to satisfy RUF006; exception
+    suppressed so a verdict-write failure can never surface as "Task exception was
+    never retrieved").
+    """
+    if session_factory is None or not events:
+        return
+    task = asyncio.ensure_future(
+        record_guardrail_verdicts(
+            session_factory,
+            tenant_id=tenant_id,
+            key_id=key_id,
+            team_id=team_id,
+            policy_source=policy_source,
+            events=events,
         )
     )
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
@@ -1748,6 +1785,12 @@ class CompletionUseCase:
             # --- Step 4: Pre-call guardrails (after governance, before cache lookup) ---
             guardrail_evaluator = self._guardrail_evaluator
             guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
+            # guardrail-analytics §3 (M1/M9): resolved ONCE per request, zero extra IO
+            # (reuses the SAME getattr(budget_guard, "_session_factory", ...) extraction
+            # the soft-budget-alert seam already uses). None ⇒ feature off ⇒ every
+            # _dispatch_guardrail_verdicts call below no-ops, byte-identical to today.
+            _gv_session_factory = self._get_session_factory()
+            _gv_policy_source = getattr(authz, "policy_source", "none")
             if guardrail_evaluator is not None and guardrail_configs:
                 # ml-moderation-layer §3 CONTRACT (FROZEN @ v1, §0 R6): the frozen 2-arg
                 # evaluate_pre(messages, guardrail_configs) call below is UNTOUCHED —
@@ -1773,6 +1816,14 @@ class CompletionUseCase:
                             metrics_registry,
                             [_make_error_event(guardrail_configs)],
                             guardrail_configs,
+                        )
+                        _dispatch_guardrail_verdicts(
+                            _gv_session_factory,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            team_id=authz.team_id,
+                            policy_source=_gv_policy_source,
+                            events=[_make_error_event(guardrail_configs)],
                         )
                         _fire_record_with_raw(
                             usage_recorder,
@@ -1811,6 +1862,14 @@ class CompletionUseCase:
                             [_make_error_event(guardrail_configs)],
                             guardrail_configs,
                         )
+                        _dispatch_guardrail_verdicts(
+                            _gv_session_factory,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            team_id=authz.team_id,
+                            policy_source=_gv_policy_source,
+                            events=[_make_error_event(guardrail_configs)],
+                        )
                         # result is not set — fall through without masking/blocking
                         result = None
                 finally:
@@ -1818,6 +1877,14 @@ class CompletionUseCase:
 
                 if result is not None:
                     _fire_guardrail_metrics(metrics_registry, result.events, guardrail_configs)
+                    _dispatch_guardrail_verdicts(
+                        _gv_session_factory,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        team_id=authz.team_id,
+                        policy_source=_gv_policy_source,
+                        events=result.events,
+                    )
                     if result.blocked:
                         _fire_record_with_raw(
                             usage_recorder,
@@ -2325,6 +2392,12 @@ class CompletionUseCase:
             # --- Step 4: Pre-call guardrails (after governance, before upstream stream) ---
             guardrail_evaluator = self._guardrail_evaluator
             guardrail_configs = getattr(authz, "guardrail_configs", {}) or {}
+            # guardrail-analytics §3 (M1/M9): same resolve-once seam as complete() above —
+            # this is the NEW call site that closes the pre-existing streaming
+            # metrics-coverage gap (§0): _fire_guardrail_metrics never fires for streaming,
+            # but _dispatch_guardrail_verdicts below does, independent of that gap.
+            _gv_session_factory = self._get_session_factory()
+            _gv_policy_source = getattr(authz, "policy_source", "none")
             if guardrail_evaluator is not None and guardrail_configs:
                 # ml-moderation-layer §3 CONTRACT (FROZEN @ v1, §0 R6) — same seam as
                 # complete() above: set/reset around the untouched 2-arg call.
@@ -2342,6 +2415,14 @@ class CompletionUseCase:
                         for cfg in guardrail_configs.values()
                     )
                     if _has_block:
+                        _dispatch_guardrail_verdicts(
+                            _gv_session_factory,
+                            tenant_id=authz.tenant_id,
+                            key_id=authz.key_id,
+                            team_id=authz.team_id,
+                            policy_source=_gv_policy_source,
+                            events=[_make_error_event(guardrail_configs)],
+                        )
                         _fire_record_with_raw(
                             usage_recorder,
                             tenant_id=authz.tenant_id,
@@ -2370,11 +2451,27 @@ class CompletionUseCase:
                         _stream_error_status = 400
                         _stream_guardrail_blocked = True
                         raise GUARDRAIL_BLOCKED.exc() from None
+                    _dispatch_guardrail_verdicts(
+                        _gv_session_factory,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        team_id=authz.team_id,
+                        policy_source=_gv_policy_source,
+                        events=[_make_error_event(guardrail_configs)],
+                    )
                     stream_result = None
                 finally:
                     reset_guardrail_tenant_id(_gtid_token)
 
                 if stream_result is not None:
+                    _dispatch_guardrail_verdicts(
+                        _gv_session_factory,
+                        tenant_id=authz.tenant_id,
+                        key_id=authz.key_id,
+                        team_id=authz.team_id,
+                        policy_source=_gv_policy_source,
+                        events=stream_result.events,
+                    )
                     if stream_result.blocked:
                         _fire_record_with_raw(
                             usage_recorder,
