@@ -611,6 +611,122 @@ async def test_reactivation_clears_deactivated_at(
     assert row2["deactivated_at"] is None
 
 
+async def test_deactivated_owner_cannot_mint_new_scim_token_or_key(
+    client: httpx.AsyncClient,
+    tenant_a: dict[str, Any],
+    scim_a: dict[str, Any],
+    db_session: AsyncSession,
+) -> None:
+    """Deactivation-escalation fix (verify-phase HARD-STOP finding, scim-provisioning).
+
+    The frozen contract's documented residual (test_already_issued_jwt_survives_deactivation_
+    until_expiry, M7) is narrow: a deactivated user's PRE-EXISTING session JWT stays usable for
+    ORDINARY requests until its natural TTL. That residual must NOT extend to MINTING a NEW,
+    independently-long-lived credential — POST /admin/scim/tokens and POST /admin/keys must
+    reject a stale JWT belonging to a now-deactivated OWNER, even though the JWT itself is
+    still cryptographically valid and still carries role=OWNER (role is baked into the
+    stateless token, deactivation is DB-side only).
+    """
+    pre_existing_jwt = tenant_a["owner_token"]
+
+    deactivate = await client.patch(
+        f"/scim/v2/Users/{tenant_a['owner_user_id']}",
+        json={
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+            "Operations": [{"op": "replace", "path": "active", "value": False}],
+        },
+        headers=_scim_bearer(scim_a),
+    )
+    assert deactivate.status_code == 200, deactivate.text
+
+    mint_scim = await client.post(
+        "/admin/scim/tokens",
+        json={"name": "post-deactivation-escalation"},
+        headers=bearer(pre_existing_jwt),
+    )
+    assert mint_scim.status_code in (401, 403), (
+        f"deactivated OWNER minted a NEW SCIM token (status={mint_scim.status_code}, "
+        f"body={mint_scim.text}); the documented residual is 'use an existing session', "
+        "never 'mint a new permanent credential'"
+    )
+
+    mint_key = await client.post(
+        "/admin/keys",
+        json={"name": "post-deactivation-escalation"},
+        headers=bearer(pre_existing_jwt),
+    )
+    assert mint_key.status_code in (401, 403), (
+        f"deactivated OWNER minted a NEW API key (status={mint_key.status_code}, "
+        f"body={mint_key.text})"
+    )
+
+    # Side-effect proof, not just a status code: no new rows were actually created.
+    scim_tokens_count = (
+        await db_session.execute(
+            text("SELECT COUNT(*) FROM scim_tokens WHERE tenant_id = :tid"),
+            {"tid": tenant_a["tenant_id"]},
+        )
+    ).scalar_one()
+    assert scim_tokens_count == 1, "only scim_a's own token should exist"
+
+    api_keys_count = (
+        await db_session.execute(
+            text("SELECT COUNT(*) FROM api_keys WHERE tenant_id = :tid"),
+            {"tid": tenant_a["tenant_id"]},
+        )
+    ).scalar_one()
+    assert api_keys_count == 0, "no api_keys row should have been minted"
+
+
+async def test_deactivated_owner_cannot_rotate_scim_token_or_key(
+    client: httpx.AsyncClient,
+    tenant_a: dict[str, Any],
+    scim_a: dict[str, Any],
+    db_session: AsyncSession,
+) -> None:
+    """Same escalation-ceiling fix, rotate path: ROTATE also mints a new independently-live
+    secret (and revokes the old one) — must be blocked exactly like a fresh create."""
+    pre_existing_jwt = tenant_a["owner_token"]
+
+    create_key = await client.post(
+        "/admin/keys", json={"name": "pre-deactivation-key"}, headers=bearer(pre_existing_jwt)
+    )
+    assert create_key.status_code == 201, create_key.text
+    key_id = create_key.json()["key_id"]
+
+    deactivate = await client.patch(
+        f"/scim/v2/Users/{tenant_a['owner_user_id']}",
+        json={
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+            "Operations": [{"op": "replace", "path": "active", "value": False}],
+        },
+        headers=_scim_bearer(scim_a),
+    )
+    assert deactivate.status_code == 200, deactivate.text
+
+    rotate_scim = await client.post(
+        f"/admin/scim/tokens/{scim_a['id']}/rotate", headers=bearer(pre_existing_jwt)
+    )
+    assert rotate_scim.status_code in (401, 403), (
+        f"deactivated OWNER rotated a SCIM token (status={rotate_scim.status_code}, "
+        f"body={rotate_scim.text})"
+    )
+
+    rotate_key = await client.post(
+        f"/admin/keys/{key_id}/rotate", json={}, headers=bearer(pre_existing_jwt)
+    )
+    assert rotate_key.status_code in (401, 403), (
+        f"deactivated OWNER rotated an API key (status={rotate_key.status_code}, "
+        f"body={rotate_key.text})"
+    )
+
+    # The original SCIM token must still be live (rotate must not have partially executed).
+    still_live = await revoked_at_of(
+        db_session, table="scim_tokens", id_col="id", row_id=uuid.UUID(str(scim_a["id"]))
+    )
+    assert still_live is None, "rejected rotate must not revoke the OLD token either"
+
+
 async def test_deactivation_does_not_touch_api_keys(
     client: httpx.AsyncClient, scim_a: dict[str, Any], db_session: AsyncSession
 ) -> None:

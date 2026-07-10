@@ -60,6 +60,7 @@ from gateway.keys.infrastructure.mint_rate_limiter import (
 from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
 from gateway.teams.api.deps import get_team_repository
 from gateway.teams.infrastructure.repository import SqlAlchemyTeamRepository
+from gateway.tenants.domain.authz import require_active_user
 from gateway.tenants.domain.entities import Identity
 
 admin_router = APIRouter(prefix="/admin/keys", tags=["api-keys"])
@@ -92,12 +93,19 @@ async def create_key(
     request: Request,
     body: CreateKeyRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    _active: Annotated[Identity, Depends(require_active_user)],
     use_case: Annotated[CreateKeyUseCase, Depends(get_create_key_use_case)],
     team_repo: Annotated[SqlAlchemyTeamRepository, Depends(get_team_repository)],
 ) -> CreateKeyResponse:
     """Issue a new API key for the caller's tenant.
 
     The plaintext key is returned EXACTLY ONCE in this response and never stored.
+
+    Deactivation-escalation fix (verify-phase HARD-STOP finding): ADDITIONALLY depends on
+    require_active_user — a deactivated caller's still-valid session JWT can no longer mint
+    a NEW API key, even though the JWT's role claim is unaffected by deactivation. The
+    accepted stale-JWT residual (scim-provisioning TASK.md §1 M7) still covers ORDINARY
+    reads/writes; it does not extend to minting a new, independently-long-lived credential.
     """
     # Validate team attribution: team_id must belong to the caller's tenant
     if body.team_id is not None:
@@ -394,6 +402,7 @@ async def rotate_key(
     key_id: uuid.UUID,
     body: RotateKeyRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
+    _active: Annotated[Identity, Depends(require_active_user)],
     use_case: Annotated[RotateKeyUseCase, Depends(get_rotate_key_use_case)],
 ) -> RotateKeyResponse:
     """Rotate an API key: revoke old, issue new atomically.
@@ -402,6 +411,10 @@ async def rotate_key(
     Returns 201 with the new plaintext key (shown once).
     Returns 403 for member-role callers.
     Returns 404 for revoked or cross-tenant keys.
+
+    Deactivation-escalation fix (verify-phase HARD-STOP finding): ADDITIONALLY depends on
+    require_active_user — a deactivated caller cannot rotate a key into a NEW live secret
+    either (rotation mints a new credential exactly like create does).
     """
     # Detect which fields were explicitly provided vs. absent (for inherit semantics)
     budget_provided = "monthly_budget_usd" in body.model_fields_set

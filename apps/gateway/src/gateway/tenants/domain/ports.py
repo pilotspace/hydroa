@@ -91,3 +91,24 @@ class ImpersonationSessionGuard(Protocol):
         caller). No-op (returns None) iff the session IS live. Never called for an
         ordinary (non-impersonation) identity — see ensure_impersonation_session_live."""
         ...
+
+
+class UserLivenessGuard(Protocol):
+    """Per-request liveness check for the user BEHIND a session JWT (scim-provisioning
+    deactivation-escalation fix — verify-phase HARD-STOP finding). Modeled directly on
+    ImpersonationSessionGuard above: a stateless session JWT's documented residual is
+    "usable for ORDINARY requests up to jwt_ttl_seconds after deactivation" — it must NOT
+    extend to minting a NEW, independently-long-lived credential (a SCIM token or API key
+    that would outlive the JWT itself). Only wired onto credential-MINTING routes, never
+    onto every hot /admin read — see require_active_user's own docstring."""
+
+    async def ensure_active(self, user_id: uuid.UUID) -> None:
+        """Raise InvalidTokenError (tenants/domain/errors.py) iff an EXISTING UserRow named
+        by user_id has deactivated_at set, OR liveness cannot be confirmed within the
+        adapter's own bounded timeout (fail-CLOSED on a DB error/timeout — mirrors
+        ImpersonationSessionGuard, a credential-revocation decision, not an availability
+        gate). A MISSING row is deliberately NOT a failure here (out of scope for this
+        guard — every other identity check in this codebase is role/tenant-claims-only and
+        never validates user_id resolves to a real row). No-op (returns None) iff the user
+        is active or the row does not exist."""
+        ...
