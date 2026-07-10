@@ -35,3 +35,10 @@ class RequestLog:
     truncated: bool
     cost_usd: str | None
     created_at: datetime
+    # request-log-metering-fields TASK.md §3 (FROZEN @ v1) — 5 additive fields, DISPLAY-ONLY
+    # metadata (never billing truth; usage_records remains sole source of truth).
+    request_id: uuid.UUID | None
+    latency_ms: int | None
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None

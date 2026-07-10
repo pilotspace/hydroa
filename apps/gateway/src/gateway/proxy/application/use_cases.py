@@ -271,11 +271,14 @@ def _fire_record(
     usage: dict[str, Any] | None,
     status: int,
     team_id: uuid.UUID | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget usage record; forwards team_id when set (team-governance seam)."""
     extras: UsageRecordExtras = {}
     if team_id is not None:
         extras["team_id"] = team_id
+    if request_id is not None:
+        extras["request_id"] = request_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -295,6 +298,7 @@ def _fire_record_cached(
     model: str,
     usage: dict[str, Any] | None,
     team_id: uuid.UUID | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget usage record for a cache hit (cached=true, cost_usd=0).
 
@@ -304,6 +308,8 @@ def _fire_record_cached(
     extras: UsageRecordExtras = {"cached": True}
     if team_id is not None:
         extras["team_id"] = team_id
+    if request_id is not None:
+        extras["request_id"] = request_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -410,6 +416,7 @@ def _fire_record_with_raw(
     usage_source: str | None = None,
     provider_generation_id: str | None = None,
     disconnect_estimate: bool = False,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
@@ -419,6 +426,9 @@ def _fire_record_with_raw(
     Additive extension (pricing-units TASK.md §3):
       pricing_unit / quantity are forwarded via UsageRecordExtras when set.
       Chat/embeddings callers pass nothing new — defaults None → per_token path.
+
+    request_id (request-log-metering-fields TASK.md §3): correlation key forwarded
+    via the SAME typed extras seam when set.
     """
     extras: UsageRecordExtras = {}
     if team_id is not None:
@@ -439,6 +449,8 @@ def _fire_record_with_raw(
         extras["provider_generation_id"] = provider_generation_id
     if disconnect_estimate:
         extras["disconnect_estimate"] = True
+    if request_id is not None:
+        extras["request_id"] = request_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -590,6 +602,9 @@ def _dispatch_capture(
     stream: bool,
     cached: bool,
     guardrail_configs: dict[str, Any],
+    usage: dict[str, Any] | None = None,
+    latency_ms: int | None = None,
+    request_id: uuid.UUID | None = None,
 ) -> None:
     """Schedule a fire-and-forget payload-capture write (payload-capture-store §3).
 
@@ -600,6 +615,9 @@ def _dispatch_capture(
     only job is the enabled-gate + fire-and-forget dispatch, mirroring _dispatch_record's
     idiom exactly (task reference kept to satisfy RUF006; exception suppressed so a
     capture-store failure can never surface as "Task exception was never retrieved").
+
+    usage/latency_ms/request_id (request-log-metering-fields TASK.md §3, additive):
+    forwarded verbatim into payload_capture.capture(...) — never recomputed here.
     """
     if payload_capture is None or not enabled:
         return
@@ -614,6 +632,9 @@ def _dispatch_capture(
             stream=stream,
             cached=cached,
             guardrail_configs=guardrail_configs,
+            usage=usage,
+            latency_ms=latency_ms,
+            request_id=request_id,
         )
     )
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
@@ -1402,6 +1423,8 @@ class CompletionUseCase:
         metrics_registry: Any,
         usage_recorder: UsageRecorder,
         request_headers: dict[str, str] | None,
+        start_ns: int,
+        request_id: uuid.UUID,
     ) -> tuple[tuple[int, dict[str, Any], str | None] | None, str | None]:
         """Step 4.5a/4.5b/4.5c cache-lookup region (exact → semantic → vector),
         extracted out of complete() (which already carries ~15 branches of its own,
@@ -1469,10 +1492,14 @@ class CompletionUseCase:
                     model=_served_cached,
                     usage=cached_usage,
                     team_id=authz.team_id,
+                    request_id=request_id,
                 )
                 # payload-capture-store §3: exact-cache-HIT capture hook —
                 # cached_body is the SAME post-mask body actually served to the
                 # client (never the raw unmasked Redis-internal representation).
+                # request-log-metering-fields §3: usage=cached_usage (the SAME cached
+                # dict, never re-derived); latency_ms from the SAME start_ns the caller
+                # threaded in — never a second clock.
                 _dispatch_capture(
                     self._payload_capture,
                     enabled=authz.payload_capture_enabled,
@@ -1485,6 +1512,9 @@ class CompletionUseCase:
                     stream=False,
                     cached=True,
                     guardrail_configs=guardrail_configs,
+                    usage=cached_usage,
+                    latency_ms=round((time.time_ns() - start_ns) / 1_000_000),
+                    request_id=request_id,
                 )
                 # TPM post-accounting uses cached token counts
                 if authz.tpm_limit is not None and cached_usage is not None:
@@ -1543,8 +1573,11 @@ class CompletionUseCase:
                                 model=_served_cached_sem,
                                 usage=sem_usage,
                                 team_id=authz.team_id,
+                                request_id=request_id,
                             )
                             # payload-capture-store §3: semantic-cache-HIT hook.
+                            # request-log-metering-fields §3: usage=sem_usage verbatim;
+                            # latency_ms from the SAME threaded-in start_ns.
                             _dispatch_capture(
                                 self._payload_capture,
                                 enabled=authz.payload_capture_enabled,
@@ -1557,6 +1590,9 @@ class CompletionUseCase:
                                 stream=False,
                                 cached=True,
                                 guardrail_configs=guardrail_configs,
+                                usage=sem_usage,
+                                latency_ms=round((time.time_ns() - start_ns) / 1_000_000),
+                                request_id=request_id,
                             )
                             if authz.tpm_limit is not None and sem_usage is not None:
                                 total_tokens = sem_usage.get("total_tokens")
@@ -1615,9 +1651,12 @@ class CompletionUseCase:
                             model=_served_cached_vec,
                             usage=vec_usage,
                             team_id=authz.team_id,
+                            request_id=request_id,
                         )
                         # payload-capture-store §3: vector (embedding-similarity)
                         # cache-HIT hook.
+                        # request-log-metering-fields §3: usage=vec_usage verbatim;
+                        # latency_ms from the SAME threaded-in start_ns.
                         _dispatch_capture(
                             self._payload_capture,
                             enabled=authz.payload_capture_enabled,
@@ -1630,6 +1669,9 @@ class CompletionUseCase:
                             stream=False,
                             cached=True,
                             guardrail_configs=guardrail_configs,
+                            usage=vec_usage,
+                            latency_ms=round((time.time_ns() - start_ns) / 1_000_000),
+                            request_id=request_id,
                         )
                         if authz.tpm_limit is not None and vec_usage is not None:
                             total_tokens = vec_usage.get("total_tokens")
@@ -1683,6 +1725,9 @@ class CompletionUseCase:
         On upstream 5xx / circuit open: raise ProblemError 502.
         """
         _start_ns = time.time_ns()
+        # request-log-metering-fields TASK.md §3: one correlation UUID minted once per
+        # call, mirroring _emit_span_fire_forget's own local-generation idiom (trace_id).
+        _request_id = uuid.uuid4()
         _authz: AuthzResult | None = None
         _status_code: int = 502
         _model_id: str = ""
@@ -1784,10 +1829,13 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by="error",
+                            request_id=_request_id,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook (locked
                         # after the mandated BLOCK-path grounding pass — see TASK.md §5).
                         # response_body=None: the request never reached upstream.
+                        # request-log-metering-fields §3: usage=None (no upstream call
+                        # was made) -> prompt/completion/total_tokens all NULL, never 0.
                         _dispatch_capture(
                             self._payload_capture,
                             enabled=authz.payload_capture_enabled,
@@ -1800,6 +1848,9 @@ class CompletionUseCase:
                             stream=False,
                             cached=False,
                             guardrail_configs=guardrail_configs,
+                            usage=None,
+                            latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                            request_id=_request_id,
                         )
                         _guardrail_blocked = True
                         _status_code = 400
@@ -1829,8 +1880,10 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by=result.blocked_by,
+                            request_id=_request_id,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook.
+                        # request-log-metering-fields §3: usage=None -> tokens NULL.
                         _dispatch_capture(
                             self._payload_capture,
                             enabled=authz.payload_capture_enabled,
@@ -1843,6 +1896,9 @@ class CompletionUseCase:
                             stream=False,
                             cached=False,
                             guardrail_configs=guardrail_configs,
+                            usage=None,
+                            latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                            request_id=_request_id,
                         )
                         _guardrail_blocked = True
                         _status_code = 400
@@ -1879,6 +1935,8 @@ class CompletionUseCase:
                     metrics_registry=metrics_registry,
                     usage_recorder=usage_recorder,
                     request_headers=request_headers,
+                    start_ns=_start_ns,
+                    request_id=_request_id,
                 )
                 if _cache_hit is not None:
                     _cached = True
@@ -2181,11 +2239,15 @@ class CompletionUseCase:
                 # upstream pass-through (see the retry block above) — a validated
                 # 200 success keeps the default "frame" too (M8's own rule).
                 usage_source=_usage_source_final,
+                request_id=_request_id,
             )
             # payload-capture-store §3: non-streaming completion capture hook.
             # response_body is the ALREADY evaluate_post-masked body (when configured) —
             # capture independently re-scrubs it anyway (its own try/except, never
             # trusting evaluate_post's fail-open return value as confirmed-scrubbed).
+            # request-log-metering-fields §3: usage is the SAME dict just recorded above
+            # (never a second extraction); latency_ms derived from the SAME _start_ns
+            # this call's OtelSpan uses — never a second/independent clock read.
             _dispatch_capture(
                 self._payload_capture,
                 enabled=authz.payload_capture_enabled,
@@ -2198,6 +2260,9 @@ class CompletionUseCase:
                 stream=False,
                 cached=False,
                 guardrail_configs=guardrail_configs,
+                usage=usage,
+                latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                request_id=_request_id,
             )
             # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
             if authz.tpm_limit is not None and usage is not None:
@@ -2276,6 +2341,9 @@ class CompletionUseCase:
           - Pre-authz 401 → _authz is None → no span (inviolable).
         """
         _start_ns = time.time_ns()
+        # request-log-metering-fields TASK.md §3: one correlation UUID minted once per
+        # call — captured by _wrapped()'s closure below, same as _start_ns already is.
+        _request_id = uuid.uuid4()
         _authz: AuthzResult | None = None
         _stream_error_status: int | None = None  # set only on pre-generator errors
         _stream_error_code: str | None = None
@@ -2352,8 +2420,10 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by="error",
+                            request_id=_request_id,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
+                        # request-log-metering-fields §3: usage=None -> tokens NULL.
                         _dispatch_capture(
                             self._payload_capture,
                             enabled=authz.payload_capture_enabled,
@@ -2366,6 +2436,9 @@ class CompletionUseCase:
                             stream=True,
                             cached=False,
                             guardrail_configs=guardrail_configs,
+                            usage=None,
+                            latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                            request_id=_request_id,
                         )
                         _stream_error_status = 400
                         _stream_guardrail_blocked = True
@@ -2386,8 +2459,10 @@ class CompletionUseCase:
                             team_id=authz.team_id,
                             guardrail_blocked=True,
                             blocked_by=stream_result.blocked_by,
+                            request_id=_request_id,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
+                        # request-log-metering-fields §3: usage=None -> tokens NULL.
                         _dispatch_capture(
                             self._payload_capture,
                             enabled=authz.payload_capture_enabled,
@@ -2400,6 +2475,9 @@ class CompletionUseCase:
                             stream=True,
                             cached=False,
                             guardrail_configs=guardrail_configs,
+                            usage=None,
+                            latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                            request_id=_request_id,
                         )
                         _stream_error_status = 400
                         _stream_guardrail_blocked = True
@@ -2621,10 +2699,14 @@ class CompletionUseCase:
                                 team_id=team_id,
                                 pii_masked=_stream_pii_masked,
                                 usage_source=_bw_source,
+                                request_id=_request_id,
                             )
                             # payload-capture-store §3: bandwidth-shed truncation capture
                             # hook (1st of stream()'s 3 exit branches) — the assembled
                             # (partial) assistant text, size-capped like the other 2.
+                            # request-log-metering-fields §3: usage=_bw_usage (the SAME
+                            # dict just recorded above); latency_ms from the SAME
+                            # _start_ns this call's OtelSpan uses (closure-captured).
                             _dispatch_capture(
                                 _payload_capture,
                                 enabled=_capture_enabled,
@@ -2637,6 +2719,9 @@ class CompletionUseCase:
                                 stream=True,
                                 cached=False,
                                 guardrail_configs=guardrail_configs,
+                                usage=_bw_usage,
+                                latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                                request_id=_request_id,
                             )
                             # record fired — gate the disconnect handler so a drop during the
                             # two yields below cannot double-bill this request.
@@ -2742,9 +2827,12 @@ class CompletionUseCase:
                         usage_source=disconnect_source,
                         provider_generation_id=disconnect_gen_id,
                         disconnect_estimate=disconnect_estimate,
+                        request_id=_request_id,
                     )
                     # payload-capture-store §3: client-disconnect capture hook (2nd of
                     # stream()'s 3 exit branches) — the assembled (partial) text.
+                    # request-log-metering-fields §3: usage=disconnect_usage (the SAME
+                    # dict just recorded above); latency_ms from the SAME _start_ns.
                     _dispatch_capture(
                         _payload_capture,
                         enabled=_capture_enabled,
@@ -2757,6 +2845,9 @@ class CompletionUseCase:
                         stream=True,
                         cached=False,
                         guardrail_configs=guardrail_configs,
+                        usage=disconnect_usage,
+                        latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                        request_id=_request_id,
                     )
                     # bandwidth-usage-reconcile (v36, Tin): a disconnect ALSO reconciles the
                     # estimate debited so far toward the PARTIAL usage actually generated, when a
@@ -2870,12 +2961,15 @@ class CompletionUseCase:
                     team_id=team_id,
                     pii_masked=_stream_pii_masked,
                     usage_source=usage_source,
+                    request_id=_request_id,
                 )
                 # payload-capture-store §3: clean-close capture hook (3rd of stream()'s
                 # 3 exit branches, and the one usual case) — the fully assembled text,
                 # keyed off the SAME stream_usage_is_complete completeness signal the
                 # billing path just used above (§2 scenario: "streaming capture
                 # assembles and writes the full response text").
+                # request-log-metering-fields §3: usage=extracted_usage (the SAME dict
+                # just recorded above); latency_ms from the SAME _start_ns.
                 _dispatch_capture(
                     _payload_capture,
                     enabled=_capture_enabled,
@@ -2888,6 +2982,9 @@ class CompletionUseCase:
                     stream=True,
                     cached=False,
                     guardrail_configs=guardrail_configs,
+                    usage=extracted_usage,
+                    latency_ms=round((time.time_ns() - _start_ns) / 1_000_000),
+                    request_id=_request_id,
                 )
                 # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
                 if tpm_limit is not None and isinstance(extracted_usage, dict):

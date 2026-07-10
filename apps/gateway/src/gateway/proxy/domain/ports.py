@@ -59,6 +59,10 @@ class UsageRecordExtras(TypedDict, total=False):
                           (provider_cost stamped, cost_usd=0, cost_basis='provider')
                           so the drift monitor sees it — never a silent $0
                           (v33 disconnect-provider-cost)
+      request_id        — correlation key: the SAME UUID minted once per proxied call
+                          and also stored on request_logs.request_id, letting a reader
+                          join the two tables (request-log-metering-fields, no new
+                          usage_records column — stored inside the raw JSONB extras)
     """
 
     team_id: uuid.UUID
@@ -71,6 +75,7 @@ class UsageRecordExtras(TypedDict, total=False):
     usage_source: str
     provider_generation_id: str
     disconnect_estimate: bool
+    request_id: uuid.UUID
 
 
 class ModelAccess(Enum):
@@ -579,6 +584,9 @@ class PayloadCapturePort(Protocol):
         stream: bool,
         cached: bool,
         guardrail_configs: dict[str, Any],
+        usage: dict[str, Any] | None = None,
+        latency_ms: int | None = None,
+        request_id: uuid.UUID | None = None,
     ) -> None:
         """Fire-and-forget capture. NEVER raises — all failures (scrub, size, DB,
         ZDR-check) are caught internally and result in either a metadata-only row
@@ -587,6 +595,11 @@ class PayloadCapturePort(Protocol):
         response_body is None for a pre-call guardrail-BLOCK row (the request never
         reached upstream) — implementations must handle that as a request-only row,
         never a crash.
+
+        usage/latency_ms/request_id (request-log-metering-fields TASK.md §3, additive):
+        DISPLAY-ONLY metadata, verbatim from the SAME values the call's billing/
+        observability paths already computed — never independently recomputed, never
+        billing truth. All 3 default None so every existing caller stays byte-identical.
         """
         ...
 

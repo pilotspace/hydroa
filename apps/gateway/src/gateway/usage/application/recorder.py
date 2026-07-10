@@ -65,6 +65,7 @@ class RecordingUsageRecorder:
             "usage_source",
             "provider_generation_id",
             "disconnect_estimate",
+            "request_id",
         }
     )
 
@@ -95,6 +96,7 @@ class RecordingUsageRecorder:
         usage_source: str | None = None,
         provider_generation_id: str | None = None,
         disconnect_estimate: bool = False,
+        request_id: uuid.UUID | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -105,6 +107,8 @@ class RecordingUsageRecorder:
         pii_masked=True: injects pii_masked=true into raw field.
         pricing_unit: discriminator; None → defaults to snapshot value or 'per_token'.
         quantity: billed quantity for non-token units; None → per_token path.
+        request_id: correlation key (request-log-metering-fields) — stored into
+          raw["request_id"] when set; NOT a new column (usage_records is FROZEN).
         """
         try:
             await self._record_internal(
@@ -123,6 +127,7 @@ class RecordingUsageRecorder:
                 usage_source=usage_source,
                 provider_generation_id=provider_generation_id,
                 disconnect_estimate=disconnect_estimate,
+                request_id=request_id,
             )
         except Exception as exc:
             _log.warning(
@@ -153,6 +158,7 @@ class RecordingUsageRecorder:
         usage_source: str | None = None,
         provider_generation_id: str | None = None,
         disconnect_estimate: bool = False,
+        request_id: uuid.UUID | None = None,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -349,6 +355,11 @@ class RecordingUsageRecorder:
             raw_payload["blocked_by"] = blocked_by
         if pii_masked:
             raw_payload["pii_masked"] = True
+        if request_id is not None:
+            # request-log-metering-fields: correlation key — same idiom as the markers
+            # above. NOT a new usage_records column (FROZEN @ v1, append-only); rides
+            # inside the existing raw JSONB extras seam.
+            raw_payload["request_id"] = str(request_id)
 
         # Encode quantity: empty string for per_token (NULL), str(q) for non-token
         quantity_str = str(resolved_quantity) if resolved_quantity is not None else ""

@@ -31,6 +31,9 @@ class NoopPayloadCapture:
         stream: bool,
         cached: bool,
         guardrail_configs: dict[str, Any],
+        usage: dict[str, Any] | None = None,
+        latency_ms: int | None = None,
+        request_id: uuid.UUID | None = None,
     ) -> None:
         """Discard the capture request."""
         return
