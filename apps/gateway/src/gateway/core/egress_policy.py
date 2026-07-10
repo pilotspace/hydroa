@@ -24,11 +24,14 @@ Security invariants:
   - Cloud-metadata addresses (169.254.169.254, 169.254.170.2, fd00:ec2::254) are ALWAYS
     denied — never toggle-able by any setting.
   - Loopback / link-local / multicast / reserved / unspecified addresses are ALWAYS denied
-    too — ``allow_private_ranges`` does NOT relax them (an IMDS IP is link-local and every
-    IPv6 transition-scheme encoding of it — IPv4-mapped, 6to4, NAT64 — lands in one of these
-    classes, so keeping them denied under the opt-in closes that bypass class wholesale).
-  - ONLY RFC1918 / IPv6-ULA (``is_private``) addresses are relaxed when the operator sets
-    ``allow_private_ranges=True`` (Azure Private Link resolves to exactly these).
+    too — ``allow_private_ranges`` does NOT relax them (an IMDS IP is link-local; NAT64 and
+    other transition encodings are is_reserved — keeping these classes denied under the opt-in
+    closes that bypass class wholesale).
+  - ``allow_private_ranges=True`` relaxes ONLY a positive allow-list of the ranges Azure
+    Private Link actually uses — RFC1918 (10/8, 172.16/12, 192.168/16) and IPv6-ULA
+    (fc00::/7). Every OTHER private/special address (Teredo 2001::/32, 6to4 2002::/16, discard
+    100::/64 — all ``is_private`` in Python) stays denied even under the opt-in, so no IPv6
+    transition scheme that Python happens to bucket as private can tunnel a metadata IP past it.
   - DNS resolution failure, timeout, or any resolver error fails CLOSED (deny) — the caller
     never proceeds with an unchecked/unresolved host (PROJECT.md: no outbound IO without a
     timeout).
@@ -98,6 +101,33 @@ class EgressPolicy(Protocol):
 #: unconditional metadata exact-match sees it even if that predicate ever changes.
 _NAT64_WELL_KNOWN = ipaddress.ip_network("64:ff9b::/96")
 
+#: The ONLY address ranges ``allow_private_ranges=True`` (Azure Private Link) relaxes — a
+#: POSITIVE allow-list, deliberately NOT "everything Python calls ``is_private``". Python's
+#: ``is_private`` bucket also contains IANA special-purpose prefixes that are NOT legitimate
+#: Private Link targets and that can embed/tunnel a metadata IPv4 — Teredo ``2001::/32``, 6to4
+#: ``2002::/16``, the discard prefix ``100::/64`` — so relaxing all of ``is_private`` reopens
+#: the metadata-egress bypass class one transition scheme at a time. Enumerating exactly what
+#: Private Link legitimately uses (RFC1918 + IPv6-ULA) and denying every other private/special
+#: address under the opt-in closes that whole class at once.
+_PRIVATE_LINK_ALLOWED: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
+    ipaddress.ip_network("10.0.0.0/8"),  # RFC1918
+    ipaddress.ip_network("172.16.0.0/12"),  # RFC1918
+    ipaddress.ip_network("192.168.0.0/16"),  # RFC1918
+    ipaddress.ip_network("fc00::/7"),  # IPv6 ULA (fc00::/8 + fd00::/8)
+)
+
+
+def _in_private_link_allowlist(
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> bool:
+    """True iff *ip* is in a range ``allow_private_ranges`` legitimately relaxes (RFC1918/ULA).
+
+    The version guard is required: ``IPv6Address in IPv4Network`` raises ``TypeError``. An
+    IPv4-mapped-RFC1918 literal is matched via its embedded-IPv4 candidate (see ``_is_denied_ip``),
+    not its v6 spelling, so this deliberately checks only same-version membership.
+    """
+    return any(ip.version == net.version and ip in net for net in _PRIVATE_LINK_ALLOWED)
+
 
 def _embedded_ipv4(
     ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
@@ -114,11 +144,13 @@ def _embedded_ipv4(
 
     Note: this normalisation is a BELT-AND-SUSPENDERS layer for the metadata exact-set. The
     authoritative defence against transition-scheme encodings is ``_is_denied_ip`` denying the
-    link-local / reserved / multicast address CLASSES even under ``allow_private_ranges`` —
-    a metadata IP is always link-local (169.254/16) and NAT64 is always reserved, and NO
-    legitimate Private Link target is ever link-local or reserved. That closes encodings this
-    enumerated list does not yet know about (e.g. RFC 8215 local NAT64 prefixes an operator
-    configures) without having to enumerate every transition prefix here.
+    link-local / reserved / multicast classes unconditionally AND relaxing only a positive
+    RFC1918/ULA allow-list under ``allow_private_ranges`` (so Teredo ``2001::/32``, 6to4
+    ``2002::/16``, discard ``100::/64`` — all ``is_private`` in Python — stay denied under the
+    opt-in). Residual NOT closable by address inspection alone: an operator-configured RFC 8215
+    local NAT64 prefix drawn from ULA space (e.g. ``fd00:...``) is indistinguishable from a
+    legitimate Private Link ULA target; if such NAT64 infra is ever deployed on the egress
+    path it must be denied at the network layer or via an explicit prefix deny-list.
     """
     if not isinstance(ip, ipaddress.IPv6Address):
         return None
@@ -144,16 +176,20 @@ def _is_denied_ip(
 
     Metadata addresses are ALWAYS denied (unconditional). So are the link-local / loopback /
     multicast / reserved / unspecified address CLASSES — even when ``allow_private_ranges`` is
-    set, because ``allow_private_ranges`` exists SOLELY to permit Azure Private Link, which
-    resolves to RFC1918 / IPv6-ULA (``is_private``) addresses and NEVER to a link-local or
-    reserved one. ``allow_private_ranges`` therefore relaxes ONLY ``is_private``.
+    set. That handles the reserved-class transition encodings (e.g. NAT64 ``64:ff9b::/96`` is
+    ``is_reserved``, IPv4-mapped metadata embeds a ``is_link_local`` IPv4).
 
-    This is the authoritative defence against IPv6 transition-scheme encodings of a metadata
-    IP (IPv4-mapped, 6to4, NAT64, …): every one of them lands in a class that stays denied
-    under the opt-in — e.g. ``64:ff9b::a9fe:a9fe`` (NAT64 of 169.254.169.254) is ``is_reserved``
-    and ``::ffff:169.254.169.254`` embeds a ``is_link_local`` IPv4 — so we do NOT have to
-    enumerate every transition prefix to stay closed. Each predicate is evaluated over BOTH
-    the address as given AND any IPv4 it embeds (``_embedded_ipv4``).
+    For the remaining ``is_private`` bucket, ``allow_private_ranges`` relaxes ONLY a POSITIVE
+    allow-list (RFC1918 + IPv6-ULA — exactly what Azure Private Link uses); every OTHER private
+    address stays denied under the opt-in. This is deliberate: Python's ``is_private`` also
+    contains Teredo ``2001::/32``, 6to4 ``2002::/16`` and the discard prefix ``100::/64``, none
+    of which are Private Link targets and any of which can tunnel/embed a metadata IPv4 — so a
+    blanket "relax all ``is_private``" would reopen the bypass one transition scheme at a time.
+
+    Public (globally-routable) addresses are the normal egress case and are always allowed.
+    Every predicate is evaluated over BOTH the address as given AND any IPv4 it embeds via an
+    IPv6 transition encoding (``_embedded_ipv4``), so a denied address cannot hide behind an
+    alternate representation.
     """
     candidates: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = [ip]
     embedded = _embedded_ipv4(ip)
@@ -174,8 +210,12 @@ def _is_denied_ip(
     ):
         return True
     if allow_private_ranges:
-        # Opt-in relaxes ONLY the RFC1918 / IPv6-ULA private range (Azure Private Link).
-        return False
+        # Allow a legitimate Private Link range (RFC1918/ULA — incl. an IPv4-mapped one via
+        # its embedded candidate) OR a public address; deny any OTHER private/special address
+        # (Teredo, 6to4, discard, … — is_private in Python but not a Private Link target).
+        if any(_in_private_link_allowlist(candidate) for candidate in candidates):
+            return False
+        return any(candidate.is_private for candidate in candidates)
     return any(candidate.is_private for candidate in candidates)
 
 

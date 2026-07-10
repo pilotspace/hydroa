@@ -142,23 +142,34 @@ async def test_request_time_private_range_allowed_with_opt_in_metadata_still_den
         await policy2.check("https://imds.example.com/x")  # metadata STILL denied
 
 
-# The allow_private_ranges opt-in relaxes ONLY the RFC1918 / IPv6-ULA private class — it does
-# NOT relax link-local / reserved / loopback / multicast. That is the authoritative reason
-# every IPv6 transition-scheme encoding of a metadata IP stays denied under the opt-in
-# (link-local for the mapped forms, is_reserved for NAT64), without enumerating each prefix.
+# The allow_private_ranges opt-in relaxes ONLY a POSITIVE allow-list of the ranges Azure
+# Private Link actually uses (RFC1918 + IPv6-ULA). It does NOT relax link-local / reserved /
+# loopback / multicast, NOR the other prefixes Python happens to bucket as ``is_private`` but
+# that are NOT Private Link targets (Teredo 2001::/32, 6to4 2002::/16, discard 100::/64) — any
+# of which can tunnel/embed a metadata IPv4. That positive allow-list is the authoritative
+# reason every IPv6 transition-scheme encoding of a metadata IP stays denied under the opt-in
+# without having to enumerate each transition prefix.
 @pytest.mark.parametrize(
     ("host", "denied"),
     [
         ("[fd12:3456:789a::1]", False),  # IPv6-ULA — a legit Private Link v6 target, ALLOWED
         ("172.16.5.5", False),  # RFC1918 — legit Private Link, ALLOWED
+        ("[::ffff:10.20.30.40]", False),  # IPv4-mapped RFC1918 — legit via embedded IPv4
+        ("8.8.8.8", False),  # public — the normal egress case, ALLOWED
         ("[fe80::1]", True),  # link-local (non-metadata) — DENIED even under opt-in
         ("[64:ff9b::808:808]", True),  # NAT64 of a PUBLIC 8.8.8.8 — is_reserved, DENIED
         ("[ff02::1]", True),  # multicast — DENIED even under opt-in
+        ("[2001:0:5efe:af8f:0:0:5601:5601]", True),  # Teredo of 169.254.169.254 — DENIED
+        ("[2001::1]", True),  # Teredo prefix (is_private but NOT Private Link) — DENIED
+        ("[2002:0808:0808::]", True),  # 6to4 of PUBLIC 8.8.8.8 — is_private, not allow-listed
+        ("[100::1]", True),  # discard-only prefix (is_private) — DENIED
     ],
 )
 def test_write_time_opt_in_relaxes_only_private_class(host: str, denied: bool) -> None:
-    """allow_private_ranges must permit RFC1918/ULA yet still deny the link-local / reserved /
-    multicast classes — the invariant that keeps transition-scheme metadata encodings closed."""
+    """allow_private_ranges must permit ONLY the RFC1918/ULA allow-list (plus public egress)
+    and still deny link-local / reserved / multicast AND the non-Private-Link ``is_private``
+    prefixes (Teredo/6to4/discard) — the invariant that keeps transition-scheme metadata
+    encodings closed one class at a time rather than one prefix at a time."""
     call = lambda: assert_literal_host_not_denied(  # noqa: E731
         f"https://{host}/x", allow_private_ranges=True
     )
