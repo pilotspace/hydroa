@@ -61,6 +61,7 @@ class KeyGuardrailPolicyResponse(BaseModel):
 
     prompt_injection: dict[str, Any] | None = None
     pii_mask: dict[str, Any] | None = None
+    ml_moderation: dict[str, Any] | None = None
     source: Literal["key", "tenant"]
 
 
@@ -95,9 +96,11 @@ def _build_response(
 ) -> KeyGuardrailPolicyResponse:
     pi = configs.get("prompt_injection")
     pm = configs.get("pii_mask")
+    mm = configs.get("ml_moderation")
     return KeyGuardrailPolicyResponse(
         prompt_injection=pi if isinstance(pi, dict) else None,
         pii_mask=pm if isinstance(pm, dict) else None,
+        ml_moderation=mm if isinstance(mm, dict) else None,
         source=source,
     )
 
@@ -158,9 +161,15 @@ def _emit_audit(
 
 
 def _guardrail_flags_metadata(configs: dict[str, Any], key_id: uuid.UUID) -> dict[str, Any]:
-    """Build audit metadata: key_id + which guardrails are enabled+mode — never pattern text."""
+    """Build audit metadata: key_id + which guardrails are enabled+mode — never pattern text.
+
+    Iterates GuardrailConfigRequest's OWN declared fields rather than a hand-copied
+    name list, so a guardrail type added to that shared model later (as ml_moderation
+    was, after this task's Ground SHA) is picked up automatically instead of silently
+    missing from the audit trail (the same class of gap FINDING 1 fixed for storage).
+    """
     meta: dict[str, Any] = {"key_id": str(key_id)}
-    for guardrail_name in ("prompt_injection", "pii_mask"):
+    for guardrail_name in GuardrailConfigRequest.model_fields:
         cfg = configs.get(guardrail_name)
         if isinstance(cfg, dict):
             meta[guardrail_name] = {
@@ -185,6 +194,14 @@ async def get_key_guardrails(
 
     Accessible to any authenticated role (owner, admin, member) — mirrors the
     tenant-level GET /admin/guardrails precedent (member can view, not edit).
+
+    NOTE: `source` here is frozen to "key" | "tenant" (§3 CONTRACT) — it reports
+    "tenant" whenever the key has no override, even when the tenant's own
+    guardrail_configs is empty. This is coarser than the internal
+    `AuthzResult.policy_source` / `ApiKey.guardrail_policy_source` discriminator
+    (keys/infrastructure/repository.py), which also distinguishes a genuinely
+    empty tenant config as "none" for analytics attribution. See the comment
+    there for the full reconciliation note.
     """
     tenant_id = str(identity.tenant_id)
     key_policy = await _fetch_key_policy_row(session, key_id=key_id, tenant_id=tenant_id)
@@ -248,6 +265,23 @@ async def put_key_guardrails(
                     for p in pii_dump["pii_custom_patterns"]
                 ]
             updated["pii_mask"] = pii_dump
+
+    # Every OTHER guardrail field GuardrailConfigRequest declares (today: just
+    # ml_moderation) is handled the SAME wholesale way as prompt_injection above —
+    # replace-if-present, remove-if-explicit-null — derived from the model's own
+    # field list rather than a hand-copied name tuple, so a future guardrail type
+    # added to the shared model can't be silently dropped again the way
+    # ml_moderation was (it landed on GuardrailConfigRequest after this task's
+    # Ground SHA and this handler never branched on it — the confirmed defect).
+    _explicitly_handled = {"prompt_injection", "pii_mask"}
+    for field_name in GuardrailConfigRequest.model_fields:
+        if field_name in _explicitly_handled or field_name not in fields_set:
+            continue
+        value = getattr(body, field_name)
+        if value is None:
+            updated.pop(field_name, None)
+        else:
+            updated[field_name] = value.model_dump()
 
     result = await session.execute(
         text(
