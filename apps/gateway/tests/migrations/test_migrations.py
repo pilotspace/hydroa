@@ -61,6 +61,7 @@ EXPECTED_TABLES = frozenset(
         "tenant_rate_card_entries",  # SANCTIONED EDIT — tiered-rate-cards TASK.md §3 manifest maintenance; disposition: additive migration f70104c27b41 adds this table
         "scim_tokens",  # SANCTIONED EDIT — scim-provisioning TASK.md §3 manifest maintenance; disposition: additive migration 010e6f83a709 adds this table
         "saml_provider_configs",  # SANCTIONED EDIT — saml-sso TASK.md §3 manifest maintenance; disposition: additive migration c950c528d3d5 adds this table
+        "request_logs",  # SANCTIONED EDIT — payload-capture-store TASK.md §3 manifest maintenance; disposition: additive migration a1c5e7f9b3d6 adds this table
     }
 )
 
