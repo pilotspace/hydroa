@@ -13,6 +13,7 @@ Infrastructure:
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 
 import pytest
@@ -23,7 +24,15 @@ from gateway.main import create_app
 from tests.credential_stub import install_stub_resolver
 from gateway.usage.application.flusher import UsageLedgerFlusher
 
-TEST_DATABASE_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+# ml-moderation-layer: read the same GATEWAY_TEST_DATABASE_URL override the root
+# conftest.py (tests/conftest.py) honors — was hardcoded to the un-suffixed default,
+# which collides across concurrently-run worktree suites sharing one Postgres
+# instance. Falls back to the identical previous literal when unset — behavior-
+# preserving for every existing caller.
+TEST_DATABASE_URL = os.environ.get(
+    "GATEWAY_TEST_DATABASE_URL",
+    "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+)
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
 
