@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": "platform-admin-console",
+  "active_task": "realtime-relay-governance",
+  "active_milestone": "enterprise-hardening",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -739,12 +739,12 @@
     },
     "realtime-relay-governance": {
       "title": "B2: realtime relay authz/rate-limit + usage/audit rows",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T04:53:34+00:00"
+      "updated": "2026-07-10T06:20:23+00:00"
     },
     "edge-input-hardening": {
       "title": "S2+S3+S4: XFF last-hop parse, SSRF IMDS deny, body-size cap",
@@ -907,7 +907,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-06T12:01:14+00:00",
+  "updated": "2026-07-10T06:20:23+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1798,7 +1798,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "enterprise-hardening": "tiered-rate-cards"
+    "enterprise-hardening": "realtime-relay-governance"
   },
   "todos": [
     {

@@ -2,7 +2,7 @@
 
 slug: realtime-relay-governance · created: 2026-07-02 · stage: production
 autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
      autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
      (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
@@ -412,23 +412,24 @@ Audit (fire-and-forget via the EXISTING record_audit()/AuditEvent — NO migrati
   metadata (every event): {"provider": <provider>, "model": <dialed model>, ...event-specific fields
   (close_code / rejection reason)} — NEVER token/key material.
 
-  *** FREEZE FORK — Tin decides (this is the bundle's #1 open decision) ***
-  Option A — DEFAULT, zero cross-task change:
-    AuditEvent(tenant_id=None, actor_user_id=None, actor_email=None, action="realtime_relay.session_*",
-               target_type="realtime_relay", target_id=str(key_id), result="success"|"rejected",
-               metadata={"tenant_id": str(authz.tenant_id), "key_id": str(authz.key_id), ...})
-    A "system-level event" (mirrors the EXISTING platform_tenants_router bulk-list / 
-    ops.platform_credential_resolve precedent — apps/gateway/tests/admin_console_audit/
-    test_admin_console_audit.py:242-262). Honors the FROZEN audit-log-store audit_missing_actor
-    invariant unchanged, zero migration, zero change-request.
-    Cost: NOT queryable via AuditLog.list_for_tenant(tenant_id) — a tenant-scoped audit UI would need
-    a metadata search, not the existing indexed path.
-  Option B — requires a change-request against the FROZEN audit-log-store contract:
-    Add a nullable actor_key_id: uuid.UUID | None field to AuditEvent; relax audit_missing_actor to
-    accept EITHER actor_user_id OR actor_key_id for a tenant-scoped event; tenant_id=authz.tenant_id
-    (real tenant scoping, queryable via list_for_tenant).
-    Cost: an additive migration + a formal change-request re-opening audit-log-store's frozen §3 —
-    OUT OF THIS TASK'S SCOPE unless Tin explicitly widens it at this freeze.
+  *** FREEZE FORK — RESOLVED: Tin chose Option B (2026-07-10, AskUserQuestion) ***
+  Option B — FROZEN CHOICE. Relay audit events are TENANT-SCOPED and queryable via list_for_tenant.
+    This SANCTIONS a scoped change-request against the FROZEN audit-log-store contract (Tin widened
+    this task's scope at freeze to include it):
+    - Add a nullable `actor_key_id: uuid.UUID | None` field to AuditEvent (audit/domain/audit_event.py).
+    - Relax the `audit_missing_actor` invariant in `__post_init__`: a tenant-scoped event
+      (tenant_id is not None) is valid if it carries EITHER actor_user_id OR actor_key_id.
+    - One additive nullable-column migration on `audit_events` (actor_key_id), parented on the current
+      single alembic head; the new column carried through audit_events ORM + the writer's INSERT.
+    - The `audit_events` table already exists in both SANCTIONED-EDIT test manifests
+      (tests/migrations/test_migrations.py EXPECTED_TABLES, tests/guardrails no-new-tables) — a COLUMN
+      add needs no manifest change, but the audit-log-store frozen contract's own §3 tests must be
+      re-crossed under the change-request (relaxed invariant is additive: user-actor events unaffected).
+    AuditEvent(tenant_id=authz.tenant_id, actor_user_id=None, actor_key_id=authz.key_id,
+               actor_email=None, action="realtime_relay.session_*", target_type="realtime_relay",
+               target_id=str(key_id), result="success"|"rejected",
+               metadata={"provider": ..., "model": ..., ...event-specific})
+  Option A — NOT CHOSEN (system-level tenant_id=None event; recorded for the ADR trail only).
 
 Envoy (infra/envoy/envoy.yaml, infra/envoy/envoy-prod.yaml — byte-mirror
   charts/ai-proxy/templates/envoy-configmap.yaml:126-138, placed BEFORE the existing general "/v1/" rule):
@@ -443,11 +444,13 @@ Settings: NO new fields. Bandwidth pacing reuses settings.bandwidth_max_wait_sec
   app.state.bandwidth_bucket (the SAME app.state singleton deps.py already wires for the chat path —
   this task threads it into the relay endpoint too, it does not invent a second one).
 
-Schema: NO migration under Option A (the recommended default). Option B (if Tin chooses it) requires
-  one additive nullable-column migration on audit_events — deferred to a change-request, not drafted here.
+Schema: ONE additive nullable-column migration on audit_events (actor_key_id uuid NULL) — Option B, Tin's
+  frozen choice. Parent on the current single alembic head. Additive + nullable → byte-identical for every
+  existing audit path (user-actor events keep actor_user_id, actor_key_id stays NULL).
 ```
 
-Status: DRAFT — AWAITING FREEZE (Tin)
+Status: FROZEN @ v1 — Tin approved 2026-07-10 (AskUserQuestion). Audit actor-scoping = Option B (actor_key_id,
+tenant-scoped, sanctioned change-request against audit-log-store). All other §3 clauses frozen as drafted.
 Least-sure flags surfaced at freeze (ranked):
   1. [spec] **TOP** — Gemini Live per-turn usage-field existence/shape is UNVERIFIED against the live
      API/docs (§1 ⚠). BUILD must live-verify before implementing M3's translator; if absent, M3
