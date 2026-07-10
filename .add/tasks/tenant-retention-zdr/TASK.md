@@ -354,53 +354,71 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+Persona: Application Security Engineer (`.add/personas/appsec-engineer.md`) — closest fit (fail-closed guard + tenant-isolation lens); no ZDR/retention-specific persona exists yet.
+
+- [x] all tests pass — 19/19 builder suite green + `test_retention_sweep.py` frozen 8/8 green, both re-run live at verify (db-suffix `vzdr`)
+- [x] coverage did not decrease — `retention_policy.py` 100% (32/32), `retention_policy_router.py` 100% (66/66), re-measured live
+- [x] no test or contract was altered during build — diff of `68c7a30` shows §3 CONTRACT block byte-identical to the frozen text; only one NEW test added by verify (see FINDINGS #1), zero existing tests edited/weakened
+- [ ] the green was EARNED, not gamed — **NOT fully earned**: see Refute-read verdict below (FINDINGS #1 is a real gap the green suite structurally cannot see, because the suite never wires `app.state.object_store` in the ZDR-block scenario)
+- [ ] concurrency / timing of the risky operation is safe — RESIDUE, see FINDINGS #2 (accepted, narrow, characterized)
+- [ ] no exposed secrets, injection openings, or unexpected dependencies — 🔴 see FINDINGS #1 (a fail-closed compliance guarantee bypass, not a secrets leak, but security-severity by this task's own definition of ZDR)
+- [x] layering & dependencies follow CONVENTIONS.md — single choke point per aggregate honored (`raise_if_zdr` called once per repo `.create`/`append_message`); the defect is an ORDERING bug in the caller (router/worker), not a layering violation
+- [ ] a person reviewed and approved the change — pending human gate (HARD-STOP)
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] A ZDR tenant's artifact/memory/conversation-message/batch-item/video-job POST returns 403 ERR_ZDR_PAYLOAD_BLOCKED with zero rows created — confirmed by a live DB row-count check pre/post the call in the test.
-- [ ] A ZDR tenant's chat completion returns byte-identical to a non-ZDR tenant's same request, with zero resp-cache/vec-cache Redis keys written — confirmed by inspecting the test fake-Redis's key set after the call.
-- [ ] Enabling ZDR on a tenant with pre-existing payload rows results in zero rows across all 5 payload tables after a sweep cycle, including s3-backed artifacts calling ObjectStore.delete — confirmed by row-count + fake-object-store call assertions.
-- [ ] A tenant's `window_days` override does not affect audit_events retention — confirmed by an audit_events row surviving a sweep past the tenant's window but before the operator floor.
-- [ ] The original no-override-tenant sweep behavior (3 existing DELETEs) is unchanged — confirmed by re-running the existing `test_retention_sweep.py` suite green, untouched.
+- [x] A ZDR tenant's artifact/memory/conversation-message/batch-item/video-job POST returns 403 ERR_ZDR_PAYLOAD_BLOCKED with zero rows created — confirmed live: DB row-count 0 pre/post for all 5 tables (`test_zdr_blocks_artifact_upload`, `test_zdr_blocks_conversation_memory_batch_video`, re-run green). CAVEAT: "zero rows created" holds for the DB, but NOT for the object store on the s3-backed artifact path — see FINDINGS #1.
+- [x] A ZDR tenant's chat completion returns byte-identical to a non-ZDR tenant's same request, with zero resp-cache/vec-cache Redis keys written — confirmed live (`test_zdr_completion_skips_cache_but_bills_usage` re-run green; upstream.calls==2, zero cache keys, 2 accurate usage_records rows).
+- [x] Enabling ZDR on a tenant with pre-existing payload rows results in zero rows across all 5 payload tables after a sweep cycle, including s3-backed artifacts calling ObjectStore.delete — confirmed live (`test_zdr_purge_pre_existing_payload_rows` re-run green: row counts 0, `ObjectStore.delete` called for the s3 key, Redis namespaces purged, CASCADE confirmed for conversation_messages).
+- [x] A tenant's `window_days` override does not affect audit_events retention — confirmed live (`test_audit_events_never_affected_by_tenant_policy` re-run green) + static read: none of the 3 new sweep passes (`_sweep_new_payload_window_pass`, `_sweep_tenant_shorten_pass`, `_sweep_zdr_purge_pass`) reference `audit_events`; `ALL_SWEPT_TABLES`/`effective_window_map` in `retention_policy.py` structurally excludes it (R4 by construction, not a runtime branch).
+- [x] The original no-override-tenant sweep behavior (3 existing DELETEs) is unchanged — confirmed live: `test_retention_sweep.py` 8/8 green, byte-identical file (git diff shows zero changes to that test file); the 3 new passes are no-ops absent any tenant override (`WHERE tn.retention_window_days IS NOT NULL` / `WHERE zdr_enabled = true` guards both evaluate to empty sets with default column values).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol is referenced. `raise_if_zdr` imported+called in all 5 gated repos (artifacts/conversations×2/memory/batches/video, confirmed via `git show 68c7a30` diff on each file); `is_zdr` consumed by `raise_if_zdr` + `test_is_zdr_read_port`; `retention_policy_router` registered at `main.py:1221`; `ZDR_PAYLOAD_BLOCKED`/`RETENTION_WINDOW_INVALID` both defined in `error_catalog.py` and raised from their respective sites; `TenantRow.retention_window_days/zdr_enabled/zdr_enabled_at` (orm.py:122-136) read by both the router's raw-SQL and the sweeper's JOIN queries; `retention_tenant_window_ceiling_days` (config.py:611) read by `effective_window_days` and the PUT validator.
+- [x] DEAD-CODE (code) — no new unused symbol found; `EXISTING_SWEPT_TABLES`/`NEW_PAYLOAD_TABLES`/`ALL_SWEPT_TABLES` all consumed by `effective_window_map`; `_purge_zdr_redis_namespaces` called from `_sweep_zdr_purge_pass`.
+- [ ] SEMANTIC — N/A (code-only task).
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed via `mcp__serena`/grep against the current tree (not just Ground SHA `2071046`): `RetentionSweeper`, `TenantRow`, `ApiKey`/`AuthzResult`, `ApiKeyRepository.get_by_id`, `Permission.SECURITY_CONFIG`/`require_permission`, `ObjectStore.delete`, all 5 repo `.create`/`append_message` choke points — all present and at the shapes described.
+- [x] no anchor moved/renamed since Ground SHA — additionally found: `keys/infrastructure/repository.py`'s LEFT JOIN grew a 4th tenant column (`payload_capture_enabled`, from the LATER-merged sibling `payload-capture-store`/`realtime-relay-governance` build, commit `7fd43a2`/`adff64f`) alongside `zdr_enabled` — additive, does not disturb this task's own `zdr_enabled` column or its consumers; noted for completeness, not a defect.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: **NOT-EARNED** (partial — the RBAC/audit/window/purge/cache surfaces ARE earned; the write-path-completeness surface is NOT)
+By: self (add-verify, appsec-engineer persona) · adversarially checked:
+  1. Attacked all 5 gated repo choke points directly (artifacts/conversations/memory/batches/video) with `zdr_enabled=true` — held: 403 + zero DB rows, confirmed live.
+  2. Attacked the write-path *ordering* upstream of each choke point (not just the choke point itself) — **broke**: `artifacts/api/router.py:240-260` calls `store.put(object_key, decoded, ...)` (real S3 object write) BEFORE calling `repo.create()` (where `raise_if_zdr` lives). A ZDR-enabled tenant's blocked artifact upload still leaves the actual payload bytes durably persisted in the object store — see FINDINGS #1. The green suite never caught this because `tests/retention_zdr/conftest.py` never wires `app.state.object_store`, so the existing `test_zdr_blocks_artifact_upload` silently exercises the honest-degrade inline-BYTEA path, not the s3 path it appears to guard.
+  3. Attacked the audit_events floor with `window_days=1` + `zdr_enabled=true` simultaneously — held (structurally excluded, confirmed live + by code read).
+  4. Attacked cross-tenant access (no tenant_id param exists on the router — structurally impossible, not just runtime-checked) — held.
+  5. Attacked the RBAC gate shape (`require_permission` returns `fastapi.Depends(...)` itself; confirmed NOT the S1 bare-callable foot-gun — different helper, correctly used per its own docstring convention) — held.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify, appsec-engineer persona)
+1. Security: **HARD-STOP: FINDINGS #1** — a ZDR-enabled tenant's rejected s3-backed artifact upload still durably writes the real payload bytes to the object store (`artifacts/api/router.py:247`, before the `raise_if_zdr` gate at `artifacts/infrastructure/repository.py:40` ever runs), and because no DB row is ever created, the sweeper's ZDR purge pass (`_purge_artifacts_batch`, which only iterates existing `artifacts` rows) can never find or delete it — a permanent, self-heal-proof orphan that directly violates this task's own core compliance promise ("zero payload rows in every inventoried store," TASK.md §1 "After"). 100% reproducible on the very first upload attempt by any ZDR tenant with an object store configured — not a rare crash-window edge case.
+2. Concurrency: leave blank (Security HARD-STOP ends the checklist per protocol)
+3. Architecture: leave blank (Security HARD-STOP ends the checklist per protocol)
+Verdict: **HARD-STOP**
+Residue: FINDINGS #1 (BLOCKER, security/compliance) + FINDINGS #2 (concurrency, accepted/named) + FINDINGS #3 (minor, named) — see FINDINGS below
+Binding: yes — mechanical (security is always HARD-STOP per ADD's own non-negotiable, restated in the appsec-engineer persona's Critical Rules)
+
+### FINDINGS
+1. **BLOCKER — security/compliance — ZDR write-path gap: S3 object body persists despite a blocked write.**
+   File: `apps/gateway/src/gateway/artifacts/api/router.py:240-260` (unconditional `await store.put(object_key, decoded, body.content_type)` at line 247, executed BEFORE `repo.create(...)` at line 250 where `raise_if_zdr` — `apps/gateway/src/gateway/artifacts/infrastructure/repository.py:40` — is the first line).
+   Failing input/state: any `POST /v1/artifacts` from a tenant with `zdr_enabled=true` AND an `ObjectStore` configured on `app.state.object_store`.
+   Wrong outcome: client correctly receives `403 ERR_ZDR_PAYLOAD_BLOCKED` and no `ArtifactRow` is created (R3's DB half holds) — but the actual file bytes are now durably sitting in the object store at `artifacts/{tenant_id}/{artifact_id}`, unreferenced by any row, and therefore invisible to and unreachable by the sweeper's ZDR purge pass (`_purge_artifacts_batch` in `retention_sweep.py` only SELECTs from the `artifacts` table). This is a real, permanent violation of the milestone's own stated exit criterion ("zero payload rows in every inventoried store," and more precisely — zero payload BYTES anywhere).
+   Repro test (added, RED, proves the defect): `apps/gateway/tests/retention_zdr/test_retention_zdr.py::test_zdr_blocks_artifact_upload_but_s3_object_already_written` — fails today with `fake_store.store == {'artifacts/<tid>/<id>': b'hello'}` instead of the expected `{}`. Root cause the existing `test_zdr_blocks_artifact_upload` never catches: `tests/retention_zdr/conftest.py` never sets `app.state.object_store`, so that test silently runs the honest-degrade inline-BYTEA branch, not the s3 branch its own §4 test plan implies it covers.
+   Suggested fix shape (not applied — build-owned): move the ZDR check to the top of `create_artifact` in `router.py` (before `store.put()` is ever called), OR add a symmetric `raise_if_zdr` call at the top of the router handler itself, so the object-store write and the DB write share one fail-closed gate ahead of BOTH side effects. The video worker's inline-BYTEA fan-out (`video/api/router.py:239`) does not have this specific bug (no DB row nor object bytes persist — `raise_if_zdr` fires before either), but does still burn one real upstream provider generation call for a job created before ZDR was enabled — noted as FINDINGS #3, much lower severity.
+
+2. **RESIDUE (concurrency, accepted/named) — narrow TOCTOU window between `raise_if_zdr`'s fresh SELECT and the eventual INSERT.**
+   `raise_if_zdr` (`tenants/application/retention_policy.py:80-88`) issues one `SELECT zdr_enabled FROM tenants` and returns; the repository then proceeds to construct and flush/insert the row a few lines later, in the same or a subsequent statement, under Postgres default READ COMMITTED (no explicit isolation override found in `core/db.py`/`core/config.py`, no DB-level trigger/CHECK enforcing `zdr_enabled` at INSERT time — confirmed by reading migration `a7c2f0e1b4d9`). If a concurrent `PUT /admin/retention-policy {"zdr_enabled": true}` commits in the microsecond-to-millisecond window between the SELECT and the INSERT, that one write slips through — the check is fresh-per-call (never stale/cached), but "fresh" is not "atomic with the write." This matches the task's own framing (a deliberate simplification, not a build oversight) and is self-healing on the next sweep tick (M7) for every table except the S3 orphan case in FINDINGS #1. Accepted as a residual risk — a single admin-driven toggle racing a single in-flight write is low-frequency/low-blast-radius, unlike FINDINGS #1's 100%-reproducible gap.
+
+3. **MINOR (named, not blocking) — in-flight jobs created before a ZDR flip still complete their non-persisted side effects.**
+   `video/api/router.py:210-218`: the upstream video-generation provider call (`provider.generate(...)`) runs unconditionally for any job accepted before ZDR was enabled; if ZDR flips on mid-generation, the worker still burns the (paid) provider call before `artifact_repo.create()` raises and discards the result in-process. No bytes land in gateway-owned storage (unlike FINDINGS #1), so this is not a compliance violation, just a wasted-cost edge case worth a future spec delta if it matters to billing/cost containment.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: no — findings returned to the orchestrator; the human gate decision has not yet been rendered
+Outcome: **HARD-STOP**
+If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (never for a security gap — not applicable here)
+Reviewed by: <pending human> · date: 2026-07-10
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

@@ -449,52 +449,50 @@ Deviations (recorded per the project's fix-and-record rule): mid-build, a `git s
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 22/22 (21 frozen scenarios + 1 verify-added repro test), `GATEWAY_TEST_DATABASE_URL=…/gateway_test_vpkgp`, `uv run pytest tests/per_key_guardrail_policies/ -v --no-cov` → `22 passed in 10.58s`
+- [~] coverage did not decrease — not independently re-measured against a full-suite baseline (isolated subdir runs report a misleading total%); touched files themselves are fully exercised by the 21-scenario suite; relying on the orchestrator's stated cross-feature-green baseline for the repo-wide gate
+- [x] no test or contract was altered during build — `git diff e18d169..440fcbe -- TASK.md` shows §1-3 body byte-identical (only phase marker + freeze Status/flag lines added, as expected); `git diff adffaeb..440fcbe --stat` shows zero touch to `proxy/`, `tenants/api/guardrail_router.py`, `guardrail_evaluator.py`, or any `tests/` file outside `per_key_guardrail_policies/`
+- [ ] the green was EARNED, not gamed — NOT FULLY EARNED: see Refute-read verdict below (FINDING 1, ml_moderation gap, is a confirmed real defect the green suite missed — zero test coverage of the `ml_moderation` field anywhere in the frozen suite)
+- [x] concurrency / timing of the risky operation is safe — PUT/DELETE are single atomic `UPDATE … WHERE id AND tenant_id AND revoked_at IS NULL RETURNING id` statements; 0 rows = 404; PUT's read-then-write has no TOCTOU window beyond the accepted last-write-wins posture (matches the tenant-level PUT's own concurrency contract, explicitly accepted in §1 Edge cases)
+- [x] no exposed secrets, injection openings, or unexpected dependencies — all `text()` SQL uses bound params (`:kid`, `:tid`, `:val`), no string interpolation; no new dependency added (`git diff` shows no pyproject/uv.lock change)
+- [x] layering & dependencies follow CONVENTIONS.md — resolution lives in `infrastructure/repository.py` (not smuggled into `api/`); the one deliberate exception (raw `text()` SQL in the router instead of a repository port) mirrors the tenant-level `guardrail_router.py`'s own established precedent, recorded not silent
+- [x] a person reviewed and approved the change — Tin Dang froze §3 @ v1 (2026-07-10); this verify pass is the adversarial pre-gate review
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] a key with NULL guardrail_policy behaves byte-identically to tenant inheritance across pre-call, post-call, all 3 cache-hit branches, and streaming — confirmed by the inheritance regression test (passed pre-build as a true regression guard) + zero edits to use_cases.py/guardrail_evaluator.py in the diff
-- [ ] a key with its own policy enforces it wholesale (no field-merge with tenant) — confirmed by the override tests asserting key-policy verdicts where tenant policy differs
-- [ ] policy resolution adds zero DB round-trips (rides the existing get_by_id 3-table LEFT JOIN) — confirmed by the M3 query-count assertion (stress-run 5x stable)
-- [ ] DELETE reverts to inherit (204) and PUT partial-merges within the key override — confirmed by the router tests for both verbs
+- [x] a key with NULL guardrail_policy behaves byte-identically to tenant inheritance across pre-call, post-call, all 3 cache-hit branches, and streaming — confirmed: `test_key_null_override_inherits_tenant_byte_identical` + all 3 cache-hit tests PASS; `git diff adffaeb..440fcbe --stat` confirms zero edits to `proxy/application/use_cases.py` / `guardrail_evaluator.py`
+- [x] a key with its own policy enforces it wholesale (no field-merge with tenant) — confirmed by `test_key_override_enforces_ignoring_tenant` + `test_key_override_empty_disables_all_guardrails` (both PASS) — BUT see FINDING 1: wholesale-override also silently strips `ml_moderation` (a THIRD guardrail type this task's Ground didn't know about) with no way to set it back
+- [x] policy resolution adds zero DB round-trips (rides the existing get_by_id 3-table LEFT JOIN) — confirmed by `test_resolution_costs_zero_extra_io` (instrumented `before_cursor_execute` listener, non-vacuous — asserts exact resolved value AND statement count), PASS
+- [x] DELETE reverts to inherit (204) and PUT partial-merges within the key override — confirmed by `test_delete_reverts_to_tenant_inheritance`, `test_delete_idempotent_when_no_existing_override`, `test_put_partial_merge_preserves_other_guardrail`, `test_put_null_removes_one_guardrail_from_override`, all PASS
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `key_guardrail_router` imported + `app.include_router(key_guardrail_router)` in `main.py`; confirmed via `git diff adffaeb..440fcbe -- main.py` (net effect, not the misleading divergent-parent diff against the pre-merge branch tip). `AuthzResult.policy_source` / `ApiKey.guardrail_policy_source` are set but have no consumer yet — INTENTIONAL (freeze question #3: added now for the not-yet-built sibling `guardrail-analytics` task), not orphaned.
+- [x] DEAD-CODE (code) — `pyright` clean (0 errors/warnings) on all 5 touched source files; no unused import/symbol found by inspection
+- [ ] SEMANTIC (prose / non-code) — n/a, this task is code-only (no prose/doc deliverable beyond the GLOSSARY delta already reviewed as part of the frozen §3)
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — `ApiKeyRow`, `SqlAlchemyApiKeyRepository.get_by_id`, `ApiKey.guardrail_configs`, `AuthzResult.guardrail_configs`, `GuardrailConfigRequest`, `_validate_custom_patterns`, `require_owner_or_admin`, `get_identity`, `record_audit`, `AuditEvent`, `KEY_NOT_FOUND` all confirmed present and imported correctly (mcp__serena find_symbol / grep cross-check + pyright 0 errors — an unresolved import would fail pyright, not just at runtime)
+- [x] anchor that moved since Ground SHA, named here: the migration's `down_revision` re-parented from the Ground-time `511ad8a7b65e` to the actual chain predecessor `c20d0adece0a` (a sibling `audit_events_export_index` migration landed first) — correctly re-pinned in code (`alembic heads` shows ONE head, `alembic upgrade head` against a fresh DB applies the full chain cleanly through `d401ca5a7cde`); ONLY the migration file's own docstring line ("Revises: 511ad8a7b65e") is stale/unpinned to the actual `down_revision` — cosmetic, not functional (FINDING 3, MINOR)
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: NOT-EARNED
+By: self (add-verify, appsec-engineer persona) · adversarially checked: (1) wholesale-override collateral damage against every guardrail TYPE the reused `GuardrailConfigRequest` model actually declares (not just the two the design's Ground anchored on) — found the model has a THIRD field, `ml_moderation` (landed by the sibling `ml-moderation-layer` task after this task's Ground SHA), that the key-level PUT handler never branches on; wrote and ran a repro test (`test_ml_moderation_silently_dropped_from_key_override`, PASSED, proving the drop) — CONFIRMED real, HARD-STOP-class per the appsec persona's fail-direction discipline (a security control silently disabled with zero caller-visible signal). (2) cross-tenant/revoked-key oracle — traced every GET/PUT/DELETE query, confirmed `tenant_id` filters in the SAME query as the existence check on all three verbs, 404 identical for unknown/cross-tenant/revoked (R4); held. (3) NULL-vs-{} JSONB round-trip and the M3 zero-IO claim — traced the resolution helper + instrumented the actual SQL statement count; held, non-vacuous.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify, appsec-engineer persona)
+1. Security: HARD-STOP: FINDING 1 — the key-level guardrail override endpoint silently drops the `ml_moderation` guardrail on every write, and because resolution is WHOLESALE (per this task's own frozen M1), setting ANY key-level prompt_injection/pii_mask override silently and irreversibly strips a tenant's `ml_moderation` content-moderation coverage for that key, with zero error and zero response-body signal, and no way to restore it via this API. Repro: `apps/gateway/tests/per_key_guardrail_policies/test_ml_moderation_gap_repro.py::test_ml_moderation_silently_dropped_from_key_override` (PASSED, i.e. reproduces the bug).
+Verdict: HARD-STOP
+Residue: FINDING 1 (security, BLOCKER) must be resolved or explicitly risk-accepted by a human before this can PASS; FINDING 2 and FINDING 3 (below) are non-blocking but should be recorded.
+Binding: yes — mechanical (sensitivity: data)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: no — this verify pass surfaces a HARD-STOP; the orchestrator/human records the outcome, not this agent
+Outcome: HARD-STOP
+If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (never for a security gap)
+Reviewed by: pending human review · date: 2026-07-10
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

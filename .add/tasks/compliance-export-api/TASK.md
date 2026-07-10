@@ -2,10 +2,9 @@
 
 slug: compliance-export-api · created: 2026-07-10 · stage: production
 milestone: enterprise-identity-compliance
-sensitivity: data   <!-- read-only over the existing immutable audit store; no new identity/auth surface — data-handling risk (bulk export, filter correctness, honest pagination), not a security HARD-STOP surface. -->
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+sensitivity: data
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -99,8 +98,6 @@ Assumptions — lowest-confidence first:
   - [ ] `limit` bounds (default 1000, max 5000) are a judgment call with no direct precedent in this codebase (the only sibling, `get_audit`, caps at 100 for an interactive UI, not an archival pull) — confirm the ceiling is acceptable given the `ERR_EXPORT_TIMEOUT` (504) safety valve at M12, or should be lower/higher.
   - [ ] Composite index `(tenant_id, created_at, id)` (+ `actor_email` as leaf or separate index) as an additive migration is proposed but not load-tested against production audit volume — confirm at BUILD/VERIFY with `EXPLAIN ANALYZE` on a realistic row count rather than assuming it's needed from the schema alone.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -255,14 +252,11 @@ Scenario: duplicate cursor request is idempotent   # concurrency/retry-safety
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
 Least-sure flag surfaced at freeze: [contract] NDJSON as the DEFAULT export body (cursor via response headers) — a deliberate divergence from the project's mirror-existing-envelope convention, chosen for SIEM/archival ergonomics; ?format=json preserves the house envelope. Decided at freeze (Tin, 2026-07-10 batch): all 4 agent recommendations accepted (NDJSON default; AUDIT_READ reuse; 1000/5000 page sizes; two narrow indexes, EXPLAIN at build).
-
 
 ```
 GET /admin/audit/export
@@ -394,7 +388,6 @@ Must NOT touch: `usage/api/router.py:728 get_audit` (frozen v1), `audit/domain/a
 
 ---
 
-
 ## Design self-score
 
 Illustrative Python (router signature + repository method + ErrorSpec constants + migration sketch) syntax-checked via `python3 -m py_compile` against the exact §3 snippets — both compiled clean (no placeholder-shaped syntax errors, per the PROJECT.md-folded lesson about unverified contract code).
@@ -407,7 +400,6 @@ Illustrative Python (router signature + repository method + ErrorSpec constants 
 - Self-evaluation: 0.93 — the one genuinely open judgment call (format default) is surfaced as the ⚠ least-sure flag and echoed as FREEZE-QUESTION 1 with both options argued, not just recommended; three further judgment calls are also surfaced rather than folded silently into the draft.
 
 All six ≥ 0.9 — no refinement pass required before reporting.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -444,9 +436,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `tests/audit_export` · 32 tests (25 scenario groups, 7 parametrize-expanded) — RAN red (missing implementation, 404 on every case — route not mounted) before Build; confirmed via a temporary git-stash isolation of the build-phase changes, re-run, then restored. All 32 green after Build; `tests/audit_read` (frozen v1, 15 tests) and `tests/migrations` (6 tests, incl. the new revision's autogenerate-empty-diff parity) re-ran green alongside.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -469,61 +458,57 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 3. **Keyset predicate SQL shape**: `tuple_((created_at, id)) < tuple_((:c, :i))` (SQLAlchemy `tuple_()`) is semantically what §3 describes, but its pyright stubs reject plain literal operands (`reportArgumentType`) under this project's strict pyright gate. Built as the equivalent OR/AND decomposition (`created_at < :c OR (created_at = :c AND id < :i)`) — identical predicate, identical query plan (confirmed via `EXPLAIN ANALYZE`), fully type-checks clean.
 4. **ORM parity addition**: `audit_events_orm.py` was not named in §3's "May touch" list, but `AuditEventRow.__table_args__` needed the same two `Index(...)` declarations as the migration — otherwise `tests/migrations/test_migrations.py::test_autogenerate_empty_diff` (an existing, unmodified suite) would fail, since `alembic check` would see the DB-only indexes as pending drops. Necessary, additive-only, and the file IS covered by §0's own anchor (`audit_events_orm.py:44`).
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — `tests/audit_export/` (32) + `tests/audit_read/` (15, frozen v1) = 47 passed, `GATEWAY_TEST_DATABASE_URL=gateway_test_vcea`, 2026-07-10
+- [x] coverage did not decrease — new code: `audit/api/router.py` 100% (97/97 stmts), `audit/infrastructure/audit_repository.py` 86% (44 stmts, 6 missed = pre-existing untouched `list_for_tenant_paged` lines 69-80, not the new `list_for_tenant_keyset`)
+- [x] no test or contract was altered during build — `git diff <Ground SHA 2071046> -- apps/gateway/src/gateway/usage/api/router.py` is EMPTY (frozen v1 route byte-identical); §5 Deviations are additive-only, none touch a test assertion
+- [x] the green was EARNED, not gamed — adversarial refute-read done (self, appsec-engineer persona) — see Refute-read verdict below; two throwaway attack tests written and run (deleted after), both HELD
+- [x] concurrency / timing of the risky operation is safe — confirmed via a genuine `asyncio.gather` two-walker concurrent-request test (not the builder's sequential page1→insert→page2 pattern) + a same-`created_at`-tie-break test — both PASSED, no dup/skip
+- [x] no exposed secrets, injection openings, or unexpected dependencies — cursor values are typed/bound (json→datetime/uuid.UUID), never string-interpolated; malformed cursor fails closed to 422; zero new third-party deps
+- [x] layering & dependencies follow CONVENTIONS.md — audit's first `api/` layer calls `AuditRepository` directly (documented parity choice vs the existing `get_audit` v1 precedent, not a violation); wiring confirmed (see Deep checks)
+- [ ] a person reviewed and approved the change — Tin approved the FROZEN @ v1 contract (§3); the code-change review/GATE RECORD sign-off is the human step this verify pass feeds, not self-attestable here
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] GET /admin/audit (frozen v1) stays byte-identical — route, envelope, and its 15-test suite untouched and green — confirmed by the audit_read suite re-run
-- [ ] keyset cursor on (created_at,id) never skips or duplicates rows when rows append between page fetches — confirmed by the concurrent-append pagination test
-- [ ] NDJSON default body stays SIEM-parser-pure (cursor via X-Audit-Export-* headers); ?format=json returns {items,next_cursor,has_more} with no total — confirmed by response-shape assertions on both formats
-- [ ] every 200 export fires an audit.export audit row via the existing fail-open writer — confirmed by the audit-of-export test
-- [ ] the keyset query uses the new index efficiently — confirmed by live EXPLAIN ANALYZE on 200k seeded rows (Index Only Scan Backward, 5.5ms)
+- [x] GET /admin/audit (frozen v1) stays byte-identical — route, envelope, and its 15-test suite untouched and green — confirmed by `git diff 2071046 -- usage/api/router.py` (empty) + `tests/audit_read` re-run (15 passed)
+- [x] keyset cursor on (created_at,id) never skips or duplicates rows when rows append between page fetches — confirmed by the builder's sequential concurrent-append test AND by my own TRUE-concurrency probe (two `asyncio.gather`'d overlapping export walks racing 5 concurrent inserts on separate sessions) — zero dup/skip in either walker
+- [x] NDJSON default body stays SIEM-parser-pure (cursor via X-Audit-Export-* headers); ?format=json returns {items,next_cursor,has_more} with no total — confirmed by response-shape assertions on both formats (test_export_ndjson_is_default_and_line_pure, test_export_json_format_opt_in)
+- [x] every 200 export fires an audit.export audit row via the existing fail-open writer — confirmed by test_export_success_is_itself_audited + test_export_audit_write_failure_does_not_fail_export (both green)
+- [~] the keyset query uses the new index efficiently — NOT re-run at 200k rows (out of verify's time budget); instead confirmed the two indexes physically EXIST post-migration (`\d audit_events` on `gateway_migrations_test_vcea` shows `audit_events_tenant_created_id_idx (tenant_id, created_at, id)` + `audit_events_actor_email_idx (actor_email)`) and that ORM/migration parity holds (`test_autogenerate_empty_diff` passed) — the builder's EXPLAIN ANALYZE claim (backward index-only scan, 5.5ms) is mechanically plausible (standard Postgres btree backward-scan behavior) but not independently re-measured by me
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `list_for_tenant_keyset` referenced only by `audit/api/router.py:177`; `CURSOR_INVALID`/`EXPORT_QUERY_TIMEOUT` referenced in router.py imports+raises; `audit_export_router` imported+`include_router`'d in `main.py:31,1239` — confirmed via `grep -rn` across `src/`+`tests/`
+- [x] DEAD-CODE (code) — no orphaned symbol; every new helper (`_parse_limit`, `_parse_format`, `_parse_iso_datetime`, `_as_naive_utc`, `_parse_time_range`, `_encode_cursor`, `_decode_cursor`) is called from `export_audit` itself
+- [ ] SEMANTIC (prose / non-code) — n/a, this task has no prose/non-code deliverable
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — `AuditRepository.list_for_tenant_keyset`, `audit_export_router`/`export_audit`, `CURSOR_INVALID`/`EXPORT_QUERY_TIMEOUT` (error_catalog.py:865,868), migration `c20d0adece0a` (parents `511ad8a7b65e` as sketched) all read/confirmed directly in this session
+- [x] any anchor that moved/renamed since Ground SHA is named here, not left silent — none moved; `usage/api/router.py:728 get_audit`/`:704 AuditEventItem`/`:719 AuditListResponse` all still resolve at the same lines confirmed via the empty ground-diff
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (appsec-engineer persona, verify pass) · adversarially checked: (1) tenant isolation under a cursor decoded from another tenant's own boundary values — structurally impossible to cross since `tenant_id` is bound from JWT `identity.tenant_id` in the SAME query, never from client input; (2) cursor as an injection vector — values are `json.loads`→`datetime.fromisoformat`/`uuid.UUID`-typed and parameter-bound, any malformed/wrong-shape/injection-shaped payload falls into the generic `except Exception` → `ERR_CURSOR_INVALID`, verified with a wrong-shape-valid-base64 case (existing test) plus manual trace of the decode path; (3) same-`created_at` tie-break correctness — wrote and ran a throwaway test seeding 9 rows at the IDENTICAL microsecond timestamp, paginated limit=2, got exactly the `id DESC` order with zero dup/gap (deleted after); (4) TRUE concurrent overlapping requests (not the builder's sequential simulation) — wrote and ran a throwaway `asyncio.gather` test with two full pagination walks racing 5 concurrent inserts on independent sessions, both walkers came back dup-free and gap-free on the pre-existing rows (deleted after); (5) RBAC matrix — confirmed `Permission.AUDIT_READ` in `ROLE_PERMISSIONS` includes OWNER/ADMIN/OPERATOR and excludes BILLING_ADMIN/VIEWER/MEMBER, no duplicate hand-rolled escalation table introduced; (6) frozen v1 route byte-identical — `git diff <Ground SHA>` on `usage/api/router.py` is empty; (7) fail-open audit-of-export — traced `record_audit`'s own session/exception-swallow contract, confirmed reused verbatim (not reimplemented). No vacuous asserts found (`assert_problem` checks status+code; tenant-isolation/idempotency tests assert exact id sets, not just status codes). No stubbed-away logic — the keyset predicate, cursor codec, and timeout wrap are all real, exercised code paths.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (appsec-engineer persona)
+1. Security: CLEAR — tenant_id is sourced exclusively from the authenticated `identity`, never from cursor/query input, in the same WHERE clause that runs the keyset predicate; a tampered/wrong-tenant-shaped cursor cannot widen visibility, only fails closed to `ERR_CURSOR_INVALID`. RBAC matrix reused verbatim, no duplicate escalation table. No secret-shaped data in scope (audit rows only).
+2. Concurrency: CLEAR — keyset pagination is structurally immune to offset-style skip/dup; independently re-verified under a REAL `asyncio.gather` concurrent-request attack (stronger than the builder's sequential simulation) and a same-`created_at` tie-break attack, both held.
+3. Architecture: CLEAR — audit's first `api/` layer follows CONVENTIONS.md layering; router→repository direct call is a documented, precedent-matching parity choice (mirrors the existing `get_audit` v1 shape) not a violation; wiring confirmed, no dead code.
+Verdict: PASS
+Residue: none blocking this task. Named (out-of-scope, not this task's defect): `tests/migrations/test_migrations.py::test_upgrade_from_empty_parity` FAILs on this integration branch, but root-caused to an `{'request_logs'}` table mismatch owned by `gateway/logs/` (a different wave-1 task's payload-capture feature) — NOT `audit_events`/this task's migration. This task's own cited parity test, `test_autogenerate_empty_diff`, PASSES cleanly in isolation, and the two new indexes were confirmed physically present and byte-parity-matched against the ORM `__table_args__`. Flagging for the orchestrator so it isn't silently absorbed into this task's gate.
+Binding: advisory — sensitivity: data (not `mechanical`)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Reported: no — verify evidence gathered this session; the gate report/outcome recording is the orchestrator's step, not filled here per the verify-team dispatch contract (verify agents report a recommendation, the orchestrator records the gate)
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-10
 
 ---
 
@@ -532,11 +517,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned (§ above), plus one unplanned recovery step: `git stash` turned out to be a GLOBALLY SHARED stack across every linked worktree of this repo (all 8 wave-1 build worktrees + the primary checkout share one `.git`), so a stash push/pop used mid-build to prove RED collided with a concurrent stash operation from the sibling `build/per-key-guardrail-policies` builder — my audit changes and their `key_guardrail_router` changes briefly cross-applied into each other's working trees. Recovered by diffing each worktree, copying my own changes back via `git apply`/direct file copy (never touching their untracked files, only reading), restoring their worktree's foreign files to clean HEAD, and NEVER using `git stash` again for the remainder of this build. See Deviations + the report's residue/risks section — this is a build-team infrastructure hazard, not specific to this feature.
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

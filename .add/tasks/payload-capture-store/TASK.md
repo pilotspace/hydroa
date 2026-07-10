@@ -473,50 +473,52 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+Persona: Application Security Engineer (`.add/personas/appsec-engineer.md`, flow: advisor) — data-sensitivity task, PII-scrub + ZDR fail-closed + tenant isolation are the dominant risk surface.
+
+- [x] all tests pass — 18/18 in `tests/payload_capture/test_payload_capture_store.py` pass in isolation; 17/18 when run as a file (1 flake: `test_cache_hit_capture_uses_served_masked_body`, a pre-existing fire-and-forget exact-cache SET/GET race in the (unrelated, prior) response-caching feature, not introduced by this task — passes standalone every time)
+- [ ] coverage did not decrease — not independently re-measured against pre-build baseline
+- [x] no test or contract was altered during build — the 2 "SANCTIONED EDIT" allow-list additions (Deviation #4) follow the pre-existing append-only convention verified in both files' own history; no assertion was weakened
+- [ ] the green was EARNED, not gamed — **NOT-EARNED**: see Refute-read verdict below (🔴 two confirmed defects the suite's own fixture choices structurally hide)
+- [ ] concurrency / timing of the risky operation is safe — 🟡 `SqlAlchemyPayloadCapture.capture()` has no bound around the `ZdrOverridePort.is_zdr()` call itself (only the downstream persist is `wait_for`-wrapped) — repro below
+- [ ] no exposed secrets, injection openings, or unexpected dependencies — 🔴 raw PII persisted (Finding 1); no new dependency
+- [x] layering & dependencies follow CONVENTIONS.md — clean domain/application/infrastructure/api layering mirrors `usage/` correctly; Protocol-port discipline intact
+- [ ] a person reviewed and approved the change — pending (this is the human gate)
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] a tenant/key with capture OFF produces zero request_logs rows and a byte-identical proxied response — confirmed by the default-off scenario asserting empty table + unchanged response
-- [ ] a captured row's payload is PII-scrubbed BEFORE persist and size-capped (8KiB field / 64KiB body, truncation-marked) — confirmed by tests asserting masked content and cap markers in the stored row
-- [ ] a ZDR tenant produces zero payload rows even with capture opted-in, and an is_zdr check failure suppresses capture (fail-closed) — confirmed by test_zdr_check_failure_fails_closed_suppresses_capture
-- [ ] a capture-store outage never fails or delays the proxied response (fire-and-forget, bounded timeout, concurrency shed) — confirmed by the outage test asserting 200 completion with the store down
-- [ ] a guardrail-BLOCKed prompt still yields a capture row (the 4 additive BLOCK-path hooks) — confirmed by the BLOCK-path capture tests
+- [x] a tenant/key with capture OFF produces zero request_logs rows and a byte-identical proxied response — confirmed: `test_capture_off_is_byte_identical_zero_rows` passes
+- [ ] a captured row's payload is PII-scrubbed BEFORE persist and size-capped (8KiB field / 64KiB body, truncation-marked) — 🔴 REFUTED for the scrub half: size caps hold (`test_oversize_field_truncated_with_marker`/`..._falls_back_metadata_only` pass), but scrubbing is a no-op pass-through whenever the tenant hasn't ALSO independently enabled `guardrails pii_mask=mask` (default state for every tenant) — repro `tests/payload_capture/test_verify_repro_scrub_gap.py` (FAILS by design, documents the defect)
+- [ ] a ZDR tenant produces zero payload rows even with capture opted-in, and an is_zdr check failure suppresses capture (fail-closed) — 🔴 REFUTED for real production wiring: `app.state.zdr_port` is hardwired to the permissive `AlwaysAllowCapture()` no-op in `main.py:1132` and never adapts the sibling `tenant-retention-zdr` task's already-shipped `tenants.zdr_enabled` / `retention_policy.py:is_zdr()` (explicitly published for this task to consume) — repro `tests/payload_capture/test_verify_repro_zdr_wiring_gap.py` (FAILS by design). Also 🟡 REFUTED for the hang failure mode (distinct from the tested raise mode) — repro `tests/payload_capture/test_verify_repro_zdr_hang.py`
+- [x] a capture-store outage never fails or delays the proxied response (fire-and-forget, bounded timeout, concurrency shed) — confirmed: `test_capture_store_outage_never_affects_proxied_response` passes; the ZDR-hang gap above also does NOT affect the proxied response (leaks a background task only, never blocks the caller)
+- [x] a guardrail-BLOCKed prompt still yields a capture row (the 4 additive BLOCK-path hooks) — confirmed LIVE by a throwaway executed test (prompt_injection block mode, 400 ERR_GUARDRAIL_BLOCKED, 1 row written, response_body=null) — deleted after confirming (no defect found); **note: the frozen 18-test suite itself has ZERO coverage of this path** (no "block" scenario touches `request_logs`), so this remains untested by the suite going forward
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `PayloadCapturePort`/`SqlAlchemyPayloadCapture` referenced from 11 `use_cases.py` hook sites + `main.py` composition root; `ZdrOverridePort`/`AlwaysAllowCapture` referenced from `capture_config_router.py` + `sqlalchemy_capture.py` + `main.py`; `mask_pii_in_messages` referenced from `capture_writer.py`; confirmed via `mcp__serena`/grep across `src/gateway/`
+- [ ] DEAD-CODE (code) — 💭 `proxy/infrastructure/payload_capture_noop.py:NoopPayloadCapture` is defined per the frozen §3 "Default wiring" clause but is never instantiated or referenced anywhere (only named in a `main.py` comment explaining why it's NOT used, since `SqlAlchemyPayloadCapture` is wired unconditionally with a per-request `enabled` gate instead) — orphaned symbol, harmless but real
+- [ ] SEMANTIC (prose / non-code) — N/A, code task
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — spot-confirmed: `use_cases.py` hook sites (complete/stream/_fire_record_cached ×3/_dispatch_capture), `guardrail_evaluator.py:mask_pii_in_messages`/`_mask_pii_in_body`, `retention_sweep.py` request_logs block, `cache_router.py`-mirrored `capture_config_router.py`, `keys/api/router.py` PATCH `model_fields_set` idiom, single alembic head (`uv run alembic heads` → one head) — all resolve
+- [x] any anchor that moved/renamed since Ground SHA is named here, not left silent — none moved/renamed, but one NEW integration point exists that §0 GROUND could not have seen: the sibling `tenant-retention-zdr` task landed `tenants.zdr_enabled` + `tenants/application/retention_policy.py:is_zdr(session, tenant_id)` in this same wave, with a docstring explicitly naming payload-capture-store as its consumer — this task's `main.py` wiring was never updated to consume it (this IS Finding 2/HARD-STOP, not a cosmetic gap)
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: NOT-EARNED
+By: self (add-verify, appsec-engineer persona) · adversarially checked: (1) scrub-before-persist with guardrails NOT independently configured — the ONE HTTP-level test that verifies `scrub_status="scrubbed"` end-to-end (`test_non_streaming_capture_writes_one_scrubbed_row`) explicitly calls `PUT /admin/guardrails` first, hiding the default/no-guardrails case where scrubbing is a pass-through no-op — CONFIRMED DEFECT, live repro; (2) ZDR real production wiring vs. the suite's always-fake-injected `ZdrOverridePort` — no test ever exercises the app's actual default `app.state.zdr_port`/`AlwaysAllowCapture()` against a tenant with the (already-shipped, sibling-task) real `zdr_enabled=true` column — CONFIRMED DEFECT, live repro; (3) ZDR-port hang vs. raise — the frozen suite only injects a raising fake, never a hanging one — CONFIRMED GAP, live repro; (4) guardrail-BLOCK-path hooks — traced + live-executed (not suite-covered), held; (5) fail-open for DB outage/timeout, concurrency-shed, cross-tenant isolation, size-cap truncation/fallback — re-read code + existing tests, held, not independently re-attacked further given (1)-(3) already surfaced HARD-STOP-class findings.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify, appsec-engineer persona)
+1. Security: HARD-STOP: (a) 🔴 scrub-before-persist is a no-op whenever a tenant has capture ON but has not independently enabled `guardrails pii_mask=mask` (the default for every tenant) — raw PII persisted to a data-sensitivity store, mislabeled `scrub_status="scrubbed"`; (b) 🔴 the ZDR fail-closed contract is entirely inert against real production wiring — `app.state.zdr_port` ignores the sibling task's already-shipped `tenants.zdr_enabled`, so a genuinely-ZDR tenant can both enable capture (no 409) and have payload rows written (confirmed: 1 row) — a direct Zero-Data-Retention violation
+2. Concurrency: <not evaluated — Security HARD-STOP ends the sequence per protocol; noted for the record: 🟡 `ZdrOverridePort.is_zdr()` has no timeout bound inside `SqlAlchemyPayloadCapture.capture()`, unlike the persist path>
+3. Architecture: <not evaluated — Security HARD-STOP ends the sequence>
+Verdict: HARD-STOP
+Residue: two confirmed security defects (raw-PII scrub gap; ZDR real-wiring gap) + one concurrency gap (unbounded ZDR-check) + one coverage gap (BLOCK-path hooks untested by the frozen suite) + one dead-code note (`NoopPayloadCapture`) + one pre-existing unrelated test flake
+Binding: yes — mechanical (sensitivity: data)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
+Reported: no — awaiting orchestrator/human review of this verify block
 Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
 Reviewed by: <name> · date: <date>

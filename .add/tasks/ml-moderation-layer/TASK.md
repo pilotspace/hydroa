@@ -520,53 +520,58 @@ Deviations from the illustrative §3 Python / Scope note (recorded per the proje
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 35/35 `tests/guardrails/` (17 core + 18 ml_moderation) green, plus regression spot-checks `tests/openai_retry_parity/`, `tests/provider_seam/`, `tests/openai_chat_dispatch/` (41 passed) — confirmed by direct re-run against `gateway_test_vmlmod` (2026-07-10), not taken on the builder's word.
+- [x] coverage did not decrease — `ml_moderation_evaluator.py` 92% (78 stmts, 6 missed: L154-155/229/245-246 trivial `__init__`/no-op bodies — AND L175, see refute-read below), `guardrail_tenant_context.py` 100% — re-measured independently, matches builder's claim.
+- [x] no test or contract was altered during build — `git log`/`git diff` not re-run here (integrated branch), but §3 contract text is unchanged from the frozen v1 shown above and `test_guardrails_core.py` (pre-existing frozen suite) is untouched per the builder's own diff scope and stays green.
+- [x] the green was EARNED, not gamed for 8 of 9 Musts — BUT refute-read surfaced ONE real gap (M6/A3 for the malformed-2xx-body case) — see Refute-read verdict below. NOT a clean EARNED.
+- [x] concurrency / timing of the risky operation is safe — see attack target #1 below (probe test, deleted after confirming CLEAR).
+- [x] no exposed secrets, injection openings, or unexpected dependencies — BUT see Finding 1 (a genuine security-relevant guardrail-bypass gap, not a secret/injection issue).
+- [x] layering & dependencies follow CONVENTIONS.md — new public `OpenAIDirectProvider.post_json_with_retry()` (Deviation 2) avoids the private-attribute reach-in the illustrative §3 Python implied; confirmed via `WIRING` deep-check below.
+- [ ] a person reviewed and approved the change — pending human gate (this task is `sensitivity: security`, HARD-STOP-class regardless of the rest of this checklist).
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] a tenant with `ml_moderation` disabled sees no new outbound call and no latency regression — confirmed by a request-count assertion on the fake `ModerationProvider` (zero calls) plus the existing byte-identical suite staying green
-- [ ] a flagged prompt in block mode never reaches the routed upstream provider — confirmed by asserting the fake completion upstream received zero calls
-- [ ] an `unchecked` verdict is distinguishable from `passed` in both the emitted `GuardrailEvent` and the `gateway_guardrail_events_total` metric label — confirmed by inspecting the recorded event/metric, not just the HTTP status
-- [ ] the moderation breaker and the real-completion breaker are provably separate objects — confirmed by identity check (`is not`) in a wiring test, plus the isolation scenario's behavioral assertion
-- [ ] a request whose moderation call times out under `fail_open` completes within the declared latency budget (connect+read+retry ceiling), not the full chat-completion timeout — confirmed by a bounded-duration assertion in the timeout test
+- [x] a tenant with `ml_moderation` disabled sees no new outbound call and no latency regression — confirmed: `test_disabled_ml_moderation_byte_identical` (ml_provider.calls==0, "openai" absent from resolver.calls) green; code inspection of `ml_moderation_evaluator.py:172-175` shows the off-branch returns before any resolve/network call.
+- [x] a flagged prompt in block mode never reaches the routed upstream provider — confirmed: `test_ml_moderation_blocks_flagged_prompt` (`upstream.calls == 0`) green.
+- [x] an `unchecked` verdict is distinguishable from `passed` in both the emitted `GuardrailEvent` and the `gateway_guardrail_events_total` metric label — confirmed for the exception-based failure paths (missing key, timeout) via `test_ml_moderation_timeout_fail_open` (`action="unchecked"` >=1, `action="passed"` ==0) green. **NOT held** for the malformed-2xx-body path — see Finding 1 (a genuinely-unchecked case is misreported as `passed`, the exact inversion this checkbox exists to prevent).
+- [x] the moderation breaker and the real-completion breaker are provably separate objects — confirmed by identity check: `test_ml_moderation_breaker_isolated_from_completion_breaker` (`is not` on both `_breaker` and `_client`) green, AND independently confirmed at the real wiring site — `main.py:1085-1092` constructs a fresh `OpenAIDirectProvider(...)` for `app.state.ml_moderation_provider`, distinct from `_openai_direct` used for `_providers["openai"]`/chat (not merely asserted in an isolated unit test — the actual boot wiring was read).
+- [ ] a request whose moderation call times out under `fail_open` completes within the declared latency budget (connect+read+retry ceiling), not the full chat-completion timeout — **UNCONFIRMED**: `test_ml_moderation_timeout_fail_open` uses a `FakeModerationProvider` that raises `httpx.ReadTimeout` synchronously (no real elapsed time), so `MODERATION_RETRY_DEADLINE_S=4.0`/`MODERATION_MAX_RETRIES=1`/backoff wiring is never exercised end-to-end with a real-time bound anywhere in this suite. The underlying `execute_with_retry` deadline primitive is separately tested generically in `tests/retry_policy/`, giving baseline confidence, but this specific config's actual bound is not independently measured. MINOR residual gap, named not silently dropped.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol referenced: `MlModerationGuardrailEvaluator`/`CompositeGuardrailEvaluator`/`OpenAiModerationClient` constructed+used in `deps.py:get_completion_use_case` (confirmed by reading the wiring branch) and `main.py:1085`; `guardrail_tenant_context.set_/reset_guardrail_tenant_id` referenced at both `use_cases.py` call sites (L1756/1816 `complete()`, L2330/2374 `stream()` — confirmed via grep, both wrapped in `finally`); `OpenAIDirectProvider.post_json_with_retry` has exactly one caller (`OpenAiModerationClient.moderate`) — confirmed via grep, no orphan.
+- [x] DEAD-CODE (code) — no new unused symbol; `evaluate_post` no-op is structurally required by the `GuardrailEvaluator` Protocol, not orphaned.
+- [ ] SEMANTIC (prose / non-code) — n/a, this task is code-only.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed via direct grep/read against the integrated `chore/add-housekeeping-clusters` tree (not the Ground SHA): `GuardrailEvaluator` (`ports.py:210`, exact match), `TenantCredentialResolver` (`ports.py:462`, exact match), `RegexGuardrailEvaluator` (`guardrail_evaluator.py:439`, class def — §0 cited 402/439 for methods, consistent), `OpenAIDirectProvider` (`openai_provider.py:43`, exact match), `get_completion_use_case` (`deps.py:112`, §0 cited 107 — 5-line drift), `GUARDRAIL_BLOCKED` (`error_catalog.py:397`, §0 cited 391 — 6-line drift), `PAYLOAD_CUSTOM_PATTERN_INVALID` (`error_catalog.py:311`, §0 cited 305 — 6-line drift).
+- [x] any anchor that moved/renamed since Ground SHA is named here, not left silent — no rename/move; only small (5-6 line) upward drift on 3 `error_catalog.py`/`deps.py` anchors, consistent with other code shifting above them, not a stale/wrong-symbol risk.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: **NOT-EARNED** (partial — 8/9 Musts genuinely earned; M6/A3 has a real hole)
+By: self (add-verify) · adversarially checked:
+  1. BYOK credential ContextVar nesting under concurrency (dispatcher's #1 target) — wrote and ran a throwaway probe (nested same-task set/reset restores the exact outer value via Python's `Token`-based reset; two genuinely-concurrent `asyncio.Task`s never observe each other's credential). **CLEAR** — Python's `contextvars.Token.reset()` is not a naive "restore a snapshot" — it restores precisely the value live at the paired `.set()` call, and each `asyncio.Task` gets its own copied `Context`. Probe passed both assertions; deleted after confirming (not a defect repro).
+  2. Honest degradation across every M6 failure mode (missing key, breaker-open, timeout, network error, non-2xx) — 4 of 5 confirmed CLEAR via the existing green suite. The 5th — **a 200 response whose body doesn't match the expected `{"results":[{...}]}` shape** — is NOT caught: `OpenAiModerationClient.moderate()` (`ml_moderation_evaluator.py:134-138`) does `results = body.get("results") or [{}]`; `result = results[0] if results else {}`; on an empty/malformed body this silently yields `ModerationVerdict(flagged=False, categories=[])` — no exception raised, so `MlModerationGuardrailEvaluator` records `action="passed"` for content that was never actually classified. Wrote a minimal repro (`tests/guardrails/test_zz_verify_repro_malformed200.py`) asserting `moderate()` must raise on a `200 {}` body — **FAILS** (`Failed: DID NOT RAISE <class 'Exception'>`), confirming the gap is real, not theoretical.
+  3. Dedicated breaker isolation under load — confirmed via the existing `is not` unit test AND independently via the real `main.py:1085` boot-wiring (fresh instance, not reused). **CLEAR**.
+  4. Non-2xx-from-moderation handling — the ≥400 branch is genuinely CLEAR (`test_openai_moderation_client_raises_on_terminal_non_2xx` green, independently re-run). The malformed-200 branch is the gap in item 2 above — same code path the dispatcher's attack target #4 named ("can an oddly-shaped 200 be misread as unchecked... never checked").
+  5. Default-off byte-identical — CLEAR for the fully-absent-`guardrail_configs` case (tested, green). One earned-green coverage gap found: the "ml_moderation key absent from an otherwise-non-empty `guardrail_configs` dict" branch (`ml_moderation_evaluator.py:172-175`) is never actually exercised by any test — every "disabled" scenario in the suite uses a fully-empty config that `use_cases.py` short-circuits before calling `evaluate_pre` at all (confirmed: this exact line shows up in the coverage-missed set). Code is visually correct on inspection; MINOR, not blocking, but a real untested line.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
+Advisor: self (add-verify)
+1. Security: **HARD-STOP: a malformed/unexpectedly-shaped 200 response from the moderation endpoint (`ml_moderation_evaluator.py:134-138`) is silently read as a clean verdict (`flagged=False`) rather than a failed check — this defeats block-mode moderation with ZERO observability** (the event/metric records `action="passed"`, never `action="unchecked"`, so A3's "always observable" guarantee and M6's "never reported as passed" guarantee both fail for this one input class). A plausible trigger: any operational drift (OpenAI wire-shape change, a misrouted/misconfigured `openai_base_url`, a caching/CDN layer between the gateway and the moderation endpoint returning a benign 200) silently and invisibly disables the safety check while the tenant believes it is enforced — worse than the intentionally-designed `unchecked` degrade path because it is indistinguishable from a genuine pass. Repro: `tests/guardrails/test_zz_verify_repro_malformed200.py` (red, `DID NOT RAISE`).
+2. Concurrency: (not evaluated — Security HARD-STOP ends the checklist per instructions)
+3. Architecture: (not evaluated — Security HARD-STOP ends the checklist per instructions)
+Verdict: **HARD-STOP**
+Residue: Finding 1 (malformed-200 silent-pass) is a confirmed, reproduced security-relevant gap in the moderation feature's own core honest-degradation invariant. Two MINOR residues also on record (untested audit+fail_closed+unchecked matrix cell; untested absent-key-in-nonempty-config branch; unconfirmed real-time latency-budget assertion) — none of these three are independently blocking, but are named so they are not silently dropped.
 Binding: yes — mechanical (sensitivity: security)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: no — orchestrator records the gate outcome, not this agent.
+Outcome: <the orchestrator records exactly one of PASS | RISK-ACCEPTED | HARD-STOP — this agent's recommendation is HARD-STOP, per the Advisor 3-lens verdict above>
+If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap — N/A here, this is a confirmed security finding)
+Reviewed by: <pending human> · date: <pending>
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

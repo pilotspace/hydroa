@@ -962,52 +962,50 @@ Other build-time deviations (strictly-more-correct, harmless, recorded per the b
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 28/28 green, confirmed on two independent full-suite runs (`GATEWAY_TEST_DATABASE_URL=...gateway_test_vsaml`, real Postgres :5433 + real Redis :6380/9), no `--cov` instrumentation. NOTE: one flaky red (`test_request_store_replay_rejected`) observed ONCE under `--cov`-instrumented execution (coverage-tracing slowdown shifting a timing-sensitive path), reproduced green in isolation and in two clean full runs immediately after — recorded as a flake class, not a defect, not blocking.
+- [x] coverage did not decrease — §4's claimed 89.7% (496/553) is consistent with what a targeted `--cov=gateway.auth` run on this suite shows; not independently re-measured to the decimal (targeted coverage run was itself affected by the same instrumentation flake above), but no coverage regression evidence found.
+- [x] no test or contract was altered during build — `git diff main...HEAD -- apps/gateway/tests/saml_sso/` shows only the frozen §4 suite files (test_saml_sso.py, saml_fixtures.py, conftest.py) as new files, no post-freeze edits to §3 CONTRACT text in this TASK.md.
+- [ ] the green was EARNED, not gamed — **REFUTED for one rule.** See Refute-read verdict below: M5 rule 4 (SubjectConfirmationData/@InResponseTo trust-binding) is NOT independently enforced — the green suite passes because no existing test exercises the gap (S15's `test_assertion_replay_against_different_pending_request` only covers a MISMATCHED, non-empty SCD InResponseTo, and only ever replays an ALREADY-CONSUMED assertion, so M5.6's replay cache masks the missing binding check in that test). A live repro test proves a FRESH, never-consumed, validly-signed assertion whose SubjectConfirmationData omits InResponseTo is ACCEPTED against an unrelated pending request. This is a real gap between the frozen §3/§1 contract text and shipped behavior, not a fixture-overfit issue with the *test-writing*, but the effect is the same: the green suite does not prove M5.4 holds.
+- [x] concurrency / timing of the risky operation is safe for the SHIPPED double-submit case (`test_concurrent_double_submit_serialized_safely` passed; GETDEL atomicity confirmed by code read of `saml_request_store.py`) — but see Residual risks: `OneLogin_Saml2_Constants.ALLOWED_CLOCK_DRIFT` global mutation (builder residue #1) is a latent TOCTOU across concurrent `/acs` tasks the moment clock-skew ever becomes per-tenant; not exploitable today (single global settings value, confirmed by grep — no per-tenant override exists), so CLEAR for the shipped scope, RESIDUE for the architecture lens.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — `idp_x509_cert` correctly stored as plaintext PEM (public key material, not Fernet-encrypted, matches M10's deliberate divergence); `_audit()` never includes raw assertion XML in metadata (confirmed by reading `saml_use_cases.py::_audit`, only `idp_entity_id`/`error_code`/`tenant_id` in metadata); `python3-saml`'s own defused-XML reader used for the pre-signature `_peek_in_response_to` parse (forbid_dtd/forbid_entities per its docstring) — no XXE surface found. `python3-saml` + `xmlsec` confirmed allow-listed.
+- [x] layering & dependencies follow CONVENTIONS.md — clean parallel vertical (domain/application/infrastructure/api), zero framework imports verified in `saml_entities.py`/`saml_errors.py`/`saml_ports.py` by inspection; additive `IdentityRepository.get_or_provision_saml_user` port method confirmed delegating to the SAME shared `_get_or_provision_sso_user` helper OIDC uses (`tenants/infrastructure/repository.py:148`) — no duplicate escalation-shaped logic.
+- [ ] a person reviewed and approved the change — pending Tin's HARD-STOP review (this task's sensitivity/autonomy mandates it regardless of my recommendation).
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] a tenant with no saml_provider_configs row sees zero behavioral change on every password/OIDC path — confirmed by the untouched sso_oidc suite green + zero edits to shipped OIDC files in the diff
-- [ ] a forged (unsigned/wrong-audience), replayed (reused InResponseTo), or cross-tenant assertion is rejected with the anti-enumeration error, never a session JWT — confirmed by the per-rejection-path red tests (signature/audience/replay/tenant-binding) each asserting no JWT issued
-- [ ] a valid SP-initiated login issues the SAME session JWT shape as OIDC/password (sub claim, standard TTL) — confirmed by decoding the issued JWT in the happy-path test against the existing JwtTokenService contract
-- [ ] the Redis pending-request entry is single-use — a second ACS post with the same AuthnRequest ID fails as replay (GETDEL + tombstone) — confirmed by the replay test's second-post rejection
+- [x] a tenant with no saml_provider_configs row sees zero behavioral change on every password/OIDC path — confirmed: `git diff main...HEAD` shows the ONLY OIDC-file edits on this integration branch belong to the sibling `scim-provisioning` task (an `OidcAccountDeactivatedError` addition in `oidc_router.py`/`use_cases.py`, unrelated to SAML); saml-sso itself made zero edits to any `oidc_*` file. `test_unconfigured_tenant_fully_unaffected` passed.
+- [ ] a forged (unsigned/wrong-audience), replayed (reused InResponseTo), or cross-tenant assertion is rejected with the anti-enumeration error, never a session JWT — **NOT FULLY CONFIRMED.** Signature-invalid, audience-mismatch, issuer-mismatch, request-already-used, and same-assertion-replay are all confirmed rejected (dedicated passing tests, each asserting no JWT/no user row). But a validly-signed assertion whose SubjectConfirmationData omits InResponseTo is NOT rejected when redirected onto an unrelated pending request — live-reproduced, see Finding 1 below. This checkbox is left unchecked because one class of "forged" (request-unbound) assertion is NOT rejected as the contract requires.
+- [x] a valid SP-initiated login issues the SAME session JWT shape as OIDC/password (sub claim, standard TTL) — confirmed, `test_full_validation_mints_same_jwt_shape_as_oidc` passed; JWT decoded and compared against `JwtTokenService.issue`'s shape by direct code read (`tenants/infrastructure/jwt_service.py`).
+- [x] the Redis pending-request entry is single-use — a second ACS post with the same AuthnRequest ID fails as replay (GETDEL + tombstone) — confirmed, `test_request_store_replay_rejected` passed (in isolation and in two clean full runs); `RedisSamlRequestStore.get_and_delete` code-read confirms atomic GETDEL + tombstone disambiguation.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol is referenced. `saml_router`/`saml_admin_router` mounting confirmed present (routers exercised end-to-end by every `client.post`/`client.get` test against real ASGI app via `create_app(settings)` — a router that failed to mount would 404 every test, not just SAML-specific ones); `get_or_provision_saml_user` referenced from `saml_use_cases.py::SamlAcsUseCase.execute`; `RedisSamlRequestStore`/`RedisSamlReplayCache`/`DbSamlConfigResolver` referenced from `saml_deps.py` DI wiring (grep-confirmed, not just declared).
+- [x] DEAD-CODE (code) — no new unused or orphaned symbol introduced; spot-checked `saml_entities.py`/`saml_ports.py`/`saml_errors.py` — every error class in `_ERROR_CODE_BY_TYPE` and `_map_validation_error`'s branches is reachable and test-exercised per §4's per-Reject-code test list.
+- [ ] SEMANTIC (prose / non-code) — n/a, this task is code-only (no prose/doc deliverable to semantically verify beyond this TASK.md itself).
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed via direct reads: `saml_router.py`, `saml_admin_router.py`, `saml_use_cases.py`, `saml_orm.py`, `saml_request_store.py`, `saml_replay_cache.py`, `db_saml_config_resolver.py`, `saml_entities.py`, `saml_ports.py`, `saml_errors.py` all exist at their contracted paths; `IdentityRepository.get_or_provision_saml_user` resolves at `tenants/domain/ports.py` and `tenants/infrastructure/repository.py:123`; migration head chain confirmed unbroken (28/28 tests pass against a freshly `create_all`'d schema, which would fail on a broken migration/ORM mismatch).
+- [x] no anchor moved/renamed since Ground SHA — all Ground-cited OIDC anchors (`OidcLoginUseCase.execute`, `TokenService.issue`, `_validate_oidc_url`/`_is_private_ip`, `app.state.redis_client`) still resolve at their cited locations; no rename observed.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: **NOT-EARNED** (for M5 rule 4 specifically — every other Must/Reject rule's green is earned: independently code-read AND test-exercised with a real, non-overfit assertion shape).
+By: self (add-verify, appsec-engineer persona) · adversarially checked: for each §1 Must, read the enforcing code and tried to construct a slipping-past input. 24/25 Musts held under an adversarial construction attempt. The one that did NOT hold: M5.4's "SIGNED SubjectConfirmationData/@InResponseTo equals the request_id ... the TRUST-BEARING check" — reading `onelogin/saml2/response.py:247-249` (`if in_response_to and irt and irt != in_response_to: continue`) shows the check is skipped whenever the signed assertion's SubjectConfirmationData omits the InResponseTo attribute (a legal, non-malformed SAML variant — not an attacker-forced schema violation). `saml_use_cases.py::SamlAcsUseCase.execute` has NO code of its own that independently re-checks this binding — it fully delegates to `response.is_valid(...)`. Live-reproduced with a real xmlsec-signed assertion (test below) — the assertion was ACCEPTED (302 + user provisioned) despite carrying no cryptographic binding to the pending request it was redirected onto.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify, appsec-engineer persona)
+1. Security: **HARD-STOP: Finding 1 — M5.4 SubjectConfirmationData/@InResponseTo trust-binding is not independently enforced; a validly-signed assertion lacking SCD InResponseTo is accepted against a pending request it was never issued for.** ALSO Finding 3 (confirmed, found via a repro test present in the shared working tree — `test_verify_domain_collision_dos.py` — independently re-run and confirmed by this pass): `DbSamlConfigResolver.resolve()` (`db_saml_config_resolver.py:59-78`) uses `.scalar_one_or_none()` on `email_domains.contains([domain])` with NO cross-tenant uniqueness on `email_domains` and no PUT-time collision check in `saml_admin_router.py` — any tenant owner configuring an `email_domains` entry already claimed by a DIFFERENT tenant causes `GET /auth/saml/login?domain=<X>` to raise unhandled `sqlalchemy.exc.MultipleResultsFound` (confirmed via direct ASGI call) for EVERY tenant sharing that domain, not just the misconfiguring one — a config-triggered DoS, no elevated privilege needed beyond "owner of any tenant." Noted as a faithful mirror of an identical pre-existing pattern in `db_oidc_config_resolver.py` (not newly introduced by this task) but newly reachable via a second, independently-configurable domain list. (checklist ends here per the sequential-lens rule; concurrency/architecture observations below are recorded as residue for the record, not as a completed lens pass)
+2. Concurrency: RESIDUE — Finding 2 (`ALLOWED_CLOCK_DRIFT` global mutation, builder residue #1): not exploitable under the CURRENT single-global-settings reality, but a real TOCTOU the moment clock-skew becomes per-tenant/per-request; recommend passing skew via a request-scoped mechanism (or documenting/enforcing single-process-single-value as an invariant with a test) rather than relying on "there's only one value today."
+3. Architecture: RESIDUE — same finding as concurrency (mutating third-party library process-global class state as an `__init__` side effect is a layering smell: a per-request use-case object should not have process-wide side effects); otherwise CLEAR (parallel-vertical shape, zero OIDC-file edits, additive port method, shared JIT-provisioning helper — all confirmed clean).
+Verdict: **HARD-STOP**
+Residue: Finding 2 (clock-drift global mutation) — non-blocking on its own, but should not be separately "PASS"ed while Finding 1 is open since both touch the same use-case constructor/validation path Tin should review together.
+Binding: yes — mechanical (sensitivity: security, autonomy: conservative — this task's own header mandates HARD-STOP verify regardless of any agent recommendation)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: no — the orchestrator records the gate; add-verify recommends, per its boundary rules ("Do NOT record the gate — the orchestrator records gates").
+Outcome: <the orchestrator records — recommendation: HARD-STOP, escalate to Tin>
+If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (never for a security gap — this finding is security-class, RISK-ACCEPTED is not an available outcome for it)
+Reviewed by: <Tin Dang, pending> · date: <pending>
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

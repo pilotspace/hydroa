@@ -434,51 +434,54 @@ Constraints: do NOT change any test or the contract; allow-list packages only (j
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 34/34 in `tests/output_schema_validation/` green (14 pure-module unit + 20 integration); 88/88 across `model_fallbacks`/`cache_alias_billing`/`vector_cache`/`semantic_cache`/`cache_controls`; 110/110 across `edge_input_hardening`/`superadmin_role`/`deployment_limits`/`streaming_resilience` (spot-checks on the shared `core/errors.py` blast radius). `uv run pyright` on the 4 touched files: 0 errors.
+- [x] coverage did not decrease — `output_validation.py` at 98% (only the >32000-char truncation-suffix branch unhit); no regression signal on neighbor suites.
+- [x] no test or contract was altered during build — diffed §3 CONTRACT block against shipped code; unchanged. One NEW repro test added at verify (below), zero edits to existing tests.
+- [x] the green was EARNED, not gamed — see Refute-read verdict below (NOT-EARNED on one specific corner; EARNED on the rest — see Residue).
+- [x] concurrency / timing of the risky operation is safe — credential ContextVar reset stays in complete()'s own outer `finally`, after both retry-loop billing calls fire in-line inside the same `try` (per §5's Known-problem-fix c); fire-and-forget usage-record scheduling via `asyncio.ensure_future` is the pre-existing project-wide pattern, not new residue.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — `jsonschema>=4.23,<5` is the only new dep, matches the frozen pin; `raw_output`/`truncate_raw_output` only ever read THIS request's own `retry_body` (scoped to this call's own model_router/upstream/body), no shared/cross-tenant read path found (target #4 CLEAR).
+- [ ] layering & dependencies follow CONVENTIONS.md — clean (pure domain module, no IO; application layer owns retry/billing) EXCEPT the one finding below (a billing-labeling defect, not a layering violation per se — left unchecked pending Tin's disposition).
+- [ ] a person reviewed and approved the change — pending human review of this verify report.
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] with GATEWAY_OUTPUT_VALIDATION_ENABLED off (default) or no validate_output field, the request path is byte-identical to v11 (flag popped pre-dispatch, zero validation work) — confirmed by the two dedicated byte-identical scenarios + 221 re-run neighbor tests green
-- [ ] a schema-mismatched 200 triggers exactly ONE retry (identical routed call, no governance re-run), then 422 ERR_OUTPUT_SCHEMA_VALIDATION_FAILED carrying size-capped raw_output + validation_errors — confirmed by the retry-loop tests asserting call counts and the 422 extra fields
-- [ ] BOTH attempts bill (usage_source=validation_retry on attempt 1 and on a failed attempt 2) — never a silent free retry — confirmed by usage-record assertions counting two rows
-- [ ] stream:true + validate_output:true is hard-rejected 400 before any upstream call — confirmed by the streaming reject test asserting zero upstream calls
+- [x] with GATEWAY_OUTPUT_VALIDATION_ENABLED off (default) or no validate_output field, the request path is byte-identical to v11 (flag popped pre-dispatch, zero validation work) — confirmed: `_check_output_validation` pops `validate_output` UNCONDITIONALLY before checking the operator flag (use_cases.py:936-977), so the popped body is identical regardless of engagement, and the cache key (built from that same post-pop body) is unaffected either way. Two dedicated byte-identical tests pass + 88 neighbor cache/fallback tests green.
+- [x] a schema-mismatched 200 triggers exactly ONE retry (identical routed call, no governance re-run), then 422 ERR_OUTPUT_SCHEMA_VALIDATION_FAILED carrying size-capped raw_output + validation_errors — confirmed for the both-attempts-fail-validation path (`test_both_attempts_fail_terminal_422` passes, both rows tagged `validation_retry`). M6 (no re-admission) confirmed by reading `_run_output_validation_retry` — it calls `model_router.complete`/`upstream.complete` directly with zero governance/budget/rate-limit/bandwidth/credential re-resolution calls.
+- [ ] BOTH attempts bill (usage_source=validation_retry on attempt 1 and on a failed attempt 2) — never a silent free retry — PARTIALLY confirmed. Attempt 1 always correctly tagged. Attempt 2 correctly tagged `validation_retry` when it ends in a validated-200-fail (both-fail-422 path) OR a non-200 pass-through (falls through to complete()'s own bottom billing call, which threads `_usage_source_final` correctly). **NOT confirmed** — actively DISCONFIRMED — for the sub-case where the retry leg itself raises `UpstreamRateLimitedError`: see FINDING 1 below.
+- [x] stream:true + validate_output:true is hard-rejected 400 before any upstream call — confirmed, `test_streaming_plus_opt_in_rejected` passes, 0 upstream calls; the gate lives in the shared `_validate_payload`/`_check_output_validation` seam used by both `complete()` and `stream()`.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol referenced: `output_validation.py`'s 3 public functions (`check_schema_well_formed`, `validate_model_output`, `truncate_raw_output`) are all called from `use_cases.py` (`_check_output_validation`, inline in `complete()`, `_run_output_validation_retry`); `output_validation_enabled` Settings field is threaded `config.py` → `deps.py` → `CompletionUseCase.__init__`; `ProblemError.extra`/`problem_response(extra=...)` is read by `on_problem()`; 3 new `ErrorSpec` entries (`OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM`, `OUTPUT_VALIDATION_REQUIRES_JSON_SCHEMA`, `OUTPUT_SCHEMA_VALIDATION_FAILED`) are each `.exc()`'d from `use_cases.py`. No orphaned symbol found.
+- [x] DEAD-CODE (code) — no new unused/orphaned symbol; `_run_output_validation_retry` and `_try_cache_lookup` extractions are both referenced exactly once from `complete()`, confirmed via `get_symbols_overview`/direct read (not `find_referencing_symbols`, but both call sites were read in full).
+- [ ] SEMANTIC (prose / non-code) — not applicable (this is a code task); N/A.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed via `mcp__serena__find_symbol`/`get_symbols_overview` on `use_cases.py`, `output_validation.py`, `errors.py`: `CompletionUseCase.complete` (now 1659-2252, moved from the Ground-SHA 1143-1789 due to the post-build `_try_cache_lookup`/`_run_output_validation_retry` extraction refactor — SEE next line), `output_validation.py`'s 3 functions + `truncate_raw_output` (the 4th, added at build per §5 deviation d), `ProblemError`/`problem_response` additive `extra` param — all resolve exactly as the contract describes their SHAPE (the line numbers in §0/§3 are pre-build/illustrative, not a frozen literal diff, per §3's own "NOT a literal diff" caveat).
+- [x] anchor that moved since Ground SHA, named here: `CompletionUseCase.complete()`'s body moved/grew (1143-1789 at Ground SHA → 1659-2252 now) and TWO new call sites (`_try_cache_lookup` at 1391-1657, `_run_output_validation_retry` at 452-564) now hold code that was sketched inline in §3's "Integration sketch" — this is the disclosed, freeze-sanctioned §5 deviation (b)/(c), not a silent drift; verified the extraction preserves every M1-M13 rule's behavior (see refute-read below), not just that it compiles.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: **NOT-EARNED on one corner (FINDING 1) — EARNED elsewhere**
+By: self (add-verify, protocol-translation-engineer persona) · adversarially checked:
+  1. Byte-identical-when-OFF (M1/M2): traced `_check_output_validation`'s unconditional pop + cache-key computation order — held.
+  2. Retry billing honesty (M8) across EVERY exit branch of `_run_output_validation_retry`, not just the two scenarios the frozen suite names (validated-success, both-fail-422) — found the suite is SILENT on the `UpstreamRateLimitedError`-during-retry branch (use_cases.py:512-521); coverage data independently confirms lines 513-526 are never executed by any of the 34 shipped tests. Wrote a failing repro test proving that branch's usage record is billed WITHOUT the `usage_source="validation_retry"` tag (silently defaults to the DB's `"frame"`), contradicting the frozen §3 schema note ("the retry's own successful attempt keeps the default 'frame'" implies every OTHER/failed attempt does not). NOT-EARNED on this specific corner — the green suite never exercised it.
+  3. CB-bypass-on-retry (M7) / cache-bypass-after-extraction (M9): both held — structurally confirmed via direct read (CB naturally applies since the retry reuses the identical call path; `_try_cache_lookup` is skipped by an outer `not _output_validation_engaged` gate in `complete()`, never entered at all when engaged).
+  4. Cross-tenant raw_output leak (security target #4): `truncate_raw_output`/`OUTPUT_SCHEMA_VALIDATION_FAILED.exc(extra=...)` only ever read the CURRENT call's own `retry_body` — no shared/cache/global read path exists. CLEAR.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify)
+1. Security: CLEAR — no cross-tenant `raw_output` leak path found (see refute-read #4); `jsonschema` meta-validation never executes untrusted schema as code (declarative validation only, no `$ref` network resolution observed in the call sites used); `validate_output` never forwarded upstream (M2 held).
+2. Concurrency: CLEAR — see checklist row above (ContextVar reset ordering, fire-and-forget billing scheduling both match pre-existing project-wide pattern).
+3. Architecture: RESIDUE — FINDING 1 (billing-source mislabeling on one exception branch of the extracted `_run_output_validation_retry`) is a real, reproducible gap between the frozen §3 contract's billing-labeling promise and the shipped code, silently missed by the green suite (a scenario/test-coverage gap, not a code-shape/layering violation — the module boundaries themselves are clean).
+Verdict: **PASS with a named non-security residue (FINDINGS below)** — not a HARD-STOP (no security/concurrency finding; the residue is a $0-cost labeling defect, not a money-correctness or double-bill/no-bill defect).
+Residue: FINDING 1 — see below.
+Binding: advisory — sensitivity: architecture (not mechanical)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
+Reported: yes — this verify report is the gate report.
+Outcome: <PASS | RISK-ACCEPTED | HARD-STOP> — recorded by the orchestrator, not this agent (see final message: PASS-RECOMMENDED with residue).
 Reviewed by: <name> · date: <date>
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->

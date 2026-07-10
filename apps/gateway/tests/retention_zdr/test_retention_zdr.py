@@ -1014,3 +1014,52 @@ async def test_is_zdr_read_port(client: httpx.AsyncClient, db_session: AsyncSess
 
     # Unknown tenant_id — fail-open False (never raises), the fresh-read contract holds.
     assert await is_zdr(db_session, uuid.uuid4()) is False
+
+
+# ===========================================================================
+# VERIFY refute-read repro (added at verify, not build) — see TASK.md §6 FINDINGS.
+# The ZDR gate lives inside ArtifactRepository.create() (raise_if_zdr), but the S3
+# object PUT in artifacts/api/router.py:create_artifact happens BEFORE repo.create()
+# is ever called (router.py:240-260, "write the OBJECT first, then commit the row").
+# Under zdr_enabled=true this write-path ordering means the payload bytes are
+# durably persisted to the object store even though the DB row (and therefore the
+# sweeper's ZDR purge pass, which only iterates rows in `artifacts`) never exists to
+# clean them up. This is a payload-bearing write path the §0 GROUND inventory did not
+# examine (it inventoried STORES, not the ORDER OF OPERATIONS within a call chain).
+# ===========================================================================
+
+
+async def test_zdr_blocks_artifact_upload_but_s3_object_already_written(
+    client: httpx.AsyncClient, db_session: AsyncSession, app: Any
+) -> None:
+    jwt, tid = await _signup_owner(client, tenant_name="ZdrS3Orphan", email="owner@zdrs3orphan.io")
+    key_info = await _create_key(client, jwt, name="k1")
+    await _set_tenant_zdr(db_session, tid, zdr_enabled=True)
+
+    fake_store = FakeObjectStore()
+    app.state.object_store = fake_store
+    try:
+        resp = await client.post(
+            ARTIFACTS,
+            json={"name": "f.txt", "content_type": "text/plain", "content_base64": "aGVsbG8="},
+            headers=_bearer(key_info["key"]),
+        )
+        assert_problem(resp, 403, "ERR_ZDR_PAYLOAD_BLOCKED")
+
+        post = await db_session.execute(
+            text("SELECT COUNT(*) FROM artifacts WHERE tenant_id = :tid"), {"tid": tid}
+        )
+        assert post.scalar() == 0, "no ArtifactRow may be created — this half of R3 holds"
+
+        # The actual defect: the payload bytes were already durably written to the
+        # object store BEFORE raise_if_zdr() (inside repo.create()) ever ran, and
+        # since no ArtifactRow exists, no sweeper pass will ever find/delete this
+        # object — it is orphaned in the object store for as long as ZDR is enabled.
+        assert fake_store.store == {}, (
+            f"ZDR-BLOCKED artifact upload still wrote {len(fake_store.store)} object(s) "
+            "to the object store before the gate fired (router.py store.put() precedes "
+            "repo.create()'s raise_if_zdr) — a real payload-content persistence despite "
+            "zdr_enabled=true, unreachable by the ZDR purge pass (no DB row to key off)."
+        )
+    finally:
+        app.state.object_store = None

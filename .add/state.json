@@ -921,12 +921,12 @@
     },
     "compliance-export-api": {
       "title": "Compliance export API over the immutable audit store",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "enterprise-identity-compliance",
       "depends_on": [],
       "created": "2026-07-10T12:19:51+00:00",
-      "updated": "2026-07-10T14:26:20+00:00",
+      "updated": "2026-07-10T14:47:09+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-10T13:11:03+00:00",
@@ -952,7 +952,27 @@
           "apps/gateway/migrations/versions/",
           "apps/gateway/tests/audit_export/"
         ],
-        "snapshot_md5": "ef3f9f52b281b6a57d0e52326c4e2b46"
+        "snapshot_md5": "15f6d2cc3a74ffa789eb01d7a871e8d2"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-10T14:41:10+00:00",
+            "reason": "scope_violation: task 'compliance-export-api' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (18 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-10T14:46:50+00:00",
+            "reason": "scope_violation: task 'compliance-export-api' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (22 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
@@ -1041,7 +1061,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T14:26:20+00:00",
+  "updated": "2026-07-10T14:47:09+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

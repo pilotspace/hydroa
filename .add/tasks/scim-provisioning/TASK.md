@@ -450,46 +450,46 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 27/27 green, `tests/scim_provisioning/test_scim_provisioning.py` (GATEWAY_TEST_DATABASE_URL=gateway_test_vscim, real Postgres :5433)
+- [x] coverage did not decrease — measured 577/694 stmts = 83.1% on `gateway/scim/` via `--cov=gateway.scim --cov-report=term-missing`, EXACT match to TASK.md's declared 577/694 (83.1%) — the declared number was not inflated
+- [x] no test or contract was altered during build — §2/§3 unedited since FROZEN @ v1; git history shows build-only commits touched `src/`/migrations/Envoy
+- [x] the green was EARNED — see Refute-read verdict below; core Musts (M1-M12) hold under independent adversarial attack, but the refute-read surfaced ONE real coverage gap outside any scenario (see FINDING 1 below) — not a cheat (no vacuous asserts/stubbed logic found; `test_deactivated_user_cannot_login_with_password` genuinely asserts byte-identical response bodies, not just status codes)
+- [x] concurrency / timing of the risky operation is safe — MOSTLY: the deactivation write (`set_active`) has NO `SELECT ... FOR UPDATE` row lock before its `already_at_target` idempotency check → two truly concurrent PATCH active:false on the same user can both pass the check and both commit, producing a duplicate `scim.user_deactivate` audit row (M5's "no duplicate audit row" guarantee is for SERIALIZED repeats, not concurrent ones). Final DB state is still correct (deactivated_at set once, team_members already empty for the loser) — audit-log duplication only, not a privilege/data-integrity bug. MINOR, not HARD-STOP-class.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — grepped `gateway/scim/` for logging: only `scim_token_id` (UUID) is ever logged, never a raw token/secret; all queries are SQLAlchemy-parameterized (no string-built SQL); `Sha256SecretHasher.verify` uses `hmac.compare_digest`; zero new third-party dependencies
+- [x] layering & dependencies follow CONVENTIONS.md — clean `domain/`←`application/`←`infrastructure/`←`api/` shape confirmed by direct read; `ruff check src/gateway/scim/` and `pyright src/gateway/scim/` both 0 findings
+- [ ] a person reviewed and approved the change — pending Tin's review (this is a HARD-STOP security task; human gate required regardless of the findings below)
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] tenant A's SCIM bearer cannot read or mutate tenant B's users (404, no oracle) — confirmed by the tenant-isolation test, adversarially refute-read verified (filter temporarily broken → test failed → restored)
-- [ ] deactivating a user via SCIM PATCH sets users.deactivated_at and both login call sites reject that user — confirmed by the deactivation-semantics tests asserting login 401 after PATCH
-- [ ] every /scim/v2 mutation writes an audit row attributed to actor_scim_token_id; /admin/scim token CRUD attributes actor_user_id — confirmed by audit-row assertions in the mutation tests
-- [ ] /scim/v2 errors use the RFC 7644 SCIM envelope while /admin/scim stays RFC 9457 — confirmed by response-shape assertions on both surfaces
+- [x] tenant A's SCIM bearer cannot read or mutate tenant B's users (404, no oracle) — RE-VERIFIED independently: `test_cross_tenant_scim_token_cannot_reach_another_tenant_user` (existing) + a throwaway probe I wrote and ran (deleted after) hitting the FILTER-LIST endpoint specifically (`GET /scim/v2/Users?filter=userName eq "victim@corp.example"` from a foreign tenant's token) → `{totalResults: 0, Resources: []}`, not merely excluded from a mixed page — no leak on either read path
+- [x] deactivating a user via SCIM PATCH sets users.deactivated_at and both login call sites reject that user — confirmed by direct read of `LoginUseCase.execute` (l.71-72, byte-identical-to-`InvalidCredentialsError` check) and `OidcLoginUseCase` (l.351-352) plus the passing `test_deactivated_user_cannot_login_with_password`/`test_deactivated_user_cannot_login_via_oidc` tests. NOTE (FINDING 1, see below): this blocks NEW login/JWT-issuance only — it does NOT block the deactivated user's PRE-EXISTING JWT from minting brand-new, non-expiring credentials (new SCIM tokens, new API keys) during the residual window, which is a materially wider blast radius than the contract's stated "stale JWT remains valid for reads up to jwt_ttl" framing.
+- [x] every /scim/v2 mutation writes an audit row attributed to actor_scim_token_id; /admin/scim token CRUD attributes actor_user_id — confirmed by direct read of `scim_router.py::_audit` (actor_scim_token_id, actor_user_id=None) vs `token_router.py::_audit` (actor_user_id, no actor_scim_token_id) plus `AuditEvent.__post_init__`'s widened invariant (fails closed with ValueError if neither actor is set) — no code path can construct an unattributed tenant-scoped SCIM audit row
+- [x] /scim/v2 errors use the RFC 7644 SCIM envelope while /admin/scim stays RFC 9457 — confirmed by direct read of `scim/api/errors.py` (ScimApiError → `{schemas, status, scimType?, detail}`) vs `token_router.py` (SCIM_TOKEN_NOT_FOUND / AUTH_FORBIDDEN via the ordinary ProblemError machinery) and the passing response-shape assertions in both test classes
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `main.py` imports+includes both `scim_token_router`/`scim_router`, calls `register_scim_error_handlers(app)`, wires `app.state.scim_rate_limiter = ScimTokenRateLimiter(redis_client)`, and imports `gateway.scim.infrastructure.orm` (noqa'd side-effect import) so `ScimTokenRow` registers on `Base.metadata` for Alembic autogenerate — all 4 wiring points confirmed by direct grep+read of `main.py`, not assumed from the pattern
+- [x] DEAD-CODE (code) — `ruff check src/gateway/scim/` clean (0 findings); every use case/repo method traced to a router call site by direct read; no orphaned symbol found
+- [ ] SEMANTIC (prose / non-code) — N/A, this task is code-only (no prose/design-doc deliverable to semantically read)
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by direct read in the current tree (not just grep) of: `User`/`UserRow` (+`deactivated_at`), `LoginUseCase.execute`, `OidcLoginUseCase`, `JwtTokenService.decode`/`_resolve_identity`, `ApiKeyRow`/`Sha256SecretHasher`, `RotateKeyUseCase`-style rotation (mirrored in `RotateScimTokenUseCase`), `TeamMemberRow` delete pattern, `AuditEvent`/`record_audit`, `Permission.MEMBERS_MANAGE`/`require_permission`, the Envoy catch-all + new `/scim/` block, `InvitePublicRateLimiter`-style limiter (mirrored in `ScimTokenRateLimiter`) — all present and behaving as cited
+- [x] any anchor that moved/renamed since Ground SHA is named here, not left silent — the migration's `down_revision` is `d401ca5a7cde` (NOT `511ad8a7b65e` as the migration file's own docstring/TASK.md Ground SHA states) because two sibling milestone tasks' migrations (`c20d0adece0a` per_key_guardrail_policies, `d401ca5a7cde` audit_events_export_index) landed on the shared branch ahead of this one during integration. `alembic heads` shows a single head (`a1c5e7f9b3d6`) — chain is still linear, not branched. This is a cosmetic docstring staleness (the migration itself is correctly parented and applies cleanly), not a functional defect — flagged here per the Live-verify instruction rather than silently left.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: add-verify (appsec-engineer persona) · adversarially checked: (1) cross-tenant isolation on BOTH `GET /Users/{id}` and the `filter=userName eq` list endpoint, via a live throwaway probe (deleted after) — held, byte-identical 404 / empty collection, no oracle; (2) every SCIM route's auth dependency actually invokes via `Annotated[..., Depends(...)]`/`require_permission(...)` — no bare-callable foot-gun (the exact S1 bug class this repo hit before) — confirmed by direct read of every route signature in `scim_router.py`+`token_router.py`; (3) deactivation blast radius via a live throwaway probe: deactivated a tenant OWNER using their OWN pre-deactivation session JWT, then used that SAME stale JWT to mint a brand-new SCIM token (201), rotate the existing one (200), and mint a brand-new API key (201) — see FINDING 1, this is real and reproducible, not paper-argued; (4) SCIM bearer hashing (SHA-256 + `hmac.compare_digest`, reused unmodified) and constant-time-shape failure (dummy-hash compare on missing/revoked token) — held; (5) audit-attribution invariant — traced `AuditEvent.__post_init__`'s widened guard, confirmed it fails closed (raises ValueError) if a tenant-scoped event carries neither actor kind — no code path bypasses it. Byte-identical response-body assertion in `test_deactivated_user_cannot_login_with_password` (not just status-code) rules out a vacuous-assert cheat on the anti-enumeration Musts.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: add-verify (appsec-engineer persona)
+1. Security: HARD-STOP: FINDING 1 — a deactivated OWNER/ADMIN's pre-deactivation session JWT (stateless, unrevoked, valid up to `jwt_ttl_seconds`=24h) can still be used to mint BRAND-NEW, non-expiring credentials — a new SCIM token (verified: 201) and a new API key (verified: 201) — and to rotate an existing SCIM token (verified: 200), because `_resolve_identity`/`require_permission` never re-check `deactivated_at` against the DB (stateless HMAC-only decode). This means a departing/malicious privileged user, once "deactivated" via SCIM, can silently establish PERMANENT backdoor access (new SCIM token / new API key have no TTL of their own) within the 24h grace window — a materially larger and more dangerous blast radius than the contract's documented residual ("an already-issued session JWT stays valid up to jwt_ttl", framed around read/session survival, not new-credential-minting). Reproduced live via a throwaway test (deleted after use) — see Refute-read verdict above for the exact repro steps. This is a genuine security gap discovered by refute-read, not a contract violation in the strict textual sense (no §1 Must/Reject is literally broken) — surfaced here for the human per "any security finding is HARD-STOP, never a waiver."
+2. Concurrency: (left per lens-ordering rule — a Security HARD-STOP ends the checklist) — noted informally above (checkbox section): `set_active`'s idempotency check lacks a row lock, so two truly concurrent PATCH active:false calls on the same user can both pass and both commit, producing a duplicate `scim.user_deactivate` audit row. Final data state stays correct; this is audit-log duplication only. MINOR, not blocking on its own.
+3. Architecture: (left per lens-ordering rule) — noted informally: clean layering confirmed, `pyright`/`ruff` both 0 findings, no dead code.
+Verdict: HARD-STOP
+Residue: FINDING 1 (security, primary) — deactivation's actual blast radius is wider than documented: a stale privileged JWT can mint new persistent credentials, not just outlive its own TTL passively. FINDING 2 (concurrency, minor) — no row lock on `set_active`'s idempotency check → possible duplicate deactivation audit row under true concurrency. FINDING 3 (note, not a defect) — OIDC-path deactivation denial (`ERR_OIDC_ACCOUNT_DEACTIVATED`, 403) is a DISTINCT, named error unlike the password path's byte-identical `InvalidCredentialsError`; low real exploitability (OIDC callback requires the caller already hold a valid IdP assertion for that exact email, unlike password guessing) and matches the §2 scenario's literal wording ("same denial family," not "byte-identical") — flagged for the human to confirm this reading was intentional, not silently under-specified.
+Binding: yes — mechanical (sensitivity: security)
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
