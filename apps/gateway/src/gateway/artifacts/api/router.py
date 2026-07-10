@@ -61,6 +61,7 @@ from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.objectstore import ObjectStore
 from gateway.objectstore.errors import ObjectNotFoundError, ObjectStoreUnavailableError
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
+from gateway.tenants.application.retention_policy import raise_if_zdr
 
 artifacts_router = APIRouter(tags=["artifacts"])
 
@@ -234,6 +235,14 @@ async def create_artifact(
                 f"allowed: {settings.artifact_allowed_content_types!r}"
             ),
         ) from None
+
+    # ZDR fail-closed gate (tenant-retention-zdr TASK.md §3 M5 / FINDINGS #1): must be
+    # checked BEFORE the object-store write below, not just inside repo.create()'s own
+    # raise_if_zdr — otherwise a ZDR-blocked upload still leaves the real payload bytes
+    # durably sitting in the object store with no DB row for the sweeper to ever find.
+    # Checked fresh, after input validation (base64/size/content-type), ahead of BOTH
+    # side effects (object-store put and DB insert) so they share one gate.
+    await raise_if_zdr(session, authz.tenant_id)
 
     # Generate the id at the call site so the s3 object key is known BEFORE the write.
     artifact_id = uuid.uuid4()
