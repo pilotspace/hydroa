@@ -1,12 +1,8 @@
 # TASK: S1: signup invite-only default + routing-write ops permission
 
 slug: signup-and-routing-authz · created: 2026-07-02 · stage: production · risk: high
-autonomy: manual   <!-- SECURITY task, HARD-STOP verify reserved for Tin (tmp/eh-remaining-context.md) —
-     lowered from the project-default `auto` per CLAUDE.md's non-negotiable ("a security finding is
-     HARD-STOP — never auto-passed") and the run.md guard (`unguarded_high_risk_auto`) for a
-     `risk: high` task. Design (this bundle) drafts only; Tin freezes, then Build/Verify stay
-     human-gated per this line. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+autonomy: manual
+phase: done
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -398,9 +394,6 @@ Assumptions — lowest-confidence first:
     on, since adding one is a legitimate but separate defense-in-depth layer.
 </assumptions>
 
-<!-- EXIT: every rule stated, every rejection named; assumptions ranked lowest-confidence first, the
-     top one or two ⚠-flagged with why + cost. -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -513,8 +506,6 @@ Scenario: The full S1 chain is provably closed end-to-end                       
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -625,9 +616,6 @@ breaks. [spec] prod ships invite-only (`publicSignupEnabled: false` in values-pr
 deploy cannot self-serve its first tenant without the documented M6 flip-on/off bootstrap. Cost if
 wrong: a new prod deploy bricks with no path to a first tenant until the operator runs the bootstrap.
 
-<!-- The freeze IS the one approval — Tin's decision, never this draft's. Approved -> Status: FROZEN
-     @ vN — approved by <name>. Changing a frozen contract = change request back to SPECIFY. -->
-
 ---
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
@@ -680,8 +668,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -783,8 +769,6 @@ before-DB-IO; flag-flips confirmed additive (no skip/xfail/assert-removal).
 ### GATE RECORD
 Outcome: PASS
 Reviewed by: Tin Dang · date: 2026-07-10
-
-<!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
 
 ---
 

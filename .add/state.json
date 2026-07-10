@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "edge-input-hardening",
+  "active_task": "signup-and-routing-authz",
   "active_milestone": "enterprise-hardening",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -804,12 +804,26 @@
     },
     "signup-and-routing-authz": {
       "title": "S1: signup invite-only default + routing-write ops permission",
-      "phase": "contract",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-10T06:22:51+00:00"
+      "updated": "2026-07-10T10:18:14+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "23f2c733c86a51e1813126b463364c42",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "cebc70f9b2c99977ee35c5ba6d2e607e"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "provider-circuit-breakers": {
       "title": "B3: per-provider breakers; complete() survives CircuitOpenError",
@@ -954,7 +968,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T09:15:08+00:00",
+  "updated": "2026-07-10T10:18:14+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1845,7 +1859,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "enterprise-hardening": "edge-input-hardening"
+    "enterprise-hardening": "signup-and-routing-authz"
   },
   "todos": [
     {

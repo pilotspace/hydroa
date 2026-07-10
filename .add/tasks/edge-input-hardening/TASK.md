@@ -1,11 +1,8 @@
 # TASK: S2+S3+S4: XFF last-hop parse, SSRF IMDS deny, body-size cap
 
 slug: edge-input-hardening · created: 2026-07-02 · stage: production · risk: high
-autonomy: conservative   <!-- lowered from the project default (auto) per run.md's unguarded_high_risk_auto guard — this is a SECURITY task (S2 rate-limit-bypass, S3 SSRF+credential-exfil, S4 body-size DoS); freeze + verify are Tin's HARD-STOP regardless, but the risk:high + conservative pairing mirrors the repo's own convention (agent-oauth-grant-store, anthropic-provider) rather than leaving an auto-mode gap. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
-     autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
-     (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
+autonomy: conservative
+phase: done
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -122,8 +119,6 @@ Assumptions — lowest-confidence first:
   - [ ] The exact byte-size defaults (20 MiB JSON / 25 MiB audio / 30 MiB edge) are reasoned analogically from existing precedent (`artifact_max_bytes`=10 MiB, `realtime_max_utterance_bytes`=25 MiB, OpenAI Whisper's documented 25 MB limit) rather than measured against real production request-size telemetry — confirm they don't clip any current legitimate workload (e.g., a very large tool-definitions + long-history chat request, or a near-cap multi-image multimodal call).
   - [ ] Envoy's native 413 body (plain text / Envoy default) will NOT match the gateway's RFC 9457 problem+json shape for requests that exceed the edge ceiling but would have fit under the app-level cap were they to reach it — accepted as a documented inconsistency (see Reject list) rather than building Envoy-side Lua/local_reply reshaping, which is a materially larger lift for a rarely-hit edge case (only bodies between the app cap and the edge cap ever see the app's own 413; anything under the app cap never reaches Envoy's buffer limit).
 </assumptions>
-
-<!-- EXIT: every rule stated, every rejection named; assumptions ranked lowest-confidence first, the top one or two ⚠-flagged with why + cost (or, for trivial scope, an honest "none material" that still names the single biggest risk). -->
 
 ---
 
@@ -263,8 +258,6 @@ Scenario: pre-existing pre-auth caps and domain caps are untouched
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -448,13 +441,6 @@ RFC1918+ULA, so the toggle can never relax the transition-scheme / metadata clas
 out to be the crux of the whole bypass class.) [test] DNS-rebinding resolve-then-CONNECT IP pinning
 is NOT built (accepted residual → §7); request-time FRESH re-resolution narrows the TOCTOU window
 but does not fully close it. Cost if wrong: a rebind landing between the check and the socket connect.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag: the 1–2
-     points most likely wrong across the whole bundle, tagged [spec|scenario|contract|test], each
-     with why + cost (the §1 ⚠ assumptions feed it; a flag may point at a scenario or the contract
-     too — see run.md). Approved -> Status: FROZEN @ vN — approved by <name>. Changing a frozen
-     contract = change request back to SPECIFY.
-     EXIT: frozen + every spec rejection has a contracted response + names match GLOSSARY + the
-     bundle's lowest-confidence flag was surfaced at the freeze (or an honest "none material"). -->
 
 ---
 
@@ -467,12 +453,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir ·
-     a token with "/" = project root · a bare name = sibling of the previous
-     token's dir · a directory counts its *.py files (non-recursive); reports
-     mark declared counts with † · anything resolving outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -546,15 +526,6 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
   dependency expected — `ipaddress` and `socket`/`asyncio` DNS resolution are stdlib); ask if
   unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token
-     with "/" = project root · a bare name = sibling of the previous token's dir ·
-     outside-root resolutions are dropped fail-closed · a DIRECTORY token covers its
-     whole subtree (containment — diverges from §4's non-recursive counting) ·
-     absent line = UNDECLARED (pre-existing tasks grandfathered, never retro-red) ·
-     engine enforcement (touched ⊆ declared) is live: a completing verify gate refuses an
-     out-of-scope build (scope_violation → self-heal) and add.py check surfaces it.
-     EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
@@ -595,8 +566,6 @@ By: 3 independent add-verify agents (a964b59ad42e / a6afc72bc4fb / a39ad9aa3ea4,
 Outcome: PASS
 Reviewed by: Tin Dang · date: 2026-07-10
 
-<!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. -->
-
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
@@ -604,7 +573,10 @@ Reviewed by: Tin Dang · date: 2026-07-10
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang (2026-07-10).** SECURITY task: this freeze)
+- [AI] build — strategy used: as planned
+- [human] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
@@ -614,4 +586,4 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
