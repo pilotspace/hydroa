@@ -3,7 +3,7 @@
 slug: guardrail-analytics · created: 2026-07-10 · stage: production
 milestone: logs-explorer-guardrails-v2
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -228,7 +228,12 @@ Scenario: missing bearer token is rejected   # R7
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
-Status: DRAFT — awaiting human freeze
+Status: FROZEN @ v1 — approved by Tin Dang
+Decided at freeze (orchestrator auto-mode, 2026-07-10; non-security data task): (1) counts come from a
+NEW append-only `guardrail_verdict_events` table, NOT aggregation over `request_logs` (which exists only
+for capture-opt-in tenants → would silently zero-out everyone else). (2) "pattern" = the coarse
+`guardrail` field (prompt_injection/pii_mask/ml_moderation); true per-regex granularity deferred as an
+additive field. (3) response-side `evaluate_post` pii_mask verdicts OUT of v1 — named spec delta.
 
 Least-sure flag surfaced at freeze: [spec/contract] the "pattern" dimension = the coarse `guardrail` field (prompt_injection/pii_mask/ml_moderation), NOT true per-regex/per-category granularity — a reading of the milestone's "by policy/pattern/key" wording chosen because it costs zero evaluator changes; the literal per-pattern reading would require touching ~10 `GuardrailEvent(...)` call sites in `guardrail_evaluator.py`/`ml_moderation_evaluator.py`. See §1 ⚠#1 for the full tradeoff. A secondary, lower-stakes flag: `evaluate_post` (response-side pii_mask) verdicts are OUT of v1 scope (§1 ⚠#3) — a named, not silent, gap.
 
@@ -407,7 +412,7 @@ Glossary deltas: <new domain term(s) this task introduces, `Term: definition` �
     over a time window, broken out by guardrail type ("pattern"), policy_source ("policy"), or
     key_id ("key") — one dimension per query, mirrors the existing /admin/spend windowed-analytics
     shape.`
-Status: DRAFT — awaiting human freeze
+Status: DRAFT
 Reported: no — this is the design-team draft; the orchestrator renders the freeze report when Tin reviews.
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 

@@ -390,8 +390,15 @@ bffDelete/BffError`) · `apps/dashboard/lib/use-focus-trap.ts`
 Glossary deltas: none — this task consumes three already-frozen backend Glossary terms (`SCIM token`,
 `sp_entity_id`, `Zero-Data-Retention (ZDR)`, `Tenant retention window`) verbatim; it introduces no new
 domain concept, only their admin-UI surface.
-Status: DRAFT
-Reported: no — the freeze report (banner/ARC) renders when Tin reviews this draft.
+Status: FROZEN @ v1 — approved by Tin Dang
+Reported: yes — presented for freeze 2026-07-10.
+Decided at freeze (Tin, 2026-07-10): KEEP this AUTO-MODE task as ONE consolidated settings surface
+(three new /settings tabs — SCIM · SAML SSO · Retention & ZDR), not split per-surface and not deferred.
+The task's existence (the lead scope flag) is confirmed.
+
+Least-sure flag surfaced at freeze: [contract] this task's own EXISTENCE/scope as the AUTO-MODE gap-fill
+owner of the milestone's "UI/UX in scope" line — no milestone Task row named an owner; scim-provisioning
+and saml-sso each independently flagged the gap. RESOLVED at freeze: Tin confirmed keep-as-one-task.
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---

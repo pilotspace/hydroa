@@ -7,7 +7,7 @@ milestone: enterprise-identity-compliance
      lowered to conservative so build cannot auto-PASS at Verify; HARD-STOP verify per the
      milestone's shared decision (identity surface), never auto-passed even under the project's
      default autonomy: auto. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -809,8 +809,12 @@ Glossary deltas:
     `signup-and-routing-authz` TASK.md), scoped to exactly the domains a tenant OWNER has proven
     control of — never a supersession of S1's own default.
 
-Status: DRAFT
-Reported: no — not yet presented for freeze; this is the draft the human reviews next.
+Status: FROZEN @ v1 — approved by Tin Dang
+Reported: yes — presented for freeze 2026-07-10.
+Decided at freeze (Tin, 2026-07-10): domain-claim lookup runs BEFORE the S1 `public_signup_enabled`
+check (option A). Recorded as a disclosed, S1-compatible AMENDMENT to S1 M2's zero-IO-when-disabled
+detail (outward S1 behavior unchanged for every non-matching domain); NOT a supersession. Secondary
+flag (DNS TXT subdomain-label vs apex): confirmed subdomain label `_ai-proxy-challenge.<domain>`.
 
 Least-sure flag surfaced at freeze: ⚠ [contract] the domain-claim lookup in `signup()` runs BEFORE
 the frozen S1 `public_signup_enabled` check — the ONE place this task's contract touches a FROZEN
