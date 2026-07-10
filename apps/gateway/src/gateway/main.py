@@ -92,7 +92,7 @@ from gateway.logs.infrastructure.orm import (  # noqa: F401 — registers Reques
     RequestLogRow as _RequestLogRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.logs.infrastructure.sqlalchemy_capture import SqlAlchemyPayloadCapture
-from gateway.logs.infrastructure.zdr_noop import AlwaysAllowCapture
+from gateway.logs.infrastructure.zdr_retention_adapter import RetentionZdrPort
 from gateway.memory.api.router import memories_router
 from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
     MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -1123,13 +1123,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     # payload-capture-store (§3): opt-in, PII-scrubbed request/response capture.
-    # zdr_port defaults to the permissive AlwaysAllowCapture (no tenant is ZDR) until
-    # the sibling tenant-retention-zdr task wires a real DB-backed implementation —
-    # tests override via app.state.zdr_port. payload_capture is the REAL DB-backed
-    # adapter (not NoopPayloadCapture — capture is opt-in/default-off via the
-    # per-tenant/per-key toggle, not via a Noop production wiring); tests override via
-    # app.state.payload_capture.
-    app.state.zdr_port = AlwaysAllowCapture()
+    # zdr_port is wired to RetentionZdrPort — a live adapter over the sibling
+    # tenant-retention-zdr task's SHIPPED tenants.zdr_enabled column (via
+    # tenants/application/retention_policy.py:is_zdr), bounded by
+    # capture_persist_timeout_seconds and fail-closed on any error/timeout (verify
+    # fix 2026-07-10: this was previously wired to the permissive AlwaysAllowCapture
+    # no-op, making the entire ZDR fail-closed contract for payload capture dead code
+    # in production). Tests override via app.state.zdr_port. payload_capture is the
+    # REAL DB-backed adapter (not NoopPayloadCapture — capture is opt-in/default-off
+    # via the per-tenant/per-key toggle, not via a Noop production wiring); tests
+    # override via app.state.payload_capture.
+    app.state.zdr_port = RetentionZdrPort(
+        session_factory=app.state.sessionmaker,
+        timeout_seconds=settings.capture_persist_timeout_seconds,
+    )
     app.state.payload_capture = SqlAlchemyPayloadCapture(
         session_factory=app.state.sessionmaker,
         zdr_port=app.state.zdr_port,

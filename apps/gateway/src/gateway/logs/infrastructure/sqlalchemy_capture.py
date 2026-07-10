@@ -71,14 +71,25 @@ class SqlAlchemyPayloadCapture:
         """Fire-and-forget capture — NEVER raises (see module docstring)."""
         try:
             try:
-                is_zdr = await self._zdr_port.is_zdr(tenant_id)
+                # Bounded — a ZdrOverridePort implementation that never returns (hangs)
+                # is a distinct failure mode from one that raises: without this
+                # asyncio.wait_for, capture() itself would hang indefinitely (never
+                # cancelled, holding its request/response body references forever — an
+                # unbounded task/memory leak). Reuses self._timeout_seconds, the same
+                # bound already applied to the downstream scrub->truncate->INSERT
+                # sequence in persist_request_log.
+                is_zdr = await asyncio.wait_for(
+                    self._zdr_port.is_zdr(tenant_id), timeout=self._timeout_seconds
+                )
             except Exception as exc:
-                # Defense-in-depth: the port itself must never raise, but a misbehaving
-                # implementation must still fail-CLOSED here (assume ZDR, suppress write)
-                # — the worse of the two failure directions is writing PII for a tenant
-                # that might be under Zero-Data-Retention.
+                # Defense-in-depth: the port itself must never raise or hang past its
+                # bound, but a misbehaving implementation must still fail-CLOSED here
+                # (assume ZDR, suppress write) — the worse of the two failure directions
+                # is writing PII for a tenant that might be under Zero-Data-Retention.
+                # Covers both a raised exception and a asyncio.wait_for TimeoutError.
                 _log.warning(
-                    "sqlalchemy_capture: zdr_port raised (fail-CLOSED, suppressing capture)",
+                    "sqlalchemy_capture: zdr_port raised or timed out "
+                    "(fail-CLOSED, suppressing capture)",
                     exc_info=exc,
                 )
                 is_zdr = True
