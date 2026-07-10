@@ -131,8 +131,17 @@ class OpenAiModerationClient:
             # non-retryable 4xx) is a failed moderation call — never silently "passed".
             raise UpstreamUnavailableError(f"Moderation upstream returned {status}")
 
-        results = body.get("results") or [{}]
-        result = results[0] if results else {}
+        results = body.get("results")
+        if not isinstance(results, list) or not results or not isinstance(results[0], dict):
+            # A 200 whose body doesn't match the wire contract (missing/malformed
+            # "results") is NOT a clean verdict — it is an unparseable response and
+            # must degrade exactly like a >=400 status, so MlModerationGuardrailEvaluator's
+            # except-Exception path fires action="unchecked" instead of silently
+            # defaulting to flagged=False (never let "unchecked" read as "passed").
+            raise UpstreamUnavailableError(
+                "Moderation upstream returned 200 with a malformed body (missing results)"
+            )
+        result = results[0]
         raw_categories = result.get("categories") or {}
         categories = [name for name, hit in raw_categories.items() if hit]
         return ModerationVerdict(flagged=bool(result.get("flagged", False)), categories=categories)
