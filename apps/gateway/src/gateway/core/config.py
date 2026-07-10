@@ -1112,6 +1112,28 @@ class Settings(BaseSettings):
             return 1
         return n
 
+    # ── Domain capture (domain-capture TASK.md §3 M13/M14, FROZEN @ v1) ─────────
+    # GATEWAY_DOMAIN_VERIFICATION_DNS_TIMEOUT_SECONDS — bounds the single DNS TXT
+    # lookup at verify time; a slow/non-responding nameserver 503s (fail-CLOSED), never
+    # hangs the request. Mirrors impersonation_live_check_timeout_seconds's exact style.
+    domain_verification_dns_timeout_seconds: float = Field(default=5.0, gt=0)
+    # GATEWAY_DOMAIN_CLAIM_CREATE_RPM / GATEWAY_DOMAIN_CLAIM_VERIFY_RPM — per-tenant
+    # fixed-window rate limits for the two OWNER-only mutating endpoints (M14). Both must
+    # be > 0; fails fast at boot when set to 0 or negative (mirrors invite_preview_rpm's
+    # own positive-knob validator).
+    domain_claim_create_rpm: int = 10  # GATEWAY_DOMAIN_CLAIM_CREATE_RPM
+    domain_claim_verify_rpm: int = 30  # GATEWAY_DOMAIN_CLAIM_VERIFY_RPM
+
+    @field_validator("domain_claim_create_rpm", "domain_claim_verify_rpm")
+    @classmethod
+    def _validate_domain_claim_positive_knobs(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                "INVALID_DOMAIN_CLAIM_KNOB: domain_claim_create_rpm and "
+                f"domain_claim_verify_rpm must each be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
     # ── SCIM provisioning (scim-provisioning task, M12) ──────────────────────────
     # Per-scim_token_id fixed-window write rate limit for /scim/v2/* mutations. Must be
     # > 0; fails fast at boot when set to 0 or negative (mirrors invite_preview_rpm's own

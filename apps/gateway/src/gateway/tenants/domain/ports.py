@@ -49,6 +49,22 @@ class IdentityRepository(Protocol):
         """
         ...
 
+    async def join_verified_tenant_domain(
+        self, *, tenant_id: uuid.UUID, email: str, password_hash: str
+    ) -> uuid.UUID:
+        """ADDITIVE (domain-capture TASK.md §3 M9 — FROZEN @ v1): ONE INSERT of a new
+        UserRow(tenant_id=<claimed tenant>, role=Role.MEMBER); returns the new user_id.
+
+        Deliberately INSERT-only, NOT get-or-provision: catches the `users.email` UNIQUE
+        `IntegrityError` and re-raises EmailAlreadyRegisteredError — see
+        domain-capture TASK.md §0 Issues for why this does NOT share
+        _get_or_provision_sso_user's get-or-return-existing shape (that shape is correct
+        for repeat SSO LOGIN, but a real account-enumeration + false-success bug for a
+        SIGNUP-shaped operation: it would let an attacker submit ANY password against a
+        real victim's already-registered email and receive a misleading 201 success).
+        """
+        ...
+
 
 class PasswordHasher(Protocol):
     def hash(self, password: str) -> str: ...

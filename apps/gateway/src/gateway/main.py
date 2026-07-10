@@ -82,6 +82,12 @@ from gateway.core.body_size_guard import BodySizeLimitMiddleware
 from gateway.core.config import Settings
 from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
 from gateway.core.errors import register_error_handlers
+from gateway.domain_capture.api.domain_claims_router import domain_claims_router
+from gateway.domain_capture.infrastructure.dns_resolver import DnsPythonTxtResolver
+from gateway.domain_capture.infrastructure.orm import (  # noqa: F401 — registers TenantDomainClaimRow on Base.metadata
+    TenantDomainClaimRow as _TenantDomainClaimRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.domain_capture.infrastructure.rate_limiter import DomainClaimRateLimiter
 from gateway.keys.api.key_guardrail_router import key_guardrail_router
 from gateway.keys.api.platform_keys_router import platform_keys_router
 from gateway.keys.api.router import admin_router as keys_admin_router
@@ -982,6 +988,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M12). Same redis_client; no IO at construction; fail-open on Redis outage.
     app.state.scim_rate_limiter = ScimTokenRateLimiter(redis=redis_client)
 
+    # Per-tenant rate limiter for the domain-claims create/verify endpoints (domain-capture
+    # TASK.md §3, M14). Same redis_client; no IO at construction; fail-open on Redis outage.
+    app.state.domain_claim_rate_limiter = DomainClaimRateLimiter(redis=redis_client)
+
+    # DNS TXT resolver for domain-claim verification (domain-capture TASK.md §3, M6/M13).
+    # Stateless — no IO at construction, safe without lifespan. Tests override via
+    # app.state.dns_resolver.
+    app.state.dns_resolver = DnsPythonTxtResolver()
+
+    # Domain-claim repository/resolver — constructed PER-REQUEST in
+    # domain_capture/api/deps.py (needs a request-scoped session); these are the
+    # test-injection seams only (mirrors app.state.saml_config_resolver = None).
+    app.state.domain_claim_repository = None
+    app.state.domain_claim_resolver = None
+
     # Bandwidth pacing (stream-bandwidth-pacing, v36): per-key aggregate token-bucket.
     # rate==0 (default) → PassthroughBandwidthBucket → byte-identical (no pacing, no Redis).
     # Construction does NOT connect to Redis (safe without lifespan); tests override via app.state.
@@ -1204,6 +1225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(saml_router)
     app.include_router(saml_admin_router)
     app.include_router(oidc_admin_router)
+    app.include_router(domain_claims_router)
     app.include_router(provider_keys_admin_router)
     app.include_router(presets_admin_router)
     app.include_router(health_router)
