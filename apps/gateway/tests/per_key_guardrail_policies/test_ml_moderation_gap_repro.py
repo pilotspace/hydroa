@@ -39,12 +39,15 @@ from .conftest import (
 from .test_per_key_guardrail_policies import _key_row
 
 
-async def test_ml_moderation_silently_dropped_from_key_override(
+async def test_ml_moderation_carried_into_key_override(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    """PUT with ml_moderation in the body -> 200, but the field is never persisted
-    and never echoed back — silent data loss on a security-relevant guardrail."""
+    """PUT with ml_moderation in the body -> 200, and the field is persisted AND
+    echoed back — no silent data loss on a security-relevant guardrail. (Was a
+    verify-wave repro asserting the buggy drop; inverted at fix-integration to lock
+    in the corrected behavior the fix delivers — see companion
+    test_ml_moderation_key_override_fix.py.)"""
     jwt, _tenant_id = await signup_and_login(
         client, tenant_name="MlGapCo", email="owner@mlgap.io"
     )
@@ -70,24 +73,25 @@ async def test_ml_moderation_silently_dropped_from_key_override(
     assert put_resp.status_code == 200, f"PUT key guardrails failed: {put_resp.text}"
     body: dict[str, Any] = put_resp.json()
 
-    # FINDING: response has no ml_moderation field at all (KeyGuardrailPolicyResponse
-    # does not declare one) -- the caller gets zero signal that it was dropped.
-    assert "ml_moderation" not in body, (
-        f"expected ml_moderation to be silently absent from the response (current "
-        f"buggy behavior); got body={body!r}"
-    )
+    # FIXED: the response now echoes ml_moderation, so the caller gets a truthful
+    # round-trip (KeyGuardrailPolicyResponse declares the field).
+    assert body.get("ml_moderation") == {
+        "enabled": True,
+        "mode": "block",
+        "failure_mode": "fail_closed",
+    }, f"expected ml_moderation echoed in the response; got body={body!r}"
 
-    # FINDING: the stored guardrail_policy column never received ml_moderation.
+    # FIXED: the stored guardrail_policy column now carries ml_moderation.
     row = await _key_row(db_session, key_info["key_id"])
     stored = row[0]
     assert stored is not None
-    assert "ml_moderation" not in stored, (
-        f"expected ml_moderation to be silently dropped from the persisted key "
-        f"override (current buggy behavior); stored={stored!r}"
-    )
+    assert stored.get("ml_moderation") == {
+        "enabled": True,
+        "mode": "block",
+        "failure_mode": "fail_closed",
+    }, f"expected ml_moderation persisted on the key override; stored={stored!r}"
 
-    # CONSEQUENCE: because resolution is wholesale (key override entirely replaces
-    # tenant config), this key now has ZERO ml_moderation coverage even though the
-    # tenant has it ON in fail_closed mode, and there is no way via this API to set
-    # it back on the key.
+    # CONSEQUENCE (now correct): resolution is wholesale (key override entirely
+    # replaces tenant config), but the key now carries its OWN ml_moderation, so
+    # coverage is preserved rather than silently stripped.
     assert stored.get("prompt_injection") == {"enabled": True, "mode": "block"}
