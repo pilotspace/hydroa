@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "realtime-relay-governance",
+  "active_task": "signup-and-routing-authz",
   "active_milestone": "enterprise-hardening",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -748,21 +748,21 @@
     },
     "edge-input-hardening": {
       "title": "S2+S3+S4: XFF last-hop parse, SSRF IMDS deny, body-size cap",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T04:53:34+00:00"
+      "updated": "2026-07-10T06:21:58+00:00"
     },
     "signup-and-routing-authz": {
       "title": "S1: signup invite-only default + routing-write ops permission",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "enterprise-hardening",
       "depends_on": [],
       "created": "2026-07-02T04:53:34+00:00",
-      "updated": "2026-07-02T04:53:34+00:00"
+      "updated": "2026-07-10T06:22:51+00:00"
     },
     "provider-circuit-breakers": {
       "title": "B3: per-provider breakers; complete() survives CircuitOpenError",
@@ -907,7 +907,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T06:20:23+00:00",
+  "updated": "2026-07-10T06:22:51+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1798,7 +1798,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "enterprise-hardening": "realtime-relay-governance"
+    "enterprise-hardening": "signup-and-routing-authz"
   },
   "todos": [
     {

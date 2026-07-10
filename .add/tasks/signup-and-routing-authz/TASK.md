@@ -602,28 +602,19 @@ Glossary deltas:
     tenant-excluding `Permission` structurally impossible, so `Permission` is the wrong tool for
     any future operator-wide surface, not just this one (see §7 OBSERVE `CATALOG_SYNC` flag).
 
-Status: DRAFT
-Reported: no
-
-**Least-sure flag to raise at freeze** (bundle lowest-confidence, ranked — see §1 Assumptions for
-  full reasoning on each):
-  ⚠ [spec] `values-prod.yaml`'s `publicSignupEnabled` default (preserve current prod signup
-    availability vs. close the BLOCKER immediately) — a product/business call only Tin can make;
-    everything else in this contract is unaffected by which way it goes (one line, either
-    direction).
-  ⚠ [contract] Superseding `routing-config-write`'s HARD-STOP-cleared "any owner/admin, always-on"
-    decision via `require_superadmin` — high confidence the FIX direction is right (the stale
-    "single-operator" premise is demonstrably false today), lower confidence that no other still-
-    valid reason for the original call exists that this draft failed to surface; the documented
-    fallback (ROUTING_MANAGE + inline platform-tenant-id check) is a same-shaped, same-error-code
-    substitute if Tin wants a narrower change.
-  ⚠ [spec] The "invite-only signup = gate only POST /admin/auth/signup, leave existing per-tenant
-    invites untouched" reading — if Tin instead wants a genuine new tenant-creation-invite concept,
-    this is a change request back to Specify, not a small revision.
-  Every flag above is scoped so that either resolution leaves the REST of this contract (routes,
-  error codes, schema, the require_superadmin gate itself) unchanged — none blocks freezing the
-  shape that IS drafted here; each narrows to a values.yaml line, a Build-time gate substitution, or
-  a follow-on task, never a rewrite of this bundle.
+Status: FROZEN @ v1 — Tin approved 2026-07-10 (AskUserQuestion). All three flags RESOLVED:
+  ✅ [spec] `values-prod.yaml`'s `publicSignupEnabled` — RESOLVED: Tin chose invite-only ON by default,
+    prod INCLUDED. `publicSignupEnabled: false` in BOTH `values.yaml` and `values-prod.yaml`; the BLOCKER
+    is closed in prod at deploy. A documented bootstrap step (M6 flip-on/off) prevents a fresh deploy
+    bricking with no path to a first tenant. `GATEWAY_PUBLIC_SIGNUP_ENABLED` code default = OFF.
+  ✅ [contract] Routing gate — RESOLVED: Tin chose `require_superadmin` (role-only gate, reused
+    verbatim). This SUPERSEDES the 2026-06-23 `routing-config-write` HARD-STOP-cleared "any owner/admin,
+    always-on" decision (stale single-operator premise). Record as a named SUPERSESSION (PROJECT.md fold
+    pattern) — do NOT silently edit the frozen routing-config-write file.
+  ✅ [spec] "invite-only signup = gate only POST /admin/auth/signup, leave existing per-tenant invites
+    untouched" — RESOLVED: the narrow reading is confirmed (no new tenant-creation-invite concept in v1
+    scope). The shipped tenant-scoped invites are untouched.
+SECURITY task: the VERIFY gate remains Tin's HARD-STOP (this freeze authorizes build, not verify).
 
 <!-- The freeze IS the one approval — Tin's decision, never this draft's. Approved -> Status: FROZEN
      @ vN — approved by <name>. Changing a frozen contract = change request back to SPECIFY. -->

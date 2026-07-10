@@ -107,8 +107,17 @@ After:
 </after>
 Assumptions — lowest-confidence first:
 <assumptions>
-  ⚠ **k8s trusted-hop count** — I could not confirm, from `charts/ai-proxy/templates/envoy-service.yaml` alone, whether a real k8s deployment fronts Envoy with an L4-passthrough LoadBalancer (no extra XFF hop; `trusted_proxy_hops=1` stays correct) or an HTTP(S) LB/ingress that ALSO appends its own XFF hop (would need `trusted_proxy_hops=2` in that specific environment). Lowest confidence because this is an operator-topology fact, not something derivable from the chart's YAML alone. Cost if wrong: with an unaccounted extra hop, `trusted_proxy_hops=1` would trust the cloud LB's OWN reported peer (still not attacker-controlled, so NOT a spoof regression) — but it would mis-key rate limits by the LB's address instead of the real client in that one scenario, degrading (not breaking) the fix. Confirm at freeze: is the k8s deployment currently using `envoy.service.type: LoadBalancer` in L4/passthrough mode, or is there a known HTTP(S) front door in front of it?
-  ⚠ **RFC1918/private-range default-deny vs. default-allow** — chose deny-by-default (`GATEWAY_EGRESS_ALLOW_PRIVATE_RANGES=false`) as the secure default, but real enterprise Azure OpenAI deployments legitimately use Azure Private Link/Private Endpoint, which resolves to an RFC1918 address ON PURPOSE. Lowest confidence because this is a product/business tradeoff (how many real tenants need Private Link) not a pure security correctness question. Cost if wrong: a legitimate future Private-Link tenant gets a false-positive 502 `ERR_UPSTREAM_EGRESS_DENIED` until an operator flips the flag; the alternative (default-allow-private) would have silently reopened most of the RFC1918 SSRF surface for every OTHER tenant. Confirm at freeze.
+  ✅ **k8s trusted-hop count — RESOLVED: ship `trusted_proxy_hops=1` default, operator-tunable** (Tin,
+  2026-07-10). Accepted because the cost-if-wrong is a degradation, not a spoof regression: with an
+  unaccounted extra LB hop the rate limiter mis-keys by the LB's (non-attacker-controlled) address, and
+  the operator retunes `GATEWAY_TRUSTED_PROXY_HOPS` per-deployment with zero code change. No live k8s
+  topology audit blocks this freeze.
+  ✅ **RFC1918/private-range default-deny — RESOLVED: Tin chose deny-by-default** (2026-07-10,
+  AskUserQuestion). `GATEWAY_EGRESS_ALLOW_PRIVATE_RANGES=false` is the frozen secure default; metadata/
+  link-local always denied regardless of the flag. An Azure Private Link tenant opts in via the operator
+  flag (global for v1). Accepted cost: a Private-Link tenant gets a false-positive 502 until an operator
+  flips it. Per-range allowlisting (allow ONE private range without opening all) = documented §7
+  spec-delta candidate, not v1 scope.
   - [ ] Full DNS-rebinding closure (resolve-then-CONNECT IP pinning via a custom httpx transport) is explicitly OUT of this task's Must list — the fresh-every-request re-resolution closes the "approved once at write time, exploited via a later rebind" class, but leaves a narrow TOCTOU race between our resolve-check and httpx's own internal resolve+connect on the same call. Documented residual risk + candidate follow-up spec delta (§7), not blocking this freeze — confirm Tin accepts the residual risk at this scope.
   - [ ] The exact byte-size defaults (20 MiB JSON / 25 MiB audio / 30 MiB edge) are reasoned analogically from existing precedent (`artifact_max_bytes`=10 MiB, `realtime_max_utterance_bytes`=25 MiB, OpenAI Whisper's documented 25 MB limit) rather than measured against real production request-size telemetry — confirm they don't clip any current legitimate workload (e.g., a very large tool-definitions + long-history chat request, or a near-cap multi-image multimodal call).
   - [ ] Envoy's native 413 body (plain text / Envoy default) will NOT match the gateway's RFC 9457 problem+json shape for requests that exceed the edge ceiling but would have fit under the app-level cap were they to reach it — accepted as a documented inconsistency (see Reject list) rather than building Envoy-side Lua/local_reply reshaping, which is a materially larger lift for a rarely-hit edge case (only bodies between the app cap and the edge cap ever see the app's own 413; anything under the app cap never reaches Envoy's buffer limit).
@@ -413,10 +422,16 @@ Schema: none — no new table, no new column, no Alembic migration. All three fi
 config (Settings) + new pure-Python/ASGI modules + Envoy YAML deltas. Access pattern: N/A.
 ```
 
-Status: DRAFT
-**Least-sure flag surfaced at freeze (from §1's ⚠ assumptions):**
-- [spec] **k8s trusted-hop count** — `trusted_proxy_hops` default 1 is correct for the docker-compose edge topology (confirmed: Envoy is directly internet-facing there) but UNCONFIRMED for the Helm/k8s deployment, where `envoy.service.type` is operator-configurable and I could not determine from the chart alone whether an HTTP(S) front door sits in front of Envoy and would itself append an XFF hop. Cost if wrong in that specific topology: rate limits key on the front door's address instead of the true client (a degradation, not a spoof-reopening — still strictly safer than today's leftmost-trust bug). Recommendation: freeze at `trusted_proxy_hops=1` (matches the only topology I could verify) and treat any k8s-specific override as an operational config change, not a code change. **Tin confirms the k8s topology assumption (or accepts the default) at this freeze.**
-- [spec] **RFC1918 default-deny vs. default-allow for the SSRF guard** — chose secure-default-deny (`GATEWAY_EGRESS_ALLOW_PRIVATE_RANGES=false`) with an explicit operator opt-in for legitimate Azure Private Link deployments. Cost if wrong: a real Private-Link tenant sees a false-positive 502 until the operator flips the flag (visible, actionable, not silent); the alternative would silently reopen most of the RFC1918 SSRF surface for every tenant by default. **Tin confirms this default at this freeze.**
+Status: FROZEN @ v1 — Tin approved 2026-07-10 (AskUserQuestion). Both least-sure flags RESOLVED as drafted:
+- [spec] **k8s trusted-hop count** — RESOLVED: freeze at `trusted_proxy_hops=1`, operator-tunable per
+  deployment (cost-if-wrong is a degradation, not a spoof regression). No live k8s topology audit blocks.
+- [spec] **RFC1918 default-deny** — RESOLVED: Tin chose deny-by-default
+  (`GATEWAY_EGRESS_ALLOW_PRIVATE_RANGES=false`), metadata/link-local always denied, operator opt-in flag
+  for Azure Private Link. Per-range opt-in = §7 spec-delta candidate.
+- [contract] Part B request-time enforcement (before the outbound POST) is authoritative; write-time
+  check is the cheap DNS-free first filter (intentional layering).
+- [test] DNS-rebinding IP-pinning NOT built (accepted residual risk → §7 spec-delta).
+SECURITY task: the VERIFY gate remains Tin's HARD-STOP (build is authorized by this freeze; verify is NOT).
 - [contract] Part B's request-time enforcement point (inside `build_url`/`_token_url` call sites, immediately before the outbound POST) is the authoritative layer; Part B's write-time check (`assert_literal_host_not_denied`) is a cheap, DNS-free, INCOMPLETE first filter (a non-IP hostname always passes it, by design — DNS resolution is deferred to request time). This is intentional layering, not a gap, but a reviewer skimming only the write-time check could mistake it for the full fix — noted here so it isn't missed at review.
 - [test] DNS-rebinding closure (resolve-then-CONNECT IP pinning) is explicitly NOT built in this task (§1 assumption) — accepted residual risk, recorded as a candidate follow-up spec delta (§7), not a blocking gap for this freeze.
 
