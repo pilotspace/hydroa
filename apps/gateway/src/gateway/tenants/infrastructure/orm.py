@@ -168,6 +168,13 @@ class UserRow(Base):
         sa.VARCHAR(32), nullable=False, server_default=text("'password'"), default="password"
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # deactivated_at — additive column (scim-provisioning migration 010e6f83a709).
+    # NULL = active (default, all existing rows unaffected). Mirrors api_keys.revoked_at's
+    # nullable-timestamp soft-revoke pattern. Set by SCIM PATCH active:false; cleared by
+    # PATCH active:true (reactivation).
+    deactivated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
 
 class InviteRow(Base):

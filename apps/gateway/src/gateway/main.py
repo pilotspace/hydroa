@@ -143,6 +143,13 @@ from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProvi
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.rate_limits.infrastructure.redis_token_bucket import RedisTokenBucket
+from gateway.scim.api.errors import register_scim_error_handlers
+from gateway.scim.api.scim_router import scim_router
+from gateway.scim.api.token_router import scim_token_router
+from gateway.scim.infrastructure.orm import (  # noqa: F401 — registers ScimTokenRow on Base.metadata
+    ScimTokenRow as _ScimTokenRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.scim.infrastructure.rate_limiter import ScimTokenRateLimiter
 from gateway.teams.api.router import teams_router
 from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamRow/TeamMemberRow on Base.metadata
     TeamMemberRow as _TeamMemberRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -953,6 +960,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # fail-open on Redis outage.
     app.state.invite_public_limiter = InvitePublicRateLimiter(redis=redis_client)
 
+    # Per-scim_token_id rate limiter for /scim/v2/* writes (scim-provisioning TASK.md §3,
+    # M12). Same redis_client; no IO at construction; fail-open on Redis outage.
+    app.state.scim_rate_limiter = ScimTokenRateLimiter(redis=redis_client)
+
     # Bandwidth pacing (stream-bandwidth-pacing, v36): per-key aggregate token-bucket.
     # rate==0 (default) → PassthroughBandwidthBucket → byte-identical (no pacing, no Redis).
     # Construction does NOT connect to Redis (safe without lifespan); tests override via app.state.
@@ -1136,6 +1147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.oidc_config_resolver = None
 
     register_error_handlers(app)
+    register_scim_error_handlers(app)
     app.include_router(agent_oauth_device_router)
     app.include_router(agent_oauth_approval_router)
     app.include_router(agent_oauth_token_router)
@@ -1150,6 +1162,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users_router)
     app.include_router(invites_router)
     app.include_router(invite_accept_router)
+    app.include_router(scim_token_router)
+    app.include_router(scim_router)
     app.include_router(platform_tenants_router)
     app.include_router(platform_users_router)
     app.include_router(platform_tenant_config_router)

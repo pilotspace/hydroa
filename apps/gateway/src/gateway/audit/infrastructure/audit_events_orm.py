@@ -101,6 +101,15 @@ class AuditEventRow(Base):
         PGUUID(as_uuid=True),
         nullable=True,
     )
+    # scim-provisioning (TASK.md §3, migration 010e6f83a709): additive, nullable — the
+    # machine actor for a SCIM-token-authenticated caller with no user identity. No FK
+    # to scim_tokens(id) at the ORM-mapped-column level — mirrors actor_key_id's own
+    # FK-less pattern so create_all in tests doesn't require a matching row, and a
+    # revoked token's historical audit rows are never blocked.
+    actor_scim_token_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=True,
+    )
     actor_email: Mapped[str | None] = mapped_column(Text, nullable=True)
     action: Mapped[str] = mapped_column(Text, nullable=False)
     target_type: Mapped[str | None] = mapped_column(Text, nullable=True)

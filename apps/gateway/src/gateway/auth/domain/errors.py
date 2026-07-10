@@ -46,3 +46,10 @@ class OidcConfigNotFoundError(Exception):
 
 class OidcTenantCookieMissingError(Exception):
     """GET /auth/oidc/callback called without oidc_tenant_id cookie. → 400."""
+
+
+class OidcAccountDeactivatedError(Exception):
+    """Resolved user's deactivated_at is set (scim-provisioning TASK.md §3, M7) — SSO
+    login is rejected, no session JWT is issued. Same denial family as the password-login
+    path (InvalidCredentialsError) — a deactivated user cannot authenticate by ANY method.
+    → 403."""

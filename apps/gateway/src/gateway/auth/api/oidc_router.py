@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.auth.api.deps import get_oidc_config_resolver, get_oidc_use_case_with_config
 from gateway.auth.application.use_cases import OidcLoginUseCase
 from gateway.auth.domain.errors import (
+    OidcAccountDeactivatedError,
     OidcDomainNotMappedError,
     OidcInvalidCallbackError,
     OidcSessionExpiredError,
@@ -49,6 +50,7 @@ from gateway.auth.infrastructure.settings_oidc_config_resolver import (
 )
 from gateway.core.db import get_session
 from gateway.core.error_catalog import (
+    OIDC_ACCOUNT_DEACTIVATED,
     OIDC_DOMAIN_NOT_MAPPED,
     OIDC_INVALID_CALLBACK,
     OIDC_NOT_CONFIGURED,
@@ -285,6 +287,8 @@ async def oidc_callback(
         raise OIDC_DOMAIN_NOT_MAPPED.exc() from exc
     except OidcTenantConflictError as exc:
         raise OIDC_TENANT_CONFLICT.exc() from exc
+    except OidcAccountDeactivatedError as exc:
+        raise OIDC_ACCOUNT_DEACTIVATED.exc() from exc
 
     secure = settings.environment != "dev"
     post_login_redirect = settings.oidc_post_login_redirect
