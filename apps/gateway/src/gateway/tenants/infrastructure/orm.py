@@ -117,6 +117,13 @@ class TenantRow(Base):
     batch_grouping_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    # Payload-capture-store additive field (payload-capture-store migration)
+    # BOOLEAN NOT NULL DEFAULT false — per-tenant opt-in for PII-scrubbed request/
+    # response payload capture (request_logs). OR-resolved with api_keys.capture_enabled
+    # at auth time (mirrors cache_enabled's key-can-only-turn-ON precedent).
+    payload_capture_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # updated_at — NOT in the baseline (ad14442336db created tenants with created_at only);
     # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without

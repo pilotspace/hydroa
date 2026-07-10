@@ -95,3 +95,7 @@ class ApiKeyRow(Base):
     cache_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    # Payload-capture-store additive field (payload-capture-store migration)
+    capture_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )

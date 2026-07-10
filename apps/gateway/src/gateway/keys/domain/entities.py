@@ -41,6 +41,10 @@ class ApiKey:
     # Batch-auto-grouping additive field (batch-auto-grouping migration, v57)
     # Populated via LEFT JOIN tenants in get_by_id() — zero extra DB reads.
     batch_grouping_enabled: bool = False
+    # Payload-capture-store additive field (payload-capture-store migration)
+    # Raw key-level column value in create()/list_by_tenant(); OR-resolved with
+    # tenants.payload_capture_enabled in get_by_id() (mirrors cache_enabled's dual role).
+    capture_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,3 +107,7 @@ class AuthzResult:
     # Populated at auth time from tenants.batch_grouping_enabled via the existing LEFT JOIN tenants.
     # Default False = diversion inactive (per-tenant opt-in, M9 byte-identical guarantee).
     batch_grouping_enabled: bool = False
+    # Payload-capture-store additive field (payload-capture-store migration)
+    # Effective = api_keys.capture_enabled OR tenants.payload_capture_enabled (resolved at
+    # auth time, mirrors cache_enabled's OR-resolution exactly — key can only turn ON).
+    payload_capture_enabled: bool = False

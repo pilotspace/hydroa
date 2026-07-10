@@ -30,6 +30,7 @@ def _row_to_api_key(row: ApiKeyRow) -> ApiKey:
         tpm_limit=row.tpm_limit,
         team_id=row.team_id,
         cache_enabled=bool(getattr(row, "cache_enabled", False)),
+        capture_enabled=bool(getattr(row, "capture_enabled", False)),
     )
 
 
@@ -139,6 +140,7 @@ class SqlAlchemyApiKeyRepository:
                 TenantRow.guardrail_configs,
                 TenantRow.semantic_cache_enabled,
                 TenantRow.batch_grouping_enabled,
+                TenantRow.payload_capture_enabled,
             )
             .outerjoin(TeamRow, ApiKeyRow.team_id == TeamRow.id)
             .outerjoin(TenantRow, ApiKeyRow.tenant_id == TenantRow.id)
@@ -154,10 +156,17 @@ class SqlAlchemyApiKeyRepository:
             tenant_guardrail_configs,
             tenant_semantic_cache_enabled,
             tenant_batch_grouping_enabled,
+            tenant_payload_capture_enabled,
         ) = result
         # Effective cache = key-level OR tenant-level (both default false)
         effective_cache = bool(getattr(row, "cache_enabled", False)) or bool(
             tenant_cache_enabled or False
+        )
+        # Effective capture = key-level OR tenant-level (mirrors cache_enabled exactly —
+        # key can only turn capture ON, never override tenant OFF; payload-capture-store §3
+        # Freeze question #1, OR-semantics, Tin-approved 2026-07-10).
+        effective_capture = bool(getattr(row, "capture_enabled", False)) or bool(
+            tenant_payload_capture_enabled or False
         )
         # Deserialize guardrail_configs: asyncpg may return dict or str depending on driver version
         import json as _json
@@ -198,6 +207,7 @@ class SqlAlchemyApiKeyRepository:
             guardrail_configs=guardrail_configs,
             semantic_cache_enabled=effective_semantic_cache,
             batch_grouping_enabled=effective_batch_grouping,
+            capture_enabled=effective_capture,
         )
 
     async def update(
@@ -213,6 +223,7 @@ class SqlAlchemyApiKeyRepository:
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
         cache_enabled: bool | None = None,
+        capture_enabled: bool | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey | None:
         """Update governance fields on an active (non-revoked) key owned by tenant_id.
@@ -256,6 +267,10 @@ class SqlAlchemyApiKeyRepository:
         # cache_enabled: None = no change; True/False = set to value
         if cache_enabled is not None:
             row.cache_enabled = cache_enabled
+
+        # capture_enabled: None = no change; True/False = set to value
+        if capture_enabled is not None:
+            row.capture_enabled = capture_enabled
 
         await self._session.commit()
         await self._session.refresh(row)
