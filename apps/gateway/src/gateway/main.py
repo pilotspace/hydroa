@@ -30,8 +30,13 @@ from gateway.artifacts.infrastructure.orm import (  # noqa: F401 — registers A
 )
 from gateway.auth.api.oidc_admin_router import oidc_admin_router
 from gateway.auth.api.oidc_router import oidc_router
+from gateway.auth.api.saml_admin_router import saml_admin_router
+from gateway.auth.api.saml_router import saml_router
 from gateway.auth.infrastructure.orm import (  # noqa: F401 — registers OidcProviderConfigRow on Base.metadata
     OidcProviderConfigRow as _OidcProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.auth.infrastructure.saml_orm import (  # noqa: F401 — registers SamlProviderConfigRow on Base.metadata
+    SamlProviderConfigRow as _SamlProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.batches.api.router import batch_router
 from gateway.batches.api.stats_router import batch_stats_router
@@ -1113,11 +1118,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # None here means: use DbOidcConfigResolver (session-scoped) in production.
     app.state.oidc_config_resolver = None
 
+    # SAML seams — always initialized to None (= production adapters constructed
+    # per-request in saml_deps.py; tests override via app.state.saml_config_resolver /
+    # saml_request_store / saml_replay_cache). Mirrors the OIDC seam pattern above.
+    app.state.saml_config_resolver = None
+    app.state.saml_request_store = None
+    app.state.saml_replay_cache = None
+
     register_error_handlers(app)
     app.include_router(agent_oauth_device_router)
     app.include_router(agent_oauth_approval_router)
     app.include_router(agent_oauth_token_router)
     app.include_router(oidc_router)
+    app.include_router(saml_router)
+    app.include_router(saml_admin_router)
     app.include_router(oidc_admin_router)
     app.include_router(provider_keys_admin_router)
     app.include_router(presets_admin_router)
