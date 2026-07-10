@@ -162,6 +162,8 @@ async def test_request_time_private_range_allowed_with_opt_in_metadata_still_den
         ("[2001:0:5efe:af8f:0:0:5601:5601]", True),  # Teredo of 169.254.169.254 — DENIED
         ("[2001::1]", True),  # Teredo prefix (is_private but NOT Private Link) — DENIED
         ("[2002:0808:0808::]", True),  # 6to4 of PUBLIC 8.8.8.8 — is_private, not allow-listed
+        ("[2002:0a14:1e28::]", True),  # 6to4 of RFC1918 10.20.30.40 — a tunnelling encoding is
+        #   NOT a spelling of the private host, so it must NOT earn the allow-list rescue
         ("[100::1]", True),  # discard-only prefix (is_private) — DENIED
     ],
 )

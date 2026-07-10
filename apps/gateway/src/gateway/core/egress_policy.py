@@ -210,10 +210,19 @@ def _is_denied_ip(
     ):
         return True
     if allow_private_ranges:
-        # Allow a legitimate Private Link range (RFC1918/ULA — incl. an IPv4-mapped one via
-        # its embedded candidate) OR a public address; deny any OTHER private/special address
-        # (Teredo, 6to4, discard, … — is_private in Python but not a Private Link target).
-        if any(_in_private_link_allowlist(candidate) for candidate in candidates):
+        # The RFC1918/ULA allow-list rescue applies ONLY to an address that legitimately NAMES
+        # a private host: the address itself, or its CANONICAL IPv4-mapped form
+        # (``::ffff:a.b.c.d``). A tunnelling/transition encoding (6to4 ``2002::/16``, NAT64,
+        # IPv4-compatible) is NOT a spelling of the embedded host — dialing it routes via tunnel
+        # infrastructure to somewhere ELSE — so it must NOT earn the rescue off its embedded
+        # IPv4. Those forms therefore fall through to the ``is_private`` deny below (6to4 is
+        # ``is_private``; NAT64/compatible are already denied above as ``is_reserved``). Using
+        # the full ``_embedded_ipv4`` set here would let an attacker 6to4-wrap an RFC1918 IP to
+        # slip past the opt-in — the exact class this task has repeatedly had to close.
+        rescue: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = [ip]
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+            rescue.append(ip.ipv4_mapped)
+        if any(_in_private_link_allowlist(candidate) for candidate in rescue):
             return False
         return any(candidate.is_private for candidate in candidates)
     return any(candidate.is_private for candidate in candidates)
