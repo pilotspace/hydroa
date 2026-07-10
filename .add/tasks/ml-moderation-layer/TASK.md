@@ -430,7 +430,28 @@ Plan (one test per scenario, asserting behavior not internals):
   - test_tenant_id_contextvar_threads_to_credential_resolve: arrange enabled+fake resolver capturing its tenant_id arg / act a chat completion for tenant X / assert resolver.resolve was called with tenant_id==X, and the var is reset (unset) after the request completes · covers: M3, §0 R6
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Tests live in: `apps/gateway/tests/guardrails/test_ml_moderation.py` · ran RED (missing implementation) before Build, confirmed GREEN after.
+
+Actual result (18 tests written — the 16 planned + 2 additional adapter-level tests
+covering the live-verified OpenAI wire shape and its terminal-4xx failure mapping,
+neither weakening nor replacing any planned scenario):
+- RED confirmed for the right reason: `ModuleNotFoundError: No module named
+  'gateway.proxy.domain.guardrail_tenant_context'` at collection time (re-verified by
+  stashing all BUILD-phase src changes and re-running — same import error, not a
+  broken harness).
+- GREEN: all 18 new tests pass; the existing frozen `test_guardrails_core.py` suite
+  (17 tests) stays green unmodified — 35/35 in `apps/gateway/tests/guardrails/`.
+- Coverage: `ml_moderation_evaluator.py` 92% (target 90%), `guardrail_tenant_context.py`
+  100%. The few uncovered lines are two trivial `__init__` bodies and the no-op
+  `evaluate_post` pass-through — no untested branch logic.
+- Regression sweep beyond guardrails/: `openai_chat_dispatch`, `openai_retry_parity`,
+  `provider_seam`, `embeddings_endpoint`, `images_endpoint`, `passthrough_nonfinite_
+  sanitize`, `secret_chain_hardening`, `web_search`, `byok_verify`,
+  `edge_input_hardening/test_s3_egress_policy.py` all green (179 passed). 5 pre-
+  existing failures in `minimax_adapter_registry` (schema drop-order conflict on
+  `scim_tokens`→`users` FK) reproduced identically on a clean DB with ALL of this
+  task's changes stashed — confirmed unrelated to this build, not investigated further
+  (a different sibling task's concern).
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 ---
@@ -458,10 +479,40 @@ Strategy (ordered batches):
 Persona (required): generic — trust-and-safety platform engineer / interface-architect stance (no seeded `.add/personas/` file matches this domain yet; recommend `add-persona` seed a `ml-safety-engineer` persona if this area grows a second task).
 Spawn isolation (default): worktree (per `worktree-isolated-spawn-default`; no stated reason to share tree).
 Known-problem fixes: R3 (breaker cross-contamination) → dedicated `OpenAIDirectProvider`/`CircuitBreaker` instance, never the chat singleton; R2 (missing-key is the common case) → catch `ProviderKeyMissing` inside the evaluator, never let it propagate to the 402-raising wrapper; R1 (hot-path latency) → tight timeout/retry ceiling + breaker fast-fail path (no wasted retry when OPEN).
-Strategy actually used: <fill at VERIFY>
+Strategy actually used: followed the 5 batches as ordered, with two deviations recorded below
+(both discovered mid-build, both strictly-more-correct + harmless, no test/contract touched):
+1. Domain: built `guardrail_tenant_context.py` exactly as planned — line-for-line mirror of
+   `credential_context.py` (ContextVar + set_/get_/reset_, Token-based reset).
+2. Infrastructure: built `ml_moderation_evaluator.py` largely as the illustrative §3 Python,
+   with one load-bearing fix (Deviation 1 below) and one architecture fix forced by this
+   project's strict pyright gate (Deviation 2 below — `OpenAIDirectProvider.post_json_with_
+   retry`, a new public method, instead of `OpenAiModerationClient` reaching into
+   `_client`/`_breaker`/`_auth_headers()` across the module boundary).
+3. API: extended `guardrail_router.py` exactly as planned — `MlModerationConfig` mirrors
+   `PromptInjectionConfig`'s validator shape; `_build_response` and the PUT partial-merge
+   `fields_set` branch extended in place.
+4. Wiring: `use_cases.py` — added `finally:` clauses to the TWO EXISTING try/except blocks
+   (rather than nesting a new try/finally around them) — smaller diff, same guarantee (the
+   contextvar always resets, including on the `raise GUARDRAIL_BLOCKED.exc()` path). `deps.py`
+   and `main.py` wired exactly as the §3 delta describes.
+5. Tests: one file, `test_ml_moderation.py`, 18 tests (16 planned + 2 extra: the live-verified
+   wire-shape test and a terminal-4xx failure-mapping test) — reused `test_guardrails_core.py`'s
+   arrange helpers via import (not duplication) except `active_model`, which is defined locally
+   (importing a fixture across test modules shadows the parameter name in every consuming test
+   signature, which ruff's F811 correctly flags — a local copy was cleaner than fighting the
+   linter). Discovered mid-build that `provider_resolver` IS wired in the shared test `app`
+   fixture (contrary to the design's assumption it would be absent), so the ROUTED completion
+   provider's own credential resolution also calls the SAME fake `tenant_credential_resolver` —
+   `FakeCredentialResolver` was made provider-specific (`missing_for: frozenset[str]`) so a
+   "missing openai moderation key" test doesn't also 402 the routed provider's own resolve().
 Safety rule (feature-specific): the moderation call and the fail-open/fail-closed decision must resolve inside a SINGLE bounded `evaluate_pre` invocation — no background task, no fire-and-forget for the BLOCKING decision itself (unlike alert emission, the block/allow verdict must be synchronous and awaited before the request proceeds).
 Code lives in: `./src/` (task-relative alias — actual paths are the `apps/gateway/...` tokens declared in Scope above)
 Constraints: do NOT change any test or the contract; allow-list packages only (no new third-party HTTP client — reuse `httpx` via `OpenAIDirectProvider`); ask if unclear.
+
+Deviations from the illustrative §3 Python / Scope note (recorded per the project's fix-and-record rule — strictly-more-correct + harmless, no test/contract edited):
+1. **Load-bearing fix**: the frozen §3 illustrative code called `self._resolver.resolve(tenant_id, "openai")` and commented "raises ProviderKeyMissing; sets contextvar" — but `TenantCredentialResolver.resolve()` only RETURNS a `ProviderCredential`; it never sets `credential_context.current_provider_credential` itself (only the separate `resolve_provider_credential()` wrapper does that, and M3/§0 R25 explicitly says NOT to call that wrapper). Without an explicit `set_provider_credential(cred)` after resolving, `OpenAIDirectProvider._auth_headers()` would always raise `ProviderKeyMissing` on the moderation call even with a valid BYOK key — silently breaking M3/M4/M5 (every enabled-moderation request would degrade to "unchecked"). Fixed by adding the `set_provider_credential(cred)` / `reset_provider_credential(token)` pair around the `self._provider.moderate(...)` call, mirroring `resolve_provider_credential`'s own set step. Verified end-to-end by `test_ml_moderation_passes_clean_prompt` / `test_ml_moderation_blocks_flagged_prompt` and the adapter-level `test_openai_moderation_client_matches_live_verified_shape` (asserts the real `Authorization: Bearer sk-test` header reaches the mock transport).
+2. **Architecture fix (Scope note vs. pyright strict gate)**: the Scope note for `openai_provider.py` says "reuse only... unless a constructor param is genuinely needed," and the §3 illustrative prose describes `OpenAiModerationClient` reaching into `OpenAIDirectProvider`'s `_client`/`_breaker`/`_auth_headers()` from a different module. This project's `pyright` runs `typeCheckingMode = "strict"` over `src/gateway` and `reportPrivateUsage` correctly rejects exactly that cross-module private-attribute access (3 errors). Fixed by adding one new PUBLIC method, `OpenAIDirectProvider.post_json_with_retry()` — the same guard→auth→POST→breaker-bookkeeping shape as the existing `post_json`, but wired through `execute_with_retry` for bounded retry, with a `provider_label` override so `openai_moderation` is distinguishable from primary chat/embeddings traffic in `upstream_retries_total`. `OpenAiModerationClient.moderate()` now calls only this public method — zero private-attribute reach-in. `uv run pyright src/gateway` is 0 errors after the fix (was 3 before).
+3. **Test infra parity fix** (`tests/guardrails/conftest.py`): its `TEST_DATABASE_URL` was hardcoded to the un-suffixed `gateway_test` DB, ignoring `GATEWAY_TEST_DATABASE_URL` (unlike the root `tests/conftest.py`, which already reads it) — a real collision risk when multiple worktrees run the guardrails suite concurrently against the shared Postgres. Fixed to read the env var with the identical previous literal as fallback — behavior-preserving for every existing caller, verified by the full `test_guardrails_core.py` suite staying green (17/17) both with and without the env var set.
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
