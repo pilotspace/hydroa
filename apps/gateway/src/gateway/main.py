@@ -77,6 +77,7 @@ from gateway.core.body_size_guard import BodySizeLimitMiddleware
 from gateway.core.config import Settings
 from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
 from gateway.core.errors import register_error_handlers
+from gateway.keys.api.key_guardrail_router import key_guardrail_router
 from gateway.keys.api.platform_keys_router import platform_keys_router
 from gateway.keys.api.router import admin_router as keys_admin_router
 from gateway.keys.api.router import authz_router as keys_authz_router
@@ -1161,6 +1162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(rate_card_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
+    app.include_router(key_guardrail_router)
     app.include_router(keys_authz_router)
     app.include_router(platform_keys_router)
     app.include_router(teams_router)
