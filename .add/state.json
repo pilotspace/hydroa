@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "declare-components-registry",
-  "active_milestone": "platform-admin-console",
+  "active_task": "plan-enforcement",
+  "active_milestone": "monetization-core",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -637,6 +637,120 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "cost-attribution-tags": {
+      "title": "Request metadata tags on usage records + cost-by-tag breakdowns",
+      "phase": "contract",
+      "gate": "none",
+      "milestone": "monetization-core",
+      "depends_on": [],
+      "created": "2026-07-12T07:40:02+00:00",
+      "updated": "2026-07-12T07:59:34+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-12T08:00:24+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
+    },
+    "invoice-generation": {
+      "title": "Immutable monthly invoices from usage_records with per-line usage evidence",
+      "phase": "contract",
+      "gate": "none",
+      "milestone": "monetization-core",
+      "depends_on": [
+        "cost-attribution-tags"
+      ],
+      "created": "2026-07-12T07:40:03+00:00",
+      "updated": "2026-07-12T08:00:31+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-12T08:00:31+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
+    },
+    "credits-ledger": {
+      "title": "Prepaid credits append-only ledger + fail-closed spend gate",
+      "phase": "contract",
+      "gate": "none",
+      "milestone": "monetization-core",
+      "depends_on": [],
+      "created": "2026-07-12T07:40:03+00:00",
+      "updated": "2026-07-12T08:00:32+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-12T08:00:32+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
+    },
+    "plan-enforcement": {
+      "title": "Plans catalog enforced: budget defaults, model allowlists, feature flags",
+      "phase": "contract",
+      "gate": "none",
+      "milestone": "monetization-core",
+      "depends_on": [],
+      "created": "2026-07-12T07:40:03+00:00",
+      "updated": "2026-07-12T08:00:32+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-12T08:00:32+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
+    },
+    "seat-billing": {
+      "title": "Per-seat plan pricing with proration invoice lines",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "monetization-core",
+      "depends_on": [
+        "plan-enforcement",
+        "invoice-generation"
+      ],
+      "created": "2026-07-12T07:40:03+00:00",
+      "updated": "2026-07-12T07:40:03+00:00"
+    },
+    "margin-dashboard": {
+      "title": "Operator margin dashboard (provider cost vs billed vs invoiced)",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "monetization-core",
+      "depends_on": [
+        "invoice-generation"
+      ],
+      "created": "2026-07-12T07:40:03+00:00",
+      "updated": "2026-07-12T07:40:03+00:00"
+    },
+    "billing-ui": {
+      "title": "Tenant Billing console (Invoices/Credits/Plan & seats) \u2014 Aurora financial-document idiom",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "monetization-core",
+      "depends_on": [
+        "invoice-generation",
+        "credits-ledger",
+        "plan-enforcement"
+      ],
+      "created": "2026-07-12T07:40:03+00:00",
+      "updated": "2026-07-12T07:40:03+00:00"
     }
   },
   "milestones": {
@@ -687,10 +801,43 @@
       "status": "active",
       "created": "2026-07-03T16:21:50+00:00",
       "updated": "2026-07-03T16:21:50+00:00"
+    },
+    "monetization-core": {
+      "title": "Monetization core \u2014 bill your tenants",
+      "goal": "",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-07-12T07:38:27+00:00",
+      "updated": "2026-07-12T07:39:36+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-12T07:39:36+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "residency-service-tiers": {
+      "title": "Data-residency & service-tier routing",
+      "goal": "",
+      "stage": "mvp",
+      "status": "queued",
+      "created": "2026-07-12T07:38:33+00:00",
+      "updated": "2026-07-12T07:38:33+00:00"
+    },
+    "agent-gateway-v1": {
+      "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
+      "goal": "",
+      "stage": "mvp",
+      "status": "queued",
+      "created": "2026-07-12T07:38:33+00:00",
+      "updated": "2026-07-12T07:38:33+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-10T22:52:53+00:00",
+  "updated": "2026-07-12T08:00:32+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1618,13 +1765,15 @@
     }
   ],
   "active_milestones": [
-    "platform-admin-console"
+    "platform-admin-console",
+    "monetization-core"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
-    "platform-access-plan": "plan-seat-cap"
+    "platform-access-plan": "plan-seat-cap",
+    "monetization-core": "plan-enforcement"
   },
   "todos": [
     {
