@@ -10,14 +10,15 @@ release: pending
 > written just-in-time. Update this doc whenever a task reveals a milestone gap.
 
 ## Scope
-In:  region as a first-class deployment dimension (us/eu/global) with Bedrock-EU + Vertex-EU
-     catalog entries; per-tenant fail-closed residency policy; priority-vs-standard service
+In:  region as a first-class deployment dimension (us/eu/ap/global) with Bedrock EU + APAC
+     inference-profile entries AND a real Vertex AI adapter (Tin, 2026-07-12: scope GROWN — no
+     Vertex adapter existed; second EU/Asia provider wanted) with EU + asia-southeast1 entries; per-tenant fail-closed residency policy; priority-vs-standard service
      tiers (capacity preference + overflow + tier-differentiated markup); region multiplier on
      rate cards (EU-pin premium, mirroring Anthropic's 1.1× US-pin posture); the console +
      marketing surfaces for all of it.
-Out: new EU provider integrations beyond region-tagging EXISTING adapters (Bedrock/Vertex EU
-     endpoints are config/catalog entries, not new adapters); physical EU deployment of Hydroa
-     itself (infra, not product); per-REQUEST region override (tenant-level policy only, v1);
+Out: physical EU/Asia deployment of Hydroa itself (infra, not product); a `vn` region value —
+     no hyperscaler operates a Vietnam region today, so Vietnamese tenants pin `ap` (served
+     from SEA endpoints: Singapore/Thailand); per-city region pinning (coarse us/eu/ap only); per-REQUEST region override (tenant-level policy only, v1);
      latency-based geo-routing (residency is compliance, not performance); CCU/consumption
      units (P2 backlog); prompt registry (P2).
 
@@ -54,6 +55,10 @@ story. WCAG 2.2 AA (axe) floor, Aurora tokens, no new design idiom beyond the ba
 6. Glossary deltas: `region`, `residency policy`, `service tier`, `region multiplier`,
    `tier markup`.
 
+DECIDED additions (2026-07-12, Tin, at wave-1 freeze): region set = us|eu|**ap**|global
+(Asia + Vietnam support; ap seeds 1.0× multiplier, overridable); vertex-adapter task ADDED;
+coarse-region granularity; symmetric us./eu./apac. Bedrock seeds.
+
 DECIDED at intake (2026-07-12, Tin): EU region multiplier seeds at **1.1×** (mirrors
 Anthropic's US-pin compliance-multiplier posture); Priority tier markup seeds at **+25%**
 on top of the tenant's base markup. Both tenant-overridable via the shared rate card.
@@ -66,6 +71,9 @@ on top of the tenant's base markup. Both tenant-overridable via the shared rate 
   (service-tiers consumes it)
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
+- [ ] vertex-adapter   depends-on: region-catalog-dimension — REAL Vertex AI adapter
+      (service-account auth, {region}-aiplatform endpoints) + EU (europe-west*) and Asia
+      (asia-southeast1) catalog entries citing the frozen region shape   [sensitivity: data]
 - [ ] region-catalog-dimension   depends-on: none     — `region` on deployments/catalog
       (us/eu/global) + Bedrock EU (Frankfurt/Ireland/Paris/Stockholm) + Vertex EU entries +
       admin/catalog surfaces expose it   [sensitivity: data]
@@ -82,8 +90,8 @@ on top of the tenant's base markup. Both tenant-overridable via the shared rate 
       delta, marketing pricing page story   [sensitivity: mechanical]
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] The catalog shows a region per deployment, including live Bedrock-EU and Vertex-EU
-      entries        (← region-catalog-dimension)
+- [ ] The catalog shows a region per deployment, including live Bedrock eu./apac. and Vertex
+      EU/Asia entries        (← region-catalog-dimension, vertex-adapter)
 - [ ] An EU-pinned tenant's request is served ONLY by eu-region deployments; with zero eligible
       EU candidates it gets a structured 4xx refusal — provably never rerouted out-of-region
       (← residency-policy)

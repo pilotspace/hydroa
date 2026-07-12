@@ -3,7 +3,7 @@
 slug: region-pricing · created: 2026-07-12 · stage: production
 milestone: residency-service-tiers
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 sensitivity: data
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
@@ -250,11 +250,21 @@ Glossary deltas:
 - **Region multiplier**: a per-region price multiplier composed with tenant markup at the ONE shared rate-card resolver (`resolve_region_multiplier`) — DECIDED seed eu=1.1×, us/global=1.0×, tenant-overridable via `tenant_region_multiplier_overrides`; applied exactly once, at usage-record time (`recorder.py`), never recomputed downstream — invoice lines and the margin dashboard inherit it for free via `usage_records.cost_usd`.
 - **tenant_region_multiplier_overrides**: the per-(tenant, region) override table; an ABSENT row means "fall back to the DECIDED seed" — the same override-wins-else-fallback shape as `tenant_rate_card_entries` (GLOSSARY `Markup`), keyed by region instead of model.
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
 
 Least-sure flag surfaced at freeze: ⚠ [spec] §1 assumption #1 — `models.region`'s column name/type/enum is owned by the sibling task region-catalog-dimension and is NOT YET FROZEN anywhere in this tree (its TASK.md is still template-empty). This contract's `resolve_region_multiplier` and the catalog-repository JOIN both read `models.region` as a forward citation. Low cost if region-catalog-dimension freezes the assumed shape (str column, {us,eu,global} values, safe default) before this task reaches Build — a non-event. Moderate cost if it freezes a materially different shape (e.g. a separate `deployments` table, or region living per-PricingSnapshot rather than per-model) — this contract would need a change-request back to SPECIFY for the one query that reads it. Recommend: freeze region-catalog-dimension's §3 before (or in the same freeze session as) this task's own freeze, or carry this caveat explicitly into the human's freeze decision.
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
+
+DECIDED at freeze review (2026-07-12, Tin): (1) admin routes gated by existing
+`Permission.RATE_CARDS_MANAGE` (region multipliers ARE rate-card entries). (2) Storage = raw
+multiplier `Numeric(6,4)` (matches the 1.1x DECIDED anchor; deliberate asymmetry with tier's
+_pct framing accepted). (3) PUT VALIDATES the region string against region-catalog-dimension's
+frozen us|eu|global Literal — 422 on unknown region (deviates from the no-FK precedent
+deliberately: a silent no-op on a money knob is a foot-gun).
+(4) [Tin directive 2026-07-12] Region set is us|eu|ap|global (Asia added; Vietnam served via ap —
+no vn hyperscaler region exists). Multiplier seeds: eu=1.1x (DECIDED), us/ap/global=1.0x,
+all tenant-overridable. Validation set for (3) is the four-value Literal.
 
 ---
 
