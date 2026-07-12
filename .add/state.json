@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "margin-dashboard",
+  "active_task": "seat-billing",
   "active_milestone": "monetization-core",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -888,7 +888,7 @@
     },
     "seat-billing": {
       "title": "Per-seat plan pricing with proration invoice lines",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "monetization-core",
       "depends_on": [
@@ -896,7 +896,7 @@
         "invoice-generation"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T12:29:06+00:00",
+      "updated": "2026-07-12T13:22:03+00:00",
       "freeze": {
         "version": "v2",
         "frozen_at": "2026-07-12T12:30:07+00:00",
@@ -906,6 +906,15 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9acc27fdd94c56c1e044974f2ffdb65b",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "f69326e778a6e8f5bd58c8e9d98bb953"
       }
     },
     "margin-dashboard": {
@@ -1084,7 +1093,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T12:48:15+00:00",
+  "updated": "2026-07-12T13:22:03+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2021,7 +2030,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "monetization-core": "margin-dashboard"
+    "monetization-core": "seat-billing"
   },
   "todos": [
     {
