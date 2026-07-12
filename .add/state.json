@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "region-catalog-dimension",
+  "active_task": "region-pricing",
   "active_milestone": "residency-service-tiers",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -743,12 +743,12 @@
     },
     "region-pricing": {
       "title": "Region multiplier on rate cards via the shared resolver",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T14:46:20+00:00",
-      "updated": "2026-07-12T15:01:04+00:00",
+      "updated": "2026-07-12T16:45:08+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T15:01:05+00:00",
@@ -758,6 +758,19 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "1af2e095ceb4cfe886e7a0d7b52feec9",
+        "tests": {
+          "apps/gateway/tests/region_pricing/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/region_pricing/conftest.py": "1f94cc9b58f84f87b8e98a4b87a52b3d",
+          "apps/gateway/tests/region_pricing/test_region_pricing.py": "0743bf0175fe437cdbb049243a789783"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "e5a45b56b63a596df4f6fca475150123"
       }
     },
     "service-tiers": {
@@ -893,7 +906,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T16:15:09+00:00",
+  "updated": "2026-07-12T16:45:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1845,7 +1858,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "residency-service-tiers": "region-catalog-dimension"
+    "residency-service-tiers": "region-pricing"
   },
   "todos": [
     {
