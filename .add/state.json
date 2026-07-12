@@ -640,12 +640,12 @@
     },
     "cost-attribution-tags": {
       "title": "Request metadata tags on usage records + cost-by-tag breakdowns",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "monetization-core",
       "depends_on": [],
       "created": "2026-07-12T07:40:02+00:00",
-      "updated": "2026-07-12T07:59:34+00:00",
+      "updated": "2026-07-12T08:45:06+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T08:00:24+00:00",
@@ -655,6 +655,28 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2dfebdd5f98d4f8a95fc5e6680473829",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/infrastructure/orm.py",
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/application/flusher.py",
+          "apps/gateway/src/gateway/usage/api/router.py",
+          "apps/gateway/src/gateway/usage/api/schemas.py",
+          "apps/gateway/src/gateway/proxy/domain/ports.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/api/router.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/usage/",
+          "apps/gateway/tests/proxy/"
+        ],
+        "snapshot_md5": "7e2e0948371d08ef9ce8d9ec0970ff69"
       }
     },
     "invoice-generation": {
@@ -699,12 +721,12 @@
     },
     "plan-enforcement": {
       "title": "Plans catalog enforced: budget defaults, model allowlists, feature flags",
-      "phase": "contract",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "monetization-core",
       "depends_on": [],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T08:00:32+00:00",
+      "updated": "2026-07-12T09:10:33+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T08:00:32+00:00",
@@ -714,6 +736,37 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b98e9e5d959a972b977f685b5252175f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/domain/entitlements.py"
+        ],
+        "snapshot_md5": "2946cbdeda1a990a2587a0ea9758481e"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-12T09:09:49+00:00",
+            "reason": "scope_violation: task 'plan-enforcement' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/14383753139564424254 \u00b7 apps/gateway/.ruff_cache/0.15.16/9569048616658404476 (41 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-12T09:10:06+00:00",
+            "reason": "scope_violation: task 'plan-enforcement' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (46 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "seat-billing": {
@@ -837,7 +890,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T08:00:32+00:00",
+  "updated": "2026-07-12T09:10:33+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

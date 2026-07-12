@@ -3,9 +3,8 @@
 slug: plan-enforcement · created: 2026-07-12 · stage: production
 sensitivity: data
 milestone: monetization-core
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -308,8 +307,6 @@ Assumptions — lowest-confidence first:
     `team-governance`, a different bounded concept this task does not touch.
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -459,8 +456,6 @@ Scenario: A plan-feature-not-enabled rejection carries an actionable upgrade hin
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -601,7 +596,6 @@ Glossary deltas:
     all) for an unplanned tenant, per M7.
 Reported: no — drafted for the wave-1 batch freeze review; Tin reviews all 4 wave-1 contracts at
   ONE sitting per the shared design context.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -676,9 +670,6 @@ failure for the missing-implementation reason, not a broken harness. Earned-gree
 mutation check re-confirmed post-Build: reverting `put_batch_policy`'s `check_plan_feature`
 call alone flips exactly `test_enabling_batch_refused_for_plan_lacking_feature` red (11
 siblings stay green) — proves the assertion is load-bearing, not vacuous.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -767,8 +758,6 @@ Code lives in: `apps/gateway/src/gateway/`
 Constraints: do NOT change any test or the contract; allow-list packages only (none new — this task
   adds no new third-party dependency); ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
@@ -823,8 +812,6 @@ Outcome: PASS
 If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a
 Reviewed by: add-verify (self) · date: 2026-07-12 — pending Tin's final sign-off
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
-
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
@@ -832,11 +819,14 @@ Reviewed by: add-verify (self) · date: 2026-07-12 — pending Tin's final sign-
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned, batches 1-7 in the declared order, with one deviation: batch 4 (model allowlist) was built with `plan_name` ALSO threaded through `AuthzResult`/ `ApiKey` (an additive field the §3 pseudocode did not enumerate on those two dataclasses) because M9's own upgrade_hint shape (`{plan_id, plan_name, model}`) requires it and the hot-path "zero extra DB reads" convention means it has to ride the SAME 4th outerjoin as `plan_id`/`plan_model_allowlist`, not a second query — a same-seam extension of the named JOIN, not a new one. Ground SHA re-resolved clean at BUILD time — no anchor had moved. tests → build were done in the same working session (not strictly red-before-any- code, since call-site research and implementation were interleaved while grounding); RED was still independently confirmed per-file before its own GREEN (see §4 RED evidence) and an earned-green mutation check re-ran post-hoc (§4) to rule out a vacuous suite.
+- [AI] verify — gate PASS (reviewed by add-verify (self))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
