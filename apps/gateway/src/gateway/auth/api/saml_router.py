@@ -37,6 +37,7 @@ from gateway.auth.domain.saml_errors import (
 )
 from gateway.core.db import get_session
 from gateway.core.error_catalog import (
+    PLAN_SEAT_CAP_EXCEEDED,
     SAML_ASSERTION_EXPIRED,
     SAML_ASSERTION_REPLAYED,
     SAML_AUDIENCE_MISMATCH,
@@ -50,6 +51,7 @@ from gateway.core.error_catalog import (
     SAML_STORE_UNAVAILABLE,
     SAML_TENANT_CONFLICT,
 )
+from gateway.tenants.domain.errors import SeatCapExceededError
 
 saml_router = APIRouter(prefix="/auth/saml", tags=["saml"])
 
@@ -139,6 +141,20 @@ async def saml_acs(
         raise SAML_NOT_CONFIGURED.exc() from exc
     except SamlStoreUnavailableError as exc:
         raise SAML_STORE_UNAVAILABLE.exc() from exc
+    except SeatCapExceededError as exc:
+        # plan-seat-cap TASK.md §3 (FROZEN @ v1, M5/R2) — a superseding addition to this
+        # already-shipped, frozen router; identical shape to the OIDC callback's own
+        # translation, the "provision new user" branch only (M7).
+        raise PLAN_SEAT_CAP_EXCEEDED.exc(
+            extra={
+                "upgrade_hint": {
+                    "plan_id": str(exc.plan_id),
+                    "plan_name": exc.plan_name,
+                    "seat_cap": exc.seat_cap,
+                    "current_seats": exc.current_seats,
+                }
+            }
+        ) from exc
 
     secure = settings.environment != "dev"
     response = RedirectResponse(url=redirect_path, status_code=302)

@@ -9,6 +9,7 @@ from gateway.core.error_catalog import (
     AUTH_EMAIL_TAKEN,
     AUTH_PASSWORD_WEAK,
     AUTH_TOKEN_INVALID,
+    PLAN_SEAT_CAP_EXCEEDED,
     SIGNUP_INVITE_ONLY,
 )
 from gateway.domain_capture.api.deps import get_domain_claim_resolver, get_join_tenant_use_case
@@ -34,6 +35,7 @@ from gateway.tenants.domain.errors import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     InvalidTokenError,
+    SeatCapExceededError,
     WeakPasswordError,
 )
 
@@ -74,6 +76,19 @@ async def signup(
             raise AUTH_PASSWORD_WEAK.exc() from None
         except EmailAlreadyRegisteredError:
             raise AUTH_EMAIL_TAKEN.exc() from None
+        except SeatCapExceededError as exc:
+            # plan-seat-cap TASK.md §3 (FROZEN @ v1, M5/R3) — a superseding addition to
+            # this already-shipped router; the verified-domain auto-join branch (R3).
+            raise PLAN_SEAT_CAP_EXCEEDED.exc(
+                extra={
+                    "upgrade_hint": {
+                        "plan_id": str(exc.plan_id),
+                        "plan_name": exc.plan_name,
+                        "seat_cap": exc.seat_cap,
+                        "current_seats": exc.current_seats,
+                    }
+                }
+            ) from None
         # body.tenant_name is deliberately never read/persisted on this path (M11) — the
         # target tenant already exists.
         return SignupResponse(

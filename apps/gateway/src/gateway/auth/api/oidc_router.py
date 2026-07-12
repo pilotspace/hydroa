@@ -63,7 +63,9 @@ from gateway.core.error_catalog import (
     OIDC_TOKEN_EXPIRED,
     OIDC_TOKEN_INVALID,
     OIDC_UPSTREAM_ERROR,
+    PLAN_SEAT_CAP_EXCEEDED,
 )
+from gateway.tenants.domain.errors import SeatCapExceededError
 
 oidc_router = APIRouter(prefix="/auth/oidc", tags=["oidc"])
 
@@ -289,6 +291,20 @@ async def oidc_callback(
         raise OIDC_TENANT_CONFLICT.exc() from exc
     except OidcAccountDeactivatedError as exc:
         raise OIDC_ACCOUNT_DEACTIVATED.exc() from exc
+    except SeatCapExceededError as exc:
+        # plan-seat-cap TASK.md §3 (FROZEN @ v1, M5/R2) — a superseding addition to this
+        # already-shipped, frozen router; the "provision new user" branch only (M7: an
+        # existing member's re-login never reaches this).
+        raise PLAN_SEAT_CAP_EXCEEDED.exc(
+            extra={
+                "upgrade_hint": {
+                    "plan_id": str(exc.plan_id),
+                    "plan_name": exc.plan_name,
+                    "seat_cap": exc.seat_cap,
+                    "current_seats": exc.current_seats,
+                }
+            }
+        ) from exc
 
     secure = settings.environment != "dev"
     post_login_redirect = settings.oidc_post_login_redirect
