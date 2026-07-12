@@ -13,16 +13,22 @@ mirrors AuditRepository's own "deliberately exposes NO update/delete" contract.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.billing.application.seat_pricer import (
+    MembershipEvent,
+    UserMembership,
+    resolve_line_contributors,
+)
 from gateway.billing.domain.invoice import (
     Invoice,
     InvoiceCorrection,
     InvoiceLine,
+    SeatEvidenceRow,
     UsageEvidenceRow,
 )
 from gateway.billing.infrastructure.orm import (
@@ -31,7 +37,64 @@ from gateway.billing.infrastructure.orm import (
     InvoiceRow,
 )
 from gateway.core.ids import uuid7
+from gateway.tenants.infrastructure.orm import SeatMembershipEventRow, UserRow
 from gateway.usage.infrastructure.orm import UsageRecordRow
+
+
+def _as_naive_utc(dt: datetime) -> datetime:
+    """Normalize to naive UTC — mirrors invoice_generator.py's own `_as_naive_utc` idiom
+    (repeated locally per-file across this codebase: reconciliation.py, retention_sweep.py,
+    audit/api/router.py) so seat_pricer's period-boundary comparisons stay consistent
+    regardless of a column's naive (`users.created_at`) vs tz-aware
+    (`seat_membership_events.occurred_at`) storage convention."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(UTC).replace(tzinfo=None)
+    return dt
+
+
+async def load_tenant_seat_membership(
+    session: AsyncSession, *, tenant_id: uuid.UUID
+) -> list[UserMembership]:
+    """Load every `users` row under `tenant_id` + its `seat_membership_events`, normalized
+    to naive UTC — the ONE shared loader both generation-time pricing
+    (InvoiceGenerator.generate_for_tenant) and evidence-time bucket re-computation
+    (seat_evidence_keyset below) call, so both replay the IDENTICAL M6/M7 bucket algorithm
+    over the IDENTICAL input shape (M11's "re-runs the same bucket computation" doctrine).
+    """
+    user_rows = (
+        await session.execute(
+            select(UserRow.id, UserRow.created_at, UserRow.deactivated_at).where(
+                UserRow.tenant_id == tenant_id
+            )
+        )
+    ).all()
+    event_rows = (
+        await session.execute(
+            select(
+                SeatMembershipEventRow.user_id,
+                SeatMembershipEventRow.event_type,
+                SeatMembershipEventRow.occurred_at,
+            ).where(SeatMembershipEventRow.tenant_id == tenant_id)
+        )
+    ).all()
+
+    events_by_user: dict[uuid.UUID, list[MembershipEvent]] = {}
+    for user_id, event_type, occurred_at in event_rows:
+        events_by_user.setdefault(user_id, []).append(
+            MembershipEvent(event_type=event_type, occurred_at=_as_naive_utc(occurred_at))
+        )
+
+    return [
+        UserMembership(
+            user_id=user_id,
+            events=tuple(events_by_user.get(user_id, ())),
+            fallback_created_at=_as_naive_utc(created_at),
+            fallback_deactivated_at=(
+                _as_naive_utc(deactivated_at) if deactivated_at is not None else None
+            ),
+        )
+        for user_id, created_at, deactivated_at in user_rows
+    ]
 
 
 def _invoice_from_row(row: InvoiceRow) -> Invoice:
@@ -230,6 +293,74 @@ class InvoiceRepository:
                 request_id=_extract_request_id(r.raw),
             )
             for r in rows
+        ]
+
+    async def seat_evidence_keyset(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        invoice: Invoice,
+        line: InvoiceLine,
+        limit: int,
+        cursor: tuple[datetime, uuid.UUID] | None = None,
+    ) -> list[SeatEvidenceRow]:
+        """Re-run the line's exact (tenant, period, bucket) predicate against
+        seat_membership_events (M11, seat-billing TASK.md §3 — FROZEN @ v2) — never a
+        materialized row-id list, mirrors evidence_keyset's own doctrine one domain over
+        (usage_records -> seat_membership_events). For a 'proration' line, the predicate
+        is exactly `user_id = key_id` (1:1, M9); for the aggregate 'seat' line, every
+        full-price-bucket user_id is re-derived and queried, keyset-unioned in one stable
+        (occurred_at, id) DESC order.
+
+        Returns [] (never raises) if the current replay finds no contributing seat for
+        this line — a data-integrity drift since generation time that should be
+        structurally impossible given the append-only ledger, but degraded to an honest
+        empty page rather than a crash (M11 defense-in-depth, mirrors M5's own posture).
+        Caller (router) is responsible for the M12 line_type=='usage' -> 400 reject
+        BEFORE ever calling this method.
+        """
+        memberships = await load_tenant_seat_membership(self._session, tenant_id=tenant_id)
+        contributing = resolve_line_contributors(
+            users=memberships,
+            period_start=invoice.period_start,
+            period_end=invoice.period_end,
+            line_type=line.line_type,
+            key_id=line.key_id,
+        )
+        if not contributing:
+            return []
+
+        stmt = (
+            select(SeatMembershipEventRow, UserRow.email)
+            .join(UserRow, UserRow.id == SeatMembershipEventRow.user_id)
+            .where(
+                SeatMembershipEventRow.tenant_id == tenant_id,
+                SeatMembershipEventRow.user_id.in_(contributing),
+            )
+            .order_by(desc(SeatMembershipEventRow.occurred_at), desc(SeatMembershipEventRow.id))
+            .limit(limit)
+        )
+        if cursor is not None:
+            cursor_occurred_at, cursor_id = cursor
+            stmt = stmt.where(
+                or_(
+                    SeatMembershipEventRow.occurred_at < cursor_occurred_at,
+                    and_(
+                        SeatMembershipEventRow.occurred_at == cursor_occurred_at,
+                        SeatMembershipEventRow.id < cursor_id,
+                    ),
+                )
+            )
+        result = await self._session.execute(stmt)
+        return [
+            SeatEvidenceRow(
+                event_id=event_row.id,
+                user_id=event_row.user_id,
+                email=email,
+                event_type=event_row.event_type,
+                occurred_at=event_row.occurred_at,
+            )
+            for event_row, email in result.all()
         ]
 
 
