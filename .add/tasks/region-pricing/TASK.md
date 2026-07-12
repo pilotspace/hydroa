@@ -2,10 +2,9 @@
 
 slug: region-pricing · created: 2026-07-12 · stage: production
 milestone: residency-service-tiers
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+autonomy: auto
+phase: done
 sensitivity: data
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -84,8 +83,6 @@ Assumptions — lowest-confidence first:
   - [ ] #3 Storing the tenant override as a raw multiplier (`Numeric(6,4)`, e.g. 1.1000) rather than a "_pct premium" like `markup_pct` — chosen because the milestone's own DECIDED language for region IS multiplicative ("1.1×"), while the milestone's tier-markup language is additive-percentage ("+25%"); the two units are DELIBERATELY different, composing multiplicatively at the top: `(1+markup_pct/100) × region_multiplier × (1+tier_pct/100)`. Confirm this doesn't read as inconsistent going into service-tiers' freeze.
   - [ ] #4 No format/enum validation on the `region` path segment at PUT time (any string accepted, mirrors `tenant_rate_card_entries`' no-FK-on-model_id precedent: an unrecognized region silently resolves to the safe 1.0 default rather than erroring). A mistyped region override is a SILENT no-op, not a loud rejection — medium cost if wrong (confusing support case), tracked as a SPEC delta for validation once region-catalog-dimension's enum is frozen, not blocking this freeze.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -181,8 +178,6 @@ Scenario: Concurrent PUTs to the same (tenant, region) override resolve without 
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -254,7 +249,6 @@ Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
 
 Least-sure flag surfaced at freeze: ⚠ [spec] §1 assumption #1 — `models.region`'s column name/type/enum is owned by the sibling task region-catalog-dimension and is NOT YET FROZEN anywhere in this tree (its TASK.md is still template-empty). This contract's `resolve_region_multiplier` and the catalog-repository JOIN both read `models.region` as a forward citation. Low cost if region-catalog-dimension freezes the assumed shape (str column, {us,eu,global} values, safe default) before this task reaches Build — a non-event. Moderate cost if it freezes a materially different shape (e.g. a separate `deployments` table, or region living per-PricingSnapshot rather than per-model) — this contract would need a change-request back to SPECIFY for the one query that reads it. Recommend: freeze region-catalog-dimension's §3 before (or in the same freeze session as) this task's own freeze, or carry this caveat explicitly into the human's freeze decision.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 DECIDED at freeze review (2026-07-12, Tin): (1) admin routes gated by existing
 `Permission.RATE_CARDS_MANAGE` (region multipliers ARE rate-card entries). (2) Storage = raw
@@ -302,9 +296,6 @@ pre-build passes — each docstring states why the scenario cannot be expressed
 as RED (mirrors `tests/tiered_rate_cards`'s existing `test_no_entry_falls_
 back_byte_identical` precedent) — MUST run red (missing implementation)
 before Build — CONFIRMED.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -354,8 +345,6 @@ cleanly with zero adjustment.
 Safety rule (feature-specific): the region-multiplier resolution + its multiplication into `cost_usd` happen inside the SAME `record()` call/transaction boundary as the existing markup resolution — no separate async task, no eventual-consistency window between "markup applied" and "region applied" (mirrors the existing single-pass cost computation, extends it rather than adding a second pass).
 Code lives in: `apps/gateway/src/gateway/`
 Constraints: do NOT change any test or the contract; do NOT edit `resolve_markup_pct`, `compute_per_token_cost_usd`'s frozen signature, or `invoice_generator.py`/`margin_router.py` (their zero-touch is the M6 proof); allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -437,11 +426,9 @@ Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-12
 
 ---
 
@@ -450,11 +437,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned, with one deviation from the draft's illustrative §3 SQL: `resolve_region_multiplier` runs the CONTRACT's literal override query first (`... WHERE tenant_id=:t AND region=(SELECT region FROM models WHERE id=:m)`) and only issues a SECOND `SELECT region FROM models` query on a miss (to key the DECIDED seed) — cheaper than a LEFT JOIN in the common no-override case, still O(1) per request (no N+1), and closer to the frozen SQL text than a hand-rolled join would have been. All 8 batches (migration -> resolver -> recorder -> cost_recovery -> catalog repository -> ORM+router -> main.py wiring -> regression sweep) executed in order; no contract friction — region-catalog-dimension's `models.region` (§1 ⚠ assumption #1) was already integrated in this worktree exactly as assumed (str column, us|eu|ap|global, default 'global'), so the forward dependency resolved cleanly with zero adjustment.
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
