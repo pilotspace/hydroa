@@ -697,13 +697,38 @@ Reported: no — drafted for the design-span freeze review; Tin reviews this con
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
-Plan (one test per scenario, asserting behavior not internals):
+Coverage target: 90% (mirrors plan-enforcement/domain-capture's own security/data-task bar)
+Plan (one test per scenario, asserting behavior not internals; 23 tests total — 21 scenarios
++ 2 extra direct-unit tests on `assert_seat_available`'s own raise/no-raise core, since it is
+a new shared helper with no prior test coverage of its own):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_explicit_tenant_seat_cap_beats_plan_default: pure resolve_entitlements precedence · M1
+  - test_plan_seat_cap_default_fills_gap_when_no_tenant_override: pure precedence · M1
+  - test_existing_caller_unaffected_by_the_new_kwargs: RedisBudgetGuard-shaped call byte-identical · M1
+  - test_unplanned_tenant_uncapped_no_count_query: SQL-capture proves 0 COUNT query · M2, M8
+  - test_planned_tenant_both_seat_caps_null_is_uncapped: SQL-capture, 0 COUNT query · M2, M8
+  - test_platform_tenant_unconditionally_uncapped: SQL-capture, 0 COUNT query · M9
+  - test_at_cap_raises_seat_cap_exceeded: direct assert_seat_available raise + structured fields · M2
+  - test_under_cap_returns_none: direct assert_seat_available no-raise · M2
+  - test_accepting_invite_at_seat_cap_is_rejected: 403 + invite stays pending + no row · R1
+  - test_accepting_invite_under_seat_cap_succeeds: 200 + row + invite accepted · M2 (positive)
+  - test_issuing_invite_never_gated_by_seat_cap: issuance at-cap still 201 · framing (M2)
+  - test_new_oidc_login_at_seat_cap_is_rejected: 403 + no users row · R2
+  - test_existing_member_oidc_relogin_never_gated_by_seat_cap: 302, count unchanged · M7
+  - test_new_saml_login_at_seat_cap_is_rejected: 403 identical shape to OIDC · R2
+  - test_verified_domain_signup_at_seat_cap_is_rejected: 403 + no row + tenant unchanged · R3
+  - test_brand_new_tenant_signup_never_capped: 201, uncapped by construction · ruled out (M2)
+  - test_scim_create_at_seat_cap_is_rejected: RFC 7644 403 no scimType + token still valid · R4
+  - test_scim_create_under_seat_cap_succeeds_unchanged: 201 byte-identical · M2 (positive)
+  - test_rejected_admission_fires_no_audit_event: 0 new invite.accept rows + other tenant untouched · M6
+  - test_concurrent_admissions_racing_the_last_seat_exactly_one_wins: invite+OIDC asyncio.gather, exactly one 200/one 403, real Postgres FOR UPDATE OF t · M4/concurrency
+  - test_plan_downgrade_below_headcount_does_not_deactivate_anyone: 15 stay active · M7
+  - test_over_cap_tenant_blocked_from_admitting_a_16th_member: 403, still 15 · M7, R1-R4
+  - test_raising_seat_cap_unblocks_the_next_admission_immediately: 403 then 200 after raise, live-read · M2 (positive)
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Tests live in: `apps/gateway/tests/plan_seat_cap/` · MUST run red (missing implementation)
+before Build.
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir ·
      a token with "/" = project root · a bare name = sibling of the previous
      token's dir · a directory counts its *.py files (non-recursive); reports
@@ -774,7 +799,29 @@ Known-problem fixes:
     query, and the COUNT MUST run before the INSERT — reordering any of the 3 defeats the
     serialization guarantee silently (no exception, just a race that only shows under the
     concurrency scenario).
-Strategy actually used: <fill at VERIFY>
+Strategy actually used: followed the drafted §5 Strategy almost exactly, with ONE material
+  deviation discovered at Build, not planned for: `SqlAlchemyScimUserRepository.create_user`
+  could NOT use the contract's own illustrative `async with self._session.begin():` snippet
+  verbatim — a real `sqlalchemy.exc.InvalidRequestError: A transaction is already begun on
+  this Session` at first test run, because `get_scim_identity` (the SCIM bearer-auth
+  dependency) already issues its OWN SELECT on the SAME request-scoped session before
+  `create_user` runs, autobeginning a transaction. Fixed by reusing that already-open
+  transaction (flush()+commit(), mirroring `InviteRepository.accept`'s own shape) instead of
+  calling `begin()` a second time — functionally identical to the CONTRACT's own guarantee
+  (M3: the `FOR UPDATE OF t` lock held continuously from the check through the INSERT, one
+  transaction) since autobegin transactions persist across statements on one session exactly
+  like an explicit one; only the literal begin()-call mechanism differs from the contract's
+  own snippet. No route/error-code/shape change — recorded here per §1's own §0 Issues/Risks
+  (c) flag ("a build-time bug ... caught by the concurrency scenario's own test — contained
+  to this task, no contract change"), which correctly predicted a mechanics risk at exactly
+  this call site. Order followed: (1) domain M1 + SeatCapExceededError, confirmed the 3
+  existing resolve_entitlements callers green, (2) assert_seat_available unit-tested directly
+  against real Postgres BEFORE any call site, (3) error_catalog + scim errors, (4) wired the 4
+  seams in the drafted risk order (domain-capture -> invite-accept -> OIDC/SAML -> SCIM),
+  router except-clause landing in the SAME batch as each seam, (5) concurrency scenario last,
+  confirmed non-flaky across 4 repeated runs. Every sibling suite re-run green after each
+  seam (member_invite_acceptance, member_invite_issuance, domain_capture, scim_provisioning,
+  sso_oidc, saml_sso, plan_catalog, plan_enforcement — 236 tests total, zero regressions).
 Safety rule (feature-specific): lock (`FOR UPDATE OF t`) + count + insert in ONE atomic
   transaction per admission attempt, at each of the 4 seams — no read-then-write gap, ever.
 Code lives in: `apps/gateway/src/gateway/`
@@ -810,8 +857,43 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
 > Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
 > + §3 CONTRACT — so this gate checks the build is RIGHT, not merely that tests are green. Each
 > row is evidence you can SEE, not a restatement of a test name.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] A tenant AT its effective seat cap (explicit tenant.seat_cap, or inherited plan
+      default) is rejected with 403 `ERR_PLAN_SEAT_CAP_EXCEEDED` (RFC 9457,
+      `extra.upgrade_hint` carrying plan_id/plan_name/seat_cap/current_seats) at 3 seams —
+      invite-accept, OIDC callback, SAML ACS, verified-domain signup — and a 403 RFC 7644
+      SCIM error (no scimType) at `/scim/v2/Users` — confirmed by
+      `tests/plan_seat_cap/test_invite_accept_seat_cap.py`,
+      `test_sso_seat_cap.py`, `test_domain_capture_seat_cap.py`, `test_scim_seat_cap.py`.
+- [x] A rejected admission leaves the `invites`/`tenants` rows byte-identical (no status
+      flip, no plan/seat_cap mutation) and inserts ZERO `users` rows — confirmed by direct
+      SQL assertions in every reject test + `test_seat_cap_audit_and_concurrency.py`'s own
+      0-audit-event assertion.
+- [x] An EXISTING member's OIDC/SAML re-login is NEVER gated by the cap (the existing-user
+      branch returns before `assert_seat_available` is ever reached) — confirmed by
+      `test_existing_member_oidc_relogin_never_gated_by_seat_cap` (302, headcount
+      unchanged).
+- [x] An uncapped/unplanned/platform tenant issues ZERO `COUNT(*) FROM users` queries
+      (grandfathered-unlimited, M8/M9) — confirmed OBSERVABLY via a real
+      `before_cursor_execute` SQL-capture hook on the live engine, not an internal mock
+      (`test_assert_seat_available.py`'s 3 uncapped-path tests).
+- [x] A plan downgrade / seat_cap lowering below current headcount NEVER deactivates or
+      touches existing members, and the resulting over-cap state persists indefinitely
+      until the NEXT admission attempt is rejected — confirmed by
+      `test_seat_cap_no_retroactive_lockout.py`'s 3 tests (15 stay active post-downgrade;
+      16th rejected; raising the cap unblocks the very next attempt, live-read).
+- [x] Two concurrent admissions racing the LAST remaining seat (real Postgres, `FOR UPDATE
+      OF t`, invite-accept vs. OIDC callback via `asyncio.gather`) resolve to EXACTLY one
+      200 and one 403 — never both succeeding (over-cap), never both failing (a real seat
+      left unfilled) — confirmed by
+      `test_concurrent_admissions_racing_the_last_seat_exactly_one_wins`, re-run 4x
+      non-flaky.
+- [x] Zero migration added; `plans.seat_cap`/`tenants.seat_cap`/`users.deactivated_at`
+      reused verbatim — confirmed by `git status` (no `alembic/versions/` diff) + every
+      test running against `create_all()`-only schemas.
+- [x] Every EXISTING sibling suite this task's changes touch stays green, unmodified —
+      confirmed by re-running member_invite_acceptance, member_invite_issuance,
+      domain_capture, scim_provisioning, sso_oidc, saml_sso, plan_catalog, plan_enforcement
+      (236 tests) after each seam landed, zero regressions.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
