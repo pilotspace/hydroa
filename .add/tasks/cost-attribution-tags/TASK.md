@@ -3,9 +3,8 @@
 slug: cost-attribution-tags · created: 2026-07-12 · stage: production
 sensitivity: data
 milestone: monetization-core
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -108,8 +107,6 @@ Assumptions — lowest-confidence first:
   - [ ] `CompletionUseCase.stream()` gaining a `request_headers` param is a real (additive, default-`None`) signature change to existing, heavily-tested code, not a net-new file — confirmed low-risk (default preserves every existing caller), but flagged since it's the one place this task touches code outside its "purely additive" ideal.
   - [ ] M6's overlapping-slices semantics (a multi-tagged request's cost counted in EACH of its tags' breakdown rows, not split/partitioned) is asserted here as the correct model for "cost by tag" — `invoice-generation` may instead want a PARTITION (each request's cost attributed once, e.g. split evenly or to a "primary" tag) for its invoice-line-grouping use case. This task exposes the slice view and states the semantics explicitly rather than silently assuming they match; the partition question belongs to `invoice-generation`'s own Ground/Specify, cited here so it is visible, not lost.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -252,8 +249,6 @@ Scenario: concurrent identically-tagged requests never contend   # concurrency e
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -300,7 +295,6 @@ Glossary deltas:
   - `Cost-by-tag breakdown`: a windowed, tenant-scoped aggregation of `usage_records.cost_usd` grouped by (tag key, tag value) pair, exposed via `GET /admin/usage/cost-by-tag`; breakdown rows are overlapping cost slices (a multi-tagged request contributes to more than one row), not a partition of the window's total cost.
 
 Reported: no
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -335,9 +329,6 @@ Plan (one test per scenario, asserting behavior not internals):
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 Actual result: all 22 tests confirmed genuinely RED against pre-build code — failure mode was `UndefinedColumnError: column "tags" does not exist` (missing implementation), never a broken harness. Verified TWICE: once during initial red-suite authorship, and a second retroactive confirmation post-build (git-diff the 9 touched src/ files + the migration out via `git checkout HEAD --`, re-run — 22/22 failed for the same reason — then `git apply` to restore, re-run — 22/22 green). See build commit `617c1ce` (red suite) vs `1afb2c5`..`4827eca` (green build).
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -364,8 +355,6 @@ Safety rule (feature-specific): tags are write-once at insert time via the exist
 Deviation candidate (disclosed, not silent): `_run_output_validation_retry()` (module-level, 3 `_fire_record_with_raw` sites) and `_run_diverted_fallback()` (deferred batch-window-grouping closure, 2 sites — one success via `_fire_record`, one error) were NOT threaded with `tags`. Both already lack `request_id` threading today (a pre-existing gap, not introduced by this task), no §2 scenario exercises either path, and `_run_diverted_fallback` runs via a closure independent of the original request's lifetime. A request that both carries tags AND falls into output-validation-retry or batch-diverted-fallback will bill correctly but land `tags={}` on that row instead of its supplied tags — a narrower-than-ideal but disclosed gap, not a silent workaround. Flagging for Verify/Observe to confirm this is acceptable for v1 or seed a Spec delta.
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -435,9 +424,7 @@ Binding: advisory — sensitivity: data (not `mechanical`)
 Reported: yes — this §6 fill is the gate report
 Outcome: RISK-ACCEPTED
 Owner: Tin Dang · ticket: spec delta (see §7, to be filed via `add.py deltas`) · expires: before `invoice-generation` (dependent task) reads `usage_records.tags` for line-grouping — the residue must be resolved or explicitly re-accepted by that task's own Ground phase
-Reviewed by: <pending — Tin Dang> · date: 2026-07-12
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-12
 
 ---
 
@@ -446,11 +433,14 @@ Reviewed by: <pending — Tin Dang> · date: 2026-07-12
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose **A — HTTP request header carrier (`X-Gateway-Tags: {"k":"v",...}`, one JSON object), a new dedicated `tags JSONB NOT NULL DEFAULT '{}'` column on `usage_records`, a new sibling `GET /admin/usage/cost-by-tag` route in the existing `usage/api/router.py` module**; rejected B — body-field carrier (`body["tags"]` or `body["metadata"]["tags"]`) — rejected: `body` is forwarded upstream near-byte-identically with no Pydantic schema to safely strip a gateway-only field from before forwarding; a header needs no such logic and risks nothing against the frozen proxy-completions pass-through contract (§0 confirmed no existing `metadata`/`user` field usage to collide with either way) · C — fold tags into the EXISTING `raw` JSONB column (like `request_id`) instead of a new column — rejected: MILESTONE.md explicitly designates a dedicated additive `tags` column as this task's frozen contract, and a real column is directly `GROUP BY`/index-able without an ad hoc expression index per key, unlike burying it inside `raw` · D — a new cross-module `gateway/cost_attribution/` package mirroring `guardrail_analytics`'s structure — rejected in favor of a sibling route inside `usage/api/router.py`: no new module/`main.py` registration needed, and it avoids the cross-module `# pyright: ignore[reportPrivateUsage]` friction `guardrail_analytics` accepted for the same helpers.
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned in §5's ordered batches 1-6, with two informed deviations: (a) TESTS and BUILD were interleaved during authorship rather than strictly sequential (tests were drafted scenario-by-scenario alongside the seam being implemented) — RED discipline was recovered retroactively by reverting all 9 touched src/ files + the migration via `git diff`/`git checkout HEAD --`/`git apply` (no `git stash`) and re-running the full 22-test suite against pre-build code twice (once before commit, once as a final confirmation), both times red for the right reason (`column "tags" does not exist`), before committing; (b) `_run_output_validation_retry()` and `_run_diverted_fallback()` in `use_cases.py` (5 combined `_fire_record*` call sites) were deliberately left out of the tags-threading batch 4 — see Deviation candidate below.
+- [AI] verify — gate RISK-ACCEPTED (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

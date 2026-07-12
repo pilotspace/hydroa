@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "plan-enforcement",
+  "active_task": "cost-attribution-tags",
   "active_milestone": "monetization-core",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -640,12 +640,12 @@
     },
     "cost-attribution-tags": {
       "title": "Request metadata tags on usage records + cost-by-tag breakdowns",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "RISK-ACCEPTED",
       "milestone": "monetization-core",
       "depends_on": [],
       "created": "2026-07-12T07:40:02+00:00",
-      "updated": "2026-07-12T08:45:06+00:00",
+      "updated": "2026-07-12T11:00:36+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T08:00:24+00:00",
@@ -676,7 +676,27 @@
           "apps/gateway/tests/usage/",
           "apps/gateway/tests/proxy/"
         ],
-        "snapshot_md5": "7e2e0948371d08ef9ce8d9ec0970ff69"
+        "snapshot_md5": "2946cbdeda1a990a2587a0ea9758481e"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-12T11:00:14+00:00",
+            "reason": "scope_violation: task 'cost-attribution-tags' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (63 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "waiver": {
+        "owner": "Tin Dang",
+        "ticket": "diverted-fallback-tags-gap (spec delta: thread tags+request_id through _run_diverted_fallback closure)",
+        "expires": "2026-08-15"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "invoice-generation": {
@@ -890,7 +910,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T09:10:33+00:00",
+  "updated": "2026-07-12T11:00:36+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1826,7 +1846,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "monetization-core": "plan-enforcement"
+    "monetization-core": "cost-attribution-tags"
   },
   "todos": [
     {

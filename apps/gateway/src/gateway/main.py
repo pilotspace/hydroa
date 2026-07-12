@@ -59,6 +59,20 @@ from gateway.batches.application.worker import (
 from gateway.batches.infrastructure.orm import (  # noqa: F401 — registers BatchJobRow/BatchJobItemRow on Base.metadata
     BatchJobItemRow as _BatchJobItemRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.billing.api.router import invoices_router
+from gateway.billing.application.invoice_generator import (
+    InvoiceGenerator,
+    should_start_invoice_generator,
+)
+from gateway.billing.infrastructure.orm import (  # noqa: F401 — registers InvoiceRow/InvoiceLineRow/InvoiceCorrectionRow on Base.metadata
+    InvoiceCorrectionRow as _InvoiceCorrectionRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.billing.infrastructure.orm import (  # noqa: F401
+    InvoiceLineRow as _InvoiceLineRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.billing.infrastructure.orm import (  # noqa: F401
+    InvoiceRow as _InvoiceRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import (
@@ -647,6 +661,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # InvoiceGenerator — month-close background loop (invoice-generation TASK.md
+        # §3). Default-ON at configured defaults; started only when
+        # invoice_generation_interval_seconds>0. Structurally copied from the
+        # RetentionSweeper wiring immediately above.
+        app.state.invoice_generator_task = None
+        if should_start_invoice_generator(_settings):
+            _invoice_generator = InvoiceGenerator(
+                session_factory=_sessionmaker,
+                stabilization_hours=_settings.invoice_stabilization_hours,
+            )
+            app.state.invoice_generator = _invoice_generator
+            app.state.invoice_generator_task = asyncio.create_task(
+                _invoice_generator.run_forever(
+                    interval_seconds=float(_settings.invoice_generation_interval_seconds)
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -710,6 +741,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             batch_window_flusher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await batch_window_flusher_task
+
+        invoice_generator_task: asyncio.Task[None] | None = getattr(
+            app.state, "invoice_generator_task", None
+        )
+        if invoice_generator_task is not None:
+            invoice_generator_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await invoice_generator_task
 
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
@@ -790,6 +829,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.credit_recovery_sweep_task = None
     app.state.retention_sweeper_task = None
     app.state.batch_window_flusher_task = None
+    app.state.invoice_generator_task = None
 
     # Video generation seam — default: no provider (honest degradation).
     # Tests override via app.state.video_generator = <stub>.
@@ -1330,6 +1370,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(budget_router)
     app.include_router(credits_platform_router)
     app.include_router(credits_router)
+    app.include_router(invoices_router)
     app.include_router(conversations_router)
     app.include_router(memories_router)
     app.include_router(artifacts_router)

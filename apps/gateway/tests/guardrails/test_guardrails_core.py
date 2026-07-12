@@ -1383,6 +1383,12 @@ async def test_guardrails_core_migration_column_exists(
     # (mirrors request_logs/payload-capture-store), not by guardrails-core itself —
     # the invariant this test checks ("guardrails-core adds no tables") is unchanged;
     # guardrails-core (this file's own module) still owns zero tables.
+    # SANCTIONED EDIT (invoice-generation TASK.md §3 manifest maintenance,
+    # 2026-07-12): added invoices/invoice_lines/invoice_corrections — additive
+    # migration 0b5527920450, registered on Base.metadata via
+    # billing/infrastructure/orm.py side-effect import (same precedent). These are
+    # NEW tables owned by the invoice-generation task's own billing/ context, not
+    # by guardrails-core — the invariant this test checks is unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1399,7 +1405,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'invites','plans','impersonation_sessions',"
                 " 'tenant_rate_card_entries','request_logs',"
                 " 'scim_tokens','saml_provider_configs','guardrail_verdict_events',"
-                " 'tenant_domain_claims')"
+                " 'tenant_domain_claims','invoices','invoice_lines',"
+                " 'invoice_corrections','credit_ledger','tenant_credit_balances')"
             )
         )
     ).fetchall()

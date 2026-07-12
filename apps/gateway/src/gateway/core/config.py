@@ -642,6 +642,16 @@ class Settings(BaseSettings):
     # 2026-07-10.
     retention_request_logs_days: int = Field(default=30)
 
+    # ── Invoice generation (invoice-generation TASK.md §3 FROZEN @ v1) ──────────
+    # Conditionally-started month-close background loop (mirrors RetentionSweeper's
+    # should_start_*/run_forever shape). 0 = OFF entirely.
+    # env: GATEWAY_INVOICE_GENERATION_INTERVAL_SECONDS
+    invoice_generation_interval_seconds: int = Field(default=3600)
+    # Stabilization window after a calendar month's period_end before that month is
+    # auto-issued (§1 ⚠, Tin-confirmed 72h at freeze 2026-07-12).
+    # env: GATEWAY_INVOICE_STABILIZATION_HOURS
+    invoice_stabilization_hours: int = Field(default=72)
+
     # ── Payload capture (payload-capture-store task) ─────────────────────────────
     # Opt-in, PII-scrubbed request/response capture (request_logs). Bounded-timeout,
     # non-retried, fire-and-forget IO seam (§3 Freeze questions #2/#3, Tin-approved
