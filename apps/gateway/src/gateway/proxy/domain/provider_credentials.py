@@ -28,16 +28,19 @@ from gateway.proxy.infrastructure.azure_ad import (
 )
 from gateway.proxy.infrastructure.azure_config import DEFAULT_API_VERSION, AzureConfig
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials
+from gateway.proxy.infrastructure.vertex_ad import VertexServiceAccountConfig
 
 # ---------------------------------------------------------------------------
 # Provider name — bounded value-set (TEXT in DB, not a DB ENUM)
 # ---------------------------------------------------------------------------
 
-ProviderName = Literal["openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax"]
+ProviderName = Literal[
+    "openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax", "vertex"
+]
 
 #: Frozenset of the same values for O(1) membership tests at runtime.
 PROVIDER_VALUE_SET: frozenset[str] = frozenset(
-    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax"}
+    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax", "vertex"}
 )
 
 #: All providers whose per-request auth is resolved from the credential contextvar.
@@ -46,8 +49,10 @@ PROVIDER_VALUE_SET: frozenset[str] = frozenset(
 #: staged env-bound skip. The use-case raises ERR_PROVIDER_KEY_MISSING (402) for any
 #: provider in this set when the tenant has no enabled credential.
 #: minimax (task minimax-adapter-registry) joins as a plain Bearer BYOK provider.
+#: vertex (task vertex-adapter) joins as a GoogleServiceAccountCredential BYOK provider —
+#: NOT bearer-auth (see _BEARER_PROVIDERS in provider_keys_admin_router.py, unchanged).
 BYOK_PROVIDERS: frozenset[str] = frozenset(
-    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax"}
+    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax", "vertex"}
 )
 
 
@@ -242,10 +247,59 @@ class AzureCredential(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# GoogleServiceAccountCredential — GCP service-account JWT-bearer (Vertex AI)
+# ---------------------------------------------------------------------------
+
+
+class GoogleServiceAccountCredential(BaseModel):
+    """GCP service-account credential bundle for Vertex AI (vertex-adapter TASK.md §3).
+
+    Project-scoped, NOT region-scoped (unlike ``BedrockCredential.region``) — ONE
+    credential legitimately mints tokens for every seeded Vertex location (§0 Issue #4).
+
+    ``private_key`` is a ``SecretStr`` (PEM-encoded RSA private key) so it is masked
+    in repr/str/logs. The validator rejects empty ``project_id``/``client_email`` with
+    ``ERR_PROVIDER_CREDENTIAL_INCOMPLETE`` and an empty ``private_key`` with
+    ``ERR_PROVIDER_CREDENTIAL_EMPTY`` (mirrors BedrockCredential's split exactly).
+    """
+
+    project_id: str
+    client_email: str
+    private_key: SecretStr
+    private_key_id: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_fields(self) -> GoogleServiceAccountCredential:
+        if not self.project_id.strip():
+            raise ValueError("ERR_PROVIDER_CREDENTIAL_INCOMPLETE")
+        if not self.client_email.strip():
+            raise ValueError("ERR_PROVIDER_CREDENTIAL_INCOMPLETE")
+        if not self.private_key.get_secret_value().strip():
+            raise ValueError("ERR_PROVIDER_CREDENTIAL_EMPTY")
+        return self
+
+    def to_vertex_service_account_config(self) -> VertexServiceAccountConfig:
+        """Return the existing frozen ``VertexServiceAccountConfig`` dataclass.
+
+        Consumed by ``VertexTokenProvider`` / ``VertexTokenProviderCache``. Returned
+        directly (not copied) to avoid a divergent second shape, same rationale as
+        ``BedrockCredential.to_aws_credentials`` / ``AzureCredential.to_azure_ad_config``.
+        """
+        return VertexServiceAccountConfig(
+            project_id=self.project_id,
+            client_email=self.client_email,
+            private_key=self.private_key.get_secret_value(),
+            private_key_id=self.private_key_id,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Union type alias
 # ---------------------------------------------------------------------------
 
-ProviderCredential = BearerCredential | BedrockCredential | AzureCredential
+ProviderCredential = (
+    BearerCredential | BedrockCredential | AzureCredential | GoogleServiceAccountCredential
+)
 
 
 # ---------------------------------------------------------------------------

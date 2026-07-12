@@ -86,6 +86,7 @@ from gateway.catalog.infrastructure.composite_source import CompositeCatalogSour
 from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_MODELS
 from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
+from gateway.catalog.infrastructure.vertex_seed import VERTEX_SEED_MODELS
 from gateway.conversations.api.router import conversations_router
 from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
     ConversationMessageRow as _ConversationMessageRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
@@ -187,6 +188,8 @@ from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
 from gateway.proxy.infrastructure.tenant_model_preset_store import DbTenantModelPresetStore
 from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
+from gateway.proxy.infrastructure.vertex_ad import VertexTokenProviderCache
+from gateway.proxy.infrastructure.vertex_upstream import VertexCompletionUpstream
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.rate_limits.infrastructure.redis_token_bucket import RedisTokenBucket
@@ -868,7 +871,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Default catalog source — tests override via app.state.catalog_source
     app.state.catalog_source = CompositeCatalogSource(
         primary=OpenRouterCatalogSource(httpx.AsyncClient()),
-        static_models=MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS + BEDROCK_SEED_MODELS,
+        static_models=MINIMAX_SEED_MODELS
+        + GPT_REALTIME_SEED_MODELS
+        + BEDROCK_SEED_MODELS
+        + VERTEX_SEED_MODELS,
     )
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()
@@ -1024,6 +1030,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         retry_deadline_s=settings.upstream_retry_deadline_s,
         metrics_registry=app.state.metrics_registry,
         egress_policy=_azure_egress_policy,
+    )
+
+    # Per-tenant Vertex JWT-bearer token provider cache — one shared instance on
+    # app.state. Keyed by the NON-SECRET identity (client_email, project_id).
+    _vertex_token_provider_cache = VertexTokenProviderCache(
+        ttl_s=settings.vertex_token_cache_ttl_s,
+        max_size=settings.vertex_token_cache_max,
+        metrics_registry=app.state.metrics_registry,
+    )
+    app.state.vertex_token_provider_cache = _vertex_token_provider_cache
+
+    # Google Vertex AI adapter — registered UNCONDITIONALLY (vertex-adapter task,
+    # mirrors every sibling adapter). Credentials (GoogleServiceAccountCredential) are
+    # resolved per-request from the tenant contextvar. A request with no tenant Vertex
+    # key → 402 at resolve time (M12/R2). Landed in the SAME diff as vertex_seed.py's
+    # VERTEX_SEED_MODELS rows joining static_models above (M10/R6 — never seed a
+    # provider="vertex" catalog row without the matching adapter registered).
+    _chat_adapters["vertex"] = VertexCompletionUpstream(
+        token_provider_cache=_vertex_token_provider_cache,
+        default_max_tokens=settings.vertex_default_max_tokens,
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
+        metrics_registry=app.state.metrics_registry,
     )
 
     # Public seam for wiring tests: exposes the adapter map so tests can assert
