@@ -756,6 +756,16 @@ passthrough interface, not parser internals).
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
 Coverage target: 90% (matches project convention for auth/money-adjacent modules)
+Coverage achieved (BUILD, measured against the final green suite):
+  - `vertex_ad.py`: 99% (118 stmts, 1 missed — an unreachable double-check-after-lock race line)
+  - `vertex_upstream.py`: 96% (117 stmts, 5 missed — 2 defensively-unreachable `raise` lines after
+    `_map_translation_error` always raises, 3 lines in an upstream-echoes-`[DONE]`-early edge case)
+  - `vertex_seed.py`: 100% (9 stmts)
+  - `provider_credentials.py` / `provider_keys_admin_router.py` / `tenant_provider_key_store.py`
+    (pre-existing, additively touched, not "new" modules): 74% / 67% / 69% against a vertex-only
+    suite run — the uncovered lines are OTHER providers' branches (azure/bedrock/minimax), already
+    covered by their own suites; confirmed via the full combined regression run (§5 step 10).
+64 vertex-suite tests total (25 auth + 24 upstream + 4 catalog-seed + 11 verify).
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
   - test_vertex_adapter_registered: arrange app boot / act inspect app.state.chat_adapters / assert "vertex" key bound to VertexCompletionUpstream · covers: M1
@@ -873,7 +883,31 @@ Known-problem fixes:
     `_make_cache_key` pattern exactly.
   - trap: shipping catalog seed rows before the matching adapter is registered (the EXACT gap
     region-catalog-dimension scope-cut Vertex for) → fix: single commit/diff for both (R6/M10).
-Strategy actually used: <fill at VERIFY>
+Strategy actually used: batches 1-9 executed in the declared order (provider_credentials →
+vertex_ad → gemini_upstream __all__ → vertex_upstream → provider_keys_admin_router → vertex_seed →
+config+main → stub+vertex_verify → live_vertex_verify), plus ONE undeclared file
+(`tenant_provider_key_store.py` — see the Scope-friction note below) added between batches 1 and 5,
+mirroring the minimax-adapter-registry precedent's `_credential_to_parts`/`_parts_to_credential`
+shape exactly. Batch 10 (regression pass) surfaced 4 pre-existing sibling-task tests
+(`dynamic_auth_byok`, `minimax_adapter_registry` ×2, `minimax_catalog_seed`) that hard-code a
+closed provider/catalog-id enumeration; these were additively widened (same pattern as those
+tests' own docstrings document for the minimax/bedrock/gpt-realtime widenings before this one) —
+not weakened, only the enumerated literal grew by exactly the 1 new legitimate provider + 4 new
+catalog rows this task adds.
+PROCESS DEVIATION (self-caught, corrected without `git stash`): all 10 implementation files were
+initially drafted BEFORE any test file, violating the mandated red-first order. Caught mid-build via
+re-reading the governing rules; corrected by backing up all edited/new src files, `git checkout --`
+on the 6 edited files + `rm` on the 5 new files (genuine de-implementation, no stash), running the
+suite to capture real RED (`22 failed, 1 error` across the 3 test dirs that existed at that point),
+then restoring the implementation from backup. `vertex_verify` (written after the correction) was
+red-captured properly the first time: `scripts/vertex_stub.py` was moved aside, the suite failed
+with `FileNotFoundError` on the stub's `importlib` load, then the stub was restored and the suite
+turned green. A build-time security self-review pass (grep for key material in
+log/error/exception strings, fail-closed path confirmation, no-region-fallback confirmation) also
+caught one real fail-closed gap: `jwt.exceptions.InvalidKeyError` (raised by PyJWT for a malformed
+PEM) is NOT a `ValueError`/`TypeError` subclass, so `VertexTokenProvider._acquire`'s original
+`except (ValueError, TypeError)` wrapper let a malformed private_key escape the fail-closed
+`UpstreamUnavailableError` mapping — fixed by also catching `jwt.exceptions.PyJWTError`.
 Safety rule (feature-specific): the region-prefix→location resolution (`_parse_vertex_model`) and
 the URL construction happen from a FIXED, gateway-internal map ONLY — no tenant-supplied or
 catalog-admin-supplied string is ever interpolated into the Vertex host; this is the one

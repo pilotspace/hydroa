@@ -40,8 +40,12 @@ from .conftest import (
     tenant_uuid,
 )
 
-_ALL_SEVEN = frozenset(
-    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax"}
+# NOTE (vertex-adapter TASK.md §3, DECIDED at freeze): additively widened from the
+# original 7-member set to include "vertex" — a pure value-set widening, mirroring the
+# earlier minimax-adapter-registry widening documented below. Kept the name _ALL_SEVEN
+# would now be misleading, so it is renamed _ALL_EIGHT (no other semantic change).
+_ALL_EIGHT = frozenset(
+    {"openrouter", "openai", "anthropic", "google", "bedrock", "azure", "minimax", "vertex"}
 )
 _MINIMAX_SECRET = "sk-cp-test-minimax-secret-never-return-me"  # noqa: S105
 
@@ -52,11 +56,11 @@ _MINIMAX_SECRET = "sk-cp-test-minimax-secret-never-return-me"  # noqa: S105
 
 
 def test_minimax_joins_the_provider_value_set() -> None:
-    assert PROVIDER_VALUE_SET == _ALL_SEVEN, (
-        f"PROVIDER_VALUE_SET must equal {_ALL_SEVEN!r}, got {PROVIDER_VALUE_SET!r}"
+    assert PROVIDER_VALUE_SET == _ALL_EIGHT, (
+        f"PROVIDER_VALUE_SET must equal {_ALL_EIGHT!r}, got {PROVIDER_VALUE_SET!r}"
     )
-    assert BYOK_PROVIDERS == _ALL_SEVEN, (
-        f"BYOK_PROVIDERS must equal {_ALL_SEVEN!r}, got {BYOK_PROVIDERS!r}"
+    assert BYOK_PROVIDERS == _ALL_EIGHT, (
+        f"BYOK_PROVIDERS must equal {_ALL_EIGHT!r}, got {BYOK_PROVIDERS!r}"
     )
     # ProviderName is a Literal — exercised structurally via a real value assignment.
     minimax_literal: ProviderName = "minimax"  # type: ignore[assignment]
@@ -260,7 +264,7 @@ async def test_admin_put_unknown_provider_still_rejected() -> None:
             f"{PROVIDER_KEYS}/not-a-real-provider", headers=auth(token), json={"secret": "x"}
         )
         assert_problem(resp, 422, "ERR_PROVIDER_UNKNOWN")
-        assert PROVIDER_VALUE_SET == _ALL_SEVEN, "widening must not have leaked an 8th provider"
+        assert PROVIDER_VALUE_SET == _ALL_EIGHT, "widening must not have leaked a 9th provider"
 
     await engine.dispose()
 

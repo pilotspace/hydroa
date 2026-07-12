@@ -51,6 +51,7 @@ from gateway.proxy.domain.provider_credentials import (
     AzureCredential,
     BearerCredential,
     BedrockCredential,
+    GoogleServiceAccountCredential,
     ProviderCredential,
     ProviderCredentialError,
     ProviderKeyStatus,
@@ -97,6 +98,11 @@ class ProviderKeyPutBody(BaseModel):
     client_secret: str | None = None
     scope: str | None = None
     authority: str | None = None
+    # vertex (GCP service account)
+    project_id: str | None = None
+    client_email: str | None = None
+    private_key: str | None = None
+    private_key_id: str | None = None
     # common
     enabled: bool = True
 
@@ -153,6 +159,14 @@ def _build_credential(provider: str, body: ProviderKeyPutBody) -> ProviderCreden
             secret_access_key=SecretStr(body.secret_access_key or ""),
             region=body.region or "",
             session_token=SecretStr(body.session_token) if body.session_token else None,
+        )
+
+    if provider == "vertex":
+        return GoogleServiceAccountCredential(
+            project_id=body.project_id or "",
+            client_email=body.client_email or "",
+            private_key=SecretStr(body.private_key or ""),
+            private_key_id=body.private_key_id,
         )
 
     # azure — api_key OR aad, discriminated by ``mode``

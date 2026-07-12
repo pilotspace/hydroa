@@ -315,6 +315,18 @@ class Settings(BaseSettings):
     # GATEWAY_AZURE_AD_PROVIDER_CACHE_MAX — soft size cap (oldest-created evicted).
     azure_ad_provider_cache_max: int = 512
 
+    # ── Google Vertex AI direct provider (vertex-adapter task) ────────────────
+    # GATEWAY_VERTEX_DEFAULT_MAX_TOKENS — default max_tokens for Vertex requests
+    # when the OpenAI caller omits max_tokens (mirrors google_default_max_tokens).
+    vertex_default_max_tokens: int = 4096
+    # ── Per-tenant Vertex JWT-bearer token provider cache (mirrors the Azure AD
+    # cache above) ─────────────────────────────────────────────────────────────
+    # GATEWAY_VERTEX_TOKEN_CACHE_TTL_S — per-entry TTL in seconds. Controls how
+    # fast a rotated service-account private_key takes effect (bounded staleness).
+    vertex_token_cache_ttl_s: float = 300.0
+    # GATEWAY_VERTEX_TOKEN_CACHE_MAX — soft size cap (oldest-created evicted).
+    vertex_token_cache_max: int = 512
+
     # ── Upstream retry policy (retry-policy task) ─────────────────────────────
     # GATEWAY_UPSTREAM_MAX_RETRIES — max additional retry attempts after first failure.
     # Default 0 = opt-in (byte-identical to v5 "NEVER retry" behavior at default settings).
