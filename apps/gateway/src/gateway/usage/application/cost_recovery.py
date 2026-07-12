@@ -37,7 +37,10 @@ from gateway.proxy.domain.credential_context import (
     set_provider_credential,
 )
 from gateway.proxy.infrastructure.openrouter_upstream import GenerationCost
-from gateway.usage.application.rate_card_resolver import resolve_markup_pct
+from gateway.usage.application.rate_card_resolver import (
+    resolve_markup_pct,
+    resolve_region_multiplier,
+)
 from gateway.usage.application.recorder import RecordingUsageRecorder
 
 _log = logging.getLogger(__name__)
@@ -159,7 +162,8 @@ class OpenRouterCostRecoveryService:
             if state.recovered_exists:
                 return RecoveryOutcome("skipped:already_recovered")
             markup = await self._fetch_markup(tenant_id, model)
-            target = cost.total_cost * (Decimal("1") + markup / Decimal("100"))
+            region_multiplier = await self._fetch_region_multiplier(tenant_id, model)
+            target = cost.total_cost * (Decimal("1") + markup / Decimal("100")) * region_multiplier
             delta = target - state.already_billed
             await self._recorder.record_correction(
                 event_id=recovery_event_id(gid),
@@ -221,3 +225,12 @@ class OpenRouterCostRecoveryService:
         """
         async with self._session_factory() as session:
             return await resolve_markup_pct(session, tenant_id, model)
+
+    async def _fetch_region_multiplier(self, tenant_id: uuid.UUID, model: str) -> Decimal:
+        """Return the effective per-(tenant, model) region multiplier (region-pricing).
+
+        Delegates to the shared resolver — the SAME rate recorder billing and
+        catalog display resolve (no third-site drift; TASK.md §3 M4).
+        """
+        async with self._session_factory() as session:
+            return await resolve_region_multiplier(session, tenant_id, model)

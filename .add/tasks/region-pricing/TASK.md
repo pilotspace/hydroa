@@ -289,7 +289,19 @@ Plan (one test per scenario, asserting behavior not internals):
   - test_concurrent_put_no_race: arrange two concurrent PUTs same (tenant, eu) / act both execute / assert exactly one row, last-committed value wins, no error · covers: edge case (mirrors RC7)
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Tests live in: `apps/gateway/tests/region_pricing/` (15 tests incl. one 2-way
+parametrization, 1 file + suite-local conftest.py) · ran RED for the right
+reason before Build (committed as its own commit, `87bc6e5`, before any
+implementation edit — no `git stash`): 10/15 failed with `UndefinedTable`/404
+(missing `tenant_region_multiplier_overrides` + unmounted `/admin/
+region-pricing`) or a Decimal cost mismatch / `AttributeError` on the
+not-yet-existing `resolve_region_multiplier` — never a harness error. The
+remaining 5 (us/global byte-identical x2, disconnect back-derivation,
+cached-hit no-extra-query, unrecognized-region fail-open) are honest
+pre-build passes — each docstring states why the scenario cannot be expressed
+as RED (mirrors `tests/tiered_rate_cards`'s existing `test_no_entry_falls_
+back_byte_identical` precedent) — MUST run red (missing implementation)
+before Build — CONFIRMED.
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
@@ -327,7 +339,18 @@ Known-problem fixes:
   - trap: `Mapped[str]` migrated as `sa.Text()` instead of `sa.String()` silently breaks migration-parity tests (folded lesson) → fix: use `sa.String()`/`Text` consistent with `TenantRateCardEntry.region`... actually `region` column mirrors `TenantRateCardEntry.model_id` which uses `Text` deliberately (unbounded); keep `Text` for `region` too, only the folded `sa.String()` lesson applies to bounded/enum-like short strings elsewhere — confirm against `rate_card_orm.py`'s own `model_id: Mapped[str] = mapped_column(Text, ...)` precedent at Build time.
   - trap: stale `down_revision` creates a second alembic head → fix: `alembic heads` checked fresh at Build time, not copied from this draft's migration list.
   - trap: shared test Postgres cross-worktree table drops → fix: unique `GATEWAY_TEST_DATABASE_URL` per build session (existing project convention).
-Strategy actually used: <fill at VERIFY>
+Strategy actually used: as planned, with one deviation from the draft's illustrative
+§3 SQL: `resolve_region_multiplier` runs the CONTRACT's literal override query first
+(`... WHERE tenant_id=:t AND region=(SELECT region FROM models WHERE id=:m)`) and
+only issues a SECOND `SELECT region FROM models` query on a miss (to key the
+DECIDED seed) — cheaper than a LEFT JOIN in the common no-override case, still
+O(1) per request (no N+1), and closer to the frozen SQL text than a hand-rolled
+join would have been. All 8 batches (migration -> resolver -> recorder -> cost_recovery
+-> catalog repository -> ORM+router -> main.py wiring -> regression sweep) executed
+in order; no contract friction — region-catalog-dimension's `models.region` (§1 ⚠
+assumption #1) was already integrated in this worktree exactly as assumed (str
+column, us|eu|ap|global, default 'global'), so the forward dependency resolved
+cleanly with zero adjustment.
 Safety rule (feature-specific): the region-multiplier resolution + its multiplication into `cost_usd` happen inside the SAME `record()` call/transaction boundary as the existing markup resolution — no separate async task, no eventual-consistency window between "markup applied" and "region applied" (mirrors the existing single-pass cost computation, extends it rather than adding a second pass).
 Code lives in: `apps/gateway/src/gateway/`
 Constraints: do NOT change any test or the contract; do NOT edit `resolve_markup_pct`, `compute_per_token_cost_usd`'s frozen signature, or `invoice_generator.py`/`margin_router.py` (their zero-touch is the M6 proof); allow-list packages only; ask if unclear.
@@ -349,8 +372,43 @@ Constraints: do NOT change any test or the contract; do NOT edit `resolve_markup
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] a chargeable request against an eu-region model with no override bills
+  upstream x 1.20 (markup) x 1.10 (region) as an exact Decimal — confirmed by
+  `test_eu_region_bills_seeded_premium` (unit) + `test_catalog_display_matches_
+  billed_price` (DB, catalog<->billing zero-drift)
+- [ ] a us/global-region request bills byte-identical to pre-task (upstream x
+  1.20 only) — confirmed by `test_us_global_region_byte_identical[us|global]`
+- [ ] a tenant's own PUT /admin/region-pricing/eu override wins over the seed,
+  and does NOT leak to a different tenant — confirmed by
+  `test_tenant_region_override_wins`
+- [ ] catalog GET /v1/models price and a fresh billed request resolve the
+  IDENTICAL effective multiplier for the same eu-region model — confirmed by
+  `test_catalog_display_matches_billed_price`'s cross-check assertion
+- [ ] invoice_generator.py sums the already-region-inflated cost_usd verbatim
+  and never calls resolve_region_multiplier — confirmed by
+  `test_invoice_line_zero_drift` (monkeypatch-to-raise guard)
+- [ ] a disconnect-estimate on an eu-region model divides OUT both markup and
+  region when back-deriving provider_cost (no drift-monitor over/under-count)
+  — confirmed by `test_disconnect_estimate_divides_out_region`
+- [ ] OpenRouter cost-recovery on an eu-region model bills the identical
+  effective rate a fresh record() call would — confirmed by
+  `test_cost_recovery_matches_original_rate`
+- [ ] PUT/GET/DELETE /admin/region-pricing enforce RATE_CARDS_MANAGE (403 for
+  non-OWNER), reject negative/non-numeric/unknown-region (422), and are
+  idempotent (duplicate PUT upserts, DELETE-absent is 204, concurrent PUTs
+  never duplicate a row) — confirmed by `test_invalid_multiplier_422`,
+  `test_non_owner_403`, `test_duplicate_put_idempotent_upsert`,
+  `test_delete_absent_override_204`, `test_concurrent_put_no_race`
+- [ ] an unrecognized/NULL model region NEVER blocks a request (fail-open) —
+  confirmed by `test_unrecognized_region_defaults_safe`
+- [ ] a cache_hit=true request issues ZERO region-pricing DB round trips —
+  confirmed by `test_cached_hit_unaffected_no_extra_query`'s `session.executed
+  == []` assertion
+- [ ] `resolve_markup_pct` stays byte-untouched and every pre-existing
+  markup-only regression suite is unmodified and green — confirmed by
+  `git diff` showing zero edits to `resolve_markup_pct`'s body + green
+  `tiered_rate_cards`/`pricing_units`/`tiered_token_billing`/
+  `provider_cost_reconciliation` suites (45+49 passed, this session)
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed

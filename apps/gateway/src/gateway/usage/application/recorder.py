@@ -22,7 +22,10 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from gateway.usage.application.rate_card_resolver import resolve_markup_pct
+from gateway.usage.application.rate_card_resolver import (
+    resolve_markup_pct,
+    resolve_region_multiplier,
+)
 from gateway.usage.infrastructure.redis_stream import STREAM_KEY
 
 _log = logging.getLogger(__name__)
@@ -274,12 +277,17 @@ class RecordingUsageRecorder:
         # disconnect-provider-cost (v33): bound on every path so the post-costing stamp
         # below can strip markup even on the cached / no-pricing branches (where it stays 0).
         markup_pct: Decimal = _ZERO
+        # region-pricing (TASK.md §3 M2): per-region multiplier composed with markup at
+        # THIS single resolution point. Identity (1.0, no premium) on the cached branch,
+        # where it is never fetched — mirrors the existing markup_pct skip.
+        region_multiplier: Decimal = Decimal("1")
 
         if not cached:
             # Only fetch pricing for non-cached records; cached hits always cost 0
             async with self._session_factory() as session:
                 pricing = await _fetch_latest_pricing(session, model)
                 markup_pct = await _fetch_markup_pct(session, tenant_id, model)
+                region_multiplier = await _fetch_region_multiplier(session, tenant_id, model)
 
             if pricing is not None:
                 (
@@ -413,6 +421,13 @@ class RecordingUsageRecorder:
             if pricing_unit is not None and pricing_unit in _known_units:
                 resolved_pricing_unit = pricing_unit
 
+        # region-pricing (TASK.md §3 M2): apply the region multiplier exactly once here —
+        # AFTER markup is already folded into cost_usd (every branch above: provider_cost,
+        # per-token, non-token), BEFORE the disconnect back-derivation must divide it back
+        # out (M3). A harmless no-op on the cached branch (cost_usd is already 0 there;
+        # region_multiplier stays the Decimal("1") identity — never fetched, per M2).
+        cost_usd = cost_usd * region_multiplier
+
         # disconnect-provider-cost (v33): a NON-RECOVERABLE client-disconnect (non-OpenRouter
         # or no generation id) gets no out-of-band recovery, so a positive partial estimate
         # would otherwise sit as a catalog row with provider_cost NULL — billed ~$0 and INVISIBLE
@@ -427,7 +442,14 @@ class RecordingUsageRecorder:
             and cost_basis == "catalog"
             and cost_usd > _ZERO
         ):
-            provider_cost = cost_usd / (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100"))
+            # region-pricing (TASK.md §3 M3): divide region_multiplier back out too — else
+            # a disconnect estimate on a region-premium model silently inflates the
+            # recorded provider_cost by the region factor (the drift trap found in
+            # grounding: an EU model's back-derivation would otherwise over-report the
+            # unbilled-upstream-cost signal by 1.1x).
+            provider_cost = cost_usd / (
+                (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100")) * region_multiplier
+            )
             cost_usd = _ZERO
             cost_basis = "provider"
 
@@ -921,3 +943,17 @@ async def _fetch_markup_pct(session: AsyncSession, tenant_id: uuid.UUID, model_i
     behavior).
     """
     return await resolve_markup_pct(session, tenant_id, model_id)
+
+
+async def _fetch_region_multiplier(
+    session: AsyncSession, tenant_id: uuid.UUID, model_id: str
+) -> Decimal:
+    """Return the effective per-(tenant, model) region multiplier (region-pricing).
+
+    Delegates to the shared resolver — the SAME rate every call site resolves
+    (recorder billing, cost_recovery disconnect, catalog display). A
+    per-(tenant, region) override wins; otherwise falls back to the DECIDED
+    seed keyed by the model's region (1.0 for an unrecognized/NULL region —
+    pricing never blocks, only residency policy fail-closes).
+    """
+    return await resolve_region_multiplier(session, tenant_id, model_id)

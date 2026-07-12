@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,14 @@ from gateway.catalog.infrastructure.orm import ModelRow, PricingSnapshotRow
 from gateway.core.ids import uuid7
 from gateway.tenants.infrastructure.orm import TenantRow
 from gateway.tenants.infrastructure.rate_card_orm import TenantRateCardEntry
+from gateway.tenants.infrastructure.region_pricing_orm import TenantRegionMultiplierOverride
+
+# region-pricing (TASK.md §3 M5): the DECIDED seed, expressed as the bulk-query
+# equivalent of rate_card_resolver's `_REGION_MULTIPLIER_SEEDS` — kept in sync by
+# hand (no shared import: this stays a plain SQL CASE literal, not a cross-layer
+# dependency on the usage/application resolver module, CONVENTIONS.md layering).
+_EU_REGION_MULTIPLIER = Decimal("1.1")
+_DEFAULT_REGION_MULTIPLIER = Decimal("1.0")
 
 
 class SqlAlchemyCatalogRepository:
@@ -118,6 +126,17 @@ class SqlAlchemyCatalogRepository:
         effective_markup_pct = func.coalesce(
             TenantRateCardEntry.markup_pct, TenantRow.markup_pct
         ).label("markup_pct")
+        # region-pricing (TASK.md §3 M5): bulk-equivalent of resolve_region_multiplier —
+        # a per-(tenant, region) override wins; ELSE the DECIDED seed keyed by the
+        # model's region (eu=1.1x, everything else=1.0x). Same override-wins-else-
+        # fallback shape as effective_markup_pct above, keyed by region instead of model.
+        effective_region_multiplier = func.coalesce(
+            TenantRegionMultiplierOverride.multiplier,
+            case(
+                (ModelRow.region == "eu", _EU_REGION_MULTIPLIER),
+                else_=_DEFAULT_REGION_MULTIPLIER,
+            ),
+        ).label("region_multiplier")
 
         stmt = (
             select(
@@ -133,6 +152,7 @@ class SqlAlchemyCatalogRepository:
                 snap_sub.c.audio_completion_usd_per_token,
                 snap_sub.c.audio_cached_usd_per_token,
                 effective_markup_pct,
+                effective_region_multiplier,
             )
             .join(snap_sub, snap_sub.c.model_id == ModelRow.id)
             .join(TenantRow, TenantRow.id == tenant_id)
@@ -140,6 +160,11 @@ class SqlAlchemyCatalogRepository:
                 TenantRateCardEntry,
                 (TenantRateCardEntry.tenant_id == tenant_id)
                 & (TenantRateCardEntry.model_id == ModelRow.id),
+            )
+            .outerjoin(
+                TenantRegionMultiplierOverride,
+                (TenantRegionMultiplierOverride.tenant_id == tenant_id)
+                & (TenantRegionMultiplierOverride.region == ModelRow.region),
             )
             .where(ModelRow.active.is_(True))
         )
@@ -151,7 +176,9 @@ class SqlAlchemyCatalogRepository:
 
         result: list[MarkedUpModel] = []
         for row in rows:
-            multiplier = float(Decimal("1") + row.markup_pct / Decimal("100"))
+            multiplier = float(
+                (Decimal("1") + row.markup_pct / Decimal("100")) * row.region_multiplier
+            )
             result.append(
                 MarkedUpModel(
                     id=row.id,

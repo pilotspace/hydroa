@@ -214,6 +214,7 @@ from gateway.tenants.api.platform_tenant_config_router import platform_tenant_co
 from gateway.tenants.api.platform_tenants_router import platform_tenants_router
 from gateway.tenants.api.platform_users_router import platform_users_router
 from gateway.tenants.api.rate_card_router import rate_card_router
+from gateway.tenants.api.region_pricing_router import region_pricing_router
 from gateway.tenants.api.retention_policy_router import retention_policy_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.api.users_router import users_router
@@ -1351,6 +1352,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(guardrail_router)
     app.include_router(retention_policy_router)
     app.include_router(rate_card_router)
+    app.include_router(region_pricing_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(key_guardrail_router)

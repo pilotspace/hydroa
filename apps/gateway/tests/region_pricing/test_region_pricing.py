@@ -299,7 +299,9 @@ async def test_catalog_display_matches_billed_price(
     assert row is not None, "no usage row flushed"
     billed_cost = Decimal(str(row[0]))
     expected_billed = Decimal("1.00") * Decimal("1.20") * Decimal("1.10")
-    assert billed_cost == expected_billed, f"billing must use the same 1.10x region premium: {billed_cost}"
+    assert billed_cost == expected_billed, (
+        f"billing must use the same 1.10x region premium: {billed_cost}"
+    )
 
     # No third-site drift: catalog multiplier == billing multiplier.
     catalog_multiplier = catalog_model["prompt_per_token"] / float(prompt_price)
@@ -414,7 +416,9 @@ async def test_disconnect_estimate_divides_out_region(
     assert evt["cost_basis"] == "provider"
 
     # The TRUE upstream estimate — un-inflated by either markup or region.
-    expected_provider_cost = Decimal("100") * Decimal("0.00001") + Decimal("50") * Decimal("0.00003")
+    expected_provider_cost = Decimal("100") * Decimal("0.00001") + Decimal("50") * Decimal(
+        "0.00003"
+    )
     got_provider_cost = Decimal(evt["provider_cost"])
     assert got_provider_cost == expected_provider_cost, (
         f"disconnect back-derivation must divide out BOTH markup AND region: "
