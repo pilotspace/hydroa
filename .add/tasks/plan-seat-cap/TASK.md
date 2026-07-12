@@ -682,7 +682,7 @@ Glossary deltas:
   - **Seat admission**: the moment a NEW active member materializes (one of the 4 named INSERT
     seams) — the ONLY moment this task's cap is ever consulted; distinct from any later state
     change to an already-admitted member (re-login, role change, plan downgrade — none of which
-    re-trigger a cap check, per M7).
+    re-trigger a cap check, per M7). [folded foundation-version 51]
 Reported: no — drafted for the design-span freeze review; Tin reviews this contract per the
   standard one-human-approval-at-freeze gate.
 
@@ -1050,7 +1050,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 
-- [ADD · open] a builder's own concurrency scenario proved the design against ONE seam
+- [ADD · folded] a builder's own concurrency scenario proved the design against ONE seam [folded foundation-version 51]
   pair (invite-accept vs OIDC) but the riskiest transaction shape (§5's own flagged SCIM
   autobegin-reuse deviation) went unraced by the builder's own suite — independent verify
   closed that gap with 2 new cross-seam/same-seam probes targeting the seam the build's

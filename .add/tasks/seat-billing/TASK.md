@@ -731,7 +731,7 @@ Glossary deltas:
     `deactivated` / `reactivated`) recording exactly one seat state transition, written in the SAME
     transaction as the `users`-row mutation that caused it — the seat-domain analog of `usage_records`'
     "one ledger of truth" doctrine, and of `record_correction`'s signed-delta-append precedent, one
-    domain over.
+    domain over. [folded foundation-version 51]
 Reported: no — pending Tin's freeze review (this task lands after wave-1's own batch freeze,
 per MILESTONE.md's `depends-on: plan-enforcement, invoice-generation`, both already FROZEN@v1).
 
