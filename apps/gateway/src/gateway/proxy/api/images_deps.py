@@ -7,6 +7,7 @@ Contract FROZEN @ images-endpoint (TASK.md §3 IMAGES USE CASE FLOW).
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -55,6 +56,12 @@ def get_images_use_case(
     budget_guard = request.app.state.budget_guard
     rate_limiter = getattr(request.app.state, "rate_limiter", None)
     redis_client = getattr(budget_guard, "_redis", None)
+    # credits-ledger TASK.md §3: same app.state-boot singleton pattern as deps.py's
+    # get_completion_use_case. Absent ⇒ PassthroughCreditGuard ⇒ byte-identical.
+    from gateway.credits.domain.ports import PassthroughCreditGuard
+
+    credit_guard = getattr(request.app.state, "credit_guard", None) or PassthroughCreditGuard()
+    hold_estimate_usd = _settings.credits_hold_estimate_usd if _settings else Decimal("0.50")
 
     governance = NonChatGovernance(
         authenticator=authenticator,
@@ -63,6 +70,8 @@ def get_images_use_case(
         rate_limiter=rate_limiter,
         redis_client=redis_client,
         session_factory=request.app.state.sessionmaker,
+        credit_guard=credit_guard,
+        hold_estimate_usd=hold_estimate_usd,
     )
     # credential-resolution-seam §3: per-tenant provider key resolver from app.state.
     tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)

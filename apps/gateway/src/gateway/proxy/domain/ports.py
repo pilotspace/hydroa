@@ -165,6 +165,13 @@ class UsageRecorder(Protocol):
         Called fire-and-forget; NoopUsageRecorder by default.
         Must not raise — failures are silently swallowed to avoid affecting the
         caller's response.
+
+        credits-ledger TASK.md §3: a concrete recorder MAY additionally expose a
+        `record_with_outcome(**same kwargs)` method returning a duck-typed outcome
+        (`tenant_id`, `usage_record_id`, `cost_usd`, `free` attributes) so a
+        fire-and-forget caller can settle/release a credit hold with the
+        ALREADY-COMPUTED cost — deliberately NOT part of this Protocol (keeps every
+        v1 implementer/fake unaffected); callers duck-type via hasattr/getattr.
         """
         ...
 

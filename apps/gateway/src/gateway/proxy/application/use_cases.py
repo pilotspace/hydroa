@@ -20,13 +20,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import datetime
 import json
 import logging
 import os
 import time
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -55,6 +56,7 @@ from gateway.core.error_catalog import (
     UPSTREAM_UNAVAILABLE,
 )
 from gateway.core.errors import ProblemError
+from gateway.credits.domain.ports import CreditGuard, PassthroughCreditGuard
 from gateway.guardrail_analytics.application.verdict_recorder import record_guardrail_verdicts
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
@@ -226,6 +228,47 @@ def _fire_bandwidth_reconcile(
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
+# credits-ledger TASK.md §3: set (once) by CompletionUseCase.complete()/stream() right
+# after an admission HOLD is placed (_enforce_governance succeeds); read by
+# _dispatch_record so settle()/release() fire from the SAME fire-and-forget site as
+# usage_recorder.record() (§3 wiring note) WITHOUT threading credit_guard through every
+# _fire_record/_fire_record_cached/_fire_record_with_raw call site (~25 of them). asyncio
+# copies the contextvar context at ensure_future()/create_task() time, so each concurrent
+# request (its own top-level Task) sees only its OWN hold — no cross-request leakage.
+_credit_hold_ctx: contextvars.ContextVar[tuple[CreditGuard, uuid.UUID] | None] = (
+    contextvars.ContextVar("_credit_hold_ctx", default=None)
+)
+
+
+def _settle_or_release_hold(task: "asyncio.Task[object | None]") -> None:
+    """Task done-callback: consume the recorder's UsageRecordOutcome (if any) and settle
+    or release the open credit hold for the current request. Never raises — a missing
+    outcome (older/duck-typed recorder, or record() itself failed) is a no-op; the M6
+    reconciliation sweep is the backstop for anything left unresolved here."""
+    if task.cancelled() or task.exception() is not None:
+        return
+    ctx = _credit_hold_ctx.get()
+    if ctx is None:
+        return
+    credit_guard, request_id = ctx
+    result = task.result()
+    cost_usd = getattr(result, "cost_usd", None)
+    usage_record_id = getattr(result, "usage_record_id", None)
+    free = getattr(result, "free", None)
+    if cost_usd is None or usage_record_id is None or free is None:
+        return
+    tenant_id = getattr(result, "tenant_id", None)
+    if tenant_id is None:
+        return
+    if free:
+        settle_task = asyncio.ensure_future(credit_guard.release(tenant_id, request_id))
+    else:
+        settle_task = asyncio.ensure_future(
+            credit_guard.settle(tenant_id, request_id, usage_record_id, cost_usd)
+        )
+    settle_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
 def _dispatch_record(
     usage_recorder: UsageRecorder,
     *,
@@ -247,6 +290,14 @@ def _dispatch_record(
     the attribute (→ empty set) and receive only the base kwargs — same
     backward-compat guarantee as the former inspect.signature introspection,
     now an explicit declaration instead of runtime reflection.
+
+    credits-ledger TASK.md §3: when a credit hold is open for the CURRENT request
+    (see _credit_hold_ctx) AND usage_recorder exposes `record_with_outcome` (duck-typed
+    via hasattr — RecordingUsageRecorder does; a v1-Protocol test fake normally does
+    not), that method is called INSTEAD of record() so the settle/release callback can
+    read back the already-computed cost. record()'s own contract/behavior is completely
+    unchanged for every other caller (byte-identical — see record_with_outcome's
+    docstring for why this is a NEW method rather than widening record()'s return).
     """
     supported: frozenset[str] = getattr(usage_recorder, "supported_extras", frozenset())
     kwargs: dict[str, Any] = {
@@ -258,6 +309,21 @@ def _dispatch_record(
     }
     if extras:
         kwargs.update({k: v for k, v in extras.items() if k in supported})
+
+    credit_ctx = _credit_hold_ctx.get()
+    # Explicit annotation (not `callable()` narrowing) — callable() narrows to
+    # Callable[..., object], which pyright then rejects as an ensure_future() arg
+    # (object is not Awaitable). getattr's own Any-typed return, propagated through
+    # this declared annotation, keeps the awaited call's return type concrete.
+    record_with_outcome: Callable[..., Awaitable[Any]] | None = getattr(
+        usage_recorder, "record_with_outcome", None
+    )
+    if credit_ctx is not None and record_with_outcome is not None:
+        task = asyncio.ensure_future(record_with_outcome(**kwargs))
+        task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        task.add_done_callback(_settle_or_release_hold)
+        return
+
     task = asyncio.ensure_future(usage_recorder.record(**kwargs))
     # Suppress unhandled-exception noise if recorder raises unexpectedly.
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
@@ -792,10 +858,17 @@ class CompletionUseCase:
         batch_diversion: BatchDiversionPort | None = None,
         output_validation_enabled: bool = False,
         payload_capture: PayloadCapturePort | None = None,
+        credit_guard: CreditGuard = PassthroughCreditGuard(),  # noqa: B008
+        hold_estimate_usd: Decimal = Decimal("0.50"),
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
         self._budget_guard = budget_guard
+        # credits-ledger TASK.md §3: PassthroughCreditGuard (default) ⇒ check_and_hold is a
+        # no-op ⇒ byte-identical to today. When wired, the credit gate runs at the SAME
+        # choke point as the budget ladder — see _enforce_governance for the insertion.
+        self._credit_guard: CreditGuard = credit_guard
+        self._hold_estimate_usd: Decimal = hold_estimate_usd
         self._rate_limiter: RateLimiter = (
             rate_limiter if rate_limiter is not None else PassthroughRateLimiter()
         )
@@ -1209,11 +1282,14 @@ class CompletionUseCase:
         model_id: str,
         budget_guard: BudgetGuard,
         model_groups: dict[str, list[str]] | None = None,
+        *,
+        request_id: uuid.UUID | None = None,
     ) -> None:
         """Enforce all governance rules in priority order (M8-M10, M12).
 
         Order: expiry → model allowlist → catalog+tenant check → per-key budget
-               → team budget → tenant budget (fallback) → RPM check → TPM check.
+               → team budget → tenant budget (fallback) → credit hold → RPM check
+               → TPM check.
         All governance data comes from AuthzResult — zero extra DB queries.
 
         Per-key budget: fail-open on Redis failure (advisory counter, A2/M13).
@@ -1227,6 +1303,15 @@ class CompletionUseCase:
 
         model_groups: when provided, the catalog check is alias-aware (§3 A4):
           alias keys validate all candidates; plain ids use the existing single check.
+
+        credits-ledger TASK.md §3 (M1/M12): the credit gate composes IMMEDIATELY
+        AFTER the budget ladder resolves (either branch), BEFORE RPM/TPM — a prior
+        budget 402 short-circuits before the credit gate ever runs (most-restrictive-
+        wins). request_id correlates this admission's HOLD with its later
+        settle/release (see _dispatch_record); None (PassthroughCreditGuard callers /
+        legacy call sites) ⇒ a fresh id is minted so check_and_hold always has one,
+        but nothing will ever call settle/release against it (harmless — a
+        PassthroughCreditGuard.check_and_hold is a no-op regardless).
         """
         # M8: Expiry check (fail-closed, DB-sourced — no infra failure risk)
         _check_expiry(authz)
@@ -1259,8 +1344,25 @@ class CompletionUseCase:
             # No hard per-key budget — tenant budget enforces (RedisBudgetGuard)
             await budget_guard.check(authz.tenant_id)
 
-        # M10 (rate limits): RPM check → TPM check — after governance, before upstream
-        await self._enforce_rate_limits(authz)
+        # credits-ledger TASK.md §3 (M1/M2/M3): admission-time HOLD, after the budget
+        # ladder, before RPM/TPM. check_and_hold raises ERR_CREDITS_EXHAUSTED (402) INSIDE
+        # a row-locked DB transaction — a rejection here writes NO hold row (R1).
+        _credit_request_id = request_id if request_id is not None else uuid.uuid4()
+        await self._credit_guard.check_and_hold(
+            authz.tenant_id, _credit_request_id, self._hold_estimate_usd
+        )
+
+        # M5 (edge: partial failure) — a LATER governance step (RPM/TPM) rejecting an
+        # already-admitted request must fully reverse the hold: the tenant is never
+        # charged for a request that never reached the provider. release() is a no-op
+        # against PassthroughCreditGuard and best-effort (never raises) against a real
+        # guard, so this never masks or replaces the original RATE_LIMITED error.
+        try:
+            # M10 (rate limits): RPM check → TPM check — after governance, before upstream
+            await self._enforce_rate_limits(authz)
+        except Exception:
+            await self._credit_guard.release(authz.tenant_id, _credit_request_id)
+            raise
 
     async def _check_per_key_budget(self, authz: AuthzResult) -> None:
         """Check per-key Redis spend counter against key's monthly_budget_usd.
@@ -1787,7 +1889,13 @@ class CompletionUseCase:
             # Governance ALWAYS runs before cache lookup (contract §3 enforcement order).
             # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
             _model_groups = model_router.model_groups if model_router is not None else None
-            await self._enforce_governance(authz, model_id, self._budget_guard, _model_groups)
+            await self._enforce_governance(
+                authz, model_id, self._budget_guard, _model_groups, request_id=_request_id
+            )
+            # credits-ledger TASK.md §3: publish this request's (credit_guard, request_id)
+            # so _dispatch_record's settle/release hook can find the open hold once
+            # usage_recorder.record() reports the actual cost — see _credit_hold_ctx.
+            _credit_hold_ctx.set((self._credit_guard, _request_id))
 
             # unsupported-input-guard: check input modalities AFTER governance and BEFORE
             # bandwidth acquire / upstream / usage (contract §3 — refused = never billed).
@@ -2436,8 +2544,10 @@ class CompletionUseCase:
             # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
             _stream_model_groups = model_router.model_groups if model_router is not None else None
             await self._enforce_governance(
-                authz, model_id, self._budget_guard, _stream_model_groups
+                authz, model_id, self._budget_guard, _stream_model_groups, request_id=_request_id
             )
+            # credits-ledger TASK.md §3: see complete()'s identical insertion for rationale.
+            _credit_hold_ctx.set((self._credit_guard, _request_id))
 
             # unsupported-input-guard: check input modalities AFTER governance and BEFORE
             # credential resolution / upstream stream / usage (contract §3).
