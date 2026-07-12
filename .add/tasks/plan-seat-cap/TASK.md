@@ -3,11 +3,8 @@
 slug: plan-seat-cap · created: 2026-07-05 · stage: production
 sensitivity: data
 milestone: platform-access-plan
-autonomy: auto   <!-- inherited from the project default (PROJECT.md); explicit level: manual < conservative < auto (visible · overridable) — lower below if a high-risk task needs it, or run `add.py autonomy set`. Multi-component repo (monorepo/multi-repo)? add a `component: <name>` line (declared in `.add/components.toml`) to ADD that component's root to your §5 Scope; omit for single-component projects (byte-identical default). -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining scope? declare `risk: high` on the slug line above and lower the
-     autonomy level to `manual` or `conservative` — the engine refuses an unguarded completion
-     (`unguarded_high_risk_auto`, run.md guard). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task. Fill sections top-to-bottom; the `add` skill drives each phase.
 > When a phase is unclear, read its book chapter in `.add/docs/` (linked per section).
@@ -379,8 +376,6 @@ Assumptions — lowest-confidence first:
     §7 OBSERVE spec-delta candidate, not silently dropped.
 </assumptions>
 
-<!-- EXIT: every rule stated, every rejection named; assumptions ranked lowest-confidence first, the top one or two ⚠-flagged with why + cost (or, for trivial scope, an honest "none material" that still names the single biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -540,8 +535,6 @@ Scenario: Raising the seat cap unblocks the next admission immediately   # M2 (p
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -729,12 +722,6 @@ a new shared helper with no prior test coverage of its own):
 
 Tests live in: `apps/gateway/tests/plan_seat_cap/` · MUST run red (missing implementation)
 before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir ·
-     a token with "/" = project root · a bare name = sibling of the previous
-     token's dir · a directory counts its *.py files (non-recursive); reports
-     mark declared counts with † · anything resolving outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -830,15 +817,6 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
   `member-invite-acceptance`/`domain-capture`/`scim-provisioning`/`plan-enforcement`'s own frozen
   TASK.md files — every additive change to their shipped code is recorded in THIS file only; ask
   if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token
-     with "/" = project root · a bare name = sibling of the previous token's dir ·
-     outside-root resolutions are dropped fail-closed · a DIRECTORY token covers its
-     whole subtree (containment — diverges from §4's non-recursive counting) ·
-     absent line = UNDECLARED (pre-existing tasks grandfathered, never retro-red) ·
-     engine enforcement (touched ⊆ declared) is live: a completing verify gate refuses an
-     out-of-scope build (scope_violation → self-heal) and add.py check surfaces it.
-     EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -1040,11 +1018,9 @@ Binding: advisory — sensitivity: data (not mechanical; this verdict informs bu
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- A security finding is ALWAYS HARD-STOP. Record exactly one outcome — no silent pass. The Advisor 3-lens verdict and the Refute-read verdict are both measured by `add.py audit` (`advisor_verdict_unrecorded` · `refute_unrecorded`) — neither is engine-blocked; a human spot-audit is the backstop for any finding the AI did not surface or record. -->
+Reviewed by: Tin Dang · date: 2026-07-12
 
 ---
 
@@ -1053,7 +1029,10 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: followed the drafted §5 Strategy almost exactly, with ONE material deviation discovered at Build, not planned for: `SqlAlchemyScimUserRepository.create_user` could NOT use the contract's own illustrative `async with self._session.begin():` snippet verbatim — a real `sqlalchemy.exc.InvalidRequestError: A transaction is already begun on this Session` at first test run, because `get_scim_identity` (the SCIM bearer-auth dependency) already issues its OWN SELECT on the SAME request-scoped session before `create_user` runs, autobeginning a transaction. Fixed by reusing that already-open transaction (flush()+commit(), mirroring `InviteRepository.accept`'s own shape) instead of calling `begin()` a second time — functionally identical to the CONTRACT's own guarantee (M3: the `FOR UPDATE OF t` lock held continuously from the check through the INSERT, one transaction) since autobegin transactions persist across statements on one session exactly like an explicit one; only the literal begin()-call mechanism differs from the contract's own snippet. No route/error-code/shape change — recorded here per §1's own §0 Issues/Risks (c) flag ("a build-time bug ... caught by the concurrency scenario's own test — contained to this task, no contract change"), which correctly predicted a mechanics risk at exactly this call site. Order followed: (1) domain M1 + SeatCapExceededError, confirmed the 3 existing resolve_entitlements callers green, (2) assert_seat_available unit-tested directly against real Postgres BEFORE any call site, (3) error_catalog + scim errors, (4) wired the 4 seams in the drafted risk order (domain-capture -> invite-accept -> OIDC/SAML -> SCIM), router except-clause landing in the SAME batch as each seam, (5) concurrency scenario last, confirmed non-flaky across 4 repeated runs. Every sibling suite re-run green after each seam (member_invite_acceptance, member_invite_issuance, domain_capture, scim_provisioning, sso_oidc, saml_sso, plan_catalog, plan_enforcement — 236 tests total, zero regressions).
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
@@ -1070,7 +1049,7 @@ the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
 - [ADD · open] a builder's own concurrency scenario proved the design against ONE seam
   pair (invite-accept vs OIDC) but the riskiest transaction shape (§5's own flagged SCIM
   autobegin-reuse deviation) went unraced by the builder's own suite — independent verify

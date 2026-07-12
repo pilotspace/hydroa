@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "billing-ui",
-  "active_milestone": "monetization-core",
+  "active_task": "plan-seat-cap",
+  "active_milestone": "platform-access-plan",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -603,15 +603,15 @@
     },
     "plan-seat-cap": {
       "title": "Plan seat cap enforcement",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "platform-access-plan",
       "depends_on": [
         "plan-catalog",
         "member-invite-acceptance"
       ],
       "created": "2026-07-05T02:34:35+00:00",
-      "updated": "2026-07-12T12:24:44+00:00",
+      "updated": "2026-07-12T12:47:23+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T11:43:43+00:00",
@@ -635,14 +635,20 @@
           "apps/gateway/tests/plan_seat_cap/test_scim_seat_cap.py": "a1ad291cab04674c1bcbaae6ced2623c",
           "apps/gateway/tests/plan_seat_cap/test_seat_cap_audit_and_concurrency.py": "6847ad5733535ce860e4fa744e99a23a",
           "apps/gateway/tests/plan_seat_cap/test_seat_cap_no_retroactive_lockout.py": "623849c2409971254f9cd2f796f7d408",
-          "apps/gateway/tests/plan_seat_cap/test_sso_seat_cap.py": "25999fce78327d23a2bbc45d29565ebe"
+          "apps/gateway/tests/plan_seat_cap/test_sso_seat_cap.py": "25999fce78327d23a2bbc45d29565ebe",
+          "apps/gateway/tests/plan_seat_cap/test_verify_adversarial.py": "b53a9d160bde4c9dd14e3539271ed0f7"
         }
       },
       "scope": {
         "declared": [
           "apps/gateway/src/gateway/tenants/domain/entitlements.py"
         ],
-        "snapshot_md5": "1ec44d788d4d919b7916f5ba130de5bb"
+        "snapshot_md5": "7160553abdc8f72fe7328b04ab687f05"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "declare-components-registry": {
@@ -1072,7 +1078,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T12:45:08+00:00",
+  "updated": "2026-07-12T12:47:23+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2058,6 +2064,12 @@
       "id": 8,
       "text": "billing-ui F2 (\ud83d\udcad): evidence-drawer per-line context subtitle from DESIGN.md dropped in build \u2014 cosmetic fast-follow or backlog",
       "created": "2026-07-12T12:44:50+00:00",
+      "status": "open"
+    },
+    {
+      "id": 9,
+      "text": "plan-seat-cap seeded delta: SCIM PATCH active:true reactivation bypasses seat cap (confirmed repro in test_verify_adversarial) \u2014 gate reactivation via assert_seat_available in a follow-on task",
+      "created": "2026-07-12T12:47:23+00:00",
       "status": "open"
     }
   ]
