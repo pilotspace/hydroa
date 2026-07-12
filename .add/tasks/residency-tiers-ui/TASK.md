@@ -13,37 +13,325 @@ sensitivity: mechanical
 
 ## 0 · GROUND — the real codebase ▸ docs/02-the-flow.md
 
-Touches (files · symbols · signatures): <path:symbol — what it is / how it is keyed>
-Context (working folder): <docs · todos · config · data the task touches — task-delta only>
-Honors (patterns / conventions): <PROJECT.md / CONVENTIONS.md anchors — task-delta only, never a re-scan>
-Seams consulted: <SEAMS.md entry cited instead of re-deriving, e.g. .add/SEAMS.md#scope-token-grammar — optional, omit if none apply>
-Anchors the contract cites: <the symbols §3 will name>
-Issues/Risks (→ feed §1): <problems · traps · untestable risks found in the real code — task-delta; §1 builds on these>
-Related intent: <PROJECT.md § · GLOSSARY term(s) · originating request/milestone rationale — the WHY; task-delta>
-Ground SHA: <`git rev-parse --short HEAD` at ground time — cite symbols, not bare line numbers; any line ref is "as of" this commit>
+Touches (files · symbols · signatures):
+- `apps/dashboard/components/settings/RetentionZdrSettings.tsx` — the asymmetric confirm-gate
+  idiom this task mirrors EXACTLY: `handleZdrToggle` (destructive direction — enabling —
+  optimistic-flip + `ConfirmDialog`; safe direction — disabling — fires immediately),
+  `handleConfirmZdrEnable`, `handleZdrConfirmClose` (reconciles the control from
+  `queryClient.getQueryData`, correct regardless of confirm/cancel timing). This task ADDS a
+  third fieldset to this SAME file/component (residency pin), never a separate component —
+  MILESTONE.md binding rule 5 says residency and ZDR live in the "same Data & residency settings
+  surface."
+- `apps/dashboard/components/settings/SettingsPage.tsx:SettingsPage` — the `Tabs`/`TabsTrigger`/
+  `TabsContent` shell; the tab currently labeled "Retention & ZDR" (`value="retention"`) is the
+  literal surface MILESTONE.md names — this task RENAMES its label to "Data & residency" (the
+  `value` token stays `"retention"`, avoiding any deep-link/test-id churn).
+- `apps/dashboard/components/teams/ConfirmDialog.tsx:ConfirmDialog` — the ONLY confirm-gate
+  primitive anywhere in `apps/dashboard/components` (button-confirm: Cancel / destructive-styled
+  confirm, focus-trapped via `useFocusTrap`, inline `role="alert"` on failure). Grepped the full
+  tree for a type-the-word/typed-confirmation pattern — zero hits. See Issue #4.
+- `apps/dashboard/components/models/ModelsPage.tsx:ModelsPage` — the LIVE `/app/models` route
+  (confirmed via `app/(app)/app/models/page.tsx`), a TanStack `DataTable` over
+  `ColumnDef<AdminModelItem>[]`, reading `GET /admin/models`. This is DISTINCT from
+  `apps/dashboard/components/models/ModelCatalogTable.tsx` (a separate div-based renderer of a
+  different `ModelEntry`/`ModelsData` shape — not imported by any routed page found via grep;
+  legacy/unrouted) — this task's region-badge column is added to `ModelsPage.tsx`'s `columns`
+  array (mirrors the existing `input_modalities` column, ~line 127-144, verbatim shape), never to
+  `ModelCatalogTable.tsx`.
+- `apps/dashboard/components/ui/badge.tsx:Badge`/`badgeVariants` — 6 existing variants
+  (default/secondary/outline/success/warning/destructive); region badges reuse `outline`
+  (neutral, non-alarming — a descriptor, not a status). No new variant/color token.
+- `apps/dashboard/components/keys/CreateKeyDialog.tsx:CreateKeyDialog`/`CreateKeySchema` (Zod) —
+  the key-creation form (currently `name` only, Zod-validated client-side, `err.status===422` ->
+  field error / else -> `globalError` branching). Tier selector + price-delta land here.
+- `apps/dashboard/components/keys/KeysPage.tsx:KeysPage.handleCreateKey`/`createKeyMutation` —
+  owns the actual `bffPost<CreateKeyResponse>("/admin/keys", { name })` call `CreateKeyDialog`'s
+  `onSubmit` delegates to; the body's new `tier` field is added here.
+- `apps/dashboard/app/(marketing)/pricing/page.tsx:PricingPage`/`TIERS` — frozen §3 v1 (a prior
+  sibling task's own frozen contract, docstring cites it): PUBLIC Server Component, zero fetch,
+  "Prices are representative placeholders (no commercial model finalised) — copy, not a
+  commitment." Residency + priority story is additive static copy in the SAME register.
+- `apps/dashboard/lib/hooks/use-current-user.ts:useCurrentUser`/`CurrentUser.role` (`string |
+  null`) — the only client-side role signal; observed values `"owner"`/`"admin"` (`ModelsPage`'s
+  `canManage`) — `"member"` inferred as the third role from `RetentionZdrSettings`/`KeysPage`'s
+  own lack of client-side hiding (backend-403-surfaces-inline is the established convention).
+- `apps/dashboard/components/plan/PlanSeatsPage.tsx` (billing-ui sibling, shipped) — the
+  "degrades gracefully / attempts NO fetch against a not-yet-shipped sibling's endpoint"
+  precedent: `R7` renders a static "Seat pricing coming soon" placeholder for `seat-billing`
+  (its own then-unshipped sibling) with zero network call. THE idiom this task's tier
+  price-delta fallback mirrors for `service-tiers` (confirmed BLANK template, see Issue #2).
+- `apps/dashboard/lib/bff-client.ts` / `resilient-fetch.ts:BffError`/`ProblemDetail` — the one
+  error class/shape (`err.problem.title`) every settings/keys/models surface already reads for
+  inline error display; reused verbatim, no new error-handling shape invented.
+- `apps/dashboard/test-support/axe.ts` + `apps/dashboard/tests-bff/tenant-settings.test.tsx` —
+  the `axe(container, { rules: { "color-contrast": { enabled: false } } })` sweep already run
+  against `SettingsPage`'s tabs; this task's new fieldset/column/dialog/selector join that SAME
+  existing sweep (Anchors), not a new one.
+- `apps/gateway/src/gateway/tenants/domain/authz.py:Permission.SECURITY_CONFIG` /
+  `apps/gateway/src/gateway/catalog/api/router.py:get_admin_models` /
+  `apps/gateway/src/gateway/keys/api/router.py:create_key` (`Depends(require_owner_or_admin)`) —
+  BACKEND RBAC ground truth for the RBAC matrix in DESIGN.md (residency PUT = OWNER-only; catalog
+  GET = any authenticated role; key creation = owner-or-admin) — read directly, not assumed.
+- `apps/dashboard/app/api/gw/[...path]/route.ts` — the existing catch-all BFF proxy. Confirmed:
+  EVERY route this task reads/writes (`/admin/residency-policy`, `/admin/models`, `/admin/keys`,
+  and the forward-cited `/admin/service-tier-pricing`) passes through this ONE existing proxy —
+  zero new BFF route files needed for this task.
+
+Context (working folder): `tmp/residency-tiers-design-context.md` (binding cross-task rules 1-6 +
+WAVE-1 addendum, read in full); `.add/milestones/residency-service-tiers/MILESTONE.md` (UI/UX
+in-scope bullet + Exit criteria 5-6); the THREE frozen sibling contracts read in FULL:
+`.add/tasks/residency-policy/TASK.md` §3 (FROZEN @ v1), `.add/tasks/region-catalog-dimension/TASK.md`
+§3 (FROZEN @ v1), `.add/tasks/region-pricing/TASK.md` §3 (FROZEN @ v1); `.add/tasks/service-tiers/TASK.md`
+— confirmed the BLANK TEMPLATE (`phase: ground`, no §0-§3 content) as of this grounding pass, not
+trusted from milestone prose (folded PROJECT.md DDD lesson, applied verbatim per residency-policy's
+own precedent of re-verifying a cited sibling's actual ground state).
+
+Honors (patterns / conventions):
+- The ZDR asymmetric-confirm idiom verbatim: destructive direction (tightening/setting a pin)
+  gated behind `ConfirmDialog`; safe direction (clearing a pin) fires immediately (RetentionZdrSettings M9).
+- "Disabled + muted, never unmounted" (RetentionZdrSettings M10) — reused for catalog rows a
+  tenant's residency pin makes ineligible: the backend still legitimately returns the row, so the
+  UI never hides it, only marks it.
+- "No fetch attempted against an unshipped sibling's endpoint" (PlanSeatsPage R7) — reused for
+  the tier price-delta fallback against `service-tiers`.
+- Lean-public-vs-extended-admin split (region-catalog-dimension M5: `GET /v1/models` stays
+  byte-identical; `region` only lands on `/admin/*` surfaces) — this task's badge reads
+  `AdminModelItem.region`, never expects `region` on any public-facing model list.
+- Money/percentage figures are ALWAYS server-computed, Decimal end-to-end (region-pricing M8) —
+  the FE only formats and displays a server-returned multiplier/percentage; it never computes or
+  hardcodes a markup number itself (M10).
+- CONVENTIONS.md WCAG 2.2 AA floor + the project's own `ui-designer` persona Default Requirement
+  (contrast/`focus-visible`/hit-target/landmark, computed not eyeballed) — checked on every new
+  surface by default.
+
+Seams consulted: none (`.add/SEAMS.md` does not exist in this project).
+
+Anchors the contract cites: `RetentionZdrSettings.tsx` (extended) · `ConfirmDialog.tsx` (reused) ·
+`SettingsPage.tsx` (tab label rename) · `ModelsPage.tsx:columns` (extended) · new
+`components/ui/region-badge.tsx:RegionBadge` (the ONE new visual, milestone's own instruction —
+"design it once, use everywhere") · `CreateKeyDialog.tsx`/`CreateKeySchema` (extended) ·
+`KeysPage.tsx:handleCreateKey`/`createKeyMutation` (extended) ·
+`(marketing)/pricing/page.tsx:TIERS` (extended) · `use-current-user.ts:CurrentUser.role` (reused) ·
+`bff-client.ts:BffError`/`ProblemDetail` (reused) · residency-policy `GET`/`PUT
+/admin/residency-policy` (FROZEN, cited verbatim) · region-catalog-dimension `AdminModelItem.region`
+(FROZEN, cited verbatim) · region-pricing's reserved (unimplemented) `resolve_tier_multiplier`
+signature (FROZEN, cited as the only textual evidence a tier-pricing resolver will exist) ·
+service-tiers (UNFROZEN — forward-cited only, see Issue #1).
+
+Issues/Risks (→ feed §1):
+1. ⚠ **CROSS-CONTRACT GAP: residency-policy's frozen PUT does not accept `"ap"`.**
+   `region-catalog-dimension` and `region-pricing` both froze (later the same day) with the
+   4-value region set `us|eu|ap|global` (WAVE-1 addendum, a Tin directive added "mid-freeze").
+   `residency-policy`'s OWN frozen §3 (`GET`/`PUT /admin/residency-policy`) still validates
+   `region` against exactly `{null,"us","eu"}` (its M1, R2 — 422 `ERR_RESIDENCY_REGION_INVALID`
+   on anything else) and its own "DECIDED at freeze review" note never revisits this (it covers
+   only M6/realtime/BYOK). CONCRETELY: today, `PUT /admin/residency-policy {region:"ap"}` 422s
+   against the real frozen backend, even though `ap` catalog rows and `ap` pricing both already
+   exist and work — an Asia/Vietnam tenant cannot pin residency at all. This is a genuine,
+   found-in-grounding inconsistency between two ALREADY-FROZEN sibling contracts; this
+   design-only task cannot fix it (MUST NOT edit a frozen contract). Two forks for Tin (named
+   again at the §3 flag): (a) this task's v1 picker offers only `{unrestricted, us, eu}` as
+   pinnable, with `ap` rendered visibly-disabled + a "not available yet" note, and a forward
+   SPEC delta reopens residency-policy for an `ap`-add change request; or (b) block this task's
+   own freeze until residency-policy is amended first. This draft assumes (a).
+2. **service-tiers is a coordination input, not ground truth.** Confirmed BLANK (`phase: ground`,
+   no Must/Reject/Contract at all). The only textual evidence any tier-pricing resolver will
+   exist is region-pricing's own RESERVED (unimplemented, raises `NotImplementedError`)
+   `resolve_tier_multiplier(session, tenant_id, model_id, tier)` stub plus MILESTONE.md's DECIDED
+   "+25%" seed language. This task forward-cites an ASSUMED `GET /admin/service-tier-pricing`
+   shape (mirroring region-pricing's own `GET /admin/region-pricing` shape — the closest sibling
+   precedent) for the key-creation price delta, and designs the UI to degrade gracefully
+   (PlanSeatsPage R7's idiom: render the selector, show an inert "Pricing pending" placeholder,
+   attempt NO fetch against a guessed endpoint) if that assumption is wrong or unshipped by this
+   task's own Build.
+3. `resolve_tier_multiplier`'s reserved signature takes `model_id` — implying a possibly
+   PER-MODEL tier markup — but `CreateKeyDialog` has no model-selection step (a key is not bound
+   to one model at creation; `model_allowlist` is set later via `KeyGovernanceEditor`). This task
+   therefore assumes the price delta shown at key creation is a flat, TENANT-LEVEL figure
+   independent of any specific model — flagged as an open assumption (§1), unconfirmable until
+   service-tiers drafts its own Must list.
+4. MILESTONE.md's own UI/UX bullet and this task's slug line both say "typed confirm gate," but
+   grepping the ENTIRE `apps/dashboard/components` tree for a type-the-word-to-confirm pattern
+   returns zero hits — the only confirm-gate primitive in this codebase is `ConfirmDialog.tsx`
+   (button-confirm, not text-entry). Interpreted here as "a confirm gate carrying typed-out
+   (written) consequence copy" — matching the persona's own instruction to mirror ZDR EXACTLY,
+   rather than inventing a new text-entry interaction with zero sibling precedent
+   (reuse-before-invent). Flagged in case "typed" was meant literally.
+5. `ModelsPage.tsx`'s existing `canManage` check (`role==="owner"||role==="admin"`) gates ONLY
+   the re-sync button — the table itself (and therefore any new region badge/ineligibility
+   styling) is visible to every authenticated role, including `member`, consistent with
+   `GET /admin/residency-policy`'s own "any authenticated role may read" (residency-policy M2) —
+   no new RBAC surface is introduced by this task.
+6. The marketing `/pricing` page's frozen contract explicitly disclaims "prices are
+   representative placeholders (no commercial model finalised)" — the residency/priority STORY
+   this task adds must stay in that same register (feature copy, not a live-computed price), or
+   it would silently promise a commitment the page's own frozen contract forbids.
+
+Related intent: MILESTONE.md UI/UX-in-scope bullet + Exit criteria 5-6; MILESTONE.md binding
+rules 1 (region is the single source of truth), 2 (fail-closed, audited + confirm-gated), 4
+(tier is a capacity preference, not a guarantee), 5 (composes with ZDR, same settings surface);
+the three frozen sibling tasks' own Glossary deltas (`region`, `residency policy`, `region pin`,
+`region multiplier`, `tenant_region_multiplier_overrides`) — cited, never redefined here; this
+task's own new Glossary delta (§3) covers the FRONTEND-only "consequence line" concept and
+`RegionBadge`.
+
+Ground SHA: 853afa8
 
 ---
 
 ## 1 · SPECIFY — the rules ▸ docs/03-step-1-specify.md
 
-Feature: <name>
-Framings weighed: <chosen> (chosen) · <alternative> · <alternative>
+Feature: Data & residency settings surface (region pin + consequence line), catalog region
+badges (incl. pinned-tenant ineligibility view), key-creation Priority/Standard tier selector
+with price delta, and the marketing pricing page's residency + priority story.
+
+Framings weighed: **extend existing surfaces additively (chosen)** · a dedicated new
+`/app/residency` page + nav group · a new typed (text-entry) confirm component
+
+- **(chosen) Extend existing surfaces additively.** `RetentionZdrSettings.tsx` gets a third
+  fieldset + a tab-label rename; `ModelsPage.tsx` gets one new badge column; `CreateKeyDialog.tsx`
+  gets a selector; the marketing pricing page gets new static copy. Zero new nav entries, zero
+  new pages — matches MILESTONE.md's own instruction ("extends the EXISTING ZDR panel idiom...
+  no new design idiom beyond the badges") and the persona's reuse-before-invent rule.
+- (rejected) A dedicated new page/nav group (mirrors billing-ui's `/app/invoices`+`/app/credits`+
+  `/app/plan` pattern): residency is a single GET/PUT pair, not a multi-page domain — MILESTONE.md
+  is explicit that it EXTENDS the existing ZDR surface; a new page/nav group would be unjustified
+  surface growth this milestone never asked for.
+- (rejected) A new type-the-word text-entry confirm component distinct from `ConfirmDialog`
+  (Issue #4): no sibling precedent anywhere in this codebase; violates reuse-before-invent. This
+  draft instead uses `ConfirmDialog`'s existing button-confirm with typed-out (written)
+  consequence copy, matching the persona's instruction to mirror the ZDR idiom EXACTLY.
+
 Must:
 <must>
-  - <required behavior>
+  - M1: The Settings tab currently labeled "Retention & ZDR" (`SettingsPage.tsx`, `value="retention"`)
+    is renamed "Data & residency"; `RetentionZdrSettings.tsx` gains a THIRD fieldset ("Data
+    residency") reading `GET /admin/residency-policy` and writing `PUT /admin/residency-policy`
+    (residency-policy's frozen §3, cited verbatim) — same file, same tab, per MILESTONE.md
+    binding rule 5 ("same Data & residency settings surface"). The Retention and ZDR fieldsets
+    are otherwise UNCHANGED (no behavior/markup regression).
+  - M2: The residency fieldset offers exactly THREE selectable options: "No pin (unrestricted)"
+    (`region: null`), "US", "EU" — NOT "AP" (Issue #1). `ap` renders as a visibly-DISABLED
+    option with helper text "Not available yet — Asia-Pacific residency pinning is a tracked
+    follow-up," never silently omitted, so the gap is legible, not hidden.
+  - M3: Saving a NEW pin value that differs from the last-known server value (`seededData.region`)
+    — covering BOTH "unset → pinned" and "pinned A → pinned B" — triggers `ConfirmDialog` with
+    the region-specific consequence-line copy (§3, verbatim) BEFORE the `PUT` fires; mirrors
+    `handleZdrToggle`'s destructive-direction gate exactly, including reconciling the displayed
+    value from `queryClient.getQueryData` on close (mirrors `handleZdrConfirmClose`), correct
+    whether the user confirms or cancels.
+  - M4: Saving "No pin (unrestricted)" when a pin is currently set fires the `PUT` immediately,
+    NO `ConfirmDialog` — mirrors ZDR's disable-is-safe/immediate asymmetry (M9's inverse) exactly.
+  - M5: A non-OWNER role sees the SAME picker + Save control as an OWNER (no client-side hiding,
+    Issue #5); a 403 from the `PUT` (residency-policy R3) surfaces via the SAME inline error
+    pattern `RetentionZdrSettings.tsx` already uses for its other two fieldsets — no new
+    error-display shape.
+  - M6: `ModelsPage.tsx`'s `columns` array gains a "Region" column rendering the new
+    `RegionBadge` component (`Badge variant="outline"`, uppercased region text: `US`/`EU`/`AP`/
+    `GLOBAL`) from `AdminModelItem.region` — mirrors the existing `input_modalities` column's
+    position/cell shape verbatim. `RegionBadge` is the ONE new visual this task introduces
+    (MILESTONE.md: "design it once, use everywhere") and is reused nowhere else visually
+    differently.
+  - M7: When the calling tenant has a residency pin set (read from the SAME
+    `GET /admin/residency-policy` call M1 uses, fetched once by `ModelsPage` and never re-fetched
+    per row) and a catalog row's `region` does not satisfy that pin (residency-policy/
+    region-catalog-dimension M6 semantics: `global`/mismatched region never satisfies a specific
+    pin), that row's `Enabled` `Switch` renders `disabled` and the row is visually muted (mirrors
+    RetentionZdrSettings M10's "disabled + muted, never unmounted" idiom) with an additional
+    inline "Ineligible in {PIN}" `Badge variant="warning"`. The row STAYS in the table — never
+    filtered out — an admin must still be able to see and reason about the full catalog.
+  - M8: If the residency-policy read (M7's data source) is loading or fails, `ModelsPage.tsx`
+    still renders the region badges (M6) WITHOUT the ineligibility treatment (M7) — a
+    residency-read failure never blocks the catalog table itself (mirrors `PlanSeatsPage`'s
+    independent-per-read degrade idiom, applied to a READ this time rather than a write).
+  - M9: `CreateKeyDialog.tsx` gains a required tier selector (`"priority"|"standard"`, default
+    `"standard"`) submitted as `tier` in the `POST /admin/keys` body (field OWNED by service-tiers,
+    cited — not redefined here; Issue #2/#3). Inline copy states the capacity-preference nuance
+    verbatim (§3): "Priority requests get preference under contention and may fall back to
+    Standard when capacity is unavailable — Standard is never starved."
+  - M10: Next to the tier selector, a price-delta line reads a forward-cited
+    `GET /admin/service-tier-pricing` (assumed shape, Issue #2) ONCE per dialog open and shows the
+    SERVER-COMPUTED delta for the `priority` option (e.g. "+25% on requests using this key") —
+    NEVER a hardcoded percentage. If that fetch 404s/errors/is unavailable, the price-delta line
+    is replaced with the inert placeholder "Pricing pending" and NO retry/poll is attempted
+    (mirrors `PlanSeatsPage` R7's zero-fetch-against-unshipped-sibling idiom) — the tier selector
+    itself still renders and remains fully submittable.
+  - M11: The marketing `/pricing` page gains: (a) a new feature bullet on the "Team" tier
+    ("Priority service tier (optional, usage-priced)") and the "Enterprise" tier ("Data
+    residency: pin inference to US or EU"); (b) one new short static section/callout naming the
+    residency + priority story in prose — no live data, no price commitment, matching the page's
+    own frozen "representative placeholders" posture (Issue #6). Zero new fetch; the page stays a
+    Server Component.
+  - M12: Every new/changed surface (residency fieldset, region badge column, ineligibility
+    badge, tier selector + price-delta, pricing-page copy) passes the SAME
+    `axe(container, { rules: { "color-contrast": { enabled: false } } })` sweep already run
+    against `SettingsPage`/`ModelsPage`/`CreateKeyDialog` with zero NEW serious/critical
+    violations — WCAG 2.2 AA floor (contrast ≥4.5:1 body / ≥3:1 large text, visible
+    `focus-visible`, ≥44px hit targets, correct landmark order), COMPUTED not eyeballed (the
+    ui-designer persona's Default Requirement).
 </must>
 Reject:
 <reject>
-  - <bad input / situation> -> "<error_code>"
+  - R1: Attempting to select/save "AP" as a residency pin in the FE picker -> the option is
+    rendered `disabled` (client-side prevention — the frozen backend would itself 422
+    `ERR_RESIDENCY_REGION_INVALID` on `"ap"` today, Issue #1) — never a submitted request that
+    predictably fails.
+  - R2: `PUT /admin/residency-policy` returns 422 `ERR_RESIDENCY_REGION_INVALID` (a defensive
+    case — should be unreachable given R1, but never swallowed) -> the picker's pending selection
+    is NOT written to `seededData`; the displayed value reverts to the last-known-good server
+    state on the next reconcile, and the server's `title` surfaces inline.
+  - R3: `PUT /admin/residency-policy` returns 403 (non-OWNER) -> inline error (M5); the picker's
+    displayed value reconciles from the query cache (mirrors `handleZdrConfirmClose`) — no
+    silent success implied.
+  - R4: `GET /admin/service-tier-pricing` (forward-cited, Issue #2) is unavailable (404/5xx/
+    network error) -> "Pricing pending" placeholder (M10); tier selector stays submittable; NO
+    error banner — this is an expected degrade, not a fault (mirrors `PlanSeatsPage` treating an
+    unshipped sibling's absence as normal, never an `ErrorState`).
+  - R5: `POST /admin/keys` rejects the submitted `tier` value (a future service-tiers validation
+    error, exact code TBD by that task) -> surfaces via `CreateKeyDialog`'s EXISTING
+    error-branching (`err.status===422` -> field-level message; else -> `globalError`) — no new
+    error-handling code path invented ahead of service-tiers' own frozen error codes.
 </reject>
 After:
 <after>
-  - <state that is true once it succeeds>
+  - A tenant admin sees ONE settings surface ("Data & residency") covering retention window,
+    ZDR, AND the residency pin, each independently readable/writable, with the pin's destructive
+    direction gated behind the SAME confirm idiom as ZDR and the consequence line stated verbatim
+    before any tightening write.
+  - The catalog table shows every row's region at a glance, and — for a pinned tenant — visibly
+    (never silently) distinguishes rows the pin excludes, without ever hiding a row.
+  - A new key can be created as Priority or Standard, with a truthfully-sourced (never hardcoded)
+    price signal wherever service-tiers has actually shipped its pricing endpoint, and an honest
+    "pending" placeholder wherever it has not.
+  - The public pricing page names data residency and priority service as real, shippable
+    differentiators, in the same non-committal copy register the page's own frozen contract
+    already uses.
+  - `ap` residency pinning is VISIBLY not-yet-available rather than silently broken or silently
+    omitted — and Tin has an explicit fork (§3 flag) to resolve before this task's own freeze.
 </after>
 Assumptions — lowest-confidence first:
 <assumptions>
-  ⚠ <the one assumption most likely to be wrong> — lowest confidence because <why>; if wrong: <cost>
-  - [ ] <next assumption, ranked> — confirm or deny; never carry an open one forward
+  ⚠ #1 (Issue #2) service-tiers' key-tier field name/values (`tier`: `"priority"|"standard"`)
+  and a `GET /admin/service-tier-pricing` endpoint mirroring region-pricing's own shape are BOTH
+  assumed, not frozen — service-tiers is still the blank `phase: ground` template. Lowest
+  confidence because this is the single largest unfrozen forward-dependency in the whole bundle;
+  if service-tiers freezes a materially different field name, enum, or a wholly different
+  pricing-delivery mechanism (e.g. baked directly into a per-model catalog price rather than a
+  separate endpoint), M9/M10/R4/R5 need a change-request back to SPECIFY for this task before
+  Build. Recommend freezing service-tiers before (or in the same session as) this task's own
+  freeze — exactly the same recommendation region-pricing made for region-catalog-dimension.
+  - [ ] #2 (Issue #1) The residency-policy/region-catalog-dimension `ap` mismatch is real, and
+  this draft resolves it by SCOPE-CUTTING `ap` from the v1 picker (option a) rather than blocking
+  this task's freeze on a residency-policy amendment (option b) — confirm this is the preferred
+  resolution; if Tin prefers (b), this task's freeze should wait for a residency-policy
+  change-request to land first.
+  - [ ] #3 (Issue #4) "typed confirm gate" is interpreted as "written consequence copy inside the
+  existing `ConfirmDialog`," not a literal type-the-word text-entry interaction — confirm or
+  correct at freeze; a literal typed-confirmation would be a NEW interaction pattern with no
+  sibling precedent (added cost: a new component, new a11y surface to verify, not a reuse).
+  - [ ] #4 (Issue #3) The tier price-delta shown at key creation is assumed to be a FLAT
+  tenant-level figure, not per-model, despite `resolve_tier_multiplier`'s reserved `model_id`
+  parameter — confirm against service-tiers' own eventual Must list once drafted.
 </assumptions>
 
 <!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
@@ -55,11 +343,132 @@ Assumptions — lowest-confidence first:
 <scenarios>
 
 ```gherkin
-Scenario: <short name>   # <Must/Reject item this covers, e.g. M1 or R1>
-  Given <starting situation>
-  When <action>
-  Then <expected result>
-  And <what must remain unchanged>   # required for every rejection
+Scenario: Data & residency tab renamed and third fieldset renders   # M1
+  Given an authenticated tenant user opens /app/settings
+  When they view the tab labeled "Data & residency" (formerly "Retention & ZDR")
+  Then the Retention window and Zero-Data-Retention fieldsets render exactly as before
+  And a new "Data residency" fieldset renders below them, fetching GET /admin/residency-policy
+
+Scenario: fresh pin (unset -> EU) shows the confirm dialog with the EU consequence line   # M3
+  Given tenant T's residency-policy fieldset shows "No pin (unrestricted)" (seededData.region == null)
+  When the OWNER selects "EU" and clicks Save
+  Then a ConfirmDialog opens BEFORE any PUT fires
+  And its body reads "Pinning to EU means requests that cannot run in the EU will be refused, not rerouted. This also blocks realtime voice for this tenant — no realtime model is region-tagged yet."
+  And PUT /admin/residency-policy has NOT been called yet
+
+Scenario: switching an existing pin (US -> EU) also shows the confirm dialog   # M3
+  Given tenant T's residency-policy fieldset shows "US" (seededData.region == "us")
+  When the OWNER selects "EU" and clicks Save
+  Then the SAME ConfirmDialog flow as the fresh-pin scenario triggers (pinned A -> pinned B is not exempt)
+  And confirming calls PUT /admin/residency-policy with {"region":"eu"}
+
+Scenario: confirming the EU pin persists it and reconciles the display   # M3
+  Given the EU consequence ConfirmDialog is open (from either prior scenario)
+  When the OWNER clicks "Pin to EU" (the confirm action)
+  Then PUT /admin/residency-policy {"region":"eu"} is called
+  And on success the fieldset displays "EU" sourced from the response, not local state
+  And a fire-and-forget audit event was already recorded server-side (residency-policy M3, cited)
+
+Scenario: cancelling the confirm dialog leaves the server pin unchanged   # M3, mirrors handleZdrConfirmClose
+  Given the EU consequence ConfirmDialog is open and the server's last-known region is "us"
+  When the OWNER clicks "Cancel"
+  Then no PUT is ever sent
+  And the fieldset's displayed value reconciles to "US" (the query-cache value), not "EU"
+
+Scenario: clearing a pin fires immediately, no confirm dialog   # M4
+  Given tenant T's residency-policy fieldset shows "EU" (seededData.region == "eu")
+  When the OWNER selects "No pin (unrestricted)" and clicks Save
+  Then PUT /admin/residency-policy {"region":null} fires immediately
+  And no ConfirmDialog ever opens
+
+Scenario: AP is offered but not selectable   # M2, R1
+  Given the residency-policy fieldset's region picker renders
+  When any user inspects the "AP" option
+  Then it is rendered disabled with helper text "Not available yet — Asia-Pacific residency pinning is a tracked follow-up"
+  And it cannot be selected, so PUT /admin/residency-policy is never called with {"region":"ap"}
+
+Scenario: non-owner sees the same picker and gets an inline 403 on save   # M5, R3
+  Given a MEMBER-role user views the Data & residency tab
+  When they change the region selection and click Save (no client-side hiding)
+  Then PUT /admin/residency-policy is called and the backend returns 403
+  And the fieldset shows the existing inline mutError pattern with the server's title
+  And the displayed region value reconciles from the query cache, unchanged from before the attempt
+
+Scenario: defensive 422 on an unreachable-in-practice PUT   # R2
+  Given a PUT /admin/residency-policy request somehow reaches the server with an invalid region
+  When the server responds 422 ERR_RESIDENCY_REGION_INVALID
+  Then the pending selection is NOT written into seededData
+  And the fieldset reverts its displayed value to the last-known-good server state
+  And the server's title is shown inline, never swallowed
+
+Scenario: catalog table shows a Region badge per row   # M6
+  Given the admin models table (/app/models) has loaded rows with region "us", "eu", "ap", "global"
+  When the table renders
+  Then each row shows a RegionBadge (Badge variant="outline") reading "US"/"EU"/"AP"/"GLOBAL"
+  And the badge sits in the same visual family as the existing input_modalities badges
+
+Scenario: pinned tenant sees ineligible catalog rows dimmed, disabled, and badged — never removed   # M7
+  Given tenant T has residency_region == "eu"
+  And the catalog table includes a row with region == "us"
+  When the table renders (GET /admin/residency-policy and GET /admin/models both succeeded)
+  Then the "us" row's Enabled Switch is disabled
+  And the row is visually muted
+  And an "Ineligible in EU" Badge (variant="warning") renders on that row
+  And the row is still present in the table — never filtered out or hidden
+
+Scenario: residency-read failure degrades gracefully — catalog table stays fully usable   # M8
+  Given GET /admin/residency-policy fails (network error or 5xx) while GET /admin/models succeeds
+  When the catalog table renders
+  Then every row still shows its RegionBadge (M6)
+  And no row is dimmed/disabled/badged as ineligible (M7's treatment is simply absent)
+  And no page-level ErrorState blocks the table — the failure is silent-degrade, not a hard error
+
+Scenario: tier selector renders on key creation with a safe default   # M9
+  Given an owner/admin opens the Create API Key dialog
+  When the dialog renders
+  Then a Priority/Standard selector is visible, defaulting to "Standard"
+  And the capacity-preference copy renders verbatim: "Priority requests get preference under contention and may fall back to Standard when capacity is unavailable — Standard is never starved."
+
+Scenario: submitting a key with Priority tier sends the tier field   # M9
+  Given the Create API Key dialog is open with "Priority" selected and a valid name entered
+  When the user submits the form
+  Then POST /admin/keys is called with body including {"tier":"priority", "name": "<name>"}
+  And on success the dialog closes and the plaintext-key banner shows, matching existing behavior
+
+Scenario: price delta shows the real server-computed value   # M10
+  Given GET /admin/service-tier-pricing succeeds and returns a priority entry with multiplier "1.25"
+  When the Create API Key dialog renders
+  Then the price-delta line reads "+25% on requests using this key" — computed from the returned multiplier
+  And no percentage string is hardcoded anywhere in the component
+
+Scenario: price delta degrades to a pending placeholder when the pricing endpoint is unavailable   # M10, R4
+  Given GET /admin/service-tier-pricing 404s (service-tiers not yet shipped, or a network error)
+  When the Create API Key dialog renders
+  Then the price-delta line shows the inert placeholder "Pricing pending"
+  And no retry or poll is attempted against that endpoint
+  And the tier selector itself remains fully rendered and submittable
+  And no ErrorState/error banner appears — this is an expected degrade, not a fault
+
+Scenario: a tier rejection from key creation surfaces via the existing error branching   # R5
+  Given the Create API Key dialog is submitted with an invalid/rejected tier value
+  When POST /admin/keys returns a 422 (or another 4xx) citing the tier field
+  Then the existing CreateKeyDialog error branching surfaces it (422 -> field-level, else -> globalError)
+  And no new bespoke error-handling code path was added for this case
+  And the dialog stays open with the entered name preserved
+
+Scenario: marketing pricing page tells the residency + priority story with zero fetch   # M11
+  Given an anonymous visitor requests /pricing (Server Component, no auth)
+  When the page renders
+  Then the Team tier lists "Priority service tier (optional, usage-priced)"
+  And the Enterprise tier lists "Data residency: pin inference to US or EU"
+  And a short residency + priority callout section renders as static copy
+  And zero network requests are made by the page itself (server-rendered, matches the frozen "no fetch" contract)
+
+Scenario: full-surface accessibility sweep passes on every new/changed surface   # M12
+  Given the Data & residency fieldset, the catalog Region/Ineligible badges, the tier selector + price-delta, and the marketing pricing page callout are all rendered
+  When axe(container, { rules: { "color-contrast": { enabled: false } } }) runs against each
+  Then zero NEW serious/critical violations are reported
+  And every interactive control (region picker, Save button, ConfirmDialog, tier selector) has a visible focus-visible state and a >=44px hit target
 ```
 
 </scenarios>
