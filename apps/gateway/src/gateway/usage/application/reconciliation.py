@@ -65,6 +65,58 @@ class ReconciliationSummary:
 
 
 @dataclass(frozen=True)
+class TenantModelReconciliation:
+    """One (tenant, model) bucket's margin within a window (margin-dashboard TASK.md §3 M4).
+
+    Unlike `TenantReconciliation` (provider-only rows), this groups over ALL rows in the
+    window regardless of `cost_basis` — a (tenant, model) pair with only `cost_basis='catalog'`
+    usage still appears, with `has_provider_cost_data=False` and `margin=None` (the M3 honesty
+    rule: never a fabricated or zeroed margin for a bucket with no upstream truth).
+    """
+
+    tenant_id: uuid.UUID
+    model_id: str
+    provider_cost_total: Decimal  # Σ provider_cost over cost_basis='provider' rows
+    billed_total: Decimal  # Σ cost_usd over cost_basis='provider' rows
+    catalog_billed_total: Decimal  # Σ cost_usd over cost_basis='catalog' rows
+    margin: Decimal | None  # billed_total - provider_cost_total, or None (no provider data)
+    has_provider_cost_data: bool  # True iff ≥1 cost_basis='provider' row in this bucket
+    unbilled_upstream_cost: Decimal  # Σ provider_cost (>0, cost_usd=0, cost_basis='provider')
+    unbilled_rows: int  # COUNT(*) of those rows
+
+
+@dataclass(frozen=True)
+class MarginTrendPoint:
+    """One date-bucketed point of the margin trend (margin-dashboard TASK.md §3 M5).
+
+    Same provider/catalog split and honest-null margin rule as `TenantModelReconciliation`,
+    bucketed by `date_trunc(granularity, created_at)` instead of grouped by (tenant, model).
+    """
+
+    bucket_start: datetime
+    provider_cost_total: Decimal
+    billed_total: Decimal
+    catalog_billed_total: Decimal
+    margin: Decimal | None
+    has_provider_cost_data: bool
+
+
+@dataclass(frozen=True)
+class TenantLedgerPeriod:
+    """One tenant's ledger totals for a calendar-month period (margin-dashboard TASK.md §3 M6).
+
+    `ledger_billed_total_usd` sums `cost_usd` over ALL `cost_basis` values (the tie-out target
+    an issued invoice's `raw_total_usd` is compared against) — deliberately NOT restricted to
+    `cost_basis='provider'` like the drift-reconciliation primitives above, since the ledger
+    truth an invoice is generated from includes catalog-priced usage too.
+    """
+
+    tenant_id: uuid.UUID
+    ledger_billed_total_usd: Decimal
+    provider_cost_total_usd: Decimal  # Σ provider_cost, cost_basis='provider' only
+
+
+@dataclass(frozen=True)
 class CostBasisBreach:
     """One recorder-invariant breach: a `cost_basis='catalog'` row carrying a provider_cost.
 
@@ -250,6 +302,193 @@ async def reconcile_by_tenant(
             drift=_money(row[1]) - _money(row[2]),
             unbilled_upstream_cost=_money(row[3]),
             unbilled_rows=int(row[4]),
+        )
+        for row in rows
+    )
+
+
+async def reconcile_by_tenant_model(
+    session: AsyncSession,
+    window_from: datetime,
+    window_to: datetime,
+) -> tuple[TenantModelReconciliation, ...]:
+    """Per-(tenant, model) margin over `created_at ∈ [window_from, window_to)` (margin-dashboard
+    TASK.md §3 M4, operator-wide).
+
+    READ-ONLY: one SELECT-only `GROUP BY tenant_id, model_id` aggregate over ALL rows in the
+    window (unlike `reconcile_by_tenant`, NOT restricted to `cost_basis='provider'` — a bucket
+    with only catalog-basis usage must still appear, per the M3 honesty rule, with
+    `has_provider_cost_data=False` and `margin=None` rather than being silently absent). Rows
+    are sorted by `(tenant_id, model_id)` for deterministic keyset pagination by the caller.
+    Raises ``ValueError`` on an inverted window; an empty window → ``()``.
+    """
+    window_from = _as_naive_utc(window_from)
+    window_to = _as_naive_utc(window_to)
+    if window_to < window_from:
+        raise ValueError(
+            f"inverted reconciliation window: window_to {window_to!r} < window_from {window_from!r}"
+        )
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT tenant_id, model_id,"
+                "  COALESCE(SUM(provider_cost) FILTER (WHERE cost_basis = 'provider'), 0)"
+                "    AS provider_cost_total,"
+                "  COALESCE(SUM(cost_usd) FILTER (WHERE cost_basis = 'provider'), 0)"
+                "    AS billed_total,"
+                "  COALESCE(SUM(cost_usd) FILTER (WHERE cost_basis = 'catalog'), 0)"
+                "    AS catalog_billed_total,"
+                "  COALESCE(SUM(provider_cost) FILTER"
+                "    (WHERE provider_cost > 0 AND cost_usd = 0 AND cost_basis = 'provider'), 0)"
+                "    AS unbilled_upstream_cost,"
+                "  COUNT(*) FILTER"
+                "    (WHERE provider_cost > 0 AND cost_usd = 0 AND cost_basis = 'provider')"
+                "    AS unbilled_rows,"
+                "  COUNT(*) FILTER (WHERE cost_basis = 'provider') AS provider_row_count"
+                " FROM usage_records"
+                " WHERE created_at >= :from AND created_at < :to"
+                " GROUP BY tenant_id, model_id ORDER BY tenant_id, model_id"
+            ),
+            {"from": window_from, "to": window_to},
+        )
+    ).fetchall()
+
+    results: list[TenantModelReconciliation] = []
+    for row in rows:
+        provider_cost_total = _money(row[2])
+        billed_total = _money(row[3])
+        # row[6] = unbilled_rows, row[7] = provider_row_count (both COUNT(*) FILTER columns).
+        has_provider_cost_data = int(row[7]) > 0
+        results.append(
+            TenantModelReconciliation(
+                tenant_id=uuid.UUID(str(row[0])),
+                model_id=str(row[1]),
+                provider_cost_total=provider_cost_total,
+                billed_total=billed_total,
+                catalog_billed_total=_money(row[4]),
+                margin=(billed_total - provider_cost_total) if has_provider_cost_data else None,
+                has_provider_cost_data=has_provider_cost_data,
+                unbilled_upstream_cost=_money(row[5]),
+                unbilled_rows=int(row[6]),
+            )
+        )
+    return tuple(results)
+
+
+async def reconcile_trend(
+    session: AsyncSession,
+    window_from: datetime,
+    window_to: datetime,
+    granularity: str,
+    tenant_id: uuid.UUID | None = None,
+) -> tuple[MarginTrendPoint, ...]:
+    """Date-bucketed margin trend over `created_at ∈ [window_from, window_to)` (margin-dashboard
+    TASK.md §3 M5).
+
+    Buckets via `date_trunc(granularity, created_at AT TIME ZONE 'UTC')` — the EXACT idiom
+    `usage/api/router.py`'s `/admin/spend` windowed-bucket endpoint already uses (same
+    NUMERIC-SUM discipline, no float). `granularity` MUST be a validated value (one of
+    "day"/"week"/"month", from `_compute_window_bounds`'s own whitelist) — it is interpolated
+    into the SQL text (Postgres `date_trunc` needs a literal-shaped first argument the same
+    way the existing spend-windows query already does), never user input directly.
+    `tenant_id` is an OPTIONAL filter (all tenants when None). Raises ``ValueError`` on an
+    inverted window; an empty window → ``()``.
+    """
+    window_from = _as_naive_utc(window_from)
+    window_to = _as_naive_utc(window_to)
+    if window_to < window_from:
+        raise ValueError(
+            f"inverted reconciliation window: window_to {window_to!r} < window_from {window_from!r}"
+        )
+    if granularity not in {"day", "week", "month"}:
+        raise ValueError(f"invalid trend granularity: {granularity!r}")
+
+    tenant_clause = " AND tenant_id = :tid" if tenant_id is not None else ""
+    params: dict[str, object] = {"from": window_from, "to": window_to}
+    if tenant_id is not None:
+        params["tid"] = str(tenant_id)
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT"  # noqa: S608 (granularity is whitelist-validated above, not user text)
+                f"  date_trunc('{granularity}', created_at AT TIME ZONE 'UTC') AS bucket_start,"
+                "  COALESCE(SUM(provider_cost) FILTER (WHERE cost_basis = 'provider'), 0)"
+                "    AS provider_cost_total,"
+                "  COALESCE(SUM(cost_usd) FILTER (WHERE cost_basis = 'provider'), 0)"
+                "    AS billed_total,"
+                "  COALESCE(SUM(cost_usd) FILTER (WHERE cost_basis = 'catalog'), 0)"
+                "    AS catalog_billed_total,"
+                "  COUNT(*) FILTER (WHERE cost_basis = 'provider') AS provider_row_count"
+                " FROM usage_records"
+                " WHERE created_at >= :from AND created_at < :to"
+                + tenant_clause
+                + " GROUP BY bucket_start ORDER BY bucket_start"
+            ),
+            params,
+        )
+    ).fetchall()
+
+    results: list[MarginTrendPoint] = []
+    for row in rows:
+        provider_cost_total = _money(row[1])
+        billed_total = _money(row[2])
+        has_provider_cost_data = int(row[4]) > 0
+        results.append(
+            MarginTrendPoint(
+                bucket_start=row[0],
+                provider_cost_total=provider_cost_total,
+                billed_total=billed_total,
+                catalog_billed_total=_money(row[3]),
+                margin=(billed_total - provider_cost_total) if has_provider_cost_data else None,
+                has_provider_cost_data=has_provider_cost_data,
+            )
+        )
+    return tuple(results)
+
+
+async def tie_out_ledger_by_tenant(
+    session: AsyncSession,
+    period_start: datetime,
+    period_end: datetime,
+) -> tuple[TenantLedgerPeriod, ...]:
+    """Per-tenant ledger totals for a calendar-month period (margin-dashboard TASK.md §3 M6).
+
+    READ-ONLY: one SELECT-only `GROUP BY tenant_id` aggregate. `ledger_billed_total_usd` sums
+    `cost_usd` over ALL `cost_basis` values (the same total an invoice's `raw_total_usd` is
+    generated from) — deliberately NOT the provider-only billed_total the drift primitives
+    above compute. `provider_cost_total_usd` stays provider-only, for the tie-out response's
+    own informational field. Raises ``ValueError`` on an inverted window; an empty period →
+    ``()``.
+    """
+    period_start = _as_naive_utc(period_start)
+    period_end = _as_naive_utc(period_end)
+    if period_end < period_start:
+        raise ValueError(
+            f"inverted tie-out period: period_end {period_end!r} < period_start {period_start!r}"
+        )
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT tenant_id,"
+                "  COALESCE(SUM(cost_usd), 0) AS ledger_billed_total_usd,"
+                "  COALESCE(SUM(provider_cost) FILTER (WHERE cost_basis = 'provider'), 0)"
+                "    AS provider_cost_total_usd"
+                " FROM usage_records"
+                " WHERE created_at >= :from AND created_at < :to"
+                " GROUP BY tenant_id ORDER BY tenant_id"
+            ),
+            {"from": period_start, "to": period_end},
+        )
+    ).fetchall()
+
+    return tuple(
+        TenantLedgerPeriod(
+            tenant_id=uuid.UUID(str(row[0])),
+            ledger_billed_total_usd=_money(row[1]),
+            provider_cost_total_usd=_money(row[2]),
         )
         for row in rows
     )

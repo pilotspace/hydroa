@@ -201,6 +201,14 @@ const PLATFORM_TENANTS_HREF = "/app/platform/tenants";
  * above, `visibleItems()`, or any of the 19 `NAV_ITEMS`.
  */
 const PLATFORM_PLANS_HREF = "/app/platform/plans";
+/**
+ * "Platform" -> "Margin" (margin-dashboard, TASK.md M12) — a THIRD entry in the
+ * SAME allowlist-gated group, alongside "Tenants" and "Plans". Same
+ * `showPlatformNav` gate, same fail-CLOSED semantics; zero changes to the
+ * "Tenants"/"Plans" entries above, `visibleItems()`, or any of the 19
+ * `NAV_ITEMS`.
+ */
+const PLATFORM_MARGIN_HREF = "/app/platform/margin";
 
 function PlatformNavGroup({
   activePath,
@@ -225,6 +233,13 @@ function PlatformNavGroup({
         icon={<Tags className="size-4" />}
       >
         <span className={collapsed ? "sr-only" : undefined}>Plans</span>
+      </SidebarItem>
+      <SidebarItem
+        href={PLATFORM_MARGIN_HREF}
+        active={activePath === PLATFORM_MARGIN_HREF}
+        icon={<BarChart3 className="size-4" />}
+      >
+        <span className={collapsed ? "sr-only" : undefined}>Margin</span>
       </SidebarItem>
     </SidebarGroup>
   );

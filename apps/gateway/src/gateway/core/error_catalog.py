@@ -987,8 +987,16 @@ INVOICE_QUERY_TIMEOUT = ErrorSpec(
 #: surface) — no v1 route can trigger this; M5 immutability is enforced by the
 #: DB trigger itself (invoices/invoice_lines/invoice_corrections), tested
 #: directly against the write path, not via an HTTP route.
-INVOICE_IMMUTABLE = ErrorSpec(
-    409, "ERR_INVOICE_IMMUTABLE", "Issued invoices cannot be modified"
+INVOICE_IMMUTABLE = ErrorSpec(409, "ERR_INVOICE_IMMUTABLE", "Issued invoices cannot be modified")
+
+# ---------------------------------------------------------------------------
+# Margin-dashboard errors (margin-dashboard TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: One of the 4 GET /admin/platform/margin/* reads exceeded its bounded
+#: asyncio.timeout query budget (M8).
+MARGIN_QUERY_TIMEOUT = ErrorSpec(
+    504, "ERR_MARGIN_QUERY_TIMEOUT", "Margin query exceeded its time budget"
 )
 
 # ---------------------------------------------------------------------------

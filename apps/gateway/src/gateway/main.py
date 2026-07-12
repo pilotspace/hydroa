@@ -92,6 +92,10 @@ from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registe
 from gateway.conversations.infrastructure.orm import (
     ConversationRow as _ConversationRow,  # noqa: F401  # pyright: ignore[reportUnusedImport]  — side-effect import
 )
+from gateway.core.body_size_guard import BodySizeLimitMiddleware
+from gateway.core.config import Settings
+from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
+from gateway.core.errors import register_error_handlers
 from gateway.credits.api.router import credits_platform_router, credits_router
 from gateway.credits.application.recovery_sweep import (
     CreditHoldRecoverySweeper,
@@ -102,10 +106,6 @@ from gateway.credits.infrastructure.orm import (  # noqa: F401 — registers Cre
     CreditLedgerRow as _CreditLedgerRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.credits.infrastructure.postgres_guard import PostgresCreditGuard
-from gateway.core.body_size_guard import BodySizeLimitMiddleware
-from gateway.core.config import Settings
-from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
-from gateway.core.errors import register_error_handlers
 from gateway.domain_capture.api.domain_claims_router import domain_claims_router
 from gateway.domain_capture.infrastructure.dns_resolver import DnsPythonTxtResolver
 from gateway.domain_capture.infrastructure.orm import (  # noqa: F401 — registers TenantDomainClaimRow on Base.metadata
@@ -221,6 +221,7 @@ from gateway.tenants.infrastructure.jwt_service import JwtTokenService
 from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.usage.api.margin_router import margin_router
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
 from gateway.usage.application.drift_checker import (
@@ -1371,6 +1372,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(credits_platform_router)
     app.include_router(credits_router)
     app.include_router(invoices_router)
+    app.include_router(margin_router)
     app.include_router(conversations_router)
     app.include_router(memories_router)
     app.include_router(artifacts_router)
