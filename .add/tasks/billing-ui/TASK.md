@@ -599,14 +599,83 @@ Reported: no — this design-only draft is presented to Tin separately from the 
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: backend `apps/gateway` suite holds its existing 80% gate (`--cov-fail-under=80`,
+  unchanged); dashboard `apps/dashboard` suite holds its existing 80% lines threshold
+  (`vitest.config.ts` coverage.thresholds.lines, unchanged) — no new relaxation of either.
+
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  Backend — `apps/gateway/tests/plans/test_plan_router.py` (12 tests, RED confirmed via a
+  temporary router/registration revert -> 404 for the right reason, then restored):
+  - test_any_authenticated_role_passes[owner|admin|operator|billing_admin|viewer|member]: arrange a
+    signed-up tenant / act GET /admin/plan with each role's JWT / assert 200 · covers: M8
+  - test_unauthenticated_request_is_rejected: act GET /admin/plan, no Authorization header / assert 401
+  - test_unplanned_tenant_with_explicit_budget_returns_plan_null_and_tenant_budget: arrange
+    plan_id NULL + tenant budget=30.00 / assert plan:null, resolved.effective_budget="30.00" · covers: R6
+  - test_unplanned_tenant_with_no_explicit_budget_resolves_null_ceiling: arrange no plan, no budget /
+    assert resolved.effective_budget_usd_monthly is null · covers: M7
+  - test_planned_tenant_returns_plan_summary_and_resolved_entitlements: arrange plan "team" (seat_cap
+    25, budget 500, features) / assert full PlanSummary + resolved shape verbatim · covers: M7, M8
+  - test_planned_tenant_explicit_budget_still_wins_over_plan_default: arrange plan default 500 + tenant
+    explicit 10 / assert resolved=10.00 (precedence unchanged) · covers: M7
+  - test_planned_tenant_with_model_allowlist_returns_it_verbatim: arrange plan with a model_allowlist /
+    assert resolved.plan_model_allowlist echoes it
+
+  Dashboard — `apps/dashboard/tests/billing-nav.test.tsx` (5 tests, M1/R1/R2 — pass-on-write since
+    app-shell.tsx's additive edit was verified structurally first; regression-locked here):
+  - test_billing_group_sits_between_insights_and_configure_with_the_right_gating: covers M1
+  - test_zero_changes_to_the_26_pre_existing_nav_items_hrefs: covers M1 (non-regression)
+  - test_owner_sees_all_three_billing_nav_items / test_members_nav_hides_invoices_but_keeps_credits_
+    and_plan_seats / test_operators_nav_still_shows_invoices_fail_open: covers M1, R1, R2
+
+  `apps/dashboard/tests/billing-invoices.test.tsx` (17 tests, RED confirmed via MODULE_NOT_FOUND):
+  - test_list_renders_keyset_paginated_table_and_row_click_navigates,
+    test_next_previous_mirrors_the_cursor_stack_idiom, test_empty_invoices_list_shows_informative_
+    empty_state, test_forbidden_access_shows_the_shared_inline_message, test_axe_no_serious_violations
+    · covers: M2, M9, R1, R2, M11
+  - test_issued_invoice_renders_visibly_immutable_seal_and_no_edit_affordance,
+    test_draft_invoice_renders_a_distinct_non_final_seal, test_lines_render_grouped_tabular_nums_
+    amounts_tracing_to_the_total, test_corrections_render_as_signed_deltas_never_mutating_original_
+    lines, test_zero_corrections_shows_its_own_empty_state_not_an_omitted_section,
+    test_unknown_or_cross_tenant_invoice_id_shows_not_found, test_axe_no_serious_violations
+    · covers: M3, M10, R3, M11
+  - test_opening_a_lines_evidence_action_fetches_and_lists_usage_rows,
+    test_drawer_paginates_without_closing, test_closing_the_drawer_returns_focus_to_the_triggering_
+    control, test_unknown_line_id_shows_not_found_inside_drawer_detail_page_unaffected · covers: M4, R3
+  - test_export_links_point_at_the_binary_passthrough_route_zero_new_bff_code,
+    test_export_hrefs_never_carry_any_format_other_than_pdf_or_csv · covers: M5, R4
+  - test_lines_table_scrolls_horizontally_inside_its_own_container · covers: M12
+
+  `apps/dashboard/tests/billing-credits.test.tsx` (4 tests, RED confirmed via MODULE_NOT_FOUND):
+  - test_hero_balance_and_paginated_history_render,
+    test_brand_new_tenant_zero_activity_sees_informative_empty_state_nav_still_visible,
+    test_platform_wide_kill_switch_off_renders_the_same_honest_empty_state, test_axe_no_serious_
+    violations · covers: M6, R5, M11
+
+  `apps/dashboard/tests/billing-plan.test.tsx` (5 tests, RED confirmed via MODULE_NOT_FOUND):
+  - test_planned_tenant_sees_plan_budget_allowlist_features_and_seat_count,
+    test_seat_billing_unfrozen_pricing_slot_degrades_gracefully · covers: M7, M8, R7
+  - test_unplanned_tenant_sees_honest_no_plan_state_not_an_error,
+    test_budget_meter_renders_unlimited_text_only_when_ceiling_is_null_never_a_percentage · covers: R6, M7
+  - test_axe_no_serious_violations · covers: M11
+
+  Amended (pre-existing, not this task's own scenario, but its own documented "UPDATED by <task>"
+  convention required a count bump for the +3 new nav items) —
+  `apps/dashboard/tests-bff/nav-role-filter.test.tsx`: 5 pre-existing tests' hardcoded link counts
+  raised (member 10→12, admin 21→24, owner/unknown 22→25 ×3) with a new "UPDATED by billing-ui" doc
+  comment, mirroring the ~15 prior nav-adding tasks' own identical amend-in-place precedent in this
+  same file.
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
+Tests live in: `apps/gateway/tests/plans/` (backend, 12 tests) · `apps/dashboard/tests/` (dashboard,
+  4 new files: billing-nav/billing-invoices/billing-credits/billing-plan, 31 tests) ·
+  `apps/dashboard/tests-bff/nav-role-filter.test.tsx` (pre-existing, amended, not counted as new).
+  MUST run red (missing implementation) before Build — confirmed: backend via a temporary
+  router-file-move + main.py-registration revert (12/12 -> 404 for the right reason, then restored);
+  dashboard via MODULE_NOT_FOUND on the new component imports (billing-invoices/credits/plan) —
+  billing-nav ran green-on-write since its only dependency (app-shell.tsx's additive NAV_GROUPS
+  edit) was verified structurally before the test was written, so it stands as a regression lock
+  rather than a red-first scenario test.
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
@@ -614,16 +683,87 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch):
+  `apps/gateway/src/gateway/tenants/api/plan_router.py` (new) ·
+  `apps/gateway/src/gateway/main.py` (additive: 1 import + 1 include_router line) ·
+  `apps/gateway/tests/plans/` (new) ·
+  `apps/dashboard/components/invoices/` (new) ·
+  `apps/dashboard/components/credits/` (new) ·
+  `apps/dashboard/components/plan/` (new) ·
+  `apps/dashboard/app/(app)/app/invoices/` (new) ·
+  `apps/dashboard/app/(app)/app/credits/` (new) ·
+  `apps/dashboard/app/(app)/app/plan/` (new) ·
+  `apps/dashboard/components/ui/app-shell.tsx` (additive: 1 NavGroup + 3 lucide icon imports) ·
+  `apps/dashboard/tests/billing-nav.test.tsx`, `apps/dashboard/tests/billing-invoices.test.tsx`,
+    `apps/dashboard/tests/billing-credits.test.tsx`, `apps/dashboard/tests/billing-plan.test.tsx` (new) ·
+  `apps/dashboard/tests-bff/nav-role-filter.test.tsx` (amended: hardcoded link counts only, per its
+    own "UPDATED by <task>" convention — never a weakened assertion).
+  Explicitly NOT touched: any file under `plan-enforcement`'s own frozen scope (ports.py,
+    entitlements.py, plan_entitlement_resolver.py — imported only), `invoice-generation`'s or
+    `credits-ledger`'s own routers/schemas (consumed via bffGet only).
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
+Strategy (ordered batches):
+  1. Backend first (small): read the 3 sibling FROZEN contracts + ground anchors (budgets router
+     RBAC precedent, PlanEntitlementResolver port, plans ORM columns) verbatim; write
+     `plan_router.py` (thin composition, 2 reads) + register in `main.py`; write
+     `tests/plans/test_plan_router.py`; confirm RED (temporary revert), confirm GREEN (restore).
+  2. Dashboard ground: read app-shell.tsx/LogDetailDrawer.tsx/LogsExplorerPage.tsx/
+     MemoryScoreBar.tsx/bff-client.ts/format.ts/table.tsx/dialog.tsx/card.tsx/badge.tsx/
+     stat-card.tsx/page-header.tsx in full — every visual primitive this task needs already ships.
+  3. Nav: additive NavGroup edit to app-shell.tsx (Billing between Insights/Configure).
+  4. Write the 4 dashboard test files (one test per §2 scenario); confirm RED
+     (MODULE_NOT_FOUND for 3 of 4 files; the nav file was a structural regression-lock, not a
+     scenario red, since its dependency was a already-verified small additive edit).
+  5. Build components bottom-up: InvoiceStatusSeal -> InvoiceLinesTable -> InvoiceCorrectionsTable
+     -> InvoiceEvidenceDrawer -> InvoicesListPage -> InvoiceDetailPage -> CreditsHistoryTable ->
+     CreditsPage -> EntitlementMeter -> PlanSeatsPage -> the 4 thin Next.js route wrappers.
+  6. Fix the fallout in `tests-bff/nav-role-filter.test.tsx` (pre-existing, hardcoded link counts;
+     this file's OWN header comment documents ~15 prior "UPDATED by <task>" amendments as the
+     sanctioned pattern for a legitimate additive nav change — not a frozen-contract edit).
+  7. tsc --noEmit, eslint, ruff, pyright on every touched file; full dashboard `npx vitest run`
+     (137 files / 1228 tests); backend regression subset (budgets/credits_ledger/
+     invoice_generation/plan_catalog/plan_enforcement/plans/tenants, 172 tests) + a full-suite
+     `--collect-only` pass (3173 tests collected, zero import errors) to catch any main.py-wide
+     breakage cheaply before committing to a full ~3000-test run.
+
+Persona (required): `frontend-engineer` (`.add/personas/frontend-engineer.md`) — the dashboard
+  implementation lens (BFF trust-boundary discipline, SSR-safety, design-token fidelity); its
+  "shared-primitive fix applied once" rule shaped M12 (Table already wraps itself in
+  `overflow-auto` — zero new scroll-wrapper code needed) and its "frozen structural contract"
+  rule shaped the nav-role-filter.test.tsx fix (update the documented count, never the
+  role-visibility assertions themselves).
+Spawn isolation (default): none — no subagent was spawned; all work done directly in this
+  dedicated worktree (already isolated at the top level).
+Known-problem fixes:
+  - trap: calling `setState` synchronously inside a `useEffect` (InvoiceEvidenceDrawer's
+    per-line cursor reset) trips `react-hooks/set-state-in-effect` → fix: the "adjust state
+    during render" escape hatch (compare `lineId` to a tracked `lastOpenedLineId` during render,
+    mirrors `LogsExplorerPage`'s own `lastGoodPage` precedent), not a useEffect.
+  - trap: `GET /admin/members` named in §0/§3 does not exist in the current tree (ground-anchor
+    drift since the contract was drafted) → fix: verified live, the real shipped endpoint is
+    `GET /admin/users` returning `{ users: TenantUser[] }` (confirmed via `MembersPage.tsx` and
+    `main.py`'s `users_router` registration); built against the real endpoint, named in §6
+    Live-verify below rather than left silent.
+  - trap: `ruff check --fix` on `main.py` reorders an unrelated PRE-EXISTING out-of-order import
+    block (gateway.core.* misplaced after gateway.credits.*) → fix: reverted that hunk, kept only
+    the 2 lines this task actually adds (minimal diff, lower merge-conflict surface with the two
+    sibling tasks — margin-dashboard, plan-seat-cap — building on the same main.py concurrently).
+Strategy actually used: as planned (batches 1-7 above), with one addition not originally
+  anticipated: batch 6 (the nav-role-filter.test.tsx count fix) was discovered only by running the
+  FULL dashboard suite post-build, not predicted at plan time — the lesson: an additive nav change
+  still requires a full-suite run, not just the new task's own tests, because the shell is a
+  cross-cutting shared surface with its own hardcoded-count regression tests.
+Safety rule (feature-specific): the client renders exactly what the API returns and never
+  re-derives a money total (an invoice's `total_usd`/`corrected_total_usd` is trusted verbatim,
+  never re-summed from `lines[]`/`corrections[]` in the UI) — enforced by construction: neither
+  `InvoiceLinesTable` nor `InvoiceCorrectionsTable` accepts or computes a total; the page composes
+  the footer directly from the two API-supplied total fields.
+Code lives in: `apps/gateway/src/gateway/tenants/api/plan_router.py` ·
+  `apps/dashboard/components/{invoices,credits,plan}/` · `apps/dashboard/app/(app)/app/{invoices,credits,plan}/`.
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
+  Held: zero new dependency added (backend: stdlib + already-imported gateway/sqlalchemy/pydantic
+  modules only; dashboard: zero new npm package, every component built from already-shipped
+  `@/components/ui` primitives + `@tanstack/react-query` + `lucide-react`, all pre-existing).
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
@@ -642,8 +782,41 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] `GET /admin/plan` returns 200 for every role and 401 unauthenticated, never a 403 — confirmed
+  by `tests/plans/test_plan_router.py::test_any_authenticated_role_passes[*]` (6 roles) +
+  `test_unauthenticated_request_is_rejected`, all green against real Postgres.
+- [x] An unplanned tenant (`plan_id IS NULL`) gets `plan: null` with a 200, never an error, and its
+  own explicit budget still resolves — confirmed by `test_unplanned_tenant_with_explicit_budget_
+  returns_plan_null_and_tenant_budget` (200, `plan: null`, `resolved.effective_budget_usd_monthly:
+  "30.00"`).
+- [x] The Billing nav group sits between Insights and Configure with the exact RBAC split (Invoices
+  admin-only, Credits/Plan & seats any-role) — confirmed by `billing-nav.test.tsx`'s 5 tests +ally by
+  `tests-bff/nav-role-filter.test.tsx`'s updated counts (member 12, admin 24, owner/unknown 25).
+- [x] An issued invoice never renders an edit affordance (no button/input implying mutability) —
+  confirmed by `test_issued_invoice_renders_visibly_immutable_seal_and_no_edit_affordance`
+  (`queryByRole("button",{name:/^edit$/i})` and `queryByRole("textbox")` both absent).
+- [x] Every invoice line's Amount and the footer Total both render `formatUsd(total_usd)` verbatim
+  (never re-summed) — confirmed by `test_lines_render_grouped_tabular_nums_amounts_tracing_to_the_
+  total` (both the line cell and the footer show the identical `$1,204.55` from the fixture).
+- [x] Closing the evidence drawer returns focus to the exact triggering "View evidence" button —
+  confirmed by `test_closing_the_drawer_returns_focus_to_the_triggering_control`
+  (`document.activeElement === trigger` after `{Escape}`).
+- [x] The two export links carry ONLY `format=pdf`/`format=csv` and `download`, zero new BFF route
+  file — confirmed by `test_export_links_point_at_the_binary_passthrough_route_zero_new_bff_code` +
+  a manual re-read of `app/api/gw/[...path]/route.ts`'s `isBinaryPassthrough` branch (unedited).
+- [x] Credits renders the SAME empty state for "genuinely unused" and "kill-switch off" (no API
+  signal distinguishes them, never a fabricated "disabled" claim) — confirmed by
+  `test_platform_wide_kill_switch_off_renders_the_same_honest_empty_state`
+  (`queryByText(/disabled/i)` absent).
+- [x] The Plan & seats budget meter renders "Unlimited" text with NO `role="progressbar"` when the
+  ceiling is null — confirmed by `test_budget_meter_renders_unlimited_text_only_when_ceiling_is_
+  null_never_a_percentage` (`queryByRole("progressbar")` absent).
+- [x] All 4 Billing surfaces + the evidence drawer pass axe with zero serious/critical violations —
+  confirmed by the 4 `test_axe_no_serious_violations` tests (color-contrast disabled, the
+  standing jsdom-canvas convention every sibling page's axe test already carries).
+- [x] Zero regression to the pre-existing dashboard/backend suites — confirmed by a full
+  `npx vitest run` (137 files / 1228 tests green) and a targeted backend regression subset
+  (172 tests green) + a full-suite `--collect-only` pass (3173 tests collected, 0 import errors).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
