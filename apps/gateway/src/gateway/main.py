@@ -78,6 +78,16 @@ from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registe
 from gateway.conversations.infrastructure.orm import (
     ConversationRow as _ConversationRow,  # noqa: F401  # pyright: ignore[reportUnusedImport]  — side-effect import
 )
+from gateway.credits.api.router import credits_platform_router, credits_router
+from gateway.credits.application.recovery_sweep import (
+    CreditHoldRecoverySweeper,
+    should_start_credit_recovery_sweep,
+)
+from gateway.credits.domain.ports import PassthroughCreditGuard
+from gateway.credits.infrastructure.orm import (  # noqa: F401 — registers CreditLedgerRow/TenantCreditBalanceRow on Base.metadata
+    CreditLedgerRow as _CreditLedgerRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.credits.infrastructure.postgres_guard import PostgresCreditGuard
 from gateway.core.body_size_guard import BodySizeLimitMiddleware
 from gateway.core.config import Settings
 from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
@@ -537,6 +547,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # CreditHoldRecoverySweeper (credits-ledger TASK.md §3 M6) — periodic backstop that
+        # releases orphaned HOLDs (a crashed/never-finalized request) older than
+        # credits_hold_timeout_seconds. Default-ON (60s) — unlike the OpenRouter accuracy
+        # backstop above, this protects tenant AVAILABILITY (an orphaned hold silently
+        # starves a balance), so it defaults to running rather than opt-in.
+        app.state.credit_recovery_sweep_task = None
+        if should_start_credit_recovery_sweep(_settings.credits_recovery_sweep_interval_seconds):
+            credit_recovery_sweeper = CreditHoldRecoverySweeper(
+                session_factory=_sessionmaker,
+                credit_guard=app.state.credit_guard,
+                hold_timeout_s=_settings.credits_hold_timeout_seconds,
+            )
+            app.state.credit_recovery_sweeper = credit_recovery_sweeper
+            app.state.credit_recovery_sweep_task = asyncio.create_task(
+                credit_recovery_sweeper.run_forever(
+                    interval_seconds=float(_settings.credits_recovery_sweep_interval_seconds)
+                )
+            )
+
         # RetentionSweeper — periodic bounded DELETE of aged time-series rows
         # (data-retention-controls v38). Default-ON at configured defaults; started only
         # when interval>0 AND at least one per-table window>0. Wired after recovery sweep.
@@ -646,6 +675,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await sweep_task
 
+        credit_sweep_task: asyncio.Task[None] | None = getattr(
+            app.state, "credit_recovery_sweep_task", None
+        )
+        if credit_sweep_task is not None:
+            credit_sweep_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await credit_sweep_task
+
         retention_task: asyncio.Task[None] | None = getattr(
             app.state, "retention_sweeper_task", None
         )
@@ -750,6 +787,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.health_checker_task = None
     app.state.drift_checker_task = None
     app.state.recovery_sweep_task = None
+    app.state.credit_recovery_sweep_task = None
     app.state.retention_sweeper_task = None
     app.state.batch_window_flusher_task = None
 
@@ -969,6 +1007,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.budget_guard = RedisBudgetGuard(
         redis=redis_client,
         session_factory=app.state.sessionmaker,
+    )
+
+    # Credit guard (credits-ledger TASK.md §3): CENTRAL KNOB-KILL via
+    # settings.credits_gate_enabled (default False) — PassthroughCreditGuard until an
+    # operator explicitly opts in, so no existing tenant is fail-closed at $0 the moment
+    # this module ships (a tenant that never topped up has NO tenant_credit_balances
+    # row; check_and_hold would otherwise reject its very first request). Tests override
+    # via app.state.credit_guard after app creation, same as budget_guard above.
+    app.state.credit_guard = (
+        PostgresCreditGuard(
+            session_factory=app.state.sessionmaker,
+            metrics=app.state.metrics_registry,
+        )
+        if settings.credits_gate_enabled
+        else PassthroughCreditGuard()
     )
 
     # Rate limiter: wire RedisLuaRateLimiter for production;
@@ -1275,6 +1328,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(audit_export_router)
     app.include_router(ops_router)
     app.include_router(budget_router)
+    app.include_router(credits_platform_router)
+    app.include_router(credits_router)
     app.include_router(conversations_router)
     app.include_router(memories_router)
     app.include_router(artifacts_router)
