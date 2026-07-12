@@ -37,6 +37,7 @@ from gateway.billing.infrastructure.invoice_repository import InvoiceRepository
 from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     CURSOR_INVALID,
+    INVOICE_LINE_WRONG_TYPE,
     INVOICE_NOT_FOUND,
     INVOICE_QUERY_TIMEOUT,
     PAYLOAD_INVALID,
@@ -122,6 +123,20 @@ class InvoiceListResponse(BaseModel):
 
 class UsageEvidenceListResponse(BaseModel):
     items: list[UsageEvidenceItem]
+    next_cursor: str | None
+    has_more: bool
+
+
+class SeatEvidenceItem(BaseModel):
+    event_id: str
+    user_id: str
+    email: str
+    event_type: str
+    occurred_at: str
+
+
+class SeatEvidenceListResponse(BaseModel):
+    items: list[SeatEvidenceItem]
     next_cursor: str | None
     has_more: bool
 
@@ -349,6 +364,78 @@ async def get_invoice_line_evidence(
                 completion_tokens=r.completion_tokens,
                 cost_usd=str(r.cost_usd),
                 request_id=r.request_id,
+            )
+            for r in page
+        ],
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
+@invoices_router.get("/{invoice_id}/lines/{line_id}/seat-evidence")
+async def get_seat_line_evidence(
+    invoice_id: str,
+    line_id: str,
+    identity: Annotated[Identity, require_permission(Permission.INVOICES_READ)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[str | None, Query()] = None,
+    cursor: Annotated[str | None, Query()] = None,
+) -> SeatEvidenceListResponse:
+    """seat-billing TASK.md §3 (FROZEN @ v2, M11/M12) — additive sibling to the EXISTING
+    /evidence route above (never a branch inside it, per §1 Framings weighed: a seat
+    membership event has no natural slot in UsageEvidenceItem's usage-shaped response)."""
+    parsed_limit = _parse_limit(limit)
+    cursor_tuple: tuple[datetime, uuid.UUID] | None = None
+    if cursor is not None:
+        cursor_tuple = _decode_cursor(cursor)
+
+    repo = InvoiceRepository(session)
+    invoice = await _get_invoice_or_404(repo, identity.tenant_id, invoice_id)
+
+    try:
+        parsed_line_id = uuid.UUID(line_id)
+    except ValueError:
+        raise INVOICE_NOT_FOUND.exc() from None
+
+    try:
+        async with asyncio.timeout(_READ_TIMEOUT_SECONDS):
+            line = await repo.get_line(invoice.id, parsed_line_id)
+    except TimeoutError:
+        raise INVOICE_QUERY_TIMEOUT.exc() from None
+    if line is None:
+        raise INVOICE_NOT_FOUND.exc()
+
+    # M12: a 'usage' line has real evidence at the EXISTING /evidence route above — this
+    # route is never a silent alias for it.
+    if line.line_type == "usage":
+        raise INVOICE_LINE_WRONG_TYPE.exc()
+
+    try:
+        async with asyncio.timeout(_READ_TIMEOUT_SECONDS):
+            rows = await repo.seat_evidence_keyset(
+                tenant_id=identity.tenant_id,
+                invoice=invoice,
+                line=line,
+                limit=parsed_limit + 1,
+                cursor=cursor_tuple,
+            )
+    except TimeoutError:
+        raise INVOICE_QUERY_TIMEOUT.exc() from None
+
+    has_more = len(rows) > parsed_limit
+    page = rows[:parsed_limit]
+    next_cursor = (
+        _encode_cursor(page[-1].occurred_at, page[-1].event_id) if has_more and page else None
+    )
+
+    return SeatEvidenceListResponse(
+        items=[
+            SeatEvidenceItem(
+                event_id=str(r.event_id),
+                user_id=str(r.user_id),
+                email=r.email,
+                event_type=r.event_type,
+                occurred_at=r.occurred_at.isoformat(),
             )
             for r in page
         ],

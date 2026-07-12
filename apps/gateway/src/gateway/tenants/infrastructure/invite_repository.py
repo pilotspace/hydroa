@@ -24,7 +24,7 @@ from gateway.tenants.domain.errors import (
     InviteNotPendingError,
     SeatCapExceededError,
 )
-from gateway.tenants.infrastructure.orm import InviteRow, TenantRow, UserRow
+from gateway.tenants.infrastructure.orm import InviteRow, SeatMembershipEventRow, TenantRow, UserRow
 
 
 def _row_to_invite(row: InviteRow) -> Invite:
@@ -319,6 +319,19 @@ class InviteRepository:
             # stays 'pending', unflipped, and no orphaned users row survives (M5).
             await self._session.rollback()
             raise EmailAlreadyRegisteredError from exc
+
+        # seat-billing TASK.md §3 (FROZEN @ v2, M3(a)): append ONE 'joined' event in the
+        # SAME transaction as the new users row — `now` is the accept instant, mirrors
+        # every other timestamp this method already derives from its own parameter.
+        self._session.add(
+            SeatMembershipEventRow(
+                id=uuid7(),
+                tenant_id=tenant_id,
+                user_id=new_user_id,
+                event_type="joined",
+                occurred_at=now,
+            )
+        )
 
         row.status = InviteStatus.ACCEPTED.value
         await self._session.commit()

@@ -44,9 +44,11 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from gateway.billing.application.seat_pricer import compute_seat_lines
+from gateway.billing.infrastructure.invoice_repository import load_tenant_seat_membership
 from gateway.billing.infrastructure.orm import InvoiceLineRow, InvoiceRow
 from gateway.core.ids import uuid7
-from gateway.tenants.infrastructure.orm import TenantRow
+from gateway.tenants.infrastructure.orm import PlanRow, TenantRow
 from gateway.usage.infrastructure.orm import UsageRecordRow
 
 _log = logging.getLogger(__name__)
@@ -114,6 +116,28 @@ def eligible_period_start(
 
 def _round_half_up(value: Decimal) -> Decimal:
     return value.quantize(_CENTS, rounding=ROUND_HALF_UP)
+
+
+async def _load_seat_price(session: AsyncSession, tenant_id: uuid.UUID) -> Decimal | None:
+    """seat-billing TASK.md §3 (FROZEN @ v2, M2/M7) — ONE extra SELECT (mirrors
+    RedisBudgetGuard's own "one query" idiom, NOT the shared PlanEntitlementResolver, per
+    §1 Framings weighed). Returns None for an unplanned tenant (no matching row, INNER
+    JOIN excludes a NULL plan_id) OR a plan whose seat_price_usd_monthly is NULL/0 — both
+    collapse to the SAME inert no-op (M2): this task writes ZERO seat/proration lines."""
+    price = (
+        await session.execute(
+            select(PlanRow.seat_price_usd_monthly)
+            .select_from(TenantRow)
+            .join(PlanRow, PlanRow.id == TenantRow.plan_id)
+            .where(TenantRow.id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if price is None:
+        return None
+    decimal_price = Decimal(str(price))
+    if decimal_price == _ZERO:
+        return None
+    return decimal_price
 
 
 class InvoiceGenerator:
@@ -197,6 +221,27 @@ class InvoiceGenerator:
                         }
                     )
 
+                # seat-billing TASK.md §3 (FROZEN @ v2, M7): additively fold seat/
+                # proration lines into this SAME transaction, BEFORE the
+                # `INSERT ... RETURNING id` — an issued invoice is immutable the instant
+                # it is inserted (M5), so seat pricing MUST be computed and folded into
+                # raw_total/total_usd here, never after. Inert (seat_price is None) for
+                # an unplanned tenant or a plan with no/zero seat price (M2) — this block
+                # is then a pure no-op, byte-identical to before this task shipped.
+                seat_price = await _load_seat_price(session, tenant_id)
+                seat_line_specs: list[Any] = []
+                if seat_price is not None:
+                    memberships = await load_tenant_seat_membership(session, tenant_id=tenant_id)
+                    seat_line_specs = compute_seat_lines(
+                        seat_price_usd_monthly=seat_price,
+                        users=memberships,
+                        period_start=normalized_start,
+                        period_end=period_end,
+                    )
+                    for seat_spec in seat_line_specs:
+                        raw_total += seat_spec.raw_amount_usd
+                        total_usd += seat_spec.amount_usd
+
                 new_id = uuid7()
                 now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
                 insert_stmt = (
@@ -241,6 +286,29 @@ class InvoiceGenerator:
                             completion_tokens=spec["completion_tokens"],
                             request_count=spec["request_count"],
                             line_type="usage",
+                        )
+                    )
+
+                # seat-billing TASK.md §3 (FROZEN @ v2, M9): 'seat'/'proration' rows
+                # reinterpret 3 existing NOT-NULL columns (model_id='seat' sentinel,
+                # team_id=NULL always, key_id=NIL-UUID for the aggregate / the seat's own
+                # user_id for a proration line) — schema unchanged, per-line_type
+                # documented reinterpretation only.
+                for seat_spec in seat_line_specs:
+                    session.add(
+                        InvoiceLineRow(
+                            id=uuid7(),
+                            invoice_id=inserted_id,
+                            model_id="seat",
+                            team_id=None,
+                            key_id=seat_spec.key_id,
+                            tags={},
+                            amount_usd=seat_spec.amount_usd,
+                            raw_amount_usd=seat_spec.raw_amount_usd,
+                            prompt_tokens=0,
+                            completion_tokens=0,
+                            request_count=seat_spec.request_count,
+                            line_type=seat_spec.line_type,
                         )
                     )
 

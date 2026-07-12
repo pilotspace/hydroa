@@ -999,6 +999,17 @@ INVOICE_QUERY_TIMEOUT = ErrorSpec(
 INVOICE_IMMUTABLE = ErrorSpec(409, "ERR_INVOICE_IMMUTABLE", "Issued invoices cannot be modified")
 
 # ---------------------------------------------------------------------------
+# Seat-billing errors (seat-billing TASK.md §3 — FROZEN @ v2)
+# ---------------------------------------------------------------------------
+
+#: GET .../lines/{line_id}/seat-evidence called against a line whose
+#: line_type == 'usage' (M12) — a 'usage' line has real evidence at the EXISTING
+#: /evidence route; this is never a silent alias for it.
+INVOICE_LINE_WRONG_TYPE = ErrorSpec(
+    400, "ERR_INVOICE_LINE_WRONG_TYPE", "Evidence type does not match this line"
+)
+
+# ---------------------------------------------------------------------------
 # Margin-dashboard errors (margin-dashboard TASK.md §3 — FROZEN @ v1)
 # ---------------------------------------------------------------------------
 

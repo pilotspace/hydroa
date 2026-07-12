@@ -746,14 +746,80 @@ per MILESTONE.md's `depends-on: plan-enforcement, invoice-generation`, both alre
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 90% (mirrors invoice-generation/plan-enforcement's own `--cov-fail-under=80` floor
+plus this task's own money-precision bar; project-wide `make ci` gate is 80%, this task holds itself
+to 90% given it is 100% new pure-math + 5 write-site money code).
+
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_full_period_seat_touches_every_calendar_day / test_mid_month_join_prorates_by_calendar_days_touched /
+    test_mid_month_leave_prorates_by_calendar_days_touched / test_reactivation_same_month_bills_both_sides_of_gap /
+    test_orphan_deactivated_with_no_open_interval_is_ignored_never_negative /
+    test_seat_active_zero_days_entirely_outside_period / test_second_open_while_already_open_is_defensively_ignored
+    (`tests/seat_billing/test_seat_pricer_unit.py`) — pure `active_days()` replay, zero DB · covers: M6, edge (§2 "zero days")
+  - test_full_period_seats_aggregate_mid_period_seat_gets_own_proration_line / test_zero_active_days_seat_produces_no_line /
+    test_no_seats_at_all_produces_empty_specs / test_ledger_less_user_falls_back_to_current_state_columns /
+    test_ledger_less_already_deactivated_user_falls_back_to_both_columns
+    (`tests/seat_billing/test_seat_pricer_unit.py`) — pure `compute_seat_lines()` bucketing/shape · covers: M5, M7, M9
+  - test_resolve_line_contributors_proration / test_resolve_line_contributors_seat_aggregate /
+    test_resolve_line_contributors_no_match_returns_none (`tests/seat_billing/test_seat_pricer_unit.py`) —
+    pure evidence-bucket re-derivation · covers: M11
+  - test_pending_invite_is_never_a_seat (`test_seat_pricing.py`) · covers: M1
+  - test_unplanned_tenant_produces_zero_seat_lines / test_zero_seat_price_plan_is_byte_identical_to_unplanned /
+    test_seat_price_zero_rejected_at_db_check_constraint (`test_seat_pricing.py`) · covers: M2, Reject (CHECK constraint)
+  - test_mid_month_join_prorates (`test_seat_pricing.py`) · covers: M6, M7
+  - test_mid_month_leave_and_full_period_aggregate_separately (`test_seat_pricing.py`) — 3 full-period
+    seats aggregate into ONE 'seat' line + 1 mid-period seat gets its OWN 'proration' line, also
+    asserts M9's key_id/model_id/team_id shape · covers: M6, M7, M8, M9
+  - test_seat_lines_fold_into_the_same_total_as_usage (`test_seat_pricing.py`) · covers: M8
+  - test_over_cap_tenant_still_billed_in_full (`test_seat_pricing.py`) · covers: M10
+  - test_ledger_less_user_falls_back_never_dropped (`test_seat_pricing.py`) · covers: M5 (DB-backed)
+  - test_issued_seat_line_is_immutable (`test_seat_pricing.py`) · covers: M14
+  - NOTE: the "reactivation same month" and "zero active days entirely outside the period" scenarios
+    are exercised ONLY at the pure-math level (`test_seat_pricer_unit.py`, above) — no separate
+    DB-integration duplicate exists for either; `active_days()` is the single source both generation-
+    time and evidence-time call, so the pure-unit coverage is the correct, non-duplicative layer for
+    them (mirrors invoice-generation's own "prove the math once, prove the wiring once" split).
+  - test_invite_accept_appends_one_joined_event (`test_seat_membership_events.py`) · covers: M3(a)
+  - test_scim_create_user_appends_one_joined_event (`test_seat_membership_events.py`) · covers: M3(b)
+  - test_sso_new_user_appends_one_joined_event_existing_relogin_appends_none
+    (`test_seat_membership_events.py`) · covers: M3(b2), v2/CR-1
+  - test_domain_capture_join_appends_one_joined_event (`test_seat_membership_events.py`) · covers: M3(b3), v2/CR-1
+  - test_deactivate_then_repeat_then_reactivate_appends_exactly_two_events
+    (`test_seat_membership_events.py`) · covers: M3(c), idempotency no-op
+  - test_preexisting_active_user_backfills_one_joined_event /
+    test_preexisting_deactivated_user_backfills_both_events / test_seed_prices_team_15_enterprise_40_starter_null
+    (`tests/migrations/test_seat_billing_backfill.py`) · covers: M4, R5, seed prices
+  - test_seat_evidence_resolves_proration_line_to_its_user /
+    test_seat_evidence_resolves_aggregate_seat_line_to_every_full_price_user
+    (`test_seat_evidence_api.py`) · covers: M11
+  - test_seat_evidence_against_usage_line_rejected (`test_seat_evidence_api.py`) · covers: M12, Reject (ERR_INVOICE_LINE_WRONG_TYPE)
+  - test_seat_evidence_unknown_or_cross_tenant_is_same_404 (`test_seat_evidence_api.py`) · covers: Reject (ERR_INVOICE_NOT_FOUND)
+  - test_seat_evidence_timeout_maps_to_504 (`test_seat_evidence_api.py`) · covers: Reject (ERR_INVOICE_QUERY_TIMEOUT), M13
+  - `tests/migrations/test_migrations.py::EXPECTED_TABLES` (+1 row, SANCTIONED) and
+    `tests/guardrails/test_guardrails_core.py::test_guardrails_core_migration_column_exists` (+1 literal,
+    SANCTIONED) — manifest-maintenance assertions, not new scenarios; disclosed additive edits.
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
+Tests live in: `./tests/seat_billing/` (5 files: `test_seat_pricer_unit.py`, `test_seat_pricing.py`,
+`test_seat_membership_events.py`, `test_seat_evidence_api.py`, `conftest.py`) †35 tests ·
+`gateway/tests/migrations/test_seat_billing_backfill.py` †3 tests (migration-only, lives beside the
+sibling `test_migrations.py`, mirrors that file's own `clean_migration_db` fixture convention) ·
+2 SANCTIONED one-line additive edits to already-frozen manifest tests (`test_migrations.py`,
+`test_guardrails_core.py`) — disclosed, not new scenario coverage.
+
+RED confirmed for the right reason (2026-07-12, before any implementation file existed): every
+`test_seat_pricer_unit.py` test failed at import (`ModuleNotFoundError: gateway.billing.application.
+seat_pricer`); every `test_seat_pricing.py`/`test_seat_membership_events.py`/`test_seat_evidence_api.py`
+test failed on the FIRST DB write/read touching `seat_membership_events`
+(`UndefinedTableError`/`UndefinedColumnError`) or a 404 on the not-yet-registered evidence route; the 3
+`test_seat_billing_backfill.py` tests stopped at `command.upgrade(cfg, "head")` landing on parent
+revision `1891020e487c` (migration `f1ef6b05a732` did not exist) — never a broken-harness or
+wrong-fixture red. Tests and implementation were authored in the SAME session with tight iteration
+(write red, confirm import/table-not-found failure, implement, green) rather than one strict
+red-then-green-then-build pass across the whole suite at once — disclosed in §5 "Strategy actually
+used"; every test's initial failure was independently observed to fail on the missing-implementation
+reason before its corresponding code landed, never retrofitted to a passing implementation.
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
@@ -761,16 +827,111 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch):
+`apps/gateway/migrations/versions/` (new file only) ·
+`apps/gateway/src/gateway/billing/` (application/seat_pricer.py NEW; application/invoice_generator.py,
+api/router.py, domain/invoice.py, infrastructure/invoice_repository.py — additive edits) ·
+`apps/gateway/src/gateway/core/error_catalog.py` (additive constant) ·
+`apps/gateway/src/gateway/tenants/infrastructure/orm.py` (additive column + new ORM class) ·
+`apps/gateway/src/gateway/tenants/infrastructure/repository.py` (additive edits to 2 methods) ·
+`apps/gateway/src/gateway/tenants/infrastructure/invite_repository.py` (additive edit to `.accept`) ·
+`apps/gateway/src/gateway/scim/infrastructure/repository.py` (additive edits to `.create_user`/`.set_active`) ·
+`apps/gateway/tests/seat_billing/` (new suite) ·
+`apps/gateway/tests/migrations/test_seat_billing_backfill.py` (new file) ·
+`apps/gateway/tests/migrations/test_migrations.py` + `apps/gateway/tests/guardrails/test_guardrails_core.py`
+(one-line SANCTIONED manifest additions each, disclosed in §0/§4 — never a weakening edit).
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
-Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
+Strategy (ordered batches):
+1. Migration first (`f1ef6b05a732_seat_billing.py`): table + column + CHECK + seed prices + backfill;
+   verify via `alembic upgrade head` + `alembic check` on a dedicated DB before writing any app code.
+2. Pure math module (`seat_pricer.py`): `active_days`, `compute_seat_lines`, `resolve_line_contributors`
+   — zero infra imports, red-then-green against `test_seat_pricer_unit.py` in isolation (fastest
+   feedback loop, no DB).
+3. ORM additions (`orm.py`: `SeatMembershipEventRow`, `PlanRow.seat_price_usd_monthly` +
+   `ck_plans_seat_price_positive`) — the shared vocabulary every write site and the loader need.
+4. The 5 write sites (`invite_repository.py`, `scim/infrastructure/repository.py` ×2,
+   `tenants/infrastructure/repository.py` ×2) — one at a time, each driven red-to-green through its
+   REAL HTTP surface in `test_seat_membership_events.py`, never a direct SQL insert.
+5. `load_tenant_seat_membership` (shared loader, `invoice_repository.py`) + fold `compute_seat_lines`
+   into `InvoiceGenerator.generate_for_tenant`'s existing transaction, before the
+   `INSERT ... RETURNING id` — driven by `test_seat_pricing.py`.
+6. Seat-evidence route (`seat_evidence_keyset`, `get_seat_line_evidence`, schemas, error-catalog
+   constant) — driven by `test_seat_evidence_api.py`.
+7. Migration backfill correctness proven independently (`test_seat_billing_backfill.py`, real Alembic
+   upgrade chain, never `create_all`).
+8. Regression sweep: `tests/seat_billing/`, `tests/migrations/`, then every sibling suite touching a
+   write site (`invoice_generation`, `credits_ledger`, `plan_seat_cap`, `member_invite_acceptance`,
+   `scim_provisioning`, `sso_oidc`, `saml_sso`, `domain_capture`).
+
+Persona (required): `billing-precision-engineer` (`.add/personas/billing-precision-engineer.md`) —
+Decimal end-to-end, append-only ledger discipline, "a $0 row is only acceptable when EXPLAINED,"
+rounded-then-summed-never-summed-then-rounded; directly shaped the `seat_pricer.py` design (pure
+function, one rounding call per line) and the ledger-write-in-same-transaction discipline at all 5
+write sites.
+
+Spawn isolation (default): dedicated worktree (`ai-proxy-builds/build-seat-billing`, branch
+`build/seat-billing`) — already isolated per the dispatch; no further subagent spawns needed for this
+build (single-agent execution).
+
+Known-problem fixes:
+  - trap: SQLAlchemy's unit-of-work does NOT order INSERTs across two mapped classes with no declared
+    `relationship()` between them — an unflushed `UserRow` + `SeatMembershipEventRow` pair added to the
+    session in the same flush can emit the event INSERT before the parent user INSERT and trip a FK
+    violation. → fix: explicit `await self._session.flush()` immediately after `session.add(new_user)`,
+    BEFORE adding the event row, at every write site that creates a brand-new user in-session
+    (`_get_or_provision_sso_user`, `join_verified_tenant_domain`) — mirrors
+    `SqlAlchemyScimUserRepository.create_user`'s own pre-existing add()+flush()-before-second-add() shape,
+    which is why that one write site was never affected.
+  - trap: `join_verified_tenant_domain`'s broad `except IntegrityError: raise EmailAlreadyRegisteredError`
+    silently misclassifies ANY IntegrityError inside its transaction (including an unrelated FK violation
+    on the seat-ledger INSERT) as a 409 "email already exists" — a real defect-masking hazard for future
+    additions to that same transaction block, not just this task's own bug. Fixed via the flush-ordering
+    fix above (the FK violation no longer occurs), but the broad catch itself is disclosed as residual
+    risk for Verify, not narrowed in this build (narrowing it is a behavior change to an already-shipped
+    catch clause, arguably outside this task's additive-only mandate — flagged, not silently fixed).
+  - trap: `users.created_at`/`occurred_at` render as a NAIVE `TIMESTAMP` under `Base.metadata.create_all()`
+    (test DB) but a REAL `TIMESTAMPTZ` under the Alembic-migrated chain — a tz-aware Python datetime bound
+    via asyncpg to a naive-schema column raises `DataError`; a naive datetime bound to a real TIMESTAMPTZ
+    column is silently misinterpreted using the LOCAL system timezone. → fix: `conftest.py`'s `_naive()`
+    helper strips tzinfo for every raw-SQL seed against the test DB; `test_seat_billing_backfill.py` (which
+    runs against the REAL migrated schema) uses explicit tz-AWARE UTC datetimes throughout instead.
+
+Strategy actually used: as planned above, EXCEPT tests and implementation were written in tighter
+interleaved iterations per write-site/module (write the test file's failing assertions, confirm red for
+the missing-table/missing-route/missing-module reason, implement that one piece, green, next) rather
+than authoring the ENTIRE §4 red suite first and only then starting §5 build end-to-end. Every test's
+initial run was independently observed to fail on the honest missing-implementation reason (import
+error, `UndefinedTableError`, 404) before its corresponding code was written — never retrofitted to a
+passing implementation — so the red/green discipline held at the per-piece granularity even though the
+batch-level sequencing was tighter than the ordered-batches list above. 5 test-authoring bugs were
+found and fixed AFTER an initial full-suite run (not before): 2 wrong-status-code assertions
+(`/invites/{token}/accept` returns 200 not 201), 1 miscounted event-sequence assertion (SCIM
+`create_user` itself emits the initial 'joined' event, which one test's assertion had not accounted
+for), 1 wall-clock-fragile fixture (a ledger-less-fallback test relied on the owner's real signup
+`created_at` — "now" — happening to fall inside the fixed July-2026 fixture period; fixed by explicitly
+backdating it, same as `seed_user`'s own convention), and the 2 real production defects named above (the
+flush-ordering FK violation, affecting 2 of the 5 write sites).
+
+Safety rule (feature-specific): every `seat_membership_events` INSERT is written in the SAME DB
+transaction as its triggering `users`-row mutation (§3 M3) — enforced by construction (the event row is
+always `session.add()`-ed inside the same `async with self._session.begin():` block, or before the same
+`await self._session.commit()`, as the user-row mutation, never a separate transaction) — verified by
+the write-site tests calling the REAL HTTP endpoint and reading back the ledger row via a SEPARATE
+`db_session`, never asserting against in-memory session state. Rollback/failure path: any exception
+raised inside the shared transaction (e.g. `SeatCapExceededError`, an `IntegrityError` on the user INSERT
+itself) rolls back BOTH the user-row mutation and the ledger write together — no code path can persist
+one without the other. No new retry/circuit-breaker primitive was introduced: seat-ledger writes ride
+the EXISTING transaction/timeout/idempotency machinery of each of the 5 call sites and of
+`InvoiceGenerator.generate_for_tenant`'s own `asyncio.timeout` + `ON CONFLICT DO NOTHING` (M13) — this
+task deliberately adds no NEW failure-handling primitive, per §3's "inherits the existing bound, no new
+timeout, no new concurrency primitive."
+
+Code lives in: `apps/gateway/src/gateway/`
+Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear. Honored —
+zero new third-party dependencies (only `decimal`/`datetime`/`uuid` stdlib + already-vendored
+SQLAlchemy/Alembic/FastAPI/asyncpg); no test assertion was weakened, deleted, or skipped to reach green
+(every fix to a test was to an authoring BUG — wrong expected status code, miscounted event sequence, a
+wall-clock-fragile fixture — never a loosened assertion); the frozen §0–§3 CONTRACT text was never edited.
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
@@ -789,8 +950,43 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] Every one of the 5 instrumented write sites (invite-accept, SCIM create, SCIM set_active,
+  SSO new-user, domain-capture join) appends EXACTLY one `seat_membership_events` row per real HTTP
+  call, in the same DB transaction as the users-row mutation, verifiable by querying the table via a
+  SEPARATE session after the HTTP call returns — confirmed by `tests/seat_billing/test_seat_membership_events.py` (5/5 green) driving each seam through its real endpoint, never a direct SQL insert.
+- [ ] A plan-priced tenant's generated invoice carries a `'seat'` aggregate line (nil-UUID key_id) for
+  every full-period user and one `'proration'` line per partial-period user, with `amount_usd` folded
+  into the SAME `total_usd` usage lines already contribute to — confirmed by
+  `tests/seat_billing/test_seat_pricing.py` reading `invoice_lines`/`invoices` rows directly via raw SQL
+  (never through a mocked repository).
+- [ ] An unplanned tenant or a plan with NULL/zero seat price produces an invoice with ZERO seat/
+  proration lines (not a $0.00 line) — confirmed by `test_unplanned_tenant_produces_zero_seat_lines` /
+  `test_zero_seat_price_plan_is_byte_identical_to_unplanned` asserting `'seat' not in lines`.
+- [ ] A literal `seat_price_usd_monthly <= 0` INSERT is rejected at the DB layer, not reachable via any
+  application code path — confirmed by `test_seat_price_zero_rejected_at_db_check_constraint` attempting
+  the forbidden raw INSERT directly and asserting the DB itself raises.
+- [ ] Every pre-existing `users` row (created before this task's migration) has a backfilled `'joined'`
+  (+ `'deactivated'` if applicable) event with the ORIGINAL `created_at`/`deactivated_at` instant, proven
+  against the REAL Alembic upgrade chain (never `create_all`) — confirmed by
+  `tests/migrations/test_seat_billing_backfill.py` (3/3 green), including the tz-aware/naive asyncpg
+  codec pitfall documented in Known-problem fixes above.
+- [ ] `GET .../lines/{line_id}/seat-evidence` resolves a proration line to its one contributing user and
+  an aggregate seat line to every full-price user, rejects a `'usage'`-typed line with
+  `ERR_INVOICE_LINE_WRONG_TYPE` (400), and gives the SAME `ERR_INVOICE_NOT_FOUND` (404) shape for an
+  unknown vs. cross-tenant invoice — confirmed by `tests/seat_billing/test_seat_evidence_api.py` (5/5
+  green).
+- [ ] `pyright`/`ruff check`/`ruff format --check` are clean on every file this build actually wrote or
+  modified — confirmed by running each tool scoped to the touched-file list (pyright's own
+  `[tool.pyright] include = ["src/gateway"]` config means the authoritative bar is the bare
+  `uv run pyright` invocation `make ci` runs, which reported 0 errors); 2 pre-existing repo-wide
+  conditions were found and deliberately NOT touched (documented in §0/residue): an `env.py` ORM-import
+  gap causing false `alembic check` drift unrelated to seat-billing, and a ~72-file `ruff format`
+  baseline drift predating this task — this build's OWN new/heavily-edited files were individually
+  reformatted to be clean regardless.
+- [ ] No regression in any of the 8 sibling suites touching a modified write site or the shared
+  `InvoiceGenerator` transaction — confirmed by a full foreground run of `invoice_generation`,
+  `credits_ledger`, `plan_seat_cap`, `member_invite_acceptance`, `scim_provisioning`, `sso_oidc`,
+  `saml_sso`, `domain_capture` (214/214 green, no failures, no skips).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed

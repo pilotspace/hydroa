@@ -64,3 +64,15 @@ class UsageEvidenceRow:
     completion_tokens: int
     cost_usd: Decimal
     request_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class SeatEvidenceRow:
+    """One `seat_membership_events` row, translated for the seat-evidence route
+    (seat-billing TASK.md §3 — FROZEN @ v2, M11)."""
+
+    event_id: uuid.UUID
+    user_id: uuid.UUID
+    email: str
+    event_type: str
+    occurred_at: datetime
