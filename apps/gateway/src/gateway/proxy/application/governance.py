@@ -26,6 +26,7 @@ from gateway.core.error_catalog import (
     PLAN_MODEL_NOT_ALLOWED,
     RATE_LIMITED,
 )
+from gateway.credits.domain.ports import CreditGuard, PassthroughCreditGuard
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.domain.ports import KeyAuthenticator, ModelAccess, ModelChecker
@@ -66,6 +67,8 @@ class NonChatGovernance:
         rate_limiter: RateLimiter | None,
         redis_client: Any,
         session_factory: Any = None,
+        credit_guard: CreditGuard = PassthroughCreditGuard(),  # noqa: B008
+        hold_estimate_usd: Decimal = Decimal("0.50"),
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -75,6 +78,12 @@ class NonChatGovernance:
         # Optional app-scoped async_sessionmaker for the advisory soft-budget alert
         # (fire-and-forget write to alert_events). None → alert disabled (back-compat).
         self._session_factory = session_factory
+        # credits-ledger TASK.md §3: PassthroughCreditGuard (default) ⇒ check_and_hold is a
+        # no-op ⇒ byte-identical to today. Admission-only in this build pass (settle/
+        # release for images/audio/embeddings relies on the M6 reconciliation sweep
+        # rather than a precise per-call settle hook — see TASK.md §7 spec delta).
+        self._credit_guard: CreditGuard = credit_guard
+        self._hold_estimate_usd: Decimal = hold_estimate_usd
 
     async def authorize(
         self,
@@ -82,6 +91,7 @@ class NonChatGovernance:
         model_id: str,
         *,
         estimated_tokens: int | None = None,
+        request_id: uuid.UUID | None = None,
     ) -> AuthzResult:
         """Run the nine governance checks in order; return AuthzResult on pass.
 
@@ -141,29 +151,45 @@ class NonChatGovernance:
             # Step 7: Tenant budget enforces (RedisBudgetGuard)
             await self._budget_guard.check(authz.tenant_id)
 
-        # Step 8: RPM check — skip when rate_limiter is None OR rpm_limit is None
-        if self._rate_limiter is not None and authz.rpm_limit is not None:
-            try:
-                await self._rate_limiter.check_rpm(authz.key_id, authz.rpm_limit)
-            except RateLimitExceededError as exc:
-                raise RATE_LIMITED.exc(
-                    detail=f"RPM limit {exc.limit} exceeded for key {exc.key_id}",
-                    headers={"Retry-After": str(exc.retry_after_s)},
-                ) from None
+        # credits-ledger TASK.md §3 (M1/M2/M3): admission-time HOLD, after the budget
+        # ladder (step 7), before RPM/TPM (steps 8-9) — same insertion point as
+        # CompletionUseCase._enforce_governance ("both pipeline copies").
+        _credit_request_id = request_id if request_id is not None else uuid.uuid4()
+        await self._credit_guard.check_and_hold(
+            authz.tenant_id, _credit_request_id, self._hold_estimate_usd
+        )
 
-        # Step 9: TPM pre-flight — skip when estimated_tokens/rate_limiter/tpm_limit is None
-        if (
-            estimated_tokens is not None
-            and self._rate_limiter is not None
-            and authz.tpm_limit is not None
-        ):
-            try:
-                await self._rate_limiter.check_tpm(authz.key_id, authz.tpm_limit)
-            except RateLimitExceededError as exc:
-                raise RATE_LIMITED.exc(
-                    detail=f"TPM limit {exc.limit} exceeded for key {exc.key_id}",
-                    headers={"Retry-After": str(exc.retry_after_s)},
-                ) from None
+        try:
+            # Step 8: RPM check — skip when rate_limiter is None OR rpm_limit is None
+            if self._rate_limiter is not None and authz.rpm_limit is not None:
+                try:
+                    await self._rate_limiter.check_rpm(authz.key_id, authz.rpm_limit)
+                except RateLimitExceededError as exc:
+                    raise RATE_LIMITED.exc(
+                        detail=f"RPM limit {exc.limit} exceeded for key {exc.key_id}",
+                        headers={"Retry-After": str(exc.retry_after_s)},
+                    ) from None
+
+            # Step 9: TPM pre-flight — skip when estimated_tokens/rate_limiter/tpm_limit is None
+            if (
+                estimated_tokens is not None
+                and self._rate_limiter is not None
+                and authz.tpm_limit is not None
+            ):
+                try:
+                    await self._rate_limiter.check_tpm(authz.key_id, authz.tpm_limit)
+                except RateLimitExceededError as exc:
+                    raise RATE_LIMITED.exc(
+                        detail=f"TPM limit {exc.limit} exceeded for key {exc.key_id}",
+                        headers={"Retry-After": str(exc.retry_after_s)},
+                    ) from None
+        except Exception:
+            # M5 (edge: partial failure) — a LATER governance step (RPM/TPM) rejecting an
+            # already-admitted request must fully reverse the hold (never-charged-for-a-
+            # request-that-never-reached-the-provider). release() is best-effort/never-
+            # raises, so this cannot mask or replace the original RATE_LIMITED error.
+            await self._credit_guard.release(authz.tenant_id, _credit_request_id)
+            raise
 
         return authz
 

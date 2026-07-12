@@ -383,6 +383,30 @@ MEMBER_EXISTS = ErrorSpec(409, "ERR_MEMBER_EXISTS", "User is already a member of
 BUDGET_EXCEEDED = ErrorSpec(402, "ERR_BUDGET_EXCEEDED", "Monthly budget exceeded")
 
 # ---------------------------------------------------------------------------
+# Prepaid credits (credits-ledger TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: balance_usd - hold_estimate_usd < -grace_usd at admission (R1).
+CREDITS_EXHAUSTED = ErrorSpec(402, "ERR_CREDITS_EXHAUSTED", "Prepaid credit balance exhausted")
+
+#: top-up amount_usd <= 0, non-decimal, or non-finite (R2).
+CREDITS_TOPUP_INVALID = ErrorSpec(
+    422, "ERR_CREDITS_TOPUP_INVALID", "amount_usd must be a positive, finite decimal string"
+)
+
+#: top-up request missing the Idempotency-Key header (R3).
+CREDITS_IDEMPOTENCY_KEY_REQUIRED = ErrorSpec(
+    400, "ERR_CREDITS_IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header is required"
+)
+
+#: Idempotency-Key reused with a different tenant_id or amount_usd (R4).
+CREDITS_IDEMPOTENCY_KEY_CONFLICT = ErrorSpec(
+    409,
+    "ERR_CREDITS_IDEMPOTENCY_KEY_CONFLICT",
+    "Idempotency-Key already used with a different tenant_id or amount_usd",
+)
+
+# ---------------------------------------------------------------------------
 # Rate limiting
 # ---------------------------------------------------------------------------
 
