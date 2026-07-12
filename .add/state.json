@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "plan-seat-cap",
-  "active_milestone": "platform-access-plan",
+  "active_task": "billing-ui",
+  "active_milestone": "monetization-core",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -938,7 +938,7 @@
     },
     "billing-ui": {
       "title": "Tenant Billing console (Invoices/Credits/Plan & seats) \u2014 Aurora financial-document idiom",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "monetization-core",
       "depends_on": [
@@ -947,7 +947,7 @@
         "plan-enforcement"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T11:43:34+00:00",
+      "updated": "2026-07-12T12:26:22+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T11:43:43+00:00",
@@ -957,6 +957,18 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0a063b2a667a0f5271c7d1199e9fbc0e",
+        "tests": {
+          "apps/gateway/tests/plans/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/plans/test_plan_router.py": "9ff0757398ec567ff827e6868a865e36"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "96cef9cd3939e3d7808c51c4ac419f0e"
       }
     }
   },
@@ -1044,7 +1056,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T12:24:44+00:00",
+  "updated": "2026-07-12T12:26:22+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1981,7 +1993,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "monetization-core": "margin-dashboard"
+    "monetization-core": "billing-ui"
   },
   "todos": [
     {
