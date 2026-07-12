@@ -888,15 +888,15 @@
     },
     "seat-billing": {
       "title": "Per-seat plan pricing with proration invoice lines",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "monetization-core",
       "depends_on": [
         "plan-enforcement",
         "invoice-generation"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T13:22:03+00:00",
+      "updated": "2026-07-12T13:44:04+00:00",
       "freeze": {
         "version": "v2",
         "frozen_at": "2026-07-12T12:30:07+00:00",
@@ -914,7 +914,12 @@
       },
       "scope": {
         "declared": [],
-        "snapshot_md5": "f69326e778a6e8f5bd58c8e9d98bb953"
+        "snapshot_md5": "f61ffa998db2d54f5e10276d8e196b8d"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "margin-dashboard": {
@@ -1093,7 +1098,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T13:23:30+00:00",
+  "updated": "2026-07-12T13:44:13+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2115,6 +2120,24 @@
       "id": 14,
       "text": "seat-billing observe: record \u00a72 prose correction (reactivation-gap arithmetic 24 -> 16 per M6, implemented+tested as 16, disclosed) + decide narrowing join_verified_tenant_domain broad IntegrityError catch (defect-masking, left additive-safe)",
       "created": "2026-07-12T13:23:30+00:00",
+      "status": "open"
+    },
+    {
+      "id": 15,
+      "text": "seat-billing delta F1: contract prose says seat prices tenant-overridable via rate-card resolver \u2014 no such code path (_load_seat_price reads plans only). Tin: build override or fix prose",
+      "created": "2026-07-12T13:44:13+00:00",
+      "status": "open"
+    },
+    {
+      "id": 16,
+      "text": "seat-billing delta F2/F3: document seat-evidence live-re-derivation drift vs frozen totals + add DB append-only trigger to seat_membership_events (mirror invoice_lines trigger)",
+      "created": "2026-07-12T13:44:13+00:00",
+      "status": "open"
+    },
+    {
+      "id": 17,
+      "text": "seat-billing delta F5 (cutover caveat): pre-migration deactivate->reactivate cycles invisible to backfill \u2014 first post-cutover invoice can over-bill (5-day demo in probes). Tin: accept as documented Non-goal or manual reconciliation pass",
+      "created": "2026-07-12T13:44:13+00:00",
       "status": "open"
     }
   ]
