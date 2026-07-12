@@ -4,7 +4,7 @@ slug: invoice-generation · created: 2026-07-12 · stage: production
 sensitivity: data
 milestone: monetization-core
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -460,8 +460,13 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] A generated monthly invoice's total_usd equals the sum of its already-rounded line amounts, and API detail, CSV export, and the printed PDF total agree byte-exactly — confirmed by test_pdf_csv_api_total_always_agree
+- [ ] Every invoice line drills to exactly its own usage rows via the (tenant, period, model, team, key, tags) evidence predicate — confirmed by the evidence-endpoint tests
+- [ ] A multi-tag usage row lands in exactly ONE line (canonical tag-set grouping); SUM(lines.raw_amount_usd) == SUM(usage.cost_usd) for the period — confirmed by the partition scenarios
+- [ ] An issued invoice refuses direct UPDATE/DELETE at the DB level (migration triggers) and corrections append signed-delta documents net-summed at read time — confirmed by immutability + correction tests
+- [ ] Month close generates one invoice per tenant idempotently under concurrency (ON CONFLICT (tenant_id, period_start) DO NOTHING); empty month → issued $0 invoice — confirmed by generation tests
+- [ ] Auto-issue fires after the 72h stabilization window; drafts stay mutable-by-generation only within the window — confirmed by lifecycle tests
+- [ ] Migration 0b5527920450 (re-parented at integration onto d3f7a9c1b5e8) up/down/re-up clean — confirmed on the namespaced migrations DB
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
