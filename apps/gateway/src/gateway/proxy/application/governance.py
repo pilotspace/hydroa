@@ -43,10 +43,16 @@ from gateway.keys.domain.errors import InvalidApiKeyError
 # previously this ContextVar was NEVER set on the non-chat pipeline, so every
 # non-chat hold sat unsettled until the M6 sweep blindly refunded it in full,
 # regardless of real metered cost.
+from gateway.proxy.application.residency import check_residency_existence
 from gateway.proxy.application.use_cases import (
     _credit_hold_ctx,  # pyright: ignore[reportPrivateUsage]
 )
-from gateway.proxy.domain.ports import KeyAuthenticator, ModelAccess, ModelChecker
+from gateway.proxy.domain.ports import (
+    KeyAuthenticator,
+    ModelAccess,
+    ModelChecker,
+    ResidencyLookup,
+)
 from gateway.rate_limits.domain.errors import RateLimitExceededError
 from gateway.rate_limits.domain.ports import RateLimiter
 
@@ -86,6 +92,7 @@ class NonChatGovernance:
         session_factory: Any = None,
         credit_guard: CreditGuard = PassthroughCreditGuard(),  # noqa: B008
         hold_estimate_usd: Decimal = Decimal("0.50"),
+        residency_lookup: ResidencyLookup | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -95,6 +102,11 @@ class NonChatGovernance:
         # Optional app-scoped async_sessionmaker for the advisory soft-budget alert
         # (fire-and-forget write to alert_events). None → alert disabled (back-compat).
         self._session_factory = session_factory
+        # residency-policy TASK.md §3 (FROZEN @ v2) Tier 1: None (default) ⇒ zero DB
+        # interaction, byte-identical to pre-residency-policy behavior. Shared by every
+        # non-chat modality (embeddings/images/audio STT+TTS/realtime relay/realtime WS)
+        # since they all call authorize() below.
+        self._residency_lookup: ResidencyLookup | None = residency_lookup
         # credits-ledger TASK.md §3: PassthroughCreditGuard (default) ⇒ check_and_hold is a
         # no-op ⇒ byte-identical to today. Admission-only in this build pass (settle/
         # release for images/audio/embeddings relies on the M6 reconciliation sweep
@@ -147,6 +159,13 @@ class NonChatGovernance:
 
         # Step 4: Catalog active + per-tenant override check
         await self._check_model_catalog(model_id, authz.tenant_id)
+
+        # residency-policy TASK.md §3 (FROZEN @ v2) Tier 1: governance-layer existence
+        # check, immediately after the catalog check (same insertion point as
+        # use_cases.py::_enforce_governance — dual-copy governance, never staggered).
+        # No alias/candidate list at this layer (non-chat pipelines never use
+        # FallbackModelRouter) — a single-id check, authoritative on its own (M4).
+        await check_residency_existence(self._residency_lookup, model_id, authz.tenant_id, None)
 
         # Steps 5-7: Budget enforcement - most-specific-wins.
         # When monthly_budget_usd is set: per-key hard 402 wins; team cap still checked;

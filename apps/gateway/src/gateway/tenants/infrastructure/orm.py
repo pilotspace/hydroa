@@ -162,6 +162,17 @@ class TenantRow(Base):
     payload_capture_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    # residency-policy TASK.md §3 (FROZEN @ v2) — additive, no backfill.
+    # NULL = no pin (unrestricted) — byte-identical to pre-residency-policy behavior.
+    # 'us' | 'eu' | 'ap' — the four-value catalog Region Literal minus 'global'
+    # (a tenant can pin to a specific region, never to "global").
+    residency_region: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # ISO-8601 timestamp set whenever residency_region actually CHANGES (set/change/clear
+    # all update it) — mirrors zdr_enabled_at's compliance-timestamp precedent, but unlike
+    # zdr_enabled_at this one IS updated on every transition, including clearing to NULL.
+    residency_region_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # updated_at — NOT in the baseline (ad14442336db created tenants with created_at only);
     # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without
