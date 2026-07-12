@@ -320,6 +320,9 @@ class AuthzUseCase:
             policy_source=getattr(row, "guardrail_policy_source", "none"),
             zdr_enabled=getattr(row, "zdr_enabled", False),
             payload_capture_enabled=getattr(row, "capture_enabled", False),
+            plan_id=getattr(row, "plan_id", None),
+            plan_model_allowlist=getattr(row, "plan_model_allowlist", None),
+            plan_name=getattr(row, "plan_name", None),
         )
 
 

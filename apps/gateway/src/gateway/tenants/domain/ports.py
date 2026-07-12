@@ -2,6 +2,7 @@ import uuid
 from typing import Protocol
 
 from gateway.tenants.domain.entities import Identity, ImpersonationContext, Role, User
+from gateway.tenants.domain.entitlements import ResolvedEntitlements
 
 
 class IdentityRepository(Protocol):
@@ -127,4 +128,20 @@ class UserLivenessGuard(Protocol):
         guard — every other identity check in this codebase is role/tenant-claims-only and
         never validates user_id resolves to a real row). No-op (returns None) iff the user
         is active or the row does not exist."""
+        ...
+
+
+class PlanEntitlementResolver(Protocol):
+    """Read-only, in-process entitlement resolution port (plan-enforcement TASK.md §3, M8,
+    FROZEN @ v1). Named consumer: seat-billing (wave-2) calls `.resolve(tenant_id)` directly
+    — same precedence order as `resolve_entitlements` (M1). ZERO new HTTP surface: no
+    tenant/admin-facing endpoint exposes this (explicit Non-goal)."""
+
+    async def resolve(self, tenant_id: uuid.UUID) -> ResolvedEntitlements:
+        """Resolve every entitlement dimension for one tenant, read-only.
+
+        Same precedence as `resolve_entitlements` (M1): explicit tenant setting > plan
+        default > unlimited for budget; plan_model_allowlist/plan_feature_flags are the
+        assigned plan's own values (empty/None when unplanned). Never writes anything.
+        """
         ...

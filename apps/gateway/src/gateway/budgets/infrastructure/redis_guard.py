@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gateway.core.error_catalog import BUDGET_EXCEEDED
 from gateway.core.errors import ProblemError
+from gateway.tenants.domain.entitlements import resolve_entitlements
 
 _log = logging.getLogger(__name__)
 
@@ -81,17 +82,36 @@ class RedisBudgetGuard:
             )
 
     async def _fetch_budget(self, tenant_id: uuid.UUID) -> Decimal | None:
-        """Return Decimal budget or None (unlimited). Raises on DB failure."""
+        """Return Decimal budget or None (unlimited). Raises on DB failure.
+
+        plan-enforcement (TASK.md §3, M2): extends the single query with a LEFT JOIN to
+        `plans` so an assigned plan's budget_usd_monthly_default fills the gap when the
+        tenant has no explicit budget of its own — the SAME choke point milestone rule 4
+        requires credits-ledger to reuse, one query, zero pipeline edits. Precedence via
+        resolve_entitlements (M1): explicit tenant setting > plan default > unlimited.
+        """
         async with self._session_factory() as session:
             row = (
                 await session.execute(
-                    text("SELECT budget_usd_monthly FROM tenants WHERE id = :tid"),
+                    text(
+                        "SELECT t.budget_usd_monthly, p.budget_usd_monthly_default "
+                        "FROM tenants t LEFT JOIN plans p ON t.plan_id = p.id "
+                        "WHERE t.id = :tid"
+                    ),
                     {"tid": str(tenant_id)},
                 )
             ).fetchone()
-        if row is None or row[0] is None:
+        if row is None:
             return None
-        return Decimal(str(row[0]))
+        tenant_budget = Decimal(str(row[0])) if row[0] is not None else None
+        plan_budget_default = Decimal(str(row[1])) if row[1] is not None else None
+        return resolve_entitlements(
+            tenant_budget_usd_monthly=tenant_budget,
+            plan_id=None,
+            plan_budget_usd_monthly_default=plan_budget_default,
+            plan_model_allowlist=None,
+            plan_feature_flags=None,
+        ).effective_budget_usd_monthly
 
     async def _fetch_spent(self, tenant_id: uuid.UUID) -> Decimal:
         """Return advisory spend counter from Redis; returns 0 on any failure."""

@@ -549,9 +549,7 @@ OIDC_TENANT_CONFLICT = ErrorSpec(
 
 #: Resolved user's deactivated_at is set (scim-provisioning TASK.md §3, M7) — same
 #: denial family as the password-login path; no session JWT is issued.
-OIDC_ACCOUNT_DEACTIVATED = ErrorSpec(
-    403, "ERR_OIDC_ACCOUNT_DEACTIVATED", "Account is deactivated"
-)
+OIDC_ACCOUNT_DEACTIVATED = ErrorSpec(403, "ERR_OIDC_ACCOUNT_DEACTIVATED", "Account is deactivated")
 
 # ---------------------------------------------------------------------------
 # SAML 2.0 SSO errors (saml-sso task)
@@ -835,6 +833,26 @@ PLAN_NOT_FOUND = ErrorSpec(404, "ERR_PLAN_NOT_FOUND", "Plan not found")
 #: backstop for this same invariant.
 PLAN_TENANT_INELIGIBLE = ErrorSpec(
     403, "ERR_PLAN_TENANT_INELIGIBLE", "This tenant is not eligible for plan assignment"
+)
+
+# ---------------------------------------------------------------------------
+# Plan enforcement (plan-enforcement task — request-time plan governance)
+# ---------------------------------------------------------------------------
+
+#: A model passes the existing key-level allowlist (or the key has none) but is outside
+#: the tenant's ASSIGNED PLAN's model_allowlist (M4/R2). Distinct from MODEL_NOT_ALLOWED
+#: (key-level) so billing-ui (wave-2) can render distinct upgrade messaging per dimension.
+#: Always carries extra.upgrade_hint (plan_id, plan_name, model) — M9.
+PLAN_MODEL_NOT_ALLOWED = ErrorSpec(
+    403, "ERR_PLAN_MODEL_NOT_ALLOWED", "Model not permitted by this tenant's plan"
+)
+
+#: A tenant's assigned plan's feature_flags does not list the requested feature key
+#: (M6/R3-R6): batch-policy write, ml_moderation guardrail write, logs-explorer query, or
+#: realtime-relay connect. Always carries extra.upgrade_hint (plan_id, plan_name,
+#: feature) — M9. Inert (never raised) for an unplanned tenant (plan_id IS NULL, M7).
+PLAN_FEATURE_NOT_ENABLED = ErrorSpec(
+    403, "ERR_PLAN_FEATURE_NOT_ENABLED", "This feature is not enabled on the tenant's plan"
 )
 
 # ---------------------------------------------------------------------------

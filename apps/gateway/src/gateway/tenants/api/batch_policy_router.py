@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
 from gateway.keys.api.deps import get_identity, require_owner_or_admin
+from gateway.tenants.application.entitlements import check_plan_feature
 from gateway.tenants.domain.entities import Identity
 
 batch_policy_router = APIRouter(prefix="/admin/batch-policy", tags=["batches"])
@@ -68,8 +69,18 @@ async def put_batch_policy(
     """PUT /admin/batch-policy — set the tenant-level batch-grouping toggle.
 
     Requires role owner or admin; member → 403 ERR_AUTH_FORBIDDEN.
+
+    plan-enforcement (TASK.md §3, M6/R3): ENABLING batch grouping is refused with 403
+    ERR_PLAN_FEATURE_NOT_ENABLED when the tenant has an assigned plan whose feature_flags
+    lacks "batch" — checked BEFORE any write (§5 Safety rule), so a rejected request
+    leaves batch_grouping_enabled COMPLETELY unchanged. Disabling is never gated (only the
+    forward/enabling direction needs the plan's permission). Inert for an unplanned tenant
+    (M7).
     """
     tenant_id = identity.tenant_id
+
+    if body.enabled:
+        await check_plan_feature(session, tenant_id, "batch")
 
     await session.execute(
         text("UPDATE tenants SET batch_grouping_enabled = :enabled WHERE id = :tid"),

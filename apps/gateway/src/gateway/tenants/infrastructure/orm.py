@@ -58,6 +58,15 @@ class PlanRow(Base):
     )
     rpm_limit_default: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     tpm_limit_default: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # plan-enforcement TASK.md §3 (FROZEN @ v1) — additive. NULL = no plan-level model
+    # restriction (mirrors ApiKeyRow.model_allowlist's own null=all-models convention).
+    model_allowlist: Mapped[list[str] | None] = mapped_column(sa.JSON, nullable=True, default=None)
+    # plan-enforcement TASK.md §3 (FROZEN @ v1) — additive. NOT NULL DEFAULT '[]': array of
+    # feature-key strings this plan tier grants (e.g. "batch", "ml_moderation",
+    # "logs_explorer", "realtime"). Migration-seeded only — no runtime plans-row CRUD.
+    feature_flags: Mapped[list[str]] = mapped_column(
+        sa.JSON, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
+    )
     # TIMESTAMPTZ per §3 Schema — a NEW table gets the tz-aware convention (mirrors
     # InviteRow's own explicit DateTime(timezone=True), NOT TenantRow/UserRow's older
     # bare-Mapped[datetime] style). No onupdate — inert in v1 (no write path updates a

@@ -51,6 +51,7 @@ from gateway.core.error_catalog import (
     PAYLOAD_MESSAGES_REQUIRED,
     PAYLOAD_MODEL_REQUIRED,
     PAYLOAD_TAGS_INVALID,
+    PLAN_MODEL_NOT_ALLOWED,
     PRESET_NOT_FOUND,
     RATE_LIMITED,
     UPSTREAM_RATE_LIMITED,
@@ -654,6 +655,8 @@ async def _run_output_validation_retry(
             "validation_errors": retry_outcome["errors"],
         }
     )
+
+
 def _capture_response_body(collected: list[bytes]) -> dict[str, Any] | None:
     """Build the capture-hook response_body for a streaming exit branch.
 
@@ -782,6 +785,31 @@ def _check_model_allowlist(authz: AuthzResult, model_id: str) -> None:
         return
     if model_id not in authz.model_allowlist:
         raise MODEL_NOT_ALLOWED.exc()
+
+
+def _check_plan_model_allowlist(authz: AuthzResult, model_id: str) -> None:
+    """Raise ProblemError 403 ERR_PLAN_MODEL_NOT_ALLOWED (plan-enforcement TASK.md §3, M4,
+    M9) if the model is outside the tenant's ASSIGNED PLAN's model_allowlist.
+
+    Composes by INTERSECTION with the existing key-level _check_model_allowlist above —
+    called immediately AFTER it, never instead of it. A no-op (M7 grandfathered) when the
+    tenant has no assigned plan; a no-op when the plan itself imposes no restriction
+    (null allowlist, same convention as the key-level allowlist).
+    """
+    if authz.plan_id is None:
+        return  # M7 — unplanned, grandfathered-unlimited
+    if authz.plan_model_allowlist is None:
+        return  # plan imposes no restriction
+    if model_id not in authz.plan_model_allowlist:
+        raise PLAN_MODEL_NOT_ALLOWED.exc(
+            extra={
+                "upgrade_hint": {
+                    "plan_id": str(authz.plan_id),
+                    "plan_name": authz.plan_name,
+                    "model": model_id,
+                }
+            }
+        )
 
 
 def _parse_spend(raw: bytes | str | None) -> Decimal:
@@ -1312,6 +1340,11 @@ class CompletionUseCase:
         # MUST run BEFORE the tenant-disabled check (§3 M7 enforcement order).
         _check_model_allowlist(authz, model_id)
 
+        # plan-enforcement (M4): plan-level model-allowlist check — composes by
+        # INTERSECTION with the key-level allowlist just above; runs immediately after it,
+        # BEFORE the catalog check (same ordering rationale as the key-level check).
+        _check_plan_model_allowlist(authz, model_id)
+
         # Catalog active + per-tenant override check (§3 step 3 — after allowlist).
         # Alias-aware when model_groups provided (§3 A4): validates all candidates.
         await self._check_model_catalog(model_id, authz.tenant_id, model_groups)
@@ -1653,9 +1686,7 @@ class CompletionUseCase:
                             # SEMANTIC HIT
                             x_cache = "semantic_hit"
                             # cache-alias-billing (B6): read+pop served BEFORE masking.
-                            _served_cached_sem = _read_served_from_cache(
-                                sem_cached_body, model_id
-                            )
+                            _served_cached_sem = _read_served_from_cache(sem_cached_body, model_id)
                             if metrics_registry is not None:
                                 try:
                                     metrics_registry.cache_events_total.labels(
@@ -1667,10 +1698,8 @@ class CompletionUseCase:
                             if guardrail_evaluator is not None and guardrail_configs:
                                 if hasattr(guardrail_evaluator, "evaluate_post"):
                                     try:
-                                        sem_cached_body = (
-                                            await guardrail_evaluator.evaluate_post(
-                                                sem_cached_body, guardrail_configs
-                                            )
+                                        sem_cached_body = await guardrail_evaluator.evaluate_post(
+                                            sem_cached_body, guardrail_configs
                                         )
                                     except Exception as _exc:
                                         _log.warning(
@@ -1753,8 +1782,7 @@ class CompletionUseCase:
                                     )
                                 except Exception as _exc:
                                     _log.warning(
-                                        "guardrail evaluate_post raised on"
-                                        " vector HIT (fail-OPEN)",
+                                        "guardrail evaluate_post raised on vector HIT (fail-OPEN)",
                                         exc_info=_exc,
                                     )
                         vec_usage_raw = vec_body.get("usage")
