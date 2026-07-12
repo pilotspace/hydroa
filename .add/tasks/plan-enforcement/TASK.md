@@ -593,7 +593,7 @@ Glossary deltas:
   - **Plan-gated feature**: an existing tenant-configurable capability (batch grouping, ml_moderation
     guardrails, logs-explorer queries, realtime relay) whose enablement additionally requires the
     tenant's assigned plan to list the feature's key in `plans.feature_flags` — inert (no gate at
-    all) for an unplanned tenant, per M7.
+    all) for an unplanned tenant, per M7. [folded foundation-version 51]
 Reported: no — drafted for the wave-1 batch freeze review; Tin reviews all 4 wave-1 contracts at
   ONE sitting per the shared design context.
 

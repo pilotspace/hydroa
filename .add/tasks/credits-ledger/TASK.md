@@ -327,7 +327,7 @@ Access pattern: `check_and_hold` / `settle` / `release` ALWAYS run as `BEGIN; SE
 Glossary deltas:
 - **Credit ledger**: the append-only, tenant-scoped prepaid-balance ledger (`credit_ledger`); entries are `topup` (platform-operator credit), `hold` (admission-time reservation of an estimate), `settle` (reconciles a hold to the actual metered cost), `release` (reverses an unused hold), `correction` (a signed-delta fix, v33 precedent) — balance is always `SUM(amount_usd)` for a tenant, never mutated in place.
 - **Hold**: a synchronous, row-locked reservation of `hold_estimate_usd` placed at request admission, before the true cost is known; always followed by exactly one `settle` or `release`, never left open past `hold_timeout_s`.
-- **Grace (credits)**: the tenant-configurable negative buffer (`grace_usd`) the balance may cross before the spend gate rejects — the credits analogue of GLOSSARY.md's `Budget` "small in-flight overage tolerated," made an explicit bounded parameter instead of an incidental side effect of write-behind lag.
+- **Grace (credits)**: the tenant-configurable negative buffer (`grace_usd`) the balance may cross before the spend gate rejects — the credits analogue of GLOSSARY.md's `Budget` "small in-flight overage tolerated," made an explicit bounded parameter instead of an incidental side effect of write-behind lag. [folded foundation-version 51]
 
 Reported: no — first pass, awaiting the batch freeze review with the other wave-1 contracts.
 
