@@ -79,9 +79,7 @@ def make_second_app_client() -> Any:
     """
 
     def _factory(*, public_signup_enabled: bool, **settings_overrides: Any) -> Any:
-        settings = build_settings(
-            public_signup_enabled=public_signup_enabled, **settings_overrides
-        )
+        settings = build_settings(public_signup_enabled=public_signup_enabled, **settings_overrides)
         application = create_app(settings)
         install_stub_resolver(application)
         client = httpx.AsyncClient(

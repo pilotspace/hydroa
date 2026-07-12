@@ -128,9 +128,7 @@ class SamlConfigPutBody(BaseModel):
     idp_sso_url: str
     idp_x509_cert: str
     email_domains: list[str]
-    email_attribute_name: str = (
-        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
-    )
+    email_attribute_name: str = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
     enabled: bool = True
 
 
@@ -270,10 +268,7 @@ async def put_saml_config(
             _other_tenant_id, other_domains = collision_row
             claimed = sorted(set(other_domains or []) & set(body.email_domains))
             raise SAML_DOMAIN_ALREADY_CLAIMED.exc(
-                detail=(
-                    "email_domains already claimed by another tenant: "
-                    f"{claimed}"
-                )
+                detail=(f"email_domains already claimed by another tenant: {claimed}")
             )
 
     now = datetime.now(UTC)

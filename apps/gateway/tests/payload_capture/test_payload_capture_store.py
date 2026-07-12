@@ -492,9 +492,7 @@ async def test_zdr_check_failure_fails_closed_suppresses_capture(
     # actual tenant created via signup would need an httpx client; simplest here is to
     # insert one directly since this is a unit-level test of the port, not the router.
     await db_session.execute(
-        text(
-            "INSERT INTO tenants (id, name) VALUES (:id, :name)"
-        ),
+        text("INSERT INTO tenants (id, name) VALUES (:id, :name)"),
         {"id": str(tenant_id), "name": "zdr-raise-tenant"},
     )
     await db_session.commit()
@@ -631,9 +629,7 @@ async def test_scrub_failure_persists_metadata_only_never_raw(
 # ===========================================================================
 
 
-async def test_oversize_field_truncated_with_marker(
-    app: Any, db_session: AsyncSession
-) -> None:
+async def test_oversize_field_truncated_with_marker(app: Any, db_session: AsyncSession) -> None:
     from gateway.logs.application.capture_writer import persist_request_log
 
     tenant_id = uuid.uuid4()
@@ -776,9 +772,7 @@ async def test_member_role_cannot_toggle_capture(
         email="member@membercapture.io",
     )
 
-    resp = await client.put(
-        ADMIN_CAPTURE, json={"enabled": True}, headers=auth_jwt(member_jwt)
-    )
+    resp = await client.put(ADMIN_CAPTURE, json={"enabled": True}, headers=auth_jwt(member_jwt))
     assert_problem(resp, 403, "ERR_AUTH_FORBIDDEN")
 
     # stored value must be unchanged (still the default False)
@@ -908,9 +902,7 @@ async def test_cross_tenant_isolation_on_capture_config(
 # ===========================================================================
 
 
-async def test_retention_sweep_purges_aged_request_logs(
-    db_session: AsyncSession, app: Any
-) -> None:
+async def test_retention_sweep_purges_aged_request_logs(db_session: AsyncSession, app: Any) -> None:
     import datetime
     from unittest.mock import MagicMock
 
@@ -938,12 +930,8 @@ async def test_retention_sweep_purges_aged_request_logs(
         )
         return row_id
 
-    old_id = await _insert_row(
-        datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=40)
-    )
-    recent_id = await _insert_row(
-        datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=5)
-    )
+    old_id = await _insert_row(datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=40))
+    recent_id = await _insert_row(datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=5))
     await db_session.commit()
 
     settings = MagicMock()
@@ -1020,4 +1008,6 @@ async def test_capture_concurrency_guard_sheds_load_non_blocking(
         f"a saturated pool must be skipped non-blockingly (no wait), took {elapsed:.2f}s"
     )
     rows = await _request_log_rows(db_session, str(tenant_id))
-    assert rows == [], f"no row should be written when the concurrency pool is saturated, got {rows}"
+    assert rows == [], (
+        f"no row should be written when the concurrency pool is saturated, got {rows}"
+    )

@@ -54,9 +54,7 @@ def _make_use_case(
             output_validation_enabled=output_validation_enabled,
         )
     except TypeError:
-        pytest.fail(
-            "RED: CompletionUseCase has no output_validation_enabled kwarg — build pending"
-        )
+        pytest.fail("RED: CompletionUseCase has no output_validation_enabled kwarg — build pending")
 
 
 async def _settle() -> None:

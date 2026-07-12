@@ -56,7 +56,11 @@ async def test_bandwidth_grant_within_cap_forwards_frame_unchanged() -> None:
     session = FakeProviderSession(block_events=True)
     transport = FakeClientTransport(frames=[b"\x01mic"], disconnect_after=True)
     pump = RelayPump(
-        transport, session, _settings(bandwidth_max_wait_seconds=1.0), bandwidth_bucket=bucket, key_id=key_id
+        transport,
+        session,
+        _settings(bandwidth_max_wait_seconds=1.0),
+        bandwidth_bucket=bucket,
+        key_id=key_id,
     )
     await asyncio.wait_for(pump.run(), timeout=2.0)
 
@@ -70,7 +74,11 @@ async def test_bandwidth_exhausted_mid_session_closes_4429() -> None:
     session = FakeProviderSession(block_events=True)
     transport = FakeClientTransport(frames=[b"\x02mic"], idle=True)
     pump = RelayPump(
-        transport, session, _settings(bandwidth_max_wait_seconds=0.5), bandwidth_bucket=bucket, key_id=key_id
+        transport,
+        session,
+        _settings(bandwidth_max_wait_seconds=0.5),
+        bandwidth_bucket=bucket,
+        key_id=key_id,
     )
     await asyncio.wait_for(pump.run(), timeout=2.0)
 

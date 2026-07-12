@@ -57,6 +57,13 @@ class ApiKey:
     # Raw key-level column value in create()/list_by_tenant(); OR-resolved with
     # tenants.payload_capture_enabled in get_by_id() (mirrors cache_enabled's dual role).
     capture_enabled: bool = False
+    # plan-enforcement additive fields (TASK.md §3, FROZEN @ v1) — populated via a 4th
+    # outerjoin(PlanRow, TenantRow.plan_id == PlanRow.id) in get_by_id(), zero extra DB
+    # reads. plan_id None = unplanned (M7, grandfathered). plan_model_allowlist mirrors
+    # model_allowlist's own null=all-models convention. plan_name feeds M9's upgrade_hint.
+    plan_id: uuid.UUID | None = None
+    plan_model_allowlist: list[str] | None = None
+    plan_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,3 +142,11 @@ class AuthzResult:
     # Effective = api_keys.capture_enabled OR tenants.payload_capture_enabled (resolved at
     # auth time, mirrors cache_enabled's OR-resolution exactly — key can only turn ON).
     payload_capture_enabled: bool = False
+    # plan-enforcement additive fields (TASK.md §3, FROZEN @ v1) — populated at auth time
+    # via the existing 3-table LEFT JOIN, extended with a 4th outerjoin to `plans`. Zero
+    # extra DB reads. plan_id None = unplanned (M7, grandfathered-unlimited).
+    # plan_model_allowlist mirrors model_allowlist's own null=all-models convention (M4).
+    # plan_name feeds M9's structured upgrade_hint.
+    plan_id: uuid.UUID | None = None
+    plan_model_allowlist: list[str] | None = None
+    plan_name: str | None = None

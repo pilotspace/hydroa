@@ -96,9 +96,7 @@ async def test_scd_missing_inresponseto_must_be_rejected_not_accepted(
     )
     forged_b64 = build_saml_response_b64(spec)
 
-    resp = await client.post(
-        SAML_ACS, data={"SAMLResponse": forged_b64}, follow_redirects=False
-    )
+    resp = await client.post(SAML_ACS, data={"SAMLResponse": forged_b64}, follow_redirects=False)
 
     # EXPECTED (per frozen contract M5.4 / Reject list): rejected, no
     # session, no user provisioned — the signed content carries no

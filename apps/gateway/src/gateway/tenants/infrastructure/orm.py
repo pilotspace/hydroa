@@ -47,6 +47,11 @@ class PlanRow(Base):
             "tpm_limit_default IS NULL OR tpm_limit_default > 0",
             name="ck_plans_tpm_default_positive",
         ),
+        # seat-billing TASK.md §3 (FROZEN @ v2) — additive.
+        CheckConstraint(
+            "seat_price_usd_monthly IS NULL OR seat_price_usd_monthly > 0",
+            name="ck_plans_seat_price_positive",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
@@ -58,6 +63,23 @@ class PlanRow(Base):
     )
     rpm_limit_default: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     tpm_limit_default: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # plan-enforcement TASK.md §3 (FROZEN @ v1) — additive. NULL = no plan-level model
+    # restriction (mirrors ApiKeyRow.model_allowlist's own null=all-models convention).
+    model_allowlist: Mapped[list[str] | None] = mapped_column(sa.JSON, nullable=True, default=None)
+    # plan-enforcement TASK.md §3 (FROZEN @ v1) — additive. NOT NULL DEFAULT '[]': array of
+    # feature-key strings this plan tier grants (e.g. "batch", "ml_moderation",
+    # "logs_explorer", "realtime"). Migration-seeded only — no runtime plans-row CRUD.
+    feature_flags: Mapped[list[str]] = mapped_column(
+        sa.JSON, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
+    )
+    # seat-billing TASK.md §3 (FROZEN @ v2, M2) — additive. NULL = no seat pricing
+    # (inert — this task writes ZERO 'seat'/'proration' invoice lines for a tenant whose
+    # plan has this NULL or 0). Migration-seeded only (team=$15.00, enterprise=$40.00,
+    # starter=NULL) — no runtime plans-row CRUD, mirrors every other `plans.*_default`
+    # column's nullable/no-runtime-CRUD convention.
+    seat_price_usd_monthly: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True, default=None
+    )
     # TIMESTAMPTZ per §3 Schema — a NEW table gets the tz-aware convention (mirrors
     # InviteRow's own explicit DateTime(timezone=True), NOT TenantRow/UserRow's older
     # bare-Mapped[datetime] style). No onupdate — inert in v1 (no write path updates a
@@ -302,3 +324,46 @@ class ImpersonationSessionRow(Base):
         DateTime(timezone=True), nullable=True, default=None
     )
     revoked_reason: Mapped[str | None] = mapped_column(nullable=True, default=None)
+
+
+class SeatMembershipEventRow(Base):
+    """seat_membership_events — append-only seat-transition ledger (seat-billing TASK.md
+    §3, FROZEN @ v2). One row per `joined`/`deactivated`/`reactivated` transition, written
+    in the SAME DB transaction as the triggering `users`-row mutation at exactly 5 call
+    sites (M3): InviteRepository.accept, SqlAlchemyScimUserRepository.create_user/
+    .set_active, _get_or_provision_sso_user (new-user branch only, v2/CR-1),
+    join_verified_tenant_domain (v2/CR-1).
+
+    NEVER updated or deleted by any code path — the seat-domain analog of `usage_records`'
+    own "one ledger of truth" doctrine. `user_id` REFERENCES users(id) ON DELETE RESTRICT
+    because users are never hard-deleted in this codebase (§0 GROUND, confirmed via
+    scim_router.py's DELETE-is-an-alias-for-PATCH-active:false doctrine).
+    """
+
+    __tablename__ = "seat_membership_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('joined', 'deactivated', 'reactivated')",
+            name="ck_seat_membership_events_event_type",
+        ),
+        Index(
+            "ix_seat_membership_events_tenant_user_occurred",
+            "tenant_id",
+            "user_id",
+            "occurred_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    # the real transition instant, tz-aware (mirrors InviteRow's own explicit
+    # DateTime(timezone=True) convention for every NEW table in this codebase).
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # row-write instant, for audit/ordering-tiebreak only — never read for pricing.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

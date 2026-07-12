@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import re
 import time
 import uuid
 from decimal import Decimal
@@ -41,6 +42,7 @@ from gateway.core.error_catalog import (
     PAYLOAD_INVALID,
     PAYLOAD_KEY_ID_UUID_INVALID,
     PAYLOAD_START_DATE_INVALID,
+    PAYLOAD_TAGS_INVALID,
     PAYLOAD_WINDOW_INVALID,
 )
 from gateway.tenants.domain.authz import (
@@ -54,12 +56,14 @@ from gateway.tenants.domain.errors import InvalidTokenError
 from gateway.tenants.domain.ports import TokenService
 from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 from gateway.usage.api.schemas import (
+    CostByTagResponse,
     ReconciliationResponse,
     ReconciliationSourceItem,
     SpendBreakdownItem,
     SpendBucket,
     SpendTotals,
     SpendWindowResponse,
+    TagBreakdownItem,
     TeamSpendBreakdownItem,
     UsageRecordItem,
     UsageTotalsResponse,
@@ -522,6 +526,136 @@ async def get_spend(
         totals=totals,
         buckets=buckets,
         breakdown=breakdown,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/usage/cost-by-tag — windowed cost-by-tag breakdown
+# (cost-attribution-tags TASK.md §3, FROZEN @ v1)
+# ---------------------------------------------------------------------------
+# A SIBLING route in this same module (not a new gateway/cost_attribution/ package,
+# per §1 Framing D) — reuses _compute_window_bounds/_require_ops_read/_VALID_WINDOWS
+# verbatim, exactly like get_alerts/get_upstream_health/get_ratelimits/get_bandwidth/
+# get_slo above. Never touches /admin/spend's own FROZEN @ spend-windows contract.
+# Mirrors the SAME key-format regex use_cases.py's _parse_tags_header (proxy module)
+# validates X-Gateway-Tags keys against — duplicated here (not cross-imported) to
+# avoid a usage.api -> proxy.application layering violation; both cite this comment.
+_TAG_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+_TAGS_BREAKDOWN_LIMIT = 100
+
+
+@usage_router.get("/usage/cost-by-tag", response_model=CostByTagResponse)
+async def get_cost_by_tag(
+    identity: Annotated[Identity, Depends(_require_ops_read)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    window: Annotated[str, Query()] = "month",
+    start: Annotated[str | None, Query()] = None,
+    end: Annotated[str | None, Query()] = None,
+    tag_key: Annotated[str | None, Query()] = None,
+) -> CostByTagResponse:
+    """Return a windowed, tenant-scoped cost-by-tag breakdown (FROZEN @ v1 — TASK.md §3).
+
+    Contract:
+    - OPS_READ-gated (owner/admin/operator/billing_admin/viewer; member → 403 R6).
+    - window=day|week|month (default month) or explicit start/end — reuses
+      _compute_window_bounds verbatim (same 422 codes as /admin/spend, R7).
+    - tag_key (optional): narrows the breakdown to one key's values; malformed
+      format → 422 PAYLOAD_TAGS_INVALID (R8); a well-formed but unused key → 200
+      with breakdown=[] (M8) — total_cost_usd/total_requests always reflect the
+      FULL window, unfiltered by tag_key.
+    - breakdown rows are OVERLAPPING cost slices (jsonb_each_text expansion) — a
+      multi-tagged row contributes to more than one row; never assumed to sum to
+      total_cost_usd (M6).
+    - Capped at 100 rows by cost_usd DESC; truncated=true signals more exist (M7).
+    - Empty window → 200 with explicit zeros, breakdown=[], truncated=false (M9)
+      — never 404, mirrors get_spend/get_guardrail_analytics.
+    - Tenant isolation: every query includes WHERE tenant_id = :tenant_id.
+    """
+    tenant_id: uuid.UUID = identity.tenant_id
+
+    if tag_key is not None and not _TAG_KEY_RE.match(tag_key):
+        raise PAYLOAD_TAGS_INVALID.exc(detail=f"invalid tag_key: {tag_key!r}")
+
+    window_start, window_end, _granularity = _compute_window_bounds(window, start, end)
+
+    params: dict[str, object] = {
+        "tenant_id": str(tenant_id),
+        "window_start": window_start.replace(tzinfo=None),
+        "window_end": window_end.replace(tzinfo=None),
+    }
+
+    # ── Totals (unfiltered by tag_key — M8: always the FULL window) ────────────
+    totals_row = (
+        await session.execute(
+            text(
+                "SELECT"
+                "  COALESCE(SUM(cost_usd), 0) AS total_cost_usd,"
+                "  COUNT(*) AS total_requests,"
+                "  COALESCE(SUM(cost_usd) FILTER (WHERE tags = '{}'::jsonb), 0)"
+                "    AS untagged_cost_usd,"
+                "  COUNT(*) FILTER (WHERE tags = '{}'::jsonb) AS untagged_requests"
+                " FROM usage_records"
+                " WHERE tenant_id = :tenant_id"
+                "   AND created_at >= :window_start"
+                "   AND created_at <  :window_end"
+            ),
+            params,
+        )
+    ).fetchone()
+
+    total_cost_usd = Decimal(str(totals_row[0])) if totals_row else Decimal("0")
+    total_requests = int(totals_row[1]) if totals_row else 0
+    untagged_cost_usd = Decimal(str(totals_row[2])) if totals_row else Decimal("0")
+    untagged_requests = int(totals_row[3]) if totals_row else 0
+
+    # ── Breakdown: jsonb_each_text expansion, optionally filtered to one tag_key ──
+    # LIMIT 101: the 101st row (if present) signals truncated=true without a
+    # separate COUNT(DISTINCT ...) query. tag_key is regex-validated above (safe
+    # to bind as a literal param — never string-interpolated into the SQL text).
+    breakdown_params: dict[str, object] = dict(params)
+    tag_key_filter = ""
+    if tag_key is not None:
+        tag_key_filter = " AND kv.key = :tag_key"
+        breakdown_params["tag_key"] = tag_key
+
+    breakdown_sql = text(
+        "SELECT"
+        "  kv.key AS tag_key,"
+        "  kv.value AS tag_value,"
+        "  COALESCE(SUM(ur.cost_usd), 0) AS cost_usd,"
+        "  COUNT(*) AS request_count"
+        " FROM usage_records ur, jsonb_each_text(ur.tags) AS kv(key, value)"
+        " WHERE ur.tenant_id = :tenant_id"
+        "   AND ur.created_at >= :window_start"
+        "   AND ur.created_at <  :window_end"
+        f"{tag_key_filter}"
+        " GROUP BY kv.key, kv.value"
+        " ORDER BY cost_usd DESC"
+        " LIMIT 101"
+    )
+    breakdown_rows = (await session.execute(breakdown_sql, breakdown_params)).fetchall()
+
+    truncated = len(breakdown_rows) > _TAGS_BREAKDOWN_LIMIT
+    breakdown = [
+        TagBreakdownItem(
+            tag_key=str(row[0]),
+            tag_value=str(row[1]),
+            cost_usd=str(Decimal(str(row[2]))),
+            request_count=int(row[3]),
+        )
+        for row in breakdown_rows[:_TAGS_BREAKDOWN_LIMIT]
+    ]
+
+    return CostByTagResponse(
+        window=window,
+        window_start=window_start.replace(tzinfo=None).isoformat(),
+        window_end=window_end.replace(tzinfo=None).isoformat(),
+        total_cost_usd=str(total_cost_usd),
+        total_requests=total_requests,
+        untagged_cost_usd=str(untagged_cost_usd),
+        untagged_requests=untagged_requests,
+        breakdown=breakdown,
+        truncated=truncated,
     )
 
 

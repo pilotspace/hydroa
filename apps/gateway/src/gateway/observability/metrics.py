@@ -129,6 +129,16 @@ class MetricsRegistry:
             registry=registry,
         )
 
+        # credits-ledger TASK.md §3 (M11): incremented every time the credit gate
+        # fail-opens on a ledger-store outage — pairs with the structured warning log
+        # so the degrade is measurable/alertable, never just log-buried.
+        self.credits_gate_degraded_total = Counter(
+            "gateway_credits_gate_degraded_total",
+            "Credit gate fail-open events (ledger store unreachable) by operation",
+            ["operation"],  # "check_and_hold" | "settle" | "release"
+            registry=registry,
+        )
+
     @property
     def registry(self) -> CollectorRegistry:
         return self._registry

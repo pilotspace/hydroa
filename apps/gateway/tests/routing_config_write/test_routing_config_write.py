@@ -30,7 +30,10 @@ async def _superadmin(app: Any, n: str = "acme") -> str:
     'any owner/admin, always-on' decision). routing_config has no tenant_id, and
     require_superadmin only checks the JWT role claim, so no signup/user row is needed."""
     token, _ = app.state.token_service.issue(
-        user_id=uuid.uuid4(), tenant_id=uuid.uuid4(), role=Role.SUPERADMIN, email=f"super@{n}.example"
+        user_id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        role=Role.SUPERADMIN,
+        email=f"super@{n}.example",
     )
     return str(token)
 

@@ -44,7 +44,9 @@ def _assert_problem(resp: httpx.Response, status: int, code: str) -> dict[str, A
 
 async def _claim_row_count(db: AsyncSession, *, domain: str | None = None) -> int:
     if domain is None:
-        return int((await db.execute(text("SELECT count(*) FROM tenant_domain_claims"))).scalar_one())
+        return int(
+            (await db.execute(text("SELECT count(*) FROM tenant_domain_claims"))).scalar_one()
+        )
     return int(
         (
             await db.execute(
@@ -92,9 +94,7 @@ async def test_owner_claims_fresh_domain_gets_challenge(
         client, tenant_name="Acme", email="owner@acme-claims.io"
     )
 
-    resp = await client.post(
-        DOMAIN_CLAIMS, json={"domain": "acme.io"}, headers=bearer(token)
-    )
+    resp = await client.post(DOMAIN_CLAIMS, json={"domain": "acme.io"}, headers=bearer(token))
 
     assert resp.status_code == 201, resp.text
     body = resp.json()
@@ -122,16 +122,12 @@ async def test_reclaim_pending_domain_reissues_no_duplicate(
         client, tenant_name="Acme", email="owner@acme-reissue.io"
     )
 
-    first = await client.post(
-        DOMAIN_CLAIMS, json={"domain": "reissue.io"}, headers=bearer(token)
-    )
+    first = await client.post(DOMAIN_CLAIMS, json={"domain": "reissue.io"}, headers=bearer(token))
     assert first.status_code == 201, first.text
     first_value = first.json()["dns_record_value"]
     first_expiry = first.json()["expires_at"]
 
-    second = await client.post(
-        DOMAIN_CLAIMS, json={"domain": "reissue.io"}, headers=bearer(token)
-    )
+    second = await client.post(DOMAIN_CLAIMS, json={"domain": "reissue.io"}, headers=bearer(token))
     assert second.status_code == 201, second.text
     second_value = second.json()["dns_record_value"]
     second_expiry = second.json()["expires_at"]
@@ -183,9 +179,7 @@ async def test_claim_already_verified_by_other_tenant_rejected(
     claim_id = create.json()["claim_id"]
     claim_token = create.json()["dns_record_value"].split("=", 1)[1]
     fake_dns.set_record(_record_name("shared-corp.com"), claim_token)
-    verify = await client.post(
-        f"{DOMAIN_CLAIMS}/{claim_id}/verify", headers=bearer(globex_token)
-    )
+    verify = await client.post(f"{DOMAIN_CLAIMS}/{claim_id}/verify", headers=bearer(globex_token))
     assert verify.status_code == 200, verify.text
 
     _acme_id, acme_token = await signup_and_login(
@@ -351,7 +345,9 @@ async def test_verification_rejected_when_expired(
 
     # Force expires_at into the past directly (no clock-mocking seam exists yet).
     await db_session.execute(
-        text("UPDATE tenant_domain_claims SET expires_at = now() - interval '1 hour' WHERE id = :id"),
+        text(
+            "UPDATE tenant_domain_claims SET expires_at = now() - interval '1 hour' WHERE id = :id"
+        ),
         {"id": claim_id},
     )
     await db_session.commit()
@@ -709,9 +705,9 @@ async def test_unverified_pending_domain_changes_nothing(
     after_users = await _user_count(db_session)
     assert (after_tenants, after_users) == (before_tenants, before_users)
     assert await _claim_row_count(db_session, domain=domain) == 1
-    assert await _claim_status(
-        db_session, create.json()["claim_id"]
-    ) == "pending", "the pending claim is completely unchanged"
+    assert await _claim_status(db_session, create.json()["claim_id"]) == "pending", (
+        "the pending claim is completely unchanged"
+    )
 
 
 # ===========================================================================

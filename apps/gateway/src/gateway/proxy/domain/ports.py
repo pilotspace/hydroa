@@ -63,6 +63,12 @@ class UsageRecordExtras(TypedDict, total=False):
                           and also stored on request_logs.request_id, letting a reader
                           join the two tables (request-log-metering-fields, no new
                           usage_records column — stored inside the raw JSONB extras)
+      tags              — client-supplied key/value request labels (0-8 pairs, parsed
+                          + validated from the X-Gateway-Tags header), persisted onto
+                          the dedicated usage_records.tags JSONB column (cost-attribution-
+                          tags TASK.md §3, additive column — NOT the raw JSONB extras).
+                          Omitted/empty -> the recorder stores {} (byte-identical to a
+                          request that never sent the header).
     """
 
     team_id: uuid.UUID
@@ -76,6 +82,7 @@ class UsageRecordExtras(TypedDict, total=False):
     provider_generation_id: str
     disconnect_estimate: bool
     request_id: uuid.UUID
+    tags: dict[str, str]
 
 
 class ModelAccess(Enum):
@@ -165,6 +172,13 @@ class UsageRecorder(Protocol):
         Called fire-and-forget; NoopUsageRecorder by default.
         Must not raise — failures are silently swallowed to avoid affecting the
         caller's response.
+
+        credits-ledger TASK.md §3: a concrete recorder MAY additionally expose a
+        `record_with_outcome(**same kwargs)` method returning a duck-typed outcome
+        (`tenant_id`, `usage_record_id`, `cost_usd`, `free` attributes) so a
+        fire-and-forget caller can settle/release a credit hold with the
+        ALREADY-COMPUTED cost — deliberately NOT part of this Protocol (keeps every
+        v1 implementer/fake unaffected); callers duck-type via hasattr/getattr.
         """
         ...
 

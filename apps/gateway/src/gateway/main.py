@@ -59,6 +59,20 @@ from gateway.batches.application.worker import (
 from gateway.batches.infrastructure.orm import (  # noqa: F401 — registers BatchJobRow/BatchJobItemRow on Base.metadata
     BatchJobItemRow as _BatchJobItemRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.billing.api.router import invoices_router
+from gateway.billing.application.invoice_generator import (
+    InvoiceGenerator,
+    should_start_invoice_generator,
+)
+from gateway.billing.infrastructure.orm import (  # noqa: F401 — registers InvoiceRow/InvoiceLineRow/InvoiceCorrectionRow on Base.metadata
+    InvoiceCorrectionRow as _InvoiceCorrectionRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.billing.infrastructure.orm import (  # noqa: F401
+    InvoiceLineRow as _InvoiceLineRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.billing.infrastructure.orm import (  # noqa: F401
+    InvoiceRow as _InvoiceRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.budgets.api.router import budget_router
 from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 from gateway.catalog.api.router import (
@@ -82,6 +96,16 @@ from gateway.core.body_size_guard import BodySizeLimitMiddleware
 from gateway.core.config import Settings
 from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
 from gateway.core.errors import register_error_handlers
+from gateway.credits.api.router import credits_platform_router, credits_router
+from gateway.credits.application.recovery_sweep import (
+    CreditHoldRecoverySweeper,
+    should_start_credit_recovery_sweep,
+)
+from gateway.credits.domain.ports import PassthroughCreditGuard
+from gateway.credits.infrastructure.orm import (  # noqa: F401 — registers CreditLedgerRow/TenantCreditBalanceRow on Base.metadata
+    CreditLedgerRow as _CreditLedgerRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.credits.infrastructure.postgres_guard import PostgresCreditGuard
 from gateway.domain_capture.api.domain_claims_router import domain_claims_router
 from gateway.domain_capture.infrastructure.dns_resolver import DnsPythonTxtResolver
 from gateway.domain_capture.infrastructure.orm import (  # noqa: F401 — registers TenantDomainClaimRow on Base.metadata
@@ -181,6 +205,7 @@ from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.invite_accept_router import invite_accept_router
 from gateway.tenants.api.invites_router import invites_router
+from gateway.tenants.api.plan_router import plan_router
 from gateway.tenants.api.platform_audit_router import platform_audit_router
 from gateway.tenants.api.platform_impersonation_router import platform_impersonation_router
 from gateway.tenants.api.platform_plans_router import platform_plans_router
@@ -197,6 +222,7 @@ from gateway.tenants.infrastructure.jwt_service import JwtTokenService
 from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.usage.api.margin_router import margin_router
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
 from gateway.usage.application.drift_checker import (
@@ -537,6 +563,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # CreditHoldRecoverySweeper (credits-ledger TASK.md §3 M6) — periodic backstop that
+        # releases orphaned HOLDs (a crashed/never-finalized request) older than
+        # credits_hold_timeout_seconds. Default-ON (60s) — unlike the OpenRouter accuracy
+        # backstop above, this protects tenant AVAILABILITY (an orphaned hold silently
+        # starves a balance), so it defaults to running rather than opt-in.
+        app.state.credit_recovery_sweep_task = None
+        if should_start_credit_recovery_sweep(_settings.credits_recovery_sweep_interval_seconds):
+            credit_recovery_sweeper = CreditHoldRecoverySweeper(
+                session_factory=_sessionmaker,
+                credit_guard=app.state.credit_guard,
+                hold_timeout_s=_settings.credits_hold_timeout_seconds,
+            )
+            app.state.credit_recovery_sweeper = credit_recovery_sweeper
+            app.state.credit_recovery_sweep_task = asyncio.create_task(
+                credit_recovery_sweeper.run_forever(
+                    interval_seconds=float(_settings.credits_recovery_sweep_interval_seconds)
+                )
+            )
+
         # RetentionSweeper — periodic bounded DELETE of aged time-series rows
         # (data-retention-controls v38). Default-ON at configured defaults; started only
         # when interval>0 AND at least one per-table window>0. Wired after recovery sweep.
@@ -618,6 +663,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # InvoiceGenerator — month-close background loop (invoice-generation TASK.md
+        # §3). Default-ON at configured defaults; started only when
+        # invoice_generation_interval_seconds>0. Structurally copied from the
+        # RetentionSweeper wiring immediately above.
+        app.state.invoice_generator_task = None
+        if should_start_invoice_generator(_settings):
+            _invoice_generator = InvoiceGenerator(
+                session_factory=_sessionmaker,
+                stabilization_hours=_settings.invoice_stabilization_hours,
+            )
+            app.state.invoice_generator = _invoice_generator
+            app.state.invoice_generator_task = asyncio.create_task(
+                _invoice_generator.run_forever(
+                    interval_seconds=float(_settings.invoice_generation_interval_seconds)
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -646,6 +708,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await sweep_task
 
+        credit_sweep_task: asyncio.Task[None] | None = getattr(
+            app.state, "credit_recovery_sweep_task", None
+        )
+        if credit_sweep_task is not None:
+            credit_sweep_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await credit_sweep_task
+
         retention_task: asyncio.Task[None] | None = getattr(
             app.state, "retention_sweeper_task", None
         )
@@ -673,6 +743,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             batch_window_flusher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await batch_window_flusher_task
+
+        invoice_generator_task: asyncio.Task[None] | None = getattr(
+            app.state, "invoice_generator_task", None
+        )
+        if invoice_generator_task is not None:
+            invoice_generator_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await invoice_generator_task
 
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
@@ -750,8 +828,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.health_checker_task = None
     app.state.drift_checker_task = None
     app.state.recovery_sweep_task = None
+    app.state.credit_recovery_sweep_task = None
     app.state.retention_sweeper_task = None
     app.state.batch_window_flusher_task = None
+    app.state.invoice_generator_task = None
 
     # Video generation seam — default: no provider (honest degradation).
     # Tests override via app.state.video_generator = <stub>.
@@ -969,6 +1049,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.budget_guard = RedisBudgetGuard(
         redis=redis_client,
         session_factory=app.state.sessionmaker,
+    )
+
+    # Credit guard (credits-ledger TASK.md §3): CENTRAL KNOB-KILL via
+    # settings.credits_gate_enabled (default False) — PassthroughCreditGuard until an
+    # operator explicitly opts in, so no existing tenant is fail-closed at $0 the moment
+    # this module ships (a tenant that never topped up has NO tenant_credit_balances
+    # row; check_and_hold would otherwise reject its very first request). Tests override
+    # via app.state.credit_guard after app creation, same as budget_guard above.
+    app.state.credit_guard = (
+        PostgresCreditGuard(
+            session_factory=app.state.sessionmaker,
+            metrics=app.state.metrics_registry,
+        )
+        if settings.credits_gate_enabled
+        else PassthroughCreditGuard()
     )
 
     # Rate limiter: wire RedisLuaRateLimiter for production;
@@ -1275,6 +1370,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(audit_export_router)
     app.include_router(ops_router)
     app.include_router(budget_router)
+    app.include_router(plan_router)
+    app.include_router(credits_platform_router)
+    app.include_router(credits_router)
+    app.include_router(invoices_router)
+    app.include_router(margin_router)
     app.include_router(conversations_router)
     app.include_router(memories_router)
     app.include_router(artifacts_router)

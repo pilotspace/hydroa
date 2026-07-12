@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.db import get_session
 from gateway.core.error_catalog import PAYLOAD_CUSTOM_PATTERN_INVALID
 from gateway.keys.api.deps import get_identity, require_owner_or_admin
+from gateway.tenants.application.entitlements import check_plan_feature
 from gateway.tenants.domain.entities import Identity
 
 guardrail_router = APIRouter(prefix="/admin/guardrails", tags=["guardrails"])
@@ -293,6 +294,16 @@ async def put_guardrails(
     # pii-v2: validate custom patterns BEFORE any DB read/write (atomic reject)
     if body.pii_mask is not None and body.pii_mask.pii_custom_patterns is not None:
         _validate_custom_patterns(body.pii_mask.pii_custom_patterns)
+
+    # plan-enforcement (TASK.md §3, M6/R4): setting/CHANGING the ml_moderation key
+    # specifically is refused with 403 ERR_PLAN_FEATURE_NOT_ENABLED when the tenant has an
+    # assigned plan whose feature_flags lacks "ml_moderation" — checked BEFORE any write
+    # (§5 Safety rule). Gated on body.model_fields_set below (inspects the SPECIFIC key
+    # touched, never the presence of any key) — an unrelated guardrail edit is unaffected.
+    # Only the forward/configuring direction is gated (mirrors put_batch_policy) — clearing
+    # ml_moderation (explicit null) is never blocked. Inert for an unplanned tenant (M7).
+    if "ml_moderation" in body.model_fields_set and body.ml_moderation is not None:
+        await check_plan_feature(session, identity.tenant_id, "ml_moderation")
 
     # Fetch current config for merge
     current = await _fetch_guardrail_configs(session, tenant_id)

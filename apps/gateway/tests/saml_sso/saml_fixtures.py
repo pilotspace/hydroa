@@ -37,7 +37,9 @@ class IdpKeyPair:
     cert_pem: str
 
 
-def generate_idp_keypair(*, common_name: str = "fake-idp.test", expired: bool = False) -> IdpKeyPair:
+def generate_idp_keypair(
+    *, common_name: str = "fake-idp.test", expired: bool = False
+) -> IdpKeyPair:
     """Generate a self-signed RSA keypair/cert — a fresh fake IdP identity per test."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
@@ -161,13 +163,18 @@ def build_saml_response_b64(spec: AssertionSpec) -> str:
     now = datetime.now(UTC)
     issue_instant = _saml_time(now)
 
-    assertion_xml = _build_assertion_xml(spec, assertion_id=spec.assertion_id, nameid=spec.subject_nameid)
+    assertion_xml = _build_assertion_xml(
+        spec, assertion_id=spec.assertion_id, nameid=spec.subject_nameid
+    )
 
     if spec.sign:
         keypair = spec.sign_with or generate_idp_keypair()
         signed_assertion = OneLogin_Saml2_Utils.add_sign(
-            assertion_xml, keypair.key_pem, keypair.cert_pem,
-            sign_algorithm=_SIGN_ALG, digest_algorithm=_DIGEST_ALG,
+            assertion_xml,
+            keypair.key_pem,
+            keypair.cert_pem,
+            sign_algorithm=_SIGN_ALG,
+            digest_algorithm=_DIGEST_ALG,
         )
         if isinstance(signed_assertion, bytes):
             signed_assertion = signed_assertion.decode()
@@ -177,10 +184,14 @@ def build_saml_response_b64(spec: AssertionSpec) -> str:
 
     if spec.inject_xsw_evil_nameid is not None:
         evil_assertion_id = "_" + uuid.uuid4().hex
-        evil_xml = _build_assertion_xml(spec, assertion_id=evil_assertion_id, nameid=spec.inject_xsw_evil_nameid)
+        evil_xml = _build_assertion_xml(
+            spec, assertion_id=evil_assertion_id, nameid=spec.inject_xsw_evil_nameid
+        )
         assertion_block = assertion_block + evil_xml
 
-    response_issuer = spec.issuer_override if spec.issuer_override is not None else spec.idp_entity_id
+    response_issuer = (
+        spec.issuer_override if spec.issuer_override is not None else spec.idp_entity_id
+    )
     response_in_response_to_attr = f' InResponseTo="{spec.request_id}"' if spec.request_id else ""
 
     response_xml = f"""<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="{spec.response_id}" Version="2.0" IssueInstant="{issue_instant}" Destination="{spec.acs_url}"{response_in_response_to_attr}>

@@ -115,13 +115,15 @@ async def test_owner_creates_scim_token(
     token_id = uuid.UUID(str(body["id"]))
 
     row = (
-        await db_session.execute(
-            text(
-                "SELECT tenant_id, token_hash, revoked_at FROM scim_tokens WHERE id = :id"
-            ),
-            {"id": token_id},
+        (
+            await db_session.execute(
+                text("SELECT tenant_id, token_hash, revoked_at FROM scim_tokens WHERE id = :id"),
+                {"id": token_id},
+            )
         )
-    ).mappings().one()
+        .mappings()
+        .one()
+    )
     assert row["tenant_id"] == tenant_a["tenant_id"]
     assert row["revoked_at"] is None
     assert row["token_hash"] != body["token"]  # never plaintext at rest
@@ -139,9 +141,7 @@ async def test_member_cannot_create_scim_token(
 
     count = (
         await db_session.execute(
-            text(
-                "SELECT COUNT(*) FROM scim_tokens WHERE tenant_id = :tid"
-            ),
+            text("SELECT COUNT(*) FROM scim_tokens WHERE tenant_id = :tid"),
             {"tid": tenant_a["tenant_id"]},
         )
     ).scalar_one()
@@ -174,9 +174,7 @@ async def test_rotate_scim_token_atomically(
     assert s2_revoked is None
 
     # S1 immediately stops authenticating.
-    probe = await client.get(
-        "/scim/v2/ServiceProviderConfig", headers=bearer(str(scim_a["token"]))
-    )
+    probe = await client.get("/scim/v2/ServiceProviderConfig", headers=bearer(str(scim_a["token"])))
     assert probe.status_code == 401
 
 
@@ -402,7 +400,10 @@ async def test_patch_active_false_deactivates_and_cascades_team_removal(
 ) -> None:
     create = await client.post(
         "/scim/v2/Users",
-        json={"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"], "userName": "u@corp.example"},
+        json={
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+            "userName": "u@corp.example",
+        },
         headers=_scim_bearer(scim_a),
     )
     user_id = uuid.UUID(str(create.json()["id"]))
@@ -436,7 +437,10 @@ async def test_patch_immutable_path_returns_400_mutability(
 ) -> None:
     create = await client.post(
         "/scim/v2/Users",
-        json={"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"], "userName": "imm@corp.example"},
+        json={
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+            "userName": "imm@corp.example",
+        },
         headers=_scim_bearer(scim_a),
     )
     user_id = create.json()["id"]
@@ -489,9 +493,7 @@ async def test_deactivated_user_cannot_login_via_oidc(
 
     tenant_id = uuid.uuid4()
     await db_session.execute(
-        text(
-            "INSERT INTO tenants (id, name, kind) VALUES (:id, :name, 'customer')"
-        ),
+        text("INSERT INTO tenants (id, name, kind) VALUES (:id, :name, 'customer')"),
         {"id": tenant_id, "name": "OIDC Tenant"},
     )
     user_id = uuid.uuid4()
@@ -549,7 +551,10 @@ async def test_repeated_patch_active_false_is_idempotent(
 ) -> None:
     create = await client.post(
         "/scim/v2/Users",
-        json={"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"], "userName": "idem@corp.example"},
+        json={
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+            "userName": "idem@corp.example",
+        },
         headers=_scim_bearer(scim_a),
     )
     user_id = uuid.UUID(str(create.json()["id"]))
@@ -581,7 +586,10 @@ async def test_reactivation_clears_deactivated_at(
 ) -> None:
     create = await client.post(
         "/scim/v2/Users",
-        json={"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"], "userName": "react@corp.example"},
+        json={
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+            "userName": "react@corp.example",
+        },
         headers=_scim_bearer(scim_a),
     )
     user_id = uuid.UUID(str(create.json()["id"]))
@@ -742,7 +750,10 @@ async def test_deactivation_does_not_touch_api_keys(
 
     create = await client.post(
         "/scim/v2/Users",
-        json={"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"], "userName": "keytest@corp.example"},
+        json={
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+            "userName": "keytest@corp.example",
+        },
         headers=_scim_bearer(scim_a),
     )
     user_id = create.json()["id"]
@@ -765,7 +776,10 @@ async def test_delete_is_alias_for_deactivate_never_hard_delete(
 ) -> None:
     create = await client.post(
         "/scim/v2/Users",
-        json={"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"], "userName": "del@corp.example"},
+        json={
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+            "userName": "del@corp.example",
+        },
         headers=_scim_bearer(scim_a),
     )
     user_id = uuid.UUID(str(create.json()["id"]))
@@ -844,7 +858,9 @@ async def test_groups_write_rejected_as_unsupported(
     assert body.get("schemas") == ["urn:ietf:params:scim:api:messages:2.0:Error"]
 
 
-async def test_scim_discovery_requires_bearer(client: httpx.AsyncClient, scim_a: dict[str, Any]) -> None:
+async def test_scim_discovery_requires_bearer(
+    client: httpx.AsyncClient, scim_a: dict[str, Any]
+) -> None:
     unauth = await client.get("/scim/v2/ServiceProviderConfig")
     assert unauth.status_code == 401
 

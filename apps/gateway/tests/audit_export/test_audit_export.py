@@ -201,9 +201,7 @@ async def test_export_keyset_survives_concurrent_insert(
         for i in range(1, 6)  # row_ids[0]=oldest (min1) ... row_ids[4]=newest (min5)
     ]
 
-    page1 = await client.get(
-        EXPORT, params={"format": "json", "limit": "2"}, headers=auth(token)
-    )
+    page1 = await client.get(EXPORT, params={"format": "json", "limit": "2"}, headers=auth(token))
     assert page1.status_code == 200, page1.text
     body1 = page1.json()
     assert [i["id"] for i in body1["items"]] == [row_ids[4], row_ids[3]]
@@ -269,9 +267,7 @@ async def test_export_cursor_walks_full_set_no_gaps_or_dupes(
 # ---------------------------------------------------------------------------
 
 
-async def test_export_offset_param_ignored(
-    client: Any, db_session: AsyncSession, app: Any
-) -> None:
+async def test_export_offset_param_ignored(client: Any, db_session: AsyncSession, app: Any) -> None:
     _owner, tid = await signup_tenant(client, tenant_name="Offset Ignored", email="off@audit.io")
     token = mint_role_token(app, tenant_id=tid, role=Role.OWNER, email="off-sub@audit.io")
     await seed_audit_event(db_session, tenant_id=tid, created_at=_mins(1))
@@ -657,9 +653,7 @@ async def test_export_purge_mid_export_is_silent_honest_gap(
         for i in range(1, 5)  # oldest(0)->newest(3): row_ids[3] newest
     ]
 
-    page1 = await client.get(
-        EXPORT, params={"format": "json", "limit": "2"}, headers=auth(token)
-    )
+    page1 = await client.get(EXPORT, params={"format": "json", "limit": "2"}, headers=auth(token))
     assert page1.status_code == 200, page1.text
     body1 = page1.json()
     assert body1["has_more"] is True
@@ -716,9 +710,7 @@ async def test_export_duplicate_cursor_request_is_idempotent(
     for i in range(1, 6):
         await seed_audit_event(db_session, tenant_id=tid, action=f"ev.{i}", created_at=_mins(i))
 
-    page1 = await client.get(
-        EXPORT, params={"format": "json", "limit": "2"}, headers=auth(token)
-    )
+    page1 = await client.get(EXPORT, params={"format": "json", "limit": "2"}, headers=auth(token))
     assert page1.status_code == 200, page1.text
     cursor = page1.json()["next_cursor"]
     assert cursor

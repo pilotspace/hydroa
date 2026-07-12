@@ -144,6 +144,38 @@ class ReconciliationSourceItem(BaseModel):
     provider_cost: str  # str(Decimal) — Σ provider_cost of unbilled rows with this source
 
 
+class TagBreakdownItem(BaseModel):
+    """One (tag_key, tag_value) cost slice in the GET /admin/usage/cost-by-tag breakdown.
+
+    Breakdown rows are OVERLAPPING cost slices — a multi-tagged usage_records row
+    contributes to more than one row (cost-attribution-tags TASK.md §3 M6). Never
+    assume sum(breakdown.cost_usd) == total_cost_usd.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tag_key: str
+    tag_value: str
+    cost_usd: str  # str(Decimal) — exact; sorted DESC
+    request_count: int
+
+
+class CostByTagResponse(BaseModel):
+    """Response body for GET /admin/usage/cost-by-tag (cost-attribution-tags TASK.md §3)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    window: str  # "day" | "week" | "month"
+    window_start: str  # ISO-8601 UTC
+    window_end: str  # ISO-8601 UTC
+    total_cost_usd: str  # str(Decimal) — exact; FULL window, unfiltered by tag_key
+    total_requests: int
+    untagged_cost_usd: str  # str(Decimal) — exact; rows where tags = {}
+    untagged_requests: int
+    breakdown: list[TagBreakdownItem]  # <=100 rows, cost_usd DESC
+    truncated: bool  # true when more distinct (tag_key, tag_value) pairs exist than fit
+
+
 class ReconciliationResponse(BaseModel):
     """Response body for GET /admin/reconciliation (the window's drift summary).
 

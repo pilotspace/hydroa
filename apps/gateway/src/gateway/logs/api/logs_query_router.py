@@ -57,6 +57,7 @@ from gateway.core.error_catalog import (
 from gateway.logs.application.get_request_log import GetRequestLogUseCase
 from gateway.logs.application.list_request_logs import ListRequestLogsUseCase
 from gateway.logs.infrastructure.logs_repository import LogsRepository
+from gateway.tenants.application.entitlements import check_plan_feature
 from gateway.tenants.domain.authz import Permission, require_permission
 from gateway.tenants.domain.entities import Identity
 
@@ -244,8 +245,14 @@ async def list_logs(
     LOGS_READ gated: owner/admin/operator/superadmin pass; billing_admin/viewer/member ->
     403. Tenant-scoped (WHERE clause itself, never a post-fetch check). Keyset-paginated,
     newest-first. Rows are metadata-only. READ-ONLY.
+
+    plan-enforcement (TASK.md §3, M6/R5): the query ITSELF is refused with 403
+    ERR_PLAN_FEATURE_NOT_ENABLED when the tenant has an assigned plan whose feature_flags
+    lacks "logs_explorer" (no persistent toggle exists to gate at write time instead).
+    Inert for an unplanned tenant (M7).
     """
     tenant_id: uuid.UUID = identity.tenant_id
+    await check_plan_feature(session, tenant_id, "logs_explorer")
     parsed_limit = _parse_limit(limit)
     parsed_since, parsed_until = _parse_time_range(since, until)
     parsed_key_id = _parse_key_id(key_id)
@@ -299,9 +306,7 @@ async def list_logs(
         )
         for log in page
     ]
-    next_cursor = (
-        _encode_cursor(page[-1].created_at, page[-1].id) if has_more and page else None
-    )
+    next_cursor = _encode_cursor(page[-1].created_at, page[-1].id) if has_more and page else None
     return LogListResponse(items=items, next_cursor=next_cursor, has_more=has_more)
 
 
@@ -316,8 +321,13 @@ async def get_log(
     LOGS_READ gated: owner/admin/operator/superadmin pass; billing_admin/viewer/member ->
     403. Returns 404 ERR_LOG_NOT_FOUND for BOTH an unknown id and a cross-tenant id —
     byte-identical shape, no leak (mirrors keys/api/router.py:rotate_key). READ-ONLY.
+
+    plan-enforcement (TASK.md §3, M6/R5): the query ITSELF is refused with 403
+    ERR_PLAN_FEATURE_NOT_ENABLED when the tenant has an assigned plan whose feature_flags
+    lacks "logs_explorer". Inert for an unplanned tenant (M7).
     """
     tenant_id: uuid.UUID = identity.tenant_id
+    await check_plan_feature(session, tenant_id, "logs_explorer")
     repo = LogsRepository(session)
     use_case = GetRequestLogUseCase(repo)
 

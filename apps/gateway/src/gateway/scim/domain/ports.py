@@ -9,7 +9,12 @@ from gateway.tenants.domain.entities import User
 
 class ScimTokenRepository(Protocol):
     async def create(
-        self, *, token_id: uuid.UUID, tenant_id: uuid.UUID, name: str, token_hash: str,
+        self,
+        *,
+        token_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        name: str,
+        token_hash: str,
         created_by_user_id: uuid.UUID | None,
     ) -> ScimToken:
         """Insert a new scim_tokens row; token_id is pre-generated (no column default)."""
@@ -32,8 +37,13 @@ class ScimTokenRepository(Protocol):
         ...
 
     async def rotate(
-        self, *, old_token_id: uuid.UUID, tenant_id: uuid.UUID, new_token_id: uuid.UUID,
-        new_token_hash: str, new_name: str,
+        self,
+        *,
+        old_token_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        new_token_id: uuid.UUID,
+        new_token_hash: str,
+        new_name: str,
     ) -> ScimToken | None:
         """Atomically revoke old_token_id + insert a new row in ONE transaction.
 
@@ -45,7 +55,12 @@ class ScimTokenRepository(Protocol):
 
 class ScimUserRepository(Protocol):
     async def create_user(
-        self, *, user_id: uuid.UUID, tenant_id: uuid.UUID, email: str, password_hash: str,
+        self,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        email: str,
+        password_hash: str,
     ) -> User:
         """Insert a new UserRow (role=MEMBER, auth_method='scim').
 
@@ -60,7 +75,11 @@ class ScimUserRepository(Protocol):
         ...
 
     async def list_users(
-        self, *, tenant_id: uuid.UUID, username_filter: str | None, start_index: int,
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        username_filter: str | None,
+        start_index: int,
         count: int,
     ) -> tuple[list[User], int]:
         """Return (page of users, total matching count) for tenant_id, optionally
@@ -69,13 +88,21 @@ class ScimUserRepository(Protocol):
         ...
 
     async def update_email(
-        self, *, user_id: uuid.UUID, tenant_id: uuid.UUID, email: str,
+        self,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        email: str,
     ) -> User | None:
         """Update email; tenant-scoped. Returns None for unknown/cross-tenant id."""
         ...
 
     async def set_active(
-        self, *, user_id: uuid.UUID, tenant_id: uuid.UUID, active: bool,
+        self,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        active: bool,
     ) -> tuple[User, bool] | None:
         """Set/clear deactivated_at, tenant-scoped. When deactivating (active=False), the
         write is committed in the SAME transaction as deleting every team_members row for

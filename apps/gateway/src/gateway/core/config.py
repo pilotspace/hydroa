@@ -216,7 +216,9 @@ class Settings(BaseSettings):
 
     # ── SAML 2.0 SSO (saml-sso task) ──────────────────────────────────────────
     # All optional; absence => SAML fully inert (M11: DB-config-only, no env fallback).
-    saml_sp_entity_id_base: str = ""  # GATEWAY_SAML_SP_ENTITY_ID_BASE (e.g. https://gw.example.com/saml/sp)
+    saml_sp_entity_id_base: str = (
+        ""  # GATEWAY_SAML_SP_ENTITY_ID_BASE (e.g. https://gw.example.com/saml/sp)
+    )
     saml_acs_url: str = ""  # GATEWAY_SAML_ACS_URL (full external URL to /auth/saml/acs)
     saml_post_login_redirect: str = "/"  # GATEWAY_SAML_POST_LOGIN_REDIRECT
     saml_clock_skew_seconds: int = 60  # GATEWAY_SAML_CLOCK_SKEW_SECONDS
@@ -394,6 +396,33 @@ class Settings(BaseSettings):
     # idempotent with the inline path via the deterministic correction-row id (t6.2b).
     # openrouter-recovery-sweep §3.
     openrouter_recovery_sweep_interval_seconds: int = Field(default=0)
+
+    # GATEWAY_CREDITS_GATE_ENABLED — CENTRAL KNOB-KILL (mirrors web_search_enabled /
+    # output_validation_enabled): False (default) ⇒ app.state.credit_guard stays a
+    # PassthroughCreditGuard ⇒ check_and_hold is a no-op ⇒ every existing tenant/test
+    # is byte-identical to pre-credits-ledger behavior. True ⇒ main.py wires the real
+    # PostgresCreditGuard — a tenant with NO tenant_credit_balances row (never topped
+    # up) would otherwise be fail-closed at $0 the instant this flag flips on, so an
+    # operator must topup every tenant expected to keep working BEFORE enabling this.
+    credits_gate_enabled: bool = Field(default=False)
+
+    # GATEWAY_CREDITS_HOLD_ESTIMATE_USD — platform-wide default HOLD estimate placed at
+    # admission by the credit gate (credits-ledger TASK.md §3 M2, DECIDED at freeze:
+    # $0.50 platform default). NOT yet tenant-overridable in v1 (no storage column exists
+    # on tenant_credit_balances for it — a build-time-observed gap vs. the DECIDED note's
+    # "tenant-overridable" aspiration; flagged as a spec delta, see TASK.md §7).
+    credits_hold_estimate_usd: Decimal = Field(default=Decimal("0.50"))
+
+    # GATEWAY_CREDITS_HOLD_TIMEOUT_SECONDS — M6: a HOLD with no matching SETTLE/RELEASE
+    # within this window is auto-released by CreditHoldRecoverySweeper. 600s default per
+    # the frozen contract (generous for long streams).
+    credits_hold_timeout_seconds: int = Field(default=600)
+
+    # GATEWAY_CREDITS_RECOVERY_SWEEP_INTERVAL_SECONDS — M6 backstop cadence. Unlike the
+    # OpenRouter cost-recovery sweep (accuracy-only, default-OFF), this sweep protects
+    # tenant AVAILABILITY (an orphaned hold silently starves a tenant's balance), so it
+    # defaults ON at 60s. 0 disables the background task entirely.
+    credits_recovery_sweep_interval_seconds: int = Field(default=60)
 
     # GATEWAY_STT_MAX_DURATION_SECONDS — upper clamp (seconds) on a billed STT per_second
     # duration. A corrupt/lying audio header (or a lying upstream body["duration"]) can
@@ -614,6 +643,16 @@ class Settings(BaseSettings):
     # usage_records' 365d — this store holds PII payloads by design). Tin-approved
     # 2026-07-10.
     retention_request_logs_days: int = Field(default=30)
+
+    # ── Invoice generation (invoice-generation TASK.md §3 FROZEN @ v1) ──────────
+    # Conditionally-started month-close background loop (mirrors RetentionSweeper's
+    # should_start_*/run_forever shape). 0 = OFF entirely.
+    # env: GATEWAY_INVOICE_GENERATION_INTERVAL_SECONDS
+    invoice_generation_interval_seconds: int = Field(default=3600)
+    # Stabilization window after a calendar month's period_end before that month is
+    # auto-issued (§1 ⚠, Tin-confirmed 72h at freeze 2026-07-12).
+    # env: GATEWAY_INVOICE_STABILIZATION_HOURS
+    invoice_stabilization_hours: int = Field(default=72)
 
     # ── Payload capture (payload-capture-store task) ─────────────────────────────
     # Opt-in, PII-scrubbed request/response capture (request_logs). Bounded-timeout,

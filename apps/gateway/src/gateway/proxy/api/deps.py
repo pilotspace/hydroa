@@ -14,6 +14,7 @@ consecutive 5xx returns.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
@@ -241,6 +242,14 @@ def get_completion_use_case(
     # pattern as tenant_credential_resolver/batch_diversion above. None ⇒ feature off
     # ⇒ byte-identical (_dispatch_capture no-ops at every hook site).
     payload_capture = getattr(request.app.state, "payload_capture", None)
+    # credits-ledger TASK.md §3: app.state-boot singleton (PostgresCreditGuard in
+    # production, PassthroughCreditGuard default). Same getattr pattern as the other
+    # optional app.state singletons above — absent ⇒ PassthroughCreditGuard ⇒
+    # check_and_hold is a no-op ⇒ byte-identical to today.
+    from gateway.credits.domain.ports import PassthroughCreditGuard
+
+    credit_guard = getattr(request.app.state, "credit_guard", None) or PassthroughCreditGuard()
+    hold_estimate_usd = _settings.credits_hold_estimate_usd if _settings else Decimal("0.50")
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -266,4 +275,6 @@ def get_completion_use_case(
         batch_diversion=batch_diversion,
         output_validation_enabled=output_validation_enabled,
         payload_capture=payload_capture,
+        credit_guard=credit_guard,
+        hold_estimate_usd=hold_estimate_usd,
     )

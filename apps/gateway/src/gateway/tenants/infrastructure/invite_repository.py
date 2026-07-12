@@ -15,14 +15,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.ids import uuid7
+from gateway.tenants.application.entitlements import assert_seat_available
 from gateway.tenants.domain.entities import Invite, InvitePreview, InviteStatus, Role
 from gateway.tenants.domain.errors import (
     EmailAlreadyRegisteredError,
     InviteExpiredError,
     InviteNotFoundError,
     InviteNotPendingError,
+    SeatCapExceededError,
 )
-from gateway.tenants.infrastructure.orm import InviteRow, TenantRow, UserRow
+from gateway.tenants.infrastructure.orm import InviteRow, SeatMembershipEventRow, TenantRow, UserRow
 
 
 def _row_to_invite(row: InviteRow) -> Invite:
@@ -290,6 +292,16 @@ class InviteRepository:
             await self._session.rollback()
             raise InviteExpiredError(f"Invite {invite_pk} expired at {expires_at}")
 
+        # plan-seat-cap TASK.md §3 (FROZEN @ v1, M4): consulted AFTER the pending/not-
+        # expired checks, strictly BEFORE the member-creating INSERT — composes safely
+        # with this method's own `invites` row lock (only this method ever holds both
+        # locks at once, so concurrent instances merely serialize, never cycle).
+        try:
+            await assert_seat_available(self._session, tenant_id)
+        except SeatCapExceededError:
+            await self._session.rollback()
+            raise
+
         new_user_id = uuid7()
         new_user = UserRow(
             id=new_user_id,
@@ -307,6 +319,19 @@ class InviteRepository:
             # stays 'pending', unflipped, and no orphaned users row survives (M5).
             await self._session.rollback()
             raise EmailAlreadyRegisteredError from exc
+
+        # seat-billing TASK.md §3 (FROZEN @ v2, M3(a)): append ONE 'joined' event in the
+        # SAME transaction as the new users row — `now` is the accept instant, mirrors
+        # every other timestamp this method already derives from its own parameter.
+        self._session.add(
+            SeatMembershipEventRow(
+                id=uuid7(),
+                tenant_id=tenant_id,
+                user_id=new_user_id,
+                event_type="joined",
+                occurred_at=now,
+            )
+        )
 
         row.status = InviteStatus.ACCEPTED.value
         await self._session.commit()

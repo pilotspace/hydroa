@@ -215,7 +215,18 @@ async def _authorize_governance(app: Any, token: str, model_id: str) -> Any:
             redis_client=_redis,
             session_factory=app.state.sessionmaker,
         )
-        return await governance.authorize(raw_key=token, model_id=model_id, estimated_tokens=None)
+        authz = await governance.authorize(raw_key=token, model_id=model_id, estimated_tokens=None)
+
+        # plan-enforcement (TASK.md §3, M6/R6): ONE-TIME WS-connect feature gate, reusing
+        # the SAME session already open in this block — never per-message. Raised
+        # ProblemError propagates to the caller's existing ProblemError->WS-close-code
+        # translation (_GOVERNANCE_CODE_BASE + exc.status), never a new close-code scheme.
+        # Inert for an unplanned tenant (M7).
+        from gateway.tenants.application.entitlements import check_plan_feature
+
+        await check_plan_feature(session, authz.tenant_id, "realtime")
+
+        return authz
 
 
 def _schedule_audit(app: Any, event: AuditEvent) -> None:

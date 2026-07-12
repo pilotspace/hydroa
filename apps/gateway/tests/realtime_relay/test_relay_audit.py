@@ -92,9 +92,7 @@ def audit_spy(monkeypatch):
     async def _fake_record_audit(session_factory, event):
         captured.append(event)
 
-    monkeypatch.setattr(
-        "gateway.proxy.api.realtime_relay_ws.record_audit", _fake_record_audit
-    )
+    monkeypatch.setattr("gateway.proxy.api.realtime_relay_ws.record_audit", _fake_record_audit)
     return captured
 
 

@@ -64,6 +64,12 @@ EXPECTED_TABLES = frozenset(
         "request_logs",  # SANCTIONED EDIT — payload-capture-store TASK.md §3 manifest maintenance; disposition: additive migration a1c5e7f9b3d6 adds this table
         "guardrail_verdict_events",  # SANCTIONED EDIT — guardrail-analytics TASK.md §3 manifest maintenance; disposition: additive migration b7c9e1a3f5d8 adds this table
         "tenant_domain_claims",  # SANCTIONED EDIT — domain-capture TASK.md §3 manifest maintenance; disposition: additive migration b3d8e1f4a7c2 adds this table
+        "invoices",  # SANCTIONED EDIT — invoice-generation TASK.md §3 manifest maintenance; disposition: additive migration 0b5527920450 adds this table
+        "invoice_lines",  # SANCTIONED EDIT — invoice-generation TASK.md §3 manifest maintenance; disposition: additive migration 0b5527920450 adds this table
+        "invoice_corrections",  # SANCTIONED EDIT — invoice-generation TASK.md §3 manifest maintenance; disposition: additive migration 0b5527920450 adds this table
+        "credit_ledger",  # SANCTIONED EDIT — credits-ledger TASK.md §3 manifest maintenance; disposition: additive migration d3f7a9c1b5e8 adds this table
+        "tenant_credit_balances",  # SANCTIONED EDIT — credits-ledger TASK.md §3 manifest maintenance; disposition: additive migration d3f7a9c1b5e8 adds this table
+        "seat_membership_events",  # SANCTIONED EDIT — seat-billing TASK.md §3 manifest maintenance; disposition: additive migration f1ef6b05a732 adds this table
     }
 )
 

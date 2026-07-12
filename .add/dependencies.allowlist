@@ -25,6 +25,9 @@ jsonschema
 python3-saml   # saml-sso task (frozen contract §3 freeze question 1) — verified: manylinux wheel
                # for xmlsec resolves against ghcr.io/astral-sh/uv:python3.12-bookworm-slim,
                # no apt-get needed (confirmed via `docker build --target builder` + import check)
+reportlab      # invoice-generation TASK.md §3 Issue R2 — pure-Python PDF generation for
+               # GET /admin/invoices/{id}/export?format=pdf (M9); no system cairo/pango
+               # dependency, unlike weasyprint (recommended at design, confirmed at build)
 
 # --- dev / test ---
 pytest

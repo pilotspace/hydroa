@@ -15,6 +15,7 @@ import datetime
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
@@ -27,6 +28,30 @@ from gateway.usage.infrastructure.redis_stream import STREAM_KEY
 _log = logging.getLogger(__name__)
 
 _ZERO = Decimal("0")
+
+
+@dataclass(frozen=True, slots=True)
+class UsageRecordOutcome:
+    """record()'s result — the ALREADY-COMPUTED cost, for a settle/release consumer
+    (credits-ledger TASK.md §3: "settle must consume the cost already computed by
+    RecordingUsageRecorder — never recompute price"). Duck-typed by callers (via
+    getattr) rather than a hard import, so the UsageRecorder Protocol widens to
+    `object | None` instead of taking a dependency on this usage-module type.
+
+    usage_record_id: the deterministic id also used as the usage_records row PK
+      (mirrors `insert_usage_row`'s `record_id` — the flusher/fallback insert use
+      this SAME id, so it is valid to cite as `usage_records.id` even though the
+      row may land a moment later via the async stream-flush path).
+    free: True for a zero-cost outcome (cache hit; `cost_usd` is always 0 then) —
+      the settle consumer treats this as a RELEASE rather than a SETTLE (M5).
+    """
+
+    tenant_id: uuid.UUID
+    usage_record_id: uuid.UUID
+    cost_usd: Decimal
+    free: bool
+
+
 # usage-flusher-durability (B4): per-CALL bound on every Redis op in the record path
 # (NOT client-level — the redis client is shared across budget/ratelimiter/bandwidth,
 # a wide blast radius). Mirrors usage/api/router.py:_RATELIMIT_REDIS_TIMEOUT_SECONDS.
@@ -66,6 +91,7 @@ class RecordingUsageRecorder:
             "provider_generation_id",
             "disconnect_estimate",
             "request_id",
+            "tags",
         }
     )
 
@@ -97,6 +123,7 @@ class RecordingUsageRecorder:
         provider_generation_id: str | None = None,
         disconnect_estimate: bool = False,
         request_id: uuid.UUID | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -109,9 +136,71 @@ class RecordingUsageRecorder:
         quantity: billed quantity for non-token units; None → per_token path.
         request_id: correlation key (request-log-metering-fields) — stored into
           raw["request_id"] when set; NOT a new column (usage_records is FROZEN).
+        tags: client-supplied key/value request labels (cost-attribution-tags TASK.md
+          §3) — stored into the dedicated usage_records.tags JSONB column. None/empty
+          → "{}" (byte-identical to a request that never sent X-Gateway-Tags).
+
+        Return value is always None — byte-identical to every pre-existing caller/test
+        (see record_with_outcome() for the credits-ledger settle hook's variant, which
+        shares this exact body but returns the computed outcome instead of discarding it).
+        """
+        await self.record_with_outcome(
+            tenant_id=tenant_id,
+            key_id=key_id,
+            model=model,
+            usage=usage,
+            status=status,
+            team_id=team_id,
+            cached=cached,
+            guardrail_blocked=guardrail_blocked,
+            blocked_by=blocked_by,
+            pii_masked=pii_masked,
+            pricing_unit=pricing_unit,
+            quantity=quantity,
+            usage_source=usage_source,
+            provider_generation_id=provider_generation_id,
+            disconnect_estimate=disconnect_estimate,
+            request_id=request_id,
+            tags=tags,
+        )
+        return None
+
+    async def record_with_outcome(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        key_id: uuid.UUID,
+        model: str,
+        usage: dict[str, object] | None,
+        status: int,
+        team_id: uuid.UUID | None = None,
+        cached: bool = False,
+        guardrail_blocked: bool = False,
+        blocked_by: str | None = None,
+        pii_masked: bool = False,
+        pricing_unit: str | None = None,
+        quantity: Decimal | None = None,
+        usage_source: str | None = None,
+        provider_generation_id: str | None = None,
+        disconnect_estimate: bool = False,
+        request_id: uuid.UUID | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> UsageRecordOutcome | None:
+        """Identical to record(), but RETURNS the computed outcome instead of discarding
+        it (credits-ledger TASK.md §3: "settle must consume the cost already computed by
+        RecordingUsageRecorder — never recompute price"). A NEW public method rather than
+        changing record()'s own return value, so every pre-existing caller/test asserting
+        `record(...) is None` (e.g. tests/usage/test_usage_metering.py's XADD-fallback
+        case) stays byte-identical. Called instead of record() by _dispatch_record ONLY
+        when a credit hold is open for the current request (see _credit_hold_ctx) AND the
+        wired recorder exposes this method (duck-typed via hasattr) — a v1-Protocol test
+        fake without it is unaffected, falls back to record(), and the credit-hold
+        reconciliation sweep is the backstop for anything left unsettled.
+
+        Must not raise. Returns None on any swallowed failure — nothing to settle then.
         """
         try:
-            await self._record_internal(
+            return await self._record_internal(
                 tenant_id=tenant_id,
                 key_id=key_id,
                 model=model,
@@ -128,6 +217,7 @@ class RecordingUsageRecorder:
                 provider_generation_id=provider_generation_id,
                 disconnect_estimate=disconnect_estimate,
                 request_id=request_id,
+                tags=tags,
             )
         except Exception as exc:
             _log.warning(
@@ -139,6 +229,7 @@ class RecordingUsageRecorder:
                     "status": status,
                 },
             )
+            return None
 
     async def _record_internal(
         self,
@@ -159,7 +250,8 @@ class RecordingUsageRecorder:
         provider_generation_id: str | None = None,
         disconnect_estimate: bool = False,
         request_id: uuid.UUID | None = None,
-    ) -> None:
+        tags: dict[str, str] | None = None,
+    ) -> UsageRecordOutcome:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
         prompt_tokens = 0
@@ -406,6 +498,10 @@ class RecordingUsageRecorder:
             # provider-generation-id-capture (v30 t6): the provider's SSE generation id
             # on a client-disconnect row; ""=NULL (the lookup key for cost-recovery).
             "provider_generation_id": provider_generation_id or "",
+            # cost-attribution-tags (TASK.md §3): client-supplied request labels ->
+            # the dedicated usage_records.tags JSONB column. Falsy (None/{}) -> "{}",
+            # byte-identical to a request that never sent X-Gateway-Tags (M3).
+            "tags": json.dumps(tags) if tags else "{}",
         }
 
         # Push to Redis Stream — must not drop the event even on cost-0. Bounded by a
@@ -459,6 +555,18 @@ class RecordingUsageRecorder:
                     exc_info=exc,
                     extra={"event_id": str(event_id), "model": model},
                 )
+
+        # credits-ledger TASK.md §3: event_id IS the deterministic usage_records PK (the
+        # SAME id the flusher/fallback insert use) — safe to cite as usage_record_id here
+        # even though the row lands a moment later via the async stream-flush path.
+        # free=True (cost_usd <= 0) -> the settle consumer posts a RELEASE (M5), never a
+        # SETTLE against a real cost.
+        return UsageRecordOutcome(
+            tenant_id=tenant_id,
+            usage_record_id=event_id,
+            cost_usd=cost_usd,
+            free=cost_usd <= _ZERO,
+        )
 
     async def _fallback_insert(self, event_id: uuid.UUID, fields: dict[str, str]) -> None:
         """Durable fallback: persist a usage event directly to the ledger when the

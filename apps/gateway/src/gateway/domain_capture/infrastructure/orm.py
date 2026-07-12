@@ -26,9 +26,7 @@ from gateway.core.ids import uuid7
 class TenantDomainClaimRow(Base):
     __tablename__ = "tenant_domain_claims"
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('pending', 'verified')", name="ck_tenant_domain_claims_status"
-        ),
+        CheckConstraint("status IN ('pending', 'verified')", name="ck_tenant_domain_claims_status"),
         Index(
             "uq_domain_claims_tenant_domain",
             "tenant_id",

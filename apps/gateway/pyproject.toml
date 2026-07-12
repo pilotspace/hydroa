@@ -25,6 +25,7 @@ dependencies = [
     "jsonschema>=4.23,<5",
     "python3-saml>=1.16.0",
     "dnspython>=2.8.0",
+    "reportlab>=4.2",
 ]
 
 [dependency-groups]

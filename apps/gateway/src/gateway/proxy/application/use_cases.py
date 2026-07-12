@@ -20,13 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import datetime
 import json
 import logging
 import os
+import re
 import time
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -49,12 +51,15 @@ from gateway.core.error_catalog import (
     OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM,
     PAYLOAD_MESSAGES_REQUIRED,
     PAYLOAD_MODEL_REQUIRED,
+    PAYLOAD_TAGS_INVALID,
+    PLAN_MODEL_NOT_ALLOWED,
     PRESET_NOT_FOUND,
     RATE_LIMITED,
     UPSTREAM_RATE_LIMITED,
     UPSTREAM_UNAVAILABLE,
 )
 from gateway.core.errors import ProblemError
+from gateway.credits.domain.ports import CreditGuard, PassthroughCreditGuard
 from gateway.guardrail_analytics.application.verdict_recorder import record_guardrail_verdicts
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
@@ -226,6 +231,105 @@ def _fire_bandwidth_reconcile(
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
+# cost-attribution-tags (TASK.md §3): X-Gateway-Tags bounds — a reasoned analogy from
+# tenants/api/guardrail_router.py's _MAX_CUSTOM_PATTERNS/_MAX_PATTERN_BYTES precedent,
+# Tin-confirmed at freeze for the cost-tags domain specifically.
+_TAGS_MAX_HEADER_BYTES = 2048
+_TAGS_MAX_COUNT = 8
+_TAGS_MAX_KEY_LEN = 32
+_TAGS_MAX_VALUE_BYTES = 256
+# Key format: same regex reused (mirrored, not imported — see usage/api/router.py's
+# own _TAG_KEY_RE) by the GET /admin/usage/cost-by-tag ?tag_key= filter (R8).
+TAG_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+
+
+def _parse_tags_header(raw: str | None) -> dict[str, str]:
+    """Parse + validate the X-Gateway-Tags request header (cost-attribution-tags §3).
+
+    Byte-identical fast path (M3): raw is None (header absent, the overwhelming
+    majority of traffic) -> {} immediately, no json.loads, no regex — one cheap
+    "header present?" check.
+
+    Validation order (mirrors _validate_custom_patterns's ordered V1..Vn style):
+      R5 raw header byte-length > 2048           -> PAYLOAD_TAGS_INVALID (checked
+                                                     FIRST — json.loads never runs
+                                                     on an oversized value)
+      R1 malformed JSON                          -> PAYLOAD_TAGS_INVALID
+      R1 parsed value is not a flat JSON object   -> PAYLOAD_TAGS_INVALID
+      R2 more than 8 distinct keys                -> PAYLOAD_TAGS_INVALID
+      R3 a key >32 chars or not matching TAG_KEY_RE -> PAYLOAD_TAGS_INVALID
+      R1 a value is not a string                  -> PAYLOAD_TAGS_INVALID
+      R4 a value >256 UTF-8 bytes                  -> PAYLOAD_TAGS_INVALID
+
+    Raised BEFORE governance/upstream by every caller (R1-R5) — a malformed-tags
+    request is NEVER billed. Keys/values are stored EXACTLY as sent — no case
+    folding, no normalization (an explicit Must in §1).
+    """
+    if raw is None:
+        return {}
+    if len(raw.encode("utf-8")) > _TAGS_MAX_HEADER_BYTES:
+        raise PAYLOAD_TAGS_INVALID.exc(detail="tags header too large")
+    try:
+        parsed: Any = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        raise PAYLOAD_TAGS_INVALID.exc(detail="malformed JSON in X-Gateway-Tags") from None
+    if not isinstance(parsed, dict):
+        raise PAYLOAD_TAGS_INVALID.exc(detail="X-Gateway-Tags must be a flat JSON object")
+    if len(parsed) > _TAGS_MAX_COUNT:
+        raise PAYLOAD_TAGS_INVALID.exc(detail="too many tags")
+    result: dict[str, str] = {}
+    for k, v in parsed.items():
+        if not isinstance(k, str) or len(k) > _TAGS_MAX_KEY_LEN or not TAG_KEY_RE.match(k):
+            raise PAYLOAD_TAGS_INVALID.exc(detail=f"invalid tag key: {k!r}")
+        if not isinstance(v, str):
+            raise PAYLOAD_TAGS_INVALID.exc(detail=f"tag value must be a string for key {k!r}")
+        if len(v.encode("utf-8")) > _TAGS_MAX_VALUE_BYTES:
+            raise PAYLOAD_TAGS_INVALID.exc(detail=f"tag value too long for key {k!r}")
+        result[k] = v
+    return result
+
+
+# credits-ledger TASK.md §3: set (once) by CompletionUseCase.complete()/stream() right
+# after an admission HOLD is placed (_enforce_governance succeeds); read by
+# _dispatch_record so settle()/release() fire from the SAME fire-and-forget site as
+# usage_recorder.record() (§3 wiring note) WITHOUT threading credit_guard through every
+# _fire_record/_fire_record_cached/_fire_record_with_raw call site (~25 of them). asyncio
+# copies the contextvar context at ensure_future()/create_task() time, so each concurrent
+# request (its own top-level Task) sees only its OWN hold — no cross-request leakage.
+_credit_hold_ctx: contextvars.ContextVar[tuple[CreditGuard, uuid.UUID] | None] = (
+    contextvars.ContextVar("_credit_hold_ctx", default=None)
+)
+
+
+def _settle_or_release_hold(task: asyncio.Task[object | None]) -> None:
+    """Task done-callback: consume the recorder's UsageRecordOutcome (if any) and settle
+    or release the open credit hold for the current request. Never raises — a missing
+    outcome (older/duck-typed recorder, or record() itself failed) is a no-op; the M6
+    reconciliation sweep is the backstop for anything left unresolved here."""
+    if task.cancelled() or task.exception() is not None:
+        return
+    ctx = _credit_hold_ctx.get()
+    if ctx is None:
+        return
+    credit_guard, request_id = ctx
+    result = task.result()
+    cost_usd = getattr(result, "cost_usd", None)
+    usage_record_id = getattr(result, "usage_record_id", None)
+    free = getattr(result, "free", None)
+    if cost_usd is None or usage_record_id is None or free is None:
+        return
+    tenant_id = getattr(result, "tenant_id", None)
+    if tenant_id is None:
+        return
+    if free:
+        settle_task = asyncio.ensure_future(credit_guard.release(tenant_id, request_id))
+    else:
+        settle_task = asyncio.ensure_future(
+            credit_guard.settle(tenant_id, request_id, usage_record_id, cost_usd)
+        )
+    settle_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
 def _dispatch_record(
     usage_recorder: UsageRecorder,
     *,
@@ -247,6 +351,14 @@ def _dispatch_record(
     the attribute (→ empty set) and receive only the base kwargs — same
     backward-compat guarantee as the former inspect.signature introspection,
     now an explicit declaration instead of runtime reflection.
+
+    credits-ledger TASK.md §3: when a credit hold is open for the CURRENT request
+    (see _credit_hold_ctx) AND usage_recorder exposes `record_with_outcome` (duck-typed
+    via hasattr — RecordingUsageRecorder does; a v1-Protocol test fake normally does
+    not), that method is called INSTEAD of record() so the settle/release callback can
+    read back the already-computed cost. record()'s own contract/behavior is completely
+    unchanged for every other caller (byte-identical — see record_with_outcome's
+    docstring for why this is a NEW method rather than widening record()'s return).
     """
     supported: frozenset[str] = getattr(usage_recorder, "supported_extras", frozenset())
     kwargs: dict[str, Any] = {
@@ -258,6 +370,21 @@ def _dispatch_record(
     }
     if extras:
         kwargs.update({k: v for k, v in extras.items() if k in supported})
+
+    credit_ctx = _credit_hold_ctx.get()
+    # Explicit annotation (not `callable()` narrowing) — callable() narrows to
+    # Callable[..., object], which pyright then rejects as an ensure_future() arg
+    # (object is not Awaitable). getattr's own Any-typed return, propagated through
+    # this declared annotation, keeps the awaited call's return type concrete.
+    record_with_outcome: Callable[..., Awaitable[Any]] | None = getattr(
+        usage_recorder, "record_with_outcome", None
+    )
+    if credit_ctx is not None and record_with_outcome is not None:
+        task = asyncio.ensure_future(record_with_outcome(**kwargs))
+        task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        task.add_done_callback(_settle_or_release_hold)
+        return
+
     task = asyncio.ensure_future(usage_recorder.record(**kwargs))
     # Suppress unhandled-exception noise if recorder raises unexpectedly.
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
@@ -273,6 +400,7 @@ def _fire_record(
     status: int,
     team_id: uuid.UUID | None = None,
     request_id: uuid.UUID | None = None,
+    tags: dict[str, str] | None = None,
 ) -> None:
     """Fire-and-forget usage record; forwards team_id when set (team-governance seam)."""
     extras: UsageRecordExtras = {}
@@ -280,6 +408,8 @@ def _fire_record(
         extras["team_id"] = team_id
     if request_id is not None:
         extras["request_id"] = request_id
+    if tags:
+        extras["tags"] = tags
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -300,6 +430,7 @@ def _fire_record_cached(
     usage: dict[str, Any] | None,
     team_id: uuid.UUID | None = None,
     request_id: uuid.UUID | None = None,
+    tags: dict[str, str] | None = None,
 ) -> None:
     """Fire-and-forget usage record for a cache hit (cached=true, cost_usd=0).
 
@@ -311,6 +442,8 @@ def _fire_record_cached(
         extras["team_id"] = team_id
     if request_id is not None:
         extras["request_id"] = request_id
+    if tags:
+        extras["tags"] = tags
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -418,6 +551,7 @@ def _fire_record_with_raw(
     provider_generation_id: str | None = None,
     disconnect_estimate: bool = False,
     request_id: uuid.UUID | None = None,
+    tags: dict[str, str] | None = None,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
@@ -430,6 +564,10 @@ def _fire_record_with_raw(
 
     request_id (request-log-metering-fields TASK.md §3): correlation key forwarded
     via the SAME typed extras seam when set.
+
+    tags (cost-attribution-tags TASK.md §3): validated X-Gateway-Tags dict forwarded
+    via the SAME typed extras seam when non-empty — None/{} omits the extra entirely,
+    and the recorder itself still stamps tags="{}" on the row (byte-identical, M3).
     """
     extras: UsageRecordExtras = {}
     if team_id is not None:
@@ -452,6 +590,8 @@ def _fire_record_with_raw(
         extras["disconnect_estimate"] = True
     if request_id is not None:
         extras["request_id"] = request_id
+    if tags:
+        extras["tags"] = tags
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -475,6 +615,7 @@ async def _run_output_validation_retry(
     status: int,
     response_body: dict[str, Any],
     served_model_id: str,
+    tags: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any], str, str | None]:
     """M5-M8 bounded-retry loop, entered only when attempt 1 (already 200) failed
     schema validation. Extracted as its own function (not inlined in complete())
@@ -504,6 +645,7 @@ async def _run_output_validation_retry(
         status=status,
         team_id=authz.team_id,
         usage_source="validation_retry",
+        tags=tags,
     )
     # M5/M6/M7: exactly ONE bounded retry, the IDENTICAL routed call, same
     # unmodified body — no re-run of governance/budget/rate-limit (M6); a transport
@@ -532,6 +674,7 @@ async def _run_output_validation_retry(
             status=429,
             team_id=authz.team_id,
             usage_source="validation_retry",
+            tags=tags,
         )
         if exc.retry_after is not None:
             raise UPSTREAM_RATE_LIMITED.exc(
@@ -570,6 +713,7 @@ async def _run_output_validation_retry(
         status=retry_status,
         team_id=authz.team_id,
         usage_source="validation_retry",
+        tags=tags,
     )
     raise OUTPUT_SCHEMA_VALIDATION_FAILED.exc(
         extra={
@@ -577,6 +721,8 @@ async def _run_output_validation_retry(
             "validation_errors": retry_outcome["errors"],
         }
     )
+
+
 def _capture_response_body(collected: list[bytes]) -> dict[str, Any] | None:
     """Build the capture-hook response_body for a streaming exit branch.
 
@@ -707,6 +853,31 @@ def _check_model_allowlist(authz: AuthzResult, model_id: str) -> None:
         raise MODEL_NOT_ALLOWED.exc()
 
 
+def _check_plan_model_allowlist(authz: AuthzResult, model_id: str) -> None:
+    """Raise ProblemError 403 ERR_PLAN_MODEL_NOT_ALLOWED (plan-enforcement TASK.md §3, M4,
+    M9) if the model is outside the tenant's ASSIGNED PLAN's model_allowlist.
+
+    Composes by INTERSECTION with the existing key-level _check_model_allowlist above —
+    called immediately AFTER it, never instead of it. A no-op (M7 grandfathered) when the
+    tenant has no assigned plan; a no-op when the plan itself imposes no restriction
+    (null allowlist, same convention as the key-level allowlist).
+    """
+    if authz.plan_id is None:
+        return  # M7 — unplanned, grandfathered-unlimited
+    if authz.plan_model_allowlist is None:
+        return  # plan imposes no restriction
+    if model_id not in authz.plan_model_allowlist:
+        raise PLAN_MODEL_NOT_ALLOWED.exc(
+            extra={
+                "upgrade_hint": {
+                    "plan_id": str(authz.plan_id),
+                    "plan_name": authz.plan_name,
+                    "model": model_id,
+                }
+            }
+        )
+
+
 def _parse_spend(raw: bytes | str | None) -> Decimal:
     """Parse Redis spend counter value; returns 0 on any failure (fail-open)."""
     if raw is None:
@@ -792,10 +963,17 @@ class CompletionUseCase:
         batch_diversion: BatchDiversionPort | None = None,
         output_validation_enabled: bool = False,
         payload_capture: PayloadCapturePort | None = None,
+        credit_guard: CreditGuard = PassthroughCreditGuard(),  # noqa: B008
+        hold_estimate_usd: Decimal = Decimal("0.50"),
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
         self._budget_guard = budget_guard
+        # credits-ledger TASK.md §3: PassthroughCreditGuard (default) ⇒ check_and_hold is a
+        # no-op ⇒ byte-identical to today. When wired, the credit gate runs at the SAME
+        # choke point as the budget ladder — see _enforce_governance for the insertion.
+        self._credit_guard: CreditGuard = credit_guard
+        self._hold_estimate_usd: Decimal = hold_estimate_usd
         self._rate_limiter: RateLimiter = (
             rate_limiter if rate_limiter is not None else PassthroughRateLimiter()
         )
@@ -1209,11 +1387,14 @@ class CompletionUseCase:
         model_id: str,
         budget_guard: BudgetGuard,
         model_groups: dict[str, list[str]] | None = None,
+        *,
+        request_id: uuid.UUID | None = None,
     ) -> None:
         """Enforce all governance rules in priority order (M8-M10, M12).
 
         Order: expiry → model allowlist → catalog+tenant check → per-key budget
-               → team budget → tenant budget (fallback) → RPM check → TPM check.
+               → team budget → tenant budget (fallback) → credit hold → RPM check
+               → TPM check.
         All governance data comes from AuthzResult — zero extra DB queries.
 
         Per-key budget: fail-open on Redis failure (advisory counter, A2/M13).
@@ -1227,6 +1408,15 @@ class CompletionUseCase:
 
         model_groups: when provided, the catalog check is alias-aware (§3 A4):
           alias keys validate all candidates; plain ids use the existing single check.
+
+        credits-ledger TASK.md §3 (M1/M12): the credit gate composes IMMEDIATELY
+        AFTER the budget ladder resolves (either branch), BEFORE RPM/TPM — a prior
+        budget 402 short-circuits before the credit gate ever runs (most-restrictive-
+        wins). request_id correlates this admission's HOLD with its later
+        settle/release (see _dispatch_record); None (PassthroughCreditGuard callers /
+        legacy call sites) ⇒ a fresh id is minted so check_and_hold always has one,
+        but nothing will ever call settle/release against it (harmless — a
+        PassthroughCreditGuard.check_and_hold is a no-op regardless).
         """
         # M8: Expiry check (fail-closed, DB-sourced — no infra failure risk)
         _check_expiry(authz)
@@ -1234,6 +1424,11 @@ class CompletionUseCase:
         # M9: Model allowlist check (fail-closed, DB-sourced — no infra failure risk)
         # MUST run BEFORE the tenant-disabled check (§3 M7 enforcement order).
         _check_model_allowlist(authz, model_id)
+
+        # plan-enforcement (M4): plan-level model-allowlist check — composes by
+        # INTERSECTION with the key-level allowlist just above; runs immediately after it,
+        # BEFORE the catalog check (same ordering rationale as the key-level check).
+        _check_plan_model_allowlist(authz, model_id)
 
         # Catalog active + per-tenant override check (§3 step 3 — after allowlist).
         # Alias-aware when model_groups provided (§3 A4): validates all candidates.
@@ -1259,8 +1454,25 @@ class CompletionUseCase:
             # No hard per-key budget — tenant budget enforces (RedisBudgetGuard)
             await budget_guard.check(authz.tenant_id)
 
-        # M10 (rate limits): RPM check → TPM check — after governance, before upstream
-        await self._enforce_rate_limits(authz)
+        # credits-ledger TASK.md §3 (M1/M2/M3): admission-time HOLD, after the budget
+        # ladder, before RPM/TPM. check_and_hold raises ERR_CREDITS_EXHAUSTED (402) INSIDE
+        # a row-locked DB transaction — a rejection here writes NO hold row (R1).
+        _credit_request_id = request_id if request_id is not None else uuid.uuid4()
+        await self._credit_guard.check_and_hold(
+            authz.tenant_id, _credit_request_id, self._hold_estimate_usd
+        )
+
+        # M5 (edge: partial failure) — a LATER governance step (RPM/TPM) rejecting an
+        # already-admitted request must fully reverse the hold: the tenant is never
+        # charged for a request that never reached the provider. release() is a no-op
+        # against PassthroughCreditGuard and best-effort (never raises) against a real
+        # guard, so this never masks or replaces the original RATE_LIMITED error.
+        try:
+            # M10 (rate limits): RPM check → TPM check — after governance, before upstream
+            await self._enforce_rate_limits(authz)
+        except Exception:
+            await self._credit_guard.release(authz.tenant_id, _credit_request_id)
+            raise
 
     async def _check_per_key_budget(self, authz: AuthzResult) -> None:
         """Check per-key Redis spend counter against key's monthly_budget_usd.
@@ -1462,6 +1674,7 @@ class CompletionUseCase:
         request_headers: dict[str, str] | None,
         start_ns: int,
         request_id: uuid.UUID,
+        tags: dict[str, str] | None = None,
     ) -> tuple[tuple[int, dict[str, Any], str | None] | None, str | None]:
         """Step 4.5a/4.5b/4.5c cache-lookup region (exact → semantic → vector),
         extracted out of complete() (which already carries ~15 branches of its own,
@@ -1530,6 +1743,7 @@ class CompletionUseCase:
                     usage=cached_usage,
                     team_id=authz.team_id,
                     request_id=request_id,
+                    tags=tags,
                 )
                 # payload-capture-store §3: exact-cache-HIT capture hook —
                 # cached_body is the SAME post-mask body actually served to the
@@ -1574,9 +1788,7 @@ class CompletionUseCase:
                             # SEMANTIC HIT
                             x_cache = "semantic_hit"
                             # cache-alias-billing (B6): read+pop served BEFORE masking.
-                            _served_cached_sem = _read_served_from_cache(
-                                sem_cached_body, model_id
-                            )
+                            _served_cached_sem = _read_served_from_cache(sem_cached_body, model_id)
                             if metrics_registry is not None:
                                 try:
                                     metrics_registry.cache_events_total.labels(
@@ -1588,10 +1800,8 @@ class CompletionUseCase:
                             if guardrail_evaluator is not None and guardrail_configs:
                                 if hasattr(guardrail_evaluator, "evaluate_post"):
                                     try:
-                                        sem_cached_body = (
-                                            await guardrail_evaluator.evaluate_post(
-                                                sem_cached_body, guardrail_configs
-                                            )
+                                        sem_cached_body = await guardrail_evaluator.evaluate_post(
+                                            sem_cached_body, guardrail_configs
                                         )
                                     except Exception as _exc:
                                         _log.warning(
@@ -1611,6 +1821,7 @@ class CompletionUseCase:
                                 usage=sem_usage,
                                 team_id=authz.team_id,
                                 request_id=request_id,
+                                tags=tags,
                             )
                             # payload-capture-store §3: semantic-cache-HIT hook.
                             # request-log-metering-fields §3: usage=sem_usage verbatim;
@@ -1673,8 +1884,7 @@ class CompletionUseCase:
                                     )
                                 except Exception as _exc:
                                     _log.warning(
-                                        "guardrail evaluate_post raised on"
-                                        " vector HIT (fail-OPEN)",
+                                        "guardrail evaluate_post raised on vector HIT (fail-OPEN)",
                                         exc_info=_exc,
                                     )
                         vec_usage_raw = vec_body.get("usage")
@@ -1689,6 +1899,7 @@ class CompletionUseCase:
                             usage=vec_usage,
                             team_id=authz.team_id,
                             request_id=request_id,
+                            tags=tags,
                         )
                         # payload-capture-store §3: vector (embedding-similarity)
                         # cache-HIT hook.
@@ -1777,6 +1988,10 @@ class CompletionUseCase:
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # cost-attribution-tags (TASK.md §3): parse+validate X-Gateway-Tags BEFORE
+            # governance/upstream — a malformed header is 422 and NEVER billed (R1-R5).
+            # Absent header -> {} with zero extra work (M3 byte-identical fast path).
+            _tags = _parse_tags_header((request_headers or {}).get("x-gateway-tags"))
             # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
             # tenant's target model BEFORE payload validation/governance/catalog/upstream.
             await self._resolve_preset(body, authz.tenant_id)
@@ -1787,7 +2002,13 @@ class CompletionUseCase:
             # Governance ALWAYS runs before cache lookup (contract §3 enforcement order).
             # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
             _model_groups = model_router.model_groups if model_router is not None else None
-            await self._enforce_governance(authz, model_id, self._budget_guard, _model_groups)
+            await self._enforce_governance(
+                authz, model_id, self._budget_guard, _model_groups, request_id=_request_id
+            )
+            # credits-ledger TASK.md §3: publish this request's (credit_guard, request_id)
+            # so _dispatch_record's settle/release hook can find the open hold once
+            # usage_recorder.record() reports the actual cost — see _credit_hold_ctx.
+            _credit_hold_ctx.set((self._credit_guard, _request_id))
 
             # unsupported-input-guard: check input modalities AFTER governance and BEFORE
             # bandwidth acquire / upstream / usage (contract §3 — refused = never billed).
@@ -1881,6 +2102,7 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by="error",
                             request_id=_request_id,
+                            tags=_tags,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook (locked
                         # after the mandated BLOCK-path grounding pass — see TASK.md §5).
@@ -1948,6 +2170,7 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by=result.blocked_by,
                             request_id=_request_id,
+                            tags=_tags,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook.
                         # request-log-metering-fields §3: usage=None -> tokens NULL.
@@ -2004,6 +2227,7 @@ class CompletionUseCase:
                     request_headers=request_headers,
                     start_ns=_start_ns,
                     request_id=_request_id,
+                    tags=_tags,
                 )
                 if _cache_hit is not None:
                     _cached = True
@@ -2096,6 +2320,7 @@ class CompletionUseCase:
                     usage=None,
                     status=429,
                     team_id=authz.team_id,
+                    tags=_tags,
                 )
                 _status_code = 429
                 if exc.retry_after is not None:
@@ -2113,6 +2338,7 @@ class CompletionUseCase:
                     usage=None,
                     status=502,
                     team_id=authz.team_id,
+                    tags=_tags,
                 )
                 _status_code = 502
                 raise UPSTREAM_UNAVAILABLE.exc() from None
@@ -2164,6 +2390,7 @@ class CompletionUseCase:
                         status=status,
                         response_body=response_body,
                         served_model_id=served_model_id,
+                        tags=_tags,
                     )
 
             # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
@@ -2307,6 +2534,7 @@ class CompletionUseCase:
                 # 200 success keeps the default "frame" too (M8's own rule).
                 usage_source=_usage_source_final,
                 request_id=_request_id,
+                tags=_tags,
             )
             # payload-capture-store §3: non-streaming completion capture hook.
             # response_body is the ALREADY evaluate_post-masked body (when configured) —
@@ -2392,6 +2620,7 @@ class CompletionUseCase:
         body: dict[str, Any],
         upstream: CompletionUpstream,
         usage_recorder: UsageRecorder,
+        request_headers: dict[str, str] | None = None,
         model_router: FallbackModelRouter | None = None,
     ) -> AsyncIterator[bytes]:
         """Handle a streaming completion.
@@ -2406,6 +2635,11 @@ class CompletionUseCase:
           - Successful streams → span emitted inside _wrapped() after the last
             chunk (status 200, end_time at last chunk).
           - Pre-authz 401 → _authz is None → no span (inviolable).
+
+        request_headers (cost-attribution-tags TASK.md §3, additive — default None so
+        every existing caller/test that omits it is unaffected, byte-identical M3):
+        read for X-Gateway-Tags parity with complete() — the ONLY use today. router.py
+        computes it once (before branching on stream vs non-stream) and passes it here.
         """
         _start_ns = time.time_ns()
         # request-log-metering-fields TASK.md §3: one correlation UUID minted once per
@@ -2422,6 +2656,10 @@ class CompletionUseCase:
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # cost-attribution-tags (TASK.md §3): parse+validate X-Gateway-Tags BEFORE
+            # governance/upstream — a malformed header is 422 and NEVER billed (R1-R5).
+            # Same parity rule as complete() (M2) — absent header -> {} (M3).
+            _tags = _parse_tags_header((request_headers or {}).get("x-gateway-tags"))
             # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
             # tenant's target model BEFORE payload validation/governance/catalog/upstream.
             await self._resolve_preset(body, authz.tenant_id)
@@ -2436,8 +2674,10 @@ class CompletionUseCase:
             # Pass model_groups from model_router for alias-aware catalog check (§3 A4).
             _stream_model_groups = model_router.model_groups if model_router is not None else None
             await self._enforce_governance(
-                authz, model_id, self._budget_guard, _stream_model_groups
+                authz, model_id, self._budget_guard, _stream_model_groups, request_id=_request_id
             )
+            # credits-ledger TASK.md §3: see complete()'s identical insertion for rationale.
+            _credit_hold_ctx.set((self._credit_guard, _request_id))
 
             # unsupported-input-guard: check input modalities AFTER governance and BEFORE
             # credential resolution / upstream stream / usage (contract §3).
@@ -2502,6 +2742,7 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by="error",
                             request_id=_request_id,
+                            tags=_tags,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
                         # request-log-metering-fields §3: usage=None -> tokens NULL.
@@ -2557,6 +2798,7 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by=stream_result.blocked_by,
                             request_id=_request_id,
+                            tags=_tags,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
                         # request-log-metering-fields §3: usage=None -> tokens NULL.
@@ -2695,6 +2937,7 @@ class CompletionUseCase:
                     usage=None,
                     status=429,
                     team_id=authz.team_id,
+                    tags=_tags,
                 )
                 _stream_error_status = 429
                 if exc.retry_after is not None:
@@ -2711,6 +2954,7 @@ class CompletionUseCase:
                     usage=None,
                     status=502,
                     team_id=authz.team_id,
+                    tags=_tags,
                 )
                 _stream_error_status = 502
                 raise UPSTREAM_UNAVAILABLE.exc() from None
@@ -2797,6 +3041,7 @@ class CompletionUseCase:
                                 pii_masked=_stream_pii_masked,
                                 usage_source=_bw_source,
                                 request_id=_request_id,
+                                tags=_tags,
                             )
                             # payload-capture-store §3: bandwidth-shed truncation capture
                             # hook (1st of stream()'s 3 exit branches) — the assembled
@@ -2844,6 +3089,7 @@ class CompletionUseCase:
                         usage=None,
                         status=502,
                         team_id=team_id,
+                        tags=_tags,
                     )
                     # stream-upstream-error-frame (v35): emit a parseable error chunk so
                     # a [DONE]-waiting agent loop (e.g. Helios) never hangs on truncation.
@@ -2925,6 +3171,7 @@ class CompletionUseCase:
                         provider_generation_id=disconnect_gen_id,
                         disconnect_estimate=disconnect_estimate,
                         request_id=_request_id,
+                        tags=_tags,
                     )
                     # payload-capture-store §3: client-disconnect capture hook (2nd of
                     # stream()'s 3 exit branches) — the assembled (partial) text.
@@ -3059,6 +3306,7 @@ class CompletionUseCase:
                     pii_masked=_stream_pii_masked,
                     usage_source=usage_source,
                     request_id=_request_id,
+                    tags=_tags,
                 )
                 # payload-capture-store §3: clean-close capture hook (3rd of stream()'s
                 # 3 exit branches, and the one usual case) — the fully assembled text,

@@ -138,9 +138,7 @@ async def test_key_override_enforces_ignoring_tenant(
 ) -> None:
     """Key override has ONLY pii_mask -> injection block from the tenant config is
     never consulted (not blocked); PII is masked per the key's own config."""
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="M1Co", email="owner@m1.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="M1Co", email="owner@m1.io")
     key_info = await create_key(client, jwt, name="m1-key")
 
     # Tenant: block-mode prompt_injection configured
@@ -203,9 +201,7 @@ async def test_key_override_empty_disables_all_guardrails(
     )
     key_info = await create_key(client, jwt, name="m1-edge-key")
 
-    await set_tenant_guardrails(
-        client, jwt, {"pii_mask": {"enabled": True, "mode": "mask"}}
-    )
+    await set_tenant_guardrails(client, jwt, {"pii_mask": {"enabled": True, "mode": "mask"}})
 
     put_resp = await client.put(
         key_guardrails_path(key_info["key_id"]), json={}, headers=auth_jwt(jwt)
@@ -241,14 +237,10 @@ async def test_key_null_override_inherits_tenant_byte_identical(
 ) -> None:
     """A key that never had a PUT (guardrail_policy = NULL) enforces the TENANT's
     config exactly as pre-task (zero code changes to the proxy layer)."""
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="M2Co", email="owner@m2.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="M2Co", email="owner@m2.io")
     key_info = await create_key(client, jwt, name="m2-key")
 
-    await set_tenant_guardrails(
-        client, jwt, {"pii_mask": {"enabled": True, "mode": "mask"}}
-    )
+    await set_tenant_guardrails(client, jwt, {"pii_mask": {"enabled": True, "mode": "mask"}})
     # No PUT to /admin/keys/{key_id}/guardrails — key stays NULL.
 
     upstream = FakeCompletionUpstream()
@@ -261,8 +253,7 @@ async def test_key_null_override_inherits_tenant_byte_identical(
     assert resp.status_code == 200, f"completion failed: {resp.text}"
     sent_content = str(upstream.received_messages[0][0]["content"])
     assert "[EMAIL_REDACTED]" in sent_content, (
-        f"NULL key override must inherit the tenant's pii_mask config; "
-        f"got: {sent_content!r}"
+        f"NULL key override must inherit the tenant's pii_mask config; got: {sent_content!r}"
     )
     assert "user@example.com" not in sent_content
 
@@ -279,9 +270,7 @@ async def test_resolution_costs_zero_extra_io(
 ) -> None:
     """Authenticating a key with a non-NULL guardrail_policy executes exactly ONE
     SQL query (the existing 3-table LEFT JOIN) — no second query, no cache I/O."""
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="M3Co", email="owner@m3.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="M3Co", email="owner@m3.io")
     key_info = await create_key(client, jwt, name="m3-key")
     put_resp = await client.put(
         key_guardrails_path(key_info["key_id"]),
@@ -332,9 +321,7 @@ async def test_resolution_costs_zero_extra_io(
 async def test_get_reports_source_key_when_override_exists(
     client: httpx.AsyncClient,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="M4KeyCo", email="owner@m4key.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="M4KeyCo", email="owner@m4key.io")
     key_info = await create_key(client, jwt, name="m4-key")
     await client.put(
         key_guardrails_path(key_info["key_id"]),
@@ -361,9 +348,7 @@ async def test_get_reports_source_tenant_when_no_override(
         client, tenant_name="M4TenantCo", email="owner@m4tenant.io"
     )
     key_info = await create_key(client, jwt, name="m4-tenant-key")
-    await set_tenant_guardrails(
-        client, jwt, {"pii_mask": {"enabled": True, "mode": "mask"}}
-    )
+    await set_tenant_guardrails(client, jwt, {"pii_mask": {"enabled": True, "mode": "mask"}})
 
     resp = await client.get(key_guardrails_path(key_info["key_id"]), headers=auth_jwt(jwt))
     assert resp.status_code == 200, f"GET failed: {resp.text}"
@@ -380,9 +365,7 @@ async def test_get_reports_source_tenant_when_no_override(
 async def test_put_partial_merge_preserves_other_guardrail(
     client: httpx.AsyncClient,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="M5Co", email="owner@m5.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="M5Co", email="owner@m5.io")
     key_info = await create_key(client, jwt, name="m5-key")
 
     first = await client.put(
@@ -455,22 +438,16 @@ async def test_delete_reverts_to_tenant_inheritance(
     active_model: str,
     redis_client: Any,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="M6Co", email="owner@m6.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="M6Co", email="owner@m6.io")
     key_info = await create_key(client, jwt, name="m6-key")
-    await set_tenant_guardrails(
-        client, jwt, {"pii_mask": {"enabled": True, "mode": "mask"}}
-    )
+    await set_tenant_guardrails(client, jwt, {"pii_mask": {"enabled": True, "mode": "mask"}})
     await client.put(
         key_guardrails_path(key_info["key_id"]),
         json={"pii_mask": {"enabled": False, "mode": "audit"}},
         headers=auth_jwt(jwt),
     )
 
-    del_resp = await client.delete(
-        key_guardrails_path(key_info["key_id"]), headers=auth_jwt(jwt)
-    )
+    del_resp = await client.delete(key_guardrails_path(key_info["key_id"]), headers=auth_jwt(jwt))
     assert del_resp.status_code == 204, f"DELETE failed: {del_resp.status_code}"
 
     get_resp = await client.get(key_guardrails_path(key_info["key_id"]), headers=auth_jwt(jwt))
@@ -514,9 +491,7 @@ async def test_delete_idempotent_when_no_existing_override(
 
 
 async def test_member_cannot_put(client: httpx.AsyncClient, db_session: AsyncSession) -> None:
-    owner_jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="M7Co", email="owner@m7.io"
-    )
+    owner_jwt, _tenant_id = await signup_and_login(client, tenant_name="M7Co", email="owner@m7.io")
     key_info = await create_key(client, owner_jwt, name="m7-key")
     member_jwt = member_token_for(owner_jwt, email="member@m7.io")
 
@@ -557,9 +532,7 @@ async def test_member_can_get(client: httpx.AsyncClient) -> None:
 async def test_audit_event_recorded_on_put(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="M9PutCo", email="owner@m9put.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="M9PutCo", email="owner@m9put.io")
     key_info = await create_key(client, jwt, name="m9-put-key")
 
     resp = await client.put(
@@ -603,9 +576,7 @@ async def test_audit_event_recorded_on_put(
 async def test_audit_event_recorded_on_delete(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="M9DelCo", email="owner@m9del.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="M9DelCo", email="owner@m9del.io")
     key_info = await create_key(client, jwt, name="m9-del-key")
     await client.put(
         key_guardrails_path(key_info["key_id"]),
@@ -743,9 +714,7 @@ async def test_key_override_enforced_on_vector_cache_hit() -> None:
 
 
 async def test_put_rejects_invalid_custom_pattern(client: httpx.AsyncClient) -> None:
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="R1Co", email="owner@r1.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="R1Co", email="owner@r1.io")
     key_info = await create_key(client, jwt, name="r1-key")
 
     resp = await client.put(
@@ -771,9 +740,7 @@ async def test_put_rejects_invalid_custom_pattern(client: httpx.AsyncClient) -> 
 
 
 async def test_put_rejects_invalid_mode(client: httpx.AsyncClient) -> None:
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="R2Co", email="owner@r2.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="R2Co", email="owner@r2.io")
     key_info = await create_key(client, jwt, name="r2-key")
 
     resp = await client.put(
@@ -811,9 +778,7 @@ async def test_put_cross_tenant_key_404(client: httpx.AsyncClient) -> None:
 # ===========================================================================
 
 
-async def test_delete_revoked_key_404(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_delete_revoked_key_404(client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     jwt, _tenant_id = await signup_and_login(
         client, tenant_name="R4RevokedCo", email="owner@r4revoked.io"
     )

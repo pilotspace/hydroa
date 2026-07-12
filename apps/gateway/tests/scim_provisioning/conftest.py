@@ -52,7 +52,9 @@ async def login(client: httpx.AsyncClient, *, email: str, password: str) -> http
     return await client.post("/admin/auth/login", json={"email": email, "password": password})
 
 
-def issue_jwt(app: Any, *, role: Role, tenant_id: uuid.UUID, user_id: uuid.UUID | None = None) -> str:
+def issue_jwt(
+    app: Any, *, role: Role, tenant_id: uuid.UUID, user_id: uuid.UUID | None = None
+) -> str:
     """Issue a JWT with a specific role/tenant_id directly (mirrors
     member_invite_issuance's own _issue_token helper) — for a MEMBER-role permission
     check that needs no real DB-backed user row."""
@@ -70,9 +72,7 @@ async def create_scim_token(
 ) -> dict[str, Any]:
     """POST /admin/scim/tokens with an owner/admin session JWT; returns the full
     response body {id, name, token, created_at}."""
-    resp = await client.post(
-        "/admin/scim/tokens", json={"name": name}, headers=bearer(owner_token)
-    )
+    resp = await client.post("/admin/scim/tokens", json={"name": name}, headers=bearer(owner_token))
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -88,9 +88,7 @@ async def add_user_to_team(
     db_session: AsyncSession, *, team_id: uuid.UUID, user_id: uuid.UUID, role: str = "member"
 ) -> None:
     await db_session.execute(
-        text(
-            "INSERT INTO team_members (team_id, user_id, role) VALUES (:tid, :uid, :role)"
-        ),
+        text("INSERT INTO team_members (team_id, user_id, role) VALUES (:tid, :uid, :role)"),
         {"tid": team_id, "uid": user_id, "role": role},
     )
     await db_session.commit()
@@ -136,7 +134,9 @@ async def count_audit_rows(db_session: AsyncSession, *, action: str) -> int:
     return int(result.scalar() or 0)
 
 
-async def revoked_at_of(db_session: AsyncSession, *, table: str, id_col: str, row_id: uuid.UUID) -> Any:
+async def revoked_at_of(
+    db_session: AsyncSession, *, table: str, id_col: str, row_id: uuid.UUID
+) -> Any:
     result = await db_session.execute(
         text(f"SELECT revoked_at FROM {table} WHERE {id_col} = :id"),  # noqa: S608 — fixed test-only table/col names, never user input
         {"id": row_id},
@@ -157,7 +157,11 @@ class FakeOidcExchanger:
     async def exchange(self, code: str, redirect_uri: str) -> dict[str, Any]:
         self.calls.append({"code": code, "redirect_uri": redirect_uri})
         if self._id_token is not None:
-            return {"id_token": self._id_token, "access_token": "fake-access", "token_type": "bearer"}
+            return {
+                "id_token": self._id_token,
+                "access_token": "fake-access",
+                "token_type": "bearer",
+            }
         return {}
 
 

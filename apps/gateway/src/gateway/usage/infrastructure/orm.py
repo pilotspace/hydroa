@@ -63,6 +63,12 @@ class UsageRecordRow(Base):
         # migration a55ddcebaac6, request-log-metering-fields). Expression index on the
         # raw->>'request_id' extraction — declared here for alembic autogenerate parity.
         Index("ix_usage_records_request_id", text("(raw ->> 'request_id')")),
+        # cost-attribution-tags (TASK.md §3): GIN index on the tags JSONB column —
+        # accelerates containment lookups (tags @> '{"k":"v"}', used by the
+        # invoice-generation sibling task). Does NOT accelerate the cost-by-tag
+        # breakdown's jsonb_each_text GROUP BY expansion (a tenant+window-scoped
+        # table scan, same scale as get_spend/get_guardrail_analytics).
+        Index("ix_usage_records_tags_gin", "tags", postgresql_using="gin"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
@@ -111,3 +117,10 @@ class UsageRecordRow(Base):
         Integer, nullable=False, server_default="0"
     )
     audio_cached_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # cost-attribution-tags (TASK.md §3): client-supplied key/value request labels,
+    # written ONCE at insert time via the existing Redis-stream write-behind path
+    # (never mutated afterward — append-only). Absent X-Gateway-Tags header -> {}
+    # (byte-identical to every pre-task row). Queryable via GET /admin/usage/cost-by-tag.
+    tags: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )

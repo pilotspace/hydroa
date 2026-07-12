@@ -45,8 +45,6 @@ class RedisSamlReplayCache:
                 timeout=_REDIS_TIMEOUT_SECONDS,
             )
         except (RedisError, OSError, TimeoutError) as exc:
-            raise SamlStoreUnavailableError(
-                f"saml replay cache unavailable: {exc}"
-            ) from exc
+            raise SamlStoreUnavailableError(f"saml replay cache unavailable: {exc}") from exc
 
         return bool(was_set)

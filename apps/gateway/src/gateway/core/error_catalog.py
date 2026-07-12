@@ -312,6 +312,12 @@ PAYLOAD_CUSTOM_PATTERN_INVALID = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "Custom pattern validation failed"
 )
 
+# --- cost-attribution-tags TASK.md §3 — X-Gateway-Tags header / tag_key filter ---
+
+#: X-Gateway-Tags header malformed, or ?tag_key= filter malformed (cost-attribution-tags
+#: TASK.md §3 R1-R5, R8). Detail carries the exact validation-failure reason.
+PAYLOAD_TAGS_INVALID = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "Tags validation failed")
+
 # ---------------------------------------------------------------------------
 # Resource not found
 # ---------------------------------------------------------------------------
@@ -375,6 +381,30 @@ MEMBER_EXISTS = ErrorSpec(409, "ERR_MEMBER_EXISTS", "User is already a member of
 #: Tenant, team, or per-key monthly budget has been exceeded.
 #: Detail is dynamic (caller provides it via ``detail=``).
 BUDGET_EXCEEDED = ErrorSpec(402, "ERR_BUDGET_EXCEEDED", "Monthly budget exceeded")
+
+# ---------------------------------------------------------------------------
+# Prepaid credits (credits-ledger TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: balance_usd - hold_estimate_usd < -grace_usd at admission (R1).
+CREDITS_EXHAUSTED = ErrorSpec(402, "ERR_CREDITS_EXHAUSTED", "Prepaid credit balance exhausted")
+
+#: top-up amount_usd <= 0, non-decimal, or non-finite (R2).
+CREDITS_TOPUP_INVALID = ErrorSpec(
+    422, "ERR_CREDITS_TOPUP_INVALID", "amount_usd must be a positive, finite decimal string"
+)
+
+#: top-up request missing the Idempotency-Key header (R3).
+CREDITS_IDEMPOTENCY_KEY_REQUIRED = ErrorSpec(
+    400, "ERR_CREDITS_IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header is required"
+)
+
+#: Idempotency-Key reused with a different tenant_id or amount_usd (R4).
+CREDITS_IDEMPOTENCY_KEY_CONFLICT = ErrorSpec(
+    409,
+    "ERR_CREDITS_IDEMPOTENCY_KEY_CONFLICT",
+    "Idempotency-Key already used with a different tenant_id or amount_usd",
+)
 
 # ---------------------------------------------------------------------------
 # Rate limiting
@@ -543,9 +573,7 @@ OIDC_TENANT_CONFLICT = ErrorSpec(
 
 #: Resolved user's deactivated_at is set (scim-provisioning TASK.md §3, M7) — same
 #: denial family as the password-login path; no session JWT is issued.
-OIDC_ACCOUNT_DEACTIVATED = ErrorSpec(
-    403, "ERR_OIDC_ACCOUNT_DEACTIVATED", "Account is deactivated"
-)
+OIDC_ACCOUNT_DEACTIVATED = ErrorSpec(403, "ERR_OIDC_ACCOUNT_DEACTIVATED", "Account is deactivated")
 
 # ---------------------------------------------------------------------------
 # SAML 2.0 SSO errors (saml-sso task)
@@ -832,6 +860,35 @@ PLAN_TENANT_INELIGIBLE = ErrorSpec(
 )
 
 # ---------------------------------------------------------------------------
+# Plan enforcement (plan-enforcement task — request-time plan governance)
+# ---------------------------------------------------------------------------
+
+#: A model passes the existing key-level allowlist (or the key has none) but is outside
+#: the tenant's ASSIGNED PLAN's model_allowlist (M4/R2). Distinct from MODEL_NOT_ALLOWED
+#: (key-level) so billing-ui (wave-2) can render distinct upgrade messaging per dimension.
+#: Always carries extra.upgrade_hint (plan_id, plan_name, model) — M9.
+PLAN_MODEL_NOT_ALLOWED = ErrorSpec(
+    403, "ERR_PLAN_MODEL_NOT_ALLOWED", "Model not permitted by this tenant's plan"
+)
+
+#: A tenant's assigned plan's feature_flags does not list the requested feature key
+#: (M6/R3-R6): batch-policy write, ml_moderation guardrail write, logs-explorer query, or
+#: realtime-relay connect. Always carries extra.upgrade_hint (plan_id, plan_name,
+#: feature) — M9. Inert (never raised) for an unplanned tenant (plan_id IS NULL, M7).
+PLAN_FEATURE_NOT_ENABLED = ErrorSpec(
+    403, "ERR_PLAN_FEATURE_NOT_ENABLED", "This feature is not enabled on the tenant's plan"
+)
+
+#: Admitting one more active member would meet-or-exceed the tenant's effective seat cap
+#: (plan-seat-cap TASK.md §3 M2/M5, FROZEN @ v1) — raised at 4 admission seams: invite
+#: accept, OIDC/SAML JIT-provisioning (new-user branch only), domain-capture auto-join
+#: signup. Always carries extra.upgrade_hint (plan_id, plan_name, seat_cap, current_seats).
+#: The SCIM /scim/v2/Users seam raises `scim_seat_cap_exceeded()` instead (RFC 7644).
+PLAN_SEAT_CAP_EXCEEDED = ErrorSpec(
+    403, "ERR_PLAN_SEAT_CAP_EXCEEDED", "Adding this member would exceed the tenant's seat cap"
+)
+
+# ---------------------------------------------------------------------------
 # Impersonation session lifecycle (impersonation-session-lifecycle task)
 # ---------------------------------------------------------------------------
 
@@ -918,6 +975,48 @@ EXPORT_QUERY_TIMEOUT = ErrorSpec(
     504,
     "ERR_EXPORT_TIMEOUT",
     "Export query exceeded the time budget; narrow the range or reduce limit",
+)
+
+# ---------------------------------------------------------------------------
+# Invoice errors (invoice-generation TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: Unknown invoice id, unknown line id, a line not owned by the invoice, or a
+#: cross-tenant invoice/line — byte-identical across every unmatched-row cause
+#: (no leak of "exists but not yours" vs "doesn't exist").
+INVOICE_NOT_FOUND = ErrorSpec(404, "ERR_INVOICE_NOT_FOUND", "Invoice not found")
+
+#: A list/detail/evidence read on GET /admin/invoices/* exceeded its bounded
+#: asyncio.timeout query budget.
+INVOICE_QUERY_TIMEOUT = ErrorSpec(
+    504, "ERR_INVOICE_QUERY_TIMEOUT", "Invoice query exceeded its time budget"
+)
+
+#: RESERVED for a future mutating route (e.g. a manual-issue/admin-override
+#: surface) — no v1 route can trigger this; M5 immutability is enforced by the
+#: DB trigger itself (invoices/invoice_lines/invoice_corrections), tested
+#: directly against the write path, not via an HTTP route.
+INVOICE_IMMUTABLE = ErrorSpec(409, "ERR_INVOICE_IMMUTABLE", "Issued invoices cannot be modified")
+
+# ---------------------------------------------------------------------------
+# Seat-billing errors (seat-billing TASK.md §3 — FROZEN @ v2)
+# ---------------------------------------------------------------------------
+
+#: GET .../lines/{line_id}/seat-evidence called against a line whose
+#: line_type == 'usage' (M12) — a 'usage' line has real evidence at the EXISTING
+#: /evidence route; this is never a silent alias for it.
+INVOICE_LINE_WRONG_TYPE = ErrorSpec(
+    400, "ERR_INVOICE_LINE_WRONG_TYPE", "Evidence type does not match this line"
+)
+
+# ---------------------------------------------------------------------------
+# Margin-dashboard errors (margin-dashboard TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: One of the 4 GET /admin/platform/margin/* reads exceeded its bounded
+#: asyncio.timeout query budget (M8).
+MARGIN_QUERY_TIMEOUT = ErrorSpec(
+    504, "ERR_MARGIN_QUERY_TIMEOUT", "Margin query exceeded its time budget"
 )
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,196 @@
+"""Suite-local fixtures for margin-dashboard tests (TASK.md §4).
+
+Real Postgres (localhost:5433, `GATEWAY_TEST_DATABASE_URL`, schema rebuilt per test) + the
+root `app`/`client`/`db_session` fixtures. Superadmin/tenant identities are minted directly
+via `app.state.token_service.issue(...)` — no DB user row required (mirrors
+`tests/plan_catalog/test_plan_catalog.py`'s own precedent). `usage_records` rows are seeded
+directly into the ledger with a controlled `created_at`/`cost_usd`/`provider_cost`/
+`cost_basis`/`model_id` so the new `reconcile_by_tenant_model`/`reconcile_trend` aggregates
+(and the margin router built on top of them) can be exercised deterministically. `invoices`
+rows are seeded directly too (invoice-generation's own frozen shape, already merged on this
+branch) for the tie-out scenarios — no need to run the real invoice generator.
+"""
+
+from __future__ import annotations
+
+import datetime
+import uuid
+from decimal import Decimal
+from typing import Any
+
+import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# A fixed UTC window the tests seed into — July 2026 calendar month, matching the §2
+# scenarios' own "July 2026" framing and the tie-out period=2026-07 examples.
+WINDOW_FROM = datetime.datetime(2026, 7, 1, 0, 0, 0, tzinfo=datetime.UTC)
+WINDOW_TO = datetime.datetime(2026, 8, 1, 0, 0, 0, tzinfo=datetime.UTC)
+INSIDE = datetime.datetime(2026, 7, 15, 12, 0, 0, tzinfo=datetime.UTC)
+
+
+async def seed_row(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID | str,
+    cost_usd: Decimal,
+    created_at: datetime.datetime,
+    model_id: str = "openai/gpt-4o",
+    provider_cost: Decimal | None = None,
+    cost_basis: str = "catalog",
+    usage_source: str = "frame",
+) -> None:
+    """Insert one usage_records row with full reconciliation columns (controlled
+    created_at/model_id) — no signup/key flow needed, key_id is a synthetic UUID (the FK
+    is on tenant_id only for this ledger table's read paths under test)."""
+    await session.execute(
+        text(
+            "INSERT INTO usage_records"
+            " (id, tenant_id, key_id, model_id, prompt_tokens, completion_tokens,"
+            "  cost_usd, status, raw, created_at, cost_basis, provider_cost, usage_source)"
+            " VALUES (:id, :tid, :kid, :mid, 0, 0,"
+            "  :cost, 200, '{}', :ts, :basis, :pcost, :src)"
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "tid": str(tenant_id),
+            "kid": str(uuid.uuid4()),
+            "mid": model_id,
+            "cost": str(cost_usd),
+            # usage_records.created_at is TIMESTAMP (naive) — strip tz like the sibling
+            # reconciliation_aggregate suite's own seed helper.
+            "ts": created_at.astimezone(datetime.UTC).replace(tzinfo=None),
+            "basis": cost_basis,
+            "pcost": str(provider_cost) if provider_cost is not None else None,
+            "src": usage_source,
+        },
+    )
+    await session.commit()
+
+
+async def seed_tenant(session: AsyncSession, *, name: str) -> uuid.UUID:
+    """Insert a bare kind='customer' tenant row — no signup flow needed (this suite never
+    exercises auth/key-issuance, only cross-tenant aggregation)."""
+    tid = uuid.uuid4()
+    await session.execute(
+        text("INSERT INTO tenants (id, name, kind) VALUES (:id, :name, 'customer')"),
+        {"id": tid, "name": name},
+    )
+    await session.commit()
+    return tid
+
+
+async def seed_invoice(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID | str,
+    period_start: datetime.datetime,
+    period_end: datetime.datetime,
+    total_usd: Decimal,
+    raw_total_usd: Decimal,
+    status: str = "issued",
+) -> uuid.UUID:
+    """Insert one invoices row directly (invoice-generation's own frozen §3 shape, already
+    merged on this branch) — no need to run the real generator for a tie-out fixture."""
+    iid = uuid.uuid4()
+
+    def _naive_utc(dt: datetime.datetime) -> datetime.datetime:
+        # The fast create_all() test schema infers a NAIVE `DateTime` column from
+        # `InvoiceRow.period_start`'s bare `Mapped[datetime]` annotation (matching
+        # `invoice_generator.py`'s own `_as_naive_utc` write-path convention exactly) —
+        # even though the real migration declares TIMESTAMPTZ.
+        return dt.astimezone(datetime.UTC).replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+    await session.execute(
+        text(
+            "INSERT INTO invoices"
+            " (id, tenant_id, period_start, period_end, status, currency,"
+            "  total_usd, raw_total_usd, tax_usd, issued_at)"
+            " VALUES (:id, :tid, :ps, :pe, :status, 'USD', :total, :raw, 0, :issued_at)"
+        ),
+        {
+            "id": iid,
+            "tid": str(tenant_id),
+            "ps": _naive_utc(period_start),
+            "pe": _naive_utc(period_end),
+            "status": status,
+            "total": str(total_usd),
+            "raw": str(raw_total_usd),
+            "issued_at": _naive_utc(period_end) if status == "issued" else None,
+        },
+    )
+    await session.commit()
+    return iid
+
+
+@pytest.fixture
+async def platform_tenant_id(db_session: AsyncSession) -> uuid.UUID:
+    """Resolve the platform tenant id, seeding one directly when the fast create_all test
+    schema has not run the seed migration (mirrors tests/plan_catalog's fixture)."""
+    from gateway.tenants.infrastructure.repository import get_platform_tenant
+
+    tenant = await get_platform_tenant(db_session)
+    if tenant is not None:
+        return tenant.id
+
+    tid = uuid.uuid4()
+    await db_session.execute(
+        text("INSERT INTO tenants (id, name, kind) VALUES (:id, 'Platform', 'platform')"),
+        {"id": tid},
+    )
+    await db_session.commit()
+    return tid
+
+
+def _issue_token(app: Any, *, role: Any, tenant_id: uuid.UUID, email: str) -> str:
+    """Mint a Bearer token directly via the live token service — no DB user row required."""
+    token, _ = app.state.token_service.issue(
+        user_id=uuid.uuid4(), tenant_id=tenant_id, role=role, email=email
+    )
+    return token
+
+
+@pytest.fixture
+async def superadmin_token(app: Any, platform_tenant_id: uuid.UUID) -> str:
+    from gateway.tenants.domain.entities import Role
+
+    return _issue_token(
+        app, role=Role.SUPERADMIN, tenant_id=platform_tenant_id, email="root@platform.internal"
+    )
+
+
+@pytest.fixture
+async def owner_token(app: Any) -> str:
+    """A valid, non-superadmin tenant credential (owner role) — R2's 403 case."""
+    from gateway.tenants.domain.entities import Role
+
+    return _issue_token(app, role=Role.OWNER, tenant_id=uuid.uuid4(), email="owner@tenant.io")
+
+
+async def audit_count(session: AsyncSession, *, action: str) -> int:
+    """Let the fire-and-forget audit write complete, then count matching rows."""
+    import asyncio
+
+    await asyncio.sleep(0.05)
+    result = await session.execute(
+        text("SELECT COUNT(*) FROM audit_events WHERE action = :action"),
+        {"action": action},
+    )
+    return result.scalar() or 0
+
+
+async def audit_row(session: AsyncSession, *, action: str) -> dict[str, Any]:
+    import asyncio
+
+    await asyncio.sleep(0.05)
+    rows = (
+        await session.execute(
+            text(
+                "SELECT tenant_id, actor_email, metadata FROM audit_events WHERE action = :action"
+            ),
+            {"action": action},
+        )
+    ).fetchall()
+    assert len(rows) == 1, f"expected exactly 1 audit row for action={action!r}, found {len(rows)}"
+    tenant_id, actor_email, metadata = rows[0]
+    return {"tenant_id": tenant_id, "actor_email": actor_email, "metadata": dict(metadata)}
