@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "seat-billing",
+  "active_task": "billing-ui",
   "active_milestone": "monetization-core",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -938,7 +938,7 @@
     },
     "billing-ui": {
       "title": "Tenant Billing console (Invoices/Credits/Plan & seats) \u2014 Aurora financial-document idiom",
-      "phase": "verify",
+      "phase": "build",
       "gate": "none",
       "milestone": "monetization-core",
       "depends_on": [
@@ -947,7 +947,7 @@
         "plan-enforcement"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T12:29:06+00:00",
+      "updated": "2026-07-12T12:44:50+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T11:43:43+00:00",
@@ -969,6 +969,16 @@
       "scope": {
         "declared": [],
         "snapshot_md5": "96cef9cd3939e3d7808c51c4ac419f0e"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-12T12:44:50+00:00",
+            "reason": "scope_violation: task 'billing-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/tests/billing-plan-verify-probe.test.tsx \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/tests/plans/test_verify_plan_router.py (3 total)",
+            "source": "scope"
+          }
+        ]
       }
     }
   },
@@ -1056,7 +1066,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T12:30:07+00:00",
+  "updated": "2026-07-12T12:44:50+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1993,7 +2003,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "monetization-core": "seat-billing"
+    "monetization-core": "billing-ui"
   },
   "todos": [
     {
@@ -2030,6 +2040,18 @@
       "id": 6,
       "text": "margin-dashboard follow-on (P2, Tin approved 2026-07-12): clearly-labeled 'estimated margin (catalog list-price basis)' column \u2014 separate task, never blended with authoritative provider-cost margin",
       "created": "2026-07-12T11:43:20+00:00",
+      "status": "open"
+    },
+    {
+      "id": 7,
+      "text": "billing-ui F1 (verify \ud83d\udfe1, spec delta seeded): Plan&seats live roster count 403-degrades to '\u2014' for operator/billing_admin/viewer/member \u2014 decide (a) ungated tenant-self count-only read vs (b) document degrade as accepted; Tin design call at observe/M-close",
+      "created": "2026-07-12T12:44:50+00:00",
+      "status": "open"
+    },
+    {
+      "id": 8,
+      "text": "billing-ui F2 (\ud83d\udcad): evidence-drawer per-line context subtitle from DESIGN.md dropped in build \u2014 cosmetic fast-follow or backlog",
+      "created": "2026-07-12T12:44:50+00:00",
       "status": "open"
     }
   ]

@@ -4,7 +4,7 @@ slug: billing-ui · created: 2026-07-12 · stage: production
 sensitivity: mechanical
 milestone: monetization-core
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -771,14 +771,50 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+Persona: `tdd-verifier` (advisor flow; no closer-fit persona found for a UI+thin-router
+  verify pass) — refute-the-green stance, severity tags 🔴 blocker · 🟡 concern · 💭 note.
+
+- [x] all tests pass — backend `tests/plans/test_plan_router.py` 12/12 green (real Postgres,
+  `gateway_test_verify_bui`); dashboard 4 new files + amended `nav-role-filter.test.tsx`
+  38/38 green; FULL dashboard suite 138 files / 1234 tests green (`./node_modules/.bin/vitest
+  run`, real binary via a symlink to the sibling worktree's `node_modules` — identical
+  `package.json`/`package-lock.json` diffed byte-equal first, symlink removed before commit);
+  backend regression subset (budgets/credits_ledger/invoice_generation/plan_catalog/
+  plan_enforcement/plans/tenants) 172/172 green, matching §5's own claimed counts exactly.
+  PLUS 2 independent NEW backend probes (`tests/plans/test_verify_plan_router.py`, this
+  verify pass — SUPERADMIN role coverage the builder's own parametrize omitted + an explicit
+  2-tenant isolation probe) 2/2 green, and 1 NEW dashboard probe
+  (`tests/billing-plan-verify-probe.test.tsx` — reproduces F1 below) 1/1 green. Full dashboard
+  suite re-run with the new probe included: 139 files / 1235 tests green.
+- [x] coverage did not decrease — `vitest.config.ts` and the backend's `--cov-fail-under=80`
+  config: zero diff between `ed5ec82` (pre-billing-ui) and `5edd931` (post). Subset-run
+  coverage% dips are expected/non-diagnostic (full-suite gate is what's held).
+- [x] no test or contract was altered during build — `git diff ed5ec82 5edd931 --stat`: only
+  `nav-role-filter.test.tsx` touched among pre-existing files, and its diff is exactly the
+  declared "UPDATED by billing-ui" count-bump (12/24/25) + new assertions for Credits/Plan
+  seats/Invoices-hidden-from-member — zero weakened assertion. `plan-enforcement`'s frozen
+  files (`ports.py`, `entitlements.py`, `plan_entitlement_resolver.py`) diff empty.
+- [x] the green was EARNED — self refute-read: read all 4 new dashboard test files + the
+  backend suite in full; assertions target real rendered text/roles/hrefs/focus, not
+  component internals; the one duplicate-fixture test (`test_platform_wide_kill_switch_off_
+  renders_the_same_honest_empty_state` mirrors `test_brand_new_tenant...` byte-for-byte) is
+  DELIBERATE, not vacuous — R5's own rule is "no API signal distinguishes the two states," so
+  an identical fixture/assertion pair is the correct proof, not a copy-paste miss.
+- [x] concurrency / timing — read-only surface, no writes, no shared mutable state; the 3
+  independent `useQuery` calls in `PlanSeatsPage` (plan/budget/users) race safely (react-query
+  isolates each), and `isLoading`/`isError` deliberately exclude the (degrading) users query.
+  `InvoiceEvidenceDrawer`'s per-line cursor reset uses React's documented adjust-during-render
+  pattern (not a `useEffect`), avoiding a stale-cursor flash — no residue found.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — `plan_router.py`
+  uses parameterized `text()` (no string-built SQL), never constructs an `Authorization`
+  header client-side (`bffGet`-only, confirmed by reading the module), zero new npm/pip
+  dependency (grep confirms only already-imported modules). No security HARD-STOP.
+- [x] layering & dependencies — router → frozen `PlanEntitlementResolver` port → `plans` table
+  read, matches the codebase's existing thin-router convention (`budgets/api/router.py`
+  precedent, cited and followed); dashboard components call `bffGet` exclusively, zero direct
+  fetch/Authorization construction. No architecture residue.
+- [ ] a person reviewed and approved the change — pending Tin's read of this report (contract
+  itself was FROZEN @ v1 by Tin at design time; this is the separate BUILD-output review).
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
@@ -819,35 +855,142 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
   (172 tests green) + a full-suite `--collect-only` pass (3173 tests collected, 0 import errors).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol referenced (min 2 hits: definition + ≥1 consumer/test) —
+  `InvoiceStatusSeal`(3) `InvoiceLinesTable`(2) `InvoiceCorrectionsTable`(2)
+  `InvoiceEvidenceDrawer`(2) `InvoicesListPage`(3) `InvoiceDetailPage`(5)
+  `CreditsHistoryTable`(2) `CreditsPage`(3) `EntitlementMeter`(2) `PlanSeatsPage`(3) — all wired,
+  confirmed via `grep -rl` across `app/`+`components/`+`tests/`.
+- [x] DEAD-CODE (code) — no orphaned symbol; all 4 new route wrappers (`invoices/page.tsx`,
+  `invoices/[invoiceId]/page.tsx`, `credits/page.tsx`, `plan/page.tsx`) import and render their
+  page component; `plan_router` is imported + `include_router`'d in `main.py` (confirmed, not
+  just declared).
+- [x] SEMANTIC (prose) — DESIGN.md read in full section-by-section against the built components
+  (see fidelity walk below); TASK.md §0–§6 read in full; not skimmed.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] Every §3 CONTRACT symbol re-resolved in the current tree: `PlanEntitlementResolver`/
+  `ResolvedEntitlements` (`domain/ports.py`, `domain/entitlements.py` — untouched, byte-diff
+  empty vs pre-billing-ui), `SqlAlchemyPlanEntitlementResolver`, `plans` table columns (all
+  present, `test_plan_router.py` exercises them live against real Postgres), `get_budget`'s RBAC
+  precedent (mirrored — confirmed no `require_permission` on the new route), `bffGet` +
+  `isBinaryPassthrough` (read in full, unedited), `LogDetailDrawer`'s focus-return idiom (lines
+  216-238, byte-compared — `InvoiceEvidenceDrawer` structurally identical), `NAV_GROUPS` (additive
+  diff only, confirmed via `git diff`).
+- [x] **One anchor moved and IS already named, not silent**: §0/§3 cite `GET /admin/members`,
+  which does not exist — the real shipped endpoint is `GET /admin/users` (`MEMBERS_MANAGE`-gated,
+  owner/admin/superadmin only). The builder documented this drift honestly in §5 Known-problem
+  fixes. **Re-verified independently here**: `plan-seat-cap` (sibling, merged into this same
+  integration branch before billing-ui) did NOT add a `/admin/members` endpoint or touch
+  `users_router.py` — confirmed via `git diff 9c2c204~1 9c2c204 --stat`, zero `users_router`/
+  `members` hits. So the drift is stable, not newly compounded — but see 🟡 finding F1 below: the
+  drift has a REAL, untested behavioral consequence the builder's fix note doesn't fully surface.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (add-verify, `tdd-verifier`-persona advisor pass) · adversarially checked: (1) hand-read
+  all 4 new dashboard test files + the 12-test backend suite for vacuous asserts / fixture
+  overfit — none found, one deliberately-duplicate fixture pair (R5) is correct-by-design, not a
+  cheat; (2) re-derived the RBAC/nav-visibility matrix from `authz.py`'s live `ROLE_PERMISSIONS`
+  and cross-checked against `nav-role-filter.test.tsx`'s updated counts — matches exactly;
+  (3) traced the "never re-sum money client-side" safety rule by reading `InvoiceLinesTable`/
+  `InvoiceCorrectionsTable`'s own prop signatures — neither accepts nor computes a total, so the
+  rule is enforced by construction, not merely test-asserted; (4) ran the full dashboard suite
+  (1234/1234) and a targeted backend regression subset (172/172) myself rather than trusting §5's
+  claimed counts — both reproduced exactly. No overfit / stubbed-away logic found. One real
+  UNTESTED gap found (F1, seat-count 403-degrade) — it does not invalidate the recorded green
+  (no false assertion, no gamed test), but it is a genuine scenario-coverage hole feeding §7.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify)
+1. Security: CLEAR — parameterized SQL only (`text()` w/ named params, no interpolation); zero
+   `Authorization` header construction client-side (grep confirms `bffGet`-only across all 4
+   components); RBAC on the new `GET /admin/plan` matches its own frozen contract exactly
+   (any-role, tenant-scoped via `identity.tenant_id`, no cross-tenant reach); zero new
+   dependency (backend or npm). No finding.
+2. Concurrency: CLEAR — read-only surface, no writes, no shared mutable state; independent
+   `useQuery` races in `PlanSeatsPage` are isolated by react-query and the page's `isLoading`/
+   `isError` deliberately exclude the degrading `admin-users` query; the evidence drawer's
+   cursor-reset uses the documented adjust-during-render pattern, not a `useEffect` race. No
+   finding.
+3. Architecture: RESIDUE (🟡, non-blocking) — see F1: `GET /admin/plan`'s own §1 Framings
+   promised "Plan & seats carries NO minRole (visible to every authenticated role)" and M7
+   promised "a seat line combining plan.seat_cap ... against a LIVE roster count." Because the
+   ground-anchor endpoint drifted to `MEMBERS_MANAGE`-gated `GET /admin/users`, 4 of 7 roles
+   (operator/billing_admin/viewer/member) who CAN reach `/app/plan` will silently see "— of 25
+   seats" instead of a live count — a real, honest, non-crashing degrade (good defensive coding)
+   but completely UNTESTED (no scenario, no test exercises a `GET /admin/users` 403 on this
+   page) and not named in TASK.md §1/§2/§6 anywhere until this verify pass. Not a security or
+   correctness bug (no data leak, no crash, no misleading claim) — a coverage/fidelity gap: the
+   design's own "live roster count" promise silently downgrades for most non-admin viewers.
+Verdict: PASS
+Residue: F1 (🟡 concern, architecture/coverage) — untested seat-count degrade for
+  operator/billing_admin/viewer/member on `/app/plan`; recommend a regression test + a TASK.md
+  §1/§2 note before the next Plan&seats-adjacent task (e.g. `margin-dashboard`) copies this
+  pattern blind. Non-blocking: behavior is honest and non-crashing, just unverified.
+Binding: advisory — sensitivity: mechanical
+
+### Fidelity walk — DESIGN.md vs built pages (per-page verdict)
+- **Nav (§2)**: MATCH — group placement, icons, minRole split exactly as wireframed; RBAC
+  matrix (§2 table) reproduced independently from live `authz.py` and matches.
+- **Invoices list (§3)**: MATCH — table columns, empty state copy, error state copy, cursor
+  pager all match verbatim (copy strings byte-compared against DESIGN.md).
+- **Invoice detail (§4)**: MATCH — seal, lines table + evidence icon, corrections
+  (empty-not-omitted), footer totals (verbatim, never re-summed), export links, evidence drawer
+  chrome/pagination/focus-return all match. 💭 note: DESIGN.md's evidence-drawer subtitle line
+  ("gpt-4o-mini · Eng team · key k_a1 · {} tags") is NOT rendered by `InvoiceEvidenceDrawer` —
+  the drawer opens with just "Evidence" as its `DialogTitle` and no per-line context header. A
+  user with several open lines could lose track of which line's evidence they're viewing once
+  the drawer is open (no visible reminder). Low severity — the "View evidence" trigger button is
+  per-row and focus returns correctly, but this is a real, if minor, DESIGN.md fidelity gap.
+- **Credits (§5)**: MATCH — hero StatCard + grace note (conditional on `grace_usd > 0`, matches
+  wireframe's parenthetical), history table columns, unified empty state (R5) all match.
+- **Plan & seats (§6)**: MATCH for the planned-tenant layout and the unplanned-tenant variant
+  (Seats/RPM-TPM/pricing-slot correctly omitted when `plan === null`, mirroring DESIGN.md's own
+  unplanned wireframe which also omits them). 🟡 gap: see F1 — the wireframe's "6 of 25" seat
+  count is a LIVE promise the real endpoint cannot honor for most non-owner/admin roles; DESIGN.md
+  does not show or discuss a "— of 25" degraded state anywhere.
+- **A11y/responsive (§10)**: MATCH — axe suites (5 files) all green; `overflow-auto` wrapper
+  confirmed present on `InvoiceLinesTable`'s underlying `Table` via the M12 test; single-`h1`-
+  per-page via `PageHeader` confirmed by reading each page component (no second `h1`/`h2`-as-title
+  anywhere).
+
+### Findings (severity-tagged)
+- 🟡 **F1 — untested seat-count 403-degrade for 4 of 7 roles on `/app/plan`.** `GET /admin/users`
+  requires `Permission.MEMBERS_MANAGE` (owner/admin/superadmin only, confirmed in
+  `authz.py:87-136`); operator/billing_admin/viewer/member can all reach `/app/plan` (no
+  `minRole`, M1) and will see the seat line's roster count silently fall back to "—" (handled
+  gracefully in code, `PlanSeatsPage.tsx:70-84`, comment self-documents the degrade) — was ZERO
+  test coverage at build time, and it is not named as a scenario in §1/§2 anywhere (only R7's
+  "seat-billing unfrozen" placeholder-degrade is tested, a different failure mode). **Now
+  reproduced as an executable probe**: `tests/billing-plan-verify-probe.test.tsx` (NEW, this
+  verify pass, 1/1 green) — confirms the degrade IS honest (no page-level ErrorState swallows
+  the rest of the page) AND confirms the seat count genuinely shows "— of 25 seats", not the
+  "6 of 25" the design promises, for a mocked operator-shaped 403. Not a security/correctness
+  defect (honest, non-crashing, no data leak) — a real scenario-coverage gap in a task whose own
+  M11/M2-style discipline elsewhere is otherwise thorough. Recommend: fold this probe into
+  `billing-plan.test.tsx` proper at the next touch + a one-line TASK.md §1 Assumption note,
+  forwarded via §7 Spec delta.
+- 💭 **F2 — evidence drawer omits its DESIGN.md-specified per-line context subtitle.**
+  DESIGN.md §4's ASCII wireframe shows "gpt-4o-mini · Eng team · key k_a1 · {} tags" under the
+  drawer's "Evidence" title; the built `InvoiceEvidenceDrawer` renders only "Evidence" +  an
+  sr-only description, no visible per-line identifier. Minor UX polish gap, not a correctness or
+  a11y issue (the `DialogTitle`/`DialogDescription` pair is still valid); worth a fast-follow,
+  not a blocker.
+- 💭 **F3 — evidence-drawer "0 rows" empty state is implemented but untested.** DESIGN.md §9
+  names it ("should not occur ... but handled"); `InvoiceEvidenceDrawer.tsx:127-128` implements
+  it; no test in the 4-file suite exercises it. Matches the design doc's own "should not occur"
+  framing — acceptable to leave untested, noted for completeness only.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Reported: no — verify findings are reported here; the orchestrator records the gate outcome
+  (this task's own dispatch: "Do NOT gate — orchestrator gates").
+Outcome: <RESERVED FOR ORCHESTRATOR — verify recommendation: PASS with 1 non-blocking 🟡
+  residue (F1) + 2 💭 notes (F2/F3); zero security findings; zero HARD-STOP>
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reviewed by: add-verify (self) · date: 2026-07-12 — pending Tin's human sign-off
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 
