@@ -486,14 +486,32 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+Persona: Billing Precision Engineer (`.add/personas/billing-precision-engineer.md`, flow:
+build+advisor) — refute-the-green stance; NEVER a fabricated margin, superadmin-only airtight.
+
+- [x] all tests pass — 32/32 frozen backend + 18/18 NEW adversarial backend probes
+  (`tests/margin_dashboard/test_verify_adversarial.py`) = 50/50, re-run twice clean (no
+  flakes); 6/6 frozen dashboard (`vitest run tests/platform-margin.test.tsx`)
+- [x] coverage did not decrease — `margin_router.py` 95%→98% (adversarial probes added
+  branch coverage on the 3 previously-unexercised timeout paths); `reconciliation.py` held at
+  76% (uncovered lines are pre-existing `audit_cost_basis_breaches`/
+  `audit_unrecovered_disconnects`/legacy `reconcile_by_tenant`, out of this task's scope)
+- [x] no test or contract was altered during build — `git diff d586348 HEAD -- tests/margin_dashboard/test_margin_dashboard.py tests/platform-margin.test.tsx` = empty (both files created once, never touched again); `git log -p .add/tasks/margin-dashboard/TASK.md` shows only additive `+` lines for the §3 contract block, no `-` removals/edits post-freeze
+- [x] the green was EARNED, not gamed — see Refute-read verdict below (EARNED)
+- [x] concurrency / timing of the risky operation is safe — pure read-only aggregation, no
+  write path at all; `asyncio.timeout` wiring independently confirmed REAL on all 4 routes
+  (not just `/summary`, which is all the frozen suite covers) via low-level
+  `AsyncSession.execute` fault injection
+- [x] no exposed secrets, injection openings, or unexpected dependencies — all SQL params
+  bound via `text()` placeholders except the `granularity` string, which is interpolated only
+  after a hard whitelist check (`{"day","week","month"}`); zero new pip/npm dependencies;
+  grep for stray `float(` in `margin_router.py`/`reconciliation.py` = 0 hits (Decimal
+  discipline held end-to-end)
+- [x] layering & dependencies follow CONVENTIONS.md — additive-only within `usage/`
+  (application+api), one cross-context read into `billing/infrastructure/orm.py:InvoiceRow`
+  (precedented by invoice-generation's own symmetric read), `main.py`/`error_catalog.py`
+  touched only additively (2-line + 1-ErrorSpec)
+- [ ] a person reviewed and approved the change — pending Tin's review of this record
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
@@ -533,35 +551,173 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
   role values including `owner`), with the existing "Tenants"/"Plans" entries asserted
   unchanged in the same test.
 - [x] Zero new tables, zero migrations — confirmed by `grep -rl "invoices\|usage_records" apps/gateway/migrations/versions/` showing no new revision file added by this build; the git diff for this task touches no `migrations/` path.
+- [x] **NEW (verify-added) — mixed-provenance (tenant, model) bucket never blends catalog
+  revenue into the provider-basis margin**: `test_verify_mixed_provenance_bucket_no_blend`
+  seeds 2 `cost_basis='provider'` rows (billed 10.00, provider_cost 6.00) AND 2
+  `cost_basis='catalog'` rows (14.00) on the SAME (tenant, model) bucket in the SAME window —
+  `by-tenant-model` returns `billed_total="10.00000000"`, `margin="4.00000000"` (provider-only),
+  `catalog_billed_total="14.00000000"` reported separately, never folded in. This is the
+  scenario the frozen suite's M3 tests never exercise (they use catalog-ONLY or provider-ONLY
+  buckets, never a genuinely mixed one) — the strongest possible refutation attempt on the
+  task's central honesty rule, and it held.
+- [x] **NEW (verify-added) — Decimal fidelity at real column scale (8dp), no float drift**:
+  `test_verify_decimal_fidelity_no_float_drift` sums 3 rows whose total is not exactly
+  representable in IEEE754 float at this precision; `billed_total`/`provider_cost_total`/
+  `margin` all match the Decimal-exact expected value byte-for-byte on the wire.
+  `test_verify_tie_out_decimal_exactness` confirms the same at the tie-out layer
+  (116.66666667, `tie_out_status="matched"` exactly, not within a tolerance).
+- [x] **NEW (verify-added) — half-open window boundary is exact**:
+  `test_verify_window_boundary_half_open_exact` seeds one row exactly at `window_from` and one
+  exactly at `window_to`; only the `window_from` row is counted (`billed_total="1.00000000"`),
+  confirming `[from, to)` semantics hold at the literal instant, not just within the interior.
+- [x] **NEW (verify-added) — timeout wiring is real on ALL 4 routes**, not only `/summary`
+  (the frozen suite's only timeout test): `test_verify_timeout_wiring_by_tenant_model` /
+  `_trend` / `_tie_out` each force a real `TimeoutError` from `AsyncSession.execute` on the
+  `usage_records` query and confirm 504 `ERR_MARGIN_QUERY_TIMEOUT` on all three previously
+  UNTESTED routes.
+- [x] **NEW (verify-added) — `?tenant_id=` filter isolation, no cross-tenant leak**:
+  `test_verify_tenant_id_filter_isolates_by_tenant_model` /
+  `test_verify_tenant_id_filter_isolates_tie_out` seed 2 tenants, filter to one, confirm the
+  other's figures never appear in the response — untested by the frozen suite.
+- [x] **NEW (verify-added) — authz byte-shape across all 4 routes** (401 no-token, 403
+  non-superadmin): `test_verify_no_token_401_byte_shape` /
+  `test_verify_non_superadmin_403_byte_shape` (parametrized ×4 routes each) assert zero
+  financial keys (`items`/`points`/`provider_cost_total`/`billed_total`/`margin`/
+  `catalog_billed_total`/`ledger_billed_total_usd`) leak into the error body on either path.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `margin_router` imported + `app.include_router(margin_router)` in
+  `main.py:225,1377`; `MARGIN_QUERY_TIMEOUT` ErrorSpec present in `error_catalog.py:1007-1008`
+  and imported/used in `margin_router.py`; `reconcile_by_tenant_model`/`reconcile_trend`/
+  `tie_out_ledger_by_tenant` all imported and called from their respective routes (grep-
+  confirmed, no orphaned import). Frontend: `PLATFORM_MARGIN_HREF` wired into
+  `PlatformNavGroup` (`app-shell.tsx:219,246-247`), gated by the existing `showPlatformNav`.
+- [x] DEAD-CODE (code) — no unused new symbol found: every new dataclass
+  (`TenantModelReconciliation`/`MarginTrendPoint`/`TenantLedgerPeriod`) and every new function
+  is referenced from `margin_router.py`; no orphaned schema class in either file.
+- [ ] SEMANTIC — n/a (this is a code task, WIRING+DEAD-CODE path applies, not prose)
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by direct
+  grep/read at HEAD (`06682f1`): `_compute_window_bounds` (`usage/api/router.py:196`),
+  `require_superadmin` (`tenants/domain/authz.py:329`), `emit_platform_audit`
+  (`audit/application/platform_audit.py:36`), `InvoiceRow.period_start/period_end/status/
+  total_usd/raw_total_usd` (`billing/infrastructure/orm.py:78-101`), `PlatformNavGroup` /
+  `showPlatformNav` / new `PLATFORM_MARGIN_HREF` (`app-shell.tsx:200-247`) — all resolve
+  exactly as §0/§3 describe.
+- [x] no anchor moved/renamed since Ground SHA (`71641a9`) — all cited symbols are at the
+  same relative_path; only additive lines were introduced around them.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: **EARNED**
+By: self (add-verify, billing-precision-engineer persona) · adversarially checked: mixed-
+provenance same-bucket blending (M3's strongest case, untested by the frozen suite), Decimal
+fidelity at real 8dp column scale under a value not exactly representable in float, half-open
+window-boundary exactness at the literal instant, timeout wiring on the 3 routes the frozen
+suite never exercises, cross-tenant `tenant_id=` filter isolation, and 401/403 byte-shape
+non-leakage across all 4 routes. 18 new tests, independently authored (not copied from the
+build's own suite), all reproduce the SAME invariants the build claims — no overfit to the
+build's own fixtures found. One genuine spec-vs-implementation gap found (Finding 🟡1 below)
+via a deliberately adversarial edge case (all-zero provider row) the frozen suite's fixtures
+never construct — this is exactly the kind of gap a refute-read is supposed to surface, and it
+does NOT indicate a gamed/vacuous suite (the frozen tests assert real live-DB values, not
+mocks). Not a cheat; a real, narrow, safe-direction (never-fabricates) inconsistency.
+
+### Findings
+🟡 **Finding 1 — `/summary`'s `has_provider_cost_data` is a heuristic, not the honest
+`COUNT(cost_basis='provider')` the other 3 endpoints use.** `get_margin_summary` derives it as
+`provider_cost_total != 0 OR billed_total != 0 OR unbilled_rows > 0` because
+`ReconciliationSummary` (the reused, unmodified `reconcile_window` primitive) has no
+provider-row-count field to draw from. `by-tenant-model`/`trend` instead COUNT actual
+`cost_basis='provider'` rows (honest, matches M3's literal text: "true iff the bucket has ≥1
+cost_basis='provider' row"). Edge case: a window whose ONLY provider-basis row(s) have
+`provider_cost=0 AND cost_usd=0` (a genuinely free upstream call) makes `/summary` report
+`has_provider_cost_data=false`/`margin=null` even though a real provider row — and a real,
+computed margin of exactly 0 — exists. Direction of error is SAFE (under-claims certainty
+rather than fabricating a wrong number, consistent with M3's honesty spirit), so this is NOT
+an M3 violation, but it IS a genuine inconsistency between `/summary` and the other 3
+endpoints' definition of the same field name. Confirmed by
+`test_verify_summary_has_provider_cost_data_zero_cost_provider_row` (passes, documenting
+current behavior). Recommend: either add a provider-row COUNT to `reconcile_window`/
+`ReconciliationSummary` (matches the other 3 endpoints' honest definition) or explicitly
+document `/summary`'s field as a distinct, coarser proxy — non-blocking, narrow edge case
+(free-tier OpenRouter usage), does not affect any currently-observed cost value.
+
+🟡 **Finding 2 — the `_as_naive_utc` idiom's docstring claim ("asyncpg expects NAIVE UTC
+datetimes") is factually wrong, and this task's new tie-out code extends the same pattern
+into a fresh money-critical path.** Direct probe against a REAL alembic-migrated schema
+(`gateway_migrations_test_verify_margin`, genuine `TIMESTAMPTZ` columns — confirmed
+`usage_records.created_at`, `invoices.period_start/period_end/issued_at` are ALL
+`timestamp with time zone` in the real migration, NOT the naive type the `create_all()` test
+schema infers) shows asyncpg interprets a naive Python datetime bound to a TIMESTAMPTZ column
+as being in the **process's local OS timezone**, not UTC, before storing the converted
+instant: binding `datetime(2026,8,1,0,0,0)` (no tzinfo) under a UTC+7 host clock stored
+`2026-07-31T17:00:00+00:00` — a real 7-hour corruption of the intended UTC instant
+(reproduced directly via asyncpg, bypassing the app entirely — script available on request).
+Because `invoice_generator.py`'s write path and `margin_router.py`'s/`reconciliation.py`'s new
+read paths (`_fetch_invoices_for_period`, `tie_out_ledger_by_tenant`, `reconcile_trend`, etc.)
+ALL apply the identical naive-strip conversion within the SAME process, the round-trip is
+SELF-CONSISTENT as long as the gateway container's OS-level timezone is UTC — which is the
+Debian-bookworm-slim default (this repo's Dockerfile sets no `TZ`, so the base image's default
+almost certainly applies) — but this is an **unpinned, undocumented environmental assumption**
+for a financial-reconciliation code path, and it is INVISIBLE to the entire test suite, which
+runs exclusively against `create_all()`'s inferred NAIVE (non-tz) columns — no test in this
+repo, frozen or adversarial, can currently detect a regression here regardless of host clock.
+This is INHERITED pre-existing debt (the `usage_records.created_at` TIMESTAMPTZ + naive-strip
+pattern predates this task, already used by `reconcile_window`/`reconcile_by_tenant`) — this
+task did not introduce the pattern, but its 3 new functions (`reconcile_by_tenant_model`,
+`reconcile_trend`, `tie_out_ledger_by_tenant`) and `_fetch_invoices_for_period` all extend it
+into the tie-out feature, whose entire purpose is catching financial drift — a path where a
+silent timezone-dependent instant-shift could itself mask or fabricate a `drift_detected`.
+Non-blocking for THIS task (does not fail under the expected UTC-default deployment, and is
+not a regression this task caused), but worth escalating as a repo-wide hardening item:
+(a) pin `TZ=UTC` explicitly in the Dockerfile/process startup with a runtime assertion, or
+(b) the more robust fix — bind timezone-AWARE UTC datetimes to every TIMESTAMPTZ query
+parameter instead of stripping tzinfo (asyncpg handles aware datetimes correctly regardless of
+host clock; the naive-strip was based on an incorrect assumption about asyncpg's semantics).
+
+💭 **Note 3** — monkeypatching `gateway.usage.application.reconciliation.<fn>` does NOT affect
+`margin_router.py`'s already-bound `from ... import <fn>` reference (a Python name-binding
+trap, not a code defect) — my first attempt at cross-route timeout probes silently no-opped
+this way before I switched to the same low-level `AsyncSession.execute` fault-injection idiom
+the frozen suite's `test_m8` already uses correctly. Noted for future test authors on this
+router, not a build finding.
+
+💭 **Note 4** — TASK.md §4 describes "8 tests, dashboard" for `platform-margin.test.tsx`; the
+actual file has 6 `it()` blocks (`vitest run` reports "6 passed"). All M12-listed assertions
+ARE present (e.g. the 5-role non-superadmin check appears to be looped inside one `it()`
+rather than 5 separate blocks) — a bookkeeping mismatch in the test_plan count, not a coverage
+gap.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify)
+1. Security: **CLEAR** — all SQL bound via `text()` placeholders except `granularity`, which
+   is whitelist-validated (`{"day","week","month"}`) before interpolation; every route is
+   `require_superadmin`-gated with confirmed zero-leak 401/403 byte shape; every read is
+   audited; no secrets, no new dependencies.
+2. Concurrency: **CLEAR** — pure read-only aggregation, zero write path; bounded
+   `asyncio.timeout` confirmed real on all 4 routes (adversarially re-verified beyond the
+   frozen suite's `/summary`-only coverage).
+3. Architecture: **CLEAR, with RESIDUE** — layering is correct (additive-only, one resolver,
+   no second price/aggregation path, thin router). Residue = Finding 🟡2 (inherited
+   TIMESTAMPTZ/naive-datetime coupling, extended by this task's tie-out code into a
+   money-critical path, invisible to the current test suite) — a real architectural fragility
+   worth a dedicated hardening task, not a defect this task introduced or is positioned to fix
+   within its own additive-only scope.
+Verdict: **PASS**
+Residue: Finding 🟡2 (TIMESTAMPTZ/naive-datetime environmental coupling, inherited +
+extended, non-blocking under expected UTC-default deployment) · Finding 🟡1 (`/summary`
+has_provider_cost_data heuristic vs honest-count inconsistency, narrow safe-direction edge
+case)
+Binding: yes — mechanical
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Reported: no — this record is the verify agent's evidence; the orchestrator renders the gate
+report and records the final outcome (per dispatch instruction: "Do NOT gate — orchestrator
+gates").
+Outcome: **RECOMMENDED — PASS** (no security or concurrency finding; 2 non-blocking 🟡
+findings recorded above, both safe-direction/inherited, neither meets HARD-STOP or
+RISK-ACCEPTED criteria) — orchestrator to record the binding outcome.
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
 Reviewed by: <name> · date: <date>
 
