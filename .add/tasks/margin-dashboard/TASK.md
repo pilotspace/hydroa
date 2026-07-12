@@ -328,14 +328,96 @@ Reported: no — pending Tin's freeze review.
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 90% (backend `margin_router.py` + `reconciliation.py` additions); dashboard
+`PlatformMarginView.tsx` covered by scenario-mapped Vitest cases, no numeric coverage gate
+locally enforced for the dashboard app.
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_m1_summary_matches_ops_reconciliation: Given mixed provider/catalog usage / When GET
+    /admin/platform/margin/summary / Then its 6 shared fields byte-match a direct
+    reconcile_window call for the same window · covers: M1
+  - test_m1_summary_via_ops_router_matches_margin_summary: Given seeded usage / When summary
+    is fetched with reconcile_window monkeypatch-traced / Then exactly one reconcile_window
+    call fires (no second aggregation) · covers: M1, M2
+  - test_m2_never_calls_resolve_markup_pct: Given mixed-basis usage / When summary +
+    by-tenant-model are called with resolve_markup_pct monkeypatched to raise / Then both
+    succeed and it is never invoked · covers: M2
+  - test_m3_catalog_basis_never_fabricated_margin: Given a (tenant, model) with only
+    cost_basis='catalog' rows / When by-tenant-model is called / Then has_provider_cost_data
+    is false, margin is null, catalog_billed_total is the exact SUM · covers: M3
+  - test_m3_provider_basis_real_computed_margin: Given cost_basis='provider' rows with known
+    billed/provider sums / When by-tenant-model is called / Then has_provider_cost_data is
+    true and margin equals billed-provider exactly · covers: M3
+  - test_m4_per_tenant_per_model_grouping: Given 2 tenants x 2 models mixed / When
+    by-tenant-model is called / Then exactly the 3 real (tenant,model) pairs are returned,
+    each with its own isolated totals · covers: M4
+  - test_m5_trend_buckets_by_day_granularity: Given usage spread over 5 days / When trend is
+    called with window=day / Then up to 5 UTC-midnight buckets are returned, each an exact
+    per-day SUM · covers: M5
+  - test_m6_tie_out_matched: Given an issued invoice whose raw_total_usd equals the ledger sum
+    / When tie-out is called / Then tie_out_status="matched" · covers: M6
+  - test_m6_tie_out_drift_detected_never_corrects: Given an issued invoice that does NOT match
+    the ledger sum / When tie-out is called / Then tie_out_status="drift_detected" and neither
+    the invoice nor usage_records rows are modified · covers: M6
+  - test_m7_tie_out_pending_invoice_for_uninvoiced_period: Given usage with no invoices row for
+    that period / When tie-out is called / Then tie_out_status="pending_invoice", invoiced
+    fields null, ledger_billed_total_usd still real · covers: M7
+  - test_m8_query_timeout_maps_to_504: Given a usage_records SELECT forced to raise
+    TimeoutError / When summary is called / Then 504 ERR_MARGIN_QUERY_TIMEOUT · covers: M8
+  - test_m9_summary_read_is_audited: Given a superadmin / When summary is called / Then
+    exactly one new audit_events row (action=platform.margin.view_summary,
+    target_tenant_id=null) with resolved window metadata · covers: M9
+  - test_m10_by_tenant_model_keyset_pagination: Given 120 (tenant,model) buckets / When pages
+    are walked via next_cursor to exhaustion / Then exactly 120 items, no dupes/drops, page 1
+    has_more=true at limit=50 · covers: M10
+  - test_m11_money_fields_are_exact_decimal_strings: Given cost_usd=0.10000003 / When summary
+    is called / Then billed_total is the literal string "0.10000003" · covers: M11
+  - test_r1_no_bearer_token: Given no Authorization header / When summary is called / Then 401
+    ERR_AUTH_INVALID_TOKEN, no margin fields leaked · covers: R:no-token
+  - test_r2_non_superadmin_forbidden (parametrized x4 endpoints): Given a valid owner JWT /
+    When each of the 4 endpoints is called / Then 403 ERR_AUTH_FORBIDDEN, no cross-tenant data
+    leaked · covers: R:not-superadmin
+  - test_r3_invalid_window_rejected / test_r3_invalid_start_date_rejected: Given
+    window=quarter or start=not-a-date / When summary is called / Then 422
+    ERR_PAYLOAD_INVALID · covers: R:invalid-window
+  - test_r4_malformed_tie_out_period_rejected (parametrized): Given period=2026-13 /
+    july-2026 / absent / When tie-out is called / Then 422 ERR_PAYLOAD_INVALID · covers:
+    R:invalid-period
+  - test_r5_invalid_limit_rejected (parametrized 0/101/abc): Given a bad limit / When
+    by-tenant-model is called / Then 422 ERR_PAYLOAD_INVALID · covers: R:invalid-limit
+  - test_r6_malformed_cursor_rejected: Given cursor=not-valid-base64!! / When by-tenant-model
+    is called / Then 422 ERR_CURSOR_INVALID, no partial page · covers: R:invalid-cursor
+  - test_r7_invalid_tenant_id_filter_rejected: Given tenant_id=not-a-uuid / When
+    by-tenant-model is called / Then 422 ERR_PAYLOAD_INVALID · covers: R:invalid-tenant-id
+  - test_edge_empty_window_explicit_zeros: Given no usage_records at all / When summary +
+    by-tenant-model are called / Then 200 with explicit "0"/null/false fields and items=[] ·
+    covers: edge
+  - test_reconcile_by_tenant_model_shape / test_reconcile_trend_shape: direct pure-aggregate
+    coverage of the two new reconciliation.py primitives (mirrors
+    reconciliation_aggregate's own direct-call convention) · covers: M4, M5
+  - test_renders_summary_tiles_table_trend_and_tie_out (dashboard): Given all 4 endpoints
+    mocked / When PlatformMarginView renders / Then tiles + table rows + trend figure +
+    tie-out statuses all appear · covers: M12
+  - test_catalog_only_row_shows_no_cost_data_badge_never_dollar_zero (dashboard): Given
+    has_provider_cost_data=false / When rendered / Then the margin value renders the "No cost
+    data" badge, never a dollar figure · covers: M3, M12
+  - test_summary_no_cost_data_renders_no_cost_data_not_zero (dashboard): same rule at the
+    summary-tile level · covers: M3, M12
+  - test_shows_standard_error_state_on_403_non_superadmin (dashboard): Given all 4 endpoints
+    403 / When rendered / Then the standard ErrorState (role=alert) appears once, no data
+    leak · covers: R:not-superadmin, M12
+  - test_margin_nav_visible_for_superadmin_desktop_and_mobile /
+    test_margin_nav_hidden_for_non_superadmin_roles (dashboard): the third PlatformNavGroup
+    entry, same allowlist-gated pattern as Tenants/Plans · covers: M12
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
+Tests live in: `apps/gateway/tests/margin_dashboard/` (32 tests, backend) ·
+`apps/dashboard/tests/platform-margin.test.tsx` (8 tests, dashboard) · MUST run red (missing
+implementation) before Build — confirmed: backend suite failed at collection with
+`ImportError: cannot import name 'MarginTrendPoint' from
+'gateway.usage.application.reconciliation'`; dashboard suite failed to resolve
+`@/components/platform/PlatformMarginView` — both the honest missing-implementation red, not
+a broken harness.
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
@@ -343,16 +425,60 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch):
+`apps/gateway/src/gateway/usage/application/reconciliation.py` (additive: 3 new dataclasses +
+3 new functions, existing functions byte-unchanged) ·
+`apps/gateway/src/gateway/usage/api/margin_router.py` (new file) ·
+`apps/gateway/src/gateway/core/error_catalog.py` (additive: 1 new ErrorSpec) ·
+`apps/gateway/src/gateway/main.py` (2-line additive: import + include_router) ·
+`apps/gateway/tests/margin_dashboard/` (new dir) ·
+`apps/dashboard/components/platform/PlatformMarginView.tsx` (new file) ·
+`apps/dashboard/app/(app)/app/platform/margin/page.tsx` (new file) ·
+`apps/dashboard/components/ui/app-shell.tsx` (additive: 1 new nav entry, existing 2 untouched)
+· `apps/dashboard/tests/platform-margin.test.tsx` (new file).
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
-Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
+Strategy (ordered batches): 1. Read the reconciliation/ops/platform-router/invoice-repository
+ground files directly (confirm every §0 anchor resolves as claimed). 2. Write the full §4 red
+suite (backend HTTP + pure-aggregate + dashboard) against the frozen §3 shapes; confirm RED
+for the right reason (ImportError / unresolved-import, not a broken harness). 3. Add the 3
+additive reconciliation.py primitives (`reconcile_by_tenant_model`, `reconcile_trend`,
+`tie_out_ledger_by_tenant`) — same Decimal/`_money()`/half-open-window idioms as the existing
+functions, zero changes to them. 4. Add `MARGIN_QUERY_TIMEOUT` to error_catalog.py. 5. Write
+`margin_router.py` (4 routes, all `require_superadmin`-first + `emit_platform_audit`-on-success)
+and register it in main.py. 6. Green the backend suite; fix any Decimal-scale test-assertion
+mismatches uncovered by real Postgres NUMERIC behavior (never weaken an assertion — correct a
+wrong precision assumption against the real column scale). 7. Build the dashboard
+`PlatformMarginView` (summary tiles / table / trend / tie-out) + page + nav entry; green the
+dashboard suite, scoping ambiguous multi-match text queries precisely rather than loosening
+what they verify. 8. Lint/typecheck (ruff, pyright, tsc, eslint) on every touched file.
+
+Persona (required): Billing Precision Engineer (`.add/personas/billing-precision-engineer.md`)
+— every money field routes through `_money()`/`Decimal`, never `float`; every cost figure
+carries its `has_provider_cost_data` provenance flag so a null margin is always an EXPLAINED
+"unknown", never a silent/fabricated zero.
+Spawn isolation (default): n/a — no subagent spawned this build (single-agent execution in the
+dedicated `build-margin-dashboard` worktree).
+Known-problem fixes: Postgres NUMERIC SUM preserves the summed column's declared scale
+(`cost_usd` Numeric(14,8) -> 8-decimal strings, `provider_cost` Numeric(20,10) -> 10-decimal
+after Decimal subtraction) — test assertions must expect the REAL scale, not a hand-typed
+2-decimal guess → fixed by running the suite and correcting expectations against actual
+Postgres output, never by truncating/rounding in the response layer (M11 forbids it). ·
+`invoices.period_start`/`period_end` are TIMESTAMPTZ in the real migration but a NAIVE
+`DateTime` in the fast `create_all()` test schema (SQLAlchemy infers no explicit type from
+`InvoiceRow`'s bare `Mapped[datetime]` annotation) — `invoice_generator.py`'s own
+`_as_naive_utc` write convention is mirrored in both the test seed helper and
+`_fetch_invoices_for_period`'s read side so the equality match holds under either schema.
+Strategy actually used: as planned (all 8 batches executed in order, no deviation).
+Safety rule (feature-specific): this router has NO write path at all — every one of the 4
+routes is a pure aggregate read (2 SELECT-only Postgres aggregates + a superadmin-audited
+side-effect-free response mapping); the tie-out's `drift_detected` case is a read-time
+comparison that NEVER writes to `invoices` or `usage_records` (proven directly by
+`test_m6_tie_out_drift_detected_never_corrects`, which re-reads the invoice row after the
+call and asserts it is byte-unchanged).
+Code lives in: `apps/gateway/src/gateway/usage/` (backend) · `apps/dashboard/components/platform/`
++ `apps/dashboard/app/(app)/app/platform/margin/` (dashboard).
+Constraints: do NOT change any test or the contract; allow-list packages only (none added —
+`recharts`/`@tanstack/react-query`/FastAPI/SQLAlchemy already in use); ask if unclear.
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
@@ -371,8 +497,42 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] `/admin/platform/margin/summary`'s 6 shared fields are byte-identical to a direct
+  `reconcile_window` call for the same window — confirmed by
+  `test_m1_summary_matches_ops_reconciliation` (asserts string equality field-by-field
+  against a live `reconcile_window` call, not a fixture).
+- [x] `resolve_markup_pct` is never imported or called by any of the 4 margin routes —
+  confirmed by `test_m2_never_calls_resolve_markup_pct` (monkeypatches it to raise
+  `AssertionError`; both endpoints still succeed).
+- [x] A `cost_basis='catalog'`-only (tenant, model) bucket renders `has_provider_cost_data:
+  false` and `margin: null` — NEVER `margin: 0` or a guessed figure — confirmed by
+  `test_m3_catalog_basis_never_fabricated_margin` (backend) and
+  `test_catalog_only_row_shows_no_cost_data_badge_never_dollar_zero` /
+  `test_summary_no_cost_data_renders_no_cost_data_not_zero` (dashboard — the "No cost data"
+  badge, never a dollar figure, at both the summary tile and table-cell call sites).
+- [x] A tie-out mismatch surfaces as `drift_detected` without writing to `invoices` or
+  `usage_records` — confirmed by `test_m6_tie_out_drift_detected_never_corrects` (re-reads
+  `invoices.raw_total_usd` before/after the call and asserts byte-equality).
+- [x] Every one of the 4 routes is gated by `require_superadmin` (never `require_ops`) and a
+  non-superadmin gets 403 with zero data leaked — confirmed by
+  `test_r2_non_superadmin_forbidden` (parametrized across all 4 endpoints, asserts
+  `"items"`/`"provider_cost_total"` absent from the response body).
+- [x] Every margin read is audited exactly once with `target_tenant_id=None` — confirmed by
+  `test_m9_summary_read_is_audited` (counts `audit_events` before/after, asserts the delta is
+  exactly 1 and the row's `tenant_id` is NULL).
+- [x] `by-tenant-model` pagination walks to exhaustion with no duplicate/dropped item across
+  120 seeded buckets — confirmed by `test_m10_by_tenant_model_keyset_pagination` (accumulates
+  a `set` of `(tenant_id, model_id)` across pages, asserts no overlap and a final count of
+  exactly 120).
+- [x] A bounded query timeout surfaces as 504 `ERR_MARGIN_QUERY_TIMEOUT`, never a 500 or a
+  partial body — confirmed by `test_m8_query_timeout_maps_to_504` (forces a real `TimeoutError`
+  from a monkeypatched `AsyncSession.execute` on the `usage_records` query).
+- [x] The Margin page is the third `PlatformNavGroup` entry, visible only for `role="superadmin"`
+  — confirmed by `test_margin_nav_visible_for_superadmin_desktop_and_mobile` /
+  `test_margin_nav_hidden_for_non_superadmin_roles` (desktop + mobile nav, 5 non-superadmin
+  role values including `owner`), with the existing "Tenants"/"Plans" entries asserted
+  unchanged in the same test.
+- [x] Zero new tables, zero migrations — confirmed by `grep -rl "invoices\|usage_records" apps/gateway/migrations/versions/` showing no new revision file added by this build; the git diff for this task touches no `migrations/` path.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
