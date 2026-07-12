@@ -29,6 +29,9 @@ class ResolvedEntitlements:
     plan_model_allowlist: list[str] | None  # None = no plan-level restriction
     plan_feature_flags: frozenset[str]  # empty set if unplanned or plan grants none
     plan_id: uuid.UUID | None  # None = unplanned (callers gate M6/M7 on this)
+    # plan-seat-cap TASK.md §3 (FROZEN @ v1) — additive (M1). Same precedence SHAPE as
+    # the budget dimension, computed independently: never perturbs any other field.
+    effective_seat_cap: int | None = None
 
 
 def resolve_entitlements(
@@ -38,6 +41,11 @@ def resolve_entitlements(
     plan_budget_usd_monthly_default: Decimal | None,
     plan_model_allowlist: list[str] | None,
     plan_feature_flags: list[str] | None,  # DB NOT NULL DEFAULT '[]'; None only if plan_id is None
+    # plan-seat-cap TASK.md §3 (FROZEN @ v1) — additive (M1), both OPTIONAL so every
+    # EXISTING call site (RedisBudgetGuard, SqlAlchemyPlanEntitlementResolver's 2 call
+    # sites) stays byte-identical, untouched.
+    tenant_seat_cap: int | None = None,
+    plan_seat_cap_default: int | None = None,
 ) -> ResolvedEntitlements:
     """Pure, zero I/O. Precedence (M1): explicit tenant setting > plan default > unlimited.
 
@@ -53,11 +61,18 @@ def resolve_entitlements(
     `.effective_budget_usd_monthly` off the result and may pass `None` for the
     allowlist/feature-flag args it does not have on hand — each dimension is computed
     independently, so an unused arg never perturbs the budget precedence.
+
+    effective_seat_cap precedence mirrors budget exactly (plan-seat-cap TASK.md §3 M1):
+    tenant_seat_cap if not None, else plan_seat_cap_default, else None (unlimited) — the
+    SAME NULL-propagation-only shape, computed independently of every other dimension.
     """
     effective_budget = (
         tenant_budget_usd_monthly
         if tenant_budget_usd_monthly is not None
         else plan_budget_usd_monthly_default
+    )
+    effective_seat_cap = (
+        tenant_seat_cap if tenant_seat_cap is not None else plan_seat_cap_default
     )
     flags = frozenset(plan_feature_flags) if plan_feature_flags else frozenset()
     return ResolvedEntitlements(
@@ -65,6 +80,7 @@ def resolve_entitlements(
         plan_model_allowlist=plan_model_allowlist,
         plan_feature_flags=flags,
         plan_id=plan_id,
+        effective_seat_cap=effective_seat_cap,
     )
 
 
