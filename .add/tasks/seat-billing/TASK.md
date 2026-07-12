@@ -185,10 +185,12 @@ Issues/Risks (→ feed §1):
   ZERO membership-history rows in any new ledger this task introduces — without an explicit backfill,
   every tenant's entire PRE-EXISTING team would silently price as zero seats on the first post-ship
   invoice (a severe, silent under-bill, not a narrow edge case).
-- R6 **two independent "seat joins" write paths** (invite-accept AND SCIM user-create) must BOTH be
-  instrumented — missing either one silently under-counts seats for tenants using that path (mirrors
-  plan-enforcement's own "two independently-maintained pipeline copies" risk class, a different pair
-  of call sites but the identical shape of risk: an addition made to only one of two symmetric paths).
+- R6 **FOUR independent member-creating write paths** (invite-accept, SSO new-user auto-provision
+  `_get_or_provision_sso_user`, domain-capture `join_verified_tenant_domain`, AND SCIM user-create)
+  must ALL be instrumented — missing any one silently under-counts seats for tenants using that path
+  (mirrors plan-enforcement's own "two independently-maintained pipeline copies" risk class: an
+  addition made to only some of N symmetric paths). [AMENDED @ v2 — CR-1: the §0 ground here was
+  drafted before plan-seat-cap's ground pass established 4 member-creating seams, now merged.]
 
 Related intent: MILESTONE.md `monetization-core` Exit criterion 4 (seat lines + mid-month proration on
 an invoice); Glossary deltas this task introduces: `seat`, `seat-day`, `membership event` (see §3);
@@ -210,7 +212,7 @@ reading) the sibling seat-CAP concern.
 
 Framings weighed:
   - **Source of truth for seat-days**: a NEW append-only `seat_membership_events` ledger, written
-    transactionally alongside the 3 existing `users`-row-mutating call sites **(CHOSEN)** — vs.
+    transactionally alongside the 5 existing `users`-row-mutating call sites (v2/CR-1: 4 member-creating + set_active) **(CHOSEN)** — vs.
     computing purely from `users.created_at`/`deactivated_at`'s CURRENT state, zero cross-context
     touch **(REJECTED as the sole source)** — vs. reusing `audit_events` **(REJECTED outright)**. The
     current-state-only approach is demonstrably wrong for the explicitly-required "reactivation same
@@ -260,9 +262,12 @@ Must:
     scenario, now made concretely true).
   - **[M3]** A new append-only table `seat_membership_events` (one row per join/leave/rejoin
     transition, NEVER updated or deleted) is written, in the SAME DB transaction as the triggering
-    `users`-row mutation, at exactly 3 call sites: (a) `InviteRepository.accept` — `event_type=
+    `users`-row mutation, at exactly 5 call sites: (a) `InviteRepository.accept` — `event_type=
     'joined'`, `occurred_at` = the accept instant; (b) `SqlAlchemyScimUserRepository.create_user` —
-    `event_type='joined'`, `occurred_at` = the create instant; (c) `SqlAlchemyScimUserRepository.set_active`
+    `event_type='joined'`, `occurred_at` = the create instant; (b2) [v2/CR-1]
+    `_get_or_provision_sso_user` (new-user branch ONLY — an existing member's re-login never writes)
+    — `event_type='joined'`; (b3) [v2/CR-1] `join_verified_tenant_domain` — `event_type='joined'`;
+    (c) `SqlAlchemyScimUserRepository.set_active`
     — `event_type='deactivated'` or `'reactivated'` per the flip direction, `occurred_at` = the flip
     instant, written ONLY on the `changed=True` branch (the SAME idempotency gate that already skips
     the audit write on a no-op repeat — never a duplicate ledger row for a repeated PATCH).
@@ -438,6 +443,14 @@ Scenario: Zero-seat-price plan is byte-identical to unplanned   # M2
   And total_usd equals exactly the usage-only total, with no zero-dollar seat line present
 
 Scenario: A membership ledger row is appended transactionally on invite acceptance   # M3
+
+Scenario: A membership ledger row is appended on SSO auto-provision and domain-capture join   # M3 (v2/CR-1)
+  Given a tenant whose plan prices seats
+  When a NEW user is provisioned via the SSO new-user branch (_get_or_provision_sso_user)
+    and another joins via join_verified_tenant_domain
+  Then each write lands exactly one 'joined' seat_membership_events row in the SAME transaction
+    as its users-row INSERT
+    and an existing member's SSO re-login appends NO event
   Given a pending invite for tenant T
   When AcceptInviteUseCase.execute succeeds
   Then exactly one seat_membership_events row exists with event_type='joined' for the new user
@@ -583,6 +596,17 @@ seat-month (Tin chose undercut positioning over market-aligned $25/$60); Starter
 Prices live in the plans catalog and are tenant-overridable via the shared rate-card resolver like
 every other price.
 
+CHANGE REQUEST CR-1 → CONTRACT v2 (2026-07-12, orchestrator under auto mode — surfaced to Tin for
+cheap veto before any gate): §0/§1/§3 enumerated only 2 member-creating write paths; plan-seat-cap's
+merged ground pass established 4 (adds SSO `_get_or_provision_sso_user` new-user branch +
+domain-capture `join_verified_tenant_domain`). R6's own frozen rationale ("a tenant can gain members
+via EITHER path — missing one silently under-counts") makes the intent unambiguous: every seat join
+writes an event. Without this, post-ship SSO/domain joiners would carry ZERO seat-days (silent
+under-bill — the exact R5/R6 failure class this contract exists to prevent) and the billing ledger
+would drift from the seat-cap's active-member count. Amendment is enumerative only: same event
+shape, same same-transaction discipline, two more call sites + one scenario. Seed prices per DECIDED:
+team/pro $15 · enterprise $40 (replaces the §3 "TBD" placeholders).
+
 ```
 GET /admin/invoices/{invoice_id}/lines/{line_id}/seat-evidence?limit=&cursor=
   200 -> { items: SeatEvidenceItem[], next_cursor: str|null, has_more: bool }
@@ -671,6 +695,14 @@ def compute_seat_lines(
 
 # MODIFIED (additive): gateway/scim/infrastructure/repository.py :: SqlAlchemyScimUserRepository.create_user
 #   Immediately before its `await self._session.commit()` (line 161): append a 'joined' row, same transaction.
+
+# MODIFIED (additive, v2/CR-1): gateway/tenants/infrastructure/repository.py :: _get_or_provision_sso_user
+#   New-user branch ONLY, immediately after the users-row INSERT joins the session, SAME transaction
+#   (the branch plan-seat-cap already gates with assert_seat_available): append a 'joined' row.
+
+# MODIFIED (additive, v2/CR-1): gateway/tenants/infrastructure/repository.py :: join_verified_tenant_domain
+#   Immediately after its users-row INSERT, SAME transaction (also cap-gated by plan-seat-cap):
+#   append a 'joined' row.
 
 # MODIFIED (additive): gateway/scim/infrastructure/repository.py :: SqlAlchemyScimUserRepository.set_active
 #   Immediately before its `await self._session.commit()` (line 259), ONLY on the changed=True branch
