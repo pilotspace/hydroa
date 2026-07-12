@@ -1,0 +1,215 @@
+"""PostgresCreditGuard — concrete CreditGuard: row-locked reserve-then-settle.
+
+Settle sign convention (§2 scenario oracle, not §3's prose which is ambiguous on
+sign): settle_amount_usd = hold_estimate_usd - actual_cost_usd — consistent with the
+schema's own signed-delta convention (hold posts a NEGATIVE amount_usd). actual_cost
+below the hold estimate nets a POSITIVE settle (partial refund); above it nets a
+NEGATIVE settle (additional debit). Verified against §2's two concrete settle
+scenarios: hold=-0.50 + actual=0.37 -> settle=+0.13, balance 4.50->4.63; hold=-0.50 +
+actual=0.80 -> settle=-0.30, balance 4.50->4.20.
+
+NOTE — frozen §2 typo found during test-writing (tests/credits_ledger/test_credits_ledger.py
+::test_settle_reconciles_hold_to_actual_cost): the scenario's headline text says balance
+"becomes 4.87 (5.00 - 0.37, ...)" but 5.00-0.37=4.63, not 4.87 — the scenario's own worked
+proof ("hold+settle summing to -0.37") is self-consistent with 4.63. This module implements
+the arithmetically self-consistent value; flagged for a contract correction at Observe.
+
+Fail-open semantics (availability over enforcement, mirrors RedisBudgetGuard):
+  - Postgres unreachable (check_and_hold) -> log warning + increment
+    credits_gate_degraded_total + allow (no hold placed).
+  - Postgres unreachable (settle/release) -> log warning + increment
+    credits_gate_degraded_total + swallow (the open hold is later reclaimed by
+    the M6 reconciliation sweep, CreditHoldRecoverySweeper).
+
+Concurrency (M2/M3): every write path (check_and_hold/settle/release) opens its
+own transaction and calls ledger_store.lock_balance_row, which SELECT ... FOR
+UPDATEs the tenant's tenant_credit_balances row. Two concurrent calls for the
+SAME tenant_id serialize on that row lock — the second call's SELECT blocks
+until the first transaction commits or rolls back, so the balance it reads
+already reflects the first call's write. This is what closes the
+concurrent-exhaustion race (TOCTOU window) at the database level, not in
+application code.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from gateway.core.error_catalog import CREDITS_EXHAUSTED
+from gateway.core.errors import ProblemError
+from gateway.credits.infrastructure.ledger_store import (
+    find_open_hold,
+    insert_ledger_row,
+    lock_balance_row,
+    update_balance,
+)
+
+_log = logging.getLogger(__name__)
+
+
+class PostgresCreditGuard:
+    """Concrete CreditGuard backed by Postgres row locks.
+
+    Constructor args:
+      session_factory: async_sessionmaker[AsyncSession] bound to the DB pool.
+      metrics: optional MetricsRegistry-shaped object exposing
+        `credits_gate_degraded_total.labels(operation=...).inc()`; None -> metric
+        skipped (log warning is still always emitted, M11's "never silent"
+        floor holds via logging alone).
+    """
+
+    def __init__(
+        self,
+        *,
+        session_factory: async_sessionmaker[AsyncSession],
+        metrics: Any | None = None,
+    ) -> None:
+        self._session_factory = session_factory
+        self._metrics = metrics
+
+    # ------------------------------------------------------------------
+    # check_and_hold
+    # ------------------------------------------------------------------
+
+    async def check_and_hold(
+        self, tenant_id: uuid.UUID, request_id: uuid.UUID, hold_estimate_usd: Decimal
+    ) -> None:
+        try:
+            await self._check_and_hold_internal(tenant_id, request_id, hold_estimate_usd)
+        except ProblemError:
+            raise
+        except Exception as exc:
+            self._degrade("check_and_hold", exc, tenant_id)
+
+    async def _check_and_hold_internal(
+        self, tenant_id: uuid.UUID, request_id: uuid.UUID, hold_estimate_usd: Decimal
+    ) -> None:
+        async with self._session_factory() as session, session.begin():
+            balance, grace = await lock_balance_row(session, tenant_id)
+            if balance - hold_estimate_usd < -grace:
+                raise CREDITS_EXHAUSTED.exc(
+                    detail=(
+                        f"balance {balance} - hold {hold_estimate_usd} < -grace {grace}"
+                        f" for tenant {tenant_id}"
+                    )
+                )
+            new_balance = balance - hold_estimate_usd
+            await insert_ledger_row(
+                session,
+                row_id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                entry_type="hold",
+                amount_usd=-hold_estimate_usd,
+                balance_after_usd=new_balance,
+                request_id=request_id,
+            )
+            await update_balance(session, tenant_id, new_balance)
+
+    # ------------------------------------------------------------------
+    # settle
+    # ------------------------------------------------------------------
+
+    async def settle(
+        self,
+        tenant_id: uuid.UUID,
+        request_id: uuid.UUID,
+        usage_record_id: uuid.UUID,
+        actual_cost_usd: Decimal,
+    ) -> None:
+        try:
+            await self._settle_internal(tenant_id, request_id, usage_record_id, actual_cost_usd)
+        except Exception as exc:
+            self._degrade("settle", exc, tenant_id)
+
+    async def _settle_internal(
+        self,
+        tenant_id: uuid.UUID,
+        request_id: uuid.UUID,
+        usage_record_id: uuid.UUID,
+        actual_cost_usd: Decimal,
+    ) -> None:
+        async with self._session_factory() as session, session.begin():
+            open_hold = await find_open_hold(session, tenant_id, request_id)
+            if open_hold is None:
+                # No open hold (already settled/released, or the request never held —
+                # e.g. credits was disabled at admission time). Nothing to reconcile.
+                return
+            _hold_id, hold_amount_usd = open_hold
+            hold_estimate_usd = -hold_amount_usd
+            # §2 scenario oracle (settle 0.50->0.37 => +0.13; settle 0.50->0.80 => -0.30):
+            # settle_amount = hold_estimate_usd - actual_cost_usd, so hold(-0.50) + settle
+            # sums to -actual_cost_usd exactly. actual < hold -> positive (refund, credits
+            # balance); actual > hold -> negative (additional debit).
+            settle_amount_usd = hold_estimate_usd - actual_cost_usd
+
+            balance, _grace = await lock_balance_row(session, tenant_id)
+            new_balance = balance + settle_amount_usd
+            await insert_ledger_row(
+                session,
+                row_id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                entry_type="settle",
+                amount_usd=settle_amount_usd,
+                balance_after_usd=new_balance,
+                reference_type="usage_record",
+                reference_id=usage_record_id,
+                request_id=request_id,
+            )
+            await update_balance(session, tenant_id, new_balance)
+
+    # ------------------------------------------------------------------
+    # release
+    # ------------------------------------------------------------------
+
+    async def release(self, tenant_id: uuid.UUID, request_id: uuid.UUID) -> None:
+        try:
+            await self._release_internal(tenant_id, request_id)
+        except Exception as exc:
+            self._degrade("release", exc, tenant_id)
+
+    async def _release_internal(self, tenant_id: uuid.UUID, request_id: uuid.UUID) -> None:
+        async with self._session_factory() as session, session.begin():
+            open_hold = await find_open_hold(session, tenant_id, request_id)
+            if open_hold is None:
+                return
+            _hold_id, hold_amount_usd = open_hold
+            hold_estimate_usd = -hold_amount_usd
+
+            balance, _grace = await lock_balance_row(session, tenant_id)
+            new_balance = balance + hold_estimate_usd
+            await insert_ledger_row(
+                session,
+                row_id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                entry_type="release",
+                amount_usd=hold_estimate_usd,
+                balance_after_usd=new_balance,
+                request_id=request_id,
+            )
+            await update_balance(session, tenant_id, new_balance)
+
+    # ------------------------------------------------------------------
+    # internals
+    # ------------------------------------------------------------------
+
+    def _degrade(self, operation: str, exc: Exception, tenant_id: uuid.UUID) -> None:
+        """M11: never silent — structured warning ALWAYS, metric best-effort."""
+        _log.warning(
+            "credit_guard.%s failed (swallowed — fail open)",
+            operation,
+            exc_info=exc,
+            extra={"tenant_id": str(tenant_id), "operation": operation},
+        )
+        if self._metrics is not None:
+            try:
+                self._metrics.credits_gate_degraded_total.labels(operation=operation).inc()
+            except Exception:  # pragma: no cover — metrics must never break the gate
+                pass
+
+
+__all__ = ["PostgresCreditGuard"]
