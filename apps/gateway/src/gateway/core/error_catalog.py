@@ -879,6 +879,15 @@ PLAN_FEATURE_NOT_ENABLED = ErrorSpec(
     403, "ERR_PLAN_FEATURE_NOT_ENABLED", "This feature is not enabled on the tenant's plan"
 )
 
+#: Admitting one more active member would meet-or-exceed the tenant's effective seat cap
+#: (plan-seat-cap TASK.md §3 M2/M5, FROZEN @ v1) — raised at 4 admission seams: invite
+#: accept, OIDC/SAML JIT-provisioning (new-user branch only), domain-capture auto-join
+#: signup. Always carries extra.upgrade_hint (plan_id, plan_name, seat_cap, current_seats).
+#: The SCIM /scim/v2/Users seam raises `scim_seat_cap_exceeded()` instead (RFC 7644).
+PLAN_SEAT_CAP_EXCEEDED = ErrorSpec(
+    403, "ERR_PLAN_SEAT_CAP_EXCEEDED", "Adding this member would exceed the tenant's seat cap"
+)
+
 # ---------------------------------------------------------------------------
 # Impersonation session lifecycle (impersonation-session-lifecycle task)
 # ---------------------------------------------------------------------------

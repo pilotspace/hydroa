@@ -82,6 +82,14 @@ def scim_rate_limited(retry_after: int) -> ScimApiError:
     return ScimApiError(429, "rate_limited", headers={"Retry-After": str(retry_after)})
 
 
+def scim_seat_cap_exceeded() -> ScimApiError:
+    """403 — admitting this SCIM user would exceed the tenant's seat cap (plan-seat-cap
+    TASK.md §3 M5/R4, FROZEN @ v1). No scimType — RFC 7644's vocabulary has no clean fit
+    for a business-quota reject (mirrors scim_invalid_token()'s own no-scimType
+    precedent)."""
+    return ScimApiError(403, "Seat cap exceeded for this tenant's plan")
+
+
 def register_scim_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ScimApiError)
     async def on_scim_error(_request: Request, exc: ScimApiError) -> Response:  # pyright: ignore[reportUnusedFunction]  — registered via decorator; not called directly
