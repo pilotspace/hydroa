@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "margin-dashboard",
-  "active_milestone": "monetization-core",
+  "active_task": "plan-seat-cap",
+  "active_milestone": "platform-access-plan",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -603,7 +603,7 @@
     },
     "plan-seat-cap": {
       "title": "Plan seat cap enforcement",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "platform-access-plan",
       "depends_on": [
@@ -611,7 +611,7 @@
         "member-invite-acceptance"
       ],
       "created": "2026-07-05T02:34:35+00:00",
-      "updated": "2026-07-12T11:43:34+00:00",
+      "updated": "2026-07-12T12:24:44+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T11:43:43+00:00",
@@ -621,6 +621,28 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8760aa81e855b880e0f16c530c8ea837",
+        "tests": {
+          "apps/gateway/tests/plan_seat_cap/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/plan_seat_cap/conftest.py": "58fe5ee2bcd7595c33256633de667039",
+          "apps/gateway/tests/plan_seat_cap/test_assert_seat_available.py": "800664402752edfc8270d178449619d1",
+          "apps/gateway/tests/plan_seat_cap/test_domain_capture_seat_cap.py": "24a009c6a131bd301687e8f9a9a3f359",
+          "apps/gateway/tests/plan_seat_cap/test_invite_accept_seat_cap.py": "2768145db3773c4cac5abbb76694fea0",
+          "apps/gateway/tests/plan_seat_cap/test_resolve_entitlements_seat.py": "bef11553570db22e8ddcb7af966c4bea",
+          "apps/gateway/tests/plan_seat_cap/test_scim_seat_cap.py": "a1ad291cab04674c1bcbaae6ced2623c",
+          "apps/gateway/tests/plan_seat_cap/test_seat_cap_audit_and_concurrency.py": "6847ad5733535ce860e4fa744e99a23a",
+          "apps/gateway/tests/plan_seat_cap/test_seat_cap_no_retroactive_lockout.py": "623849c2409971254f9cd2f796f7d408",
+          "apps/gateway/tests/plan_seat_cap/test_sso_seat_cap.py": "25999fce78327d23a2bbc45d29565ebe"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/domain/entitlements.py"
+        ],
+        "snapshot_md5": "1ec44d788d4d919b7916f5ba130de5bb"
       }
     },
     "declare-components-registry": {
@@ -1022,7 +1044,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T12:20:52+00:00",
+  "updated": "2026-07-12T12:24:44+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
