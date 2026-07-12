@@ -235,7 +235,7 @@ class PostgresCreditGuard:
         if self._metrics is not None:
             try:
                 self._metrics.credits_gate_degraded_total.labels(operation=operation).inc()
-            except Exception:  # pragma: no cover — metrics must never break the gate
+            except Exception:  # noqa: S110  # pragma: no cover — metrics must never break the gate
                 pass
 
 

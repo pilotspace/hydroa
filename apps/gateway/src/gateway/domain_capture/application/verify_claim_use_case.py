@@ -49,9 +49,7 @@ class VerifyDomainClaimUseCase:
 
         # DnsLookupFailedError (resolver error/NXDOMAIN/empty/timeout) propagates
         # uncaught — fail CLOSED, claim status is untouched (M13, R8).
-        values = await self._dns_resolver.lookup_txt(
-            record_name, timeout=self._dns_timeout_seconds
-        )
+        values = await self._dns_resolver.lookup_txt(record_name, timeout=self._dns_timeout_seconds)
         if expected_value not in values:
             raise DomainVerificationFailedError
 

@@ -84,7 +84,9 @@ async def test_verify_concurrent_settle_and_release_double_post_same_hold(
     )
 
 
-async def _finalize_row_count(session: AsyncSession, tenant_id: uuid.UUID, request_id: uuid.UUID) -> int:
+async def _finalize_row_count(
+    session: AsyncSession, tenant_id: uuid.UUID, request_id: uuid.UUID
+) -> int:
     from sqlalchemy import text
 
     row = (
@@ -238,7 +240,9 @@ async def test_verify_ten_way_concurrent_holds_never_exceed_grace_bound(
         return_exceptions=True,
     )
     successes = [r for r in results if r is None]
-    assert len(successes) == 2, f"expected exactly 2 admissions to fit balance=1.00, got {len(successes)}"
+    assert len(successes) == 2, (
+        f"expected exactly 2 admissions to fit balance=1.00, got {len(successes)}"
+    )
 
     balance = await get_balance_row(db_session, str(tenant_id))
     assert balance is not None

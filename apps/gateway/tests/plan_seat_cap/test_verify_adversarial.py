@@ -119,9 +119,7 @@ async def test_scim_vs_invite_accept_race_for_last_seat_exactly_one_wins(
     # The load-bearing assertion: never both succeeding (6 active, over cap of 5), never
     # both failing (a real seat left unfilled while both callers saw a false rejection).
     assert await active_user_count(db_session, tenant_id=owner["tenant_id"]) == 5
-    assert (
-        await user_exists(db_session, email="racer-invite@scimraceseatcap.example") == invite_won
-    )
+    assert await user_exists(db_session, email="racer-invite@scimraceseatcap.example") == invite_won
     assert await user_exists(db_session, email="racer-scim@scimraceseatcap.example") == scim_won
 
 

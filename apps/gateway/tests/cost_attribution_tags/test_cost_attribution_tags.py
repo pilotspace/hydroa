@@ -159,7 +159,10 @@ async def insert_direct_usage_row(
         cols += ", created_at"
         vals += ", :created_at"
         params["created_at"] = created_at
-    await db_session.execute(text(f"INSERT INTO usage_records ({cols}) VALUES ({vals})"), params)
+    await db_session.execute(
+        text(f"INSERT INTO usage_records ({cols}) VALUES ({vals})"),  # noqa: S608 — test fixture, constant column names, values bound
+        params,
+    )
     await db_session.commit()
     return row_id
 
@@ -280,7 +283,9 @@ async def active_model(db_session: AsyncSession) -> str:
     return model_id
 
 
-async def _settle_dispatch(redis_client: Any, *, quiet_checks: int = 3, timeout_s: float = 2.0) -> None:
+async def _settle_dispatch(
+    redis_client: Any, *, quiet_checks: int = 3, timeout_s: float = 2.0
+) -> None:
     """Drain the fire-and-forget usage-record dispatch race before flushing.
 
     `_dispatch_record` (proxy/application/use_cases.py) fires usage recording via
@@ -351,9 +356,7 @@ async def test_untagged_request_byte_identical(
     key_body = await create_key(client, jwt, name="untagged-key")
     key = key_body["key"]
 
-    resp = await client.post(
-        COMPLETIONS, json=chat_payload(active_model), headers=auth_key(key)
-    )
+    resp = await client.post(COMPLETIONS, json=chat_payload(active_model), headers=auth_key(key))
     assert resp.status_code == 200, f"completion failed: {resp.text}"
     assert resp.json() == fake_upstream.body, "body must be byte-identical to upstream's"
 
@@ -629,9 +632,7 @@ async def test_overlength_value_rejected(
     fake_upstream: FakeCompletionUpstream,
     active_model: str,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="CatCo10", email="owner10@cat.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="CatCo10", email="owner10@cat.io")
     key_body = await create_key(client, jwt, name="overlength-value-key")
     key = key_body["key"]
 
@@ -656,9 +657,7 @@ async def test_oversized_header_rejected(
     fake_upstream: FakeCompletionUpstream,
     active_model: str,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="CatCo11", email="owner11@cat.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="CatCo11", email="owner11@cat.io")
     key_body = await create_key(client, jwt, name="oversized-header-key")
     key = key_body["key"]
 
@@ -705,9 +704,7 @@ async def test_invalid_window_rejected(
     owner_token, _tenant_id = await signup_and_login(
         client, tenant_name="CatCo13", email="owner13@cat.io"
     )
-    resp = await client.get(
-        COST_BY_TAG, params={"window": "bogus"}, headers=auth_jwt(owner_token)
-    )
+    resp = await client.get(COST_BY_TAG, params={"window": "bogus"}, headers=auth_jwt(owner_token))
     assert_problem(resp, 422, "ERR_PAYLOAD_INVALID")
 
 
@@ -914,9 +911,7 @@ async def test_durable_fallback_carries_tags(
     )
     tenant_id = uuid.uuid4()
     await db_session.execute(
-        text(
-            "INSERT INTO tenants (id, name) VALUES (:id, :name) ON CONFLICT DO NOTHING"
-        ),
+        text("INSERT INTO tenants (id, name) VALUES (:id, :name) ON CONFLICT DO NOTHING"),
         {"id": tenant_id, "name": "FallbackTagsTenant"},
     )
     await db_session.commit()
@@ -1003,9 +998,7 @@ async def test_concurrent_tagged_requests_no_contention(
     fake_upstream: FakeCompletionUpstream,
     active_model: str,
 ) -> None:
-    jwt, tenant_id = await signup_and_login(
-        client, tenant_name="CatCo22", email="owner22@cat.io"
-    )
+    jwt, tenant_id = await signup_and_login(client, tenant_name="CatCo22", email="owner22@cat.io")
     key_body = await create_key(client, jwt, name="concurrent-key")
     key = key_body["key"]
     headers = {**auth_key(key), TAGS_HEADER: json.dumps({"team": "platform"})}

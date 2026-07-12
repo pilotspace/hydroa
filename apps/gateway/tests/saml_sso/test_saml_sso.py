@@ -172,14 +172,18 @@ async def count_users_by_email(session: AsyncSession, email: str) -> int:
 
 async def latest_audit_row(session: AsyncSession, *, action: str) -> dict[str, Any] | None:
     row = (
-        await session.execute(
-            text(
-                "SELECT result, actor_email, metadata, tenant_id FROM audit_events "
-                "WHERE action = :action ORDER BY created_at DESC LIMIT 1"
-            ),
-            {"action": action},
+        (
+            await session.execute(
+                text(
+                    "SELECT result, actor_email, metadata, tenant_id FROM audit_events "
+                    "WHERE action = :action ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"action": action},
+            )
         )
-    ).mappings().fetchone()
+        .mappings()
+        .fetchone()
+    )
     return dict(row) if row is not None else None
 
 
@@ -372,7 +376,10 @@ async def test_full_validation_mints_same_jwt_shape_as_oidc(
     assert resp.status_code == 302, resp.text
     cookie_header = get_cookie_attributes(resp, "ai_proxy_session")
     assert "HttpOnly" in cookie_header
-    assert "SameSite=strict" in cookie_header.lower().replace("samesite=strict", "SameSite=strict") or "samesite=strict" in cookie_header.lower()
+    assert (
+        "SameSite=strict" in cookie_header.lower().replace("samesite=strict", "SameSite=strict")
+        or "samesite=strict" in cookie_header.lower()
+    )
     assert "Path=/" in cookie_header
     assert "Max-Age=" in cookie_header
 
@@ -445,11 +452,15 @@ async def test_jit_provisioned_user_is_always_member(
     assert resp.status_code == 302, resp.text
 
     row = (
-        await db_session.execute(
-            text("SELECT role, auth_method, password_hash FROM users WHERE email = :e"),
-            {"e": "newhire7@acme.com"},
+        (
+            await db_session.execute(
+                text("SELECT role, auth_method, password_hash FROM users WHERE email = :e"),
+                {"e": "newhire7@acme.com"},
+            )
         )
-    ).mappings().fetchone()
+        .mappings()
+        .fetchone()
+    )
     assert row is not None
     assert row["role"] == "member"
     assert row["auth_method"] == "saml"
@@ -511,10 +522,14 @@ async def test_existing_admin_role_survives_saml_login(
     assert resp.status_code == 302, resp.text
 
     row = (
-        await db_session.execute(
-            text("SELECT role FROM users WHERE email = :e"), {"e": "admin8@acme.com"}
+        (
+            await db_session.execute(
+                text("SELECT role FROM users WHERE email = :e"), {"e": "admin8@acme.com"}
+            )
         )
-    ).mappings().fetchone()
+        .mappings()
+        .fetchone()
+    )
     assert row is not None
     assert row["role"] == "admin", "existing role must NOT be downgraded"
 
@@ -576,9 +591,7 @@ async def test_every_acs_outcome_is_audited(
         not_before_offset_seconds=-600,
         not_on_or_after_offset_seconds=-90,
     )
-    resp2 = await client.post(
-        SAML_ACS, data={"SAMLResponse": expired_b64}, follow_redirects=False
-    )
+    resp2 = await client.post(SAML_ACS, data={"SAMLResponse": expired_b64}, follow_redirects=False)
     assert_problem(resp2, 401, "ERR_SAML_ASSERTION_EXPIRED")
 
     row2: dict[str, Any] | None = None
@@ -621,6 +634,7 @@ async def test_admin_config_owner_only_and_validates_cert(client: httpx.AsyncCli
     import uuid
 
     member_user_id = uuid.uuid4()
+
     async def _seed_member(db_session: AsyncSession) -> None:
         await db_session.execute(
             text(
@@ -845,9 +859,7 @@ async def test_assertion_replay_against_different_pending_request(
         sign_with=keypair,
     )
     original_b64 = build_saml_response_b64(spec)
-    first = await client.post(
-        SAML_ACS, data={"SAMLResponse": original_b64}, follow_redirects=False
-    )
+    first = await client.post(SAML_ACS, data={"SAMLResponse": original_b64}, follow_redirects=False)
     assert first.status_code == 302, first.text
 
     request_id_2 = await start_login_and_get_request_id(client)
@@ -867,9 +879,7 @@ async def test_assertion_replay_against_different_pending_request(
     )
     replay_b64 = build_saml_response_b64(tampered_spec)
 
-    second = await client.post(
-        SAML_ACS, data={"SAMLResponse": replay_b64}, follow_redirects=False
-    )
+    second = await client.post(SAML_ACS, data={"SAMLResponse": replay_b64}, follow_redirects=False)
     assert second.status_code in (400, 401), second.text
     if second.status_code == 401:
         body = second.json()
@@ -938,10 +948,14 @@ async def test_cross_tenant_email_conflict_rejected(
 
     # Original beta row unchanged; no new row created.
     row = (
-        await db_session.execute(
-            text("SELECT tenant_id FROM users WHERE email = :e"), {"e": "user16@partner.com"}
+        (
+            await db_session.execute(
+                text("SELECT tenant_id FROM users WHERE email = :e"), {"e": "user16@partner.com"}
+            )
         )
-    ).mappings().fetchone()
+        .mappings()
+        .fetchone()
+    )
     assert row is not None
     assert str(row["tenant_id"]) == beta_tenant_id
     count = (
@@ -1049,9 +1063,7 @@ async def test_unconfigured_tenant_fully_unaffected(client: httpx.AsyncClient) -
     )
     assert login_resp.status_code == 200
 
-    resp = await client.get(
-        SAML_LOGIN, params={"domain": "legacy-co.com"}, follow_redirects=False
-    )
+    resp = await client.get(SAML_LOGIN, params={"domain": "legacy-co.com"}, follow_redirects=False)
     assert_problem(resp, 404, "ERR_SAML_NOT_CONFIGURED")
 
 
@@ -1079,9 +1091,7 @@ async def test_wrong_signing_key_rejected_signature_invalid(
         subject_email="user20@acme.com",
     )
 
-    resp = await client.post(
-        SAML_ACS, data={"SAMLResponse": bad_sig_b64}, follow_redirects=False
-    )
+    resp = await client.post(SAML_ACS, data={"SAMLResponse": bad_sig_b64}, follow_redirects=False)
     assert_problem(resp, 401, "ERR_SAML_SIGNATURE_INVALID")
     assert await count_users_by_email(db_session, "user20@acme.com") == 0
 
@@ -1206,7 +1216,5 @@ async def test_disabled_saml_config_returns_not_configured(client: httpx.AsyncCl
     )
     assert resp.status_code == 200, resp.text
 
-    login_resp = await client.get(
-        SAML_LOGIN, params={"domain": DOMAIN}, follow_redirects=False
-    )
+    login_resp = await client.get(SAML_LOGIN, params={"domain": DOMAIN}, follow_redirects=False)
     assert_problem(login_resp, 404, "ERR_SAML_NOT_CONFIGURED")

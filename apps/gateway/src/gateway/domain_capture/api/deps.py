@@ -32,9 +32,7 @@ if TYPE_CHECKING:
     from gateway.domain_capture.infrastructure.rate_limiter import DomainClaimRateLimiter
 
 
-def get_domain_claim_repository(
-    request: Request, session: AsyncSession
-) -> DomainClaimRepository:
+def get_domain_claim_repository(request: Request, session: AsyncSession) -> DomainClaimRepository:
     injected: DomainClaimRepository | None = getattr(
         request.app.state, "domain_claim_repository", None
     )
@@ -55,9 +53,7 @@ def get_domain_claim_resolver(request: Request, session: AsyncSession) -> Domain
     build (SqlAlchemyDomainClaimRepository implements both Protocols) — a fresh instance
     per call is cheap (holds only the session reference, no IO at construction).
     """
-    injected: DomainClaimResolver | None = getattr(
-        request.app.state, "domain_claim_resolver", None
-    )
+    injected: DomainClaimResolver | None = getattr(request.app.state, "domain_claim_resolver", None)
     if injected is not None:
         return injected
 
@@ -90,9 +86,7 @@ def get_domain_claim_rate_limiter(request: Request) -> DomainClaimRateLimiter:
     return DomainClaimRateLimiter(redis=request.app.state.redis_client)
 
 
-def get_create_claim_use_case(
-    request: Request, session: AsyncSession
-) -> CreateDomainClaimUseCase:
+def get_create_claim_use_case(request: Request, session: AsyncSession) -> CreateDomainClaimUseCase:
     from gateway.domain_capture.application.create_claim_use_case import (
         CreateDomainClaimUseCase,
     )
@@ -100,9 +94,7 @@ def get_create_claim_use_case(
     return CreateDomainClaimUseCase(get_domain_claim_repository(request, session))
 
 
-def get_verify_claim_use_case(
-    request: Request, session: AsyncSession
-) -> VerifyDomainClaimUseCase:
+def get_verify_claim_use_case(request: Request, session: AsyncSession) -> VerifyDomainClaimUseCase:
     from gateway.domain_capture.application.verify_claim_use_case import (
         VerifyDomainClaimUseCase,
     )
@@ -115,9 +107,7 @@ def get_verify_claim_use_case(
     )
 
 
-def get_revoke_claim_use_case(
-    request: Request, session: AsyncSession
-) -> RevokeDomainClaimUseCase:
+def get_revoke_claim_use_case(request: Request, session: AsyncSession) -> RevokeDomainClaimUseCase:
     from gateway.domain_capture.application.revoke_claim_use_case import (
         RevokeDomainClaimUseCase,
     )

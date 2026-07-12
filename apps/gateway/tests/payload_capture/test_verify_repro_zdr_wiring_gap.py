@@ -85,8 +85,12 @@ async def test_repro_real_zdr_tenant_via_default_wiring_gets_capture_row(
     # 1) The PUT /admin/capture ZDR-block (409 ERR_CAPTURE_ZDR_BLOCKED) is contracted to
     #    fire for a tenant under ZDR. With the app's DEFAULT wiring (app.state.zdr_port
     #    left at its production default, no test override), it does not.
-    put_resp = await client.put(ADMIN_CAPTURE, json={"enabled": True}, headers={"Authorization": f"Bearer {jwt}"})
-    print(f"\nPUT /admin/capture on a REAL zdr_enabled=true tenant -> {put_resp.status_code} {put_resp.text}")
+    put_resp = await client.put(
+        ADMIN_CAPTURE, json={"enabled": True}, headers={"Authorization": f"Bearer {jwt}"}
+    )
+    print(
+        f"\nPUT /admin/capture on a REAL zdr_enabled=true tenant -> {put_resp.status_code} {put_resp.text}"
+    )
 
     # 2) Even if (1) somehow allowed the toggle, the LIVE per-request suppression inside
     #    SqlAlchemyPayloadCapture.capture() is contracted to suppress every write for this

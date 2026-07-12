@@ -249,9 +249,7 @@ def get_completion_use_case(
     from gateway.credits.domain.ports import PassthroughCreditGuard
 
     credit_guard = getattr(request.app.state, "credit_guard", None) or PassthroughCreditGuard()
-    hold_estimate_usd = (
-        _settings.credits_hold_estimate_usd if _settings else Decimal("0.50")
-    )
+    hold_estimate_usd = _settings.credits_hold_estimate_usd if _settings else Decimal("0.50")
     return CompletionUseCase(
         authenticator,
         model_checker,

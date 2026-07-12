@@ -72,9 +72,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("tenant_id", "period_start", name="uq_invoices_tenant_period"),
         sa.CheckConstraint("status IN ('draft', 'issued')", name="ck_invoices_status"),
     )
-    op.create_index(
-        "ix_invoices_tenant_period_id", "invoices", ["tenant_id", "period_start", "id"]
-    )
+    op.create_index("ix_invoices_tenant_period_id", "invoices", ["tenant_id", "period_start", "id"])
 
     op.create_table(
         "invoice_lines",

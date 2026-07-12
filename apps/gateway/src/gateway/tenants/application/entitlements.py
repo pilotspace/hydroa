@@ -118,9 +118,7 @@ async def assert_seat_available(session: AsyncSession, tenant_id: uuid.UUID) -> 
         # Grandfathered-unlimited (M8/M9) — NO count query ever issued.
         return
 
-    current_seats = (
-        await session.execute(_SEAT_COUNT_QUERY, {"tid": str(tenant_id)})
-    ).scalar_one()
+    current_seats = (await session.execute(_SEAT_COUNT_QUERY, {"tid": str(tenant_id)})).scalar_one()
     if current_seats >= effective_seat_cap:
         raise SeatCapExceededError(
             plan_id=plan_id,

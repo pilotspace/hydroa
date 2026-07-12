@@ -103,9 +103,7 @@ class LogsRepository:
         rows = result.scalars().all()
         return [_row_to_entity(r) for r in rows]
 
-    async def get_for_tenant(
-        self, tenant_id: uuid.UUID, log_id: uuid.UUID
-    ) -> RequestLog | None:
+    async def get_for_tenant(self, tenant_id: uuid.UUID, log_id: uuid.UUID) -> RequestLog | None:
         """Single-row lookup, tenant-scoped IN THE WHERE CLAUSE ITSELF.
 
         Returns None for both an unknown id and a cross-tenant id — the caller cannot

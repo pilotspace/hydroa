@@ -131,9 +131,7 @@ async def test_history_invalid_limit_rejected(
 ) -> None:
     """Non-integer, zero, negative, and over-max limits -> 422 ERR_PAYLOAD_INVALID."""
     for bad in ("abc", "0", "-1", "201"):
-        resp = await client.get(
-            HISTORY_PATH, params={"limit": bad}, headers=bearer(api_key["jwt"])
-        )
+        resp = await client.get(HISTORY_PATH, params={"limit": bad}, headers=bearer(api_key["jwt"]))
         assert_problem(resp, 422, "ERR_PAYLOAD_INVALID")
 
 

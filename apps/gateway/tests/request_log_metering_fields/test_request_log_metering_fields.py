@@ -613,7 +613,15 @@ async def test_pre_existing_rows_read_back_with_new_columns_null(
         )
     ).fetchone()
     assert row is not None
-    request_id, latency_ms, prompt_tokens, completion_tokens, total_tokens, scrub_status, truncated = row
+    (
+        request_id,
+        latency_ms,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        scrub_status,
+        truncated,
+    ) = row
     assert request_id is None
     assert latency_ms is None
     assert prompt_tokens is None

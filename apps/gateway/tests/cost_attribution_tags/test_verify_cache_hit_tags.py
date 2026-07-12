@@ -74,7 +74,9 @@ async def test_verify_cache_hit_bills_with_requesting_calls_own_tags(
     first_cost, first_tags = rows[0]
     second_cost, second_tags = rows[1]
 
-    assert dict(first_tags) == {}, f"first (miss, untagged) row should have tags={{}}, got {first_tags!r}"
+    assert dict(first_tags) == {}, (
+        f"first (miss, untagged) row should have tags={{}}, got {first_tags!r}"
+    )
     assert float(second_cost) == 0, f"cache-hit row should be cost_usd=0, got {second_cost}"
     assert dict(second_tags) == {"team": "cache-hit-caller"}, (
         f"cache-HIT row must carry the REQUESTING call's own tags, not the "

@@ -10,14 +10,12 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any, TypeVar
+from typing import Any
 
 import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-_T = TypeVar("_T")
 
 
 @pytest.fixture
@@ -157,7 +155,9 @@ def assert_problem(resp: httpx.Response, status: int, code: str) -> None:
     assert resp.json()["code"] == code, resp.text
 
 
-async def seed_tenant(db_session: AsyncSession, tenant_id: uuid.UUID, *, name: str = "Direct-Guard-Test-Co") -> None:
+async def seed_tenant(
+    db_session: AsyncSession, tenant_id: uuid.UUID, *, name: str = "Direct-Guard-Test-Co"
+) -> None:
     """Insert a minimal customer tenant row — direct-guard tests use a fresh random
     tenant_id per test but tenant_credit_balances.tenant_id FK-REFERENCES tenants(id)
     ON DELETE RESTRICT (§3 schema), so a real tenant row must exist first."""
@@ -231,12 +231,12 @@ async def redis_client() -> AsyncIterator[Any]:
     await client.aclose()
 
 
-async def poll_until(
-    predicate: Callable[[], Awaitable[_T | None]],
+async def poll_until[T](
+    predicate: Callable[[], Awaitable[T | None]],
     *,
     timeout_s: float = 5.0,
     interval_s: float = 0.05,
-) -> _T:
+) -> T:
     """Poll an async predicate until it returns a truthy value or timeout_s elapses.
 
     Needed because settle/release fire via nested asyncio.ensure_future fire-and-forget
@@ -245,7 +245,7 @@ async def poll_until(
     synchronous signal the test can await directly.
     """
     deadline = asyncio.get_event_loop().time() + timeout_s
-    last: _T | None = None
+    last: T | None = None
     while asyncio.get_event_loop().time() < deadline:
         last = await predicate()
         if last:
@@ -257,9 +257,7 @@ async def poll_until(
 async def get_balance_row(db_session: AsyncSession, tenant_id: str) -> tuple[str, str] | None:
     row = (
         await db_session.execute(
-            text(
-                "SELECT balance_usd, grace_usd FROM tenant_credit_balances WHERE tenant_id = :t"
-            ),
+            text("SELECT balance_usd, grace_usd FROM tenant_credit_balances WHERE tenant_id = :t"),
             {"t": tenant_id},
         )
     ).fetchone()

@@ -50,6 +50,8 @@ class UsageRecordOutcome:
     usage_record_id: uuid.UUID
     cost_usd: Decimal
     free: bool
+
+
 # usage-flusher-durability (B4): per-CALL bound on every Redis op in the record path
 # (NOT client-level — the redis client is shared across budget/ratelimiter/bandwidth,
 # a wide blast radius). Mirrors usage/api/router.py:_RATELIMIT_REDIS_TIMEOUT_SECONDS.

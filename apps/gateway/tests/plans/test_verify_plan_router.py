@@ -26,7 +26,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.tenants.domain.entities import Role
 
-from .test_plan_router import ADMIN_PLAN, PASSWORD, assign_plan, auth, mint_role_token, seed_plan, signup_owner
+from .test_plan_router import (
+    ADMIN_PLAN,
+    PASSWORD,
+    assign_plan,
+    auth,
+    mint_role_token,
+    seed_plan,
+    signup_owner,
+)
 
 
 async def test_superadmin_role_passes(client: httpx.AsyncClient, app) -> None:
@@ -59,12 +67,20 @@ async def test_tenant_isolation_plan_data_never_crosses_tenants(
     tenant_b = await signup_owner(client, tenant_name="IsoPlanCo-B", email="owner-b@isoplan.io")
 
     plan_a = await seed_plan(
-        db_session, name="enterprise", display_name="Enterprise", seat_cap=500,
-        budget_usd_monthly_default="5000.00", feature_flags=["sso"],
+        db_session,
+        name="enterprise",
+        display_name="Enterprise",
+        seat_cap=500,
+        budget_usd_monthly_default="5000.00",
+        feature_flags=["sso"],
     )
     plan_b = await seed_plan(
-        db_session, name="starter", display_name="Starter", seat_cap=3,
-        budget_usd_monthly_default="5.00", feature_flags=[],
+        db_session,
+        name="starter",
+        display_name="Starter",
+        seat_cap=3,
+        budget_usd_monthly_default="5.00",
+        feature_flags=[],
     )
     await assign_plan(db_session, tenant_id=tenant_a["tenant_id"], plan_id=plan_a)
     await assign_plan(db_session, tenant_id=tenant_b["tenant_id"], plan_id=plan_b)
@@ -83,4 +99,7 @@ async def test_tenant_isolation_plan_data_never_crosses_tenants(
     # the actual isolation assertion: B's response contains NOTHING from A's plan
     assert body_b["plan"]["id"] != body_a["plan"]["id"]
     assert "sso" not in body_b["resolved"]["plan_feature_flags"]
-    assert body_b["resolved"]["effective_budget_usd_monthly"] != body_a["resolved"]["effective_budget_usd_monthly"]
+    assert (
+        body_b["resolved"]["effective_budget_usd_monthly"]
+        != body_a["resolved"]["effective_budget_usd_monthly"]
+    )

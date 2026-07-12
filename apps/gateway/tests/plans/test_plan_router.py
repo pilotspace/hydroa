@@ -32,8 +32,12 @@ def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def signup_owner(client: httpx.AsyncClient, *, tenant_name: str, email: str) -> dict[str, str]:
-    signup = await client.post(SIGNUP, json={"tenant_name": tenant_name, "email": email, "password": PASSWORD})
+async def signup_owner(
+    client: httpx.AsyncClient, *, tenant_name: str, email: str
+) -> dict[str, str]:
+    signup = await client.post(
+        SIGNUP, json={"tenant_name": tenant_name, "email": email, "password": PASSWORD}
+    )
     assert signup.status_code == 201, f"signup failed: {signup.text}"
     tenant_id: str = signup.json()["tenant_id"]
 
@@ -71,7 +75,9 @@ async def seed_plan(
         display_name=display_name or name.title(),
         seat_cap=seat_cap,
         budget_usd_monthly_default=(
-            Decimal(str(budget_usd_monthly_default)) if budget_usd_monthly_default is not None else None
+            Decimal(str(budget_usd_monthly_default))
+            if budget_usd_monthly_default is not None
+            else None
         ),
         rpm_limit_default=rpm_limit_default,
         tpm_limit_default=tpm_limit_default,
@@ -85,14 +91,18 @@ async def seed_plan(
 
 async def assign_plan(db_session: AsyncSession, *, tenant_id: str, plan_id: str) -> None:
     await db_session.execute(
-        text("UPDATE tenants SET plan_id = :pid WHERE id = :tid"), {"pid": plan_id, "tid": tenant_id}
+        text("UPDATE tenants SET plan_id = :pid WHERE id = :tid"),
+        {"pid": plan_id, "tid": tenant_id},
     )
     await db_session.commit()
 
 
-async def set_tenant_budget(db_session: AsyncSession, *, tenant_id: str, budget: str | None) -> None:
+async def set_tenant_budget(
+    db_session: AsyncSession, *, tenant_id: str, budget: str | None
+) -> None:
     await db_session.execute(
-        text("UPDATE tenants SET budget_usd_monthly = :b WHERE id = :tid"), {"b": budget, "tid": tenant_id}
+        text("UPDATE tenants SET budget_usd_monthly = :b WHERE id = :tid"),
+        {"b": budget, "tid": tenant_id},
     )
     await db_session.commit()
 
@@ -118,7 +128,9 @@ async def test_any_authenticated_role_passes(
     role: Role,
 ) -> None:
     """M8 — every role (incl. operator/viewer/member, who lack INVOICES_READ) gets a 200."""
-    token = mint_role_token(app, tenant_id=owner["tenant_id"], role=role, email=f"{role.value}@planrouter.io")
+    token = mint_role_token(
+        app, tenant_id=owner["tenant_id"], role=role, email=f"{role.value}@planrouter.io"
+    )
 
     resp = await client.get(ADMIN_PLAN, headers=auth(token))
 
@@ -236,7 +248,10 @@ async def test_planned_tenant_with_model_allowlist_returns_it_verbatim(
     owner: dict[str, str],
 ) -> None:
     plan_id = await seed_plan(
-        db_session, name="starter", model_allowlist=["openai/gpt-4o-mini"], feature_flags=["logs_explorer"]
+        db_session,
+        name="starter",
+        model_allowlist=["openai/gpt-4o-mini"],
+        feature_flags=["logs_explorer"],
     )
     await assign_plan(db_session, tenant_id=owner["tenant_id"], plan_id=plan_id)
 

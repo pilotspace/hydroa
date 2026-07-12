@@ -72,9 +72,7 @@ def upgrade() -> None:
         sa.Column("request_body", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("response_body", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("guardrail_verdict", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column(
-            "scrub_status", sa.Text(), nullable=False, server_default=sa.text("'scrubbed'")
-        ),
+        sa.Column("scrub_status", sa.Text(), nullable=False, server_default=sa.text("'scrubbed'")),
         sa.Column("truncated", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("cost_usd", sa.Numeric(14, 8), nullable=True),
         sa.Column(
@@ -84,9 +82,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
     )
-    op.create_index(
-        "ix_request_logs_tenant_created", "request_logs", ["tenant_id", "created_at"]
-    )
+    op.create_index("ix_request_logs_tenant_created", "request_logs", ["tenant_id", "created_at"])
     op.create_index("ix_request_logs_created_at", "request_logs", ["created_at"])
     op.create_index("ix_request_logs_tenant_key", "request_logs", ["tenant_id", "key_id"])
 

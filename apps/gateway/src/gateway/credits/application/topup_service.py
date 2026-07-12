@@ -156,9 +156,7 @@ async def topup(
         # winning row's data to render 200-replay vs 409-conflict — a plain, direct,
         # one-shot read with no reason to indirect through the same seam twice.
         async with session_factory() as session:
-            existing = await ledger_store.find_topup_by_idempotency_key(
-                session, idempotency_key
-            )
+            existing = await ledger_store.find_topup_by_idempotency_key(session, idempotency_key)
         if existing is None:  # pragma: no cover — defensive: implies a row exists
             raise
         return _replay_or_conflict(

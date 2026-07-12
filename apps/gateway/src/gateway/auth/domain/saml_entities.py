@@ -26,9 +26,7 @@ class SamlProviderConfig:
     sp_entity_id: str  # server-derived: f"{base}/tenant/{tenant_id}"
     acs_url: str  # server-derived: settings.saml_acs_url
     email_domains: list[str] = field(default_factory=list)
-    email_attribute_name: str = (
-        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
-    )
+    email_attribute_name: str = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
     enabled: bool = True
 
 

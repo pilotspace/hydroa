@@ -48,9 +48,7 @@ async def test_ml_moderation_carried_into_key_override(
     verify-wave repro asserting the buggy drop; inverted at fix-integration to lock
     in the corrected behavior the fix delivers — see companion
     test_ml_moderation_key_override_fix.py.)"""
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="MlGapCo", email="owner@mlgap.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlGapCo", email="owner@mlgap.io")
     key_info = await create_key(client, jwt, name="mlgap-key")
 
     # Tenant has ml_moderation ON (block mode) as a compliance-critical control.

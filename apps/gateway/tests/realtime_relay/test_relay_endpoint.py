@@ -91,7 +91,11 @@ def _no_db_sessionmaker() -> None:
 
 
 async def _ok_auth(token, session):
-    return SimpleNamespace(tenant_id=uuid.uuid4(), key_id=uuid.uuid4(), team_id=None) if token == "sk-x" else None
+    return (
+        SimpleNamespace(tenant_id=uuid.uuid4(), key_id=uuid.uuid4(), team_id=None)
+        if token == "sk-x"
+        else None
+    )
 
 
 def test_authed_full_duplex_relay() -> None:

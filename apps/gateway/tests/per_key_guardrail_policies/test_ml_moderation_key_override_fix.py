@@ -46,9 +46,7 @@ async def test_put_persists_and_echoes_ml_moderation(
     """PUT with ml_moderation in the body -> 200, persisted into the key override,
     echoed back in the PUT response, and visible on a subsequent GET — closing the
     silent-drop gap the ml_moderation_gap_repro test caught."""
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="MlFixCo", email="owner@mlfix.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlFixCo", email="owner@mlfix.io")
     key_info = await create_key(client, jwt, name="mlfix-key")
 
     await set_tenant_guardrails(

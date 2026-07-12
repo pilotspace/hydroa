@@ -125,7 +125,9 @@ async def test_actor_key_id_persists_and_round_trips(db_session: AsyncSession) -
 
 
 @pytest.mark.asyncio
-async def test_user_actor_events_unaffected_by_actor_key_id_column(db_session: AsyncSession) -> None:
+async def test_user_actor_events_unaffected_by_actor_key_id_column(
+    db_session: AsyncSession,
+) -> None:
     """A pre-existing user-actor event (actor_key_id never set) persists with actor_key_id
     NULL — the relaxation is purely additive."""
     tenant_id = uuid.uuid4()

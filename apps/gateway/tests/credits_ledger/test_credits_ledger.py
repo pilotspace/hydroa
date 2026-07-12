@@ -104,7 +104,9 @@ async def test_credit_gate_composes_after_budget_ladder(
         f"usage:spend:{api_key['tenant_id']}:{datetime.datetime.now(datetime.UTC).strftime('%Y%m')}",
         b"10.00",
     )
-    app.state.budget_guard = RedisBudgetGuard(redis=redis_client, session_factory=app.state.sessionmaker)
+    app.state.budget_guard = RedisBudgetGuard(
+        redis=redis_client, session_factory=app.state.sessionmaker
+    )
     app.state.completion_upstream = FakeCompletionUpstream()
     # Tenant has NO credit balance seeded (defaults to 0) — if the credit gate ran
     # first it would ALSO reject, but with ERR_CREDITS_EXHAUSTED, not ERR_BUDGET_EXCEEDED.
@@ -368,7 +370,9 @@ async def test_release_on_governance_rejection_after_hold(
     now_ms = int(datetime.datetime.now(datetime.UTC).timestamp() * 1000)
     redis = getattr(getattr(app.state, "rate_limiter", None), "_redis", None)
     assert redis is not None, "rate_limiter must be wired with a real redis client for this test"
-    await redis.zadd(f"ratelimit:rpm:{api_key['key_id']}", {str(now_ms - 1000).encode(): now_ms - 1000})
+    await redis.zadd(
+        f"ratelimit:rpm:{api_key['key_id']}", {str(now_ms - 1000).encode(): now_ms - 1000}
+    )
 
     upstream = FakeCompletionUpstream()
     app.state.completion_upstream = upstream
@@ -525,12 +529,8 @@ async def test_credit_ledger_rows_cannot_be_mutated(
     — mirrors tests/audit/test_audit_store.py's immutable_audit_session precedent
     exactly. Apply the SAME two RULEs the migration creates before exercising them.
     """
-    await db_session.execute(
-        text("DROP RULE IF EXISTS credit_ledger_no_update ON credit_ledger")
-    )
-    await db_session.execute(
-        text("DROP RULE IF EXISTS credit_ledger_no_delete ON credit_ledger")
-    )
+    await db_session.execute(text("DROP RULE IF EXISTS credit_ledger_no_update ON credit_ledger"))
+    await db_session.execute(text("DROP RULE IF EXISTS credit_ledger_no_delete ON credit_ledger"))
     await db_session.execute(
         text("CREATE RULE credit_ledger_no_update AS ON UPDATE TO credit_ledger DO INSTEAD NOTHING")
     )
@@ -758,7 +758,11 @@ async def test_balance_and_history_reads_scoped_to_caller_tenant(
     # Tenant A
     signup_a = await client.post(
         "/admin/auth/signup",
-        json={"tenant_name": "CreditsAlpha", "email": "owner@calpha.io", "password": "correct horse battery"},
+        json={
+            "tenant_name": "CreditsAlpha",
+            "email": "owner@calpha.io",
+            "password": "correct horse battery",
+        },
     )
     assert signup_a.status_code == 201
     tenant_a_id = signup_a.json()["tenant_id"]
@@ -772,7 +776,11 @@ async def test_balance_and_history_reads_scoped_to_caller_tenant(
     # Tenant B
     signup_b = await client.post(
         "/admin/auth/signup",
-        json={"tenant_name": "CreditsBeta", "email": "owner@cbeta.io", "password": "correct horse battery"},
+        json={
+            "tenant_name": "CreditsBeta",
+            "email": "owner@cbeta.io",
+            "password": "correct horse battery",
+        },
     )
     assert signup_b.status_code == 201
     tenant_b_id = signup_b.json()["tenant_id"]

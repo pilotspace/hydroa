@@ -53,9 +53,7 @@ def _assert_problem(resp: httpx.Response, status: int, code: str) -> dict[str, A
 
 
 async def _routing_config_row(db: AsyncSession) -> dict[str, Any] | None:
-    row = (
-        await db.execute(text("SELECT config FROM routing_config WHERE id IS TRUE"))
-    ).fetchone()
+    row = (await db.execute(text("SELECT config FROM routing_config WHERE id IS TRUE"))).fetchone()
     return dict(row[0]) if row is not None and row[0] is not None else None
 
 
@@ -272,14 +270,16 @@ async def test_bootstrap_flip_on_then_off(
     _app, off_client = second_app_client
     second_attempt = await off_client.post(
         SIGNUP,
-        json={"tenant_name": "Second Org", "email": "second@acme.io", "password": "correct horse battery"},
+        json={
+            "tenant_name": "Second Org",
+            "email": "second@acme.io",
+            "password": "correct horse battery",
+        },
     )
     _assert_problem(second_attempt, 403, "ERR_SIGNUP_INVITE_ONLY")
     assert await _row_counts(db_session) == before, "the refused second signup created no rows"
 
-    login = await off_client.post(
-        LOGIN, json={"email": ADA["email"], "password": ADA["password"]}
-    )
+    login = await off_client.post(LOGIN, json={"email": ADA["email"], "password": ADA["password"]})
     assert login.status_code == 200, login.text
     assert login.json()["token_type"] == "bearer"
 

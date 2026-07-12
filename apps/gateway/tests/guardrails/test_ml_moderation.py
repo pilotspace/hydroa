@@ -97,6 +97,7 @@ async def active_model(db_session: AsyncSession) -> str:
     await db_session.commit()
     return model_id
 
+
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------
@@ -154,7 +155,11 @@ def _sample(metrics_reg: Any, guardrail: str, mode: str, action: str) -> float:
     for metric in metrics_reg.guardrail_events_total.collect():
         for sample in metric.samples:
             lbl = sample.labels
-            if lbl.get("guardrail") == guardrail and lbl.get("mode") == mode and lbl.get("action") == action:
+            if (
+                lbl.get("guardrail") == guardrail
+                and lbl.get("mode") == mode
+                and lbl.get("action") == action
+            ):
                 return sample.value
     return 0.0
 
@@ -163,7 +168,9 @@ async def _set_ml_moderation_config(
     client: httpx.AsyncClient, jwt: str, config: dict[str, Any]
 ) -> dict[str, Any]:
     resp = await client.put(ADMIN_GUARDRAILS, json={"ml_moderation": config}, headers=auth_jwt(jwt))
-    assert resp.status_code == 200, f"PUT /admin/guardrails failed ({resp.status_code}): {resp.text}"
+    assert resp.status_code == 200, (
+        f"PUT /admin/guardrails failed ({resp.status_code}): {resp.text}"
+    )
     return resp.json()
 
 
@@ -173,7 +180,9 @@ async def _set_ml_moderation_config(
 
 
 async def test_put_ml_moderation_valid(client: httpx.AsyncClient) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo1", email="owner@mlmod1.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo1", email="owner@mlmod1.io"
+    )
 
     # Seed a prompt_injection config first — must survive an ml_moderation-only PUT.
     await client.put(
@@ -202,7 +211,9 @@ async def test_put_ml_moderation_valid(client: httpx.AsyncClient) -> None:
 
 
 async def test_put_ml_moderation_bad_mode(client: httpx.AsyncClient) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo2", email="owner@mlmod2.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo2", email="owner@mlmod2.io"
+    )
 
     resp = await client.put(
         ADMIN_GUARDRAILS,
@@ -225,7 +236,9 @@ async def test_put_ml_moderation_bad_mode(client: httpx.AsyncClient) -> None:
 
 
 async def test_put_ml_moderation_bad_failure_mode(client: httpx.AsyncClient) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo3", email="owner@mlmod3.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo3", email="owner@mlmod3.io"
+    )
 
     resp = await client.put(
         ADMIN_GUARDRAILS,
@@ -250,7 +263,9 @@ async def test_disabled_ml_moderation_byte_identical(
     app: Any,
     active_model: str,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo4", email="owner@mlmod4.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo4", email="owner@mlmod4.io"
+    )
     key_info = await create_key(client, jwt, name="disabled-key")
 
     ml_provider = FakeModerationProvider()
@@ -272,7 +287,7 @@ async def test_disabled_ml_moderation_byte_identical(
     # The ROUTED completion provider's own credential resolution (credential-
     # resolution-seam §3, unrelated to this task) still runs — the assertion here is
     # specifically that ml_moderation added ZERO resolve("openai") calls of its own.
-    assert ("openai" not in {p for _tid, p in resolver.calls}), (
+    assert "openai" not in {p for _tid, p in resolver.calls}, (
         f"zero ml_moderation credential-resolver calls expected, got {resolver.calls}"
     )
     assert upstream.calls == 1
@@ -288,7 +303,9 @@ async def test_ml_moderation_passes_clean_prompt(
     app: Any,
     active_model: str,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo5", email="owner@mlmod5.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo5", email="owner@mlmod5.io"
+    )
     key_info = await create_key(client, jwt, name="clean-key")
     await _set_ml_moderation_config(client, jwt, {"enabled": True, "mode": "audit"})
 
@@ -322,7 +339,9 @@ async def test_ml_moderation_blocks_flagged_prompt(
     active_model: str,
     db_session: AsyncSession,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo6", email="owner@mlmod6.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo6", email="owner@mlmod6.io"
+    )
     key_info = await create_key(client, jwt, name="block-key")
     await _set_ml_moderation_config(client, jwt, {"enabled": True, "mode": "block"})
 
@@ -361,7 +380,9 @@ async def test_ml_moderation_audits_flagged_prompt(
     app: Any,
     active_model: str,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo7", email="owner@mlmod7.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo7", email="owner@mlmod7.io"
+    )
     key_info = await create_key(client, jwt, name="audit-key")
     await _set_ml_moderation_config(client, jwt, {"enabled": True, "mode": "audit"})
 
@@ -373,7 +394,9 @@ async def test_ml_moderation_audits_flagged_prompt(
     payload = completion_payload(active_model, "content the classifier flags but audit allows")
     resp = await client.post(COMPLETIONS, json=payload, headers=auth_key(key_info["key"]))
 
-    assert resp.status_code == 200, f"audit mode must not block; got {resp.status_code}: {resp.text}"
+    assert resp.status_code == 200, (
+        f"audit mode must not block; got {resp.status_code}: {resp.text}"
+    )
     assert upstream.calls == 1
 
     metrics_reg = app.state.metrics_registry
@@ -390,9 +413,13 @@ async def test_ml_moderation_missing_key_fail_open(
     app: Any,
     active_model: str,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo8", email="owner@mlmod8.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo8", email="owner@mlmod8.io"
+    )
     key_info = await create_key(client, jwt, name="missingkey-open-key")
-    await _set_ml_moderation_config(client, jwt, {"enabled": True, "mode": "block"})  # failure_mode default
+    await _set_ml_moderation_config(
+        client, jwt, {"enabled": True, "mode": "block"}
+    )  # failure_mode default
 
     ml_provider = FakeModerationProvider(flagged=False)
     app.state.ml_moderation_provider = ml_provider
@@ -413,7 +440,9 @@ async def test_ml_moderation_missing_key_fail_open(
     )
     assert resp.json().get("code") != "ERR_PROVIDER_KEY_MISSING"
     assert upstream.calls == 1
-    assert ml_provider.calls == 0, "the moderation provider itself is never reached when resolve() fails"
+    assert ml_provider.calls == 0, (
+        "the moderation provider itself is never reached when resolve() fails"
+    )
     assert (_tenant_id, "openai") in {(str(t), p) for t, p in resolver.calls}
 
     metrics_reg = app.state.metrics_registry
@@ -431,7 +460,9 @@ async def test_ml_moderation_missing_key_fail_closed(
     active_model: str,
     db_session: AsyncSession,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo9", email="owner@mlmod9.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo9", email="owner@mlmod9.io"
+    )
     key_info = await create_key(client, jwt, name="missingkey-closed-key")
     await _set_ml_moderation_config(
         client, jwt, {"enabled": True, "mode": "block", "failure_mode": "fail_closed"}
@@ -468,9 +499,13 @@ async def test_ml_moderation_timeout_fail_open(
     app: Any,
     active_model: str,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo10", email="owner@mlmod10.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo10", email="owner@mlmod10.io"
+    )
     key_info = await create_key(client, jwt, name="timeout-key")
-    await _set_ml_moderation_config(client, jwt, {"enabled": True, "mode": "audit"})  # fail_open default
+    await _set_ml_moderation_config(
+        client, jwt, {"enabled": True, "mode": "audit"}
+    )  # fail_open default
 
     ml_provider = FakeModerationProvider(raise_exc=httpx.ReadTimeout("moderation call timed out"))
     app.state.ml_moderation_provider = ml_provider
@@ -562,7 +597,9 @@ async def test_composite_regex_and_ml_moderation_both_block(
     active_model: str,
     db_session: AsyncSession,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo11", email="owner@mlmod11.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo11", email="owner@mlmod11.io"
+    )
     key_info = await create_key(client, jwt, name="composite-key")
     await client.put(
         ADMIN_GUARDRAILS,
@@ -611,7 +648,9 @@ async def test_ml_moderation_sees_masked_not_raw_content(
     app: Any,
     active_model: str,
 ) -> None:
-    jwt, _tenant_id = await signup_and_login(client, tenant_name="MlModCo12", email="owner@mlmod12.io")
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo12", email="owner@mlmod12.io"
+    )
     key_info = await create_key(client, jwt, name="masked-key")
     await client.put(
         ADMIN_GUARDRAILS,
@@ -633,8 +672,12 @@ async def test_ml_moderation_sees_masked_not_raw_content(
     assert resp.status_code == 200, resp.text
     assert ml_provider.calls == 1
     captured = ml_provider.captured_inputs[-1]
-    assert "user@example.com" not in captured, f"moderation must never see the raw email: {captured!r}"
-    assert "[EMAIL_REDACTED]" in captured, f"moderation should see the masked placeholder: {captured!r}"
+    assert "user@example.com" not in captured, (
+        f"moderation must never see the raw email: {captured!r}"
+    )
+    assert "[EMAIL_REDACTED]" in captured, (
+        f"moderation should see the masked placeholder: {captured!r}"
+    )
 
 
 # ===========================================================================
@@ -642,7 +685,9 @@ async def test_ml_moderation_sees_masked_not_raw_content(
 # ===========================================================================
 
 
-async def test_wiring_absent_ml_provider_default_evaluator_unchanged(app: Any, db_session: AsyncSession) -> None:
+async def test_wiring_absent_ml_provider_default_evaluator_unchanged(
+    app: Any, db_session: AsyncSession
+) -> None:
     from gateway.proxy.api.deps import get_completion_use_case
 
     app.state.ml_moderation_provider = None  # simulates "never wired" (today's default)
@@ -667,7 +712,9 @@ async def test_tenant_id_contextvar_threads_to_credential_resolve(
     app: Any,
     active_model: str,
 ) -> None:
-    jwt, tenant_id = await signup_and_login(client, tenant_name="MlModCo13", email="owner@mlmod13.io")
+    jwt, tenant_id = await signup_and_login(
+        client, tenant_name="MlModCo13", email="owner@mlmod13.io"
+    )
     key_info = await create_key(client, jwt, name="ctxvar-key")
     await _set_ml_moderation_config(client, jwt, {"enabled": True, "mode": "audit"})
 
@@ -687,13 +734,17 @@ async def test_tenant_id_contextvar_threads_to_credential_resolve(
     # SPECIFICALLY that the ml_moderation evaluator threaded the tenant id through
     # to its own resolve(tenant_id, "openai") call.
     openai_calls = [(t, p) for t, p in resolver.calls if p == "openai"]
-    assert len(openai_calls) == 1, f"expected exactly one resolve(_, 'openai') call, got {resolver.calls}"
+    assert len(openai_calls) == 1, (
+        f"expected exactly one resolve(_, 'openai') call, got {resolver.calls}"
+    )
     called_tenant_id, called_provider = openai_calls[0]
     assert str(called_tenant_id) == tenant_id
     assert called_provider == "openai"
 
     # Reset in `finally` — must never leak past the request into this test's own context.
-    assert get_guardrail_tenant_id() is None, "guardrail tenant id contextvar must be reset after the request"
+    assert get_guardrail_tenant_id() is None, (
+        "guardrail tenant id contextvar must be reset after the request"
+    )
 
 
 # ===========================================================================
@@ -722,7 +773,9 @@ async def test_openai_moderation_client_matches_live_verified_shape() -> None:
             },
         )
 
-    provider = OpenAIDirectProvider(base_url="https://api.openai.com/v1", connect_timeout=1.5, read_timeout=2.5)
+    provider = OpenAIDirectProvider(
+        base_url="https://api.openai.com/v1", connect_timeout=1.5, read_timeout=2.5
+    )
     provider._client = httpx.AsyncClient(  # noqa: SLF001
         base_url="https://api.openai.com/v1", transport=httpx.MockTransport(handler)
     )

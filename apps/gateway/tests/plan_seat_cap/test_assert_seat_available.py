@@ -104,9 +104,7 @@ async def test_at_cap_raises_seat_cap_exceeded(
     assert str(err.plan_id) == plan_id
 
 
-async def test_under_cap_returns_none(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_under_cap_returns_none(client: httpx.AsyncClient, db_session: AsyncSession) -> None:
     """M2 positive: a tenant under its effective cap returns None (no raise)."""
     from gateway.tenants.application.entitlements import assert_seat_available
 

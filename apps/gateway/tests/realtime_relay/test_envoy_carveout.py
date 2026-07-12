@@ -40,10 +40,7 @@ def _prefix_of(route: dict) -> str | None:
 
 
 def _ext_authz_disabled(route: dict) -> bool:
-    cfg = (
-        route.get("typed_per_filter_config", {})
-        .get("envoy.filters.http.ext_authz", {})
-    )
+    cfg = route.get("typed_per_filter_config", {}).get("envoy.filters.http.ext_authz", {})
     return cfg.get("disabled") is True
 
 

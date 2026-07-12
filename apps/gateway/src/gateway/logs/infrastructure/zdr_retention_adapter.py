@@ -49,9 +49,7 @@ class RetentionZdrPort:
         past its configured bound.
         """
         try:
-            return await asyncio.wait_for(
-                self._query(tenant_id), timeout=self._timeout_seconds
-            )
+            return await asyncio.wait_for(self._query(tenant_id), timeout=self._timeout_seconds)
         except Exception as exc:
             _log.warning(
                 "RetentionZdrPort: is_zdr check failed or timed out after %.2fs "

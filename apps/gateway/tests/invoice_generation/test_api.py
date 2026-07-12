@@ -105,9 +105,7 @@ async def test_issued_invoice_cannot_be_mutated(
     await db_session.rollback()
 
     with pytest.raises(Exception, match="invoice_immutable"):
-        await db_session.execute(
-            text("DELETE FROM invoices WHERE id = :id"), {"id": invoice_id}
-        )
+        await db_session.execute(text("DELETE FROM invoices WHERE id = :id"), {"id": invoice_id})
         await db_session.commit()
     await db_session.rollback()
 
@@ -164,10 +162,14 @@ async def test_correction_is_a_new_document_not_an_edit(
     )
 
     row = (
-        await db_session.execute(
-            text("SELECT total_usd FROM invoices WHERE id = :id"), {"id": invoice_id}
+        (
+            await db_session.execute(
+                text("SELECT total_usd FROM invoices WHERE id = :id"), {"id": invoice_id}
+            )
         )
-    ).mappings().one()
+        .mappings()
+        .one()
+    )
     assert Decimal(str(row["total_usd"])) == Decimal("100.00"), "original invoice untouched"
 
     resp = await client.get(detail_url(invoice_id), headers=auth(token))
@@ -202,19 +204,25 @@ async def test_evidence_drilldown_resolves_line_to_usage_rows(
         ids.append(str(rid))
     # A row from a DIFFERENT model must never appear in this line's evidence.
     await seed_usage_record(
-        db_session, tenant_id=tid, key_id=key_id, model_id="other-model",
-        cost_usd="9.00", created_at=JULY_START,
+        db_session,
+        tenant_id=tid,
+        key_id=key_id,
+        model_id="other-model",
+        cost_usd="9.00",
+        created_at=JULY_START,
     )
 
     invoice_id = await _generate(app, tid)
     line_row = (
-        await db_session.execute(
-            text(
-                "SELECT id FROM invoice_lines WHERE invoice_id = :id AND model_id = 'gpt-4o'"
-            ),
-            {"id": invoice_id},
+        (
+            await db_session.execute(
+                text("SELECT id FROM invoice_lines WHERE invoice_id = :id AND model_id = 'gpt-4o'"),
+                {"id": invoice_id},
+            )
         )
-    ).mappings().one()
+        .mappings()
+        .one()
+    )
     token = mint_role_token(app, tenant_id=tid, role=Role.BILLING_ADMIN, email="ev-sub@inv.io")
 
     resp = await client.get(
@@ -240,12 +248,8 @@ async def test_list_returns_only_callers_tenant_newest_period_first(
     _owner_b, tid_b = await signup_tenant(client, tenant_name="List Tenant B", email="lb@inv.io")
 
     generator = make_generator(app)
-    may_id = await generator.generate_for_tenant(
-        uuid.UUID(tid_a), JULY_START.replace(month=5)
-    )
-    june_id = await generator.generate_for_tenant(
-        uuid.UUID(tid_a), JULY_START.replace(month=6)
-    )
+    may_id = await generator.generate_for_tenant(uuid.UUID(tid_a), JULY_START.replace(month=5))
+    june_id = await generator.generate_for_tenant(uuid.UUID(tid_a), JULY_START.replace(month=6))
     july_id = await generator.generate_for_tenant(uuid.UUID(tid_a), JULY_START)
     await generator.generate_for_tenant(uuid.UUID(tid_b), JULY_START)
     await generator.generate_for_tenant(uuid.UUID(tid_b), JULY_START.replace(month=6))
@@ -407,7 +411,9 @@ async def test_cross_tenant_invoice_id_is_same_404(
 
     assert_problem(resp_unknown, 404, "ERR_INVOICE_NOT_FOUND")
     assert_problem(resp_cross, 404, "ERR_INVOICE_NOT_FOUND")
-    assert resp_unknown.json() == resp_cross.json(), "unknown vs cross-tenant must be byte-identical"
+    assert resp_unknown.json() == resp_cross.json(), (
+        "unknown vs cross-tenant must be byte-identical"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -431,9 +437,7 @@ async def test_evidence_mismatched_line_is_404(
     )
     generator = make_generator(app)
     invoice_x = await generator.generate_for_tenant(uuid.UUID(tid), JULY_START)
-    invoice_y = await generator.generate_for_tenant(
-        uuid.UUID(tid), JULY_START.replace(month=6)
-    )
+    invoice_y = await generator.generate_for_tenant(uuid.UUID(tid), JULY_START.replace(month=6))
     line_y = (
         await db_session.execute(
             text("SELECT id FROM invoice_lines WHERE invoice_id = :id"), {"id": str(invoice_y)}
@@ -441,9 +445,7 @@ async def test_evidence_mismatched_line_is_404(
     ).scalar()
     token = mint_role_token(app, tenant_id=tid, role=Role.OWNER, email="mm-sub@inv.io")
 
-    resp = await client.get(
-        evidence_url(str(invoice_x), str(line_y)), headers=auth(token)
-    )
+    resp = await client.get(evidence_url(str(invoice_x), str(line_y)), headers=auth(token))
 
     assert_problem(resp, 404, "ERR_INVOICE_NOT_FOUND")
 

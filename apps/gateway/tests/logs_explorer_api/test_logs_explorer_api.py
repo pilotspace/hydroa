@@ -214,9 +214,7 @@ async def test_since_until_key_id_cost_max_filters_narrow_results(
 # ---------------------------------------------------------------------------
 
 
-async def test_list_rows_are_metadata_only(
-    client: Any, db_session: AsyncSession, app: Any
-) -> None:
+async def test_list_rows_are_metadata_only(client: Any, db_session: AsyncSession, app: Any) -> None:
     _owner, tid = await signup_tenant(client, tenant_name="Meta Only", email="mo@logs.io")
     token = mint_role_token(app, tenant_id=tid, role=Role.OWNER, email="mo-sub@logs.io")
     await seed_request_log(
@@ -301,7 +299,9 @@ async def test_cross_tenant_log_id_is_same_404(
 
     assert_problem(resp_unknown, 404, "ERR_LOG_NOT_FOUND")
     assert_problem(resp_cross, 404, "ERR_LOG_NOT_FOUND")
-    assert resp_unknown.json() == resp_cross.json(), "unknown vs cross-tenant must be byte-identical"
+    assert resp_unknown.json() == resp_cross.json(), (
+        "unknown vs cross-tenant must be byte-identical"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +387,9 @@ async def test_superadmin_sees_only_own_tenant(
 
     assert resp.status_code == 200, resp.text
     ids = {item["id"] for item in resp.json()["items"]}
-    assert len(ids) == 1, "a superadmin identity must stay scoped to its own tenant (dormant authorize_tenant_scope)"
+    assert len(ids) == 1, (
+        "a superadmin identity must stay scoped to its own tenant (dormant authorize_tenant_scope)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -533,9 +535,7 @@ async def test_malformed_key_id_rejected(client: Any, db_session: AsyncSession, 
     _owner, tid = await signup_tenant(client, tenant_name="Bad Key Id", email="bki@logs.io")
     token = mint_role_token(app, tenant_id=tid, role=Role.OWNER, email="bki-sub@logs.io")
 
-    resp = await client.get(
-        LIST_LOGS, params={"key_id": "not-a-uuid"}, headers=auth(token)
-    )
+    resp = await client.get(LIST_LOGS, params={"key_id": "not-a-uuid"}, headers=auth(token))
 
     assert_problem(resp, 422, "ERR_PAYLOAD_INVALID")
 
@@ -546,9 +546,7 @@ async def test_invalid_cost_bounds_rejected(
     _owner, tid = await signup_tenant(client, tenant_name="Bad Cost", email="bcst@logs.io")
     token = mint_role_token(app, tenant_id=tid, role=Role.OWNER, email="bcst-sub@logs.io")
 
-    resp = await client.get(
-        LIST_LOGS, params={"cost_min": "not-a-number"}, headers=auth(token)
-    )
+    resp = await client.get(LIST_LOGS, params={"cost_min": "not-a-number"}, headers=auth(token))
 
     assert_problem(resp, 422, "ERR_PAYLOAD_INVALID")
 
@@ -735,9 +733,7 @@ async def test_capture_write_path_byte_identical(
     assert get_resp.status_code == 200, get_resp.text
     assert get_resp.json() == {"enabled": False}
 
-    put_resp = await client.put(
-        "/admin/capture", json={"enabled": True}, headers=auth(token)
-    )
+    put_resp = await client.put("/admin/capture", json={"enabled": True}, headers=auth(token))
     assert put_resp.status_code == 200, put_resp.text
     assert put_resp.json() == {"enabled": True}
 

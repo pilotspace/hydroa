@@ -76,11 +76,15 @@ async def test_rejected_admission_fires_no_audit_event(
     # The OTHER tenant is completely unaffected.
     assert await active_user_count(db_session, tenant_id=other["tenant_id"]) == other_count_before
     row = (
-        await db_session.execute(
-            text("SELECT plan_id, seat_cap FROM tenants WHERE id = :tid"),
-            {"tid": owner["tenant_id"]},
+        (
+            await db_session.execute(
+                text("SELECT plan_id, seat_cap FROM tenants WHERE id = :tid"),
+                {"tid": owner["tenant_id"]},
+            )
         )
-    ).mappings().one()
+        .mappings()
+        .one()
+    )
     assert str(row["plan_id"]) == plan_id
     assert row["seat_cap"] is None  # never explicitly overridden for this tenant
 

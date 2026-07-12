@@ -50,7 +50,7 @@ async def test_moderate_on_200_with_missing_results_must_not_read_as_clean() -> 
         # action="unchecked"), never surfaced as a verdict at all. Today
         # moderate() raises nothing and returns ModerationVerdict(flagged=False,
         # categories=[]) instead — so this call must raise, and currently doesn't.
-        with pytest.raises(Exception, match=".*"):
+        with pytest.raises(Exception, match=r".*"):
             await ml_client.moderate("some genuinely flagged content")
     finally:
         reset_provider_credential(token)

@@ -1,8 +1,13 @@
 import json
 
 from tests.cost_attribution_tags.test_cost_attribution_tags import (
-    signup_and_login, create_key, auth_key, chat_payload,
-    _flush, _tags_for, COMPLETIONS,
+    signup_and_login,
+    create_key,
+    auth_key,
+    chat_payload,
+    _flush,
+    _tags_for,
+    COMPLETIONS,
 )
 
 

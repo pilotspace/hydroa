@@ -61,12 +61,20 @@ async def test_generation_is_order_independent_across_insertion_sequence(
 
     for amount, tags in rows:
         await seed_usage_record(
-            db_session, tenant_id=tid_a, key_id=key_id, cost_usd=amount, tags=tags,
+            db_session,
+            tenant_id=tid_a,
+            key_id=key_id,
+            cost_usd=amount,
+            tags=tags,
             created_at=JULY_START,
         )
     for amount, tags in reversed(rows):
         await seed_usage_record(
-            db_session, tenant_id=tid_b, key_id=key_id, cost_usd=amount, tags=tags,
+            db_session,
+            tenant_id=tid_b,
+            key_id=key_id,
+            cost_usd=amount,
+            tags=tags,
             created_at=JULY_START,
         )
 
@@ -78,8 +86,10 @@ async def test_generation_is_order_independent_across_insertion_sequence(
     lines_b = await _fetch_lines(db_session, inv_b)
 
     def _shape(lines: list[Any]) -> set[tuple[str, str]]:
-        return {(json.dumps(line_row["tags"], sort_keys=True), str(line_row["raw_amount_usd"]))
-                for line_row in lines}
+        return {
+            (json.dumps(line_row["tags"], sort_keys=True), str(line_row["raw_amount_usd"]))
+            for line_row in lines
+        }
 
     assert len(lines_a) == 3, "the two differently-key-ordered rows must land in ONE line"
     assert _shape(lines_a) == _shape(lines_b), "insertion order must not change the result"
@@ -129,19 +139,31 @@ async def test_evidence_predicate_excludes_cross_model_and_out_of_period_rows(
     matching_ids = set()
     for i in range(5):
         rid = await seed_usage_record(
-            db_session, tenant_id=tid, key_id=key_id, model_id="gpt-4o",
-            cost_usd="1.00", created_at=JULY_START + datetime.timedelta(hours=i),
+            db_session,
+            tenant_id=tid,
+            key_id=key_id,
+            model_id="gpt-4o",
+            cost_usd="1.00",
+            created_at=JULY_START + datetime.timedelta(hours=i),
         )
         matching_ids.add(str(rid))
     # a different model, same key/period -> must NOT appear
     await seed_usage_record(
-        db_session, tenant_id=tid, key_id=key_id, model_id="gpt-3.5",
-        cost_usd="9.00", created_at=JULY_START,
+        db_session,
+        tenant_id=tid,
+        key_id=key_id,
+        model_id="gpt-3.5",
+        cost_usd="9.00",
+        created_at=JULY_START,
     )
     # same model/key, but OUTSIDE the period (June) -> must NOT appear
     await seed_usage_record(
-        db_session, tenant_id=tid, key_id=key_id, model_id="gpt-4o",
-        cost_usd="9.00", created_at=datetime.datetime(2026, 6, 15, tzinfo=datetime.UTC),
+        db_session,
+        tenant_id=tid,
+        key_id=key_id,
+        model_id="gpt-4o",
+        cost_usd="9.00",
+        created_at=datetime.datetime(2026, 6, 15, tzinfo=datetime.UTC),
     )
 
     generator = make_generator(app)

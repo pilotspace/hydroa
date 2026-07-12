@@ -111,9 +111,7 @@ class SqlAlchemyDomainClaimRepository:
         )
         return [_to_entity(row) for row in rows]
 
-    async def get_own(
-        self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID
-    ) -> DomainClaim | None:
+    async def get_own(self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID) -> DomainClaim | None:
         row = await self._session.scalar(
             select(TenantDomainClaimRow).where(
                 TenantDomainClaimRow.id == claim_id,

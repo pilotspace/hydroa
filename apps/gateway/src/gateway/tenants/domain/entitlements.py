@@ -71,9 +71,7 @@ def resolve_entitlements(
         if tenant_budget_usd_monthly is not None
         else plan_budget_usd_monthly_default
     )
-    effective_seat_cap = (
-        tenant_seat_cap if tenant_seat_cap is not None else plan_seat_cap_default
-    )
+    effective_seat_cap = tenant_seat_cap if tenant_seat_cap is not None else plan_seat_cap_default
     flags = frozenset(plan_feature_flags) if plan_feature_flags else frozenset()
     return ResolvedEntitlements(
         effective_budget_usd_monthly=effective_budget,

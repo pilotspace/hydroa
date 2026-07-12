@@ -279,11 +279,7 @@ def _parse_tags_header(raw: str | None) -> dict[str, str]:
         raise PAYLOAD_TAGS_INVALID.exc(detail="too many tags")
     result: dict[str, str] = {}
     for k, v in parsed.items():
-        if (
-            not isinstance(k, str)
-            or len(k) > _TAGS_MAX_KEY_LEN
-            or not TAG_KEY_RE.match(k)
-        ):
+        if not isinstance(k, str) or len(k) > _TAGS_MAX_KEY_LEN or not TAG_KEY_RE.match(k):
             raise PAYLOAD_TAGS_INVALID.exc(detail=f"invalid tag key: {k!r}")
         if not isinstance(v, str):
             raise PAYLOAD_TAGS_INVALID.exc(detail=f"tag value must be a string for key {k!r}")
@@ -305,7 +301,7 @@ _credit_hold_ctx: contextvars.ContextVar[tuple[CreditGuard, uuid.UUID] | None] =
 )
 
 
-def _settle_or_release_hold(task: "asyncio.Task[object | None]") -> None:
+def _settle_or_release_hold(task: asyncio.Task[object | None]) -> None:
     """Task done-callback: consume the recorder's UsageRecordOutcome (if any) and settle
     or release the open credit hold for the current request. Never raises — a missing
     outcome (older/duck-typed recorder, or record() itself failed) is a no-op; the M6

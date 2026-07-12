@@ -32,9 +32,7 @@ class DomainClaimRepository(Protocol):
         """Tenant-scoped list, newest first — never a cross-tenant row (M5)."""
         ...
 
-    async def get_own(
-        self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID
-    ) -> DomainClaim | None:
+    async def get_own(self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID) -> DomainClaim | None:
         """Tenant-scoped lookup — unknown id and cross-tenant id are indistinguishable
         (both return None) — the caller raises DomainClaimNotFoundError (R9)."""
         ...

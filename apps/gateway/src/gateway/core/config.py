@@ -216,7 +216,9 @@ class Settings(BaseSettings):
 
     # ── SAML 2.0 SSO (saml-sso task) ──────────────────────────────────────────
     # All optional; absence => SAML fully inert (M11: DB-config-only, no env fallback).
-    saml_sp_entity_id_base: str = ""  # GATEWAY_SAML_SP_ENTITY_ID_BASE (e.g. https://gw.example.com/saml/sp)
+    saml_sp_entity_id_base: str = (
+        ""  # GATEWAY_SAML_SP_ENTITY_ID_BASE (e.g. https://gw.example.com/saml/sp)
+    )
     saml_acs_url: str = ""  # GATEWAY_SAML_ACS_URL (full external URL to /auth/saml/acs)
     saml_post_login_redirect: str = "/"  # GATEWAY_SAML_POST_LOGIN_REDIRECT
     saml_clock_skew_seconds: int = 60  # GATEWAY_SAML_CLOCK_SKEW_SECONDS

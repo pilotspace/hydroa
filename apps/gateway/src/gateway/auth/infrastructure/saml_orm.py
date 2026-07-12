@@ -21,9 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from gateway.core.db import Base
 
-_DEFAULT_EMAIL_ATTRIBUTE_NAME = (
-    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
-)
+_DEFAULT_EMAIL_ATTRIBUTE_NAME = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
 
 
 class SamlProviderConfigRow(Base):
@@ -61,9 +59,7 @@ class SamlProviderConfigRow(Base):
         server_default=text(f"'{_DEFAULT_EMAIL_ATTRIBUTE_NAME}'"),
     )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sa.true())
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

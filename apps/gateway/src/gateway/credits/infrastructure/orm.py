@@ -41,7 +41,9 @@ class TenantCreditBalanceRow(Base):
         ForeignKey("tenants.id", ondelete="RESTRICT"),
         primary_key=True,
     )
-    balance_usd: Mapped[Decimal] = mapped_column(Numeric(14, 8), nullable=False, default=Decimal("0"))
+    balance_usd: Mapped[Decimal] = mapped_column(
+        Numeric(14, 8), nullable=False, default=Decimal("0")
+    )
     grace_usd: Mapped[Decimal] = mapped_column(Numeric(14, 8), nullable=False, default=Decimal("0"))
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
 

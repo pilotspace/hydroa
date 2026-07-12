@@ -103,9 +103,7 @@ async def saml_acs(
     form = await request.form()
     saml_response_b64_raw = form.get("SAMLResponse")
     relay_state_raw = form.get("RelayState")
-    saml_response_b64: str = (
-        saml_response_b64_raw if isinstance(saml_response_b64_raw, str) else ""
-    )
+    saml_response_b64: str = saml_response_b64_raw if isinstance(saml_response_b64_raw, str) else ""
     relay_state: str | None = relay_state_raw if isinstance(relay_state_raw, str) else None
 
     use_case = get_saml_acs_use_case(request, session)

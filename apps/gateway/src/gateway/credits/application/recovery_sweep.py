@@ -122,9 +122,7 @@ class CreditHoldRecoverySweeper:
             try:
                 recovered = await self.sweep_once()
                 if recovered:
-                    _log.info(
-                        "credit_recovery_sweep: released %d orphaned hold(s)", recovered
-                    )
+                    _log.info("credit_recovery_sweep: released %d orphaned hold(s)", recovered)
             except Exception as exc:  # defence in depth — sweep_once already swallows
                 _log.warning(
                     "credit_recovery_sweep: background loop error (swallowed): %s",

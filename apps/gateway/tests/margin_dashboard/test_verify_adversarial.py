@@ -141,7 +141,9 @@ async def test_verify_summary_has_provider_cost_data_zero_cost_provider_row(
     # Document actual behavior (this is the refute-read finding, not asserted as a bug
     # fix): summary's heuristic (totals!=0 OR unbilled_rows>0) reports False here even
     # though a real provider row exists with a real (zero) margin.
-    print(f"has_provider_cost_data reported: {body['has_provider_cost_data']!r}, margin={body['margin']!r}")
+    print(
+        f"has_provider_cost_data reported: {body['has_provider_cost_data']!r}, margin={body['margin']!r}"
+    )
     # This assertion documents the CURRENT (heuristic) behavior for the record — see §6.
     assert body["has_provider_cost_data"] is False, (
         "if this now fails, /summary's has_provider_cost_data heuristic was fixed to an "
@@ -218,14 +220,19 @@ async def test_verify_timeout_wiring_by_tenant_model(
     )
     assert resp.status_code == 504, resp.text
     body = resp.json()
-    assert body.get("code") == "ERR_MARGIN_QUERY_TIMEOUT" or body.get("error") == "ERR_MARGIN_QUERY_TIMEOUT"
+    assert (
+        body.get("code") == "ERR_MARGIN_QUERY_TIMEOUT"
+        or body.get("error") == "ERR_MARGIN_QUERY_TIMEOUT"
+    )
 
 
 async def test_verify_timeout_wiring_trend(
     client: Any, superadmin_token: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     await _patch_execute_to_raise_on_usage_records(monkeypatch)
-    resp = await client.get(MARGIN_TREND, params={"window": "month"}, headers=auth(superadmin_token))
+    resp = await client.get(
+        MARGIN_TREND, params={"window": "month"}, headers=auth(superadmin_token)
+    )
     assert resp.status_code == 504, resp.text
 
 
@@ -233,7 +240,9 @@ async def test_verify_timeout_wiring_tie_out(
     client: Any, superadmin_token: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     await _patch_execute_to_raise_on_usage_records(monkeypatch)
-    resp = await client.get(MARGIN_TIE_OUT, params={"period": "2026-07"}, headers=auth(superadmin_token))
+    resp = await client.get(
+        MARGIN_TIE_OUT, params={"period": "2026-07"}, headers=auth(superadmin_token)
+    )
     assert resp.status_code == 504, resp.text
 
 
@@ -387,10 +396,18 @@ async def test_verify_tenant_id_filter_isolates_by_tenant_model(
     tid_a = await seed_tenant(db_session, name="Verify Filter A")
     tid_b = await seed_tenant(db_session, name="Verify Filter B")
     await seed_row(
-        db_session, tenant_id=tid_a, cost_usd=Decimal("5.00"), cost_basis="catalog", created_at=INSIDE
+        db_session,
+        tenant_id=tid_a,
+        cost_usd=Decimal("5.00"),
+        cost_basis="catalog",
+        created_at=INSIDE,
     )
     await seed_row(
-        db_session, tenant_id=tid_b, cost_usd=Decimal("9.00"), cost_basis="catalog", created_at=INSIDE
+        db_session,
+        tenant_id=tid_b,
+        cost_usd=Decimal("9.00"),
+        cost_basis="catalog",
+        created_at=INSIDE,
     )
 
     resp = await client.get(
@@ -411,10 +428,18 @@ async def test_verify_tenant_id_filter_isolates_tie_out(
     tid_a = await seed_tenant(db_session, name="Verify Tie-Out Filter A")
     tid_b = await seed_tenant(db_session, name="Verify Tie-Out Filter B")
     await seed_row(
-        db_session, tenant_id=tid_a, cost_usd=Decimal("5.00"), cost_basis="catalog", created_at=INSIDE
+        db_session,
+        tenant_id=tid_a,
+        cost_usd=Decimal("5.00"),
+        cost_basis="catalog",
+        created_at=INSIDE,
     )
     await seed_row(
-        db_session, tenant_id=tid_b, cost_usd=Decimal("9.00"), cost_basis="catalog", created_at=INSIDE
+        db_session,
+        tenant_id=tid_b,
+        cost_usd=Decimal("9.00"),
+        cost_basis="catalog",
+        created_at=INSIDE,
     )
 
     resp = await client.get(
@@ -425,5 +450,7 @@ async def test_verify_tenant_id_filter_isolates_tie_out(
     assert resp.status_code == 200, resp.text
     items = resp.json()["items"]
     tenant_ids_returned = {i["tenant_id"] for i in items}
-    assert str(tid_b) not in tenant_ids_returned, f"tie-out tenant_id filter leaked tenant B: {items}"
+    assert str(tid_b) not in tenant_ids_returned, (
+        f"tie-out tenant_id filter leaked tenant B: {items}"
+    )
     assert tenant_ids_returned == {str(tid_a)}, items

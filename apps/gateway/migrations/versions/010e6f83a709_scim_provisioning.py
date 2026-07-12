@@ -71,9 +71,7 @@ def upgrade() -> None:
             "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
         ),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
-        sa.CheckConstraint(
-            "length(name) BETWEEN 1 AND 200", name="scim_tokens_name_length_check"
-        ),
+        sa.CheckConstraint("length(name) BETWEEN 1 AND 200", name="scim_tokens_name_length_check"),
     )
 
     # 3. audit_events.actor_scim_token_id — additive, mirrors actor_key_id exactly.

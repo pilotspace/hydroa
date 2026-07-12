@@ -247,9 +247,10 @@ async def get_credits_history(
     rows = (
         await session.execute(
             text(
-                "SELECT id, entry_type, amount_usd, balance_after_usd, reference_type,"
+                "SELECT id, entry_type, amount_usd, balance_after_usd, reference_type,"  # noqa: S608 — where_cursor is a constant parameterized fragment, all values bound
                 " reference_id, request_id, created_at"
-                " FROM credit_ledger WHERE tenant_id = :t" + where_cursor
+                " FROM credit_ledger WHERE tenant_id = :t"
+                + where_cursor
                 + " ORDER BY created_at DESC, id DESC LIMIT :lim"
             ),
             params,

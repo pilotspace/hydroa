@@ -140,9 +140,9 @@ async def test_tagged_usage_adds_tag_set_grouping_dimension(
     tagged = next(line for line in lines if line["tags"] == {"project": "alpha"})
     untagged = next(line for line in lines if line["tags"] == {})
     assert Decimal(str(tagged["raw_amount_usd"])) == Decimal("4.00")
-    assert Decimal(str(untagged["raw_amount_usd"])) == Decimal(
-        "6.00"
-    ), "untagged line must exclude every cost_usd from the tagged rows"
+    assert Decimal(str(untagged["raw_amount_usd"])) == Decimal("6.00"), (
+        "untagged line must exclude every cost_usd from the tagged rows"
+    )
 
 
 # ---------------------------------------------------------------------------

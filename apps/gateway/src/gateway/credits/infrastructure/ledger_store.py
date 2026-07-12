@@ -55,7 +55,9 @@ async def lock_balance_row(session: AsyncSession, tenant_id: uuid.UUID) -> tuple
     return Decimal(str(row[0])), Decimal(str(row[1]))
 
 
-async def update_balance(session: AsyncSession, tenant_id: uuid.UUID, new_balance_usd: Decimal) -> None:
+async def update_balance(
+    session: AsyncSession, tenant_id: uuid.UUID, new_balance_usd: Decimal
+) -> None:
     """Persist the new balance snapshot — caller already holds the row lock."""
     await session.execute(
         text(
@@ -156,7 +158,14 @@ async def find_open_hold(
 class TopupRow:
     """Duck-typed read of a credit_ledger topup row (avoids an ORM round-trip)."""
 
-    __slots__ = ("id", "tenant_id", "amount_usd", "balance_after_usd", "idempotency_key", "created_at")
+    __slots__ = (
+        "amount_usd",
+        "balance_after_usd",
+        "created_at",
+        "id",
+        "idempotency_key",
+        "tenant_id",
+    )
 
     def __init__(
         self,

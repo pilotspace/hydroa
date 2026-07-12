@@ -61,7 +61,9 @@ def assert_problem(resp: httpx.Response, status: int, code: str) -> dict[str, An
     return body
 
 
-def assert_scim_error(resp: httpx.Response, status: int, *, detail_contains: str | None = None) -> dict[str, Any]:
+def assert_scim_error(
+    resp: httpx.Response, status: int, *, detail_contains: str | None = None
+) -> dict[str, Any]:
     """RFC 7644 envelope assertion (scim/api/errors.py) — no `scimType` for a seat-cap
     reject (mirrors scim_invalid_token()'s own no-scimType precedent, TASK.md §3 M5)."""
     assert resp.status_code == status, f"expected {status} got {resp.status_code}: {resp.text}"
@@ -102,9 +104,7 @@ async def signup_owner(
     }
 
 
-async def seed_plan(
-    db_session: AsyncSession, *, name: str, seat_cap: int | None
-) -> str:
+async def seed_plan(db_session: AsyncSession, *, name: str, seat_cap: int | None) -> str:
     """Insert a `plans` row directly via ORM (create_all doesn't replay the migration's own
     seed INSERT — mirrors tests/plan_enforcement/conftest.py's own `seed_plan`)."""
     from gateway.tenants.infrastructure.orm import PlanRow
@@ -125,9 +125,7 @@ async def seed_plan(
     return str(row.id)
 
 
-async def assign_plan(
-    db_session: AsyncSession, *, tenant_id: str, plan_id: str | None
-) -> None:
+async def assign_plan(db_session: AsyncSession, *, tenant_id: str, plan_id: str | None) -> None:
     await db_session.execute(
         text("UPDATE tenants SET plan_id = :pid WHERE id = :tid"),
         {"pid": plan_id, "tid": tenant_id},
@@ -305,9 +303,7 @@ def build_oidc_app(
     return application, client
 
 
-async def oidc_callback(
-    client: httpx.AsyncClient, *, code: str = "good-code"
-) -> httpx.Response:
+async def oidc_callback(client: httpx.AsyncClient, *, code: str = "good-code") -> httpx.Response:
     return await client.get(
         f"/auth/oidc/callback?code={code}&state={FAKE_OIDC_STATE}",
         cookies={"oidc_state": FAKE_OIDC_STATE, "oidc_nonce": FAKE_OIDC_NONCE},
