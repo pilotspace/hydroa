@@ -578,7 +578,7 @@ Scenario: An issued seat/proration line is immutable, identical to a usage line 
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
-Status: FROZEN @ v1 — approved by Tin Dang
+Status: FROZEN @ v2 — approved by Tin Dang (v1 2026-07-12) + auto-mode CR-1 v2 (orchestrator; Tin veto open)
 Least-sure flag surfaced at freeze: [spec/contract] Introducing the NEW `seat_membership_events`
 append-only ledger and touching 3 already-shipped write paths outside `gateway/billing/`
 (`InviteRepository.accept`, `SqlAlchemyScimUserRepository.create_user`/`.set_active`) instead of the

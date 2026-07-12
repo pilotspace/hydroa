@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "billing-ui",
+  "active_task": "seat-billing",
   "active_milestone": "monetization-core",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -890,11 +890,11 @@
         "invoice-generation"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T11:43:33+00:00",
+      "updated": "2026-07-12T12:29:06+00:00",
       "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-12T11:43:43+00:00",
-        "approved_by": "Tin Dang",
+        "version": "v2",
+        "frozen_at": "2026-07-12T12:30:07+00:00",
+        "approved_by": "Tin Dang (v1 2026-07-12) + auto-mode CR-1 v2 (orchestrator; Tin veto open)",
         "actor": {
           "name": "Tin Dang",
           "email": "tindang.ht97@gmail.com",
@@ -947,7 +947,7 @@
         "plan-enforcement"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T12:26:22+00:00",
+      "updated": "2026-07-12T12:29:06+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T11:43:43+00:00",
@@ -1056,7 +1056,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T12:26:22+00:00",
+  "updated": "2026-07-12T12:30:07+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1993,7 +1993,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "monetization-core": "billing-ui"
+    "monetization-core": "seat-billing"
   },
   "todos": [
     {
