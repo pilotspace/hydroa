@@ -204,11 +204,16 @@ async def test_main_wires_composite_catalog_source(app: Any) -> None:
     )
     # gpt-realtime-pricing-fields TASK.md §3: main.py now appends GPT_REALTIME_SEED_MODELS
     # after MINIMAX_SEED_MODELS in the real app's static_models wiring.
+    # region-catalog-dimension TASK.md §3: main.py now further appends
+    # BEDROCK_SEED_MODELS (6 rows: us./eu./apac. x {Sonnet v2, Haiku}) after that.
+    from gateway.catalog.infrastructure.bedrock_seed import BEDROCK_SEED_MODELS
+
     assert [
         m.id
         for m in source._static_models  # pyright: ignore[reportPrivateUsage]
-    ] == [*_MINIMAX_IDS, "gpt-realtime"], (
-        "the wrapped static_models must be MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS"
+    ] == [*_MINIMAX_IDS, "gpt-realtime", *[m.id for m in BEDROCK_SEED_MODELS]], (
+        "the wrapped static_models must be "
+        "MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS + BEDROCK_SEED_MODELS"
     )
 
 
