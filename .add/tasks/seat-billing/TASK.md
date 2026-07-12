@@ -939,85 +939,240 @@ wall-clock-fragile fixture — never a loosened assertion); the frozen §0–§3
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+Persona: `billing-precision-engineer` (closest domain fit; layered with a Code-Reviewer/
+security-gatekeeper verify stance since no dedicated verify persona exists) — Decimal
+end-to-end, provenance-over-bare-numbers, append-only-ledger discipline applied as the
+verify lens over the same domain the build persona used.
 
-### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
-> OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] Every one of the 5 instrumented write sites (invite-accept, SCIM create, SCIM set_active,
-  SSO new-user, domain-capture join) appends EXACTLY one `seat_membership_events` row per real HTTP
-  call, in the same DB transaction as the users-row mutation, verifiable by querying the table via a
-  SEPARATE session after the HTTP call returns — confirmed by `tests/seat_billing/test_seat_membership_events.py` (5/5 green) driving each seam through its real endpoint, never a direct SQL insert.
-- [ ] A plan-priced tenant's generated invoice carries a `'seat'` aggregate line (nil-UUID key_id) for
-  every full-period user and one `'proration'` line per partial-period user, with `amount_usd` folded
-  into the SAME `total_usd` usage lines already contribute to — confirmed by
-  `tests/seat_billing/test_seat_pricing.py` reading `invoice_lines`/`invoices` rows directly via raw SQL
-  (never through a mocked repository).
-- [ ] An unplanned tenant or a plan with NULL/zero seat price produces an invoice with ZERO seat/
-  proration lines (not a $0.00 line) — confirmed by `test_unplanned_tenant_produces_zero_seat_lines` /
-  `test_zero_seat_price_plan_is_byte_identical_to_unplanned` asserting `'seat' not in lines`.
-- [ ] A literal `seat_price_usd_monthly <= 0` INSERT is rejected at the DB layer, not reachable via any
-  application code path — confirmed by `test_seat_price_zero_rejected_at_db_check_constraint` attempting
-  the forbidden raw INSERT directly and asserting the DB itself raises.
-- [ ] Every pre-existing `users` row (created before this task's migration) has a backfilled `'joined'`
-  (+ `'deactivated'` if applicable) event with the ORIGINAL `created_at`/`deactivated_at` instant, proven
-  against the REAL Alembic upgrade chain (never `create_all`) — confirmed by
-  `tests/migrations/test_seat_billing_backfill.py` (3/3 green), including the tz-aware/naive asyncpg
-  codec pitfall documented in Known-problem fixes above.
-- [ ] `GET .../lines/{line_id}/seat-evidence` resolves a proration line to its one contributing user and
-  an aggregate seat line to every full-price user, rejects a `'usage'`-typed line with
-  `ERR_INVOICE_LINE_WRONG_TYPE` (400), and gives the SAME `ERR_INVOICE_NOT_FOUND` (404) shape for an
-  unknown vs. cross-tenant invoice — confirmed by `tests/seat_billing/test_seat_evidence_api.py` (5/5
-  green).
-- [ ] `pyright`/`ruff check`/`ruff format --check` are clean on every file this build actually wrote or
-  modified — confirmed by running each tool scoped to the touched-file list (pyright's own
-  `[tool.pyright] include = ["src/gateway"]` config means the authoritative bar is the bare
-  `uv run pyright` invocation `make ci` runs, which reported 0 errors); 2 pre-existing repo-wide
-  conditions were found and deliberately NOT touched (documented in §0/residue): an `env.py` ORM-import
-  gap causing false `alembic check` drift unrelated to seat-billing, and a ~72-file `ruff format`
-  baseline drift predating this task — this build's OWN new/heavily-edited files were individually
-  reformatted to be clean regardless.
-- [ ] No regression in any of the 8 sibling suites touching a modified write site or the shared
-  `InvoiceGenerator` transaction — confirmed by a full foreground run of `invoice_generation`,
-  `credits_ledger`, `plan_seat_cap`, `member_invite_acceptance`, `scim_provisioning`, `sso_oidc`,
-  `saml_sso`, `domain_capture` (214/214 green, no failures, no skips).
+- [x] all tests pass — 35/35 original + 21/21 independent adversarial probes (56 new/
+  existing seat-billing tests + 3 migration-backfill tests + 2 new adversarial migration
+  tests = 61 total, 0 failures)
+- [x] coverage did not decrease — module-scoped run (`tests/seat_billing/`) is 100%
+  green; full-repo coverage % was not independently re-measured (out of scope for a
+  targeted adversarial pass; the build's own §6 already recorded a full-suite pass)
+- [x] no test or contract was altered during build — confirmed by direct read of every
+  frozen §1/§3 span (byte-identical to the FROZEN @ v2 text) and every original test file
+  (no weakened/skipped assertion found)
+- [x] the green was EARNED, not gamed — see Refute-read verdict below
+- [x] concurrency / timing of the risky operation is safe — see probes E, Advisor lens 2
+- [x] no exposed secrets, injection openings, or unexpected dependencies — see Advisor
+  lens 1 (all queries parameterized; zero new third-party deps confirmed via diff of
+  `pyproject.toml`/`uv.lock`, unchanged)
+- [x] layering & dependencies follow CONVENTIONS.md — `seat_pricer.py` confirmed zero
+  infra imports (`decimal`/`datetime`/`uuid`/`dataclasses` stdlib only, read in full)
+- [ ] a person reviewed and approved the change — pending Tin (this is an AI verify pass)
 
-### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+### Build expectations — confirmed at the gate
+- [x] Every one of the 5 instrumented write sites appends EXACTLY one
+  `seat_membership_events` row per real HTTP call, in the SAME DB transaction as the
+  users-row mutation — RE-CONFIRMED independently (not just via the builder's own 5/5
+  tests) by 5 NEW atomicity probes (`tests/seat_billing/test_verify_adversarial.py`,
+  probes A) that inject a failure AFTER the users-row flush/add but BEFORE the shared
+  commit at EACH site, and assert NEITHER row survives — all 5 pass, confirming true
+  atomicity by observed rollback behavior, not just code inspection.
+- [x] A plan-priced tenant's invoice carries correct `'seat'`/`'proration'` lines folded
+  into the same `total_usd` — RE-CONFIRMED with hand-computed Decimal expectations for
+  calendar-edge cases the original suite did not cover: join on the last day of a 31-day
+  month (1 day), Feb 28 vs. Feb-leap 29-day full periods, a same-calendar-day join+leave
+  INSIDE the period (1 day, not 0 — distinct from the frozen "entirely outside the
+  period" zero-day scenario), and exact midnight period-boundary inclusion/exclusion —
+  6 new pure-math probes (part B), all pass.
+- [x] Unplanned/zero-price tenants produce zero seat lines — unchanged from build's own
+  evidence, re-read and confirmed correct in `invoice_generator.py:_load_seat_price`.
+- [x] `seat_price_usd_monthly <= 0` rejected at the DB CHECK-constraint layer — confirmed
+  by direct migration read (`ck_plans_seat_price_positive`).
+- [x] Pre-existing users backfilled correctly, proven against the REAL Alembic chain —
+  RE-CONFIRMED with 2 new adversarial probes
+  (`tests/migrations/test_seat_billing_backfill_adversarial.py`): a MIXED population in
+  ONE migration run (3 active + 2 deactivated users, different tenants/timestamps) shows
+  no cross-user attribution and no double-apply; a SEPARATE probe demonstrates a genuine,
+  disclosed residual limitation — see finding 🟡-5 below.
+- [x] `GET .../seat-evidence` resolves lines correctly and rejects wrong-type/cross-tenant
+  — RE-CONFIRMED plus 2 NEW probes: a nil-UUID sentinel cross-tenant-isolation test (two
+  DIFFERENT tenants both generate a `'seat'` line with the BYTE-IDENTICAL nil-UUID
+  key_id — confirmed the evidence predicate is derived from `(tenant_id, period, bucket)`,
+  never key_id-value equality, so no cross-tenant leak) and a coincidental-key_id-collision
+  test against the EXISTING usage-evidence route (a real `usage_records` row seeded with
+  the SAME nil-UUID key_id a seat line uses — confirmed the wrong-route evidence stays
+  honestly empty, never leaking the coincidentally-colliding usage row).
+- [x] pyright/ruff clean on build-authored files — re-confirmed for the 2 NEW verify-probe
+  files (`ruff check`/`ruff format --check` clean; `pyright` scoped-to-`src/gateway` config
+  means tests/ was never in scope for either the build's or this verify pass's files —
+  confirmed the SAME `Config`-typing pyright noise pre-exists on the builder's own sibling
+  `test_seat_billing_backfill.py`, not a regression).
+- [x] No regression in sibling suites — RE-RAN foreground (not just trusted the builder's
+  own report): `invoice_generation`, `plan_seat_cap`, `scim_provisioning`,
+  `member_invite_acceptance`, `sso_oidc`, `domain_capture` = 158/158 green, 0 failures.
+  (`credits_ledger`/`saml_sso` not independently re-run in this pass — time-budgeted;
+  no code path touched by this task's write sites is unique to either.)
 
-### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+### Deep checks
+- [x] WIRING (code) — grep-confirmed every new symbol is referenced from a real call
+  site: `SeatMembershipEventRow` constructed at exactly 5 src locations
+  (invite_repository.py:327, scim/infrastructure/repository.py:193,304,
+  tenants/infrastructure/repository.py:130,274); `compute_seat_lines`/
+  `load_tenant_seat_membership` wired into `invoice_generator.py`'s transaction;
+  `seat_evidence_keyset`/`resolve_line_contributors` wired into
+  `billing/api/router.py:get_seat_line_evidence`, itself registered as a real FastAPI
+  route (`@invoices_router.get(".../seat-evidence")`); `INVOICE_LINE_WRONG_TYPE` used at
+  the M12 reject path. No new symbol found unreferenced.
+- [x] DEAD-CODE (code) — none found; `active_days` is a module-private helper consumed by
+  both `compute_seat_lines` and `resolve_line_contributors` within the same file (not
+  itself exported elsewhere, correctly so) plus directly unit-tested.
+- [ ] SEMANTIC (prose) — N/A, this task is 100% code.
 
-### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+### Live-verify evidence
+- [x] every symbol §3 CONTRACT cites still resolves in the CURRENT tree — every cited
+  anchor (`UserRow`, `InviteRepository.accept`, `SqlAlchemyScimUserRepository.create_user`/
+  `.set_active`, `_get_or_provision_sso_user`, `join_verified_tenant_domain`,
+  `InvoiceGenerator.generate_for_tenant`, `InvoiceLineRow`, `get_invoice_line_evidence`/
+  `_get_invoice_or_404`, `InvoiceRepository`, `core/error_catalog.py:ErrorSpec`, alembic
+  head) was independently re-read at its cited line range in this session — all resolve,
+  none moved/renamed since Ground SHA `71641a9`.
+- [x] no anchor drift found.
 
-### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+### Refute-read verdict
+Verdict: **EARNED**
+By: self (independent verify agent, not the builder) · adversarially checked: all 5
+write-site atomicity guarantees under injected mid-transaction failure (not just code
+inspection); calendar/month-boundary edge math against hand-computed Decimal values;
+invoice-regeneration idempotency + post-issuance immutability of the PERSISTED line
+(while separately confirming evidence is a live re-derivation, not a snapshot — see
+finding 🟡-2); a dirtier multi-user migration-backfill fixture; concurrent-join races
+(plain + seat-cap-constrained); cross-tenant nil-UUID-sentinel isolation; a static
+grep+AST sweep for any UPDATE/DELETE against the ledger table; and a direct challenge of
+the frozen contract's own "tenant-overridable... like every other price" prose against
+the actual implementation. No overfit-to-fixture, vacuous assert, or stubbed-away logic
+found in the original 35 tests — spot-checked several (`test_mid_month_leave_and_full_
+period_aggregate_separately`, `test_issued_seat_line_is_immutable`) line-by-line; both
+assert concrete Decimal/shape values against real DB round-trips via a SEPARATE session,
+never a mock. The disclosed §2 scenario-prose arithmetic typo (24→16) was independently
+re-derived from M6's own normative rule and confirmed correctly implemented as 16, not
+silently miscorrected.
+
+### Advisor 3-lens verdict — sequential
+Advisor: self (independent verify agent)
+1. Security: **CLEAR** — no exposed secrets; every new query is parameterized
+   (SQLAlchemy `text()` with bound params or the ORM, no string-formatted SQL found in
+   any of the 5 write sites or the evidence route); `seat-evidence` reuses the SAME
+   `Permission.INVOICES_READ` + tenant-404-invisible resolver as every other invoices
+   route (no new auth surface); zero new third-party dependencies.
+2. Concurrency: **CLEAR** — the disclosed flush-ordering fix (explicit `flush()` before
+   the event-row `add()` at the 2 CR-1 seams) independently re-verified correct via 2 new
+   concurrency probes: 2 concurrent SCIM creates at the same tenant each land exactly 1
+   event (no lost/duplicate write); 2 concurrent joins against a seat-cap that allows
+   exactly 1 more admission resolve to exactly one 201+one 403, with the cap-rejected
+   loser leaving NEITHER an orphaned users row NOR a ledger event — the `FOR UPDATE OF t`
+   admission lock composes correctly with the ledger-write discipline under a real race.
+3. Architecture: **RESIDUE** — `seat_membership_events` has NO DB-level append-only
+   guard (no trigger), unlike `invoice_lines`/`invoices`/`invoice_corrections` which DO
+   get a real production `immutable_guard` trigger in migration `0b5527920450`. This
+   mirrors the project's EXISTING `usage_records` precedent (also code-discipline-only,
+   no trigger) rather than deviating from it, and a static grep+AST sweep confirms no
+   code path currently mutates the table — but because seat-evidence RE-DERIVES its
+   answer live from this table forever (M11's own "never a materialized list" doctrine),
+   a future accidental UPDATE (e.g. a careless hotfix migration) has no DB-level safety
+   net and could silently corrupt evidence for past, already-issued invoices. Named as a
+   forward-looking hardening candidate (see 🟡-3), not a build defect.
+Verdict: **PASS**
+Residue: architectural note only (🟡-3 below) — no HARD-STOP-class finding.
+Binding: advisory — sensitivity: data (not `mechanical`)
+
+### Findings (severity-tagged, with repros)
+
+🔴 Blockers: **none found.**
+
+🟡 Concerns:
+1. **Contract prose vs. implementation gap — no tenant-level seat-price override
+   exists**, despite §3's DECIDED freeze note stating "Prices live in the plans catalog
+   and are tenant-overridable via the shared rate-card resolver like every other price."
+   `_load_seat_price` (`invoice_generator.py:121-140`) reads ONLY
+   `plans.seat_price_usd_monthly` via a plain `tenants ⋈ plans` JOIN. The actual "shared
+   rate-card resolver" (`tenant_rate_card_entries`, keyed `tenant_id`+`model_id` for
+   per-model USAGE markup) has no seat-domain row shape and is never consulted for seat
+   pricing. Two tenants on the identical plan get the byte-identical seat price — no
+   override slot exists anywhere. Repro: `tests/seat_billing/test_verify_adversarial.py::
+   test_seat_price_has_no_tenant_level_override_despite_frozen_contract_prose` (passes,
+   confirming the absence). Not a wrong-money bug — every tenant is still billed
+   correctly and uniformly per its plan — but a documentation/capability mismatch that
+   could mislead Sales/Ops into believing a per-tenant discount lever exists. Recommend:
+   either scope a small follow-up to add the override, or correct the DECIDED prose at
+   the next spec touch.
+2. **Seat-evidence is a live re-derivation, not a snapshot — evidence for an
+   already-issued, immutable invoice line can drift from what actually produced its
+   frozen dollar amount.** A late-arriving `seat_membership_events` row (e.g. a backdated
+   correction landing after generation) changes what `seat-evidence` reports for that
+   line, even though `amount_usd`/`request_count` on the persisted `invoice_lines` row
+   never change. This is a DIRECT, disclosed consequence of M11's own "re-runs the same
+   bucket predicate... never a materialized id list" doctrine — a design characteristic,
+   not a code defect — but it means a billing_admin auditing a July invoice in August
+   could see evidence that no longer fully explains the frozen total if any late/
+   corrective ledger write landed in between. Repro:
+   `test_event_appended_after_invoice_issued_never_mutates_that_invoice` (passes,
+   demonstrating both halves: the persisted line is untouched, but its evidence page
+   drifts). Recommend documenting this explicitly wherever seat-evidence is surfaced in
+   the admin UI/API docs.
+3. **`seat_membership_events` has no DB-level append-only guard** — see Advisor lens 3
+   above. Static sweep confirms no current code path mutates it
+   (`test_no_code_path_ever_updates_or_deletes_seat_membership_events`, passes), but
+   unlike `invoice_lines`/`invoices`/`invoice_corrections` it has no trigger backstop.
+   Mirrors the `usage_records` precedent (also unguarded) rather than deviating from it —
+   named as a hardening candidate for a future task, not a defect in this one.
+4. **`join_verified_tenant_domain`'s broad `except IntegrityError` still wraps the
+   ledger-write line** (disclosed by the build itself in §5 Known-problem fixes) —
+   practically dead now that the flush-ordering fix removes the only realistic
+   IntegrityError source for that insert (fixed `event_type` values pass the CHECK
+   constraint by construction; a `uuid7()` PK collision is astronomically unlikely), but
+   it remains a latent defect-masking hazard for ANY future addition to that transaction
+   block that could raise a genuine IntegrityError there. Not narrowed in this pass
+   either (same additive-only mandate the build cited) — flagged forward, matching the
+   build's own disclosure rather than a new finding.
+5. **The M4 backfill (and the M5 fallback) structurally cannot see a
+   deactivate-then-reactivate cycle that happened BEFORE this migration ran** — both only
+   ever capture `users.deactivated_at`'s LATEST snapshot state, the exact R1 limitation
+   the whole ledger exists to fix, but for any history predating the ledger's own
+   existence there is no durable record anywhere (not even `audit_events`, per R4) to
+   backfill from. Repro:
+   `tests/migrations/test_seat_billing_backfill_adversarial.py::
+   test_backfill_cannot_see_a_pre_migration_deactivate_reactivate_cycle` — concretely
+   demonstrates a user with a "true" (never-recorded) July 3-8 deactivation gap bills as
+   31/31 active days instead of the true 26, a real 5-day silent OVER-charge, for any
+   tenant whose true gap overlaps the FIRST post-cutover invoice period. This is a
+   data-availability limitation, not a fixable code defect — recommend surfacing it to
+   Tin as an accepted, named cutover-window caveat (§7 spec delta / runbook note), not a
+   HARD-STOP.
+
+💭 Notes:
+- The aggregate `'seat'` line's seat-evidence returns a contributing user's ENTIRE
+  `seat_membership_events` history, not scoped to the invoiced period — the §3 prose
+  ("paginates every full-price-bucket user's relevant events") is ambiguous on this
+  point but not incorrect (a full audit trail arguably IS relevant evidence for why a
+  user is a full-price seat). Worth a UX confirmation with Tin if this ever surfaces
+  unrelated historical churn in the admin console.
+- Verified `invoice_lines`/`invoices`/`invoice_corrections` DO get a REAL production
+  immutable-guard trigger (migration `0b5527920450`) — the test-file's own
+  `_install_immutability_trigger` helper (mirrored verbatim from invoice-generation's
+  own test suite) is necessary only because the test app fixture uses
+  `Base.metadata.create_all()`, which does not replay migration-time triggers; this is
+  NOT evidence of a production gap for those 3 tables (initially misread, corrected on
+  closer read — recorded here so a future verify pass doesn't re-walk the same false
+  lead).
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: no — this is an independent verify pass; the orchestrator renders the gate
+report and records the final outcome, per this task's own instruction ("Do NOT gate —
+the orchestrator gates.").
+Outcome (PROPOSED, for orchestrator ratification): **PASS**
+Rationale: zero 🔴 blockers; all 5 🟡 concerns are either pre-existing project
+conventions (usage_records-style trigger-less append-only discipline), disclosed
+build-time residue (the broad IntegrityError catch), a data-availability limitation with
+no code fix (pre-migration reactivation gap), or a documentation-vs-implementation
+mismatch with no money-correctness impact (tenant-override prose) — none rise to
+HARD-STOP, and the one genuine forward-looking hardening candidate (finding 3, the
+missing DB trigger) is architecture residue, not a security finding, so it is advisory
+under this task's `sensitivity: data` (not `mechanical`).
+If RISK-ACCEPTED -> owner: <pending Tin> · ticket: <link> · expires: <date>
+Reviewed by: <pending Tin> · date: <pending>
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 
