@@ -3,9 +3,8 @@
 slug: margin-dashboard · created: 2026-07-12 · stage: production
 sensitivity: mechanical
 milestone: monetization-core
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -99,8 +98,6 @@ Assumptions — lowest-confidence first:
   - [ ] Whether `/by-tenant-model` and `/trend` should default `tenant_id` to "all tenants" (current draft) vs REQUIRE it (forcing the operator to pick a tenant first) — recommend default-all with pagination as the honest MVP shape (matches `reconcile_by_tenant`'s own existing "all tenants" default); confirm or defer at freeze.
   - [ ] Whether the Margin page ships as part of THIS task (current draft, M12) vs is deferred entirely to `billing-ui` — MILESTONE.md line 38 explicitly names `margin-dashboard` (not `billing-ui`) as the owning task for "platform console" (Margin page), and line 16 names `billing-ui`'s UI/UX scope as the TENANT-facing "Billing nav group (Invoices · Credits · Plan & seats)" — a different surface entirely; recommend confirming this reading is correct (a scope-boundary confirmation, not a design ambiguity) rather than re-litigating it.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -246,8 +243,6 @@ Scenario: empty window returns explicit zeros, not an error   # edge/boundary
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -322,7 +317,6 @@ Frontend: `apps/dashboard/app/(app)/app/platform/margin/page.tsx` (thin Server C
 Glossary deltas: **has_provider_cost_data** — a boolean carried on every margin figure, true iff the underlying bucket contains at least one `cost_basis='provider'` usage row; false means `margin` is `null` by contract, never a fabricated or zeroed figure. **tie-out** — the read-only three-way comparison of `usage_records`-ledger billed total, `invoices.raw_total_usd`, and `usage_records`-ledger provider cost for one UTC calendar month, surfacing `matched`/`pending_invoice`/`drift_detected` without ever writing.
 
 Reported: no — pending Tin's freeze review.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -419,8 +413,6 @@ implementation) before Build — confirmed: backend suite failed at collection w
 `@/components/platform/PlatformMarginView` — both the honest missing-implementation red, not
 a broken harness.
 
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
-
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
@@ -479,8 +471,6 @@ Code lives in: `apps/gateway/src/gateway/usage/` (backend) · `apps/dashboard/co
 + `apps/dashboard/app/(app)/app/platform/margin/` (dashboard).
 Constraints: do NOT change any test or the contract; allow-list packages only (none added —
 `recharts`/`@tanstack/react-query`/FastAPI/SQLAlchemy already in use); ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -719,9 +709,7 @@ Outcome: **RECOMMENDED — PASS** (no security or concurrency finding; 2 non-blo
 findings recorded above, both safe-direction/inherited, neither meets HARD-STOP or
 RISK-ACCEPTED criteria) — orchestrator to record the binding outcome.
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-12
 
 ---
 
@@ -730,11 +718,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose **Extend the existing `reconciliation.py` primitives + a new `require_superadmin` platform router (JWT), byte-identical to `/ops/reconciliation` for shared numbers**; rejected Reuse `/ops/reconciliation` directly from the dashboard BFF, tunneling the platform-console session through the mTLS ops path (rejected — `require_ops` is an operator-CERT surface, not a user-identity surface; the dashboard has no client cert to present, and manufacturing one to bridge a JWT session would blur the two auth models MILESTONE.md and the ops substrate keep deliberately separate) · Estimate a "shadow" provider cost for `cost_basis='catalog'` rows from the current catalog price (rejected — reopens a second price path forbidden by MILESTONE.md binding rule #2, and would drift from the historical markup actually applied at record time, R2).
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned (all 8 batches executed in order, no deviation).
+- [AI] verify — gate **RECOMMENDED (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

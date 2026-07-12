@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "plan-seat-cap",
-  "active_milestone": "platform-access-plan",
+  "active_task": "margin-dashboard",
+  "active_milestone": "monetization-core",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -910,14 +910,14 @@
     },
     "margin-dashboard": {
       "title": "Operator margin dashboard (provider cost vs billed vs invoiced)",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "monetization-core",
       "depends_on": [
         "invoice-generation"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T12:20:52+00:00",
+      "updated": "2026-07-12T12:48:15+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T11:43:43+00:00",
@@ -934,12 +934,18 @@
         "tests": {
           "apps/gateway/tests/margin_dashboard/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
           "apps/gateway/tests/margin_dashboard/conftest.py": "3a00c00a316a880e30d05b96e1e63c86",
-          "apps/gateway/tests/margin_dashboard/test_margin_dashboard.py": "38ea78edf57583dc1e29ca629365a1f0"
+          "apps/gateway/tests/margin_dashboard/test_margin_dashboard.py": "38ea78edf57583dc1e29ca629365a1f0",
+          "apps/gateway/tests/margin_dashboard/test_verify_adversarial.py": "b9c1eb3af7db5e8c271fedf7fa28b7d6"
         }
       },
       "scope": {
         "declared": [],
-        "snapshot_md5": "5c5c99ab0bdba7d914db764eb5b7d178"
+        "snapshot_md5": "048ad9daa8c72d4e3d2e12d48e991766"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "billing-ui": {
@@ -1078,7 +1084,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T12:47:23+00:00",
+  "updated": "2026-07-12T12:48:15+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2015,7 +2021,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "monetization-core": "billing-ui"
+    "monetization-core": "margin-dashboard"
   },
   "todos": [
     {
@@ -2070,6 +2076,18 @@
       "id": 9,
       "text": "plan-seat-cap seeded delta: SCIM PATCH active:true reactivation bypasses seat cap (confirmed repro in test_verify_adversarial) \u2014 gate reactivation via assert_seat_available in a follow-on task",
       "created": "2026-07-12T12:47:23+00:00",
+      "status": "open"
+    },
+    {
+      "id": 10,
+      "text": "margin-dashboard delta: /summary has_provider_cost_data uses a heuristic, not by-tenant-model/trend's honest COUNT(cost_basis='provider') \u2014 align in follow-on",
+      "created": "2026-07-12T12:48:15+00:00",
+      "status": "open"
+    },
+    {
+      "id": 11,
+      "text": "repo-wide hardening (from margin verify \ud83d\udfe1): naive-datetime idiom assumes host TZ=UTC, unpinned in Dockerfile + test-invisible \u2014 pin TZ=UTC or move to aware-UTC datetimes; money-critical paths affected",
+      "created": "2026-07-12T12:48:15+00:00",
       "status": "open"
     }
   ]
