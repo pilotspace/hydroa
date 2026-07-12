@@ -371,54 +371,71 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 22/22 task suite + 13/13 tests/usage + 11/11 tests/proxy = 46/46, run TWICE clean (no flake) against a namespaced DB (`gateway_test_verify_tags`)
+- [x] coverage did not decrease — measured per §4's own declared method (task suite + tests/usage + tests/proxy, no regression); tags-specific lines in recorder.py/flusher.py/orm.py/ports.py/use_cases.py/both routers/schemas.py are hit (cross-checked missing-line reports against `grep -n tags` in each file — see Deep checks)
+- [x] no test or contract was altered during build — `git log` on `test_cost_attribution_tags.py` shows one commit only (`617c1ce`, the red-suite authorship); `.add/tasks/cost-attribution-tags/TASK.md` §3 CONTRACT untouched by any of the 4 build commits (only §4/§5 filled post-hoc in a separate docs commit `e45126d`)
+- [x] the green was EARNED, not gamed — see Refute-read verdict below
+- [x] concurrency / timing of the risky operation is safe — see Deep checks + live probes below
+- [x] no exposed secrets, injection openings, or unexpected dependencies — see findings below (SQL injection closed by parameterized binds + pre-validated `tag_key` regex; no secrets touched)
+- [x] layering & dependencies follow CONVENTIONS.md — raw-SQL `text()` aggregation idiom followed; `_TAG_KEY_RE` duplicated (not cross-imported) between `usage/api/router.py` and `proxy/application/use_cases.py` specifically to avoid a `usage.api -> proxy.application` layering violation (documented in-code)
+- [ ] a person reviewed and approved the change — pending Tin's review (agent cannot self-certify this line)
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] A proxied completion sent with `X-Gateway-Tags: {"project":"alpha"}` produces a usage_records row whose `tags` column equals exactly that map — confirmed by direct row query after the call in tests/cost_attribution_tags/
-- [ ] A proxied completion WITHOUT the header is byte-identical to pre-task behavior (response body/status unchanged, usage row `tags = {}`) — confirmed by the golden pass-through tests
-- [ ] A malformed / >8-key / oversized header is refused 422 `ERR_PAYLOAD_INVALID` BEFORE governance and billing — confirmed by asserting no usage_records row exists for the refused request
-- [ ] `GET /admin/usage/cost-by-tag` returns per-tag cost slices whose per-tag sums equal `SUM(cost_usd)` of the rows carrying that tag (overlapping, explicitly non-additive across slices) — confirmed by the reconciliation assertions in the task suite
-- [ ] Migration `fddae7074590` (parent `69cfdc584129`) upgrades, downgrades, and re-upgrades cleanly — confirmed against the namespaced migrations DB
-- [ ] Streaming and non-streaming paths persist tags identically (the additive `request_headers` param on `CompletionUseCase.stream()`) — confirmed by the streaming-parity test
+- [x] A proxied completion sent with `X-Gateway-Tags: {"project":"alpha"}` produces a usage_records row whose `tags` column equals exactly that map — confirmed by `test_valid_tags_persisted_non_streaming` (direct row query) AND re-confirmed live via my own `docker exec psql` row inspection during migration testing
+- [x] A proxied completion WITHOUT the header is byte-identical to pre-task behavior (response body/status unchanged, usage row `tags = {}`) — confirmed by `test_untagged_request_byte_identical` (full `resp.json() == fake_upstream.body` equality, not just status) AND by a live migration probe: a row INSERTed BEFORE the migration reads back `tags = {}` byte-identically AFTER `alembic upgrade fddae7074590` (no rewrite, no error)
+- [x] A malformed / >8-key / oversized header is refused 422 `ERR_PAYLOAD_INVALID` BEFORE governance and billing — confirmed by `test_malformed_json_rejected_before_billing`/`test_too_many_tags_rejected`/`test_oversized_header_rejected` et al., each independently asserting BOTH `fake_upstream.calls == 0` AND `SELECT COUNT(*) FROM usage_records ... = 0` (two independent non-vacuous assertions, not just the HTTP status)
+- [x] `GET /admin/usage/cost-by-tag` returns per-tag cost slices whose per-tag sums equal `SUM(cost_usd)` of the rows carrying that tag (overlapping, explicitly non-additive across slices) — confirmed by `test_default_window_breakdown_reconciles` (real Decimal arithmetic: breakdown sum "6.00" deliberately > total "4.50", not a rounding coincidence)
+- [x] Migration `fddae7074590` (parent `69cfdc584129`) upgrades, downgrades, and re-upgrades cleanly — confirmed LIVE by me (not just the build's own claim) against a fresh namespaced migrations DB: `alembic upgrade 69cfdc584129` → `upgrade fddae7074590` (column+GIN index appear) → `downgrade 69cfdc584129` (column+index gone) → `upgrade fddae7074590` again (column+index back). Single alembic head (`f70309062df0`) confirmed — no branch, no fork; sibling task `plan_enforcement` already chains cleanly after this task's revision.
+- [x] Streaming and non-streaming paths persist tags identically (the additive `request_headers` param on `CompletionUseCase.stream()`) — confirmed by `test_valid_tags_persisted_streaming_parity`
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol referenced: `PAYLOAD_TAGS_INVALID` (error_catalog.py) used in both `use_cases.py` and `usage/api/router.py`; `_parse_tags_header`/`TAG_KEY_RE` called from both `complete()` and `stream()`; `CostByTagResponse`/`TagBreakdownItem` constructed and returned by `get_cost_by_tag`; `UsageRecordExtras.tags` consumed by `RecordingUsageRecorder.record`/`supported_extras`/`insert_usage_row` — confirmed via `grep -rn` cross-reference, no orphan.
+- [x] DEAD-CODE (code) — none introduced; `ruff check` clean and `pyright` (0 errors/warnings) clean on all 9 touched src/ files + the migration.
+- [ ] SEMANTIC (prose / non-code) — N/A, this task is code-only (no docs/config-only deliverable)
+
+Additional adversarial probes run live (not in the frozen §4 suite; repro tests left uncommitted under `apps/gateway/tests/cost_attribution_tags/test_verify_*.py` — see Findings):
+  - Top-level non-object JSON (`[1,2,3]`, `"a string"`, `42`) sent as the header value — all three correctly 422 (line 275's branch, `not isinstance(parsed, dict)`) — confirmed via direct `_parse_tags_header()` call, though the frozen suite's coverage report shows this exact line as never hit by any §4 test (a real test-coverage gap, not a functional defect — see Findings).
+  - `__proto__`/`constructor` as tag keys — `__proto__` rejected (regex requires a leading letter, blocks leading `_`); `constructor` is ACCEPTED (a plain ASCII-letter identifier, no reserved-word denylist) — no active exploit today (this task ships no frontend consumer that merges tags into a plain object), flagged as a forward-looking hardening note.
+  - Duplicate `X-Gateway-Tags` header instances — last-value-wins (Starlette's `request.headers.items()` dict-comprehension behavior), deterministic, no smuggling/bypass.
+  - Mixed-case header name (`x-GATEWAY-tags`) — parsed correctly (router lowercases every header key before lookup).
+  - Cache-HIT + tags interaction (zero §2/§4 coverage) — confirmed LIVE: request 1 (untagged) populates the exact-match cache; request 2 (same payload, but carries `X-Gateway-Tags`) gets `X-Cache: hit`, `cost_usd=0`, AND its OWN tags (`{"team":"cache-hit-caller"}`) on its usage_records row — NOT the populating request's tags. Matches the static-read prediction (`_tags` parsed before `_try_cache_lookup`, threaded into `_fire_record_cached`).
+  - Corrupted (present-but-malformed-JSON) `tags` field on a replayed Redis-stream event (`flusher.py` lines 130-131, the `except (json.JSONDecodeError, ValueError)` branch — also never hit by the frozen suite, which only tests a MISSING field) — confirmed LIVE via `insert_usage_row()` direct call: degrades to `tags={}`, does not raise, row still inserted.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — `UsageRecordRow.tags`, `insert_usage_row`, `RecordingUsageRecorder.record`/`.supported_extras`, `UsageRecordExtras`, `CompletionUseCase.complete`/`.stream`, `_fire_record`/`_dispatch_record`, `usage_router`/`get_cost_by_tag`, `_compute_window_bounds`/`_require_ops_read`, `PAYLOAD_TAGS_INVALID`, `AUTH_FORBIDDEN` all confirmed present and wired via `grep -rn` + `mcp__serena` symbol reads against the current `feat/monetization-core` tree at `e45126d`; migration head confirmed via `uv run alembic heads` (single head `f70309062df0`, no fork)
+- [x] no anchor moved/renamed since Ground SHA (`43ad492`) — the only post-Ground change on these files is this task's own build + a clean downstream chain from `plan_enforcement`'s later migration; nothing renamed or relocated
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (add-verify) · adversarially checked: byte-identical golden test asserts full body equality (not just status) + row-level tags={}; no-billing-on-422 tests assert BOTH upstream-never-called AND row-count-zero independently; overlapping-slice reconciliation test uses a deliberately-exceeds-total Decimal sum (not a coincidental pass); tenant-isolation test uses two tenants with the IDENTICAL tag value and confirms zero leakage; concurrency test uses real `asyncio.gather` + real Redis stream + confirms exactly 2 independent rows with a correctly-summed breakdown (not simulated/mocked); migration up/down/re-up + pre-existing-row-byte-identical-after-migration independently re-verified by me beyond the build's own claim; SQL-injection surface (tag_key, tenant_id) confirmed parameterized. No vacuous assert, no stubbed-away logic, no fixture overfit found.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify, persona: billing-precision-engineer + appsec-engineer lens)
+1. Security: CLEAR — tag_key/window params parameterized (never string-interpolated); tenant_id scoped in the SAME query as every aggregation (no cross-tenant leak, confirmed live with two real tenants sharing an identical tag); `__proto__`-shaped keys rejected by the key regex; no secrets touched; `constructor`/`prototype`-shaped keys ARE accepted (no active exploit — no shipped consumer merges tags into a plain JS object yet) — noted as a forward-looking hardening note, not a HARD-STOP.
+2. Concurrency: CLEAR — append-only write-once column, no new UPDATE/DELETE path; concurrent identically-tagged requests produce two independent rows with no lost update (live-tested via `asyncio.gather`); PEL-reclaim replay of a pre-deploy (missing-field) OR corrupted (malformed-JSON) tags event both degrade safely to `{}` without raising or poisoning the batch (both live-confirmed).
+3. Architecture: RESIDUE (minor) — two disclosed deviations (see Findings: `_run_output_validation_retry`/`_run_diverted_fallback` leave tags={} on 5 call sites); `_TAG_KEY_RE` intentionally duplicated rather than cross-imported to preserve layering (documented, not an oversight).
+Verdict: PASS
+Residue: named below (Findings) — non-security, non-money-correctness, narrow blast radius
+Binding: advisory — sensitivity: data (not `mechanical`)
+
+### Findings (ranked)
+- 🟡 MAJOR (concern, not blocker): `_run_output_validation_retry()` (use_cases.py ~L544, 3 `_fire_record_with_raw` sites) bills correctly but always persists `tags={}`, even though the parsed `_tags` local IS in scope at its call site inside `complete()` (~L2274) — unlike the diverted-fallback case below, this one is NOT a genuine architectural constraint, just an un-threaded parameter. A request that (a) declares a JSON-schema `response_format`, (b) gets a 200 that fails schema validation on attempt 1, AND (c) carries tags loses its tag label on the (real, billed) retry. No §2 scenario covers this path (disclosed by build). Recommend: thread `tags: dict[str,str] | None = None` through the function signature + 3 call sites + the `tags=_tags` argument at the L2274 call site — a small, low-risk fast-follow (or fold into this task's own heal loop given it's cheap and directly on-mission for "cost attribution").
+- 🟡 CONCERN: `_run_diverted_fallback()` (use_cases.py ~L1475, 2 sites) similarly bills `tags={}` — genuinely harder to close (a deferred closure invoked by the SSE generator's lifecycle possibly seconds after the original request's own scope/contextvars were already torn down; the original `_tags` isn't reachable there without threading it through the batch-diversion accumulator's item state). Matches the PRE-EXISTING `request_id` gap at the same 5 call sites (not a regression introduced by this task). Recommend: RISK-ACCEPT for v1, seed a spec delta for `invoice-generation` (which depends on `usage_records.tags` for line-grouping) to be aware that a small number of validation-retry/batch-diverted rows will land in the "untagged" bucket even when the original request WAS tagged.
+- 🟡 CONCERN: zero §2/§4 scenario coverage for the cache-HIT + tags interaction — the correct behavior (a cache-HIT bills with the REQUESTING call's own tags, not the original populating request's) is real and confirmed live by my own adversarial repro (`test_verify_cache_hit_tags.py`), but nothing in the frozen suite pins it against a future regression. Recommend backfilling this as a permanent scenario in a fast-follow.
+- 💭 NOTE: coverage gaps in two defensive branches — (1) `_parse_tags_header`'s "top-level value is not a JSON object" branch (use_cases.py L275: array/string/number top-level JSON) and (2) `insert_usage_row`'s "tags field present but corrupted JSON" branch (flusher.py L130-131) — both are NEVER exercised by the frozen §4 suite (confirmed via coverage line-number cross-reference), but both were live-probed by me and BOTH behave correctly (422 for the former, safe `{}` degrade for the latter). Not a functional defect; recommend backfilling as regression-guard tests.
+- 💭 NOTE: `X-Gateway-Tags` is silently ignored (no validation, no persistence, no error) on every non-chat-completions endpoint (embeddings/images/audio) — in-scope per M1's literal wording ("any /v1/chat/completions request"), not a contract violation, but a client tagging e.g. an embeddings call gets a normal 200 with silently-dropped tags, no signal anything was lost. Recommend a spec delta: either extend tag support to other billed endpoints later, or document the chat-completions-only scope prominently in client-facing API docs.
+- 💭 NOTE: `constructor`/`prototype`-shaped tag keys pass the key-format regex (only leading-underscore keys like `__proto__` are blocked) — no active exploit today (no shipped consumer merges tag data into a plain JS object), but worth a denylist addition if/when a dashboard renders or merges this data.
+- 💭 NOTE: duplicate `X-Gateway-Tags` header instances resolve last-value-wins (Starlette's header-dict-comprehension behavior) — deterministic and safe, not a bug, just undocumented in §1/§3; worth a one-line contract note if this ever becomes a support question.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: yes — this §6 fill is the gate report
+Outcome: RISK-ACCEPTED
+Owner: Tin Dang · ticket: spec delta (see §7, to be filed via `add.py deltas`) · expires: before `invoice-generation` (dependent task) reads `usage_records.tags` for line-grouping — the residue must be resolved or explicitly re-accepted by that task's own Ground phase
+Reviewed by: <pending — Tin Dang> · date: 2026-07-12
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 

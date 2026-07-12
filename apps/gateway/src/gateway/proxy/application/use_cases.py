@@ -619,6 +619,7 @@ async def _run_output_validation_retry(
     status: int,
     response_body: dict[str, Any],
     served_model_id: str,
+    tags: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any], str, str | None]:
     """M5-M8 bounded-retry loop, entered only when attempt 1 (already 200) failed
     schema validation. Extracted as its own function (not inlined in complete())
@@ -648,6 +649,7 @@ async def _run_output_validation_retry(
         status=status,
         team_id=authz.team_id,
         usage_source="validation_retry",
+        tags=tags,
     )
     # M5/M6/M7: exactly ONE bounded retry, the IDENTICAL routed call, same
     # unmodified body — no re-run of governance/budget/rate-limit (M6); a transport
@@ -676,6 +678,7 @@ async def _run_output_validation_retry(
             status=429,
             team_id=authz.team_id,
             usage_source="validation_retry",
+            tags=tags,
         )
         if exc.retry_after is not None:
             raise UPSTREAM_RATE_LIMITED.exc(
@@ -714,6 +717,7 @@ async def _run_output_validation_retry(
         status=retry_status,
         team_id=authz.team_id,
         usage_source="validation_retry",
+        tags=tags,
     )
     raise OUTPUT_SCHEMA_VALIDATION_FAILED.exc(
         extra={
@@ -2390,6 +2394,7 @@ class CompletionUseCase:
                         status=status,
                         response_body=response_body,
                         served_model_id=served_model_id,
+                        tags=_tags,
                     )
 
             # Store UNMASKED upstream body in cache on 200 (fire-and-forget).
