@@ -3,9 +3,8 @@
 slug: invoice-generation · created: 2026-07-12 · stage: production
 sensitivity: data
 milestone: monetization-core
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -112,8 +111,6 @@ Assumptions — lowest-confidence first:
   - [ ] The PDF library choice (`reportlab` recommended — pure-Python, no system cairo/pango dependency unlike `weasyprint`) is a BUILD-time allow-list addition, not load-bearing on this frozen contract's shape — confirm at BUILD, non-blocking for this freeze.
   - [ ] Whether an invoice line should also split by `pricing_unit`/`cost_basis` (a tenant mixing per-token and per-request-unit models, or catalog- and provider-basis rows, within one month) — recommend folding these into a single `(model_id, team_id, key_id, tags)` line regardless of internal pricing mechanism (a customer-facing line is about WHO/WHAT was billed, not the internal pricing plumbing) — confirm or deny at freeze.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -274,8 +271,6 @@ Scenario: bounded query timeout surfaces as a structured error   # R8
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -376,7 +371,6 @@ Status: FROZEN @ v1 — approved by Tin Dang
 DECIDED at freeze review (2026-07-12, Tin + orchestrator): auto-issue after 72h stabilization window CONFIRMED (Tin). INVOICES_READ excluded from OPERATOR (rec confirmed). pricing_unit/cost_basis folded into one line per grouping key (rec confirmed). PRE-FREEZE AMENDMENT (orchestrator, cross-contract seam check): scalar `tag` grouping replaced by canonical tag-SET (JSONB map) grouping to match cost-attribution-tags' frozen `tags` shape — money lines partition, never double-count (see M2).
 Least-sure flag surfaced at freeze: [spec/contract] Auto-issue after a 72-hour stabilization window (no manual "issue" admin action in v1) — the ONE genuinely novel lifecycle decision in this draft, with zero existing precedent in this codebase to anchor it to. Tin: confirm the 72h window, or direct a manual-issue action instead (a real contract change, cheaper to decide now than after BUILD).
 Reported: no — pending Tin's batch freeze review across all four wave-1 monetization-core contracts (per dispatch note: "Tin freezes ALL wave-1 contracts at ONE batch review").
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -414,8 +408,6 @@ Plan (one test per scenario, asserting behavior not internals):
 
 Tests live in: `./tests/` (`tests/invoice_generation/` — 36 tests across `test_generation.py` + `test_api.py`) · manifest-maintenance edit to `apps/gateway/tests/migrations/test_migrations.py` (SANCTIONED, additive — added `invoices`/`invoice_lines`/`invoice_corrections` to `EXPECTED_TABLES`, mirroring every prior table-adding task's own precedent in that file). Ran RED before Build: every scenario failed for the honest missing-implementation reason (`ModuleNotFoundError: gateway.billing.application.invoice_generator` for the direct-generation tests; `404 Not Found` route-missing for the HTTP-surface tests) — confirmed via full-suite run, committed at `5493cab` before any `src/gateway/billing/*` code existed.
 
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
-
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
@@ -443,63 +435,56 @@ Safety rule (feature-specific): the entire per-tenant generation body (aggregati
 Code lives in: `apps/gateway/src/gateway/billing/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear. — held: zero test files edited after RED except the one manifest-maintenance line (sanctioned, same precedent as every prior table-adding task) and the immutability-fixture completion (arrange-step infrastructure, not an assertion change); `reportlab` added to both `pyproject.toml` and `.add/dependencies.allowlist` with justification, per Issue R2.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — `tests/invoice_generation/` 36/36 green (`GATEWAY_TEST_DATABASE_URL=…gateway_test_verify_invoice`, real Postgres, foreground); `tests/migrations/` 6/6 green (real up/down/parity against `gateway_migrations_test_verify_invoice`, single alembic head `0b5527920450`); `tests/guardrails/test_guardrails_core.py::test_guardrails_core_migration_column_exists` green; shared-surface regression `tests/rbac_roles/ tests/tenants/ tests/cost_attribution_tags/ tests/guardrails/ tests/credits_ledger/ tests/plan_enforcement/` 148/148 green — no regression from the wave-1 integration merge.
+- [x] coverage did not decrease — task subset run standalone under-reports project coverage (40.73%) by construction (only this task's modules exercised, not a project-wide run); every generation/rounding/idempotency/RBAC/404/timeout branch has a direct, non-vacuous assertion (read in full, §4 test_plan matches actual test bodies 1:1).
+- [x] no test or contract was altered during build — `git diff 39354b8~1 39354b8 -- tests/` shows exactly 2 sanctioned manifest-maintenance additions (below); §3 contract text is byte-identical to the frozen block; no test assertion weakened.
+- [x] the green was EARNED, not gamed — see Refute-read verdict below (EARNED); 4 adversarial repro tests I wrote independently (not from the build agent) all pass against the real implementation, ruling out overfit-to-fixture.
+- [x] concurrency / timing of the risky operation is safe — M13 race test (`asyncio.gather` two `generate_for_tenant` calls) passes: exactly one winner, `ON CONFLICT (tenant_id, period_start) DO NOTHING`, no unhandled exception. One RESIDUE found under the timing lens — see Advisor verdict.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — all SQL parameterized (SQLAlchemy Core/ORM throughout, zero raw string interpolation into a query); `reportlab` is the one new dependency, allow-listed in both `pyproject.toml` and `.add/dependencies.allowlist` with R2 justification; PDF renderer verified non-crashing against RTL-override chars, 5000-char tag values, and NUL/control bytes (my own adversarial test, `test_pdf_renderer_survives_adversarial_tag_values`).
+- [x] layering & dependencies follow CONVENTIONS.md — new `billing/` context has domain→application→infrastructure→api layering matching `audit/`'s precedent exactly; `InvoiceRepository` only issues read-only SELECTs against `usage_records` (no reach into `usage/`'s application layer); no update/delete method exposed for `invoices`/`invoice_lines` (mirrors `AuditRepository`).
+- [ ] a person reviewed and approved the change — pending Tin's review of this VERIFY record (contract itself already Tin-approved at freeze).
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] A generated monthly invoice's total_usd equals the sum of its already-rounded line amounts, and API detail, CSV export, and the printed PDF total agree byte-exactly — confirmed by test_pdf_csv_api_total_always_agree
-- [ ] Every invoice line drills to exactly its own usage rows via the (tenant, period, model, team, key, tags) evidence predicate — confirmed by the evidence-endpoint tests
-- [ ] A multi-tag usage row lands in exactly ONE line (canonical tag-set grouping); SUM(lines.raw_amount_usd) == SUM(usage.cost_usd) for the period — confirmed by the partition scenarios
-- [ ] An issued invoice refuses direct UPDATE/DELETE at the DB level (migration triggers) and corrections append signed-delta documents net-summed at read time — confirmed by immutability + correction tests
-- [ ] Month close generates one invoice per tenant idempotently under concurrency (ON CONFLICT (tenant_id, period_start) DO NOTHING); empty month → issued $0 invoice — confirmed by generation tests
-- [ ] Auto-issue fires after the 72h stabilization window; drafts stay mutable-by-generation only within the window — confirmed by lifecycle tests
-- [ ] Migration 0b5527920450 (re-parented at integration onto d3f7a9c1b5e8) up/down/re-up clean — confirmed on the namespaced migrations DB
+- [x] A multi-tag usage row lands in exactly ONE invoice_line, and `SUM(invoice_lines.raw_amount_usd) == SUM(usage_records.cost_usd)` for the period, exactly — confirmed by `test_multi_tag_rows_partition_never_double_count` (existing) AND my own `test_generation_is_order_independent_across_insertion_sequence`, which additionally proves canonicalization is a real Postgres-JSONB-storage guarantee (two rows with the SAME tag set written in DIFFERENT key order still merge into one line), not an artifact of Python dict insertion order.
+- [x] Rounded-then-summed total always equals the sum of the displayed lines, using TRUE `ROUND_HALF_UP` (not banker's rounding) — confirmed by the frozen `10.005→10.01` test AND my own `test_half_up_rounding_at_a_bankers_rounding_discriminator` (`0.125→0.13`, the one value that actually distinguishes HALF_UP from HALF_EVEN, which would give `0.12`).
+- [x] An issued invoice/line is byte-identical on re-read after an attempted UPDATE/DELETE, DB-enforced (not just app-layer) — confirmed by `test_issued_invoice_cannot_be_mutated`/`test_issued_invoice_line_cannot_be_mutated` against a trigger installed from the migration's own SQL text, AND by `tests/migrations/` actually executing the real migration's `op.execute()` trigger-creation DDL (proves the trigger SQL in `0b5527920450_invoice_generation.py` is syntactically valid Postgres, not just the test-local copy).
+- [x] Evidence endpoint returns EXACTLY the rows behind a line — no cross-model, cross-period, or cross-tenant leak, and NULL `team_id` matches NULL-`team_id` rows via `IS NOT DISTINCT FROM` — confirmed by the existing `test_evidence_drilldown_resolves_line_to_usage_rows` AND my own `test_evidence_predicate_excludes_cross_model_and_out_of_period_rows` (adds an out-of-period same-model row as a second negative control the existing test didn't cover).
+- [x] PDF/CSV/API totals always agree, and the PDF derives from persisted figures only (no recompute) — confirmed by `test_pdf_csv_api_total_always_agree` (byte-search for the exact total string in the PDF content stream, page compression disabled).
+- [x] RBAC matrix matches §3 exactly (OWNER/ADMIN/BILLING_ADMIN/SUPERADMIN → 200; OPERATOR/VIEWER/MEMBER → 403) — confirmed by reading `ROLE_PERMISSIONS` directly (authz.py:87-136) AND the parametrized pass/forbidden tests.
+- [x] Cross-tenant detail/evidence access is 404-invisible, byte-identical to unknown-id — confirmed by `test_cross_tenant_invoice_id_is_same_404`'s explicit `resp_unknown.json() == resp_cross.json()` assertion.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — `main.py:1373` registers `invoices_router`; `main.py:664-677` conditionally starts `InvoiceGenerator.run_forever` gated by `should_start_invoice_generator`, cancelled+awaited at shutdown (`main.py:745-751`) and reset at line 832, mirroring `RetentionSweeper`'s lifecycle exactly. `Permission.INVOICES_READ` is read by `require_permission` (authz.py) and appears in `ROLE_PERMISSIONS` for OWNER(auto)/ADMIN/BILLING_ADMIN/SUPERADMIN. Three new `ErrorSpec` constants (`INVOICE_NOT_FOUND`/`INVOICE_QUERY_TIMEOUT`/`INVOICE_IMMUTABLE`) added to `error_catalog.py:978-992`; `INVOICE_NOT_FOUND`/`INVOICE_QUERY_TIMEOUT` are referenced from `api/router.py`; `INVOICE_IMMUTABLE` is deliberately unreferenced — reserved per §1's own Note (no v1 route triggers it), not dead code by the task's own design.
+- [x] DEAD-CODE (code) — no unreferenced new symbol except the one deliberate reservation above. `record_invoice_correction` (application/invoice_correction.py) has ZERO callers anywhere in `src/` (confirmed via `grep -rn "record_invoice_correction" src/`) — it is exercised ONLY by `test_correction_is_a_new_document_not_an_edit`. This matches the task's own stated design ("no HTTP route exposes correction CREATION in v1... mirrors `record_correction`'s own precedent") but is worth naming explicitly: unlike `usage/application/recorder.py:record_correction` (which IS wired, called by `cost_recovery.py`), this task's correction writer is currently reachable ONLY from tests — genuinely inert pending a future admin correction-issuance surface. Not a defect against this frozen contract (M6 explicitly scopes only the append-only write shape, not its caller), but flagged for OBSERVE.
+- [ ] SEMANTIC (prose / non-code) — N/A, this task is code-only.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by direct reads: `usage/infrastructure/orm.py:UsageRecordRow` (tags column landed at line 124, JSONB NOT NULL server_default `'{}'::jsonb` — confirms R1's "rows predating the tags column read as `{}`" claim, since Postgres backfills NOT NULL server_default columns on ALTER TABLE), `tenants/domain/authz.py:Permission`/`ROLE_PERMISSIONS` (lines 55-136), `core/error_catalog.py` (lines 978-992), `main.py` include_router block (line 1373), alembic chain resolves single-head via `uv run alembic heads` → `0b5527920450 (head)`.
+- [x] anchor that moved since Ground SHA: the migration's `down_revision` is `d3f7a9c1b5e8` (credit_ledger) in the CURRENT integration tree, not `fddae7074590` (cost_attribution_tags) as the BUILD commit message states — this is the expected effect of the wave-1 merge re-parenting the chain (credits-ledger landed between this task's own build and the integration merge); `uv run alembic heads` confirms a single linear head, so the chain is consistent, not broken. Named here per the disclosure, not left silent.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (add-verify, billing-precision-engineer / financial-auditor stance) · adversarially checked: (1) wrote 4 independent repro tests not authored by the build agent — order-independence of generation across two tenants seeded in reversed row order, a HALF_UP-vs-banker's-rounding discriminating boundary (0.125), an evidence-predicate exactness probe with an added out-of-period negative control, and a PDF-renderer crash probe against RTL/huge/control-byte tag values — all 4 pass against the real implementation, not a fixture; (2) confirmed the two sanctioned manifest edits (`EXPECTED_TABLES`, guardrails-core table-list) are purely additive membership-set entries mirroring ~15 prior tasks' identical pattern in the same files — not a weakened assertion; (3) confirmed the real migration DDL (not just the test-local trigger fixture) is exercised by `tests/migrations/`'s up/down/parity run, which actually executes the trigger-creation `op.execute()` calls — the functional UPDATE/DELETE-raises behavior is still only asserted via the fixture-copy (same known gap as the `audit_events` precedent, not unique to this task); (4) read every assertion in `test_api.py`/`test_generation.py` — none are vacuous (`assert True`, unchecked exception swallowing, or fixture-echo asserts); every dollar-amount assertion compares against an independently hand-computed expected `Decimal`.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (add-verify)
+1. Security: CLEAR — RBAC matrix matches §3 exactly and is test-confirmed both directions (403/200); cross-tenant reads are byte-identical 404s (list/detail/evidence); zero raw-SQL string interpolation; PDF renderer does not crash on adversarial tag content; the one latent gap — `InvoiceRepository.record_correction`/`record_invoice_correction` take a bare `invoice_id` with NO tenant-ownership check baked into the repository method itself — is currently unreachable from any HTTP surface in v1 (zero non-test callers), so it is not a live vulnerability today. Flagged as a forward-looking guardrail, not a HARD-STOP: whichever future task wires an admin correction-issuance endpoint MUST add an explicit tenant-ownership check at the call site before invoking this writer.
+2. Concurrency: RESIDUE — the M13 race test is genuinely solid (ON CONFLICT DO NOTHING, exactly one winner, no unhandled exception). Separately, under the TIMING/clock-handling lens the dispatch asked me to probe: `eligible_period_start` only ever computes "the immediately-prior calendar month relative to `now`" — confirmed by direct unit probe (`eligible_period_start(now=…)`) that if the background loop is down across MORE THAN ONE calendar-month boundary (e.g. down June through September), `sweep_once` will generate August's invoice on resume but NEVER June's or July's — no backfill, no error, no log distinguishing "already issued" from "permanently skipped." This does not violate any §1 Must (M10 is about a sweep never skipping a TENANT within one run, not about historical backfill across missed periods) and is consistent with the generator's own documented "most recently completed month, every tick" design — but it is a real gap against the §1 After-section's own promise ("not a gap indistinguishable from a bug") under an extreme (>1 month continuous) outage. Non-blocking (requires an extreme, ops-visible outage to trigger; not present in any frozen scenario) — recorded as a spec delta for OBSERVE, not a build defect.
+3. Architecture: CLEAR — `billing/` context layering (domain → application → infrastructure → api) matches CONVENTIONS.md and the `audit/` precedent; `InvoiceRepository` correctly stays read-only against `usage_records` (no reach into `usage/`'s application layer, no second price path — confirmed no `resolve_markup_pct` import anywhere under `billing/`); no update/delete surface exposed for the two immutable tables.
+Verdict: PASS
+Residue: one non-blocking completeness gap (month-close sweep does not backfill periods skipped by >1 month of continuous downtime) + one forward-looking security guardrail note (correction-writer needs a tenant-ownership check added when a real caller is wired) — both fed to §7 as spec deltas, neither blocks this gate.
+Binding: advisory — sensitivity: data (not mechanical)
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reported: no — pending the orchestrator rendering the gate report/banner before this outcome is recorded
+Outcome: PASS
+Reviewed by: add-verify (billing-precision-engineer / financial-auditor stance) · date: 2026-07-12
 
 ---
 
@@ -508,11 +493,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose **Generate-then-auto-issue after a short stabilization window**; rejected Generate-on-demand via an explicit admin "close month" action (rejected — no monetization-core task exposes an invoice-issuance admin UI action in wave-1; the milestone's exit criterion implies invoices simply exist without a manual trigger) · Always-current running DRAFT visible throughout the month, freezing only at the boundary (adopted as a REFINEMENT of the chosen framing, not a separate one — the draft is queryable mid-month, not materialized atomically).
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned (all 8 batches executed in order; no deviation).
+- [AI] verify — gate PASS (reviewed by add-verify (billing-precision-engineer / financial-auditor stance))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

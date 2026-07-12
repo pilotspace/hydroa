@@ -701,14 +701,14 @@
     },
     "invoice-generation": {
       "title": "Immutable monthly invoices from usage_records with per-line usage evidence",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "monetization-core",
       "depends_on": [
         "cost-attribution-tags"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T11:03:20+00:00",
+      "updated": "2026-07-12T11:13:14+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T08:00:31+00:00",
@@ -741,7 +741,12 @@
           "apps/gateway/tests/invoice_generation/",
           "apps/gateway/tests/migrations/test_migrations.py"
         ],
-        "snapshot_md5": "3a688a737cc6757f06af810d84057529"
+        "snapshot_md5": "e98c6ea0adaf1c27f13c3c11d8928543"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "credits-ledger": {
@@ -934,7 +939,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T11:03:20+00:00",
+  "updated": "2026-07-12T11:13:14+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
