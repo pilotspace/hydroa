@@ -678,12 +678,12 @@
     },
     "region-catalog-dimension": {
       "title": "Region as a deployment dimension (us/eu/global) + EU catalog entries",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T14:46:20+00:00",
-      "updated": "2026-07-12T15:59:41+00:00",
+      "updated": "2026-07-12T16:15:09+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T15:01:04+00:00",
@@ -705,6 +705,21 @@
       "scope": {
         "declared": [],
         "snapshot_md5": "5c35ccb763de6396c00ceb92881b863f"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-12T16:14:48+00:00",
+            "reason": "scope_violation: task 'region-catalog-dimension' touched outside its declared \u00a75 Scope \u2014 tmp/m2-wave-build-context.md (1 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "residency-policy": {
@@ -878,7 +893,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T15:59:41+00:00",
+  "updated": "2026-07-12T16:15:09+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1933,6 +1948,18 @@
       "id": 17,
       "text": "seat-billing delta F5 (cutover caveat): pre-migration deactivate->reactivate cycles invisible to backfill \u2014 first post-cutover invoice can over-bill (5-day demo in probes). Tin: accept as documented Non-goal or manual reconciliation pass",
       "created": "2026-07-12T13:44:13+00:00",
+      "status": "open"
+    },
+    {
+      "id": 18,
+      "text": "region-catalog residue: add coded id-namespace guard \u2014 dynamic-sourced CatalogModel.id must never collide with static-seed prefixes (us./eu./apac.); safety today rests on incidental OpenRouter slash-format + composite processing order (verify 2026-07-12)",
+      "created": "2026-07-12T16:14:48+00:00",
+      "status": "open"
+    },
+    {
+      "id": 19,
+      "text": "region-catalog docs: \u00a73 DDL prose still shows 3-value VALID_REGIONS literal; DECIDED addendum (4-value incl ap) is authoritative \u2014 fold to one canonical statement next contract touch",
+      "created": "2026-07-12T16:14:48+00:00",
       "status": "open"
     }
   ]

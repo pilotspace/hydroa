@@ -553,3 +553,44 @@ async def test_sc13_static_seed_omitting_region_defaults_global_not_rejected(
         )
     ).one()
     assert row.region == "global", f"expected region='global'; got {row.region!r}"
+
+
+# ===========================================================================
+# Post-verify pin (2026-07-12) — conflict-update rewrites region on a genuine
+# value change for the SAME id. Closes the verify-round 🟡 residue: SC11's two
+# sync cycles varied the dynamic FEED, never the region of one id, so nothing
+# in the frozen suite proved the `_upsert_model` conflict-update `set_` clause
+# actually carries region (the verify's mutation test removed it and all 13
+# tests stayed green). Additive only — no frozen §4 test touched.
+# ===========================================================================
+
+
+async def test_pin_resync_rewrites_region_on_value_change(db_session: AsyncSession) -> None:
+    """Same catalog id synced with region='us' then region='eu' → row flips to 'eu'.
+
+    Pins the builder's disclosed judgment call (region written on BOTH insert and
+    conflict-update, unlike input_modalities' frozen no-clobber): a region change
+    upstream must be re-affirmed on the next sync cycle, never silently stale.
+    """
+    repo = SqlAlchemyCatalogRepository(db_session)
+    base = {
+        "id": "us.anthropic.claude-pin-resync-v1:0",
+        "name": "Pin Resync",
+        "context_length": 200_000,
+        "prompt_usd_per_token": 3e-6,
+        "completion_usd_per_token": 15e-6,
+        "provider": "bedrock",
+    }
+
+    await repo.sync_catalog([CatalogModel(**base, region="us")])
+    await repo.sync_catalog([CatalogModel(**base, region="eu")])
+
+    row = (
+        await db_session.execute(
+            text("SELECT region FROM models WHERE id = :mid"), {"mid": base["id"]}
+        )
+    ).one()
+    assert row.region == "eu", (
+        f"conflict-update must rewrite region on re-sync; got {row.region!r} (stale 'us' means"
+        " the set_ clause silently dropped region)"
+    )
