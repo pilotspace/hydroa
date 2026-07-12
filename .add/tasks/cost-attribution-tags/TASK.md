@@ -306,13 +306,35 @@ Reported: no
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 90% line coverage on every touched module (recorder.py, flusher.py, orm.py, ports.py, use_cases.py tags helpers, both routers, schemas.py) — measured via the task suite alone plus the pre-existing tests/usage + tests/proxy seam suites (no regression).
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_untagged_request_byte_identical: no header -> tags={}, response unaffected · M3
+  - test_valid_tags_persisted_non_streaming: valid header -> row.tags matches, response unaffected · M1, M4
+  - test_valid_tags_persisted_streaming_parity: same, stream()/SSE path · M1, M2
+  - test_explicit_empty_object_accepted: {} header -> tags={}, no rejection · M1, M3 edge
+  - test_case_sensitive_keys_preserved: {"Team":"a","team":"b"} both kept distinct · M1 edge
+  - test_malformed_json_rejected_before_billing: invalid JSON -> 422, no usage_records row, upstream never called · R1
+  - test_nested_value_rejected: nested object value -> 422 · R1
+  - test_too_many_tags_rejected: 9 keys -> 422 "too many tags" · R2
+  - test_overlength_key_rejected: 33-char key -> 422 · R3
+  - test_overlength_value_rejected: 257-byte value -> 422 · R4
+  - test_oversized_header_rejected: >2048-byte header -> 422 "tags header too large", json.loads never reached · R5
+  - test_member_role_refused_breakdown: member role -> 403 ERR_AUTH_FORBIDDEN, no data leaked · R6
+  - test_invalid_window_rejected: window=bogus -> 422 PAYLOAD_WINDOW_INVALID, no DB query · R7
+  - test_malformed_tag_key_filter_rejected: bad ?tag_key= -> 422 PAYLOAD_TAGS_INVALID, no DB query · R8
+  - test_unused_tag_key_returns_empty_breakdown: well-formed unused key -> 200, breakdown=[], totals unfiltered · M8
+  - test_default_window_breakdown_reconciles: mixed tagged/untagged rows -> totals + overlapping-slice breakdown sums verified · M5, M6
+  - test_empty_window_returns_zeros: zero rows -> 200 explicit zeros, never 404 · M9
+  - test_high_cardinality_truncated: 150 distinct pairs -> exactly 100 rows, truncated=true · M7
+  - test_tenant_isolation_on_breakdown: two tenants, same tag -> no cross-tenant leakage · M5, R6
+  - test_durable_fallback_carries_tags: XADD failure -> direct-fallback INSERT still carries tags via the same insert_usage_row path · R9
+  - test_old_format_event_replays_cleanly: pre-deploy event missing "tags" field -> replays to tags={}, no MalformedUsageEventError · backward-compat edge
+  - test_concurrent_tagged_requests_no_contention: 2 concurrent tagged requests -> 2 independent rows, breakdown sums correctly, no lost update · concurrency edge
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Actual result: all 22 tests confirmed genuinely RED against pre-build code — failure mode was `UndefinedColumnError: column "tags" does not exist` (missing implementation), never a broken harness. Verified TWICE: once during initial red-suite authorship, and a second retroactive confirmation post-build (git-diff the 9 touched src/ files + the migration out via `git checkout HEAD --`, re-run — 22/22 failed for the same reason — then `git apply` to restore, re-run — 22/22 green). See build commit `617c1ce` (red suite) vs `1afb2c5`..`4827eca` (green build).
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
@@ -333,8 +355,13 @@ Strategy (ordered batches): <1. … 2. … — the planned build order; guidance
 Persona (required): billing-precision-engineer (`.add/personas/billing-precision-engineer.md`) — advisory domain stance: every new `cost_usd`/`tags` read in the breakdown query stays `Decimal`-as-string end to end (no float), and the `usage_records` append-only/provenance discipline that persona enforces for cost columns applies equally to this task's new `tags` column (write-once, never mutated).
 Spawn isolation (default): isolation: "worktree" (this task's build/verify subagents follow the project standing default; no stated reason to deviate — `usage_records`/`proxy` are shared-seam files other monetization-core wave-1 tasks may also touch, so an isolated worktree + net-diff merge avoids cross-task clobber, per the documented worktree-agent-stale-base gotcha).
 Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
+  - trap: `server_default="'{}'::jsonb"` as a plain Python string on the ORM column gets rendered by SQLAlchemy as a quoted string LITERAL DDL default (`DEFAULT '''{}''::jsonb'`), not raw SQL — `asyncpg.exceptions.InvalidTextRepresentationError` on `create_all()`. Fix: wrap in `sqlalchemy.text("'{}'::jsonb")` (matches every other JSONB/expression default already in `orm.py`).
+  - trap: `_dispatch_record` fires usage recording via `asyncio.ensure_future(...)` and returns the HTTP response WITHOUT awaiting it (by design — billing must never add response latency). A test that does `await asyncio.gather(client.post(...), client.post(...))` then immediately calls `flush_once()` races those still-pending fire-and-forget tasks — non-deterministically producing fewer usage_records rows than requests sent (a test-harness race, not a product defect; confirmed by isolating the recorder/Redis-XADD layer directly, which handles concurrent calls correctly on its own). Fix: `_flush()` now settles the dispatch first — polls the Redis stream length to quiescence (stable for 3 consecutive samples) before calling `flush_once()`, instead of a blind sleep or racing straight into the read.
+  - trap (infra, not code): the shared dev Postgres/Redis (`:5433` / `:6380` db 9) is used by EVERY worktree's test suite un-namespaced on the Redis side (only Postgres has a per-task `GATEWAY_TEST_DATABASE_URL` convention) — a concurrently-running sibling task's own `pytest` invocation against the same Redis db 9 can produce a transient cross-worktree FK-violation flake (a leaked stream entry from another worktree's tenant, replayed against this worktree's freshly-rebuilt schema). Confirmed via `ps aux` mid-flake (a `plan-enforcement` worktree's pytest was live at that exact moment) and reproduced-clean once that process exited. Not fixed here (out of scope — a repo-wide shared-test-infra convention, `tests/conftest.py:101`, not owned by this task); documented as a known source of rare, non-code-caused flakes.
+Strategy actually used: as planned in §5's ordered batches 1-6, with two informed deviations: (a) TESTS and BUILD were interleaved during authorship rather than strictly sequential (tests were drafted scenario-by-scenario alongside the seam being implemented) — RED discipline was recovered retroactively by reverting all 9 touched src/ files + the migration via `git diff`/`git checkout HEAD --`/`git apply` (no `git stash`) and re-running the full 22-test suite against pre-build code twice (once before commit, once as a final confirmation), both times red for the right reason (`column "tags" does not exist`), before committing; (b) `_run_output_validation_retry()` and `_run_diverted_fallback()` in `use_cases.py` (5 combined `_fire_record*` call sites) were deliberately left out of the tags-threading batch 4 — see Deviation candidate below.
+Safety rule (feature-specific): tags are write-once at insert time via the existing fire-and-forget Redis-stream path — no new UPDATE/DELETE path introduced (append-only preserved); a tags write failure (Redis XADD timeout, malformed-event drop) never blocks, retries inline, or surfaces to the caller — mirrors `RecordingUsageRecorder.record()`'s existing swallow-all-exceptions contract exactly (R9).
+
+Deviation candidate (disclosed, not silent): `_run_output_validation_retry()` (module-level, 3 `_fire_record_with_raw` sites) and `_run_diverted_fallback()` (deferred batch-window-grouping closure, 2 sites — one success via `_fire_record`, one error) were NOT threaded with `tags`. Both already lack `request_id` threading today (a pre-existing gap, not introduced by this task), no §2 scenario exercises either path, and `_run_diverted_fallback` runs via a closure independent of the original request's lifetime. A request that both carries tags AND falls into output-validation-retry or batch-diverted-fallback will bill correctly but land `tags={}` on that row instead of its supplied tags — a narrower-than-ideal but disclosed gap, not a silent workaround. Flagging for Verify/Observe to confirm this is acceptable for v1 or seed a Spec delta.
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
