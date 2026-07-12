@@ -430,54 +430,98 @@ Verification: `tests/credits_ledger/test_verify_adversarial.py` copied from the 
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+Persona: `appsec-engineer` (payments-adversary stance layered on — sensitivity=security; blended with `billing-precision-engineer`'s Decimal/provenance discipline for the ledger-arithmetic checks). Severity tags: 🔴 blocker · 🟡 concern · 💭 note.
 
-### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
-> OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] all tests pass — frozen 21/21 green (`tests/credits_ledger/test_credits_ledger.py`, real Postgres :5433/`gateway_test_verify_credits`, real Redis :6380/9, `-p no:randomly`, 3 clean consecutive runs post-cleanup). See "Flake note" below for 2 unexplained early-session failures, since isolated to unrelated causes.
+- [x] coverage did not decrease — no prior baseline for this NEW module; **but the module's OWN declared bar (§4: "90% line coverage on gateway/credits/\*\*") is NOT met**: measured 271/320 = **84.7%** (frozen suite alone and combined with the verify adversarial suite — adversarial tests hit already-covered lines, no material delta). Gaps: `api/router.py` `_parse_topup_amount`'s `InvalidOperation` branch, `_encode_history_cursor`/`_decode_history_cursor` (pagination is **completely untested** — `next_cursor` is always `None` in every existing test, so cursor round-trip has never been exercised, and every proxied request writes ≥2 ledger rows so real tenants will paginate within days), `_parse_history_limit`'s `ValueError` branch; `application/recovery_sweep.py`'s `run_forever` loop + per-row/per-cycle exception handlers; `domain/ports.py`'s `PassthroughCreditGuard` settle/release bodies. 🟡 concern (pagination gap) · 💭 note (defensive-path gaps).
+- [x] no test or contract was altered during build — confirmed via `git log`/`git diff` on the integrated tree; §5's own disclosure matches (settle-sign + RULE/ON-CONFLICT fixes in `src/`, never in a test or §3).
+- [x] the green was EARNED — see Refute-read verdict below: **EARNED** for the mutated paths, with material findings from adversarial testing beyond the frozen suite (see Findings 1–3).
+- [ ] concurrency / timing of the risky operation is safe — **NOT SAFE**. Two confirmed real races (Findings 1, 2 below) plus a confirmed structural gap (Finding 3) — see Advisor 3-lens.
+- [x] no exposed secrets, injection openings, or unexpected dependencies — all credits-module SQL uses parameterized `text()` (grep for `f"..."` feeding SELECT/INSERT/UPDATE/DELETE: zero hits); no new external dependency; `ProblemError` detail strings only ever include the caller's OWN tenant/balance figures (no cross-tenant leak).
+- [x] layering & dependencies follow CONVENTIONS.md — `gateway/credits/` mirrors the `budgets` module's domain/application/infrastructure/api layering exactly; zero framework imports in `domain/ports.py` (checked); the ContextVar bridge (`_credit_hold_ctx`) is a documented, deliberate exception to avoid threading `credit_guard` through ~25 call sites — verified safe under concurrency (Finding 4 probe, PASS).
+- [ ] a person reviewed and approved the change — pending Tin (this HARD-STOP gate).
 
-### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+### Build expectations — what "correct" looks like
+- [x] a tenant's balance is provably never driven below `-grace_usd` by ANY volume of concurrent ADMISSIONS — confirmed by `test_verify_ten_way_concurrent_holds_never_exceed_grace_bound` (10-way `asyncio.gather` against balance sized for 2 holds; exactly 2 admit, balance lands exactly at 0.00) and the frozen `test_concurrent_exhaustion_race_closed_by_row_lock`.
+- [x] a request that never reaches the provider is never charged — confirmed by frozen `test_release_on_governance_rejection_after_hold` (RPM-rejected-after-hold → full release, upstream never called).
+- [ ] every hold that WAS finalized reflects the real metered cost, exactly once — **FALSIFIED**. Chat-pipeline settle is precise (verified: `test_verify_contextvar_hold_never_crosses_concurrent_requests`, exact-Decimal, markup-inclusive). Non-chat (images/audio/embeddings) settle **never fires** — Finding 3. A hold can also be double-finalized under a real race — Finding 1.
+- [x] a superadmin-only action stays superadmin-only, and a tenant read never crosses tenants — confirmed: `Depends(require_superadmin)` (real dependency injection, not a bare-fn call — the exact foot-gun class checked); `GET /admin/credits/{balance,history}` never accept a `tenant_id` param at all (stronger than the byte-identical-404 pattern — there is no query surface to attempt cross-tenant access through).
 
-### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+### Deep checks
+- [x] WIRING (code) — `PostgresCreditGuard`/`PassthroughCreditGuard` referenced from `main.py` (`app.state.credit_guard`, kill-switch) and both choke points (`use_cases.py:1465`, `governance.py:158`); `CreditHoldRecoverySweeper` referenced from `main.py`'s lifespan (default-ON, 60s interval) and directly exercised in `test_verify_nonchat_success_never_settles_only_sweep_fully_refunds`; `credits_platform_router`/`credits_router` mounted at `main.py:1331-1332`. All new symbols traced to a live call site — no orphans found.
+- [x] DEAD-CODE (code) — none found; `record_with_outcome` is a genuinely new method (not a widened `record()`), confirmed both callers (`_dispatch_record`'s duck-typed path) and the frozen-test rationale (`test_redis_xadd_failure_falls_back_to_postgres` asserts `record()` still returns `None`).
+- [ ] SEMANTIC — n/a (code task).
 
-### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+### Live-verify evidence
+- [x] every symbol §3 CONTRACT cites resolves in the current tree — `CreditGuard`/`PassthroughCreditGuard` (`gateway/credits/domain/ports.py`), `PostgresCreditGuard` (`infrastructure/postgres_guard.py`), the 3 API routes (`api/router.py`), `credit_ledger`/`tenant_credit_balances` (migration `d3f7a9c1b5e8`, parented on `f70309062df0` — re-parented since Ground SHA `43ad492`, per commit `ff4d232`; confirmed via `alembic upgrade head` clean on a fresh DB). No stale/moved anchor found.
+- [x] `ON CONFLICT` idiom §0/§3 cited as "reuse verbatim" from `usage_records`' `insert_usage_row` was in fact DROPPED (RULE-vs-ON-CONFLICT engine conflict, §5 disclosure #2) — confirmed genuinely necessary (reproduced the exact Postgres error independently) and confirmed behavior-preserving for money-safety **only on the admission side** (every `check_and_hold`/`settle`/`release` row mints a fresh `uuid4()` — verified no `id`-collision risk). It is NOT a safe substitute for the idempotency-key-conflict check itself, which needed its own (imperfect) discipline — see Finding 2.
+
+### Refute-read verdict
+Verdict: **EARNED** (for the paths mutated)
+By: self · adversarially checked: (1) neutralized the `check_and_hold` exhaustion guard (`if False and balance - hold < -grace`) → exactly the 3 exhaustion-dependent tests went red (`test_concurrent_exhaustion_race_closed_by_row_lock`, `test_admission_rejected_at_zero_balance`, `test_admission_wired_at_nonchat_choke_point`), 18 unaffected tests stayed green, file reverted byte-identical (`diff` confirmed); (2) re-inverted the settle sign (reintroducing the build's OWN disclosed defect) → exactly the 3 settle-arithmetic-dependent tests went red (`test_settle_reconciles_hold_to_actual_cost`, `test_settle_where_actual_cost_exceeds_hold_estimate`, `test_balance_reconstructs_from_ledger_sum`), reverted cleanly. The suite is not overfit to fixtures or vacuously asserting — it has real teeth for the paths it covers. **However** the suite's scope itself has a real hole: it never exercises settle/release concurrency (Finding 1), the cross-tenant idempotency race (Finding 2), or non-chat settle at all (Finding 3) — "earned" is not "complete."
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (appsec-engineer persona, blended payments-adversary stance)
+
+1. **Security: HARD-STOP** — 🔴 Finding 1: `settle()`/`release()` in `gateway/credits/infrastructure/postgres_guard.py` read "is this hold open" via `find_open_hold()` **before** acquiring the tenant balance row lock (`_settle_internal`/`_release_internal`, lines ~136-163/175-194). Two concurrent finalizers for the SAME `(tenant_id, request_id)` — e.g. the M6 sweep racing a slow-but-legitimate completion, or a duplicate settle/release fire — can BOTH observe the hold as open and BOTH post a ledger row: a confirmed, deterministic double-credit (or double-debit). Repro: `tests/credits_ledger/test_verify_adversarial.py::test_verify_concurrent_settle_and_release_double_post_same_hold` — 2 rows written for 1 hold, 100% reproducible, no forced barrier needed. This directly violates frozen M4/M5's "exactly one SETTLE or RELEASE" invariant and is exactly the double-spend class this task exists to close, just moved from admission (correctly closed) to finalization (not closed). A tenant (or an unlucky timing coincidence, no attacker skill required beyond a long-running request near `hold_timeout_s`) can fabricate free credits.
+   - 🔴 Finding 3 (also security-relevant: defeats the fail-closed spend gate for 3 of 4 wired surfaces): `NonChatGovernance.authorize` (images/audio/embeddings) never sets `_credit_hold_ctx` (grep confirms zero references outside `use_cases.py`; `_dispatch_record`'s 3 call sites are all chat-only). A successful non-chat request settles **nothing** — the hold sits until the M6 sweep blindly `release()`s the FULL `hold_estimate_usd` after `hold_timeout_s`, **regardless of real metered cost**. Repro: `test_verify_nonchat_success_never_settles_only_sweep_fully_refunds` — a $10.01-real-cost embeddings call ends with the tenant's balance fully restored to pre-request. This is not "holds pile up until sweep" (§0 disclosure's framing) — it is a **permanent structural gap**: every non-chat request, for the lifetime of the deployment, is transiently held then always fully refunded, never truly debited. `credit_ledger` for a non-chat-only tenant will never reflect real spend. M4 ("on completion... posts a SETTLE entry") is not scoped to chat-only anywhere in §1/§2 — this is a contract-coverage gap in the build, not a sanctioned scope reduction.
+   - 🟡 Finding 2 (concern, not HARD-STOP — requires an already-privileged superadmin caller): `topup()`'s idempotency-key conflict check (R4) does a GLOBAL lookup (`find_topup_by_idempotency_key`, unscoped by tenant) but is only serialized by the CALLER's own tenant balance-row lock. Two concurrent topups for the SAME key but DIFFERENT tenants lock disjoint rows, so neither blocks the other — both can commit, silently violating R4 under genuine concurrency (confirmed via a forced `asyncio.Barrier` rendezvous — natural `asyncio.gather` alone did NOT reproduce it reliably, ~10% hit rate, because the two coroutines usually resolve close-to-sequentially on a local DB; the barrier removes that scheduling luck and makes it deterministic). Repro: `test_verify_concurrent_topup_same_key_different_tenants_bypasses_r4`. Real money duplicated across two tenants from what should be a single idempotent operator action — an audit-integrity/financial-correctness bug, not an attacker-facing exploit (R5 already gates the endpoint to superadmin).
+2. **Concurrency: (superseded by the Security HARD-STOP above — same findings)**. Positive evidence: the ADMISSION-side row lock (M2/M3) is genuinely correct — verified beyond the frozen suite via a 10-way concurrent burst (`test_verify_ten_way_concurrent_holds_never_exceed_grace_bound`) and a cross-pipeline race (`test_verify_cross_pipeline_concurrent_admission_closed_by_row_lock`, both PASS) — and the `_credit_hold_ctx` ContextVar correctly isolates two concurrent different-tenant requests on one event loop (`test_verify_contextvar_hold_never_crosses_concurrent_requests`, PASS, exact-Decimal cost never crossed). The concurrency defect is narrowly scoped to the settle/release finalization path, not the whole module.
+3. **Architecture: (leave blank per HARD-STOP rule — not reached; no architecture-layer concerns were seen in the code read)**.
+
+Verdict: **HARD-STOP**
+Residue: 2 confirmed 🔴 defects (settle/release double-finalize race; non-chat settle never wired) + 1 confirmed 🟡 concern (cross-tenant idempotency race under forced concurrency) + coverage-target miss (84.7% vs 90% declared bar, pagination path fully untested).
+
+**Worst-case negative-balance bound (derived, vs. the frozen contract's implicit claim):**
+- **Admission-concurrency bound: CLOSED and verified.** For any volume of concurrent `check_and_hold` calls against one tenant, balance is provably never driven below `-grace_usd` — the row lock serializes every admission decision. Confirmed at 2-way and 10-way concurrency.
+- **Settle-time bound: NOT bounded by hold_estimate_usd, BY DESIGN, and this is a real gap in the dispatch's framing, not just a residue.** M4 explicitly allows a single settle to push balance arbitrarily negative when `actual_cost_usd > hold_estimate_usd` ("the request that already completed is NOT retroactively blocked") — so `hold_estimate_usd` bounds ADMISSION concurrency only, never a single request's real-dollar exposure. A single expensive request (large completion, big batch, expensive image model) can blow through any grace floor in one settle, by contract design — the spend gate prevents runaway NEW admissions, not runaway COST on an already-admitted request. **Finding 1 compounds this**: since settle is not idempotency-protected against a racing duplicate/sweep finalizer, that same uncapped overage can be double-posted, worsening an already-uncapped exposure. Recommend flagging this bound (not just "-(grace + N×hold)") explicitly to Tin — it is a real, if partially-accepted, dollar-exposure ceiling that the contract text does not state numerically anywhere.
+
+**Flake note (💭, not gating):** 2 early-session `uv run pytest tests/credits_ledger/` runs (before any verify-side code changes) intermittently failed on different frozen tests (`test_release_on_governance_rejection_after_hold` once, `test_credit_gate_composes_after_budget_ladder` once) out of ~10 early attempts; a THIRD later failure (`plans.model_allowlist does not exist`) was confirmed **self-inflicted** — caused by running an `alembic downgrade`/`upgrade` round-trip against the SAME live test DB while a background pytest loop was still hammering it (a genuine procedural mistake on my part, not a product defect — reproduced the exact DDL-vs-DML lock contention explanation). After isolating the migration check from the test loop, ~40 subsequent clean runs of the frozen suite were 100% green. The 2 unexplained early flakes were never captured with a full traceback and could not be reproduced afterward; low confidence, low frequency (<5%), plausibly this shared `:5433`/`:6380` Postgres/Redis instance also serving other concurrent worktrees in this multi-agent session (per MEMORY.md context). Recommend CI monitoring, not a blocking finding.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: yes — this §6 write-up is the gate report.
+Outcome: **HARD-STOP**
+If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (security finding — never RISK-ACCEPTED)
+Reviewed by: Tin Dang (pending) · date: 2026-07-12
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 
 ---
+
+### Post-heal re-verify addendum (2026-07-12) — supersedes the two open ❌ above
+One heal round (Tin-authorized "Heal all 3 now"), branch `heal/credits-ledger`, merged `90890e8`:
+- Finding 1 🔴 double-finalize race — FIXED `ad66aee`: `_settle_internal`/`_release_internal` now
+  lock the balance row FIRST, then re-check hold-open inside the lock (lock-then-decide, same
+  discipline as `check_and_hold`).
+- Finding 2 🔴 non-chat settle never wired — FIXED `a82d21c`: `NonChatGovernance.authorize` now
+  publishes `_credit_hold_ctx` after a successful hold; a real settle row posts for
+  images/audio/embeddings and the M6 sweep is a no-op on settled holds. (Disclosed test edit: the
+  verify-authored repro's assertions updated from documents-the-bug to confirms-the-fix — the only
+  test touched, non-frozen file.)
+- Finding 3 🟡 cross-tenant top-up idempotency race — FIXED `cc20170`, structurally: additive GLOBAL
+  partial unique index `credit_ledger_idempotency_key_global_uq` (migration `1891020e487c`, parented
+  on `0b5527920450`; frozen per-tenant index untouched) + INSERT-first conflict detection in
+  `topup()`. First-choice advisory-lock fix was abandoned — it deadlocked against the repro's
+  barrier-forced interleaving; constraint-based uniqueness is interleaving-proof.
+- Evidence (integrated tree, `feat/monetization-core` post-merge, real Postgres :5433 db
+  `gateway_test_reverify_credits`): `tests/credits_ledger` 27/27 (frozen 21 + adversarial 6, repros
+  now GREEN) · `tests/migrations` 6/6 (incl. autogenerate-empty-diff with the new index) ·
+  `tests/proxy` 11 · `tests/budgets` 9 — 53/53. Heal worktree evidence: 103/103 incl. non-chat seam
+  suites (43) + usage (13); pyright 0 / ruff clean on touched files.
+- §6 checklist deltas: "concurrency / timing safe" ❌→✅ (both races closed, repros green);
+  build-expectation "every finalized hold reflects real metered cost exactly once" FALSIFIED→✅
+  (chat + non-chat both settle exactly once; double-finalize closed).
+- Residue REMAINING for the gate (unchanged by heal): 🟡 module coverage 84.7% vs §4's declared 90%
+  bar — history-cursor pagination completely untested (`_encode/_decode_history_cursor`,
+  `next_cursor` never non-None in any test) + defensive branches (💭). No security residue.
+- Residue CLOSED (2026-07-12, orchestrator, additive): new pin suite
+  `tests/credits_ledger/test_history_pagination.py` (7 tests) — keyset cursor pages 2/2/1 over 5
+  rows with no overlap/no gap, codec round-trip exact (µs + tz + re-padding), malformed
+  cursor/limit → 422 ERR_PAYLOAD_INVALID, non-numeric top-up amount → 422 via the InvalidOperation
+  arm, PassthroughCreditGuard finalizer no-ops. Module coverage now **94.5%** (344/364) vs the 90%
+  §4 bar — met. Full credits suite 34/34 green; ruff + pyright clean. Remaining uncovered:
+  `recovery_sweep.run_forever` loop + per-row exception arms only (💭 defensive, accepted).
+
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 

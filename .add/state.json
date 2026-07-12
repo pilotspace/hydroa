@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "invoice-generation",
+  "active_task": "credits-ledger",
   "active_milestone": "monetization-core",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -603,7 +603,7 @@
     },
     "plan-seat-cap": {
       "title": "Plan seat cap enforcement",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "platform-access-plan",
       "depends_on": [
@@ -611,7 +611,17 @@
         "member-invite-acceptance"
       ],
       "created": "2026-07-05T02:34:35+00:00",
-      "updated": "2026-07-05T02:34:35+00:00"
+      "updated": "2026-07-12T11:43:34+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-12T11:43:43+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "declare-components-registry": {
       "title": "Declare the components registry for gateway + dashboard",
@@ -820,7 +830,7 @@
     },
     "seat-billing": {
       "title": "Per-seat plan pricing with proration invoice lines",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "monetization-core",
       "depends_on": [
@@ -828,22 +838,42 @@
         "invoice-generation"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T07:40:03+00:00"
+      "updated": "2026-07-12T11:43:33+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-12T11:43:43+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "margin-dashboard": {
       "title": "Operator margin dashboard (provider cost vs billed vs invoiced)",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "monetization-core",
       "depends_on": [
         "invoice-generation"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T07:40:03+00:00"
+      "updated": "2026-07-12T11:43:33+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-12T11:43:43+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "billing-ui": {
       "title": "Tenant Billing console (Invoices/Credits/Plan & seats) \u2014 Aurora financial-document idiom",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "monetization-core",
       "depends_on": [
@@ -852,7 +882,17 @@
         "plan-enforcement"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T07:40:03+00:00"
+      "updated": "2026-07-12T11:43:34+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-12T11:43:43+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     }
   },
   "milestones": {
@@ -939,7 +979,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T11:13:14+00:00",
+  "updated": "2026-07-12T11:48:39+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1868,14 +1908,15 @@
   ],
   "active_milestones": [
     "platform-admin-console",
-    "monetization-core"
+    "monetization-core",
+    "platform-access-plan"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "monetization-core": "invoice-generation"
+    "monetization-core": "credits-ledger"
   },
   "todos": [
     {
@@ -1906,6 +1947,12 @@
       "id": 5,
       "text": "DialogContent (components/ui/dialog.tsx) has no entrance/exit animation of its own -- only DialogOverlay fades. Every Dialog consumer (AppShell mobile nav sheet, command-palette) snaps the panel open/closed. Existing motion system (Reveal in motion.tsx + the global reduced-motion net in globals.css) already establishes the right pattern (motion-safe: opt-in, unconditional render, global reduced-motion backstop) -- extending DialogContent to match is a good small follow-up. Also worth revisiting: tenant-overview-strip's 4 tiles currently just appear as each query resolves, no progressive-reveal of their own. Raised by Tin 2026-07-06; deferred rather than touching the shared dialog.tsx primitive mid-build of command-palette.",
       "created": "2026-07-06T09:35:41+00:00",
+      "status": "open"
+    },
+    {
+      "id": 6,
+      "text": "margin-dashboard follow-on (P2, Tin approved 2026-07-12): clearly-labeled 'estimated margin (catalog list-price basis)' column \u2014 separate task, never blended with authoritative provider-cost margin",
+      "created": "2026-07-12T11:43:20+00:00",
       "status": "open"
     }
   ]

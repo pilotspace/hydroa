@@ -4,7 +4,7 @@ slug: margin-dashboard · created: 2026-07-12 · stage: production
 sensitivity: mechanical
 milestone: monetization-core
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -252,8 +252,14 @@ Scenario: empty window returns explicit zeros, not an error   # edge/boundary
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Least-sure flag surfaced at freeze: [spec] M3's "never estimate catalog-basis margin, render null + 'no cost data' instead of a fabricated figure" — the honest choice given only OpenRouter reports an authoritative provider_cost (R1/R2), but it means `margin` is `null` for the majority of usage_records rows today. Tin: confirm this framing, or direct a clearly-labeled, separately-scoped "estimated margin (catalog list-price basis)" column as a follow-on task instead.
+
+DECIDED at freeze review (2026-07-12, Tin): honest-null CONFIRMED for this task, AND the clearly-labeled
+"estimated margin (catalog list-price basis)" column is QUEUED as a separate P2 follow-on task
+(recorded via add.py todo). Open questions resolved (orchestrator as project lead, Tin offered
+override): (1) draft invoices count under `pending_invoice` status; (2) default view = all tenants;
+(3) margin-dashboard owns the platform Margin page.
 
 ```
 GET /admin/platform/margin/summary?window=&start=&end=
