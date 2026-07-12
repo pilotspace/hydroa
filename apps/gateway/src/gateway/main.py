@@ -81,6 +81,7 @@ from gateway.catalog.api.router import (
     catalog_router,
     internal_catalog_router,
 )
+from gateway.catalog.infrastructure.bedrock_seed import BEDROCK_SEED_MODELS
 from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
 from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_MODELS
 from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
@@ -866,7 +867,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Default catalog source — tests override via app.state.catalog_source
     app.state.catalog_source = CompositeCatalogSource(
         primary=OpenRouterCatalogSource(httpx.AsyncClient()),
-        static_models=MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS,
+        static_models=MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS + BEDROCK_SEED_MODELS,
     )
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()

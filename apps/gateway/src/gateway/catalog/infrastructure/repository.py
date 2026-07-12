@@ -125,6 +125,7 @@ class SqlAlchemyCatalogRepository:
                 ModelRow.name,
                 ModelRow.context_length,
                 ModelRow.input_modalities,
+                ModelRow.region,
                 snap_sub.c.prompt_usd_per_token,
                 snap_sub.c.completion_usd_per_token,
                 snap_sub.c.cached_input_usd_per_token,
@@ -185,6 +186,8 @@ class SqlAlchemyCatalogRepository:
                         if row.audio_cached_usd_per_token is not None
                         else None
                     ),
+                    # region-catalog-dimension TASK.md §3: raw passthrough, never derived.
+                    region=row.region,
                 )
             )
         return result
@@ -284,6 +287,11 @@ class SqlAlchemyCatalogRepository:
         written on INSERT only — model-input-capabilities TASK.md §2 SC5 froze the invariant that
         sync must never clobber a seeded/admin-set input_modalities value on re-sync, so it is
         deliberately absent from the conflict-update `set_`.
+
+        region-catalog-dimension TASK.md §3: `region` is written on BOTH the insert and the
+        conflict-update — unlike input_modalities, no sibling contract freezes a no-clobber
+        invariant for region; M6 states it is "set exclusively by catalog sync," so it follows
+        the modality/provider precedent (re-affirmed every sync cycle, never silently stale).
         """
         stmt = (
             pg_insert(ModelRow)
@@ -295,6 +303,7 @@ class SqlAlchemyCatalogRepository:
                 modality=model.modality,
                 provider=model.provider,
                 input_modalities=model.input_modalities,
+                region=model.region,
             )
             .on_conflict_do_update(
                 index_elements=["id"],
@@ -304,6 +313,7 @@ class SqlAlchemyCatalogRepository:
                     "active": True,
                     "modality": model.modality,
                     "provider": model.provider,
+                    "region": model.region,
                 },
             )
         )

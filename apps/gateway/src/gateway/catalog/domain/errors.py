@@ -45,3 +45,23 @@ class EmptyInputModalitiesError(CatalogError):
 
     def __init__(self, message: str = "input_modalities must be non-empty") -> None:
         super().__init__(message)
+
+
+# ---------------------------------------------------------------------------
+# Region validation error (region-catalog-dimension TASK.md §3)
+# ---------------------------------------------------------------------------
+
+
+class InvalidRegionError(CatalogError):
+    """Raised when an unknown region token is encountered.
+
+    ``code`` is the machine-readable error key. Mirrors InvalidInputModalityError's
+    pattern. Region is sync-controlled only (M6) — this is a build-time/self-review
+    guard on seed data today, not a runtime-observable API error (no live endpoint
+    accepts a raw region string from a caller).
+    """
+
+    code: str = "invalid_region"
+
+    def __init__(self, message: str = "Unknown region token") -> None:
+        super().__init__(message)
