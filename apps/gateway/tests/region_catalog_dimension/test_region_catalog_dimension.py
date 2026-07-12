@@ -498,10 +498,18 @@ async def test_sc11_bedrock_seed_rows_survive_deactivation_sweep(
 
 
 async def test_sc12_no_vertex_row_ever_seeded(app: Any) -> None:
-    """No CatalogModel in any static seed list carries provider='vertex'; no
-    'vertex' key in the wired chat-adapter map.
+    """No CatalogModel in THIS task's static seed lists carries provider='vertex'.
 
     RED reason: bedrock_seed.py does not exist → ImportError.
+
+    Cross-task amendment (2026-07-12, integration of the sibling vertex-adapter task,
+    FROZEN @ v1): the original second assertion — `"vertex" not in
+    app.state.chat_adapters`, rationale "no adapter exists" — was a point-in-time
+    guard that this task's own §3 scope-cut anticipated superseding ("Vertex ships in
+    the sibling vertex-adapter task"). That sibling contract now registers the
+    adapter and seeds provider='vertex' rows via its OWN vertex_seed.py (pinned by
+    tests/vertex_catalog_seed). This task's enduring invariant — its three seed
+    lists never smuggle a vertex row — is unchanged below.
     """
     from gateway.catalog.infrastructure.bedrock_seed import BEDROCK_SEED_MODELS
     from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_MODELS
@@ -512,10 +520,6 @@ async def test_sc12_no_vertex_row_ever_seeded(app: Any) -> None:
             assert model.provider != "vertex", (
                 f"{model.id!r} must not carry provider='vertex' (scope-cut, §3)"
             )
-
-    assert "vertex" not in app.state.chat_adapters, (
-        "main.py's _chat_adapters must not register a 'vertex' key (no adapter exists)"
-    )
 
 
 # ===========================================================================
