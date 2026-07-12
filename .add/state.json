@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "plan-seat-cap",
+  "active_task": "residency-tiers-ui",
   "active_milestone": "platform-access-plan",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -675,6 +675,51 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "region-catalog-dimension": {
+      "title": "Region as a deployment dimension (us/eu/global) + EU catalog entries",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "residency-service-tiers",
+      "depends_on": [],
+      "created": "2026-07-12T14:46:20+00:00",
+      "updated": "2026-07-12T14:46:20+00:00"
+    },
+    "residency-policy": {
+      "title": "Per-tenant fail-closed residency policy",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "residency-service-tiers",
+      "depends_on": [],
+      "created": "2026-07-12T14:46:20+00:00",
+      "updated": "2026-07-12T14:46:20+00:00"
+    },
+    "region-pricing": {
+      "title": "Region multiplier on rate cards via the shared resolver",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "residency-service-tiers",
+      "depends_on": [],
+      "created": "2026-07-12T14:46:20+00:00",
+      "updated": "2026-07-12T14:46:20+00:00"
+    },
+    "service-tiers": {
+      "title": "Priority/standard service tiers \u2014 capacity preference, overflow, tier markup",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "residency-service-tiers",
+      "depends_on": [],
+      "created": "2026-07-12T14:46:20+00:00",
+      "updated": "2026-07-12T14:46:20+00:00"
+    },
+    "residency-tiers-ui": {
+      "title": "Data & residency settings, region badges, tier selector, pricing page",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "residency-service-tiers",
+      "depends_on": [],
+      "created": "2026-07-12T14:46:21+00:00",
+      "updated": "2026-07-12T14:46:21+00:00"
     }
   },
   "milestones": {
@@ -732,7 +777,15 @@
       "stage": "mvp",
       "status": "queued",
       "created": "2026-07-12T07:38:33+00:00",
-      "updated": "2026-07-12T07:38:33+00:00"
+      "updated": "2026-07-12T14:46:20+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-12T14:46:20+00:00",
+      "confirmed_by": "tindang",
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "agent-gateway-v1": {
       "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
@@ -744,7 +797,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T14:33:08+00:00",
+  "updated": "2026-07-12T14:46:21+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1694,7 +1747,8 @@
     "platform-admin-console": "declare-components-registry",
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
-    "platform-access-plan": "plan-seat-cap"
+    "platform-access-plan": "plan-seat-cap",
+    "residency-service-tiers": "residency-tiers-ui"
   },
   "todos": [
     {
