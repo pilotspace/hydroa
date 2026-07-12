@@ -53,18 +53,23 @@ async def completions(
     # per-request circuit-breaker-wrapped upstream via its `upstream` override kwarg.
     model_router = getattr(getattr(request.app, "state", None), "model_router", None)
 
+    # Extract request headers ONCE for both branches (Cache-Control: no-cache detection
+    # AND cost-attribution-tags X-Gateway-Tags parity, TASK.md §3 M2) — computed BEFORE
+    # branching on stream_requested so streaming requests get the SAME tag-parsing seam
+    # non-streaming already had.
+    req_headers = {k.lower(): v for k, v in request.headers.items()}
+
     if stream_requested:
         gen = await use_case.stream(
             raw_key=raw_key,
             body=body,
             upstream=upstream,
             usage_recorder=usage_recorder,
+            request_headers=req_headers,
             model_router=model_router,
         )
         return StreamingResponse(gen, media_type="text/event-stream")
 
-    # Extract request headers for Cache-Control: no-cache detection
-    req_headers = {k.lower(): v for k, v in request.headers.items()}
     # Resolve cache TTL and metrics registry from app state (fail-open defaults).
     # A per-request Cache-Control: max-age may lower/raise the TTL within the cap.
     cache_ttl = getattr(getattr(request.app, "state", None), "cache_ttl_seconds", 300)

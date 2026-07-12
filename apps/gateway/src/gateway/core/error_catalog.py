@@ -312,6 +312,12 @@ PAYLOAD_CUSTOM_PATTERN_INVALID = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "Custom pattern validation failed"
 )
 
+# --- cost-attribution-tags TASK.md §3 — X-Gateway-Tags header / tag_key filter ---
+
+#: X-Gateway-Tags header malformed, or ?tag_key= filter malformed (cost-attribution-tags
+#: TASK.md §3 R1-R5, R8). Detail carries the exact validation-failure reason.
+PAYLOAD_TAGS_INVALID = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "Tags validation failed")
+
 # ---------------------------------------------------------------------------
 # Resource not found
 # ---------------------------------------------------------------------------

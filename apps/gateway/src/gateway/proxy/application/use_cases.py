@@ -24,6 +24,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -49,6 +50,7 @@ from gateway.core.error_catalog import (
     OUTPUT_VALIDATION_UNSUPPORTED_ON_STREAM,
     PAYLOAD_MESSAGES_REQUIRED,
     PAYLOAD_MODEL_REQUIRED,
+    PAYLOAD_TAGS_INVALID,
     PRESET_NOT_FOUND,
     RATE_LIMITED,
     UPSTREAM_RATE_LIMITED,
@@ -226,6 +228,68 @@ def _fire_bandwidth_reconcile(
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
 
+# cost-attribution-tags (TASK.md §3): X-Gateway-Tags bounds — a reasoned analogy from
+# tenants/api/guardrail_router.py's _MAX_CUSTOM_PATTERNS/_MAX_PATTERN_BYTES precedent,
+# Tin-confirmed at freeze for the cost-tags domain specifically.
+_TAGS_MAX_HEADER_BYTES = 2048
+_TAGS_MAX_COUNT = 8
+_TAGS_MAX_KEY_LEN = 32
+_TAGS_MAX_VALUE_BYTES = 256
+# Key format: same regex reused (mirrored, not imported — see usage/api/router.py's
+# own _TAG_KEY_RE) by the GET /admin/usage/cost-by-tag ?tag_key= filter (R8).
+TAG_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+
+
+def _parse_tags_header(raw: str | None) -> dict[str, str]:
+    """Parse + validate the X-Gateway-Tags request header (cost-attribution-tags §3).
+
+    Byte-identical fast path (M3): raw is None (header absent, the overwhelming
+    majority of traffic) -> {} immediately, no json.loads, no regex — one cheap
+    "header present?" check.
+
+    Validation order (mirrors _validate_custom_patterns's ordered V1..Vn style):
+      R5 raw header byte-length > 2048           -> PAYLOAD_TAGS_INVALID (checked
+                                                     FIRST — json.loads never runs
+                                                     on an oversized value)
+      R1 malformed JSON                          -> PAYLOAD_TAGS_INVALID
+      R1 parsed value is not a flat JSON object   -> PAYLOAD_TAGS_INVALID
+      R2 more than 8 distinct keys                -> PAYLOAD_TAGS_INVALID
+      R3 a key >32 chars or not matching TAG_KEY_RE -> PAYLOAD_TAGS_INVALID
+      R1 a value is not a string                  -> PAYLOAD_TAGS_INVALID
+      R4 a value >256 UTF-8 bytes                  -> PAYLOAD_TAGS_INVALID
+
+    Raised BEFORE governance/upstream by every caller (R1-R5) — a malformed-tags
+    request is NEVER billed. Keys/values are stored EXACTLY as sent — no case
+    folding, no normalization (an explicit Must in §1).
+    """
+    if raw is None:
+        return {}
+    if len(raw.encode("utf-8")) > _TAGS_MAX_HEADER_BYTES:
+        raise PAYLOAD_TAGS_INVALID.exc(detail="tags header too large")
+    try:
+        parsed: Any = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        raise PAYLOAD_TAGS_INVALID.exc(detail="malformed JSON in X-Gateway-Tags") from None
+    if not isinstance(parsed, dict):
+        raise PAYLOAD_TAGS_INVALID.exc(detail="X-Gateway-Tags must be a flat JSON object")
+    if len(parsed) > _TAGS_MAX_COUNT:
+        raise PAYLOAD_TAGS_INVALID.exc(detail="too many tags")
+    result: dict[str, str] = {}
+    for k, v in parsed.items():
+        if (
+            not isinstance(k, str)
+            or len(k) > _TAGS_MAX_KEY_LEN
+            or not TAG_KEY_RE.match(k)
+        ):
+            raise PAYLOAD_TAGS_INVALID.exc(detail=f"invalid tag key: {k!r}")
+        if not isinstance(v, str):
+            raise PAYLOAD_TAGS_INVALID.exc(detail=f"tag value must be a string for key {k!r}")
+        if len(v.encode("utf-8")) > _TAGS_MAX_VALUE_BYTES:
+            raise PAYLOAD_TAGS_INVALID.exc(detail=f"tag value too long for key {k!r}")
+        result[k] = v
+    return result
+
+
 def _dispatch_record(
     usage_recorder: UsageRecorder,
     *,
@@ -273,6 +337,7 @@ def _fire_record(
     status: int,
     team_id: uuid.UUID | None = None,
     request_id: uuid.UUID | None = None,
+    tags: dict[str, str] | None = None,
 ) -> None:
     """Fire-and-forget usage record; forwards team_id when set (team-governance seam)."""
     extras: UsageRecordExtras = {}
@@ -280,6 +345,8 @@ def _fire_record(
         extras["team_id"] = team_id
     if request_id is not None:
         extras["request_id"] = request_id
+    if tags:
+        extras["tags"] = tags
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -300,6 +367,7 @@ def _fire_record_cached(
     usage: dict[str, Any] | None,
     team_id: uuid.UUID | None = None,
     request_id: uuid.UUID | None = None,
+    tags: dict[str, str] | None = None,
 ) -> None:
     """Fire-and-forget usage record for a cache hit (cached=true, cost_usd=0).
 
@@ -311,6 +379,8 @@ def _fire_record_cached(
         extras["team_id"] = team_id
     if request_id is not None:
         extras["request_id"] = request_id
+    if tags:
+        extras["tags"] = tags
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -418,6 +488,7 @@ def _fire_record_with_raw(
     provider_generation_id: str | None = None,
     disconnect_estimate: bool = False,
     request_id: uuid.UUID | None = None,
+    tags: dict[str, str] | None = None,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
@@ -430,6 +501,10 @@ def _fire_record_with_raw(
 
     request_id (request-log-metering-fields TASK.md §3): correlation key forwarded
     via the SAME typed extras seam when set.
+
+    tags (cost-attribution-tags TASK.md §3): validated X-Gateway-Tags dict forwarded
+    via the SAME typed extras seam when non-empty — None/{} omits the extra entirely,
+    and the recorder itself still stamps tags="{}" on the row (byte-identical, M3).
     """
     extras: UsageRecordExtras = {}
     if team_id is not None:
@@ -452,6 +527,8 @@ def _fire_record_with_raw(
         extras["disconnect_estimate"] = True
     if request_id is not None:
         extras["request_id"] = request_id
+    if tags:
+        extras["tags"] = tags
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -1462,6 +1539,7 @@ class CompletionUseCase:
         request_headers: dict[str, str] | None,
         start_ns: int,
         request_id: uuid.UUID,
+        tags: dict[str, str] | None = None,
     ) -> tuple[tuple[int, dict[str, Any], str | None] | None, str | None]:
         """Step 4.5a/4.5b/4.5c cache-lookup region (exact → semantic → vector),
         extracted out of complete() (which already carries ~15 branches of its own,
@@ -1530,6 +1608,7 @@ class CompletionUseCase:
                     usage=cached_usage,
                     team_id=authz.team_id,
                     request_id=request_id,
+                    tags=tags,
                 )
                 # payload-capture-store §3: exact-cache-HIT capture hook —
                 # cached_body is the SAME post-mask body actually served to the
@@ -1611,6 +1690,7 @@ class CompletionUseCase:
                                 usage=sem_usage,
                                 team_id=authz.team_id,
                                 request_id=request_id,
+                                tags=tags,
                             )
                             # payload-capture-store §3: semantic-cache-HIT hook.
                             # request-log-metering-fields §3: usage=sem_usage verbatim;
@@ -1689,6 +1769,7 @@ class CompletionUseCase:
                             usage=vec_usage,
                             team_id=authz.team_id,
                             request_id=request_id,
+                            tags=tags,
                         )
                         # payload-capture-store §3: vector (embedding-similarity)
                         # cache-HIT hook.
@@ -1777,6 +1858,10 @@ class CompletionUseCase:
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # cost-attribution-tags (TASK.md §3): parse+validate X-Gateway-Tags BEFORE
+            # governance/upstream — a malformed header is 422 and NEVER billed (R1-R5).
+            # Absent header -> {} with zero extra work (M3 byte-identical fast path).
+            _tags = _parse_tags_header((request_headers or {}).get("x-gateway-tags"))
             # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
             # tenant's target model BEFORE payload validation/governance/catalog/upstream.
             await self._resolve_preset(body, authz.tenant_id)
@@ -1881,6 +1966,7 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by="error",
                             request_id=_request_id,
+                            tags=_tags,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook (locked
                         # after the mandated BLOCK-path grounding pass — see TASK.md §5).
@@ -1948,6 +2034,7 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by=result.blocked_by,
                             request_id=_request_id,
+                            tags=_tags,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook.
                         # request-log-metering-fields §3: usage=None -> tokens NULL.
@@ -2004,6 +2091,7 @@ class CompletionUseCase:
                     request_headers=request_headers,
                     start_ns=_start_ns,
                     request_id=_request_id,
+                    tags=_tags,
                 )
                 if _cache_hit is not None:
                     _cached = True
@@ -2096,6 +2184,7 @@ class CompletionUseCase:
                     usage=None,
                     status=429,
                     team_id=authz.team_id,
+                    tags=_tags,
                 )
                 _status_code = 429
                 if exc.retry_after is not None:
@@ -2113,6 +2202,7 @@ class CompletionUseCase:
                     usage=None,
                     status=502,
                     team_id=authz.team_id,
+                    tags=_tags,
                 )
                 _status_code = 502
                 raise UPSTREAM_UNAVAILABLE.exc() from None
@@ -2307,6 +2397,7 @@ class CompletionUseCase:
                 # 200 success keeps the default "frame" too (M8's own rule).
                 usage_source=_usage_source_final,
                 request_id=_request_id,
+                tags=_tags,
             )
             # payload-capture-store §3: non-streaming completion capture hook.
             # response_body is the ALREADY evaluate_post-masked body (when configured) —
@@ -2392,6 +2483,7 @@ class CompletionUseCase:
         body: dict[str, Any],
         upstream: CompletionUpstream,
         usage_recorder: UsageRecorder,
+        request_headers: dict[str, str] | None = None,
         model_router: FallbackModelRouter | None = None,
     ) -> AsyncIterator[bytes]:
         """Handle a streaming completion.
@@ -2406,6 +2498,11 @@ class CompletionUseCase:
           - Successful streams → span emitted inside _wrapped() after the last
             chunk (status 200, end_time at last chunk).
           - Pre-authz 401 → _authz is None → no span (inviolable).
+
+        request_headers (cost-attribution-tags TASK.md §3, additive — default None so
+        every existing caller/test that omits it is unaffected, byte-identical M3):
+        read for X-Gateway-Tags parity with complete() — the ONLY use today. router.py
+        computes it once (before branching on stream vs non-stream) and passes it here.
         """
         _start_ns = time.time_ns()
         # request-log-metering-fields TASK.md §3: one correlation UUID minted once per
@@ -2422,6 +2519,10 @@ class CompletionUseCase:
         try:
             authz = await self._authenticate(raw_key)
             _authz = authz  # set ONLY after _authenticate succeeds — pre-authz 401 → no span
+            # cost-attribution-tags (TASK.md §3): parse+validate X-Gateway-Tags BEFORE
+            # governance/upstream — a malformed header is 422 and NEVER billed (R1-R5).
+            # Same parity rule as complete() (M2) — absent header -> {} (M3).
+            _tags = _parse_tags_header((request_headers or {}).get("x-gateway-tags"))
             # preset-resolution-ingress (v56 §3): resolve a <preset>:<alias> selector to the
             # tenant's target model BEFORE payload validation/governance/catalog/upstream.
             await self._resolve_preset(body, authz.tenant_id)
@@ -2502,6 +2603,7 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by="error",
                             request_id=_request_id,
+                            tags=_tags,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
                         # request-log-metering-fields §3: usage=None -> tokens NULL.
@@ -2557,6 +2659,7 @@ class CompletionUseCase:
                             guardrail_blocked=True,
                             blocked_by=stream_result.blocked_by,
                             request_id=_request_id,
+                            tags=_tags,
                         )
                         # payload-capture-store §3: pre-call guardrail-BLOCK hook (stream).
                         # request-log-metering-fields §3: usage=None -> tokens NULL.
@@ -2695,6 +2798,7 @@ class CompletionUseCase:
                     usage=None,
                     status=429,
                     team_id=authz.team_id,
+                    tags=_tags,
                 )
                 _stream_error_status = 429
                 if exc.retry_after is not None:
@@ -2711,6 +2815,7 @@ class CompletionUseCase:
                     usage=None,
                     status=502,
                     team_id=authz.team_id,
+                    tags=_tags,
                 )
                 _stream_error_status = 502
                 raise UPSTREAM_UNAVAILABLE.exc() from None
@@ -2797,6 +2902,7 @@ class CompletionUseCase:
                                 pii_masked=_stream_pii_masked,
                                 usage_source=_bw_source,
                                 request_id=_request_id,
+                                tags=_tags,
                             )
                             # payload-capture-store §3: bandwidth-shed truncation capture
                             # hook (1st of stream()'s 3 exit branches) — the assembled
@@ -2844,6 +2950,7 @@ class CompletionUseCase:
                         usage=None,
                         status=502,
                         team_id=team_id,
+                        tags=_tags,
                     )
                     # stream-upstream-error-frame (v35): emit a parseable error chunk so
                     # a [DONE]-waiting agent loop (e.g. Helios) never hangs on truncation.
@@ -2925,6 +3032,7 @@ class CompletionUseCase:
                         provider_generation_id=disconnect_gen_id,
                         disconnect_estimate=disconnect_estimate,
                         request_id=_request_id,
+                        tags=_tags,
                     )
                     # payload-capture-store §3: client-disconnect capture hook (2nd of
                     # stream()'s 3 exit branches) — the assembled (partial) text.
@@ -3059,6 +3167,7 @@ class CompletionUseCase:
                     pii_masked=_stream_pii_masked,
                     usage_source=usage_source,
                     request_id=_request_id,
+                    tags=_tags,
                 )
                 # payload-capture-store §3: clean-close capture hook (3rd of stream()'s
                 # 3 exit branches, and the one usual case) — the fully assembled text,
