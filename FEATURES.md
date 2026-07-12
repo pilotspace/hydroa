@@ -101,6 +101,40 @@ its release-notes credit is pending.
 - **Budgets & rate limits** — per-tenant/team/key spend budgets, RPM/TPM rate limits, model
   allowlists.
 
+## Monetization — billing downstream tenants (operator-as-a-business)
+
+- **Immutable monthly invoices** — `GET /admin/invoices` (+ PDF/CSV export) generates per-tenant
+  invoices from `usage_records` via the ONE shared rate-card resolver; line items per
+  model/team/key and per canonical tag-SET; every line drills down to the exact usage rows that
+  produced it (chargeback-dispute evidence); invoices and lines are append-only under a real
+  DB trigger — a correction is a new row, never a rewrite.
+- **Prepaid credits with a fail-closed spend gate** — append-only `credit_ledger` +
+  per-tenant balance; hold→settle/release wired into BOTH governance choke points (chat +
+  non-chat); balance provably never driven below the configured grace by any volume of
+  concurrent admissions (row-lock discipline, adversarially verified); idempotent top-ups
+  enforced by a global unique index, structurally immune to cross-tenant races.
+- **Plan enforcement + seat caps** — the plans catalog (budget defaults, model allowlists,
+  feature flags, seat caps) is enforced at request/admission time with structured refusals;
+  seat admission is gated at all four membership seams (invite-accept, SSO auto-provision,
+  domain-capture join, SCIM create) behind a row-locked count; a plan downgrade never
+  deactivates existing members.
+- **Per-seat billing with proration** — an append-only `seat_membership_events` ledger written
+  in the same transaction as every membership mutation (backfilled at migration); seat +
+  mid-month proration lines fold into the invoice's own atomic transaction (seat-day math
+  adversarially verified at month boundaries); seed pricing Pro $15 / Enterprise $40 per
+  seat-month.
+- **Cost attribution tags** — `X-Gateway-Tags` request metadata lands on usage records (JSONB,
+  bounded 8×32/256B) and powers cost-by-tag breakdowns; the additive money projection lives in
+  the invoice's canonical tag-SET grouping so tag analytics can never double-count a dollar.
+- **Operator margin view** — superadmin-only `/admin/platform/margin/*` (summary, by
+  tenant/model, trend, ledger tie-out) + a platform-console Margin page; margin is computed
+  ONLY where the provider reported authoritative cost — everything else renders an honest
+  "no cost data" null, never a fabricated figure.
+- **Tenant Billing console** — a dedicated Billing nav group (Invoices with an
+  evidence-drill-down drawer, Credits balance + history, Plan & seats meters) in the Aurora
+  design system's financial-document idiom (tabular-nums currency, visible immutability seal),
+  axe-checked (WCAG 2.2 AA).
+
 ## Identity, auth & multi-tenancy
 
 - **Tenants & teams** — every row is `tenant_id`-scoped; cross-tenant references return `404`,
@@ -234,16 +268,15 @@ The **enterprise-hardening** milestone shipped in full (7/7 tasks, incl. realtim
 governance, edge input hardening, and signup/routing authorization — all described in their
 domain sections above).
 
-Two clusters are **complete, verified, and gated on the integration branch**, pending one merge
-to `main`, and are documented above as shipped:
+Two clusters — **logs-explorer-guardrails-v2** (payload capture + Logs Explorer, per-key
+guardrail policies, ML moderation, output schema validation, guardrail analytics) and
+**enterprise-identity-compliance** (SCIM 2.0, SAML SSO, domain capture, retention + ZDR,
+compliance export) — are **merged to `main`** (PR #66) and documented above; they land in the
+next numbered release cut alongside:
 
-- **logs-explorer-guardrails-v2** — request/response payload capture + Logs Explorer, per-key
-  guardrail policies, the ML moderation layer, output schema validation, and guardrail analytics.
-- **enterprise-identity-compliance** — SCIM 2.0, SAML SSO, domain capture, per-tenant
-  retention + ZDR mode, and the compliance export API.
-
-All 14 tasks are gated PASS (five carried HARD-STOP security verifies this project's method
-never auto-passes); they will land in the next numbered release cut.
+- **monetization-core** — the full "Monetization" domain section above (7/7 tasks gated: one
+  RISK-ACCEPTED with a signed waiver, six PASS incl. a healed security HARD-STOP verify on the
+  credits ledger); complete on `feat/monetization-core` pending merge, feeds release 0.8.0.
 
 ---
 

@@ -39,29 +39,54 @@ UI/UX in scope — named precisely: a new **Billing** nav group in the tenant co
 - [ ] billing-ui              depends-on: invoice-generation, credits-ledger, plan-enforcement — tenant Billing nav group (Invoices/Credits/Plan & seats) + evidence drill-down drawer, Aurora financial-document idiom [UDD design loop before build]
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A tenant admin can download last month's invoice (PDF/CSV) whose total equals the sum of its usage-derived lines, and every line drills down to the usage rows that produced it        (← invoice-generation, billing-ui)
-- [ ] A tenant with zero credit balance gets a structured 4xx spend-gate refusal on the next billable call, and succeeds again after a top-up — with the ledger showing both entries append-only        (← credits-ledger)
-- [ ] A tenant on a plan with a model allowlist/feature flag/budget default sees it actually enforced at request time (structured refusal, not catalog-only)        (← plan-enforcement)
-- [ ] An invoice for a plan-priced tenant carries correct seat lines including mid-month proration        (← seat-billing)
-- [ ] Requests tagged via metadata produce cost-by-tag breakdowns that reconcile to the invoice totals        (← cost-attribution-tags)
-- [ ] The platform operator sees per-tenant margin (billed − provider cost) that reconciles against the existing reconciliation view        (← margin-dashboard)
-- [ ] All Billing surfaces pass axe (WCAG 2.2 AA) and the issued invoice is visibly immutable in the UI        (← billing-ui)
+- [x] A tenant admin can download last month's invoice (PDF/CSV) whose total equals the sum of its usage-derived lines, and every line drills down to the usage rows that produced it        (← invoice-generation, billing-ui — verifier: invoice adversarial suite (live JSONB tag-SET partition, never double-counts) + billing-ui verify fidelity walk; BFF binary passthrough confirmed zero-new-code)
+- [x] A tenant with zero credit balance gets a structured 4xx spend-gate refusal on the next billable call, and succeeds again after a top-up — with the ledger showing both entries append-only        (← credits-ledger — verifier: independent adversarial verify + heal round; 402 ERR_CREDITS_EXHAUSTED scenario + append-only UPDATE/DELETE no-op probe green)
+- [x] A tenant on a plan with a model allowlist/feature flag/budget default sees it actually enforced at request time (structured refusal, not catalog-only)        (← plan-enforcement — verifier: gate PASS on frozen suite incl. enforcement-at-request-time scenarios; fail-open flake ruled a shared-tree collision, clean re-run green)
+- [x] An invoice for a plan-priced tenant carries correct seat lines including mid-month proration        (← seat-billing — verifier: 21-probe adversarial pass; proration exact at month boundaries incl. the corrected 16-day reactivation case; all 5 event-write sites atomic under injected failure)
+- [x] Requests tagged via metadata produce cost-by-tag breakdowns that reconcile to the invoice totals        (← cost-attribution-tags — verifier: tags verify (RISK-ACCEPTED, signed) + invoice's canonical tag-SET partition probe: multi-tag rows partition, never double-count)
+- [x] The platform operator sees per-tenant margin (billed − provider cost) that reconciles against the existing reconciliation view        (← margin-dashboard — verifier: 18-probe adversarial pass; tie-out route reconciles vs ledger exactly; honest-null never fabricates)
+- [x] All Billing surfaces pass axe (WCAG 2.2 AA) and the issued invoice is visibly immutable in the UI        (← billing-ui — verifier: axe assertions in all three billing test files (12 total) + InvoiceStatusSeal immutability idiom confirmed in the DESIGN.md fidelity walk)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- tooling : untouched (engine used as-is; one CR — seat-billing re-frozen @ v2 via the §3
+  Status→DRAFT + freeze flow)
+- skill   : untouched
+- book    : untouched (FEATURES.md gained the Monetization domain section; stale clusters
+  "pending merge" text corrected — repo docs, not the ADD book)
+- gateway : invoices (generator+PDF/CSV+evidence route) · credits (ledger, hold/settle/release
+  at both choke points, global-idempotency index) · plans enforcement · seat cap at 4 seams ·
+  seat_membership_events ledger + seat/proration lines · usage tags (JSONB) · margin endpoints ·
+  GET /admin/plan; alembic chain fddae7074590→f70309062df0→d3f7a9c1b5e8→0b5527920450→
+  1891020e487c→f1ef6b05a732 (single head)
+- dashboard : Billing nav group (Invoices + evidence drawer, Credits, Plan & seats) · platform
+  Margin page — Aurora financial-document idiom, axe-checked
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- cost-attribution-tags : gate=RISK-ACCEPTED (signed, expires 2026-08-15) · tests=green incl.
+  retry-threading pins · residue=diverted-fallback closure bills tags={} (waivered)
+- plan-enforcement : gate=PASS · tests=green (incl. migration suite) · residue=none
+- invoice-generation : gate=PASS · tests=green + adversarial pins · residue=none
+- credits-ledger : gate=PASS after 1 heal round (3 security findings fixed, repros red→green) ·
+  tests=34 green, module cov 94.5% vs 90% bar · residue=none security; sweeper loop uncovered (💭)
+- plan-seat-cap : gate=PASS (adversarial verify EARNED, 31 green incl. cross-seam races) ·
+  residue=SCIM reactivation bypass — disclosed boundary, seeded delta (todo #9)
+- margin-dashboard : gate=PASS (50 green incl. 18 adversarial) · residue=2 🟡 todos (#10 #11:
+  summary heuristic; repo TZ assumption)
+- billing-ui : gate=PASS (EARNED; probes adopted) · residue=F1 roster-count 403-degrade for 4/7
+  roles (todo #7), F2 drawer subtitle (todo #8)
+- seat-billing : gate=PASS @ contract v2/CR-1 (61 green: 38 builder + 21+2 adversarial) ·
+  residue=4 seeded deltas (todos #15-#17 + prose fix #14)
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which — see per-criterion citations above)
+- goal: a gateway operator can bill downstream tenants end-to-end — proven by the invoice
+  determinism + evidence-drilldown adversarial probes (seat-billing/invoice verifies) on top of
+  the credits spend-gate concurrency proofs: every dollar traceable usage_record → invoice line,
+  seat lines included, margin honestly reported.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
