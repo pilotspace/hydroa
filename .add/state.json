@@ -1093,7 +1093,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T13:22:03+00:00",
+  "updated": "2026-07-12T13:23:30+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2097,6 +2097,24 @@
       "id": 11,
       "text": "repo-wide hardening (from margin verify \ud83d\udfe1): naive-datetime idiom assumes host TZ=UTC, unpinned in Dockerfile + test-invisible \u2014 pin TZ=UTC or move to aware-UTC datetimes; money-critical paths affected",
       "created": "2026-07-12T12:48:15+00:00",
+      "status": "open"
+    },
+    {
+      "id": 12,
+      "text": "housekeeping (from seat-billing build): migrations/env.py ORM-import gap causes false alembic-check drift \u2014 pre-existing, file a fix",
+      "created": "2026-07-12T13:23:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 13,
+      "text": "housekeeping (from seat-billing build): ~72-file repo-wide ruff format baseline drift predates milestone \u2014 decide one-shot format commit vs leave",
+      "created": "2026-07-12T13:23:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 14,
+      "text": "seat-billing observe: record \u00a72 prose correction (reactivation-gap arithmetic 24 -> 16 per M6, implemented+tested as 16, disclosed) + decide narrowing join_verified_tenant_domain broad IntegrityError catch (defect-masking, left additive-safe)",
+      "created": "2026-07-12T13:23:30+00:00",
       "status": "open"
     }
   ]
