@@ -3,9 +3,8 @@
 slug: billing-ui · created: 2026-07-12 · stage: production
 sensitivity: mechanical
 milestone: monetization-core
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -228,8 +227,6 @@ Assumptions — lowest-confidence first:
     instructed by the dispatch to "degrade gracefully."
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -428,8 +425,6 @@ Scenario: Invoice lines table scrolls horizontally inside its own container at n
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -593,7 +588,6 @@ over the already-frozen `PlanEntitlementResolver` port + `plans` lookup; endpoin
 consumer stay in one task / one verify. `plan-enforcement`'s frozen contract is not touched.
 Reported: no — this design-only draft is presented to Tin separately from the wave-1 batch freeze
   (billing-ui is wave-2, depends-on all three wave-1 contracts, which are already FROZEN @ v1).
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -676,8 +670,6 @@ Tests live in: `apps/gateway/tests/plans/` (backend, 12 tests) · `apps/dashboar
   billing-nav ran green-on-write since its only dependency (app-shell.tsx's additive NAV_GROUPS
   edit) was verified structurally before the test was written, so it stands as a regression lock
   rather than a red-first scenario test.
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -764,8 +756,6 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
   Held: zero new dependency added (backend: stdlib + already-imported gateway/sqlalchemy/pydantic
   modules only; dashboard: zero new npm package, every component built from already-shipped
   `@/components/ui` primitives + `@tanstack/react-query` + `lucide-react`, all pre-existing).
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -992,8 +982,6 @@ Outcome: <RESERVED FOR ORCHESTRATOR — verify recommendation: PASS with 1 non-b
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
 Reviewed by: add-verify (self) · date: 2026-07-12 — pending Tin's human sign-off
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
-
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
@@ -1001,11 +989,14 @@ Reviewed by: add-verify (self) · date: 2026-07-12 — pending Tin's human sign-
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned (batches 1-7 above), with one addition not originally anticipated: batch 6 (the nav-role-filter.test.tsx count fix) was discovered only by running the FULL dashboard suite post-build, not predicted at plan time — the lesson: an additive nav change still requires a full-suite run, not just the new task's own tests, because the shell is a cross-cutting shared surface with its own hardcoded-count regression tests.
+- [AI] verify — gate <RESERVED (reviewed by add-verify (self))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

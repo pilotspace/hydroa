@@ -938,8 +938,8 @@
     },
     "billing-ui": {
       "title": "Tenant Billing console (Invoices/Credits/Plan & seats) \u2014 Aurora financial-document idiom",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "monetization-core",
       "depends_on": [
         "invoice-generation",
@@ -947,7 +947,7 @@
         "plan-enforcement"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T12:44:50+00:00",
+      "updated": "2026-07-12T12:45:08+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T11:43:43+00:00",
@@ -963,12 +963,13 @@
         "contract_md5": "0a063b2a667a0f5271c7d1199e9fbc0e",
         "tests": {
           "apps/gateway/tests/plans/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/plans/test_plan_router.py": "9ff0757398ec567ff827e6868a865e36"
+          "apps/gateway/tests/plans/test_plan_router.py": "9ff0757398ec567ff827e6868a865e36",
+          "apps/gateway/tests/plans/test_verify_plan_router.py": "4488788eecad372f5c0c957d9ac2744d"
         }
       },
       "scope": {
         "declared": [],
-        "snapshot_md5": "96cef9cd3939e3d7808c51c4ac419f0e"
+        "snapshot_md5": "0811dd263d6f18a80f8279beb728e5e6"
       },
       "heal": {
         "attempts": 1,
@@ -979,6 +980,11 @@
             "source": "scope"
           }
         ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
@@ -1066,7 +1072,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T12:44:50+00:00",
+  "updated": "2026-07-12T12:45:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
