@@ -3,7 +3,7 @@
 slug: residency-tiers-ui · created: 2026-07-12 · stage: production
 milestone: residency-service-tiers
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 sensitivity: mechanical
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
@@ -74,7 +74,7 @@ Touches (files · symbols · signatures):
   GET = any authenticated role; key creation = owner-or-admin) — read directly, not assumed.
 - `apps/dashboard/app/api/gw/[...path]/route.ts` — the existing catch-all BFF proxy. Confirmed:
   EVERY route this task reads/writes (`/admin/residency-policy`, `/admin/models`, `/admin/keys`,
-  and the forward-cited `/admin/service-tier-pricing`) passes through this ONE existing proxy —
+  and the forward-cited `/admin/service-tiers`) passes through this ONE existing proxy —
   zero new BFF route files needed for this task.
 
 Context (working folder): `tmp/residency-tiers-design-context.md` (binding cross-task rules 1-6 +
@@ -138,7 +138,7 @@ Issues/Risks (→ feed §1):
    no Must/Reject/Contract at all). The only textual evidence any tier-pricing resolver will
    exist is region-pricing's own RESERVED (unimplemented, raises `NotImplementedError`)
    `resolve_tier_multiplier(session, tenant_id, model_id, tier)` stub plus MILESTONE.md's DECIDED
-   "+25%" seed language. This task forward-cites an ASSUMED `GET /admin/service-tier-pricing`
+   "+25%" seed language. This task forward-cites an ASSUMED `GET /admin/service-tiers`
    shape (mirroring region-pricing's own `GET /admin/region-pricing` shape — the closest sibling
    precedent) for the key-creation price delta, and designs the UI to degrade gracefully
    (PlanSeatsPage R7's idiom: render the selector, show an inert "Pricing pending" placeholder,
@@ -250,7 +250,7 @@ Must:
     verbatim (§3): "Priority requests get preference under contention and may fall back to
     Standard when capacity is unavailable — Standard is never starved."
   - M10: Next to the tier selector, a price-delta line reads a forward-cited
-    `GET /admin/service-tier-pricing` (assumed shape, Issue #2) ONCE per dialog open and shows the
+    `GET /admin/service-tiers` (assumed shape, Issue #2) ONCE per dialog open and shows the
     SERVER-COMPUTED delta for the `priority` option (e.g. "+25% on requests using this key") —
     NEVER a hardcoded percentage. If that fetch 404s/errors/is unavailable, the price-delta line
     is replaced with the inert placeholder "Pricing pending" and NO retry/poll is attempted
@@ -283,7 +283,7 @@ Reject:
   - R3: `PUT /admin/residency-policy` returns 403 (non-OWNER) -> inline error (M5); the picker's
     displayed value reconciles from the query cache (mirrors `handleZdrConfirmClose`) — no
     silent success implied.
-  - R4: `GET /admin/service-tier-pricing` (forward-cited, Issue #2) is unavailable (404/5xx/
+  - R4: `GET /admin/service-tiers` (forward-cited, Issue #2) is unavailable (404/5xx/
     network error) -> "Pricing pending" placeholder (M10); tier selector stays submittable; NO
     error banner — this is an expected degrade, not a fault (mirrors `PlanSeatsPage` treating an
     unshipped sibling's absence as normal, never an `ErrorState`).
@@ -312,7 +312,7 @@ After:
 Assumptions — lowest-confidence first:
 <assumptions>
   ⚠ #1 (Issue #2) service-tiers' key-tier field name/values (`tier`: `"priority"|"standard"`)
-  and a `GET /admin/service-tier-pricing` endpoint mirroring region-pricing's own shape are BOTH
+  and a `GET /admin/service-tiers` endpoint mirroring region-pricing's own shape are BOTH
   assumed, not frozen — service-tiers is still the blank `phase: ground` template. Lowest
   confidence because this is the single largest unfrozen forward-dependency in the whole bundle;
   if service-tiers freezes a materially different field name, enum, or a wholly different
@@ -436,13 +436,13 @@ Scenario: submitting a key with Priority tier sends the tier field   # M9
   And on success the dialog closes and the plaintext-key banner shows, matching existing behavior
 
 Scenario: price delta shows the real server-computed value   # M10
-  Given GET /admin/service-tier-pricing succeeds and returns a priority entry with multiplier "1.25"
+  Given GET /admin/service-tiers succeeds and returns a priority entry with multiplier "1.25"
   When the Create API Key dialog renders
   Then the price-delta line reads "+25% on requests using this key" — computed from the returned multiplier
   And no percentage string is hardcoded anywhere in the component
 
 Scenario: price delta degrades to a pending placeholder when the pricing endpoint is unavailable   # M10, R4
-  Given GET /admin/service-tier-pricing 404s (service-tiers not yet shipped, or a network error)
+  Given GET /admin/service-tiers 404s (service-tiers not yet shipped, or a network error)
   When the Create API Key dialog renders
   Then the price-delta line shows the inert placeholder "Pricing pending"
   And no retry or poll is attempted against that endpoint
@@ -503,7 +503,7 @@ POST /admin/keys   body: { name: string, tier?: "priority" | "standard" }
    task; if service-tiers freezes a different field name/enum, this line is a change-request
    back to SPECIFY, not a silent adapt)
 
-GET  /admin/service-tier-pricing                -- FORWARD-CITED, ASSUMED shape (Issue #2) —
+GET  /admin/service-tiers                -- FORWARD-CITED, ASSUMED shape (Issue #2) —
                                                      NOT owned, NOT frozen anywhere; mirrors
                                                      region-pricing's own GET /admin/region-pricing
                                                      shape as the closest sibling precedent
@@ -567,7 +567,7 @@ Glossary deltas:
 - (region / residency policy / region pin / region multiplier / tenant_region_multiplier_overrides
   are ALL owned by the three frozen sibling tasks — cited above, not redefined here.)
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — this is the design agent's freeze-ready draft; the freeze report (banner/ARC/SHAPE)
 has not yet been rendered to the human.
 
@@ -580,7 +580,7 @@ Least-sure flag surfaced at freeze: [contract] TWO independent, load-bearing gap
       yet") rather than blocking on a residency-policy re-freeze — Tin should confirm this is the
       preferred fork over reopening residency-policy first.
   (b) service-tiers (this task's OWN stated dependency) is still the blank `phase: ground`
-      template — M9/M10's `tier` field name and the entire `GET /admin/service-tier-pricing`
+      template — M9/M10's `tier` field name and the entire `GET /admin/service-tiers`
       shape are FORWARD-CITED ASSUMPTIONS, not frozen fact. This task's Build should not start
       until service-tiers freezes a real contract; if it freezes a materially different shape,
       M9/M10/R4/R5 need a change-request back to SPECIFY.
@@ -600,6 +600,11 @@ rerouted; Vietnam is served from Singapore/SEA endpoints") joins the EU/US copy.
 type-to-confirm field. Tier price-delta shape + field names stay forward-cited pending
 service-tiers' freeze; this task's own freeze WAITS for service-tiers (designer's
 recommendation, adopted).
+
+DECIDED at freeze review (2026-07-12, Tin): FROZEN alongside service-tiers. Tier price-delta source
+CORRECTED to the real frozen route `GET /admin/service-tiers` (effective default_tier +
+priority_markup_pct — tenant-flat, confirming this draft's assumption); the
+/admin/service-tier-pricing forward-cite is superseded throughout.
 
 ---
 
