@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.core.ids import uuid7
 from gateway.scim.domain.entities import ScimToken
 from gateway.scim.domain.errors import ScimUniquenessError
 from gateway.scim.infrastructure.orm import ScimTokenRow
@@ -16,7 +17,7 @@ from gateway.teams.infrastructure.orm import TeamMemberRow
 from gateway.tenants.application.entitlements import assert_seat_available
 from gateway.tenants.domain.entities import Role, User
 from gateway.tenants.domain.errors import SeatCapExceededError
-from gateway.tenants.infrastructure.orm import UserRow
+from gateway.tenants.infrastructure.orm import SeatMembershipEventRow, UserRow
 
 # SCIM-provisioned users are never authenticatable by password (M3) — a distinct
 # sentinel from SSO's own SSO_PASSWORD_HASH_SENTINEL so audit/debugging can tell
@@ -185,6 +186,19 @@ class SqlAlchemyScimUserRepository:
         except IntegrityError as exc:
             await self._session.rollback()
             raise ScimUniquenessError from exc
+
+        # seat-billing TASK.md §3 (FROZEN @ v2, M3(b)): append ONE 'joined' event in the
+        # SAME transaction as the new users row, the create instant.
+        self._session.add(
+            SeatMembershipEventRow(
+                id=uuid7(),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                event_type="joined",
+                occurred_at=datetime.now(UTC),
+            )
+        )
+
         await self._session.commit()
         await self._session.refresh(row)
         return _user_row_to_entity(row)
@@ -271,7 +285,8 @@ class SqlAlchemyScimUserRepository:
             # repeated PATCH never misrepresents a second deactivation as new state.
             return _user_row_to_entity(row), False
 
-        row.deactivated_at = None if active else datetime.now(UTC)
+        flip_instant = datetime.now(UTC)
+        row.deactivated_at = None if active else flip_instant
         if not active:
             # Safety rule (TASK §5): deactivation write + team_members delete-by-user_id
             # commit in ONE atomic transaction — a partial failure must never leave a
@@ -280,6 +295,21 @@ class SqlAlchemyScimUserRepository:
             await self._session.execute(
                 delete(TeamMemberRow).where(TeamMemberRow.user_id == user_id)
             )
+
+        # seat-billing TASK.md §3 (FROZEN @ v2, M3(c)): append ONE
+        # 'deactivated'/'reactivated' event, ONLY on this changed=True branch (never on
+        # the already_at_target no-op return above) — the SAME idempotency gate that
+        # already skips the audit write on a no-op repeat.
+        self._session.add(
+            SeatMembershipEventRow(
+                id=uuid7(),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                event_type="reactivated" if active else "deactivated",
+                occurred_at=flip_instant,
+            )
+        )
+
         await self._session.commit()
         await self._session.refresh(row)
         return _user_row_to_entity(row), True

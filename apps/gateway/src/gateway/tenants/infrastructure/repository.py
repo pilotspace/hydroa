@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, ProgrammingError
@@ -10,7 +11,7 @@ from gateway.core.ids import uuid7
 from gateway.tenants.application.entitlements import assert_seat_available
 from gateway.tenants.domain.entities import Role, User
 from gateway.tenants.domain.errors import EmailAlreadyRegisteredError, SeatCapExceededError
-from gateway.tenants.infrastructure.orm import TenantRow, UserRow
+from gateway.tenants.infrastructure.orm import SeatMembershipEventRow, TenantRow, UserRow
 
 
 async def get_platform_tenant(session: AsyncSession) -> TenantRow | None:
@@ -115,6 +116,25 @@ class SqlAlchemyIdentityRepository:
             async with self._session.begin():
                 await assert_seat_available(self._session, tenant_id)
                 self._session.add(user)
+                # Flush the parent `users` INSERT before adding the FK-dependent event row:
+                # SQLAlchemy's unit-of-work only orders INSERTs across DIFFERENT mapped
+                # classes via a declared relationship() dependency processor — with none
+                # configured between UserRow and SeatMembershipEventRow, an unflushed pairing
+                # can emit the event INSERT before the user INSERT and trip a FK violation
+                # (mirrors SqlAlchemyScimUserRepository.create_user's own explicit
+                # add()+flush()-before-second-add() shape for the identical hazard).
+                await self._session.flush()
+                # seat-billing TASK.md §3 (FROZEN @ v2/CR-1, M3(b3)): append ONE 'joined'
+                # event in the SAME transaction as the new users row.
+                self._session.add(
+                    SeatMembershipEventRow(
+                        id=uuid7(),
+                        tenant_id=tenant_id,
+                        user_id=user.id,
+                        event_type="joined",
+                        occurred_at=datetime.now(UTC),
+                    )
+                )
         except IntegrityError as exc:
             raise EmailAlreadyRegisteredError from exc
         return user.id
@@ -241,6 +261,24 @@ class SqlAlchemyIdentityRepository:
         # already auto-began the session transaction; calling begin() again
         # raises InvalidRequestError.
         self._session.add(new_user)
+        # Flush the parent `users` INSERT before adding the FK-dependent event row: see
+        # join_verified_tenant_domain's identical comment — without a relationship()
+        # between UserRow and SeatMembershipEventRow, the unit-of-work has no dependency
+        # processor ordering the two mappers' INSERTs, so an unflushed pairing can emit the
+        # event INSERT first and trip a FK violation.
+        await self._session.flush()
+        # seat-billing TASK.md §3 (FROZEN @ v2/CR-1, M3(b2)): NEW-USER BRANCH ONLY —
+        # append ONE 'joined' event in the SAME transaction; an EXISTING member's SSO
+        # re-login (the branch above, `if row is not None`) never reaches this line.
+        self._session.add(
+            SeatMembershipEventRow(
+                id=uuid7(),
+                tenant_id=tenant_id,
+                user_id=new_user.id,
+                event_type="joined",
+                occurred_at=datetime.now(UTC),
+            )
+        )
         await self._session.flush()
         await self._session.commit()
 
