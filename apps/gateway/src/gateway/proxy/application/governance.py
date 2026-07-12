@@ -29,6 +29,23 @@ from gateway.core.error_catalog import (
 from gateway.credits.domain.ports import CreditGuard, PassthroughCreditGuard
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
+
+# HEAL (credits-ledger verify finding 2, 2026-07-12): _credit_hold_ctx is the SAME
+# ContextVar CompletionUseCase.complete()/stream() publishes to (use_cases.py is
+# INVIOLABLE — must stay byte-identical — so this reuses the frozen §3-cited
+# contextvar + record_with_outcome() bridge verbatim rather than duplicating it;
+# see the precedent for importing "private" use_cases.py symbols in
+# embeddings_use_case.py / images_use_case.py / audio_use_case.py). Setting it
+# here means _dispatch_record (called later in this SAME asyncio Task, from
+# whichever _fire_record_with_raw/_fire_record_cached call site the non-chat use
+# case reaches) now finds an open hold and routes through record_with_outcome, so
+# settle()/release() fire for images/audio/embeddings exactly like the chat path —
+# previously this ContextVar was NEVER set on the non-chat pipeline, so every
+# non-chat hold sat unsettled until the M6 sweep blindly refunded it in full,
+# regardless of real metered cost.
+from gateway.proxy.application.use_cases import (
+    _credit_hold_ctx,  # pyright: ignore[reportPrivateUsage]
+)
 from gateway.proxy.domain.ports import KeyAuthenticator, ModelAccess, ModelChecker
 from gateway.rate_limits.domain.errors import RateLimitExceededError
 from gateway.rate_limits.domain.ports import RateLimiter
@@ -158,6 +175,14 @@ class NonChatGovernance:
         await self._credit_guard.check_and_hold(
             authz.tenant_id, _credit_request_id, self._hold_estimate_usd
         )
+        # HEAL (finding 2): publish (credit_guard, request_id) so this request's later
+        # _dispatch_record call (fired from the non-chat use case's _fire_record_with_raw
+        # / _fire_record_cached, in this SAME Task) settles or releases the hold just
+        # placed above — mirrors use_cases.py's _credit_hold_ctx.set() call exactly.
+        # A PassthroughCreditGuard's check_and_hold is a no-op either way, so this is
+        # harmless when credits is unwired/disabled (self._credit_guard stays whatever
+        # was constructed — settle/release against it are no-ops too).
+        _credit_hold_ctx.set((self._credit_guard, _credit_request_id))
 
         try:
             # Step 8: RPM check — skip when rate_limiter is None OR rpm_limit is None
