@@ -480,16 +480,126 @@ Scenario: full-surface accessibility sweep passes on every new/changed surface  
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
 
 ```
-<METHOD> <path>   body: { <fields> }
-  200 -> { <success fields> }
-  4xx -> { error: "<code>" | "<code>" }
-Schema: <tables/fields touched, and access pattern>
+BFF pass-through routes REUSED verbatim (zero new BFF route files — the existing
+apps/dashboard/app/api/gw/[...path]/route.ts catch-all already forwards every path below):
+
+GET  /admin/residency-policy                    -- residency-policy §3 FROZEN, cited verbatim
+  200 -> { region: "us" | "eu" | null, updated_at: string | null }
+  401/403 -> existing auth envelope
+
+PUT  /admin/residency-policy   body: { region: "us" | "eu" | null }   -- FROZEN, cited verbatim
+  200 -> { region: "us" | "eu" | null, updated_at: string | null }
+  403 -> { code: "ERR_FORBIDDEN" | <existing RBAC code> }             -- R3, non-OWNER
+  422 -> { code: "ERR_RESIDENCY_REGION_INVALID" }                     -- R2 (defensive; R1 prevents client-side)
+  (this task's FE NEVER sends {"region":"ap"} — Issue #1; the frozen backend enum is {null,"us","eu"} only)
+
+GET  /admin/models                              -- region-catalog-dimension §3 FROZEN, cited verbatim
+  200 -> { object:"list", data: [{ ...AdminModelItem, region: "us"|"eu"|"ap"|"global" }] }
+
+POST /admin/keys   body: { name: string, tier?: "priority" | "standard" }
+  200 -> { key_id, name, key }
+  422 -> { code: "<service-tiers-owned, TBD>" }          -- R5, surfaced via existing error branching
+  (the `tier` FIELD is a FORWARD CITATION to service-tiers — NOT frozen, NOT redefined by this
+   task; if service-tiers freezes a different field name/enum, this line is a change-request
+   back to SPECIFY, not a silent adapt)
+
+GET  /admin/service-tier-pricing                -- FORWARD-CITED, ASSUMED shape (Issue #2) —
+                                                     NOT owned, NOT frozen anywhere; mirrors
+                                                     region-pricing's own GET /admin/region-pricing
+                                                     shape as the closest sibling precedent
+  200 -> { entries: [{ tier: "priority" | "standard", multiplier: string }] }
+  404/5xx/unavailable -> NO retry/poll; FE renders "Pricing pending" (R4) and attempts nothing further
+
+Schema: NONE touched directly by this task (no new table/column) — this task is FE-only,
+consuming three already-frozen sibling contracts (residency-policy, region-catalog-dimension,
+region-pricing's reserved resolver) plus one forward-cited, unfrozen service-tiers surface.
+
+New FE component contracts (all under apps/dashboard/components/, TypeScript prop shapes):
+
+  RegionBadge({ region: "us" | "eu" | "ap" | "global" }) -> JSX
+    -- components/ui/region-badge.tsx (NEW) — Badge variant="outline", text = region.toUpperCase().
+       The ONE new visual this task introduces; used in BOTH the catalog table (M6) and nowhere
+       else with a different visual treatment (milestone instruction: design once, use everywhere).
+
+  DataResidencyFieldset (no exported props — internal to RetentionZdrSettings.tsx)
+    -- state: pendingRegion (string | null), confirmOpen (boolean)
+    -- reads: GET /admin/residency-policy (own useQuery, independent of the Retention/ZDR queries)
+    -- writes: PUT /admin/residency-policy (own useMutation)
+    -- consequence-line copy (VERBATIM, per pin target — the persona's signature element):
+         EU: "Pinning to EU means requests that cannot run in the EU will be refused, not
+              rerouted. This also blocks realtime voice for this tenant — no realtime model is
+              region-tagged yet."
+         US: "Pinning to US means requests that cannot run in the US will be refused, not
+              rerouted. This also blocks realtime voice for this tenant — no realtime model is
+              region-tagged yet."
+       (the realtime clause is carried verbatim from residency-policy's OWN "DECIDED at freeze
+       review" note — "Realtime consequence ACCEPTED: pinned tenants lose realtime/WS in v1... a
+       stated in the consequence line + docs" — this fieldset IS that consequence line.)
+    -- AP option: disabled, helper text "Not available yet — Asia-Pacific residency pinning is a
+       tracked follow-up" (never a consequence line, since it can never be selected — R1)
+
+  TierSelector({ value: "priority" | "standard", onChange, priceDelta: string | null }) -> JSX
+    -- components/keys/TierSelector.tsx (NEW) — rendered inside CreateKeyDialog
+    -- capacity-preference copy (VERBATIM): "Priority requests get preference under contention
+       and may fall back to Standard when capacity is unavailable — Standard is never starved."
+    -- priceDelta is either a server-derived string ("+25% on requests using this key",
+       formatted client-side from the raw multiplier — NEVER a hardcoded percentage) or null,
+       rendered as "Pricing pending" when null (M10/R4)
+
+Modified existing components (no new exported prop surface beyond what's listed):
+  SettingsPage.tsx            -- TabsTrigger label "Retention & ZDR" -> "Data & residency" (M1)
+  RetentionZdrSettings.tsx    -- + DataResidencyFieldset (M1-M5); Retention/ZDR fieldsets untouched
+  ModelsPage.tsx               -- + "Region" column (M6) using RegionBadge; + ineligibility read/render (M7/M8)
+  CreateKeyDialog.tsx          -- + TierSelector + price-delta read (M9/M10); CreateKeySchema += tier
+  KeysPage.tsx                 -- createKeyMutation body += tier passthrough
+  (marketing)/pricing/page.tsx -- + 2 feature bullets + 1 static callout section (M11)
 ```
 
-Glossary deltas: <new domain term(s) this task introduces, `Term: definition` — or "none">
+Glossary deltas:
+- `RegionBadge`: the one new shared visual component (`Badge variant="outline"`, uppercased
+  region text) rendering a catalog row's or context's `region` value consistently across every
+  surface it appears on — introduced once by this task, reused everywhere a region needs display,
+  never re-skinned per surface.
+- `Consequence line`: the plain-language, single-sentence statement of what a dangerous setting
+  change actually does, shown verbatim inside a `ConfirmDialog` before the write fires — a
+  FRONTEND-only concept (no backend field carries it); this task's residency pin is its first
+  instance beyond the pre-existing (undocumented-as-a-term) ZDR dialog copy.
+- (region / residency policy / region pin / region multiplier / tenant_region_multiplier_overrides
+  are ALL owned by the three frozen sibling tasks — cited above, not redefined here.)
+
 Status: DRAFT
-Reported: <yes — the freeze report (banner/ARC/SHAPE) rendered before this froze | no>
+Reported: no — this is the design agent's freeze-ready draft; the freeze report (banner/ARC/SHAPE)
+has not yet been rendered to the human.
+
+Least-sure flag surfaced at freeze: [contract] TWO independent, load-bearing gaps compete for
+"most likely to change this contract," both named in full at §0 Issue #1/#2 and §1 assumption
+⚠#1/#2:
+  (a) residency-policy's frozen PUT enum (`{null,"us","eu"}`) does NOT include `"ap"`, even
+      though region-catalog-dimension and region-pricing both froze the 4-value `us|eu|ap|global`
+      set the SAME day, later. This task's v1 picker scope-cuts `ap` (disabled + "not available
+      yet") rather than blocking on a residency-policy re-freeze — Tin should confirm this is the
+      preferred fork over reopening residency-policy first.
+  (b) service-tiers (this task's OWN stated dependency) is still the blank `phase: ground`
+      template — M9/M10's `tier` field name and the entire `GET /admin/service-tier-pricing`
+      shape are FORWARD-CITED ASSUMPTIONS, not frozen fact. This task's Build should not start
+      until service-tiers freezes a real contract; if it freezes a materially different shape,
+      M9/M10/R4/R5 need a change-request back to SPECIFY.
+Recommend: resolve (a) explicitly (pick a fork) and freeze service-tiers (b) BEFORE this task's
+own contract freezes into Build-ready — or freeze this contract now with both caveats carried
+forward explicitly, re-verified at this task's own BUILD step before any code lands (mirrors
+region-pricing's own precedent for handling an unfrozen sibling dependency).
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
+
+DECIDED at freeze review (2026-07-12, orchestrator, Tin's standing Asia directive): flag fork (b)
+TAKEN — residency-policy re-frozen @ v2 with `ap` in its §3 enum (CR-1; the gap was an
+orchestrator merge miss, not a design choice). The v1 picker therefore INCLUDES `ap` as a
+fully-enabled option — the visibly-disabled-ap scope-cut language in this draft is SUPERSEDED;
+consequence-line copy for ap ("requests that cannot run in Asia-Pacific will be refused, not
+rerouted; Vietnam is served from Singapore/SEA endpoints") joins the EU/US copy. Confirmed:
+"typed confirm gate" = written consequence copy inside ConfirmDialog (ZDR idiom), NOT a
+type-to-confirm field. Tier price-delta shape + field names stay forward-cited pending
+service-tiers' freeze; this task's own freeze WAITS for service-tiers (designer's
+recommendation, adopted).
 
 ---
 
@@ -510,16 +620,67 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch — PREFERRED allowlist, drafted at design time; not yet frozen/enforced until §3 freezes):
+`apps/dashboard/components/ui/region-badge.tsx`
+`apps/dashboard/components/keys/TierSelector.tsx`
+`apps/dashboard/components/settings/RetentionZdrSettings.tsx`
+`apps/dashboard/components/settings/SettingsPage.tsx`
+`apps/dashboard/components/models/ModelsPage.tsx`
+`apps/dashboard/components/keys/CreateKeyDialog.tsx`
+`apps/dashboard/components/keys/KeysPage.tsx`
+`apps/dashboard/app/(marketing)/pricing/page.tsx`
+`apps/dashboard/tests-bff/tenant-settings.test.tsx`
+`apps/dashboard/tests-bff/model-mgmt.test.tsx`
+`./tests/`
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
-Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
+Strategy (ordered batches, PREFERRED plan — guidance, not enforced):
+1. `RegionBadge` first (the one new shared visual, zero dependents yet) — a pure presentational
+   component, trivially unit-testable in isolation before anything consumes it.
+2. Data & residency fieldset: extend `RetentionZdrSettings.tsx` with the residency GET/PUT +
+   `ConfirmDialog` wiring (M1-M5), reusing `handleZdrToggle`'s exact control-flow shape; rename
+   the tab label in `SettingsPage.tsx`. Red tests for the confirm/no-confirm asymmetry FIRST
+   (mirrors the ZDR suite's own test shape — cite it directly rather than re-deriving).
+3. Catalog: extend `ModelsPage.tsx`'s `columns` with `RegionBadge` (M6), then the
+   residency-cross-reference ineligibility read/render (M7/M8) as a SEPARATE, independently
+   degradable `useQuery` — never let it block the base table render.
+4. `TierSelector` + `CreateKeyDialog` extension (M9/M10): build the selector + capacity-preference
+   copy FIRST (no external dependency), then the price-delta fetch as a separately-degradable
+   read (mirrors step 3's independent-read pattern) — confirm service-tiers' ACTUAL frozen field
+   name/shape at this point in Build, not from this draft's assumption (§1 ⚠#1).
+5. Marketing pricing page copy (M11) — pure static content, no dependency on any other batch,
+   could be done in parallel with 2-4 if isolation allows.
+6. Full axe sweep (M12) across all touched surfaces as the final batch, joining the existing
+   `tenant-settings.test.tsx`/`model-mgmt.test.tsx` axe calls rather than a new test file.
+
+Persona (required): `ui-designer` (`.add/personas/ui-designer.md`) — this DESIGN draft's own
+governing persona; carries forward as the build's domain stance (visual-system consistency,
+computed-not-eyeballed WCAG AA, reuse-before-invent). No `flow: build` persona in this repo
+currently owns the dashboard-frontend domain more specifically than `frontend-engineer`
+(`flow: build, advisor`) — recommend the BUILD agent load `frontend-engineer` as an ADDITIONAL
+lens for BFF-trust-boundary/SSR-safety concerns, since this task's own persona is design-flow only.
+Spawn isolation (default): worktree — this task's shared-file surface
+(`RetentionZdrSettings.tsx`, `ModelsPage.tsx`, `CreateKeyDialog.tsx`) could overlap a concurrently
+building service-tiers FE change if one is ever spawned in parallel; a non-worktree shared-tree
+build risks the documented scope-snapshot poisoning gotcha.
+Known-problem fixes:
+  - trap: client-side sending `{"region":"ap"}` to a backend that 422s it → fix: the AP option is
+    rendered `disabled` at the DOM level (not just visually styled), so it can never be selected
+    or submitted (R1).
+  - trap: assuming service-tiers' `tier`/pricing shape without re-verifying at Build time → fix:
+    re-read `.add/tasks/service-tiers/TASK.md` §3 FRESH at Build start; if still unfrozen or
+    materially different from this draft's assumption, STOP and raise a change-request rather
+    than building against a guess.
+  - trap: an ineligibility-badge `useQuery` failure silently breaking the WHOLE catalog table →
+    fix: independent `isError`/`isLoading` branches per read (M8), never a combined `isError` gate
+    across both the models read and the residency read.
+Strategy actually used: <fill at VERIFY>
+Safety rule (feature-specific): the residency-pin write and its `ConfirmDialog` gate must never
+allow a SECOND `PUT` to fire while one is already in flight (mirrors `zdrConfirmOpen`'s existing
+`disabled={zdrConfirmOpen}` guard on the Switch) — no double-submit race on the confirm button.
+Code lives in: `apps/dashboard/`
+Constraints: do NOT change any test or the contract; allow-list packages only (no new npm
+dependency expected — every primitive used already ships in this repo); ask if unclear,
+especially re: service-tiers' actual frozen shape once it exists.
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 

@@ -264,13 +264,13 @@ Scenario: residency composes independently with ZDR   # M9
 
 ```
 GET  /admin/residency-policy
-  200 -> { region: "us" | "eu" | null, updated_at: string | null }
+  200 -> { region: "us" | "eu" | "ap" | null, updated_at: string | null }
   401/403 -> existing auth envelope (any authenticated role may read)
 
-PUT  /admin/residency-policy   body: { region: "us" | "eu" | null }
-  200 -> { region: "us" | "eu" | null, updated_at: string | null }
+PUT  /admin/residency-policy   body: { region: "us" | "eu" | "ap" | null }
+  200 -> { region: "us" | "eu" | "ap" | null, updated_at: string | null }
   403 -> { code: "ERR_FORBIDDEN" | <existing RBAC code> }        # non-OWNER (R3, reuses existing envelope)
-  422 -> { code: "ERR_RESIDENCY_REGION_INVALID" }                # region not in {null,"us","eu"} (R2)
+  422 -> { code: "ERR_RESIDENCY_REGION_INVALID" }                # region not in {null,"us","eu","ap"} (R2)
 
 Runtime refusal — new failure mode on every existing deployment-selection surface
 (chat /v1/chat/completions [alias + plain], /v1/embeddings, /v1/images/*, /v1/audio/*,
@@ -282,7 +282,7 @@ Runtime refusal — new failure mode on every existing deployment-selection surf
    other governance rejection on those two endpoints — no new close-code scheme)
 
 Schema:
-  tenants.residency_region              TEXT NULL   -- 'us' | 'eu' ; NULL = no pin (default)
+  tenants.residency_region              TEXT NULL   -- 'us' | 'eu' | 'ap' ; NULL = no pin (default)
   tenants.residency_region_updated_at   TIMESTAMPTZ NULL  -- set on every actual value change
   (additive migration, mirrors a7c2f0e1b4d9_tenant_retention_zdr.py's zdr_enabled/zdr_enabled_at shape)
 
@@ -317,9 +317,9 @@ Schema:
       actual admit/reject decision.
 ```
 
-Glossary deltas: `residency policy` — a tenant-level pin (`residency_region`) restricting which catalog `region` a deployment-selection path may serve from; fail-closed (no eligible in-region candidate → structured refusal, never a silent reroute). `region pin` — the specific value (`us`|`eu`|unset) a tenant's residency policy holds. (`region` itself is a Glossary term owned by `region-catalog-dimension`, cited not redefined here.)
+Glossary deltas: `residency policy` — a tenant-level pin (`residency_region`) restricting which catalog `region` a deployment-selection path may serve from; fail-closed (no eligible in-region candidate → structured refusal, never a silent reroute). `region pin` — the specific value (`us`|`eu`|`ap`|unset) a tenant's residency policy holds. (`region` itself is a Glossary term owned by `region-catalog-dimension`, cited not redefined here.)
 
-Status: FROZEN @ v1 — approved by Tin Dang
+Status: FROZEN @ v2 — approved by Tin Dang (v1) + auto-mode CR-1 v2 (ap enum completion per Tin's Asia directive)
 Reported: no — this is the design agent's freeze-ready draft; the freeze report (banner/ARC/SHAPE) has not yet been rendered to the human.
 
 Least-sure flag surfaced at freeze: [spec] `ModelRow.region`'s exact shape and the semantics of a `"global"` value are ASSUMED against an unfrozen sibling task (`region-catalog-dimension`, still `phase: ground`) — this is the single highest-risk item in the entire bundle: if `region-catalog-dimension` freezes with a different nullability default or a `"global"`-satisfies-any-pin semantics, both the Tier-1 existence check and the Tier-2 dial-constraint filter predicates need re-deriving before this contract can safely freeze. Recommend either (a) freezing `region-catalog-dimension` first and re-grounding this task's §0 assumption against its actual frozen shape, or (b) freezing this contract now with the assumption stated explicitly as a coordination condition, re-verified at this task's own BUILD step before any code lands.
@@ -334,6 +334,14 @@ rerouted" is literal. (2) Realtime consequence ACCEPTED: pinned tenants lose rea
 (rows are global); stated in the consequence line + docs, regional-realtime queued as a delta.
 (3) BYOK-no-endpoint-override remains a grounded assumption — explicitly handed to the
 adversarial verify as an attack item.
+
+CHANGE REQUEST CR-1 → CONTRACT v2 (2026-07-12, orchestrator under auto mode; cause = orchestrator's own
+pre-freeze merge of Tin's Asia directive updated the pin SEMANTICS text but missed the §3 API
+enum literals — caught by residency-tiers-ui's grounding pass ("PUT {region:'ap'} 422s while ap
+catalog rows and ap pricing both work"). Fix is enumerative only: `ap` added to GET/PUT region
+union, R2 validation set, tenants.residency_region comment, and the `region pin` glossary line.
+Tin's 2026-07-12 directive ("support Asia, Vietnam also") is the standing authorization; no semantics
+change — fail-closed M6 already treated ap as a first-class pin.
 
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
