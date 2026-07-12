@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "region-pricing",
+  "active_task": "residency-policy",
   "active_milestone": "residency-service-tiers",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -697,12 +697,22 @@
     },
     "residency-policy": {
       "title": "Per-tenant fail-closed residency policy",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T14:46:20+00:00",
-      "updated": "2026-07-12T14:46:20+00:00"
+      "updated": "2026-07-12T15:06:02+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-12T15:06:02+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "region-pricing": {
       "title": "Region multiplier on rate cards via the shared resolver",
@@ -826,7 +836,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T15:01:05+00:00",
+  "updated": "2026-07-12T15:06:02+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1778,7 +1788,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "residency-service-tiers": "region-pricing"
+    "residency-service-tiers": "residency-policy"
   },
   "todos": [
     {
