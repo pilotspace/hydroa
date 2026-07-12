@@ -4,7 +4,7 @@ slug: cost-attribution-tags · created: 2026-07-12 · stage: production
 sensitivity: data
 milestone: monetization-core
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -382,8 +382,12 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] A proxied completion sent with `X-Gateway-Tags: {"project":"alpha"}` produces a usage_records row whose `tags` column equals exactly that map — confirmed by direct row query after the call in tests/cost_attribution_tags/
+- [ ] A proxied completion WITHOUT the header is byte-identical to pre-task behavior (response body/status unchanged, usage row `tags = {}`) — confirmed by the golden pass-through tests
+- [ ] A malformed / >8-key / oversized header is refused 422 `ERR_PAYLOAD_INVALID` BEFORE governance and billing — confirmed by asserting no usage_records row exists for the refused request
+- [ ] `GET /admin/usage/cost-by-tag` returns per-tag cost slices whose per-tag sums equal `SUM(cost_usd)` of the rows carrying that tag (overlapping, explicitly non-additive across slices) — confirmed by the reconciliation assertions in the task suite
+- [ ] Migration `fddae7074590` (parent `69cfdc584129`) upgrades, downgrades, and re-upgrades cleanly — confirmed against the namespaced migrations DB
+- [ ] Streaming and non-streaming paths persist tags identically (the additive `request_headers` param on `CompletionUseCase.stream()`) — confirmed by the streaming-parity test
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed

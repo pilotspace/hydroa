@@ -4,7 +4,7 @@ slug: plan-enforcement · created: 2026-07-12 · stage: production
 sensitivity: data
 milestone: monetization-core
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -784,8 +784,13 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [ ] A tenant with NO plan assignment behaves byte-identically to pre-task (grandfathered-unlimited: no budget default, no allowlist restriction, no feature gate) — confirmed by the unassigned-tenant tests + touched-seam regression suites
+- [ ] A plan-assigned tenant with no explicit budget gets the plan's budget default enforced at the existing `RedisBudgetGuard._fetch_budget` seam (one query, both governance pipeline copies) — confirmed by test_plan_budget_default.py + reading the single LEFT JOIN
+- [ ] An explicit tenant/team/key budget setting always beats the plan default (precedence pinned) — confirmed by precedence tests
+- [ ] Plan model-allowlist composes by INTERSECTION with the key-level allowlist; a model outside the plan list is refused 403 `ERR_PLAN_MODEL_NOT_ALLOWED` with an `upgrade_hint` naming the plan — confirmed by test_plan_model_allowlist.py on both pipeline copies
+- [ ] Each plan-gatable feature (batch policy enable, ml_moderation config, logs explorer list+get, realtime relay connect) refuses with 403 `ERR_PLAN_FEATURE_NOT_ENABLED` (WS: existing ProblemError→4000+status close-code translation) when the flag is absent from the tenant's plan — confirmed by the 12 feature-gate + 3 WS tests
+- [ ] Migration `f70309062df0` adds ONLY `plans.model_allowlist` + `plans.feature_flags` additively (starter/team/enterprise seeded) and up/down/re-up cleanly — confirmed by test_plan_enforcement_migration.py + alembic check diff isolation
+- [ ] No seat-cap logic anywhere in this task's diff (sibling plan-seat-cap owns it) — confirmed by diff inspection
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
