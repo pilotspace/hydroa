@@ -644,6 +644,47 @@ async def test_duplicate_put_idempotent_upsert(
 
 
 # ---------------------------------------------------------------------------
+# Scenario 10b — GET lists every override for the caller's own tenant  (M7)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_lists_entries(
+    client: httpx.AsyncClient, api_key: dict[str, str], other_api_key: dict[str, str]
+) -> None:
+    """RED reason: GET /admin/region-pricing is not mounted yet -> 404, not the
+    contracted 200 with an `entries` list. Also covers the empty-list case (M7
+    "[] when none") and the no-cross-tenant-surface guarantee (§1 assumption #2)."""
+    owner_token = api_key["jwt"]
+
+    empty = await client.get("/admin/region-pricing", headers=_bearer(owner_token))
+    assert empty.status_code == 200, empty.text
+    assert empty.json() == {"entries": []}
+
+    for region, multiplier in (("eu", 1.05), ("us", 0.95)):
+        put_resp = await client.put(
+            f"/admin/region-pricing/{region}",
+            json={"multiplier": multiplier},
+            headers=_bearer(owner_token),
+        )
+        assert put_resp.status_code == 200, put_resp.text
+
+    listed = await client.get("/admin/region-pricing", headers=_bearer(owner_token))
+    assert listed.status_code == 200, listed.text
+    entries = listed.json()["entries"]
+    assert {(e["region"], Decimal(e["multiplier"])) for e in entries} == {
+        ("eu", Decimal("1.0500")),
+        ("us", Decimal("0.9500")),
+    }, entries
+
+    # No cross-tenant surface: a DIFFERENT tenant's GET sees an empty list, even
+    # though the first tenant just wrote two entries.
+    other_listed = await client.get("/admin/region-pricing", headers=_bearer(other_api_key["jwt"]))
+    assert other_listed.status_code == 200, other_listed.text
+    assert other_listed.json() == {"entries": []}
+
+
+# ---------------------------------------------------------------------------
 # Scenario 11 — Deleting an absent region override is a no-op success  (R4)
 # ---------------------------------------------------------------------------
 
