@@ -29,6 +29,18 @@ until the first transaction commits or rolls back, so the balance it reads
 already reflects the first call's write. This is what closes the
 concurrent-exhaustion race (TOCTOU window) at the database level, not in
 application code.
+
+HEAL (credits-ledger verify finding 1, 2026-07-12): settle()/release() originally
+called find_open_hold() BEFORE lock_balance_row() — a plain unlocked SELECT ahead
+of the row lock, so two concurrent finalizers for the SAME (tenant_id, request_id)
+(e.g. the M6 sweep racing a late completion) could both observe the hold as open
+and both post a settle/release (double-credit/debit); the lock-then-decide
+discipline above was NOT actually applied to finalization, only to admission.
+Fixed by reordering both methods to lock_balance_row() FIRST, THEN find_open_hold()
+inside the held lock — the second finalizer's re-check now runs only after the
+first transaction has committed its settle/release row and correctly no-ops.
+Repro: tests/credits_ledger/test_verify_adversarial.py::
+test_verify_concurrent_settle_and_release_double_post_same_hold.
 """
 
 from __future__ import annotations
@@ -134,9 +146,23 @@ class PostgresCreditGuard:
         actual_cost_usd: Decimal,
     ) -> None:
         async with self._session_factory() as session, session.begin():
+            # HEAL (finding 1, verify): lock-then-decide, mirroring check_and_hold's
+            # M3 discipline exactly. The balance row lock MUST be taken BEFORE
+            # re-checking "is this hold still open" — find_open_hold() alone is a
+            # plain unlocked SELECT, so two concurrent finalizers (e.g. the M6 sweep
+            # racing a late completion, or a duplicate finalize event) could both
+            # read "open" and both post a settle/release against the SAME hold
+            # (double-credit/debit). Taking the row lock FIRST serializes the two
+            # finalizers on the SAME tenant row: the second transaction's
+            # find_open_hold() call only runs after the first has committed its
+            # settle/release row, so it correctly sees the hold as closed and
+            # no-ops — the same TOCTOU closure check_and_hold already gets from
+            # locking before deciding.
+            balance, _grace = await lock_balance_row(session, tenant_id)
             open_hold = await find_open_hold(session, tenant_id, request_id)
             if open_hold is None:
-                # No open hold (already settled/released, or the request never held —
+                # No open hold (already settled/released — possibly by a concurrent
+                # finalizer that won the race above — or the request never held,
                 # e.g. credits was disabled at admission time). Nothing to reconcile.
                 return
             _hold_id, hold_amount_usd = open_hold
@@ -147,7 +173,6 @@ class PostgresCreditGuard:
             # balance); actual > hold -> negative (additional debit).
             settle_amount_usd = hold_estimate_usd - actual_cost_usd
 
-            balance, _grace = await lock_balance_row(session, tenant_id)
             new_balance = balance + settle_amount_usd
             await insert_ledger_row(
                 session,
@@ -174,13 +199,15 @@ class PostgresCreditGuard:
 
     async def _release_internal(self, tenant_id: uuid.UUID, request_id: uuid.UUID) -> None:
         async with self._session_factory() as session, session.begin():
+            # HEAL (finding 1, verify): lock-then-decide — see the matching comment
+            # in _settle_internal above; identical reasoning applies to release().
+            balance, _grace = await lock_balance_row(session, tenant_id)
             open_hold = await find_open_hold(session, tenant_id, request_id)
             if open_hold is None:
                 return
             _hold_id, hold_amount_usd = open_hold
             hold_estimate_usd = -hold_amount_usd
 
-            balance, _grace = await lock_balance_row(session, tenant_id)
             new_balance = balance + hold_estimate_usd
             await insert_ledger_row(
                 session,

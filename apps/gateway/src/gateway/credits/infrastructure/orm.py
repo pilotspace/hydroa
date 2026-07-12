@@ -70,6 +70,17 @@ class CreditLedgerRow(Base):
             unique=True,
             postgresql_where=text("idempotency_key IS NOT NULL"),
         ),
+        # HEAL (credits-ledger verify finding 3 / 🟡, migration 1891020e487c): a SECOND,
+        # GLOBAL (cross-tenant) partial unique index on idempotency_key alone — the
+        # per-tenant index above cannot catch a reused key across DIFFERENT tenants,
+        # which R4 requires to 409. Additive; the per-tenant index is untouched. See
+        # topup_service.py's module docstring for the full race + fix rationale.
+        Index(
+            "credit_ledger_idempotency_key_global_uq",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
