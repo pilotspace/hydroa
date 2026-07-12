@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "credits-ledger",
+  "active_task": "margin-dashboard",
   "active_milestone": "monetization-core",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -882,14 +882,14 @@
     },
     "margin-dashboard": {
       "title": "Operator margin dashboard (provider cost vs billed vs invoiced)",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "monetization-core",
       "depends_on": [
         "invoice-generation"
       ],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T11:43:33+00:00",
+      "updated": "2026-07-12T12:20:52+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T11:43:43+00:00",
@@ -899,6 +899,19 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "951596b295a47ab82e46581b8ac1d42a",
+        "tests": {
+          "apps/gateway/tests/margin_dashboard/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/margin_dashboard/conftest.py": "3a00c00a316a880e30d05b96e1e63c86",
+          "apps/gateway/tests/margin_dashboard/test_margin_dashboard.py": "38ea78edf57583dc1e29ca629365a1f0"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "5c5c99ab0bdba7d914db764eb5b7d178"
       }
     },
     "billing-ui": {
@@ -1009,7 +1022,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T11:49:24+00:00",
+  "updated": "2026-07-12T12:20:52+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1946,7 +1959,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "monetization-core": "credits-ledger"
+    "monetization-core": "margin-dashboard"
   },
   "todos": [
     {
