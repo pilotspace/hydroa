@@ -24,10 +24,23 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.error_catalog import PLAN_FEATURE_NOT_ENABLED
+from gateway.tenants.domain.entitlements import resolve_entitlements
+from gateway.tenants.domain.errors import SeatCapExceededError
 
 _QUERY = text(
     "SELECT t.plan_id, p.feature_flags, p.name "
     "FROM tenants t LEFT JOIN plans p ON t.plan_id = p.id WHERE t.id = :tid"
+)
+
+# plan-seat-cap TASK.md §3 (FROZEN @ v1, M2) — the ONE locked query. FOR UPDATE OF t
+# so a concurrent admission targeting the SAME tenant serializes through this SELECT.
+_SEAT_LOCK_QUERY = text(
+    "SELECT t.seat_cap, t.plan_id, p.seat_cap, p.name "
+    "FROM tenants t LEFT JOIN plans p ON t.plan_id = p.id "
+    "WHERE t.id = :tid FOR UPDATE OF t"
+)
+_SEAT_COUNT_QUERY = text(
+    "SELECT COUNT(*) FROM users WHERE tenant_id = :tid AND deactivated_at IS NULL"
 )
 
 
@@ -74,4 +87,47 @@ async def check_plan_feature(session: AsyncSession, tenant_id: uuid.UUID, featur
     )
 
 
-__all__ = ["check_plan_feature"]
+async def assert_seat_available(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Raise SeatCapExceededError iff admitting one more ACTIVE member would meet-or-
+    exceed the tenant's effective seat cap (plan-seat-cap TASK.md §3 M2, FROZEN @ v1).
+
+    MUST be called inside the caller's OWN already-open transaction, strictly BEFORE its
+    member-creating INSERT (M3) — the `FOR UPDATE OF t` lock below is held only for the
+    remainder of THAT transaction, so two concurrent callers targeting the SAME tenant
+    serialize through this SELECT rather than racing a read-then-write gap.
+
+    An unknown tenant (row is None) is treated the same as unplanned/uncapped — the
+    caller's OWN downstream INSERT (e.g. an IntegrityError on an FK) is the correct place
+    for an "unknown tenant" failure, not this helper.
+    """
+    row = (await session.execute(_SEAT_LOCK_QUERY, {"tid": str(tenant_id)})).fetchone()
+    if row is None:
+        return
+
+    tenant_seat_cap, plan_id, plan_seat_cap_default, plan_name = row
+    effective_seat_cap = resolve_entitlements(
+        tenant_budget_usd_monthly=None,
+        plan_id=plan_id,
+        plan_budget_usd_monthly_default=None,
+        plan_model_allowlist=None,
+        plan_feature_flags=None,
+        tenant_seat_cap=tenant_seat_cap,
+        plan_seat_cap_default=plan_seat_cap_default,
+    ).effective_seat_cap
+    if effective_seat_cap is None:
+        # Grandfathered-unlimited (M8/M9) — NO count query ever issued.
+        return
+
+    current_seats = (
+        await session.execute(_SEAT_COUNT_QUERY, {"tid": str(tenant_id)})
+    ).scalar_one()
+    if current_seats >= effective_seat_cap:
+        raise SeatCapExceededError(
+            plan_id=plan_id,
+            plan_name=plan_name,
+            seat_cap=effective_seat_cap,
+            current_seats=current_seats,
+        )
+
+
+__all__ = ["assert_seat_available", "check_plan_feature"]

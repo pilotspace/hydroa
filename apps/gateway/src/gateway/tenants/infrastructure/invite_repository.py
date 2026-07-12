@@ -15,12 +15,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.ids import uuid7
+from gateway.tenants.application.entitlements import assert_seat_available
 from gateway.tenants.domain.entities import Invite, InvitePreview, InviteStatus, Role
 from gateway.tenants.domain.errors import (
     EmailAlreadyRegisteredError,
     InviteExpiredError,
     InviteNotFoundError,
     InviteNotPendingError,
+    SeatCapExceededError,
 )
 from gateway.tenants.infrastructure.orm import InviteRow, TenantRow, UserRow
 
@@ -289,6 +291,16 @@ class InviteRepository:
         if expires_at < now:
             await self._session.rollback()
             raise InviteExpiredError(f"Invite {invite_pk} expired at {expires_at}")
+
+        # plan-seat-cap TASK.md §3 (FROZEN @ v1, M4): consulted AFTER the pending/not-
+        # expired checks, strictly BEFORE the member-creating INSERT — composes safely
+        # with this method's own `invites` row lock (only this method ever holds both
+        # locks at once, so concurrent instances merely serialize, never cycle).
+        try:
+            await assert_seat_available(self._session, tenant_id)
+        except SeatCapExceededError:
+            await self._session.rollback()
+            raise
 
         new_user_id = uuid7()
         new_user = UserRow(

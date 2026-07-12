@@ -45,6 +45,7 @@ from gateway.core.error_catalog import (
     INVITE_EXPIRED,
     INVITE_NOT_FOUND,
     INVITE_NOT_PENDING,
+    PLAN_SEAT_CAP_EXCEEDED,
     RATE_LIMITED,
 )
 from gateway.core.net import resolve_trusted_client_ip
@@ -57,6 +58,7 @@ from gateway.tenants.domain.errors import (
     InviteExpiredError,
     InviteNotFoundError,
     InviteNotPendingError,
+    SeatCapExceededError,
     WeakPasswordError,
 )
 from gateway.tenants.infrastructure.invite_public_rate_limiter import (
@@ -186,6 +188,19 @@ async def accept_invite(
         raise INVITE_EXPIRED.exc() from None
     except EmailAlreadyRegisteredError:
         raise AUTH_EMAIL_TAKEN.exc() from None
+    except SeatCapExceededError as exc:
+        # plan-seat-cap TASK.md §3 (FROZEN @ v1, M5/R1) — a superseding addition to this
+        # already-shipped, frozen router.
+        raise PLAN_SEAT_CAP_EXCEEDED.exc(
+            extra={
+                "upgrade_hint": {
+                    "plan_id": str(exc.plan_id),
+                    "plan_name": exc.plan_name,
+                    "seat_cap": exc.seat_cap,
+                    "current_seats": exc.current_seats,
+                }
+            }
+        ) from None
 
     # Audit — fire-and-forget, fail-open (M8). Preview is UNAUDITED (a read, no state
     # change to record — mirrors LIST being unaudited too). The newly-provisioned user is

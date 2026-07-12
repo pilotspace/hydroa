@@ -45,6 +45,7 @@ from gateway.scim.api.deps import get_scim_identity, get_scim_user_repo
 from gateway.scim.api.errors import (
     scim_groups_unsupported,
     scim_rate_limited,
+    scim_seat_cap_exceeded,
     scim_uniqueness,
     scim_user_not_found,
 )
@@ -76,6 +77,7 @@ from gateway.scim.domain.errors import (
 )
 from gateway.scim.infrastructure.repository import SqlAlchemyScimUserRepository
 from gateway.tenants.domain.entities import User
+from gateway.tenants.domain.errors import SeatCapExceededError
 
 scim_router = APIRouter(prefix="/scim/v2", tags=["scim"])
 
@@ -284,6 +286,11 @@ async def create_user(
         user = await use_case.execute(tenant_id=identity.tenant_id, email=username)
     except ScimUniquenessError:
         raise scim_uniqueness() from None
+    except SeatCapExceededError:
+        # plan-seat-cap TASK.md §3 (FROZEN @ v1, M5/R4) — RFC 7644 envelope, the
+        # deliberate documented exception to the project-wide RFC 9457 convention (this
+        # module's own docstring).
+        raise scim_seat_cap_exceeded() from None
 
     _audit(
         request,

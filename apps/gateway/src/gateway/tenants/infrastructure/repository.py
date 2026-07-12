@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.auth.domain.errors import OidcTenantConflictError
 from gateway.auth.domain.saml_errors import SamlTenantConflictError
 from gateway.core.ids import uuid7
+from gateway.tenants.application.entitlements import assert_seat_available
 from gateway.tenants.domain.entities import Role, User
-from gateway.tenants.domain.errors import EmailAlreadyRegisteredError
+from gateway.tenants.domain.errors import EmailAlreadyRegisteredError, SeatCapExceededError
 from gateway.tenants.infrastructure.orm import TenantRow, UserRow
 
 
@@ -96,6 +97,12 @@ class SqlAlchemyIdentityRepository:
         Deliberately INSERT-only (mirrors create_tenant_with_owner's own
         INSERT+catch-IntegrityError shape), NOT the get-or-provision shape
         _get_or_provision_sso_user uses — see ports.py's own docstring for why.
+
+        plan-seat-cap TASK.md §3 (FROZEN @ v1, M4): assert_seat_available is the FIRST
+        statement inside this existing `async with self._session.begin():` block, before
+        the INSERT — SeatCapExceededError propagates out uncaught (the router translates
+        it, M5); the transaction rolls back automatically on any exception exiting the
+        `async with` block, so a reject leaves no partial write.
         """
         user = UserRow(
             id=uuid7(),
@@ -106,6 +113,7 @@ class SqlAlchemyIdentityRepository:
         )
         try:
             async with self._session.begin():
+                await assert_seat_available(self._session, tenant_id)
                 self._session.add(user)
         except IntegrityError as exc:
             raise EmailAlreadyRegisteredError from exc
@@ -208,6 +216,19 @@ class SqlAlchemyIdentityRepository:
         # Provision new user — role is ALWAYS member (never from claims)
         # auth_method set at INSERT for all SSO-provisioned users (the
         # migration backfills existing rows with the sentinel hash).
+        #
+        # plan-seat-cap TASK.md §3 (FROZEN @ v1, M4): assert_seat_available is consulted
+        # in THIS branch ONLY — never the existing-user branch above (M7, an existing
+        # member's re-login is never gated). Reuses the SELECT-above's already-open
+        # autobegin transaction (the same trap noted below for begin()); on
+        # SeatCapExceededError, an explicit rollback() (this branch has no existing
+        # try/except to piggyback on) before re-raising.
+        try:
+            await assert_seat_available(self._session, tenant_id)
+        except SeatCapExceededError:
+            await self._session.rollback()
+            raise
+
         new_user = UserRow(
             id=uuid7(),
             tenant_id=tenant_id,

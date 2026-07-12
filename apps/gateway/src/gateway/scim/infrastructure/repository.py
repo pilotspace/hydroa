@@ -13,7 +13,9 @@ from gateway.scim.domain.entities import ScimToken
 from gateway.scim.domain.errors import ScimUniquenessError
 from gateway.scim.infrastructure.orm import ScimTokenRow
 from gateway.teams.infrastructure.orm import TeamMemberRow
+from gateway.tenants.application.entitlements import assert_seat_available
 from gateway.tenants.domain.entities import Role, User
+from gateway.tenants.domain.errors import SeatCapExceededError
 from gateway.tenants.infrastructure.orm import UserRow
 
 # SCIM-provisioned users are never authenticatable by password (M3) — a distinct
@@ -147,7 +149,28 @@ class SqlAlchemyScimUserRepository:
     async def create_user(
         self, *, user_id: uuid.UUID, tenant_id: uuid.UUID, email: str, password_hash: str
     ) -> User:
-        """Insert a new UserRow. Role is ALWAYS member (never from any payload — M3)."""
+        """Insert a new UserRow. Role is ALWAYS member (never from any payload — M3).
+
+        plan-seat-cap TASK.md §3 (FROZEN @ v1, M4): assert_seat_available + the INSERT
+        now share ONE transaction — a build-time discovery (§0 Issues/Risks (c), §5 Known-
+        problem fixes) superseding the CONTRACT's own illustrative `async with
+        self._session.begin():` snippet, recorded here rather than silently: by the time
+        this method runs, `get_scim_identity`'s own bearer-token SELECT has ALREADY
+        autobegun a transaction on this request-scoped session — calling `begin()` again
+        raises `InvalidRequestError` (the SAME SQLAlchemy autobegin trap
+        `_get_or_provision_sso_user`'s own docstring documents). The fix reuses that
+        already-open transaction (flush()+commit(), mirroring
+        `InviteRepository.accept`'s own shape) instead of opening a second one — the
+        OBSERVABLE guarantee (M3: the `FOR UPDATE OF t` lock held continuously from the
+        check through the INSERT, in ONE transaction) holds exactly; only the literal
+        begin()-call mechanism differs from the contract's own snippet.
+        """
+        try:
+            await assert_seat_available(self._session, tenant_id)
+        except SeatCapExceededError:
+            await self._session.rollback()
+            raise
+
         row = UserRow(
             id=user_id,
             tenant_id=tenant_id,
@@ -158,10 +181,11 @@ class SqlAlchemyScimUserRepository:
         )
         try:
             self._session.add(row)
-            await self._session.commit()
+            await self._session.flush()
         except IntegrityError as exc:
             await self._session.rollback()
             raise ScimUniquenessError from exc
+        await self._session.commit()
         await self._session.refresh(row)
         return _user_row_to_entity(row)
 
