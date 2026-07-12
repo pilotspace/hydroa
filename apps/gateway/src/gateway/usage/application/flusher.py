@@ -118,6 +118,17 @@ async def insert_usage_row(
         usage_source = _event_field(fields, "usage_source") or "frame"
         # provider-generation-id-capture: ""→NULL (the cost-recovery lookup key).
         provider_generation_id = _event_field(fields, "provider_generation_id") or None
+        # cost-attribution-tags: missing "tags" field (pre-deploy event, or a
+        # record_correction row which never sets it) -> {} (old-event-safe default,
+        # same idiom as `raw` above — a malformed tags payload degrades to {} rather
+        # than poisoning the whole event, since tags is best-effort attribution
+        # metadata, never a billing-blocking dependency, R9).
+        tags_str = _event_field(fields, "tags") or "{}"
+        try:
+            tags_parsed = json.loads(tags_str)
+            tags_dict: dict[str, str] = tags_parsed if isinstance(tags_parsed, dict) else {}
+        except (json.JSONDecodeError, ValueError):
+            tags_dict = {}
 
         # Required identifiers — a bad UUID here is poison, same as a bad numeric.
         tenant_id = uuid.UUID(_event_field(fields, "tenant_id"))
@@ -152,7 +163,7 @@ async def insert_usage_row(
                     "  cache_creation_tokens,"
                     "  audio_prompt_tokens, audio_completion_tokens, audio_cached_tokens,"
                     "  cost_basis, provider_cost, usage_source,"
-                    "  provider_generation_id)"
+                    "  provider_generation_id, tags)"
                     " VALUES"
                     " (:id, :tenant_id, :key_id, :model_id, :prompt_tokens,"
                     "  :completion_tokens, :cost_usd, :status, :pricing_snapshot_id,"
@@ -161,7 +172,7 @@ async def insert_usage_row(
                     "  :cache_creation_tokens,"
                     "  :audio_prompt_tokens, :audio_completion_tokens, :audio_cached_tokens,"
                     "  :cost_basis, :provider_cost, :usage_source,"
-                    "  :provider_generation_id)"
+                    "  :provider_generation_id, :tags)"
                     " ON CONFLICT (id) DO NOTHING"
                 ),
                 {
@@ -188,6 +199,7 @@ async def insert_usage_row(
                     "provider_cost": provider_cost,
                     "usage_source": usage_source,
                     "provider_generation_id": provider_generation_id,
+                    "tags": json.dumps(tags_dict),
                 },
             )
 

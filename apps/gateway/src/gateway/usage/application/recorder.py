@@ -66,6 +66,7 @@ class RecordingUsageRecorder:
             "provider_generation_id",
             "disconnect_estimate",
             "request_id",
+            "tags",
         }
     )
 
@@ -97,6 +98,7 @@ class RecordingUsageRecorder:
         provider_generation_id: str | None = None,
         disconnect_estimate: bool = False,
         request_id: uuid.UUID | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -109,6 +111,9 @@ class RecordingUsageRecorder:
         quantity: billed quantity for non-token units; None → per_token path.
         request_id: correlation key (request-log-metering-fields) — stored into
           raw["request_id"] when set; NOT a new column (usage_records is FROZEN).
+        tags: client-supplied key/value request labels (cost-attribution-tags TASK.md
+          §3) — stored into the dedicated usage_records.tags JSONB column. None/empty
+          → "{}" (byte-identical to a request that never sent X-Gateway-Tags).
         """
         try:
             await self._record_internal(
@@ -128,6 +133,7 @@ class RecordingUsageRecorder:
                 provider_generation_id=provider_generation_id,
                 disconnect_estimate=disconnect_estimate,
                 request_id=request_id,
+                tags=tags,
             )
         except Exception as exc:
             _log.warning(
@@ -159,6 +165,7 @@ class RecordingUsageRecorder:
         provider_generation_id: str | None = None,
         disconnect_estimate: bool = False,
         request_id: uuid.UUID | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -406,6 +413,10 @@ class RecordingUsageRecorder:
             # provider-generation-id-capture (v30 t6): the provider's SSE generation id
             # on a client-disconnect row; ""=NULL (the lookup key for cost-recovery).
             "provider_generation_id": provider_generation_id or "",
+            # cost-attribution-tags (TASK.md §3): client-supplied request labels ->
+            # the dedicated usage_records.tags JSONB column. Falsy (None/{}) -> "{}",
+            # byte-identical to a request that never sent X-Gateway-Tags (M3).
+            "tags": json.dumps(tags) if tags else "{}",
         }
 
         # Push to Redis Stream — must not drop the event even on cost-0. Bounded by a
