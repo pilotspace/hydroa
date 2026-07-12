@@ -310,13 +310,56 @@ added. The Literal/validation set everywhere in this contract reads us|eu|ap|glo
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 100% of §2 scenarios (13/13), each asserting observable behavior
+(DB row state / HTTP response body), never internals.
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_sc1_preexisting_row_defaults_to_global_region: arrange a ModelRow insert
+    omitting `region` / act flush+refresh / assert `region == "global"` + other
+    columns unchanged · covers: M1, M2
+  - test_sc2_dynamic_openrouter_sync_leaves_region_global: arrange a `CatalogModel`
+    with no `region` kwarg / act `repo.sync_catalog([model])` / assert persisted
+    `region == "global"` · covers: M1, M2
+  - test_sc3_normalize_region_accepts_valid_token: arrange raw token "eu" (+ us/ap/
+    global) / act `normalize_region(...)` / assert returns the same token · covers: M3
+  - test_sc4_normalize_region_rejects_unknown_token: arrange raw token "apac" / act
+    `normalize_region("apac")` / assert raises `InvalidRegionError` code==
+    "invalid_region" + assert no row exists for an unrelated probe id · covers: M3, R1
+  - test_sc5_bedrock_eu_seed_row_syncs_with_region_eu: arrange
+    `BEDROCK_SEED_MODELS` via `CompositeCatalogSource` / act `POST
+    /internal/catalog/sync` / assert the `eu.` row exists with region="eu",
+    provider="bedrock", active=true · covers: M4
+  - test_sc6_bedrock_us_seed_row_distinct_id_no_integrity_error: arrange same sync
+    / act same sync / assert the `us.` row exists as a DISTINCT id from the `eu.`
+    row, region="us", 200 (no IntegrityError) · covers: M4, R3
+  - test_sc7_admin_catalog_surface_exposes_region: arrange synced Bedrock rows /
+    act `GET /admin/catalog/models` / assert `AdminCatalogModelItem.region ==
+    "eu"` for the eu row · covers: M5
+  - test_sc8_admin_models_surface_exposes_region: arrange synced Bedrock rows /
+    act `GET /admin/models` / assert `AdminModelItem.region == "eu"` · covers: M5
+  - test_sc9_public_models_list_stays_byte_identical: arrange synced Bedrock rows
+    / act `GET /v1/models` / assert no `region` key anywhere AND every item's key
+    set equals the pre-task `ModelItem` key set exactly · covers: M5
+  - test_sc10_region_is_not_admin_editable: arrange synced Bedrock rows / act `PUT
+    /admin/models/{id}` with a smuggled `region` key in the body / assert the
+    row's region is unchanged after + response only reflects `enabled` · covers: M6
+  - test_sc11_bedrock_seed_rows_survive_deactivation_sweep: arrange a first sync
+    then a second sync with a WHOLLY different dynamic feed / act both syncs /
+    assert both Bedrock rows stay active==true · covers: M7
+  - test_sc12_no_vertex_row_ever_seeded: arrange the 3 static seed lists / act
+    inspect each `CatalogModel.provider` + `app.state.chat_adapters` / assert no
+    "vertex" anywhere · covers: R2
+  - test_sc13_static_seed_omitting_region_defaults_global_not_rejected: arrange a
+    `CatalogModel(...)` with no `region` kwarg / act `repo.sync_catalog([model])`
+    / assert persisted `region == "global"`, no `InvalidRegionError` · covers: R4
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Tests live in: `apps/gateway/tests/region_catalog_dimension/` (13 tests, 1 file) ·
+ran red for the right reason before Build (verified via `git stash` of the
+tracked implementation-file edits, keeping the new test/seed/migration files —
+every test failed with `UndefinedColumnError: column "region" does not exist` /
+`AttributeError` / `ImportError`, never a harness error) · MUST run red (missing
+implementation) before Build — CONFIRMED.
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
@@ -325,16 +368,104 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch):
+`apps/gateway/src/gateway/catalog/domain/entities.py`
+`apps/gateway/src/gateway/catalog/domain/errors.py`
+`apps/gateway/src/gateway/catalog/infrastructure/orm.py`
+`apps/gateway/src/gateway/catalog/infrastructure/repository.py`
+`apps/gateway/src/gateway/catalog/infrastructure/bedrock_seed.py` (NEW)
+`apps/gateway/src/gateway/catalog/api/schemas.py`
+`apps/gateway/src/gateway/catalog/api/router.py`
+`apps/gateway/src/gateway/main.py`
+`apps/gateway/migrations/versions/c78ed31d0a4d_catalog_region.py` (NEW)
+`apps/gateway/tests/region_catalog_dimension/` (NEW — this task's own §4 suite)
+Sanctioned sibling-regression touches (pre-existing fixtures/assertions that
+hardcode the pre-region CatalogModel/static_models shape — same maintenance
+pattern each prior additive seed/field task already used on these exact
+files, per git history):
+`apps/gateway/tests/catalog/test_model_catalog.py` (FakeCatalogModel gains
+`region: str = "global"`, mirroring its existing modality/provider/
+input_modalities/cached_input_usd_per_token/audio_* additions)
+`apps/gateway/tests/minimax_catalog_seed/test_minimax_catalog_seed.py`
+(`test_main_wires_composite_catalog_source`'s exact-list assertion extended
+with the 6 Bedrock ids, mirroring how it was already extended for
+GPT_REALTIME_SEED_MODELS)
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
-Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
+Strategy (ordered batches):
+1. Domain: `Region` Literal + `VALID_REGIONS` (us|eu|ap|global per the DECIDED
+   mid-freeze Asia addendum) + `normalize_region()` in entities.py (mirrors
+   InputModality/normalize_input_modalities); `InvalidRegionError` in errors.py
+   (mirrors InvalidInputModalityError). Add `region: str = field(default="global")`
+   to `CatalogModel`, `ModelRow` (domain), `MarkedUpModel`.
+2. Infra: `region` column on the ORM `ModelRow` (Text, NOT NULL, server_default
+   'global'); wire it into `list_active_models_with_markup`'s SELECT +
+   `MarkedUpModel(...)` construction; wire it into `_upsert_model`'s INSERT
+   VALUES **and** the conflict-update SET (see Known-problem fixes below for why,
+   unlike input_modalities).
+3. Migration: additive `ADD COLUMN region TEXT NOT NULL DEFAULT 'global'`, no
+   backfill UPDATE (honestly correct for 100% of existing rows), parented on the
+   confirmed current head `f1ef6b05a732`.
+4. `bedrock_seed.py` (NEW): 6 `CatalogModel` entries — {Claude 3.5 Sonnet v2,
+   Claude 3.5 Haiku} x {us., eu., apac.} cross-region inference-profile ids,
+   region={"us","eu","ap"} respectively, provider="bedrock". Wire into
+   `main.py`'s `static_models=` concatenation (append-only, after
+   MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS).
+5. API: `region: str` on `AdminCatalogModelItem` + `AdminModelItem`
+   (`ModelItem` untouched); thread `region=` through `list_catalog_models`,
+   `get_admin_models` (extend its inline SELECT), and `put_admin_model` (extend
+   its inline SELECT + echo the row's existing region — never write it).
+6. §4 red suite first (13 tests, one per §2 scenario) — verified genuinely red
+   via `git stash` of only the tracked implementation-file edits (new
+   bedrock_seed.py/migration/test files kept in place), confirming every
+   failure was `UndefinedColumnError`/`AttributeError`/`ImportError`, never a
+   harness bug — then `git stash pop` to restore the implementation and
+   re-confirm green.
+7. Regression sweep (foreground, subsets <8 min): catalog + minimax_catalog_seed
+   + catalog_input_modalities + catalog_input_capabilities + model_mgmt +
+   margin_dashboard + invoice_generation + routing_admin/config_store/
+   config_write/strategy + openrouter_embeddings_routing + bedrock_provider/
+   streaming/sigv4 + migrations (incl. autogenerate-empty-diff). Fix the two
+   sanctioned sibling-fixture breaks (§5 Scope above), nothing else.
+8. `ruff check` / `ruff format` / `pyright` on every touched file.
+
+Persona (required): `backend-architect` — clean-architecture layering (region
+validation stays domain-pure, zero framework imports; ORM/API layers only pass
+the already-validated value through) is this task's central discipline; no new
+`Protocol` port was needed (region is a passive field threaded through the
+EXISTING `sync_catalog` upsert / `list_active_models_with_markup` query), so the
+persona's "every new capability is a Protocol port" default doesn't apply here —
+noted, not violated.
+Spawn isolation (default): worktree (already running in the dedicated
+`build-region-catalog` worktree per the dispatch).
+Known-problem fixes:
+- trap: `_upsert_model`'s conflict-update `set_` historically omitted a field
+  (the pre-existing `provider` bug minimax-catalog-seed fixed) → planned fix:
+  region is written on BOTH the INSERT values and the conflict-update SET,
+  following the modality/provider precedent (re-affirmed every sync, never
+  stale) rather than the input_modalities no-clobber precedent (§3 states no
+  such invariant for region; M6 only requires sync-exclusivity, not
+  first-write-wins).
+- trap: a sibling suite's hand-rolled `FakeCatalogModel`/exact-list assertion
+  breaking on a new CatalogModel-consuming field → planned fix: extend those
+  two fixtures exactly as prior additive tasks did (§5 Scope Sanctioned
+  touches), never touch this task's OWN §4 tests.
+- trap: shared migrations test-DB naming mismatch under a suffixed
+  `GATEWAY_TEST_DATABASE_URL` (memory: shared-test-postgres-no-timeouts) →
+  planned fix: pre-create `gateway_migrations_test_build_regcat` by hand before
+  running `tests/migrations/`.
+Strategy actually used: as planned (all 8 batches executed in order; no
+deviation — the contract's Ground section had already resolved every
+ambiguity, so no mid-build re-plan was needed).
+Safety rule (feature-specific): `sync_catalog` already wraps the whole upsert +
+snapshot + deactivation sweep in ONE transaction (`async with self._session.begin()`)
+— region rides that existing atomicity unchanged; no new transaction boundary
+was needed since this task adds a column/field, not a new multi-step mutation.
+Code lives in: `apps/gateway/src/gateway/catalog/` (domain/infrastructure/api)
++ `apps/gateway/src/gateway/main.py` (wiring) + `apps/gateway/migrations/versions/`.
+Constraints: do NOT change any test or the contract; allow-list packages only;
+ask if unclear. HONORED — zero new dependencies; the only test-file edits were
+the two sanctioned sibling-fixture extensions named in §5 Scope, never this
+task's own §4 suite and never §3.
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
@@ -353,8 +484,37 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] Every existing/dynamically-synced `models` row carries `region='global'` —
+  confirmed by `tests/region_catalog_dimension/test_region_catalog_dimension.py::
+  test_sc1_...` + `test_sc2_...` (13/13 green) and by `tests/migrations::
+  test_autogenerate_empty_diff` (ORM ⇄ migration DDL match exactly).
+- [x] 6 real AWS Bedrock cross-region-inference-profile rows (us./eu./apac. x
+  {Sonnet v2, Haiku}) exist after a sync, each independently addressable, never
+  colliding on `models.id` — confirmed by `test_sc5_.../test_sc6_...` +
+  `SELECT id, region, provider FROM models WHERE provider='bedrock'` returning
+  6 distinct rows.
+- [x] `GET /admin/catalog/models` and `GET /admin/models` show `region` per row;
+  `GET /v1/models` is BYTE-IDENTICAL to its pre-task key set — confirmed by
+  `test_sc7_.../test_sc8_.../test_sc9_...` (SC9 asserts the exact `ModelItem`
+  key-set frozenset, not just "no region key").
+- [x] `PUT /admin/models/{model_id}` cannot change `region` even when a caller
+  smuggles a `region` key into the request body — confirmed by `test_sc10_...`
+  (before/after DB read + response echo assertion).
+- [x] Bedrock seed rows survive an unrelated dynamic-feed resync (never
+  deactivated) — confirmed by `test_sc11_...` (two syncs, disjoint OpenRouter
+  feeds, both Bedrock rows still `active=true`).
+- [x] No `provider="vertex"` row anywhere in this task's diff; `main.py`'s
+  `_chat_adapters` gains no `"vertex"` key — confirmed by `test_sc12_...`
+  (inspects all 3 static seed lists + `app.state.chat_adapters`).
+- [x] Zero regression in sibling suites that JOIN/consume the `models` table —
+  confirmed by a foreground run of catalog · minimax_catalog_seed ·
+  catalog_input_modalities · catalog_input_capabilities · model_mgmt ·
+  margin_dashboard · invoice_generation · routing_admin/config_store/
+  config_write/strategy · openrouter_embeddings_routing · bedrock_provider/
+  streaming/sigv4 · migrations — 254 + 11 = all green (evidence in the build
+  agent's final report).
+- [x] `ruff check` / `ruff format --check` / `pyright` clean on every touched
+  file (0 errors, 0 warnings after one auto-format pass on 2 files).
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
 - [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
