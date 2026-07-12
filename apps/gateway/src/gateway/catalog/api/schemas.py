@@ -65,6 +65,9 @@ class AdminCatalogModelItem(BaseModel):
     Same pricing/id fields as ModelItem (lean public shape) PLUS input_modalities —
     a sorted list of accepted input types for the dashboard capabilities surface.
     ModelItem itself STAYS unchanged so GET /v1/models remains byte-identical.
+
+    Additive field (region-catalog-dimension TASK.md §3):
+      region — coarse compliance/residency tag (us|eu|ap|global).
     """
 
     id: str
@@ -81,6 +84,7 @@ class AdminCatalogModelItem(BaseModel):
     audio_prompt_usd_per_1m: float | None
     audio_completion_usd_per_1m: float | None
     audio_cached_usd_per_1m: float | None
+    region: str
 
 
 class AdminCatalogModelsListResponse(BaseModel):
@@ -97,6 +101,9 @@ class AdminModelItem(BaseModel):
 
     Additive field (capabilities-admin-surface TASK.md §3):
       input_modalities — sorted list of accepted input types; defaults to ["text"].
+
+    Additive field (region-catalog-dimension TASK.md §3):
+      region — coarse compliance/residency tag (us|eu|ap|global); defaults to "global".
     """
 
     id: str
@@ -104,6 +111,7 @@ class AdminModelItem(BaseModel):
     context_length: int | None
     enabled: bool
     input_modalities: list[str] = Field(default_factory=lambda: ["text"])
+    region: str = "global"
 
 
 class AdminModelsListResponse(BaseModel):
