@@ -23,6 +23,7 @@ from gateway.core.error_catalog import (
     MODEL_DISABLED,
     MODEL_NOT_ALLOWED,
     MODEL_UNKNOWN,
+    PLAN_MODEL_NOT_ALLOWED,
     RATE_LIMITED,
 )
 from gateway.keys.domain.entities import AuthzResult
@@ -111,6 +112,12 @@ class NonChatGovernance:
         # Step 3: Model allowlist check (MUST run before catalog check)
         self._check_model_allowlist(authz, model_id)
 
+        # plan-enforcement (M4): plan-level model-allowlist check — composes by
+        # INTERSECTION with the key-level allowlist just above; runs immediately after it,
+        # BEFORE the catalog check (mirrors use_cases.py's own insertion point exactly —
+        # dual-copy governance, never staggered).
+        self._check_plan_model_allowlist(authz, model_id)
+
         # Step 4: Catalog active + per-tenant override check
         await self._check_model_catalog(model_id, authz.tenant_id)
 
@@ -185,6 +192,29 @@ class NonChatGovernance:
             return
         if model_id not in authz.model_allowlist:
             raise MODEL_NOT_ALLOWED.exc()
+
+    def _check_plan_model_allowlist(self, authz: AuthzResult, model_id: str) -> None:
+        """Raise ERR_PLAN_MODEL_NOT_ALLOWED (plan-enforcement TASK.md §3, M4, M9) if the
+        model is outside the tenant's ASSIGNED PLAN's model_allowlist.
+
+        Composes by INTERSECTION with _check_model_allowlist above — a no-op (M7
+        grandfathered) when the tenant has no assigned plan; a no-op when the plan itself
+        imposes no restriction (null allowlist).
+        """
+        if authz.plan_id is None:
+            return  # M7 — unplanned, grandfathered-unlimited
+        if authz.plan_model_allowlist is None:
+            return  # plan imposes no restriction
+        if model_id not in authz.plan_model_allowlist:
+            raise PLAN_MODEL_NOT_ALLOWED.exc(
+                extra={
+                    "upgrade_hint": {
+                        "plan_id": str(authz.plan_id),
+                        "plan_name": authz.plan_name,
+                        "model": model_id,
+                    }
+                }
+            )
 
     async def _check_model_catalog(self, model_id: str, tenant_id: uuid.UUID) -> None:
         """Check catalog active state and per-tenant override (tri-state ModelAccess)."""

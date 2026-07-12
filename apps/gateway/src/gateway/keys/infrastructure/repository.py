@@ -141,12 +141,14 @@ class SqlAlchemyApiKeyRepository:
 
     async def get_by_id(self, key_id: uuid.UUID) -> ApiKey | None:
         from gateway.teams.infrastructure.orm import TeamRow
-        from gateway.tenants.infrastructure.orm import TenantRow
+        from gateway.tenants.infrastructure.orm import PlanRow, TenantRow
 
-        # 3-table LEFT JOIN: api_keys → teams (team_budget_usd)
-        #   → tenants (cache_enabled, guardrail_configs)
-        # All LEFT JOINs so un-teamed / un-tenanted keys still authenticate.
-        # Zero extra DB reads per contract §3 (response-caching, guardrails-core).
+        # 4-table LEFT JOIN: api_keys → teams (team_budget_usd)
+        #   → tenants (cache_enabled, guardrail_configs, ...) → plans (plan-enforcement,
+        #   4th outerjoin: TenantRow.plan_id == PlanRow.id).
+        # All LEFT JOINs so un-teamed / un-tenanted / un-planned keys still authenticate.
+        # Zero extra DB reads per contract §3 (response-caching, guardrails-core,
+        # plan-enforcement M4) — mirrors this same JOIN's own existing precedent exactly.
         # api_keys.guardrail_policy (per-key-guardrail-policies) rides along for free:
         # ApiKeyRow is already selected wholesale below, so the key-level override
         # column costs zero extra columns/JOINs/queries (M3).
@@ -160,9 +162,13 @@ class SqlAlchemyApiKeyRepository:
                 TenantRow.batch_grouping_enabled,
                 TenantRow.zdr_enabled,
                 TenantRow.payload_capture_enabled,
+                TenantRow.plan_id,
+                PlanRow.model_allowlist,
+                PlanRow.name,
             )
             .outerjoin(TeamRow, ApiKeyRow.team_id == TeamRow.id)
             .outerjoin(TenantRow, ApiKeyRow.tenant_id == TenantRow.id)
+            .outerjoin(PlanRow, TenantRow.plan_id == PlanRow.id)
             .where(ApiKeyRow.id == key_id)
         )
         result = (await self._session.execute(stmt)).first()
@@ -177,6 +183,9 @@ class SqlAlchemyApiKeyRepository:
             tenant_batch_grouping_enabled,
             tenant_zdr_enabled,
             tenant_payload_capture_enabled,
+            plan_id,
+            plan_model_allowlist_raw,
+            plan_name,
         ) = result
         # Effective cache = key-level OR tenant-level (both default false)
         effective_cache = bool(getattr(row, "cache_enabled", False)) or bool(
@@ -249,6 +258,23 @@ class SqlAlchemyApiKeyRepository:
         effective_batch_grouping = bool(tenant_batch_grouping_enabled or False)
         effective_zdr = bool(tenant_zdr_enabled or False)
 
+        # plan-enforcement (M4): defensive JSONB parse — same dict/str driver quirk this
+        # method already guards for on guardrail_configs above.
+        raw_pal = plan_model_allowlist_raw
+        plan_model_allowlist: list[str] | None
+        if raw_pal is None:
+            plan_model_allowlist = None
+        elif isinstance(raw_pal, list):
+            plan_model_allowlist = raw_pal
+        elif isinstance(raw_pal, str):
+            try:
+                parsed_pal = _json.loads(raw_pal)
+            except Exception:
+                parsed_pal = None
+            plan_model_allowlist = parsed_pal if isinstance(parsed_pal, list) else None
+        else:
+            plan_model_allowlist = None
+
         return ApiKey(
             id=row.id,
             tenant_id=row.tenant_id,
@@ -272,6 +298,9 @@ class SqlAlchemyApiKeyRepository:
             guardrail_policy_source=guardrail_policy_source,
             zdr_enabled=effective_zdr,
             capture_enabled=effective_capture,
+            plan_id=plan_id,
+            plan_model_allowlist=plan_model_allowlist,
+            plan_name=plan_name,
         )
 
     async def update(

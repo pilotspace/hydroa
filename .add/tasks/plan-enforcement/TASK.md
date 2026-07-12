@@ -607,13 +607,75 @@ Reported: no — drafted for the wave-1 batch freeze review; Tin reviews all 4 w
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 90% line coverage on every new/touched module; 100% of §2 scenarios +
+§1 rejections each have exactly one executable test.
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_explicit_tenant_budget_beats_plan_default / test_plan_default_fills_gap_when_no_explicit_tenant_budget
+    / test_unplanned_tenant_with_no_explicit_budget_resolves_to_unlimited /
+    test_budget_precedence_is_null_propagation_not_plan_id_gated: pure resolve_entitlements
+    precedence · covers: M1, M2, M7
+  - test_plan_model_allowlist_is_echoed_verbatim / test_null_plan_model_allowlist_is_a_noop
+    / test_caller_needing_only_budget_dimension_may_pass_none_for_the_rest /
+    test_zero_io_pure_function_is_frozen_dataclass_result: M1 dimension-independence +
+    immutability sanity
+  - test_planned_tenant_no_explicit_budget_blocked_at_plan_default: 402, zero upstream
+    calls, zero usage_records, tenant row unchanged · covers: M2, R1
+  - test_planned_tenant_under_plan_default_proceeds: 200 under plan ceiling · covers: M2
+  - test_explicit_tenant_budget_still_wins_outright_over_plan_default /
+    test_key_level_budget_wins_outright_and_tenant_check_never_reached: most-specific-wins
+    unchanged · covers: M2 (unchanged)
+  - test_unplanned_tenant_no_explicit_budget_resolves_unlimited: byte-identical pre-task
+    behavior · covers: M1, M7
+  - test_chat_model_excluded_by_plan_but_allowed_by_key_is_rejected: 403
+    ERR_PLAN_MODEL_NOT_ALLOWED + upgrade_hint + zero usage_records · covers: M4, R2, M9
+  - test_chat_model_allowed_by_both_key_and_plan_succeeds / test_chat_null_plan_model_allowlist_is_a_noop
+    · covers: M4
+  - test_chat_key_only_allowlist_rejection_unchanged_when_no_plan: ERR_MODEL_NOT_ALLOWED
+    (original code) for an unplanned tenant · covers: M4 (unchanged)
+  - test_nonchat_model_excluded_by_plan_but_allowed_by_key_is_rejected /
+    test_nonchat_model_allowed_by_both_key_and_plan_succeeds /
+    test_nonchat_unplanned_tenant_grandfathered_regardless_of_plan_allowlist_field /
+    test_nonchat_null_plan_allowlist_imposes_no_restriction: SAME 4 scenarios exercised
+    directly against governance.py's own copy (dual-copy coverage) · covers: M4, R2, M9, M7
+  - test_enabling_batch_refused_for_plan_lacking_feature: 403 + upgrade_hint +
+    batch_grouping_enabled unchanged · covers: M6, R3, M9
+  - test_disabling_batch_is_never_gated / test_batch_enable_succeeds_for_plan_granting_feature
+    / test_unplanned_tenant_can_enable_batch_exactly_as_before · covers: M6, M7
+  - test_configuring_ml_moderation_refused_for_plan_lacking_feature: 403 + no partial
+    write · covers: M6, R4, M9
+  - test_editing_unrelated_guardrail_key_unaffected_by_ml_moderation_gate: unrelated key
+    write succeeds · covers: M6 (edge)
+  - test_ml_moderation_configure_succeeds_for_plan_granting_feature /
+    test_unplanned_tenant_can_configure_ml_moderation_exactly_as_before · covers: M6, M7
+  - test_list_logs_refused_for_plan_lacking_feature / test_get_log_refused_for_plan_lacking_feature:
+    403 + upgrade_hint · covers: M6, R5, M9
+  - test_list_logs_succeeds_for_plan_granting_feature /
+    test_unplanned_tenant_can_query_logs_exactly_as_before · covers: M6, M7
+  - test_realtime_connect_refused_for_plan_lacking_feature: WS close 4403 · covers: M6, R6
+  - test_realtime_connect_proceeds_for_plan_granting_feature /
+    test_unplanned_tenant_realtime_connect_unaffected: WS close != 4403 · covers: M6, M7
+  - test_resolver_matches_explicit_beats_default_precedence /
+    test_resolver_falls_back_to_plan_default_when_no_explicit_budget /
+    test_resolver_unplanned_tenant_is_unlimited_and_read_only /
+    test_resolver_carries_plan_allowlist_and_feature_flags: SqlAlchemyPlanEntitlementResolver
+    direct, read-only assertion · covers: M8
+  - test_migration_seeds_feature_flags_and_leaves_model_allowlist_null /
+    test_migration_is_the_first_to_extend_plans_past_prior_head /
+    test_downgrade_is_additive_only_safe /
+    test_a_new_plan_row_created_after_migration_can_set_both_columns: real Alembic
+    upgrade/downgrade · covers: M3, M5
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Tests live in: `./tests/` · MUST run red (missing implementation) before Build. RED
+evidence: every test imports `gateway.tenants.domain.entitlements` /
+`gateway.tenants.application.entitlements` / `gateway.tenants.infrastructure.
+plan_entitlement_resolver` (none existed pre-Build) or hits a router/governance seam with
+no `check_plan_feature`/`_check_plan_model_allowlist` call wired — collection/assertion
+failure for the missing-implementation reason, not a broken harness. Earned-green
+mutation check re-confirmed post-Build: reverting `put_batch_policy`'s `check_plan_feature`
+call alone flips exactly `test_enabling_batch_refused_for_plan_lacking_feature` red (11
+siblings stay green) — proves the assertion is load-bearing, not vacuous.
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
@@ -686,7 +748,17 @@ Known-problem fixes:
   - Cross-task shape drift (the PR #66 `GuardrailConfigRequest` lesson, memory-recorded) -> re-check
     `GuardrailConfigRequest`'s CURRENT shape at BUILD time, not from this TASK.md's prose alone —
     wave-1 siblings (`cost-attribution-tags`, `credits-ledger`) land on the same branch concurrently.
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
+Strategy actually used: as planned, batches 1-7 in the declared order, with one deviation:
+  batch 4 (model allowlist) was built with `plan_name` ALSO threaded through `AuthzResult`/
+  `ApiKey` (an additive field the §3 pseudocode did not enumerate on those two dataclasses)
+  because M9's own upgrade_hint shape (`{plan_id, plan_name, model}`) requires it and the
+  hot-path "zero extra DB reads" convention means it has to ride the SAME 4th outerjoin as
+  `plan_id`/`plan_model_allowlist`, not a second query — a same-seam extension of the
+  named JOIN, not a new one. Ground SHA re-resolved clean at BUILD time — no anchor had
+  moved. tests → build were done in the same working session (not strictly red-before-any-
+  code, since call-site research and implementation were interleaved while grounding); RED
+  was still independently confirmed per-file before its own GREEN (see §4 RED evidence)
+  and an earned-green mutation check re-ran post-hoc (§4) to rule out a vacuous suite.
 Safety rule (feature-specific): every feature-gate write path (`put_batch_policy`, `put_guardrails`)
   checks `check_plan_feature` BEFORE any UPDATE — a rejected request must leave zero partial state
   (mirrors `put_guardrails`'s own existing "check before write" precedent, `platform_plans_router`'s
