@@ -72,6 +72,12 @@ class Permission(StrEnum):
     # precedent as RATE_CARDS_MANAGE, role set mirrors AUDIT_READ exactly (owner/admin/
     # operator/superadmin; NOT billing_admin/viewer/member).
     LOGS_READ = "logs_read"
+    # invoice-generation TASK.md §3: financial-document read surface — additive,
+    # same precedent as RATE_CARDS_MANAGE/LOGS_READ. Role set deliberately diverges
+    # from AUDIT_READ/LOGS_READ: BILLING_ADMIN (not OPERATOR) is the financial-
+    # document persona (owner/admin/billing_admin/superadmin; NOT operator/viewer/
+    # member — confirmed at freeze).
+    INVOICES_READ = "invoices_read"
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +97,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.MEMBERS_MANAGE,
             Permission.AUDIT_READ,
             Permission.LOGS_READ,
+            Permission.INVOICES_READ,
             # NOT PROVIDER_SECRETS, NOT SECURITY_CONFIG (owner-only preserved)
         }
     ),
@@ -110,6 +117,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.BUDGETS_MANAGE,
             Permission.USAGE_READ,
             Permission.OPS_READ,
+            Permission.INVOICES_READ,
         }
     ),
     Role.VIEWER: frozenset(

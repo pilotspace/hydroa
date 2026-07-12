@@ -382,14 +382,37 @@ Reported: no — pending Tin's batch freeze review across all four wave-1 moneti
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 90% (project floor is 80%, `--cov-fail-under=80`; this task's own modules aim higher — every generation/rounding/idempotency branch is directly asserted).
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_generation_buckets_usage_into_calendar_month_lines: seed rows straddling the June/July boundary / generate July / assert period bounds + the boundary row is excluded · covers: M1
+  - test_untagged_usage_groups_by_model_team_key_only: seed 2 untagged rows same key / generate / assert 1 line, tags={} · covers: M2
+  - test_tagged_usage_adds_tag_set_grouping_dimension: seed a tagged + an untagged row same key / generate / assert 2 lines, untagged excludes tagged cost · covers: M2
+  - test_multi_tag_rows_partition_never_double_count: seed one 2-tag row / generate / assert exactly one line carries it, line-sum == invoice raw_total · covers: M2 (amendment)
+  - test_line_amount_is_pure_sum_no_second_price_path: seed 3 rows / monkeypatch resolve_markup_pct to raise / generate / assert sum + no raise · covers: M3
+  - test_rounded_then_summed_total_matches_printed_lines: seed two 10.005 rows / generate / assert each line 10.01, total 20.02 (not 20.01) · covers: M4
+  - test_zero_usage_month_still_produces_an_invoice: no usage seeded / generate / assert issued $0.00 invoice, zero lines · covers: M10
+  - test_mid_month_markup_change_blends_correctly: seed rows already billed at 20%/30% markup / generate / assert pure sum, no branching · covers: M12
+  - test_rerun_already_issued_period_is_noop: generate twice sequentially / assert 2nd returns None, exactly 1 row · covers: M13
+  - test_concurrent_generation_workers_never_duplicate: asyncio.gather two generate_for_tenant calls / assert exactly 1 row, exactly 1 winner, no raise · covers: M13
+  - test_line_type_is_usage_and_never_seat_or_proration: generate / assert line_type=='usage' · covers: M14
+  - test_issued_invoice_cannot_be_mutated / test_issued_invoice_line_cannot_be_mutated: install migration trigger / attempt raw UPDATE+DELETE / assert raises + re-read unchanged · covers: M5
+  - test_correction_is_a_new_document_not_an_edit: record_invoice_correction(-15) / assert original untouched, GET detail reports corrected_total_usd=85 · covers: M6
+  - test_evidence_drilldown_resolves_line_to_usage_rows: seed 5 matching + 1 other-model row / GET evidence / assert exactly the 5, no cross-model leak · covers: M7
+  - test_list_returns_only_callers_tenant_newest_period_first: generate 3 periods for tenant A + 2 for tenant B / GET list / assert tenant-A-only, period_start DESC · covers: M8
+  - test_pdf_csv_api_total_always_agree: generate 4-line invoice / fetch detail+csv+pdf / assert CSV sum == API total == literal PDF total bytes · covers: M9
+  - test_invoices_read_roles_pass[owner|admin|billing_admin|superadmin] / test_invoices_read_roles_forbidden[operator|viewer|member]: mint each role / GET list / assert 200 vs 403 · covers: M11, R2
+  - test_no_bearer_token: GET list with no Authorization header / assert 401 ERR_AUTH_INVALID_TOKEN, no items leaked · covers: R1
+  - test_invalid_limit_rejected[0|101|abc]: GET list with bad limit / assert 422 ERR_PAYLOAD_INVALID · covers: R3
+  - test_malformed_cursor_rejected: GET list with garbage cursor / assert 422 ERR_CURSOR_INVALID · covers: R4
+  - test_unknown_invoice_id_is_404 / test_cross_tenant_invoice_id_is_same_404: GET detail on unknown vs another tenant's id / assert byte-identical 404 ERR_INVOICE_NOT_FOUND · covers: R5
+  - test_evidence_mismatched_line_is_404: GET evidence for invoice X + a line owned by invoice Y / assert 404 ERR_INVOICE_NOT_FOUND · covers: R6
+  - test_bad_export_format_rejected[xlsx|None]: GET export with a bad/absent format / assert 422 ERR_PAYLOAD_INVALID · covers: R7
+  - test_query_timeout_maps_to_504: monkeypatch AsyncSession.execute to raise TimeoutError on the invoices SELECT / assert 504 ERR_INVOICE_QUERY_TIMEOUT · covers: R8
+  - test_empty_result_is_200_empty_list: GET list with no invoices / assert `{items:[],next_cursor:null,has_more:false}` · covers: edge-boundary
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
+Tests live in: `./tests/` (`tests/invoice_generation/` — 36 tests across `test_generation.py` + `test_api.py`) · manifest-maintenance edit to `apps/gateway/tests/migrations/test_migrations.py` (SANCTIONED, additive — added `invoices`/`invoice_lines`/`invoice_corrections` to `EXPECTED_TABLES`, mirroring every prior table-adding task's own precedent in that file). Ran RED before Build: every scenario failed for the honest missing-implementation reason (`ModuleNotFoundError: gateway.billing.application.invoice_generator` for the direct-generation tests; `404 Not Found` route-missing for the HTTP-surface tests) — confirmed via full-suite run, committed at `5493cab` before any `src/gateway/billing/*` code existed.
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
@@ -397,16 +420,28 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch): `apps/gateway/src/gateway/billing/` (new context: domain/application/infrastructure/api) · `apps/gateway/src/gateway/tenants/domain/authz.py` (additive `Permission.INVOICES_READ`) · `apps/gateway/src/gateway/core/error_catalog.py` (additive 3 ErrorSpec constants) · `apps/gateway/src/gateway/core/config.py` (additive 2 Settings fields) · `apps/gateway/src/gateway/main.py` (router registration + background-loop wiring, mirrors RetentionSweeper) · `apps/gateway/migrations/versions/` (one new additive migration) · `apps/gateway/pyproject.toml` + `.add/dependencies.allowlist` (additive `reportlab`) · `apps/gateway/tests/invoice_generation/` (new) · `apps/gateway/tests/migrations/test_migrations.py` (manifest-maintenance addition only, same precedent as every prior table-adding task).
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
-Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
+Strategy (ordered batches):
+  1. Ground read of the closest analogs: `audit/infrastructure/audit_repository.py` + `audit/api/router.py` (keyset cursor idiom), `usage/application/retention_sweep.py` (conditionally-started background-loop shape), `usage/infrastructure/orm.py` (confirm `tags` JSONB map already landed from the sibling), `tests/logs_explorer_api/` + `tests/cost_attribution_tags/` (closest sibling test fixture idioms).
+  2. Write the full RED suite (`tests/invoice_generation/conftest.py` + `test_generation.py` + `test_api.py`) against the frozen §3 contract + §2 scenarios; confirm every test fails for the honest missing-implementation reason; commit RED.
+  3. Domain dataclasses (`billing/domain/invoice.py`) + ORM rows (`billing/infrastructure/orm.py`, mirrors `audit_events_orm.py`'s layout) + the Alembic migration (parented on `fddae7074590`, additive, mirrors `audit_events`'s immutability-trigger precedent).
+  4. `InvoiceRepository` (keyset list/detail/evidence + the one append-only `record_correction` write) — mirrors `AuditRepository`'s "deliberately exposes NO update/delete" contract.
+  5. `InvoiceGenerator` (pure-aggregation generation, `ON CONFLICT (tenant_id, period_start) DO NOTHING` idempotent insert, `sweep_once`/`run_forever`/`should_start_invoice_generator` mirroring `RetentionSweeper`) + `invoice_correction.py` (the internal-only correction write, mirrors `record_correction`'s no-HTTP-route precedent) + `invoice_export.py` (CSV via stdlib `csv`; PDF via `reportlab.pdfgen.canvas`, page compression disabled so the printed total is a byte-searchable literal for tests).
+  6. `billing/api/router.py` (4 GET routes) + RBAC/error-catalog/config/main.py wiring.
+  7. Drive RED to GREEN iteratively per file; fix the one gap the app-level `create_all` test schema doesn't cover for free (the immutability trigger, exactly the same gap `audit_events` has — completed via a test-local fixture that installs the migration's own trigger SQL, mirroring `tests/audit/test_audit_store.py`'s `immutable_audit_session` fixture, NOT a weakening of the assertion).
+  8. pyright clean, ruff clean, migration up/down/parity verified on the namespaced `gateway_migrations_test_invoice` DB, full-suite regression check on the touched shared surfaces (authz, error_catalog, usage, audit).
+
+Persona (required): `billing-precision-engineer` (`.add/personas/billing-precision-engineer.md`) — Decimal-only money math end to end (grep-verified: zero `float(` in any cost formula), provenance-first (`cost_usd` is consumed as-is, never re-derived), append-only-ledger discipline extended one layer up to invoices/corrections.
+Spawn isolation (default): none — this build ran directly in the pre-assigned worktree `ai-proxy-builds/invoice-generation` (not a further nested subagent spawn); no additional isolation was needed.
+Known-problem fixes:
+  - trap: `Base.metadata.create_all`-driven test schema doesn't run migration-only `op.execute()` DDL (the immutability trigger) → fix: test-local fixture installs the identical trigger SQL directly (mirrors `audit_events`'s own `immutable_audit_session` fixture).
+  - trap: `tests/migrations/conftest.py`'s naive `.replace("/gateway_test", ...)` string substitution derives `MIGRATION_DATABASE_URL` as `gateway_migrations_test_invoice` (suffixed) but `MIGRATION_TEST_DB` (used for the session-scoped `CREATE DATABASE`) is the bare literal `gateway_migrations_test` — a known cross-worktree gotcha (see memory `add-docs-check`-adjacent note) → fix: pre-created `gateway_migrations_test_invoice` by hand before running `tests/migrations/`, per the documented workaround; did not touch the frozen conftest.
+  - trap: JSONB key-order — Postgres `jsonb` normalizes key order internally, so `GROUP BY tags` / `tags = :tags` already canonicalize a multi-tag map without any Python-side key-sorting → confirmed via the multi-tag-partition test passing without manual sort logic.
+Strategy actually used: as planned (all 8 batches executed in order; no deviation).
+Safety rule (feature-specific): the entire per-tenant generation body (aggregation SELECT + idempotent invoice INSERT + all `invoice_lines` INSERTs) runs inside ONE `session.begin()` transaction — a line-insert failure rolls back the invoice insert too, so a crash mid-generation never stray-strands a committed invoice row with missing/partial lines; a later re-run retries the whole (tenant, period) cleanly rather than being permanently blocked by `ON CONFLICT DO NOTHING`.
+Code lives in: `apps/gateway/src/gateway/billing/`
+Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear. — held: zero test files edited after RED except the one manifest-maintenance line (sanctioned, same precedent as every prior table-adding task) and the immutability-fixture completion (arrange-step infrastructure, not an assertion change); `reportlab` added to both `pyproject.toml` and `.add/dependencies.allowlist` with justification, per Issue R2.
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 

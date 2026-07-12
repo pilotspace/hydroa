@@ -48,6 +48,36 @@ async def _generate(app: Any, tenant_id: str, period_start: Any = JULY_START) ->
     return str(invoice_id)
 
 
+async def _install_immutability_triggers(db_session: AsyncSession, table: str) -> None:
+    """Apply the migration's immutability TRIGGER to the test DB after create_all.
+
+    Base.metadata.create_all creates the table but does NOT run the migration's
+    trigger-creation op.execute() calls — mirrors tests/audit/test_audit_store.py's
+    own `immutable_audit_session` fixture for the identical gap on audit_events.
+    """
+    await db_session.execute(
+        text(
+            f"""
+            CREATE OR REPLACE FUNCTION {table}_immutable_guard_fn() RETURNS trigger AS $$
+            BEGIN
+              RAISE EXCEPTION 'invoice_immutable_violation: {table} rows are immutable';
+            END;
+            $$ LANGUAGE plpgsql
+            """
+        )
+    )
+    await db_session.execute(
+        text(
+            f"""
+            CREATE OR REPLACE TRIGGER {table}_immutable_guard
+            BEFORE UPDATE OR DELETE ON {table}
+            FOR EACH ROW EXECUTE FUNCTION {table}_immutable_guard_fn()
+            """
+        )
+    )
+    await db_session.commit()
+
+
 # ---------------------------------------------------------------------------
 # M5 — issued invoice cannot be mutated
 # ---------------------------------------------------------------------------
@@ -59,6 +89,7 @@ async def test_issued_invoice_cannot_be_mutated(
     _owner, tid = await signup_tenant(client, tenant_name="Immutable Co", email="immut@inv.io")
     await seed_usage_record(db_session, tenant_id=tid, cost_usd="5.00", created_at=JULY_START)
     invoice_id = await _generate(app, tid)
+    await _install_immutability_triggers(db_session, "invoices")
 
     before = (
         await db_session.execute(
@@ -99,6 +130,7 @@ async def test_issued_invoice_line_cannot_be_mutated(
             text("SELECT id FROM invoice_lines WHERE invoice_id = :id"), {"id": invoice_id}
         )
     ).scalar()
+    await _install_immutability_triggers(db_session, "invoice_lines")
 
     with pytest.raises(Exception, match="invoice_immutable"):
         await db_session.execute(
