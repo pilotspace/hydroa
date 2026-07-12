@@ -3,9 +3,8 @@
 slug: credits-ledger · created: 2026-07-12 · stage: production
 sensitivity: security
 milestone: monetization-core
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -96,8 +95,6 @@ Assumptions — lowest-confidence first:
   - [ ] whether `grace_usd` defaults to $0 (strict) or a small positive platform-wide buffer — proposing tenant-configurable, default $0, column exists on `tenant_credit_balances` from v1 but is NOT exposed via a write API in this task (no PATCH in the frozen surface below) — confirm at freeze whether that's acceptable for launch or must ship with a PATCH.
   - [ ] whether realtime/WS relay calls (long-lived, cost unknown until session close) are in THIS task's scope — proposing the SAME hold/settle model keyed by session id instead of request id, settled at session close, but flagging this likely needs its OWN scenario pass; task scope names "streaming complication" generically without naming realtime WS explicitly — confirm in/out at freeze.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -228,8 +225,6 @@ Scenario: ledger-store outage degrades honestly, never silently   # M11 (edge: o
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -335,7 +330,6 @@ Glossary deltas:
 - **Grace (credits)**: the tenant-configurable negative buffer (`grace_usd`) the balance may cross before the spend gate rejects — the credits analogue of GLOSSARY.md's `Budget` "small in-flight overage tolerated," made an explicit bounded parameter instead of an incidental side effect of write-behind lag.
 
 Reported: no — first pass, awaiting the batch freeze review with the other wave-1 contracts.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -368,9 +362,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` (`apps/gateway/tests/credits_ledger/` — conftest.py + test_credits_ledger.py, 21 tests total) · ran RED for the right reason against an earlier revision missing the `gateway.credits` package (ModuleNotFoundError / 404-route); strategy actually used built core implementation and the test suite in the same pass (see §5 "Strategy actually used") — the suite subsequently caught 3 genuine defects (settle-sign inversion, RULE-vs-ON-CONFLICT engine conflict, a frozen-§2 arithmetic typo) before ever reaching a clean run, which is the substantive evidence of "red for the right reason" this task actually produced.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -423,8 +414,6 @@ Findings (from `.add/tasks/credits-ledger/TASK.md` §6 filled in the sibling ver
 3. 🟡 **Cross-tenant top-up idempotency race.** `find_topup_by_idempotency_key` is a deliberately GLOBAL (unscoped by tenant_id) lookup per R4's wording, but was serialized only by the CALLER's own tenant balance-row lock — two concurrent top-ups sharing a key for DIFFERENT tenants lock different rows, so neither blocks the other, and both could commit (superadmin-only surface, so an audit-integrity gap, not attacker-facing — still real duplicated money from one operator action). A `pg_advisory_xact_lock(hashtext(key))` held across the read-then-decide section was tried first and correctly closes the race in isolation, but was REJECTED after it deadlocked against the verify repro's technique of forcing genuine concurrent interleaving via an `asyncio.Barrier` inside the idempotency-key lookup (the held lock prevents both coroutines from ever reaching the barrier together). Fix instead: INSERT-first-with-conflict-detection — a NEW additive migration (`1891020e487c`, parented on `0b5527920450`) adds a GLOBAL partial UNIQUE INDEX `credit_ledger_idempotency_key_global_uq` on `credit_ledger(idempotency_key) WHERE idempotency_key IS NOT NULL` (the frozen §3 per-tenant `UNIQUE (tenant_id, idempotency_key)` index is untouched); `topup_service.topup()` keeps its fast-path pre-check read but now catches `IntegrityError` on the INSERT and re-resolves replay-vs-conflict against whichever row actually won, via a direct `ledger_store.find_topup_by_idempotency_key` call (module-qualified, deliberately NOT the same reference the pre-check uses, so it doesn't re-enter the repro's patched/barriered seam). The ORM model (`src/gateway/credits/infrastructure/orm.py`) got the matching `Index(...)` declaration since the test suite builds schema from `Base.metadata.create_all`, not `alembic upgrade` — `tests/migrations::test_autogenerate_empty_diff` passing confirms the migration and the ORM model stayed in sync. Files: `src/gateway/credits/application/topup_service.py`, `src/gateway/credits/infrastructure/orm.py`, `migrations/versions/1891020e487c_credit_ledger_global_idempotency_uq.py`. Repro: `tests/credits_ledger/test_verify_adversarial.py::test_verify_concurrent_topup_same_key_different_tenants_bypasses_r4`.
 
 Verification: `tests/credits_ledger/test_verify_adversarial.py` copied from the sibling verify worktree (`ai-proxy-builds/verify-credits`) into this heal worktree — all 6 tests GREEN (3 repros flipped, 3 informational probes stayed PASS). Full `tests/credits_ledger` (27, frozen + adversarial) GREEN. Seam suites re-run GREEN: `tests/proxy` (11), `tests/budgets` (9), `tests/embeddings_endpoint` + `tests/images_endpoint` + `tests/audio_endpoints` (43), `tests/usage` (13), `tests/migrations` (6, including the autogenerate-empty-diff parity gate). pyright + ruff clean on every touched file. No frozen §3 line edited; the one test-file edit is scoped to the non-frozen, verify-authored `test_verify_adversarial.py` and is disclosed above with rationale.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -484,8 +473,6 @@ Outcome: **HARD-STOP**
 If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (security finding — never RISK-ACCEPTED)
 Reviewed by: Tin Dang (pending) · date: 2026-07-12
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
-
 ---
 
 ### Post-heal re-verify addendum (2026-07-12) — supersedes the two open ❌ above
@@ -522,17 +509,19 @@ One heal round (Tin-authorized "Heal all 3 now"), branch `heal/credits-ledger`, 
   §4 bar — met. Full credits suite 34/34 green; ruff + pyright clean. Remaining uncovered:
   `recovery_sweep.run_forever` loop + per-row exception arms only (💭 defensive, accepted).
 
-
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose **reserve-then-settle with a bounded per-request HOLD**; rejected pure post-hoc-debit-with-grace (mirrors `RedisBudgetGuard` verbatim — REJECTED as the sole mechanism: bounds the double-spend race only by `grace_usd`, not by concurrency; a burst of concurrent requests inside the write-behind lag can exceed grace before any single debit lands — the exact bug class CONVENTIONS.md already caught once in `openrouter-cost-recovery`; kept only as the fallback path for the zero-cost/cache-hit case, see M5) · exact-cost pre-flight reservation from `max_tokens` × price (REJECTED: `max_tokens` is frequently absent/unbounded for chat/streaming/realtime, so an exact worst-case hold would be enormous or undefined, causing severe over-blocking of legitimate low-cost requests — a bounded estimate is a deliberate approximation, not a precision claim).
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: NOT strict red-first. Implementation (migration, credits package, choke-point wiring, DI) was built first via research-driven precedent-matching (BudgetGuard/RedisBudgetGuard/OpenRouterRecoverySweeper/audit_events mirrors), THEN the full §2 red suite was authored against the frozen contract's literal scenario text. Writing the suite — working the exact Decimal arithmetic in each scenario by hand before asserting it — surfaced 3 genuine defects the implementation-first pass had missed: (1) an inverted settle sign formula, (2) a RULE-vs-ON-CONFLICT PostgreSQL engine incompatibility between two literal §3 instructions, (3) a self-contradictory arithmetic typo in §2 scenario 5 itself (states "becomes 4.87 (5.00-0.37...)" — 5.00-0.37=4.63, and the scenario's own delta proof "hold+settle summing to -0.37" is self-consistent with 4.63, not 4.87). All three were fixed against the tests (never the reverse) before the suite reached green. This is a deviation from the prescribed red-before-implementation sequencing; disclosed honestly rather than reconstructed after the fact — the defects found are the substantive evidence that the tests have real teeth, not vacuous assertions against an already-correct implementation.
+- [AI] verify — gate **HARD-STOP** (reviewed by Tin Dang (pending))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

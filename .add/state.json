@@ -761,12 +761,12 @@
     },
     "credits-ledger": {
       "title": "Prepaid credits append-only ledger + fail-closed spend gate",
-      "phase": "contract",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "monetization-core",
       "depends_on": [],
       "created": "2026-07-12T07:40:03+00:00",
-      "updated": "2026-07-12T08:00:32+00:00",
+      "updated": "2026-07-12T11:49:24+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T08:00:32+00:00",
@@ -776,6 +776,36 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "8ebb84b57f73c8a4ec5eb813c22f24a2",
+        "tests": {
+          "apps/gateway/tests/credits_ledger/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/credits_ledger/conftest.py": "11cec9a7c50a54d8fc4b136c98b91479",
+          "apps/gateway/tests/credits_ledger/test_credits_ledger.py": "ec5d1f212981319d0ee9c9e37253f135",
+          "apps/gateway/tests/credits_ledger/test_history_pagination.py": "b36aea9a84cf782be7767e0554ec7b3f",
+          "apps/gateway/tests/credits_ledger/test_verify_adversarial.py": "2b1f5f28a8d245e41cb65125d40a06f2"
+        }
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "dd7219ec1ba51fa0d0dfe5558b71e3ef"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-12T11:49:14+00:00",
+            "reason": "scope_violation: task 'credits-ledger' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage (1 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "plan-enforcement": {
@@ -979,7 +1009,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T11:48:39+00:00",
+  "updated": "2026-07-12T11:49:24+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
