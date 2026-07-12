@@ -844,14 +844,47 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+Independent adversarial verify performed 2026-07-12 by a SEPARATE verify agent (persona
+`appsec-engineer`, closest-fit seeded persona — privilege-boundary/tenant-isolation lens;
+no dedicated concurrency-verifier persona exists in `.add/personas/` for this narrower
+admission-control lens, so appsec's security stance was extended with an explicit
+concurrency pass per this task's own dispatch), in an isolated worktree
+(`verify/plan-seat-cap` @ `5edd931`) — NOT the builder. 8 NEW adversarial probe tests
+written (`tests/plan_seat_cap/test_verify_adversarial.py`), run against real Postgres
+(:5433). Zero src/ or existing-test edits.
+
+- [x] all tests pass — 23/23 builder tests + 8/8 NEW adversarial probes green
+      (`tests/plan_seat_cap/` = 31/31); 213/213 sibling-suite tests green
+      (member_invite_acceptance, member_invite_issuance, domain_capture,
+      scim_provisioning, sso_oidc, saml_sso, plan_catalog, plan_enforcement — zero
+      regressions, matches the builder's own 236-total claim within suite-collection
+      variance)
+- [x] coverage did not decrease — task-owned domain files at 100% in an isolated run
+      (`entitlements.py`/`errors.py`/`error_catalog.py`); full-suite 90% coverage-target
+      claim not independently re-measured end-to-end (time-boxed) — 💭 note: orchestrator
+      should confirm the builder's own §5 90% figure against one full-suite `--cov` run
+      before final sign-off if coverage is a hard gate
+- [x] no test or contract was altered during build — confirmed via
+      `git diff 20d1b9e..9c2c204 -- apps/gateway/tests/plan_seat_cap/` (zero diff, the red
+      suite is byte-identical from its first commit through merge) and
+      `git diff f0c4388..2ee48b4 -- .add/tasks/plan-seat-cap/TASK.md` (only §4/§5/§6
+      template placeholders filled; §1–§3 untouched)
+- [x] the green was EARNED, not gamed — see Refute-read verdict below: EARNED
+- [x] concurrency / timing of the risky operation is safe — see Advisor 3-lens
+      Concurrency lens below: CLEAR, including 2 NEW cross-seam races the builder's own
+      suite never exercised
+- [x] no exposed secrets, injection openings, or unexpected dependencies — all 2 new SQL
+      queries (`_SEAT_LOCK_QUERY`/`_SEAT_COUNT_QUERY`) use bound `:tid` params via
+      `sqlalchemy.text()`, zero string interpolation; `scim_seat_cap_exceeded()`'s body
+      carries only a static detail string, never `plan_id`/`seat_cap`/`current_seats`
+      (checked — no cross-tenant entitlement-data leak into the SCIM envelope); zero new
+      third-party dependencies (every import already existed in this codebase)
+- [x] layering & dependencies follow CONVENTIONS.md — `assert_seat_available` lives in
+      `application/entitlements.py` (not `domain/`), `resolve_entitlements` stays
+      zero-I/O; confirmed by direct read of the diff, matches backend-architect's own
+      layering convention this task's §5 named
+- [ ] a person reviewed and approved the change — NOT a verify-agent call; left for the
+      orchestrator/human gate (this agent does not gate per its own dispatch)
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > Pre-declare the OBSERVABLE outcomes a correct build must produce — derived from §2 SCENARIOS
@@ -896,38 +929,114 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
       (236 tests) after each seam landed, zero regressions.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol is referenced; record where / how confirmed —
+      `grep -rn "assert_seat_available(" apps/gateway/src/gateway/` (excluding the def
+      itself) returns EXACTLY 4 call sites: `scim/infrastructure/repository.py:169`,
+      `tenants/infrastructure/invite_repository.py:300`,
+      `tenants/infrastructure/repository.py:116` (domain-capture) and `:227` (SSO
+      new-user branch) — matching M4's 4 named seams exactly, no 5th/orphaned call site.
+      `effective_seat_cap` (9 refs), `SeatCapExceededError` (22 refs),
+      `PLAN_SEAT_CAP_EXCEEDED` (10 refs), `scim_seat_cap_exceeded` (4 refs) — all
+      non-zero, all referenced outside their own definition.
+- [x] DEAD-CODE (code) — no new unused or orphaned symbol introduced — every symbol
+      counted above has ≥1 non-definition reference; no new function/class/constant
+      found with zero callers.
+- [ ] SEMANTIC (prose / non-code) — n/a, this task is code-only (no prose/docs deliverable
+      in scope)
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > §0's Ground SHA anchors the symbols cited at ground time to that commit — code moves during
 > build. Before the gate, re-resolve every symbol §3 CONTRACT cites against the CURRENT tree
 > (not the Ground SHA) so a stale anchor is caught here, not by a future reader chasing a moved
 > line.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by
+      direct grep against worktree HEAD `5edd931`: `ResolvedEntitlements`/
+      `effective_seat_cap` (`tenants/domain/entitlements.py:19,34`),
+      `resolve_entitlements` (`:37`), `assert_seat_available`
+      (`tenants/application/entitlements.py:90`), `SeatCapExceededError`
+      (`tenants/domain/errors.py:64`), `PLAN_SEAT_CAP_EXCEEDED`
+      (`core/error_catalog.py:887`), `scim_seat_cap_exceeded` (`scim/api/errors.py:85`) —
+      all resolve, all match the CONTRACT's own described shape.
+- [x] any anchor that moved/renamed since Ground SHA is named here, not left silent — none
+      moved/renamed; line numbers above differ from §0's Ground-SHA citations only because
+      §0 cited PRE-EXISTING code (this task added new code after those lines, a normal
+      insertion shift, not a rename/move of anything §0 anchored).
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under autonomy: auto the AI auto-resolves Verify, so the earned-green refute-read MUST be
 > recorded here (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). The engine
 > MEASURES it is filled (`audit: refute_unrecorded`); it never auto-blocks — a human spot-audit
 > is the backstop. A human-gated (conservative/manual) task may leave it for the human's judgment.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: independent verify agent (persona `appsec-engineer`), separate worktree
+  (`verify/plan-seat-cap` @ `5edd931`), NOT the builder · adversarially checked:
+  (1) a NEW cross-seam race SCIM-create vs invite-accept, and a SCIM-vs-SCIM same-seam
+  race — targeting the ONE structurally-deviated transaction shape (§5's own flagged
+  "Strategy actually used" deviation: SCIM's `create_user` reuses an already-open
+  autobegin transaction instead of calling `begin()`) that the builder's own concurrency
+  test (invite-accept vs OIDC) never exercised — both pass, non-flaky across 3 repeated
+  runs, exactly one winner every time, tenant never over/under-admitted; (2) SAML
+  existing-member re-login (builder tested OIDC only) — never gated, confirmed; (3) the
+  tenant.seat_cap override precedence enforced THROUGH the real locked I/O helper
+  (`assert_seat_available`), not just the pure `resolve_entitlements` unit test the
+  builder already has; (4) `seat_cap=0` confirmed DB-unreachable
+  (`ck_tenants_seat_cap_positive`/`ck_plans_seat_cap_positive`), not merely assumed from
+  reading `orm.py`; (5) the disclosed-but-unguarded SCIM PATCH `active:true` reactivation
+  gap (TASK.md §0/§1 "Ruled out, not silently") — confirmed REAL and quantified (a
+  churned-member reactivation pushes an at-cap tenant arbitrarily over cap, 0 rejections)
+  rather than taken on faith from the builder's own prose; (6) the mirror-image direction —
+  `deactivate_user` (a conftest helper the builder's own 23 tests define but NEVER call) —
+  confirmed a deactivation genuinely FREES a seat for the next REAL, gated admission
+  (invite-accept), proving the COUNT query's `deactivated_at IS NULL` filter end-to-end in
+  the direction that matters for a paying tenant's day-to-day churn, not just the exploit
+  direction. No overfit-to-fixture, vacuous-assert, or stubbed-away-logic pattern found in
+  the builder's own 23 tests; no test or contract edit found anywhere in the build history.
+  The green is earned.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Under autonomy: auto run the 3-lens checklist and record the verdict here. Lenses run in
 > order; a Security HARD-STOP ends the checklist (leave remaining lenses blank). Binding for
 > sensitivity: mechanical (advisor-gate-relax reads it); advisory for all other sensitivities.
 > The engine MEASURES this block is filled (audit: advisor_verdict_unrecorded); it never blocks.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: independent verify agent (persona `appsec-engineer`)
+1. Security: CLEAR. No auth-bypass or privilege-escalation finding. Error-envelope
+   isolation confirmed both directions: the 3 RFC-9457 seams (invite-accept,
+   OIDC/SAML, domain-capture) always raise `PLAN_SEAT_CAP_EXCEEDED.exc(...)`, the SCIM
+   seam always raises `scim_seat_cap_exceeded()` (RFC 7644) — never crossed — and the
+   SCIM body carries only a static detail string, never `plan_id`/`plan_name`/
+   `seat_cap`/`current_seats` (no structured-entitlement-data leak into the
+   machine-bearer-authenticated SCIM surface). ONE real gap found and confirmed by a NEW
+   adversarial probe (🟡, not 🔴): SCIM `PATCH .../active:true` reactivation is NOT
+   gated by `assert_seat_available` — `test_scim_reactivation_bypasses_seat_cap_
+   pushing_tenant_over_cap` proves a churned-member reactivation pushes an at-cap
+   tenant arbitrarily over its cap with zero rejections. This is NOT a hidden defect —
+   TASK.md §0 Issues/Risks and §1 Assumptions BOTH name it explicitly ("Ruled out, not
+   silently" — a disclosed, deliberate scope boundary, not asked for in this task's own
+   4-seam dispatch) and already flag it forward as a §7 OBSERVE spec-delta candidate.
+   Treated as a 🟡 concern to carry into §7, not a HARD-STOP, because it is disclosed,
+   bounded (only affects tenants with BOTH churned members AND an IdP-held SCIM token),
+   and was never in this task's own Must list. 💭 note (informational, no action): the
+   pre-existing `_get_or_provision_sso_user` existing-user match is by email only (no
+   tenant_id filter in that SELECT) — predates this task, out of its scope, not a new
+   regression.
+2. Concurrency: CLEAR. `FOR UPDATE OF t` verified to hold continuously through the
+   check+INSERT across ALL 4 seams under load, including the flagged SCIM
+   autobegin-reuse deviation — 2 NEW cross-seam/same-seam adversarial races
+   (SCIM-vs-invite-accept, SCIM-vs-SCIM) pass non-flaky across 3 repeated runs, on top
+   of the builder's own invite-vs-OIDC race (re-confirmed still green). No lost-update,
+   no double-admission, no false-double-rejection observed in any run.
+3. Architecture: CLEAR. Layering matches this task's own named backend-architect
+   convention: `assert_seat_available` lives in `application/entitlements.py` (never
+   `domain/`), `resolve_entitlements` stays zero-I/O and additive (3 existing callers
+   confirmed byte-identical via the builder's own M1 tests, re-run green here). Zero new
+   third-party dependencies. Wiring confirmed exactly 4/4, zero dead code (Deep checks
+   above).
+Verdict: PASS (recommended — this agent does not gate; see GATE RECORD)
+Residue: 1 disclosed 🟡 concern — SCIM reactivation bypass (confirmed + quantified, not
+  hidden); already named in TASK.md §0/§1 as a forward §7 OBSERVE spec-delta candidate.
+  Recommend confirming it is actually captured in §7 below before this task closes.
+Binding: advisory — sensitivity: data (not mechanical; this verdict informs but does not
+  itself gate the human/orchestrator decision)
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
@@ -950,8 +1059,23 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 Forward changes for the next loop — each re-enters at Specify as the next task. One line
 each, tagged `[SPEC · open|seeded|dropped]`, with evidence (e.g. `[SPEC · open] rate-limit
 the retry path (evidence: prod herd spikes)`). See the `add` skill's `deltas.md`.
+- [SPEC · seeded] Gate SCIM `PATCH /scim/v2/Users/{id}` `active:true` reactivation through
+  `assert_seat_available` — TASK.md §0/§1 disclosed this as a deliberate scope boundary at
+  freeze; independent verify (2026-07-12) confirmed it is a REAL, quantified bypass (a
+  churned-member reactivation pushes an at-cap tenant arbitrarily over its cap, 0
+  rejections) via `tests/plan_seat_cap/test_verify_adversarial.py::
+  test_scim_reactivation_bypasses_seat_cap_pushing_tenant_over_cap`. Evidence: adversarial
+  probe, non-flaky, real Postgres.
 
 ### Competency deltas
 What did this loop teach the foundation? One line each, tagged by competency
 (`DDD · SDD · UDD · TDD · ADD`), status `open`, with evidence. See the `add` skill's `deltas.md`.
 <!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+- [ADD · open] a builder's own concurrency scenario proved the design against ONE seam
+  pair (invite-accept vs OIDC) but the riskiest transaction shape (§5's own flagged SCIM
+  autobegin-reuse deviation) went unraced by the builder's own suite — independent verify
+  closed that gap with 2 new cross-seam/same-seam probes targeting the seam the build's
+  OWN "Strategy actually used" note flagged as highest-risk. Evidence: this task's §6.
+  Generalizable lesson for future admission-control tasks with >2 concurrent seams: race
+  EVERY seam pair the contract itself flags as structurally novel, not just one
+  representative pair.
