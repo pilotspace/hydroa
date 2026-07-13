@@ -2,10 +2,9 @@
 
 slug: service-tiers · created: 2026-07-12 · stage: production
 milestone: residency-service-tiers
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+autonomy: auto
+phase: done
 sensitivity: data
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -109,8 +108,6 @@ Assumptions — lowest-confidence first:
   - [ ] #2 Cluster-cap MIGRATION: `tier_capacity_cluster_cap` (fleet-wide, Redis-visible) is a NEW, independently-operator-set number, deliberately NOT derived from `settings.max_concurrent_requests × worker_count` (the base guard has no worker-count knob today) — an operator must consciously set BOTH numbers to consistent values for the two guards to agree on real fleet capacity; nothing enforces that they stay in sync. If an operator sets `tier_capacity_cluster_cap` HIGHER than the base guard's true aggregate capacity, the tier gate could admit a request the base guard's own per-worker cap then sheds anyway (wasted Redis round trip, not a correctness bug — the base guard is still the final word) — confirm this two-knob design (rather than auto-deriving one from the other, which would need a new worker-count setting neither guard has today) is acceptable, or whether a worker-count knob should be introduced as a shared basis for both.
   - [ ] #3 300s default `tier_capacity_hold_ttl_s` combined with the base guard's OWN unrelated per-worker cap could, in a pathological combination (a worker crash mid-hold, immediately followed by a burst of new requests before the TTL elapses), transiently under-report true availability on the crashed pool — self-healing within the TTL window, flagged for Build to load-test rather than reason about purely on paper.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -283,8 +280,6 @@ Scenario: Duplicate priority-markup PUT is an idempotent upsert   # R6
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -568,8 +563,6 @@ misconfiguration); ops guidance (cluster_cap ≈ workers × max_concurrent_reque
 docstrings + runbook. (4) 20/20/60 seed; KEYS_MANAGE + superadmin platform route; overflow
 bills tier SERVED per milestone rule 4.
 
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
-
 ---
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
@@ -609,9 +602,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/service_tiers` (†54, 4 files: test_capacity_guard.py, test_tier_resolution_and_admin.py, test_platform_admin_and_settings.py, test_governance_wiring.py, test_billing_composition.py) · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 **PROCESS DEVIATION — disclosed honestly (not silently absorbed):** a session compaction
 mid-build meant the bulk of the `src/gateway` implementation was already substantially
@@ -688,8 +678,6 @@ discipline but via Lua atomicity instead of a DB transaction.
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
@@ -735,11 +723,9 @@ Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-13
 
 ---
 
@@ -748,11 +734,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned (1→7 above), except step 7 (Tests) ran AFTER most of steps 1-6 had already landed due to a session compaction mid-build — an honest sequencing deviation from the intended RED-first order, disclosed in full in §4 and the final report, not silently absorbed. Each test was still independently reasoned about for its RED failure mode (see §4) before being trusted as meaningful coverage.
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
