@@ -1006,6 +1006,24 @@ RESIDENCY_NO_ELIGIBLE_REGION = ErrorSpec(
 )
 
 # ---------------------------------------------------------------------------
+# Bedrock BYOK region guard (residency-bedrock-region-guard TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: A Bedrock BYOK credential's AWS region geo (us-/eu-/ap-) does not match the
+#: resolved model id's cross-region-inference-profile geo (us./eu./apac.) — raised
+#: by ``_assert_region_consistent`` (bedrock_upstream.py) BEFORE any Bedrock HTTP
+#: dial, at the top of BedrockCompletionUpstream.complete/.stream and
+#: BedrockEmbeddingsProvider.post_json. Fail-closed: an unclassifiable/malformed
+#: credential region under a geo-prefixed model id raises this too — never fails
+#: open. The message names neither the secret nor the full credential, only the
+#: required vs. actual region geo.
+BEDROCK_REGION_MISMATCH = ErrorSpec(
+    403,
+    "ERR_BEDROCK_REGION_MISMATCH",
+    "Bedrock credential region does not match the model's residency region",
+)
+
+# ---------------------------------------------------------------------------
 # Compliance export errors (compliance-export-api TASK.md §3 — FROZEN @ v1)
 # ---------------------------------------------------------------------------
 

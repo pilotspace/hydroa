@@ -135,13 +135,19 @@ Reported: <yes — the freeze report (banner/ARC/SHAPE) rendered before this fro
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 90% (new code) — achieved: bedrock_upstream.py new lines 100%, bedrock_embeddings.py new lines 100%, error_catalog.py new entry 100% (scoped coverage run against the touched-file suites).
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_R1_complete/stream/embeddings_refused_before_dial: eu.-profile + us-east-1 cred → ProblemError 403 ERR_BEDROCK_REGION_MISMATCH, zero httpx calls (hit-counter==0) on all three entry points · covers: R1
+  - test_M1_apac_profile_with_ap_credential_proceeds / test_M1_us_profile_with_us_west_credential_proceeds / test_M1_stream_matching_geo_proceeds / test_M1_embeddings_matching_geo_proceeds: matching geo → dials normally, response byte-identical shape · covers: M1
+  - test_M3_unprefixed_model_unaffected_on_complete/_regardless_of_region/_on_embeddings: no recognized prefix → unconstrained regardless of credential region, never raises · covers: M3
+  - test_R2_malformed_region_fails_closed_on_complete/stream/embeddings: credential region "not-a-region" (empty string is rejected earlier by BedrockCredential's own validator, so the reachable malformed case is a non-empty unclassifiable string) under a geo-prefixed model → fails closed, zero httpx calls · covers: R2
+  - test_M2_all_three_entry_points_share_the_same_helper: bedrock_embeddings' imported `_assert_region_consistent` is object-identical (`is`) to bedrock_upstream's — one source of truth, cannot drift · covers: M2
+  - test_helper_*: pure unit tests of `_assert_region_consistent` + `_PROFILE_PREFIX_TO_GEO` (all three prefixes, unconstrained cases, malformed-region fail-closed, error message names no secret) · covers: M1-M4, R1, R2
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Actual test path: `apps/gateway/tests/bedrock_region_guard/test_bedrock_region_guard.py` (26 tests). RED evidence: `ImportError: cannot import name '_assert_region_consistent' from 'gateway.proxy.infrastructure.bedrock_embeddings'` (collection error — right reason, no implementation existed). Committed alone as `c2a307d test(bedrock): add red suite for fail-closed BYOK region guard`.
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
@@ -150,16 +156,16 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch): `apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py`, `apps/gateway/src/gateway/proxy/infrastructure/bedrock_embeddings.py`, `apps/gateway/src/gateway/core/error_catalog.py`, `apps/gateway/tests/bedrock_region_guard/`
+Strategy (ordered batches): 1. Ground in the real call sites (complete/stream/post_json) and the vertex_upstream `_parse_vertex_model`/`_ID_PREFIX_TO_LOCATION` precedent. 2. Write the full red suite (helper unit tests + all 3 entry points × all scenarios) and commit alone. 3. Add `BEDROCK_REGION_MISMATCH` to error_catalog.py (403, mirrors RESIDENCY_NO_ELIGIBLE_REGION's section). 4. Add `_PROFILE_PREFIX_TO_GEO` + `_assert_region_consistent` to bedrock_upstream.py (single source, raises the catalog spec directly — matches the established infrastructure-layer pattern of importing ErrorSpec constants and raising `.exc()`, NOT a custom domain exception, since a plain-Exception subclass like VertexRegionUnresolvedError is never caught by FastAPI's `@app.exception_handler(ProblemError)` and would 500 instead of 403). 5. Reorder `complete()`/`stream()`/`post_json()` so model_id resolution + the guard run strictly before `_build_endpoint`/any dial; for `stream()`, hoist model_id resolution out of the lazy `_gen()` closure into the synchronous part of the method (mirrors `VertexCompletionUpstream.stream`'s fail-closed-before-return shape) so the mismatch is provable via a bare `pytest.raises` without iterating the generator. 6. Import the shared helper into bedrock_embeddings.py (same pattern as the existing `_bedrock_error_to_openai` cross-import).
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
-Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
+Persona (required): appsec-engineer (.add/personas/appsec-engineer.md) — security-boundary lens for a fail-closed, before-any-IO privilege/residency guard.
+Spawn isolation (default): worktree (already the dispatched worktree `wt/build-bedrock-region-guard`).
+Known-problem fixes: (1) a plain-Exception domain error (VertexRegionUnresolvedError's own pattern) is never caught by the FastAPI ProblemError handler → fixed by raising the ErrorSpec's `.exc()` (a real ProblemError) directly from the guard, not a custom exception class. (2) BedrockCompletionUpstream.stream's model_id resolution originally lived inside the lazy `async def _gen()` closure, which would defer the guard until first iteration → fixed by hoisting model_id resolution + the guard call to the synchronous part of `stream()`, matching vertex's already-established pattern exactly (confirmed via vertex's own `pytest.raises(...)` around a bare, un-iterated `.stream(...)` call in its test suite).
+Strategy actually used: as planned (see ordered batches above — no material deviation).
+Safety rule (feature-specific): the guard call is a single, unconditional, synchronous statement placed between model_id resolution and `_build_endpoint`/the first dial in all 3 entry points — no early return, no conditional bypass, no path reaches `_build_endpoint` before the guard has run.
+Code lives in: `apps/gateway/src/gateway/proxy/infrastructure/`, `apps/gateway/src/gateway/core/error_catalog.py`
+Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear. Honored — zero new dependencies; only stdlib + existing `gateway.core.error_catalog`/`gateway.core.errors` imports (already an established infrastructure-layer import pattern, e.g. vertex_upstream.py, azure_upstream.py, azure_embeddings.py).
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 

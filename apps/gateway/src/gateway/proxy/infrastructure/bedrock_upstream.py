@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from gateway.core.error_catalog import BEDROCK_REGION_MISMATCH
 from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BedrockCredential, ProviderKeyMissing
@@ -52,6 +53,50 @@ if TYPE_CHECKING:
 
 _CONNECT_TIMEOUT = 10.0
 _NON_STREAM_TIMEOUT = 120.0
+
+#: Fixed, gateway-internal map from a Bedrock model id's AWS cross-region-inference-
+#: profile prefix (residency-bedrock-region-guard TASK.md §1 M2/M4) to the required
+#: AWS region geo prefix. NEVER derived from tenant input, NEVER a URL — extending
+#: this map (e.g. when AWS ships a new-geo profile such as sa./ca.) is the ONLY
+#: sanctioned way to widen the guard; an id whose prefix is absent from this map is
+#: UNCONSTRAINED (M3), not a silent default. Mirrors vertex_upstream's
+#: _ID_PREFIX_TO_LOCATION discipline: fixed internal map, single source of truth.
+_PROFILE_PREFIX_TO_GEO: dict[str, str] = {"us": "us", "eu": "eu", "apac": "ap"}
+
+
+def _assert_region_consistent(model_id: str, aws_region: str) -> None:
+    """Fail-closed pre-dial guard: the credential's AWS region geo must match the
+    model id's cross-region-inference-profile geo (residency-bedrock-region-guard
+    TASK.md — FROZEN @ v1).
+
+    The SINGLE shared helper called at the top of BedrockCompletionUpstream.complete,
+    .stream, and BedrockEmbeddingsProvider.post_json — AFTER credential + model_id
+    resolution, BEFORE _build_endpoint or any httpx call. One source of truth so the
+    three call sites can never drift (M2).
+
+    - No recognized "<prefix>." leading the model id (legacy/direct Bedrock ids,
+      or any prefix outside _PROFILE_PREFIX_TO_GEO) -> UNCONSTRAINED, returns
+      immediately, byte-identical to today (M3).
+    - A recognized prefix whose required geo is NOT a prefix of ``aws_region``
+      (including an empty/unclassifiable/malformed region string) -> fails CLOSED,
+      never fails open on an unclassifiable region (R1/R2).
+
+    Raises:
+        ProblemError: ERR_BEDROCK_REGION_MISMATCH (403 problem+json) on mismatch.
+            The detail names the required vs. actual region geo only — never a
+            secret or the full credential.
+    """
+    prefix, sep, _bare_model = model_id.partition(".")
+    if not sep or prefix not in _PROFILE_PREFIX_TO_GEO:
+        return  # M3 — unrecognized/missing profile prefix: unconstrained.
+    required_geo = _PROFILE_PREFIX_TO_GEO[prefix]
+    if not aws_region.startswith(f"{required_geo}-"):
+        raise BEDROCK_REGION_MISMATCH.exc(
+            detail=(
+                f"model id {model_id!r} requires an AWS region starting with "
+                f"{required_geo!r}-; credential region is {aws_region!r}"
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -583,14 +628,25 @@ class BedrockCompletionUpstream:
         Request translation is pure and runs ONCE, outside the retry loop.
         The body is serialized ONCE to bytes; the SigV4 x-amz-content-sha256 is
         computed from those same bytes — NEVER re-encoded by httpx (content= not json=).
+
+        Fail-closed BEFORE any HTTP/IO, in order:
+          1. credential resolution (raises ProviderKeyMissing).
+          2. model_id resolution (pure translation, no IO).
+          3. region-consistency guard (residency-bedrock-region-guard, FROZEN @ v1) —
+             raises ERR_BEDROCK_REGION_MISMATCH before _build_endpoint or any dial.
         """
         # Fail-closed: read & validate credential BEFORE any network activity.
         aws = self._get_credentials()
-        endpoint = self._build_endpoint(aws)
 
         model_id, converse_body = _openai_to_converse_request(
             payload, default_max_tokens=self._default_max_tokens
         )
+        # residency-bedrock-region-guard (FROZEN @ v1): BEFORE _build_endpoint or any
+        # httpx call — the credential's AWS region geo must match the model's
+        # cross-region-inference-profile geo (unprefixed ids are unconstrained, M3).
+        _assert_region_consistent(model_id, aws.region)
+
+        endpoint = self._build_endpoint(aws)
 
         # The model_id is placed RAW into the path (it carries a ':' version suffix, e.g.
         # ...-v2:0). This matches botocore exactly: the wire request-target keeps the literal
@@ -650,19 +706,32 @@ class BedrockCompletionUpstream:
         Uses ``content=body_bytes`` (raw bytes) so the signed x-amz-content-sha256
         matches the wire body exactly — httpx must NOT re-encode the body.
 
+        Fail-closed BEFORE the generator is even returned: credential resolution,
+        model_id resolution, and the region-consistency guard
+        (residency-bedrock-region-guard, FROZEN @ v1) all happen synchronously here,
+        not inside _gen() — mirrors VertexCompletionUpstream.stream's
+        fail-closed-before-dial pattern so a mismatch raises without the caller ever
+        needing to iterate the generator.
+
         SECURITY: the AWS secret_access_key is NEVER logged or echoed.
         """
         # Fail-closed: read & validate credential BEFORE yielding the generator object.
         # This raises ProviderKeyMissing("bedrock") synchronously if unset/wrong-type,
         # before the circuit-breaker guard and before the first byte.
         aws = self._get_credentials()
+
+        model_id, converse_body = _openai_to_converse_request(
+            payload, default_max_tokens=self._default_max_tokens
+        )
+        # residency-bedrock-region-guard (FROZEN @ v1): BEFORE _build_endpoint or any
+        # httpx call — raised synchronously (before _gen() runs) so the mismatch is
+        # provable without iterating the stream.
+        _assert_region_consistent(model_id, aws.region)
+
         endpoint = self._build_endpoint(aws)
         self._breaker.guard()
 
         async def _gen() -> AsyncIterator[bytes]:
-            model_id, converse_body = _openai_to_converse_request(
-                payload, default_max_tokens=self._default_max_tokens
-            )
             # Raw model_id in the path — same URL handed to sign_request AND
             # client.stream so the signed canonical URI and the wire target
             # stay in lock-step (v20 task-2 %3A rule: no double-encode).

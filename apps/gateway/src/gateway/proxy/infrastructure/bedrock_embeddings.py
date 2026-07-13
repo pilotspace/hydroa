@@ -40,6 +40,7 @@ from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BedrockCredential, ProviderKeyMissing
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
 from gateway.proxy.infrastructure.bedrock_upstream import (
+    _assert_region_consistent,  # pyright: ignore[reportPrivateUsage]
     _bedrock_error_to_openai,  # pyright: ignore[reportPrivateUsage]
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
@@ -157,6 +158,11 @@ class BedrockEmbeddingsProvider:
         Credential is read from the request contextvar (BedrockCredential); raises
         ProviderKeyMissing("bedrock") before any HTTP if unset or wrong type (fail-closed).
 
+        Fail-closed BEFORE any HTTP/IO, in order: credential resolution, model_id
+        resolution, then the region-consistency guard (residency-bedrock-region-guard,
+        FROZEN @ v1) — raises ERR_BEDROCK_REGION_MISMATCH before _build_endpoint or
+        any invoke call.
+
         Raises:
             UpstreamUnavailableError: on ConnectError, TimeoutException, or NetworkError.
 
@@ -166,9 +172,15 @@ class BedrockEmbeddingsProvider:
         """
         # Fail-closed: read & validate credential BEFORE any network activity.
         aws = self._get_credentials()
-        endpoint = self._build_endpoint(aws)
 
         model_id: str = payload["model"]
+        # residency-bedrock-region-guard (FROZEN @ v1): BEFORE _build_endpoint or any
+        # httpx call — the credential's AWS region geo must match the model's
+        # cross-region-inference-profile geo (unprefixed ids are unconstrained, M3).
+        _assert_region_consistent(model_id, aws.region)
+
+        endpoint = self._build_endpoint(aws)
+
         inp: str | list[str] = payload["input"]
         texts: list[str] = [inp] if isinstance(inp, str) else list(inp)
 

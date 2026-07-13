@@ -83,9 +83,7 @@ def _cred(region: str) -> BedrockCredential:
     )
 
 
-def _counting_handler(
-    response: dict[str, Any], hits: list[int], *, status: int = 200
-) -> Any:
+def _counting_handler(response: dict[str, Any], hits: list[int], *, status: int = 200) -> Any:
     def handler(request: httpx.Request) -> httpx.Response:
         hits[0] += 1
         return httpx.Response(status, json=response)
@@ -273,7 +271,9 @@ async def test_M1_stream_matching_geo_proceeds() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         hits[0] += 1
-        return httpx.Response(200, content=b"", headers={"content-type": "application/vnd.amazon.eventstream"})
+        return httpx.Response(
+            200, content=b"", headers={"content-type": "application/vnd.amazon.eventstream"}
+        )
 
     adapter = _make_completion_adapter(handler)
     tok = set_provider_credential(_cred("eu-central-1"))
