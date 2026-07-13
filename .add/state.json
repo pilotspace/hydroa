@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "service-tiers",
+  "active_task": "residency-bedrock-region-guard",
   "active_milestone": "residency-service-tiers",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -938,6 +938,15 @@
           "prior_gate": "PASS"
         }
       ]
+    },
+    "residency-bedrock-region-guard": {
+      "title": "Fail-closed Bedrock BYOK region guard for residency",
+      "phase": "contract",
+      "gate": "none",
+      "milestone": "residency-service-tiers",
+      "depends_on": [],
+      "created": "2026-07-13T08:20:36+00:00",
+      "updated": "2026-07-13T08:22:51+00:00"
     }
   },
   "milestones": {
@@ -1015,7 +1024,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T08:18:59+00:00",
+  "updated": "2026-07-13T08:22:51+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1967,7 +1976,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "residency-service-tiers": "service-tiers"
+    "residency-service-tiers": "residency-bedrock-region-guard"
   },
   "todos": [
     {
