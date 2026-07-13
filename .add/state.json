@@ -1093,7 +1093,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T09:40:17+00:00",
+  "updated": "2026-07-13T11:01:06+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2262,6 +2262,12 @@
       "id": 36,
       "text": "Pre-existing ruff-format debt (NOT from M2): tests/guardrails/test_guardrails_core.py + tests/migrations/test_migrations.py are format-dirty at HEAD (predate a ruff config/version change; ~40 + ~9 lines would reflow). A strict 'make ci' ruff format --check would flag them. Milestones have been merging past this via admin-merge on pytest evidence (org-billing CI block). Clean up in a dedicated format-only sweep, not mixed into feature commits.",
       "created": "2026-07-13T09:37:19+00:00",
+      "status": "open"
+    },
+    {
+      "id": 37,
+      "text": "semantic_cache flake instance (2026-07-13 M2 pre-merge): test_semantic_hit_ledger_cached_true_cost_zero + test_semantic_cache_normalized_variant_hits failed in the full suite (shared Redis :6380 db 9 cross-test contamination \u2014 a prior test's cache entry made 'first' request a hit, cost 0). Pass 15/15 isolated. Known flake class. The xdist CI work (task #11) should give each worker its own Redis db/namespace to KILL this class permanently.",
+      "created": "2026-07-13T11:01:06+00:00",
       "status": "open"
     }
   ]
