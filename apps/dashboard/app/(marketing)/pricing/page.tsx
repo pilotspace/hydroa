@@ -62,6 +62,7 @@ const TIERS: Tier[] = [
       "BYOK + key governance",
       "Rate limiting & bandwidth pacing",
       "Spend analytics & alerting",
+      "Priority service tier (optional, usage-priced)",
       "Email support",
     ],
     cta: { label: "Get started", href: "/signup" },
@@ -76,6 +77,7 @@ const TIERS: Tier[] = [
       "SSO/OIDC + role-based access",
       "Audit-ready logs & data retention",
       "Per-tenant SLOs & observability",
+      "Data residency: pin inference to US or EU",
       "Dedicated support & SLA",
     ],
     cta: { label: "Talk to us", href: "/signup" },
@@ -157,6 +159,27 @@ export default function PricingPage() {
             </article>
             );
           })}
+        </div>
+
+        {/* residency-tiers-ui TASK.md §3 M11: residency + priority story, static copy
+            only — matches the page's own frozen "representative placeholders, not a
+            commitment" posture. Zero fetch; still a Server Component. */}
+        <div className="mx-auto mt-14 max-w-3xl">
+          <Card>
+            <CardHeader>
+              <CardTitle asChild className="text-lg">
+                <h2>Data residency & priority routing</h2>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Pin inference to a region — EU or US — with a fail-closed policy: a
+                request that cannot run in your pinned region is refused, never silently
+                rerouted. Need priority throughput? Priority-tier keys get preference
+                under contention, with Standard traffic never starved.
+              </p>
+            </CardContent>
+          </Card>
         </div>
       </section>
     </main>

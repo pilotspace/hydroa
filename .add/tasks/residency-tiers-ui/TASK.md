@@ -610,10 +610,77 @@ priority_markup_pct — tenant-flat, confirming this draft's assumption); the
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: >=80% lines on every new/touched module (project-wide vitest.config.ts
+threshold), no regression on any pre-existing file's coverage. Actual (see §6): region-badge.tsx
+100%, TierSelector.tsx 83.3%, CreateKeyDialog.tsx 96.2%, ModelsPage.tsx 80.9%,
+RetentionZdrSettings.tsx 93.75%, KeysPage.tsx fully exercised across the full suite.
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_region_badge_renders_us/eu/ap/global_as_LABEL (it.each): arrange render <RegionBadge
+    region="x"/> / act (none) / assert text == uppercased label · covers: M6
+  - test_region_badge_uses_outline_variant: arrange render eu badge / assert className has
+    border-border, not bg-primary · covers: M6
+  - test_data_residency_tab_renders_third_fieldset: arrange open /app/settings / act view "Data &
+    residency" tab / assert Retention+ZDR fieldsets unchanged AND new residency fieldset fetches
+    GET /admin/residency-policy · covers: M1
+  - test_fresh_pin_eu_shows_confirm_dialog_before_put: arrange seededData.region=null / act select
+    EU + Save / assert ConfirmDialog opens with verbatim EU consequence line, PUT not yet called ·
+    covers: M3
+  - test_switching_us_to_eu_also_confirms: arrange region="us" / act select EU + Save / assert same
+    confirm flow, confirming PUTs {"region":"eu"} · covers: M3
+  - test_confirming_eu_pin_persists_and_reconciles_from_response: arrange confirm dialog open / act
+    click "Pin to EU" / assert PUT fires, display sources from response not local state · covers: M3
+  - test_cancelling_confirm_leaves_server_pin_unchanged: arrange confirm dialog open, server="us" /
+    act click Cancel / assert no PUT, display reconciles to "US" (query-cache) · covers: M3
+  - test_clearing_pin_fires_immediately_no_confirm: arrange region="eu" / act select "No pin" + Save
+    / assert PUT {"region":null} fires immediately, no ConfirmDialog · covers: M4
+  - test_ap_region_pin_available_and_selectable (CR-1 supersedes original M2/R1 "AP disabled"
+    scenario — DECIDED at freeze review, `_VALID_PIN_REGIONS` includes "ap" server-side): arrange
+    picker renders / act select AP + Save + confirm / assert AP is enabled, selectable, PUTs
+    {"region":"ap"} successfully · covers: M2 (corrected)
+  - test_non_owner_sees_picker_gets_inline_403: arrange MEMBER role / act change region + Save /
+    assert PUT called, inline mutError shows server title, display reconciles unchanged · covers: M5, R3
+  - test_defensive_422_reverts_display_shows_server_title: arrange PUT returns 422
+    ERR_RESIDENCY_REGION_INVALID / assert pending selection not written, display reverts to
+    last-known-good, title shown inline · covers: R2
+  - (2 more residency-fieldset tests: loading + no-double-submit-while-confirm-open guard) · covers:
+    M1, safety rule
+  - test_catalog_table_shows_region_badge_per_row: arrange models loaded with region
+    us/eu/ap/global / assert each row's RegionBadge reads the uppercased region · covers: M6
+  - test_ineligible_row_dimmed_disabled_badged_never_removed: arrange residency_region="eu", a row
+    region="us" / assert Switch disabled, row muted, "Ineligible in EU" warning badge, row still
+    present · covers: M7
+  - test_residency_read_failure_degrades_table_stays_usable: arrange GET
+    /admin/residency-policy fails, GET /admin/models succeeds / assert every RegionBadge still
+    renders, no ineligibility treatment, no page-level ErrorState · covers: M8
+  - test_tier_selector_renders_on_open_with_safe_default: arrange open Create API Key dialog /
+    assert Priority/Standard selector visible, defaults Standard, capacity copy verbatim · covers: M9
+  - test_creating_key_with_priority_tier_sends_tier_field: arrange dialog open, Priority selected,
+    valid name / act submit / assert POST /admin/keys body includes {"tier":"priority","name":...},
+    success closes dialog + shows plaintext banner · covers: M9
+  - test_creating_key_defaults_to_standard_tier: arrange dialog open, no tier change / act submit /
+    assert POST body {"tier":"standard",...} · covers: M9
+  - test_price_delta_shows_real_server_computed_value: arrange GET /admin/service-tiers returns
+    {default_tier,priority_markup_pct:"25.0000"} (REAL frozen shape, corrected from this draft's
+    earlier {entries:[...]} assumption) / assert price-delta line reads "+25% on requests using
+    this key", no hardcoded percentage · covers: M10
+  - test_price_delta_degrades_to_pending_on_404_no_retry: arrange GET /admin/service-tiers 404s /
+    assert "Pricing pending" shown, no retry (exactly 1 call after a settle delay), selector stays
+    fully rendered/submittable, no ErrorState · covers: M10, R4
+  - test_tier_rejection_surfaces_via_existing_error_branching: arrange POST /admin/keys returns 422
+    citing tier / act submit / assert existing 422->field/else->global branching surfaces it, no new
+    bespoke path, dialog stays open with name preserved · covers: R5
+  - test_onSubmit_signature_stays_single_arg_name_only (regression guard, not a frozen scenario):
+    arrange submit with tier selected / assert onSubmit called with exactly ("ci-key") — protects
+    the pre-existing, out-of-scope tests/keys-dialog-a11y.test.tsx contract · covers: R5 (boundary)
+  - test_pricing_page_lists_priority_tier_and_residency_features / test_pricing_page_residency_
+    callout_renders / test_pricing_page_zero_fetch (Server Component): arrange render /pricing /
+    assert Team lists Priority tier line, Enterprise lists residency line, callout section renders,
+    zero network calls · covers: M11
+  - test_full_surface_axe_sweep (residency fieldset, catalog region/ineligible badges, tier
+    selector + price-delta, pricing callout — 4 axe() calls joining each surface's existing sweep):
+    assert zero NEW serious/critical violations, focus-visible + >=44px hit targets on every new
+    interactive control · covers: M12
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
@@ -678,7 +745,43 @@ Known-problem fixes:
   - trap: an ineligibility-badge `useQuery` failure silently breaking the WHOLE catalog table →
     fix: independent `isError`/`isLoading` branches per read (M8), never a combined `isError` gate
     across both the models read and the residency read.
-Strategy actually used: <fill at VERIFY>
+Strategy actually used: followed the preferred 6-batch order closely, with two grounding
+deviations made BEFORE writing code (both self-caught by re-reading real consumer test files,
+not discovered mid-build):
+  1. `service-tiers` TASK.md §3 was already FROZEN and the backend route already built
+     (`service_tier_router.py` read in full) — re-verified per the "Known-problem fixes" trap
+     note and found the real shape is `GET /admin/service-tiers -> {default_tier,
+     priority_markup_pct}` (tenant-flat effective value), NOT the `{entries:[{tier,multiplier}]}`
+     shape this draft assumed. Built against the real shape; preserved the scenario's observable
+     assertion text ("+25% on requests using this key") verbatim.
+  2. The "AP disabled" trap note (§5 Known-problem fixes, R1) and the matching §2 scenario text
+     are BOTH superseded by the §3 "DECIDED at freeze review... CR-1" note (ap fully enabled,
+     `_VALID_PIN_REGIONS` includes "ap" server-side). Did not follow the stale disabled-AP
+     guidance; built AP as a normal, selectable, submittable option. Frozen §2 text was left
+     untouched (never edit a frozen scenario) — the new red suite documents the supersession
+     inline with a citation instead.
+  Two additional judgment calls surfaced only once real consumer files were read (not
+  anticipated by the draft strategy):
+  3. `CreateKeyDialog`'s `onSubmit(name)` is asserted single-argument by a pre-existing,
+     out-of-scope suite (`tests/keys-dialog-a11y.test.tsx`) — threaded `tier` through a new
+     `onTierChange?` side-channel prop instead of widening `onSubmit`.
+  4. `CreateKeyDialog` renders in 6 places with no `QueryClientProvider` ancestor (2
+     out-of-scope suites) — used a plain `useEffect`+`bffGet`+`useState` fetch for the
+     price-delta read instead of `useQuery`, so it works with or without react-query context.
+  Scope-extension (disclosed, not in the original §5 allowlist): adding the two new
+  unconditional reads (`GET /admin/residency-policy`, `GET /admin/service-tiers`) to
+  `ModelsPage`/`RetentionZdrSettings`/`CreateKeyDialog` would 404/error inside ~11 pre-existing,
+  out-of-scope test files under msw's `onUnhandledRequest:"error"` unless mocked. Rather than
+  editing all 11 files, added ONE default/INITIAL handler per new query to
+  `tests-bff/mocks/handlers.ts` and `tests/mocks/handlers.ts`, mirroring the existing documented
+  idiom in those files (e.g. `/api/auth/me`, catalog-models) — lower-risk than touching every
+  consumer, but technically outside the declared file allowlist; flagged here and in code
+  comments rather than silently done.
+  Bug found+fixed mid-build (not a design deviation): 6 pre-existing `model-mgmt.test.tsx` tests
+  crashed (`Cannot read properties of undefined (reading 'toUpperCase')`) because their
+  `GPT4O`/`CLAUDE` fixtures predate the `region` field. Fixed the in-scope fixtures (added
+  `region:"global"`) AND added a defensive `regionOf()` fallback in `ModelsPage.tsx` (protects
+  the 5 other out-of-scope consumer files without touching them).
 Safety rule (feature-specific): the residency-pin write and its `ConfirmDialog` gate must never
 allow a SECOND `PUT` to fire while one is already in flight (mirrors `zdrConfirmOpen`'s existing
 `disabled={zdrConfirmOpen}` guard on the Switch) — no double-submit race on the confirm button.

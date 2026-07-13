@@ -59,12 +59,17 @@ const GPT4O = {
   name: "GPT-4o",
   context_length: 128000,
   enabled: true,
+  // region-catalog-dimension TASK.md §3 FROZEN: region is NOT NULL on the real
+  // backend (models.region defaults 'global') — these pre-existing fixtures predate
+  // that column; added here so RegionBadge (residency-tiers-ui M6) never sees undefined.
+  region: "global",
 };
 const CLAUDE = {
   id: "anthropic/claude-3.5-sonnet",
   name: "Claude 3.5 Sonnet",
   context_length: 200000,
   enabled: false,
+  region: "global",
 };
 
 function listResponse(models: unknown[]) {
