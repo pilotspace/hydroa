@@ -875,12 +875,12 @@
     },
     "residency-tiers-ui": {
       "title": "Data & residency settings, region badges, tier selector, pricing page",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T14:46:21+00:00",
-      "updated": "2026-07-13T08:56:49+00:00",
+      "updated": "2026-07-13T09:37:31+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T15:55:04+00:00",
@@ -895,6 +895,11 @@
       "tripwire": {
         "contract_md5": "9a871fd694cb54b9067c8eb370856067",
         "tests": {}
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "vertex-adapter": {
@@ -1083,7 +1088,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T08:56:49+00:00",
+  "updated": "2026-07-13T09:37:31+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2228,6 +2233,30 @@
       "id": 32,
       "text": "bedrock-region-guard defense-in-depth (verify B, low-pri): normalize model_id prefix casing/whitespace before _PROFILE_PREFIX_TO_GEO lookup \u2014 currently protected solely by the catalog exact-match dispatch gate; cheap insurance vs a future refactor decoupling model_id sourcing from routing.",
       "created": "2026-07-13T08:51:44+00:00",
+      "status": "open"
+    },
+    {
+      "id": 33,
+      "text": "residency-tiers-ui (observe, \ud83d\udcad): residency-picker radios use min-h-11 (44px hit target) but lack a dedicated hit-target assertion test (TierSelector has one). Add for parity.",
+      "created": "2026-07-13T09:07:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 34,
+      "text": "residency-tiers-ui (observe, \ud83d\udcad): TierSelector.tsx line 38 (standard-after-priority toggle) untested \u2014 symmetric to tested line 50, low-risk. Add test for coverage parity.",
+      "created": "2026-07-13T09:07:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 35,
+      "text": "residency-tiers-ui (observe, \ud83d\udcad): no live screen-reader (VoiceOver/NVDA) pass on new residency/tier surfaces \u2014 axe + native semantics + live keyboard trace substitute but aren't equivalent. Consider a manual SR pass pre-GA.",
+      "created": "2026-07-13T09:07:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 36,
+      "text": "Pre-existing ruff-format debt (NOT from M2): tests/guardrails/test_guardrails_core.py + tests/migrations/test_migrations.py are format-dirty at HEAD (predate a ruff config/version change; ~40 + ~9 lines would reflow). A strict 'make ci' ruff format --check would flag them. Milestones have been merging past this via admin-merge on pytest evidence (org-billing CI block). Clean up in a dedicated format-only sweep, not mixed into feature commits.",
+      "created": "2026-07-13T09:37:19+00:00",
       "status": "open"
     }
   ]

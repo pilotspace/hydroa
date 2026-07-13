@@ -2,10 +2,9 @@
 
 slug: residency-tiers-ui · created: 2026-07-12 · stage: production
 milestone: residency-service-tiers
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+autonomy: auto
+phase: done
 sensitivity: mechanical
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -334,8 +333,6 @@ Assumptions — lowest-confidence first:
   parameter — confirm against service-tiers' own eventual Must list once drafted.
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -473,8 +470,6 @@ Scenario: full-surface accessibility sweep passes on every new/changed surface  
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -588,7 +583,6 @@ Recommend: resolve (a) explicitly (pick a fork) and freeze service-tiers (b) BEF
 own contract freezes into Build-ready — or freeze this contract now with both caveats carried
 forward explicitly, re-verified at this task's own BUILD step before any code lands (mirrors
 region-pricing's own precedent for handling an unfrozen sibling dependency).
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 DECIDED at freeze review (2026-07-12, orchestrator, Tin's standing Asia directive): flag fork (b)
 TAKEN — residency-policy re-frozen @ v2 with `ap` in its §3 enum (CR-1; the gap was an
@@ -684,9 +678,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -790,8 +781,6 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
 dependency expected — every primitive used already ships in this repo); ask if unclear,
 especially re: service-tiers' actual frozen shape once it exists.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
@@ -837,11 +826,9 @@ Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-13
 
 ---
 
@@ -850,11 +837,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: followed the preferred 6-batch order closely, with two grounding deviations made BEFORE writing code (both self-caught by re-reading real consumer test files, not discovered mid-build): 1. `service-tiers` TASK.md §3 was already FROZEN and the backend route already built (`service_tier_router.py` read in full) — re-verified per the "Known-problem fixes" trap note and found the real shape is `GET /admin/service-tiers -> {default_tier, priority_markup_pct}` (tenant-flat effective value), NOT the `{entries:[{tier,multiplier}]}` shape this draft assumed. Built against the real shape; preserved the scenario's observable assertion text ("+25% on requests using this key") verbatim. 2. The "AP disabled" trap note (§5 Known-problem fixes, R1) and the matching §2 scenario text are BOTH superseded by the §3 "DECIDED at freeze review... CR-1" note (ap fully enabled, `_VALID_PIN_REGIONS` includes "ap" server-side). Did not follow the stale disabled-AP guidance; built AP as a normal, selectable, submittable option. Frozen §2 text was left untouched (never edit a frozen scenario) — the new red suite documents the supersession inline with a citation instead. Two additional judgment calls surfaced only once real consumer files were read (not anticipated by the draft strategy): 3. `CreateKeyDialog`'s `onSubmit(name)` is asserted single-argument by a pre-existing, out-of-scope suite (`tests/keys-dialog-a11y.test.tsx`) — threaded `tier` through a new `onTierChange?` side-channel prop instead of widening `onSubmit`. 4. `CreateKeyDialog` renders in 6 places with no `QueryClientProvider` ancestor (2 out-of-scope suites) — used a plain `useEffect`+`bffGet`+`useState` fetch for the price-delta read instead of `useQuery`, so it works with or without react-query context. Scope-extension (disclosed, not in the original §5 allowlist): adding the two new unconditional reads (`GET /admin/residency-policy`, `GET /admin/service-tiers`) to `ModelsPage`/`RetentionZdrSettings`/`CreateKeyDialog` would 404/error inside ~11 pre-existing, out-of-scope test files under msw's `onUnhandledRequest:"error"` unless mocked. Rather than editing all 11 files, added ONE default/INITIAL handler per new query to `tests-bff/mocks/handlers.ts` and `tests/mocks/handlers.ts`, mirroring the existing documented idiom in those files (e.g. `/api/auth/me`, catalog-models) — lower-risk than touching every consumer, but technically outside the declared file allowlist; flagged here and in code comments rather than silently done. Bug found+fixed mid-build (not a design deviation): 6 pre-existing `model-mgmt.test.tsx` tests crashed (`Cannot read properties of undefined (reading 'toUpperCase')`) because their `GPT4O`/`CLAUDE` fixtures predate the `region` field. Fixed the in-scope fixtures (added `region:"global"`) AND added a defensive `regionOf()` fallback in `ModelsPage.tsx` (protects the 5 other out-of-scope consumer files without touching them).
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
