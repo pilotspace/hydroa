@@ -946,7 +946,17 @@
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-13T08:20:36+00:00",
-      "updated": "2026-07-13T08:22:51+00:00"
+      "updated": "2026-07-13T08:22:51+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-13T08:23:31+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     }
   },
   "milestones": {
@@ -1024,7 +1034,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T08:22:51+00:00",
+  "updated": "2026-07-13T08:23:31+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
