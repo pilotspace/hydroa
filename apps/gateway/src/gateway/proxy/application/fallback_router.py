@@ -44,12 +44,14 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from gateway.proxy.application.fallback_triggers import classify_fallback_trigger
+from gateway.proxy.application.residency import filter_candidates_by_region
 from gateway.proxy.application.routing_strategy import (
     AsyncRoutingStrategy,
     OrderedStrategy,
@@ -57,6 +59,7 @@ from gateway.proxy.application.routing_strategy import (
 )
 from gateway.proxy.application.streaming_resilience import open_resilient_stream
 from gateway.proxy.domain.errors import (
+    AllCandidatesOutOfRegionError,
     AllDeploymentsSaturatedError,
     CircuitOpenError,
     UpstreamRateLimitedError,
@@ -67,6 +70,7 @@ from gateway.proxy.domain.ports import (
     DeploymentLimitGate,
     DeploymentLoadGate,
     ModelHealthGate,
+    ResidencyLookup,
 )
 
 if TYPE_CHECKING:
@@ -110,6 +114,7 @@ class FallbackModelRouter:
         limit_gate: DeploymentLimitGate | None = None,
         fallback_on_error: bool = False,
         stream_resilience_enabled: bool = False,
+        residency_lookup: ResidencyLookup | None = None,
     ) -> None:
         # upstream and model_groups kept as positional-compatible; None only for
         # test convenience (tests always pass them explicitly).
@@ -137,6 +142,12 @@ class FallbackModelRouter:
         # the sync stream() path (first candidate only) is used. True ⇒ the use case calls
         # stream_resilient() to fall over across candidates before the first SSE byte.
         self._stream_resilience_enabled: bool = stream_resilience_enabled
+        # Residency dial-constraint filter (residency-policy TASK.md §3 Tier 2, FROZEN @
+        # v2). None (default) ⇒ zero DB interaction, byte-identical to pre-residency-
+        # policy routing in ALL THREE of complete()/stream()/stream_resilient(). When
+        # wired, a pre-loop filter (mirrors the limit_gate shape exactly) narrows
+        # candidates to the tenant's pinned region BEFORE the strategy/dial loop runs.
+        self._residency_lookup: ResidencyLookup | None = residency_lookup
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -236,6 +247,8 @@ class FallbackModelRouter:
         self,
         payload: dict[str, Any],
         upstream: CompletionUpstream | None = None,
+        *,
+        tenant_id: uuid.UUID | None = None,
     ) -> tuple[int, dict[str, Any], str]:
         """Route a non-streaming completion request.
 
@@ -249,6 +262,11 @@ class FallbackModelRouter:
         The `upstream` kwarg allows the use case to pass the request-time
         upstream (potentially a fake injected by a frozen test suite) so that
         app.state.completion_upstream injection semantics are preserved.
+
+        `tenant_id` (residency-policy TASK.md §3 Tier 2): when both this AND
+        residency_lookup are provided, candidates are pre-filtered to the tenant's
+        pinned region before the strategy/dial loop. Either being None ⇒ zero
+        residency interaction, byte-identical to pre-residency-policy routing.
         """
         _upstream = self._resolve_upstream(upstream)
         model_id: str = payload.get("model", "")
@@ -284,6 +302,18 @@ class FallbackModelRouter:
             if not survivors:
                 raise AllDeploymentsSaturatedError(alias)
             candidates = survivors
+
+        # Residency filter (residency-policy TASK.md §3 Tier 2): skip out-of-region
+        # candidates BEFORE the strategy/dial loop. When residency_lookup is None OR
+        # tenant_id is None this is a complete no-op — byte-identical to v6/limit-gate
+        # behavior. Fail-CLOSED (unlike limit_gate): an empty filtered set raises
+        # AllCandidatesOutOfRegionError, never silently admits an out-of-region candidate.
+        if self._residency_lookup is not None and tenant_id is not None:
+            _pin, candidates = await filter_candidates_by_region(
+                self._residency_lookup, candidates, tenant_id
+            )
+            if not candidates:
+                raise AllCandidatesOutOfRegionError(alias, _pin)
 
         order = await self._strategy_order_async(alias, candidates)
         last_fallen: str | None = None
@@ -423,12 +453,38 @@ class FallbackModelRouter:
             )
         raise UpstreamUnavailableError(f"All candidates for alias '{alias}' are unavailable")
 
+    async def residency_candidates(
+        self, alias: str, tenant_id: uuid.UUID | None
+    ) -> tuple[str | None, list[str]] | None:
+        """Async pre-computation helper for the SYNCHRONOUS stream() method below.
+
+        stream() is deliberately a plain (non-async-def) function that dials upstream
+        EAGERLY and SYNCHRONOUSLY at call time (frozen model-fallbacks F11 contract:
+        `upstream.stream()` is invoked before the caller ever awaits/iterates the
+        returned generator) — it structurally CANNOT itself await an async DB lookup.
+        Callers that need the residency filter (residency-policy TASK.md §3 Tier 2)
+        must await this helper FIRST: check the returned (pin, candidates) tuple for
+        emptiness THEMSELVES (so they can render a precise error with the pin) BEFORE
+        ever calling stream(), then pass `candidates` as stream()'s
+        `candidates_override` kwarg either way.
+
+        Returns None when `alias` is not a known group, residency_lookup is unwired,
+        or tenant_id is None — the caller passes None straight through as
+        candidates_override (no filtering, byte-identical). Returns (pin,
+        possibly-empty filtered list) otherwise.
+        """
+        candidates = self._model_groups.get(alias)
+        if candidates is None or self._residency_lookup is None or tenant_id is None:
+            return None
+        return await filter_candidates_by_region(self._residency_lookup, candidates, tenant_id)
+
     def stream(
         self,
         payload: dict[str, Any],
         upstream: CompletionUpstream | None = None,
         *,
         on_served: Callable[[str], None] | None = None,
+        candidates_override: list[str] | None = None,
     ) -> AsyncIterator[bytes]:
         """Route a streaming completion request.
 
@@ -444,6 +500,13 @@ class FallbackModelRouter:
         id itself for a plain request). Billing must use this captured id, NEVER recompute
         it caller-side (simple-shuffle picks randomly; least-busy/latency depend on live
         state) — stream-alias-billing (B1).
+
+        `candidates_override` (residency-policy TASK.md §3 Tier 2): when not None, REPLACES
+        the alias's candidate list for this call — the caller must have awaited
+        `residency_candidates()` first (see that method's docstring for why this is a
+        two-step, not an inline await, here). An empty override raises
+        AllCandidatesOutOfRegionError SYNCHRONOUSLY (same eager-call contract as every
+        other pre-loop check in this method) — never a silent unfiltered fall-through.
         """
         _upstream = self._resolve_upstream(upstream)
         model_id: str = payload.get("model", "")
@@ -454,6 +517,11 @@ class FallbackModelRouter:
             if on_served is not None:
                 on_served(model_id)
             return _upstream.stream(payload)
+
+        if candidates_override is not None:
+            candidates = candidates_override
+            if not candidates:
+                raise AllCandidatesOutOfRegionError(model_id)
 
         # Alias: resolve to the strategy PRIMARY only (§3 STREAMING BOUNDARY — no
         # fallback on stream). For OrderedStrategy this is candidates[0] (v6 byte-identical).
@@ -469,6 +537,7 @@ class FallbackModelRouter:
         upstream: CompletionUpstream | None = None,
         *,
         on_served: Callable[[str], None] | None = None,
+        tenant_id: uuid.UUID | None = None,
     ) -> tuple[bytes | None, AsyncIterator[bytes]]:
         """Pre-first-byte resilient streaming (streaming-resilience v19).
 
@@ -495,6 +564,15 @@ class FallbackModelRouter:
         if candidates is None:
             attempts = [alias]  # plain model id — single attempt, no retry
         else:
+            # Residency filter (residency-policy TASK.md §3 Tier 2): same pre-loop
+            # narrowing as complete(), applied BEFORE building the attempts list — a
+            # PRE-first-byte fallover must never even OPEN an out-of-region candidate.
+            if self._residency_lookup is not None and tenant_id is not None:
+                _pin, candidates = await filter_candidates_by_region(
+                    self._residency_lookup, candidates, tenant_id
+                )
+                if not candidates:
+                    raise AllCandidatesOutOfRegionError(alias, _pin)
             attempts = self._strategy_order(alias, candidates)
 
         def _open(model_id: str) -> AsyncIterator[bytes]:

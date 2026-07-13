@@ -32,6 +32,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 _ZERO = Decimal("0")
 
+# region-pricing (TASK.md §3, DECIDED at freeze): the seed multiplier keyed by a
+# model's region — eu is the only premium region today; us/ap/global (and any
+# NULL/unrecognized region) all fall through to the identity multiplier below.
+_REGION_MULTIPLIER_SEEDS: dict[str, Decimal] = {"eu": Decimal("1.1")}
+_DEFAULT_REGION_MULTIPLIER = Decimal("1.0")
+
 
 async def resolve_markup_pct(session: AsyncSession, tenant_id: uuid.UUID, model_id: str) -> Decimal:
     """Return the effective markup_pct for (tenant_id, model_id).
@@ -64,3 +70,80 @@ async def resolve_markup_pct(session: AsyncSession, tenant_id: uuid.UUID, model_
     if fallback_row is None:
         return _ZERO
     return Decimal(str(fallback_row[0]))
+
+
+async def resolve_region_multiplier(
+    session: AsyncSession, tenant_id: uuid.UUID, model_id: str
+) -> Decimal:
+    """Return the effective region multiplier for (tenant_id, model_id) (region-pricing
+    TASK.md §3 CONTRACT — FROZEN @ v1, the SINGLE resolution point for the region
+    factor).
+
+    1. SELECT multiplier FROM tenant_region_multiplier_overrides WHERE tenant_id=:t
+       AND region=(SELECT region FROM models WHERE id=:m) — the per-(tenant, region)
+       override, if one exists. A HIT resolves in this ONE query (no second round trip).
+    2. ELSE (miss, or the model itself is unknown): a second query fetches the model's
+       `region` so the DECIDED seed can be keyed by it: {"eu": Decimal("1.1")}.get(
+       region, Decimal("1.0")) — us/ap/global/NULL/unrecognized all -> 1.0. Pricing is
+       fail-OPEN (never blocks a request) — only residency POLICY fail-closes.
+
+    Never raises for a missing/unrecognized model or region — always resolves to a
+    safe multiplier (TASK.md §2 "Unrecognized or NULL region resolves to the safe
+    default, never blocks a request").
+    """
+    override_row = (
+        await session.execute(
+            text(
+                "SELECT multiplier FROM tenant_region_multiplier_overrides"
+                " WHERE tenant_id = :t AND region = (SELECT region FROM models WHERE id = :m)"
+            ),
+            {"t": str(tenant_id), "m": model_id},
+        )
+    ).fetchone()
+    if override_row is not None:
+        return Decimal(str(override_row[0]))
+
+    region_row = (
+        await session.execute(
+            text("SELECT region FROM models WHERE id = :m"),
+            {"m": model_id},
+        )
+    ).fetchone()
+    region = str(region_row[0]) if region_row is not None and region_row[0] is not None else None
+    if region is None:
+        return _DEFAULT_REGION_MULTIPLIER
+    return _REGION_MULTIPLIER_SEEDS.get(region, _DEFAULT_REGION_MULTIPLIER)
+
+
+_TIER_MARKUP_SEED_PCT = Decimal("25")  # DECIDED at freeze-review (MILESTONE.md, +25%)
+
+
+async def resolve_tier_multiplier(
+    session: AsyncSession, tenant_id: uuid.UUID, model_id: str, tier: str
+) -> Decimal:
+    """Return the effective priority-tier markup multiplier for (tenant_id, tier)
+    (service-tiers TASK.md §3 M11 — FILLS region-pricing's RESERVED frozen signature).
+
+    `model_id` is accepted-but-UNUSED (tier markup is not model-specific — a stated
+    scope-cut, not an oversight; region-pricing's own reservation fixed this 4-arg
+    shape and this task fills it verbatim, never renegotiates it).
+
+    1. "standard" is definitionally the zero-markup baseline — NEVER overridable:
+       returns Decimal("1") immediately, no DB round trip.
+    2. "priority": a per-tenant override in tenant_priority_markup_overrides wins.
+    3. ELSE the DECIDED seed: Decimal("25") (+25%, MILESTONE.md).
+    4. Returns Decimal("1") + pct / Decimal("100") so callers compose it by straight
+       multiplication — matches region-pricing's own M9 formula
+       cost_usd = cost_usd * region_multiplier * tier_multiplier.
+    """
+    if tier != "priority":
+        return Decimal("1")
+
+    override_row = (
+        await session.execute(
+            text("SELECT markup_pct FROM tenant_priority_markup_overrides WHERE tenant_id = :t"),
+            {"t": str(tenant_id)},
+        )
+    ).fetchone()
+    pct = Decimal(str(override_row[0])) if override_row is not None else _TIER_MARKUP_SEED_PCT
+    return Decimal("1") + pct / Decimal("100")

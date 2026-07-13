@@ -46,6 +46,7 @@ def _row_to_api_key(row: ApiKeyRow) -> ApiKey:
         team_id=row.team_id,
         cache_enabled=bool(getattr(row, "cache_enabled", False)),
         capture_enabled=bool(getattr(row, "capture_enabled", False)),
+        tier=getattr(row, "tier", None),
     )
 
 
@@ -68,6 +69,7 @@ class SqlAlchemyApiKeyRepository:
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
         cache_enabled: bool = False,
+        tier: str | None = None,
     ) -> ApiKey:
         """Insert a new api_keys row.
 
@@ -88,6 +90,7 @@ class SqlAlchemyApiKeyRepository:
             tpm_limit=tpm_limit,
             team_id=team_id,
             cache_enabled=cache_enabled,
+            tier=tier,
         )
         # Use begin_nested() (savepoint) so this works whether or not a transaction
         # is already active on the session (e.g. when team_repo shares the same session).
@@ -123,6 +126,11 @@ class SqlAlchemyApiKeyRepository:
             )
             for row in rows
         ]
+        # NOTE: ApiKeyInfo (list projection) does not carry `tier` today — the
+        # frozen §3 CONTRACT extends KeyInfoResponse (single-key GET/PATCH/POST
+        # shapes), not the list projection; adding it here would need a matching
+        # ApiKeyInfo.tier field, which §3 does not name. Left as a scope note
+        # rather than a silent, unrequested surface widening.
 
     async def revoke(self, *, key_id: uuid.UUID, tenant_id: uuid.UUID) -> bool:
         """Set revoked_at = now() WHERE id = key_id AND tenant_id = tenant_id.
@@ -165,6 +173,7 @@ class SqlAlchemyApiKeyRepository:
                 TenantRow.plan_id,
                 PlanRow.model_allowlist,
                 PlanRow.name,
+                TenantRow.default_tier,
             )
             .outerjoin(TeamRow, ApiKeyRow.team_id == TeamRow.id)
             .outerjoin(TenantRow, ApiKeyRow.tenant_id == TenantRow.id)
@@ -186,6 +195,7 @@ class SqlAlchemyApiKeyRepository:
             plan_id,
             plan_model_allowlist_raw,
             plan_name,
+            tenant_default_tier,
         ) = result
         # Effective cache = key-level OR tenant-level (both default false)
         effective_cache = bool(getattr(row, "cache_enabled", False)) or bool(
@@ -258,6 +268,20 @@ class SqlAlchemyApiKeyRepository:
         effective_batch_grouping = bool(tenant_batch_grouping_enabled or False)
         effective_zdr = bool(tenant_zdr_enabled or False)
 
+        # service-tiers (TASK.md §3 M1): key-level override wins; ELSE the tenant
+        # default — resolved via the EXISTING LEFT JOIN, zero extra DB reads.
+        # tenant_default_tier is None only when the tenant row itself is absent
+        # (outerjoin miss) — falls back to the column's own server_default value.
+        raw_key_tier = getattr(row, "tier", None)
+        resolved_tier: Literal["priority", "standard"]
+        tier_source: Literal["key", "tenant"]
+        if raw_key_tier is not None:
+            resolved_tier = raw_key_tier
+            tier_source = "key"
+        else:
+            resolved_tier = tenant_default_tier or "standard"
+            tier_source = "tenant"
+
         # plan-enforcement (M4): defensive JSONB parse — same dict/str driver quirk this
         # method already guards for on guardrail_configs above.
         raw_pal = plan_model_allowlist_raw
@@ -301,6 +325,8 @@ class SqlAlchemyApiKeyRepository:
             plan_id=plan_id,
             plan_model_allowlist=plan_model_allowlist,
             plan_name=plan_name,
+            tier=resolved_tier,
+            tier_source=tier_source,
         )
 
     async def update(
@@ -317,6 +343,7 @@ class SqlAlchemyApiKeyRepository:
         team_id: uuid.UUID | None = None,
         cache_enabled: bool | None = None,
         capture_enabled: bool | None = None,
+        tier: str | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey | None:
         """Update governance fields on an active (non-revoked) key owned by tenant_id.
@@ -364,6 +391,12 @@ class SqlAlchemyApiKeyRepository:
         # capture_enabled: None = no change; True/False = set to value
         if capture_enabled is not None:
             row.capture_enabled = capture_enabled
+
+        # tier: absent (not in clear, tier arg is None) = no change
+        #        "tier" in clear = clear the override, revert to tenant default
+        #        tier is not None = set the key-level override value
+        if tier is not None or "tier" in clear:
+            row.tier = None if "tier" in clear else tier
 
         await self._session.commit()
         await self._session.refresh(row)

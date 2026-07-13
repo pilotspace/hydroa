@@ -70,6 +70,8 @@ EXPECTED_TABLES = frozenset(
         "credit_ledger",  # SANCTIONED EDIT — credits-ledger TASK.md §3 manifest maintenance; disposition: additive migration d3f7a9c1b5e8 adds this table
         "tenant_credit_balances",  # SANCTIONED EDIT — credits-ledger TASK.md §3 manifest maintenance; disposition: additive migration d3f7a9c1b5e8 adds this table
         "seat_membership_events",  # SANCTIONED EDIT — seat-billing TASK.md §3 manifest maintenance; disposition: additive migration f1ef6b05a732 adds this table
+        "tenant_region_multiplier_overrides",  # SANCTIONED EDIT — region-pricing TASK.md §3 manifest maintenance; disposition: additive migration d608e56c7485 adds this table
+        "tenant_priority_markup_overrides",  # SANCTIONED EDIT — service-tiers TASK.md §3 manifest maintenance; disposition: additive migration 4583689a7b8b adds this table
     }
 )
 

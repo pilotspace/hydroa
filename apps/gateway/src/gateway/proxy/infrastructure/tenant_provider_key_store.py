@@ -31,6 +31,7 @@ from gateway.proxy.domain.provider_credentials import (
     AzureCredential,
     BearerCredential,
     BedrockCredential,
+    GoogleServiceAccountCredential,
     ProviderCredential,
     ProviderCredentialError,
     ProviderKeyStatus,
@@ -92,6 +93,13 @@ def _credential_to_parts(
                 auth_mode=None
     - Azure   → secret=(client_secret|api_key), extra={endpoint,...},
                 auth_mode=("aad"|"api_key")
+    - Vertex  → secret=private_key, extra={project_id,client_email,private_key_id},
+                auth_mode=None (vertex-adapter TASK.md §3 — GoogleServiceAccountCredential;
+                NOTE: this file is NOT in that task's declared §5 Scope — this edit is a
+                same-shape, minimax-precedent-mirrored extension of the two existing
+                dispatch functions, flagged as frozen-contract/Ground-scope friction in
+                the build report; without it PUT /admin/provider-keys/vertex cannot
+                persist a credential at all, which would leave M6/M7 unimplementable)
     """
     if isinstance(credential, BearerCredential):
         return credential.secret.get_secret_value(), None, None
@@ -107,6 +115,14 @@ def _credential_to_parts(
             ),
         }
         return credential.secret_access_key.get_secret_value(), json.dumps(extra), None
+
+    if isinstance(credential, GoogleServiceAccountCredential):
+        vertex_extra = {
+            "project_id": credential.project_id,
+            "client_email": credential.client_email,
+            "private_key_id": credential.private_key_id,
+        }
+        return credential.private_key.get_secret_value(), json.dumps(vertex_extra), None
 
     # azure — only remaining member of ProviderCredential union at this point
     # Primary secret depends on mode
@@ -149,6 +165,15 @@ def _parts_to_credential(
             secret_access_key=SecretStr(secret_plain),
             region=extra.get("region", ""),
             session_token=SecretStr(raw_token) if raw_token else None,
+        )
+
+    if provider == "vertex":
+        vertex_extra = json.loads(extra_plain) if extra_plain else {}
+        return GoogleServiceAccountCredential(
+            project_id=vertex_extra.get("project_id", ""),
+            client_email=vertex_extra.get("client_email", ""),
+            private_key=SecretStr(secret_plain),
+            private_key_id=vertex_extra.get("private_key_id"),
         )
 
     # azure — only remaining provider in PROVIDER_VALUE_SET at this point

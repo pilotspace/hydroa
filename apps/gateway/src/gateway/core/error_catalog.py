@@ -244,6 +244,19 @@ PAYLOAD_SOFT_EXCEEDS_HARD = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "soft_budget_usd must be <= monthly_budget_usd"
 )
 
+#: ``tier`` is not one of {priority, standard, null} (service-tiers TASK.md §3 R1).
+PAYLOAD_TIER_INVALID = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "tier must be one of 'priority', 'standard', or null"
+)
+
+#: ``priority_reserved_pct + standard_reserved_pct`` exceeds 1.0 (service-tiers
+#: TASK.md §3 R5 — the live PUT /admin/platform/service-tiers write path).
+PAYLOAD_TIER_PCT_SUM_INVALID = ErrorSpec(
+    422,
+    "ERR_PAYLOAD_INVALID",
+    "priority_reserved_pct + standard_reserved_pct must be <= 1.0",
+)
+
 #: A decimal field cannot be parsed (dynamic: field_name).
 PAYLOAD_DECIMAL_INVALID = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "{field_name} must be a valid decimal string"
@@ -418,6 +431,13 @@ RATE_LIMITED = ErrorSpec(429, "ERR_RATE_LIMITED", "Rate limit exceeded")
 #: 503 on the non-stream PRE-FLIGHT shed path (Retry-After always provided by the caller);
 #: mid-stream it is only the SSE error-frame body's ``code`` (status is already 200).
 BANDWIDTH_EXHAUSTED = ErrorSpec(503, "ERR_BANDWIDTH_EXHAUSTED", "Bandwidth limit exceeded")
+
+#: A request's tier-reserved + shared capacity is exhausted, even though the frozen
+#: base GlobalBackPressureMiddleware admitted it (service-tiers TASK.md §3 M8/R4).
+#: Distinct from ERR_OVERLOADED — this means "the base guard admitted you, but your
+#: tier's pools are full cluster-wide". Retry-After always provided by the caller.
+#: App/upstream NEVER invoked; no usage record is written for a shed request.
+TIER_CAPACITY_EXHAUSTED = ErrorSpec(503, "ERR_TIER_CAPACITY_EXHAUSTED", "Tier capacity exhausted")
 
 # ---------------------------------------------------------------------------
 # Guardrail / content policy
@@ -962,6 +982,46 @@ ZDR_PAYLOAD_BLOCKED = ErrorSpec(
 #: custom_id that duplicates another item in the same submission. The whole
 #: submission is atomic — no row is created on this reject.
 BATCH_ITEM_INVALID = ErrorSpec(422, "batch_item_invalid", "a line item failed validation")
+
+# ---------------------------------------------------------------------------
+# Residency policy (residency-policy TASK.md — FROZEN @ v2)
+# ---------------------------------------------------------------------------
+
+#: PUT /admin/residency-policy — region is not one of {null, "us", "eu", "ap"}.
+RESIDENCY_REGION_INVALID = ErrorSpec(
+    422,
+    "ERR_RESIDENCY_REGION_INVALID",
+    "region must be one of null, 'us', 'eu', 'ap'",
+)
+
+#: No deployment-selection candidate satisfies the tenant's pinned residency region
+#: (fresh per-call check, see gateway.proxy.application.residency). Raised at every
+#: deployment-selection surface (chat alias/plain, embeddings, images, audio STT/TTS,
+#: realtime relay/WS) — the request is refused, NEVER silently rerouted out-of-region
+#: (M6). A refused request is never billed and produces no usage record (M8).
+RESIDENCY_NO_ELIGIBLE_REGION = ErrorSpec(
+    403,
+    "ERR_RESIDENCY_NO_ELIGIBLE_REGION",
+    "No deployment available in tenant's pinned region '{region}' for model '{model_id}'",
+)
+
+# ---------------------------------------------------------------------------
+# Bedrock BYOK region guard (residency-bedrock-region-guard TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: A Bedrock BYOK credential's AWS region geo (us-/eu-/ap-) does not match the
+#: resolved model id's cross-region-inference-profile geo (us./eu./apac.) — raised
+#: by ``_assert_region_consistent`` (bedrock_upstream.py) BEFORE any Bedrock HTTP
+#: dial, at the top of BedrockCompletionUpstream.complete/.stream and
+#: BedrockEmbeddingsProvider.post_json. Fail-closed: an unclassifiable/malformed
+#: credential region under a geo-prefixed model id raises this too — never fails
+#: open. The message names neither the secret nor the full credential, only the
+#: required vs. actual region geo.
+BEDROCK_REGION_MISMATCH = ErrorSpec(
+    403,
+    "ERR_BEDROCK_REGION_MISMATCH",
+    "Bedrock credential region does not match the model's residency region",
+)
 
 # ---------------------------------------------------------------------------
 # Compliance export errors (compliance-export-api TASK.md §3 — FROZEN @ v1)

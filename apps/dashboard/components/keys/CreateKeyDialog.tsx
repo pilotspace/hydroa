@@ -8,32 +8,77 @@
  * Tests expect: getByLabelText(/key name/i), getByRole("button", {name:/create/i})
  */
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { z } from "zod";
-import { BffError } from "@/lib/bff-client";
+import { bffGet, BffError } from "@/lib/bff-client";
 import { Input, Button } from "@/components/ui";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import { TierSelector, type Tier } from "./TierSelector";
 
 const CreateKeySchema = z.object({
   name: z.string().min(1, "Key name is required").max(120, "Key name must be at most 120 characters"),
 });
 
+/** GET /admin/service-tiers — service-tiers TASK.md §3 M11, FROZEN, effective
+ * (override-or-seed) shape. residency-tiers-ui TASK.md §3 "DECIDED at freeze review":
+ * this is the REAL route/shape — NOT the earlier-drafted {entries:[...]} shape. */
+interface ServiceTiersEffective {
+  default_tier: string;
+  priority_markup_pct: string;
+}
+
 interface CreateKeyDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (name: string) => Promise<void>;
+  /** Fires on every tier change (default "standard" on close/reset). CreateKeyDialog
+   * owns the tier UI; the caller (KeysPage) owns assembling the POST body — this keeps
+   * onSubmit's signature untouched (a pre-existing, out-of-scope suite asserts it is
+   * called with exactly one argument). */
+  onTierChange?: (tier: Tier) => void;
 }
 
-export function CreateKeyDialog({ isOpen, onClose, onSubmit }: CreateKeyDialogProps) {
+export function CreateKeyDialog({ isOpen, onClose, onSubmit, onTierChange }: CreateKeyDialogProps) {
   const [keyName, setKeyName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [tier, setTier] = useState<Tier>("standard");
+  const [priceDelta, setPriceDelta] = useState<string | null>(null);
+
+  // M10: read GET /admin/service-tiers ONCE per dialog open. A plain fetch (not
+  // react-query) — CreateKeyDialog is rendered standalone with no QueryClientProvider
+  // ancestor in several pre-existing, out-of-scope tests. R4: on 404/5xx/network error,
+  // no retry/poll — priceDelta simply stays null ("Pricing pending"), never an
+  // ErrorState (expected degrade, not a fault).
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    bffGet<ServiceTiersEffective>("/admin/service-tiers")
+      .then((resp) => {
+        if (cancelled) return;
+        const pct = Number(resp.priority_markup_pct);
+        setPriceDelta(Number.isFinite(pct) ? `+${pct}% on requests using this key` : null);
+      })
+      .catch(() => {
+        if (!cancelled) setPriceDelta(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  function handleTierChange(next: Tier) {
+    setTier(next);
+    onTierChange?.(next);
+  }
 
   function handleClose() {
     setKeyName("");
     setNameError(null);
     setGlobalError(null);
+    setTier("standard");
+    onTierChange?.("standard");
     onClose();
   }
 
@@ -109,6 +154,8 @@ export function CreateKeyDialog({ isOpen, onClose, onSubmit }: CreateKeyDialogPr
               </p>
             )}
           </div>
+
+          <TierSelector value={tier} onChange={handleTierChange} priceDelta={priceDelta} />
 
           {globalError && (
             <p role="alert" aria-live="polite" className="text-sm text-destructive">

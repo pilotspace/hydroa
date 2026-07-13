@@ -135,6 +135,43 @@ its release-notes credit is pending.
   design system's financial-document idiom (tabular-nums currency, visible immutability seal),
   axe-checked (WCAG 2.2 AA).
 
+## Data residency & service tiers — region-pinned, tier-priced inference
+
+Sells what Anthropic verifiably lacks (no first-party EU; US-pin monetized at 1.1×).
+
+- **Region as a first-class deployment dimension** — every catalog deployment carries a `region`
+  (`us | eu | ap | global`); the catalog exposes it (admin + dashboard region badges) and it is the
+  single source of truth — never inferred from a provider URL at request time. Ships with live Bedrock
+  EU (Frankfurt/Ireland/Paris/Stockholm) + APAC inference-profile seeds and a **real Vertex AI adapter**
+  (service-account auth, `{region}-aiplatform` endpoints) with EU (`europe-west*`) and Asia
+  (`asia-southeast1`) entries. Vietnam is served from SEA endpoints (pin `ap`) — no hyperscaler operates
+  a VN region.
+- **Fail-closed data-residency policy** — a per-tenant region pin enforced in two tiers (a governance
+  existence check + a router pre-loop candidate filter): a request with **zero eligible in-region
+  candidates gets a structured `problem+json` 4xx refusal (`RESIDENCY_NO_ELIGIBLE_REGION`) before any
+  upstream dial** — provably never a silent out-of-region reroute (live-probed: zero dials, zero usage
+  rows on refusal). Composes independently with ZDR; policy changes are audited and confirm-gated.
+- **Provider-dial residency guard (Bedrock BYOK)** — a fail-closed guard asserts a Bedrock inference
+  profile's geo prefix (`us.`/`eu.`/`apac.`) matches the tenant credential's region (`us-`/`eu-`/`ap-`)
+  **before the first byte leaves the process** on every entry point (complete/stream/embeddings), so a
+  tenant's own misconfigured BYOK credential can't transit an EU-pinned prompt through a US endpoint.
+  Dual independent adversarial security verification (mutation-kill + empirical dispatch-seam proof).
+- **Region- and tier-differentiated pricing** — an EU pin applies a region multiplier (seed **1.1×**,
+  tenant-overridable) and Priority tier a markup (seed **+25%**) — both resolved through the ONE shared
+  rate-card resolver, so catalog display, recorder billing, and invoice lines can never drift; the
+  recorder applies the multiplier once and divides it back out on a mid-stream disconnect.
+- **Priority vs standard service tiers** — per tenant+key capacity preference enforced by Redis
+  cross-worker ZSET pools with atomic Lua admission (priority is admitted ahead of standard and may
+  overflow into standard; standard is never starved by a bounded share). The tier actually *served* is
+  what's billed and lands on the usage record; on Redis degradation the guard fails open and bills the
+  standard tier. Adversarially verified with a 30-way concurrent probe (exactly the cluster cap admitted,
+  no overshoot, idempotent release).
+- **Console + marketing surfaces** — Settings → Data & residency extends the ZDR panel idiom (region
+  picker, typed confirm gate, plain-language consequence line: "requests that cannot run in the EU will
+  be refused, not rerouted"); catalog region badges; a Priority/Standard selector at key creation with
+  the price delta inline; the marketing pricing page tells the residency + priority story. Aurora tokens,
+  axe-clean (WCAG 2.2 AA).
+
 ## Identity, auth & multi-tenancy
 
 - **Tenants & teams** — every row is `tenant_id`-scoped; cross-tenant references return `404`,
@@ -276,7 +313,11 @@ next numbered release cut alongside:
 
 - **monetization-core** — the full "Monetization" domain section above (7/7 tasks gated: one
   RISK-ACCEPTED with a signed waiver, six PASS incl. a healed security HARD-STOP verify on the
-  credits ledger); complete on `feat/monetization-core` pending merge, feeds release 0.8.0.
+  credits ledger); merged to `main` (PR #67), feeds release 0.8.0.
+- **residency-service-tiers** — the full "Data residency & service tiers" domain section above
+  (7/7 tasks gated PASS, incl. two security HARD-STOP verifies: a dual-verify save that caught a
+  cross-tenant Vertex/Azure token-cache confused-deputy, and a dual-verified Bedrock BYOK dial guard);
+  complete on `feat/residency-service-tiers` pending merge, feeds release 0.8.0.
 
 ---
 

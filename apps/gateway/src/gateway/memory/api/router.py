@@ -166,6 +166,20 @@ async def _embed(request: Request, raw_key: str, text: str) -> list[float] | Non
             _redis_client = getattr(_budget_guard, "_redis", None)
             _tenant_cred_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
 
+            # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same
+            # getattr pattern used across every other NonChatGovernance construction.
+            _residency_lookup = getattr(request.app.state, "residency_lookup", None)
+            # service-tiers TASK.md §3 (FROZEN @ v1): same app.state-boot singleton
+            # pattern as _residency_lookup above. Absent ⇒ PassthroughTierCapacityGuard
+            # ⇒ byte-identical.
+            from gateway.proxy.infrastructure.tier_capacity_guard import (
+                PassthroughTierCapacityGuard,
+            )
+
+            _tier_capacity_guard = (
+                getattr(request.app.state, "tier_capacity_guard", None)
+                or PassthroughTierCapacityGuard()
+            )
             governance = NonChatGovernance(
                 authenticator=_authenticator,
                 model_checker=_model_checker,
@@ -173,11 +187,14 @@ async def _embed(request: Request, raw_key: str, text: str) -> list[float] | Non
                 rate_limiter=_rate_limiter,
                 redis_client=_redis_client,
                 session_factory=request.app.state.sessionmaker,
+                residency_lookup=_residency_lookup,
+                tier_capacity_guard=_tier_capacity_guard,
             )
             uc = EmbeddingsUseCase(
                 governance=governance,
                 session=embed_session,
                 tenant_credential_resolver=_tenant_cred_resolver,
+                residency_lookup=_residency_lookup,
             )
             status, body, _ = await uc.execute(
                 raw_key=raw_key,

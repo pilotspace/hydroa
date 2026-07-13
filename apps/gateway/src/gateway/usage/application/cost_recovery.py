@@ -37,7 +37,11 @@ from gateway.proxy.domain.credential_context import (
     set_provider_credential,
 )
 from gateway.proxy.infrastructure.openrouter_upstream import GenerationCost
-from gateway.usage.application.rate_card_resolver import resolve_markup_pct
+from gateway.usage.application.rate_card_resolver import (
+    resolve_markup_pct,
+    resolve_region_multiplier,
+    resolve_tier_multiplier,
+)
 from gateway.usage.application.recorder import RecordingUsageRecorder
 
 _log = logging.getLogger(__name__)
@@ -67,6 +71,10 @@ class _LedgerState:
     anchor_exists: bool
     already_billed: Decimal
     recovered_exists: bool
+    # service-tiers TASK.md §3: the ORIGINAL anchor row's stored tier_served — read
+    # from usage_records, NEVER re-derived from live admission (§0 issue #5). "standard"
+    # when no anchor row exists (anchor_exists=False; the safe default).
+    tier_served: str = "standard"
 
 
 class _GenerationCostSource(Protocol):
@@ -159,7 +167,16 @@ class OpenRouterCostRecoveryService:
             if state.recovered_exists:
                 return RecoveryOutcome("skipped:already_recovered")
             markup = await self._fetch_markup(tenant_id, model)
-            target = cost.total_cost * (Decimal("1") + markup / Decimal("100"))
+            region_multiplier = await self._fetch_region_multiplier(tenant_id, model)
+            # service-tiers TASK.md §3: keyed by the ORIGINAL anchor row's stored
+            # tier_served (state.tier_served), never re-derived from live admission.
+            tier_multiplier = await self._fetch_tier_multiplier(tenant_id, model, state.tier_served)
+            target = (
+                cost.total_cost
+                * (Decimal("1") + markup / Decimal("100"))
+                * region_multiplier
+                * tier_multiplier
+            )
             delta = target - state.already_billed
             await self._recorder.record_correction(
                 event_id=recovery_event_id(gid),
@@ -198,7 +215,8 @@ class OpenRouterCostRecoveryService:
                         "SELECT"
                         " COUNT(*) FILTER (WHERE usage_source <> :rec),"
                         " COALESCE(SUM(cost_usd) FILTER (WHERE usage_source <> :rec), 0),"
-                        " COUNT(*) FILTER (WHERE usage_source = :rec)"
+                        " COUNT(*) FILTER (WHERE usage_source = :rec),"
+                        " MIN(tier_served) FILTER (WHERE usage_source <> :rec)"
                         " FROM usage_records"
                         " WHERE tenant_id = :t AND provider_generation_id = :g"
                     ),
@@ -211,6 +229,7 @@ class OpenRouterCostRecoveryService:
             anchor_exists=int(row[0]) > 0,
             already_billed=Decimal(str(row[1])),
             recovered_exists=int(row[2]) > 0,
+            tier_served=str(row[3]) if row[3] is not None else "standard",
         )
 
     async def _fetch_markup(self, tenant_id: uuid.UUID, model: str) -> Decimal:
@@ -221,3 +240,24 @@ class OpenRouterCostRecoveryService:
         """
         async with self._session_factory() as session:
             return await resolve_markup_pct(session, tenant_id, model)
+
+    async def _fetch_region_multiplier(self, tenant_id: uuid.UUID, model: str) -> Decimal:
+        """Return the effective per-(tenant, model) region multiplier (region-pricing).
+
+        Delegates to the shared resolver — the SAME rate recorder billing and
+        catalog display resolve (no third-site drift; TASK.md §3 M4).
+        """
+        async with self._session_factory() as session:
+            return await resolve_region_multiplier(session, tenant_id, model)
+
+    async def _fetch_tier_multiplier(
+        self, tenant_id: uuid.UUID, model: str, tier_served: str
+    ) -> Decimal:
+        """Return the effective priority-tier markup multiplier (service-tiers).
+
+        Delegates to the shared resolver — the SAME rate recorder billing and
+        catalog display resolve (no third-site drift; TASK.md §3 M11). Keyed by the
+        ORIGINAL anchor row's stored tier_served, never re-derived from live admission.
+        """
+        async with self._session_factory() as session:
+            return await resolve_tier_multiplier(session, tenant_id, model, tier_served)

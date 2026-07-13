@@ -40,6 +40,7 @@ from gateway.proxy.infrastructure.ml_moderation_evaluator import (
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
 from gateway.proxy.infrastructure.provider_registry import select_provider
 from gateway.proxy.infrastructure.response_cache import RedisResponseCache
+from gateway.proxy.infrastructure.tier_capacity_guard import PassthroughTierCapacityGuard
 from gateway.proxy.infrastructure.vector_cache import RedisVectorCache
 
 # Singleton stateless hasher — safe to share
@@ -250,6 +251,17 @@ def get_completion_use_case(
 
     credit_guard = getattr(request.app.state, "credit_guard", None) or PassthroughCreditGuard()
     hold_estimate_usd = _settings.credits_hold_estimate_usd if _settings else Decimal("0.50")
+    # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same getattr
+    # pattern as tenant_credential_resolver above. None ⇒ feature off ⇒ byte-identical.
+    residency_lookup = getattr(request.app.state, "residency_lookup", None)
+    # service-tiers TASK.md §3 (FROZEN @ v1): app.state-boot singleton (RedisTierCapacityGuard
+    # in production, PassthroughTierCapacityGuard default). Same getattr pattern as
+    # credit_guard immediately above — absent ⇒ PassthroughTierCapacityGuard ⇒
+    # check_and_hold returns an undegraded hold at the tenant's default tier ⇒
+    # byte-identical to today.
+    tier_capacity_guard = getattr(request.app.state, "tier_capacity_guard", None) or (
+        PassthroughTierCapacityGuard()
+    )
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -277,4 +289,6 @@ def get_completion_use_case(
         payload_capture=payload_capture,
         credit_guard=credit_guard,
         hold_estimate_usd=hold_estimate_usd,
+        residency_lookup=residency_lookup,
+        tier_capacity_guard=tier_capacity_guard,
     )

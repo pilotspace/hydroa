@@ -39,6 +39,7 @@ import {
   TableCell,
 } from "@/components/ui";
 import { ConfirmDialog } from "@/components/teams/ConfirmDialog";
+import { formatTimestamp } from "@/lib/format";
 
 interface EffectiveWindowDays {
   usage_records: number;
@@ -64,6 +65,29 @@ interface RetentionPut {
 }
 
 const RETENTION_QUERY_KEY = ["admin-retention-policy"];
+
+/** GET/PUT /admin/residency-policy — residency-policy TASK.md §3, FROZEN @ v2 (CR-1
+ * added "ap" to the region enum). residency-tiers-ui TASK.md §3 M1-M5. */
+type ResidencyRegion = "us" | "eu" | "ap";
+
+interface ResidencyPolicy {
+  region: ResidencyRegion | null;
+  updated_at: string | null;
+}
+
+const RESIDENCY_QUERY_KEY = ["admin-residency-policy"];
+
+const RESIDENCY_REGION_LABELS: Record<ResidencyRegion, string> = { us: "US", eu: "EU", ap: "AP" };
+
+/** Consequence-line copy (VERBATIM per pin target, residency-tiers-ui TASK.md §3) —
+ * the persona's signature element, shown inside ConfirmDialog before a tightening
+ * write ever fires. AP's copy (CR-1, "DECIDED at freeze review") joins EU/US, naming
+ * the Vietnam/SEA routing consequence per the freeze-review note. */
+const RESIDENCY_CONSEQUENCE: Record<ResidencyRegion, string> = {
+  eu: "Pinning to EU means requests that cannot run in the EU will be refused, not rerouted. This also blocks realtime voice for this tenant — no realtime model is region-tagged yet.",
+  us: "Pinning to US means requests that cannot run in the US will be refused, not rerouted. This also blocks realtime voice for this tenant — no realtime model is region-tagged yet.",
+  ap: "Pinning to AP means requests that cannot run in Asia-Pacific will be refused, not rerouted; Vietnam is served from Singapore/SEA endpoints. This also blocks realtime voice for this tenant — no realtime model is region-tagged yet.",
+};
 
 /** Store display order — exactly the 7 swept classes; audit_events is permanently excluded. */
 const STORE_LABELS: { key: keyof EffectiveWindowDays; label: string }[] = [
@@ -108,6 +132,24 @@ export function RetentionZdrSettings() {
     setZdrEnabledAt(data.zdr_enabled_at);
     setEffective(data.effective_window_days);
     setOperatorCeiling(data.operator_ceiling_days);
+  }
+
+  // M1: the "Data residency" fieldset's OWN useQuery, independent of the Retention/ZDR
+  // read above — never gated by/gating the other two fieldsets (§3 Empty/error matrix).
+  const residencyQuery = useQuery<ResidencyPolicy>({
+    queryKey: RESIDENCY_QUERY_KEY,
+    queryFn: () => bffGet<ResidencyPolicy>("/admin/residency-policy"),
+    retry: false,
+  });
+
+  const [pendingRegion, setPendingRegion] = useState<ResidencyRegion | null>(null);
+  const [residencyMutError, setResidencyMutError] = useState<string | null>(null);
+  const [residencyConfirmOpen, setResidencyConfirmOpen] = useState(false);
+
+  const [seededResidency, setSeededResidency] = useState<ResidencyPolicy | undefined>(undefined);
+  if (residencyQuery.data && residencyQuery.data !== seededResidency) {
+    setSeededResidency(residencyQuery.data);
+    setPendingRegion(residencyQuery.data.region);
   }
 
   const saveRetention = useMutation({
@@ -163,6 +205,46 @@ export function RetentionZdrSettings() {
     // already holds true) without any ordering assumption between them.
     const known = queryClient.getQueryData<RetentionPolicy>(RETENTION_QUERY_KEY);
     setZdrEnabled(known?.zdr_enabled ?? false);
+  }
+
+  const saveResidency = useMutation({
+    mutationFn: (body: { region: ResidencyRegion | null }) =>
+      bffPut<ResidencyPolicy>("/admin/residency-policy", body),
+    onSuccess: (resp) => {
+      setResidencyMutError(null);
+      queryClient.setQueryData<ResidencyPolicy>(RESIDENCY_QUERY_KEY, resp);
+    },
+    onError: (err) => {
+      // R2/R3: never write an unconfirmed pending value — revert the displayed
+      // selection to the last-known-good server state, mirrors handleZdrConfirmClose.
+      const known = queryClient.getQueryData<ResidencyPolicy>(RESIDENCY_QUERY_KEY);
+      setPendingRegion(known?.region ?? null);
+      setResidencyMutError(getErrorTitle(err));
+    },
+  });
+
+  function handleResidencySave() {
+    setResidencyMutError(null);
+    const current = residencyQuery.data?.region ?? null;
+    if (pendingRegion === current) return; // nothing changed
+    if (pendingRegion === null) {
+      // M4: loosening (clearing a pin) is safe — fires immediately, no confirm.
+      saveResidency.mutate({ region: null });
+      return;
+    }
+    // M3: unset->pinned AND pinned A->pinned B are BOTH confirm-gated.
+    setResidencyConfirmOpen(true);
+  }
+
+  async function handleConfirmResidencyPin() {
+    if (pendingRegion === null) return;
+    await saveResidency.mutateAsync({ region: pendingRegion });
+  }
+
+  function handleResidencyConfirmClose() {
+    setResidencyConfirmOpen(false);
+    const known = queryClient.getQueryData<ResidencyPolicy>(RESIDENCY_QUERY_KEY);
+    setPendingRegion(known?.region ?? null);
   }
 
   if (isLoading) {
@@ -260,6 +342,78 @@ export function RetentionZdrSettings() {
         )}
       </fieldset>
 
+      {/* M1-M5: third fieldset, "Data residency" — own useQuery/mutation, independent
+          of Retention/ZDR above (never gates, never gated by, them). */}
+      <fieldset className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        <legend className="px-1 text-sm font-semibold text-foreground">Data residency</legend>
+
+        {residencyQuery.isLoading && <Loading label="Loading residency policy" />}
+
+        {residencyQuery.isError && !residencyQuery.isLoading && (
+          <ErrorState title={getErrorTitle(residencyQuery.error)} />
+        )}
+
+        {!residencyQuery.isLoading && !residencyQuery.isError && (
+          <>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium text-foreground">Pin inference region</legend>
+              <div className="flex flex-col gap-2">
+                <label className="flex min-h-11 items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="radio"
+                    name="residency-region"
+                    checked={pendingRegion === null}
+                    disabled={residencyConfirmOpen}
+                    onChange={() => setPendingRegion(null)}
+                    className="size-4 shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  No pin (unrestricted)
+                </label>
+                {(["us", "eu", "ap"] as const).map((region) => (
+                  <label
+                    key={region}
+                    className="flex min-h-11 items-center gap-2 text-sm text-foreground"
+                  >
+                    <input
+                      type="radio"
+                      name="residency-region"
+                      checked={pendingRegion === region}
+                      disabled={residencyConfirmOpen}
+                      onChange={() => setPendingRegion(region)}
+                      className="size-4 shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    {RESIDENCY_REGION_LABELS[region]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <div>
+              <Button
+                type="button"
+                disabled={saveResidency.isPending || residencyConfirmOpen}
+                onClick={handleResidencySave}
+              >
+                {saveResidency.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
+
+            {seededResidency?.region && seededResidency.updated_at && (
+              <p className="text-xs text-muted-foreground">
+                Pin currently: {RESIDENCY_REGION_LABELS[seededResidency.region]} — set{" "}
+                {formatTimestamp(seededResidency.updated_at)}.
+              </p>
+            )}
+          </>
+        )}
+
+        {residencyMutError && (
+          <p role="alert" aria-live="polite" className="text-sm text-destructive">
+            {residencyMutError}
+          </p>
+        )}
+      </fieldset>
+
       {mutError && (
         <p role="alert" aria-live="polite" className="text-sm text-destructive">
           {mutError}
@@ -273,6 +427,15 @@ export function RetentionZdrSettings() {
         confirmLabel="Enable ZDR"
         onConfirm={handleConfirmZdrEnable}
         onClose={handleZdrConfirmClose}
+      />
+
+      <ConfirmDialog
+        open={residencyConfirmOpen}
+        title={`Pin residency to ${pendingRegion ? RESIDENCY_REGION_LABELS[pendingRegion] : ""}?`}
+        description={pendingRegion ? RESIDENCY_CONSEQUENCE[pendingRegion] : undefined}
+        confirmLabel={`Pin to ${pendingRegion ? RESIDENCY_REGION_LABELS[pendingRegion] : ""}`}
+        onConfirm={handleConfirmResidencyPin}
+        onClose={handleResidencyConfirmClose}
       />
     </div>
   );

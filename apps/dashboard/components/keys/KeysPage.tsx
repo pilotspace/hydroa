@@ -23,6 +23,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bffGet, bffPost, bffDelete, BffError } from "@/lib/bff-client";
 import { KeyRow } from "./KeyRow";
 import { CreateKeyDialog } from "./CreateKeyDialog";
+import type { Tier } from "./TierSelector";
 import { PlaintextKeyBanner } from "./PlaintextKeyBanner";
 import { KeyGovernanceEditor, ApiKeyGovernance } from "./KeyGovernanceEditor";
 import { RatelimitsPanel } from "./RatelimitsPanel";
@@ -102,6 +103,11 @@ export function KeysPage() {
   const [plaintextKey, setPlaintextKey] = useState<string | null>(null);
   const [revokeTargetId, setRevokeTargetId] = useState<string | null>(null);
   const [expandedGovernance, setExpandedGovernance] = useState<string | null>(null);
+  // M9: the tier CreateKeyDialog's TierSelector currently has selected — mirrored here
+  // (via onTierChange) so the POST body assembly stays owned by KeysPage without
+  // widening CreateKeyDialog's onSubmit(name) signature (a pre-existing, out-of-scope
+  // suite asserts that call has exactly one argument).
+  const [selectedTier, setSelectedTier] = useState<Tier>("standard");
 
   // Keys query — uses bffGet (credentials:"include") through the catch-all BFF proxy
   const {
@@ -114,10 +120,11 @@ export function KeysPage() {
     queryFn: () => bffGet<ApiKey[]>("/admin/keys"),
   });
 
-  // Create key mutation
+  // Create key mutation — tier (M9) is a required field, always included (defaulting
+  // "standard"), field OWNED by service-tiers (cited, not redefined here).
   const createKeyMutation = useMutation({
-    mutationFn: (name: string) =>
-      bffPost<CreateKeyResponse>("/admin/keys", { name }),
+    mutationFn: ({ name, tier }: { name: string; tier: Tier }) =>
+      bffPost<CreateKeyResponse>("/admin/keys", { name, tier }),
     onSuccess: (data) => {
       setPlaintextKey(data.key);
       void queryClient.invalidateQueries({ queryKey: ["admin-keys"] });
@@ -152,7 +159,7 @@ export function KeysPage() {
   }
 
   async function handleCreateKey(name: string) {
-    await createKeyMutation.mutateAsync(name);
+    await createKeyMutation.mutateAsync({ name, tier: selectedTier });
   }
 
   function handleGovernanceUpdated() {
@@ -334,6 +341,7 @@ export function KeysPage() {
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
         onSubmit={handleCreateKey}
+        onTierChange={setSelectedTier}
       />
     </div>
   );

@@ -55,6 +55,7 @@ from gateway.core.error_catalog import (
     PLAN_MODEL_NOT_ALLOWED,
     PRESET_NOT_FOUND,
     RATE_LIMITED,
+    RESIDENCY_NO_ELIGIBLE_REGION,
     UPSTREAM_RATE_LIMITED,
     UPSTREAM_UNAVAILABLE,
 )
@@ -64,11 +65,16 @@ from gateway.guardrail_analytics.application.verdict_recorder import record_guar
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.logs.domain.sse_content_extractor import extract_content_from_sse
+from gateway.proxy.application.residency import (
+    cache_hit_region_ok,
+    check_residency_existence,
+)
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
 )
 from gateway.proxy.domain.errors import (
+    AllCandidatesOutOfRegionError,
     AllDeploymentsSaturatedError,
     CircuitOpenError,
     UpstreamRateLimitedError,
@@ -96,6 +102,7 @@ from gateway.proxy.domain.ports import (
     ModelChecker,
     PayloadCapturePort,
     ProviderResolver,
+    ResidencyLookup,
     ResponseCache,
     TenantCredentialResolver,
     UsageRecorder,
@@ -107,6 +114,8 @@ from gateway.proxy.domain.provider_credentials import (
     ProviderKeyMissing,
 )
 from gateway.proxy.domain.response_format_translation import extract_response_format
+from gateway.proxy.domain.tier_capacity import ServiceTier, TierCapacityGuard
+from gateway.proxy.infrastructure.tier_capacity_guard import PassthroughTierCapacityGuard
 from gateway.rate_limits.application.passthrough import (
     PassthroughBandwidthBucket,
     PassthroughRateLimiter,
@@ -300,12 +309,50 @@ _credit_hold_ctx: contextvars.ContextVar[tuple[CreditGuard, uuid.UUID] | None] =
     contextvars.ContextVar("_credit_hold_ctx", default=None)
 )
 
+# service-tiers TASK.md §3 (FROZEN @ v1, M9): set alongside _credit_hold_ctx.set(...),
+# immediately after the tier hold succeeds — consumed by _settle_or_release_hold to
+# release the tier-capacity slot once the (possibly-streaming) request's usage record
+# is fully dispatched, mirroring _credit_hold_ctx's own publish/consume shape exactly.
+_tier_hold_ctx: contextvars.ContextVar[tuple[TierCapacityGuard, uuid.UUID] | None] = (
+    contextvars.ContextVar("_tier_hold_ctx", default=None)
+)
+
+# service-tiers TASK.md §3 (M10, a Build judgment call — not itself a §3-named symbol):
+# the (tier_served, tier_capacity_degraded) pair resolved ONCE in _enforce_governance/
+# NonChatGovernance.authorize, published alongside _tier_hold_ctx, and consumed by
+# _dispatch_record so tier_served/tier_capacity_degraded reach whichever _fire_record*
+# call site this SAME request eventually dispatches through — WITHOUT threading two new
+# kwargs through ~25 _fire_record*/_fire_record_with_raw call sites (the same rationale
+# _credit_hold_ctx's own docstring gives for its contextvar-publish-then-consume shape).
+_tier_served_ctx: contextvars.ContextVar[tuple[ServiceTier, bool] | None] = contextvars.ContextVar(
+    "_tier_served_ctx", default=None
+)
+
 
 def _settle_or_release_hold(task: asyncio.Task[object | None]) -> None:
     """Task done-callback: consume the recorder's UsageRecordOutcome (if any) and settle
     or release the open credit hold for the current request. Never raises — a missing
     outcome (older/duck-typed recorder, or record() itself failed) is a no-op; the M6
-    reconciliation sweep is the backstop for anything left unresolved here."""
+    reconciliation sweep is the backstop for anything left unresolved here.
+
+    service-tiers TASK.md §3 M9: ALSO consumes _tier_hold_ctx and releases the tier
+    capacity hold UNCONDITIONALLY (no settle/release split needed — a capacity slot is
+    a binary occupied/free thing, not a money amount, deliberate simplification vs
+    CreditGuard's separate settle()/release()). This release fires regardless of
+    whether the credit-hold branch above found anything to settle, so a tier hold is
+    never stranded by a credit-side no-op (e.g. a free/cached response).
+    """
+    tier_ctx = _tier_hold_ctx.get()
+    if tier_ctx is not None and not task.cancelled() and task.exception() is None:
+        tier_guard, tier_request_id = tier_ctx
+        result = task.result()
+        tier_tenant_id = getattr(result, "tenant_id", None)
+        if tier_tenant_id is not None:
+            release_task = asyncio.ensure_future(
+                tier_guard.release(tier_tenant_id, tier_request_id)
+            )
+            release_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
     if task.cancelled() or task.exception() is not None:
         return
     ctx = _credit_hold_ctx.get()
@@ -359,6 +406,16 @@ def _dispatch_record(
     read back the already-computed cost. record()'s own contract/behavior is completely
     unchanged for every other caller (byte-identical — see record_with_outcome's
     docstring for why this is a NEW method rather than widening record()'s return).
+
+    service-tiers TASK.md §3 (M9/M10, a Build judgment call): the SAME
+    record_with_outcome branch also fires when a TIER hold is open (independent of
+    whether a credit hold is ALSO open — the two guards are orthogonal, and a
+    tenant may have tiering wired without credits), so _settle_or_release_hold
+    always gets a chance to release the tier-capacity slot. Before dispatch,
+    tier_served/tier_capacity_degraded (resolved once in _enforce_governance,
+    published via _tier_served_ctx) are folded into kwargs — filtered against
+    `supported_extras` exactly like every other extra, so a v1-Protocol fake
+    without the capability silently receives only the base kwargs.
     """
     supported: frozenset[str] = getattr(usage_recorder, "supported_extras", frozenset())
     kwargs: dict[str, Any] = {
@@ -371,7 +428,14 @@ def _dispatch_record(
     if extras:
         kwargs.update({k: v for k, v in extras.items() if k in supported})
 
+    tier_served_ctx = _tier_served_ctx.get()
+    if tier_served_ctx is not None and "tier_served" in supported:
+        _tier_served_value, _tier_degraded_value = tier_served_ctx
+        kwargs["tier_served"] = _tier_served_value
+        kwargs["tier_capacity_degraded"] = _tier_degraded_value
+
     credit_ctx = _credit_hold_ctx.get()
+    tier_hold_ctx = _tier_hold_ctx.get()
     # Explicit annotation (not `callable()` narrowing) — callable() narrows to
     # Callable[..., object], which pyright then rejects as an ensure_future() arg
     # (object is not Awaitable). getattr's own Any-typed return, propagated through
@@ -379,7 +443,7 @@ def _dispatch_record(
     record_with_outcome: Callable[..., Awaitable[Any]] | None = getattr(
         usage_recorder, "record_with_outcome", None
     )
-    if credit_ctx is not None and record_with_outcome is not None:
+    if (credit_ctx is not None or tier_hold_ctx is not None) and record_with_outcome is not None:
         task = asyncio.ensure_future(record_with_outcome(**kwargs))
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         task.add_done_callback(_settle_or_release_hold)
@@ -654,7 +718,7 @@ async def _run_output_validation_retry(
     try:
         if model_router is not None:
             retry_status, retry_body, retry_served = await model_router.complete(
-                body, upstream=upstream
+                body, upstream=upstream, tenant_id=authz.tenant_id
             )
         else:
             retry_status, retry_body = await upstream.complete(body)
@@ -664,6 +728,11 @@ async def _run_output_validation_retry(
             detail=f"all deployments for '{exc.alias}' are rate-limited",
             headers={"Retry-After": "60"},
         ) from exc
+    except AllCandidatesOutOfRegionError as exc:
+        # residency-policy TASK.md §3 M8: never billed, no usage record — the
+        # attempt-1 usage was already fired above (M8 bounded-retry billing rule);
+        # this retry leg itself produced no usage.
+        raise RESIDENCY_NO_ELIGIBLE_REGION.exc(region=exc.region or "", model_id=exc.alias) from exc
     except UpstreamRateLimitedError as exc:
         _fire_record_with_raw(
             usage_recorder,
@@ -916,7 +985,10 @@ async def resolve_provider_credential(
     except ProviderKeyMissing as pkm:
         # §3 CONTRACT: ERR_PROVIDER_KEY_MISSING → HTTP 402 (no secret in the chain).
         raise ProblemError(402, pkm.code, "Provider key not configured for this tenant") from None
-    return set_provider_credential(cred)
+    # Pass tenant_id so the BYOK token caches (vertex_ad / azure_ad) scope cached bearer
+    # tokens per (hydroa_tenant, identity) — the cross-tenant confused-deputy fix
+    # (vertex-adapter M4 CR-2). The returned handle resets BOTH contextvars.
+    return set_provider_credential(cred, tenant_id)
 
 
 class _InlineCostRecovery(Protocol):
@@ -965,10 +1037,18 @@ class CompletionUseCase:
         payload_capture: PayloadCapturePort | None = None,
         credit_guard: CreditGuard = PassthroughCreditGuard(),  # noqa: B008
         hold_estimate_usd: Decimal = Decimal("0.50"),
+        residency_lookup: ResidencyLookup | None = None,
+        tier_capacity_guard: TierCapacityGuard = PassthroughTierCapacityGuard(),  # noqa: B008
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
         self._budget_guard = budget_guard
+        # residency-policy TASK.md §3 (FROZEN @ v2): None (default) ⇒ zero DB
+        # interaction, byte-identical to pre-residency-policy behavior. Backs BOTH
+        # the Tier 1 existence check (_enforce_governance) and the M7 cache-hit
+        # re-validation below — the SAME instance FallbackModelRouter's Tier 2 filter
+        # uses (wired separately onto the router by main.py).
+        self._residency_lookup: ResidencyLookup | None = residency_lookup
         # credits-ledger TASK.md §3: PassthroughCreditGuard (default) ⇒ check_and_hold is a
         # no-op ⇒ byte-identical to today. When wired, the credit gate runs at the SAME
         # choke point as the budget ladder — see _enforce_governance for the insertion.
@@ -1048,6 +1128,11 @@ class CompletionUseCase:
         # request_logs row via _dispatch_capture at each hook site — see complete()/
         # stream()/_fire_record_cached call sites for the insertion points.
         self._payload_capture: PayloadCapturePort | None = payload_capture
+        # service-tiers TASK.md §3 (FROZEN @ v1): PassthroughTierCapacityGuard
+        # (default) ⇒ check_and_hold always returns the requested tier unchanged,
+        # release is a no-op ⇒ byte-identical to today. When wired, the tier gate
+        # runs at the SAME choke point as the credit hold — see _enforce_governance.
+        self._tier_capacity_guard: TierCapacityGuard = tier_capacity_guard
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -1434,6 +1519,16 @@ class CompletionUseCase:
         # Alias-aware when model_groups provided (§3 A4): validates all candidates.
         await self._check_model_catalog(model_id, authz.tenant_id, model_groups)
 
+        # residency-policy TASK.md §3 (FROZEN @ v2) Tier 1: governance-layer existence
+        # check, immediately after the catalog check (SAME insertion point as
+        # governance.py::NonChatGovernance.authorize — dual-copy governance, never
+        # staggered; ONE shared implementation function, see
+        # gateway.proxy.application.residency). Alias-aware via the same model_groups
+        # already threaded through the catalog check above.
+        await check_residency_existence(
+            self._residency_lookup, model_id, authz.tenant_id, model_groups
+        )
+
         # M10: Most-specific-wins budget enforcement.
         # A soft budget alone is a SIGNAL, not a limit — it must never exempt
         # the key from tenant-budget enforcement. So: hard per-key budget wins
@@ -1454,25 +1549,58 @@ class CompletionUseCase:
             # No hard per-key budget — tenant budget enforces (RedisBudgetGuard)
             await budget_guard.check(authz.tenant_id)
 
+        # service-tiers TASK.md §3 (M3/M5/M7): admission-capacity HOLD, immediately
+        # BEFORE the credit hold (capacity is a gateway-wide scarce-resource concern,
+        # closer to the base back-pressure guard's job than to per-tenant
+        # affordability, §1 M3). check_and_hold raises ERR_TIER_CAPACITY_EXHAUSTED
+        # (503) ONLY when every applicable pool is genuinely full (R4) — a Redis/infra
+        # failure fails OPEN into a degraded TierHold instead (M8a), never raises here.
+        _tier_request_id = request_id if request_id is not None else uuid.uuid4()
+        _tier_hold = await self._tier_capacity_guard.check_and_hold(
+            authz.tenant_id, authz.tier, _tier_request_id
+        )
+        tier_served, tier_capacity_degraded = _tier_hold.tier_served, _tier_hold.degraded
+        _tier_served_ctx.set((tier_served, tier_capacity_degraded))
+
         # credits-ledger TASK.md §3 (M1/M2/M3): admission-time HOLD, after the budget
         # ladder, before RPM/TPM. check_and_hold raises ERR_CREDITS_EXHAUSTED (402) INSIDE
         # a row-locked DB transaction — a rejection here writes NO hold row (R1).
+        #
+        # service-tiers TASK.md §3 (M3): wrapped so a credit-hold rejection ALSO
+        # releases the just-placed tier hold — the tenant is never left holding a
+        # capacity slot for a request that will never reach the provider.
         _credit_request_id = request_id if request_id is not None else uuid.uuid4()
-        await self._credit_guard.check_and_hold(
-            authz.tenant_id, _credit_request_id, self._hold_estimate_usd
-        )
+        try:
+            await self._credit_guard.check_and_hold(
+                authz.tenant_id, _credit_request_id, self._hold_estimate_usd
+            )
+        except Exception:
+            await self._tier_capacity_guard.release(authz.tenant_id, _tier_request_id)
+            raise
 
         # M5 (edge: partial failure) — a LATER governance step (RPM/TPM) rejecting an
         # already-admitted request must fully reverse the hold: the tenant is never
         # charged for a request that never reached the provider. release() is a no-op
         # against PassthroughCreditGuard and best-effort (never raises) against a real
         # guard, so this never masks or replaces the original RATE_LIMITED error.
+        #
+        # service-tiers TASK.md §3 (M3): extended to release BOTH holds — a later
+        # RPM/TPM rejection must not strand the tier-capacity slot either.
         try:
             # M10 (rate limits): RPM check → TPM check — after governance, before upstream
             await self._enforce_rate_limits(authz)
         except Exception:
             await self._credit_guard.release(authz.tenant_id, _credit_request_id)
+            await self._tier_capacity_guard.release(authz.tenant_id, _tier_request_id)
             raise
+
+        # service-tiers TASK.md §3 (M9): publish the tier hold for release once this
+        # request's usage record is fully dispatched (mirrors _credit_hold_ctx.set()
+        # in complete()/stream(), immediately after _enforce_governance returns) — set
+        # HERE rather than in every caller because _enforce_governance is the ONE
+        # choke point where the tier hold's own request_id is minted/known; consumed
+        # by _settle_or_release_hold via _tier_hold_ctx (M9's own named symbol).
+        _tier_hold_ctx.set((self._tier_capacity_guard, _tier_request_id))
 
     async def _check_per_key_budget(self, authz: AuthzResult) -> None:
         """Check per-key Redis spend counter against key's monthly_budget_usd.
@@ -1611,12 +1739,16 @@ class CompletionUseCase:
             try:
                 if model_router is not None:
                     status, response_body, served_model_id = await model_router.complete(
-                        body, upstream=upstream
+                        body, upstream=upstream, tenant_id=authz.tenant_id
                     )
                 else:
                     status, response_body = await upstream.complete(body)
                     served_model_id = model_id
             except Exception as exc:
+                # residency-policy TASK.md §3: AllCandidatesOutOfRegionError is caught
+                # here too (broad except, by design — this deferred fallback never
+                # raises to its SSE generator) — degrades to the same generic
+                # error-shaped body, never silently serves an out-of-region candidate.
                 _log.warning(
                     "batch window fallback upstream call failed for tenant %s",
                     authz.tenant_id,
@@ -1659,6 +1791,24 @@ class CompletionUseCase:
         finally:
             if _cred_token is not None:
                 reset_provider_credential(_cred_token)  # type: ignore[arg-type]
+
+    async def _residency_cache_ok(
+        self, cached_body: dict[str, Any], model_id: str, tenant_id: uuid.UUID
+    ) -> bool:
+        """M7 — re-validate a cache hit's stamped served region against the tenant's
+        CURRENT residency pin, BEFORE the caller decides to treat it as a HIT.
+
+        Non-destructive peek (uses .get, never .pop) — `_read_served_from_cache`'s own
+        pop still runs later, unaffected, on an actual HIT. True = safe to serve
+        (residency off, no pin, or region satisfies the pin). False = the caller must
+        degrade this fetch to a MISS (never replay a stale cross-region body).
+        """
+        served = cached_body.get(_SERVED_STAMP)
+        if not (isinstance(served, str) and served):
+            served = cached_body.get("model")
+        if not (isinstance(served, str) and served):
+            served = model_id
+        return await cache_hit_region_ok(self._residency_lookup, served, tenant_id)
 
     async def _try_cache_lookup(
         self,
@@ -1705,6 +1855,14 @@ class CompletionUseCase:
         if not no_cache:
             # Step 4.5a: Try exact-match cache lookup
             cached_body = await cache.get(cache_key)
+            if cached_body is not None and not await self._residency_cache_ok(
+                cached_body, model_id, authz.tenant_id
+            ):
+                # residency-policy TASK.md §3 M7: the stamped served region no longer
+                # satisfies the tenant's CURRENT pin — degrade to a MISS, never replay
+                # the stale cross-region body. Falls through to semantic/vector/fresh
+                # routing below, exactly like an ordinary exact-cache miss.
+                cached_body = None
             if cached_body is not None:
                 # EXACT HIT: apply post-call guardrails, then return cached body
                 x_cache = "hit"
@@ -1784,6 +1942,12 @@ class CompletionUseCase:
                     if exact_key_str is not None:
                         # Dereference pointer: GET the exact-cache key body
                         sem_cached_body = await cache.get(exact_key_str)
+                        if sem_cached_body is not None and not await self._residency_cache_ok(
+                            sem_cached_body, model_id, authz.tenant_id
+                        ):
+                            # M7: same stale-cross-region degrade-to-MISS as the exact
+                            # branch above — falls through to the vector layer below.
+                            sem_cached_body = None
                         if sem_cached_body is not None:
                             # SEMANTIC HIT
                             x_cache = "semantic_hit"
@@ -1865,6 +2029,12 @@ class CompletionUseCase:
                     vec_body = await self._vector_cache.lookup(
                         tenant_id=str(authz.tenant_id), model=model_id, body=body
                     )
+                    if vec_body is not None and not await self._residency_cache_ok(
+                        vec_body, model_id, authz.tenant_id
+                    ):
+                        # M7: same stale-cross-region degrade-to-MISS — falls through
+                        # to the ordinary MISS path (fresh, residency-filtered routing).
+                        vec_body = None
                     if vec_body is not None:
                         x_cache = "vector_hit"
                         # cache-alias-billing (B6): read+pop served BEFORE masking.
@@ -2290,7 +2460,7 @@ class CompletionUseCase:
                 # fall back to direct upstream.complete() with served_model_id = model_id.
                 if model_router is not None:
                     status, response_body, served_model_id = await model_router.complete(
-                        body, upstream=upstream
+                        body, upstream=upstream, tenant_id=authz.tenant_id
                     )
                     # Span attribution (§3 OBSERVABILITY): fallback occurred when the
                     # served candidate differs from the alias group's first choice.
@@ -2307,6 +2477,14 @@ class CompletionUseCase:
                 raise RATE_LIMITED.exc(
                     detail=f"all deployments for '{exc.alias}' are rate-limited",
                     headers={"Retry-After": "60"},
+                ) from exc
+            except AllCandidatesOutOfRegionError as exc:
+                # residency-policy TASK.md §3 M4/M8: router-layer dial-constraint filter
+                # emptied the candidate set. Fail-closed 403 — NEVER the generic
+                # RATE_LIMITED/UPSTREAM_UNAVAILABLE path, never billed, no usage record
+                # (this except fires BEFORE any _fire_record* call below).
+                raise RESIDENCY_NO_ELIGIBLE_REGION.exc(
+                    region=exc.region or "", model_id=exc.alias
                 ) from exc
             except UpstreamRateLimitedError as exc:
                 # upstream-ratelimit-passthrough: upstream returned 429 after exhausting
@@ -2870,10 +3048,35 @@ class CompletionUseCase:
                 # (§3 STREAMING BOUNDARY); no fallback on stream failure.
                 if model_router is not None and self._stream_resilience_enabled:
                     first_chunk, gen = await model_router.stream_resilient(
-                        body, upstream=upstream, on_served=_capture_served
+                        body,
+                        upstream=upstream,
+                        on_served=_capture_served,
+                        tenant_id=authz.tenant_id,
                     )
                 elif model_router is not None:
-                    gen = model_router.stream(body, upstream=upstream, on_served=_capture_served)
+                    # residency-policy TASK.md §3 Tier 2: stream() is a plain (non-async)
+                    # function that dials upstream EAGERLY (frozen model-fallbacks F11
+                    # contract) — it cannot itself await the residency DB lookup. Pre-
+                    # compute the filtered candidate set HERE (async context) and check
+                    # emptiness ourselves so the 403 carries the correct pinned region —
+                    # never even calling stream() when the residency-filtered set is
+                    # empty (stream() still defensively re-raises too, see its docstring).
+                    _residency_result = await model_router.residency_candidates(
+                        model_id, authz.tenant_id
+                    )
+                    _candidates_override: list[str] | None = None
+                    if _residency_result is not None:
+                        _pin, _candidates_override = _residency_result
+                        if not _candidates_override:
+                            raise RESIDENCY_NO_ELIGIBLE_REGION.exc(
+                                region=_pin or "", model_id=model_id
+                            )
+                    gen = model_router.stream(
+                        body,
+                        upstream=upstream,
+                        on_served=_capture_served,
+                        candidates_override=_candidates_override,
+                    )
                     # upstream-ratelimit-passthrough: peek the first chunk so a pre-first-byte
                     # UpstreamRateLimitedError surfaces here (before StreamingResponse commits).
                     # Set the partial-usage sink now so peek-time side-effects are captured.
@@ -2922,6 +3125,15 @@ class CompletionUseCase:
                         first_chunk = None
                     except StopAsyncIteration:
                         first_chunk = None  # empty stream — commit transparently
+            except AllCandidatesOutOfRegionError as exc:
+                # residency-policy TASK.md §3 M4/M8 — raised by stream_resilient()'s own
+                # Tier 2 filter (the sync stream() path is pre-checked above and never
+                # reaches here in practice, but the same mapping applies defensively).
+                # Status not yet committed — fail-closed 403, never billed, no usage
+                # record, never the generic 502/429 path.
+                raise RESIDENCY_NO_ELIGIBLE_REGION.exc(
+                    region=exc.region or "", model_id=exc.alias
+                ) from exc
             except UpstreamRateLimitedError as exc:
                 # upstream-ratelimit-passthrough: upstream returned 429 pre-first-byte.
                 # Status not yet committed — surface as client 429 ERR_UPSTREAM_RATE_LIMITED.

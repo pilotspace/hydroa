@@ -208,8 +208,15 @@ class FakeModelRouter:
         return self.model_groups.get(model_id)
 
     async def complete(
-        self, body: dict[str, Any], *, upstream: FakeCompletionUpstream
+        self,
+        body: dict[str, Any],
+        *,
+        upstream: FakeCompletionUpstream,
+        tenant_id: uuid.UUID | None = None,
     ) -> tuple[int, dict[str, Any], str]:
+        # tenant_id accepted to match the residency-policy-widened real router
+        # signature (fallback_router.complete keyword-only tenant_id); unused here —
+        # residency filtering is not under test in the preset-resolution suite.
         served_model_id = body.get("model", "")
         self.complete_calls.append(dict(body))
         status, resp_body = await upstream.complete(body)
@@ -374,12 +381,22 @@ async def test_chat_stream_colon_selector_resolves_before_router(tenant_id: uuid
     upstream = _FakeStreamUpstream()
 
     class _FakeStreamRouter(FakeModelRouter):
+        async def residency_candidates(
+            self, alias: str, tenant_id: uuid.UUID | None
+        ) -> tuple[str | None, list[str]] | None:
+            # Residency unwired in this preset-resolution fake — None means the
+            # real-router contract's "no filtering, byte-identical passthrough"
+            # (residency-policy TASK.md §3 Tier 2). The use case then passes
+            # candidates_override=None straight through to stream().
+            return None
+
         def stream(
             self,
             body: dict[str, Any],
             *,
             upstream: Any,
             on_served: Any = None,
+            candidates_override: list[str] | None = None,
         ) -> AsyncIterator[bytes]:
             self.complete_calls.append(dict(body))
             if on_served is not None:

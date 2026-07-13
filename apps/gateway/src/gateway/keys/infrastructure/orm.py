@@ -52,6 +52,10 @@ class ApiKeyRow(Base):
             "tpm_limit IS NULL OR tpm_limit > 0",
             name="api_keys_tpm_limit_positive_check",
         ),
+        CheckConstraint(
+            "tier IS NULL OR tier IN ('priority', 'standard')",
+            name="api_keys_tier_check",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
@@ -107,3 +111,8 @@ class ApiKeyRow(Base):
     capture_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    # service-tiers additive field (TASK.md §3, FROZEN @ v1) — OPTIONAL per-key
+    # override; NULL = inherit tenants.default_tier (M1). CHECK constraint below
+    # mirrors the tier|standard convention of PostgreSQL string enums used elsewhere
+    # in this codebase (e.g. tenants.kind).
+    tier: Mapped[str | None] = mapped_column(sa.Text, nullable=True, default=None)

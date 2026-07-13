@@ -23,6 +23,7 @@ from gateway.proxy.domain.ports import ResponseCache
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.response_cache import RedisResponseCache
+from gateway.proxy.infrastructure.tier_capacity_guard import PassthroughTierCapacityGuard
 
 # Singleton stateless hasher — safe to share across requests
 _hasher = Sha256SecretHasher()
@@ -87,6 +88,14 @@ def get_embeddings_use_case(
     credit_guard = getattr(request.app.state, "credit_guard", None) or PassthroughCreditGuard()
     hold_estimate_usd = _settings.credits_hold_estimate_usd if _settings else Decimal("0.50")
 
+    # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same getattr
+    # pattern as tenant_credential_resolver below. None ⇒ feature off ⇒ byte-identical.
+    residency_lookup = getattr(request.app.state, "residency_lookup", None)
+    # service-tiers TASK.md §3 (FROZEN @ v1): same app.state-boot singleton pattern as
+    # credit_guard above. Absent ⇒ PassthroughTierCapacityGuard ⇒ byte-identical.
+    tier_capacity_guard = getattr(request.app.state, "tier_capacity_guard", None) or (
+        PassthroughTierCapacityGuard()
+    )
     governance = NonChatGovernance(
         authenticator=authenticator,
         model_checker=model_checker,
@@ -96,6 +105,8 @@ def get_embeddings_use_case(
         session_factory=request.app.state.sessionmaker,
         credit_guard=credit_guard,
         hold_estimate_usd=hold_estimate_usd,
+        residency_lookup=residency_lookup,
+        tier_capacity_guard=tier_capacity_guard,
     )
     # credential-resolution-seam §3: resolve per-tenant provider key from app.state
     # (tests override app.state.tenant_credential_resolver with a fake). None ⇒ unwired.
@@ -110,4 +121,5 @@ def get_embeddings_use_case(
         tenant_credential_resolver=tenant_credential_resolver,
         authenticator=authenticator,
         tenant_model_preset_store=tenant_model_preset_store,
+        residency_lookup=residency_lookup,
     )

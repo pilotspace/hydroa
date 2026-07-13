@@ -726,14 +726,6 @@
       "created": "2026-07-03T16:21:50+00:00",
       "updated": "2026-07-03T16:21:50+00:00"
     },
-    "residency-service-tiers": {
-      "title": "Data-residency & service-tier routing",
-      "goal": "",
-      "stage": "mvp",
-      "status": "queued",
-      "created": "2026-07-12T07:38:33+00:00",
-      "updated": "2026-07-12T07:38:33+00:00"
-    },
     "agent-gateway-v1": {
       "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
       "goal": "",
@@ -744,7 +736,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T14:33:08+00:00",
+  "updated": "2026-07-13T11:01:27+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1684,6 +1676,21 @@
         "billing-ui"
       ],
       "archived": "2026-07-12"
+    },
+    {
+      "slug": "residency-service-tiers",
+      "title": "Data-residency & service-tier routing",
+      "tasks": 7,
+      "task_slugs": [
+        "region-catalog-dimension",
+        "residency-policy",
+        "region-pricing",
+        "service-tiers",
+        "residency-tiers-ui",
+        "vertex-adapter",
+        "residency-bedrock-region-guard"
+      ],
+      "archived": "2026-07-13"
     }
   ],
   "active_milestones": [
@@ -1797,6 +1804,126 @@
       "id": 17,
       "text": "seat-billing delta F5 (cutover caveat): pre-migration deactivate->reactivate cycles invisible to backfill \u2014 first post-cutover invoice can over-bill (5-day demo in probes). Tin: accept as documented Non-goal or manual reconciliation pass",
       "created": "2026-07-12T13:44:13+00:00",
+      "status": "open"
+    },
+    {
+      "id": 18,
+      "text": "region-catalog residue: add coded id-namespace guard \u2014 dynamic-sourced CatalogModel.id must never collide with static-seed prefixes (us./eu./apac.); safety today rests on incidental OpenRouter slash-format + composite processing order (verify 2026-07-12)",
+      "created": "2026-07-12T16:14:48+00:00",
+      "status": "open"
+    },
+    {
+      "id": 19,
+      "text": "region-catalog docs: \u00a73 DDL prose still shows 3-value VALID_REGIONS literal; DECIDED addendum (4-value incl ap) is authoritative \u2014 fold to one canonical statement next contract touch",
+      "created": "2026-07-12T16:14:48+00:00",
+      "status": "open"
+    },
+    {
+      "id": 20,
+      "text": "region-pricing SPEC: DELETE /admin/region-pricing/{region} should case-normalize region before matching \u2014 a typo'd DELETE (EU vs eu) returns 204 but silently leaves the override active, still billing the old rate (verify live-probed 2026-07-12)",
+      "created": "2026-07-12T16:59:57+00:00",
+      "status": "open"
+    },
+    {
+      "id": 21,
+      "text": "region-pricing SPEC: flag 'global' as a high-blast-radius override target in admin docs/UI \u2014 one PUT .../global reprices EVERY default-region model for that tenant (global is the model default region)",
+      "created": "2026-07-12T16:59:57+00:00",
+      "status": "open"
+    },
+    {
+      "id": 22,
+      "text": "region-pricing TDD: add a direct parity assertion between rate_card_resolver._REGION_MULTIPLIER_SEEDS and catalog/repository.py's CASE literal (hand-synced seed drift currently caught only by one integration test, eu-only)",
+      "created": "2026-07-12T16:59:58+00:00",
+      "status": "open"
+    },
+    {
+      "id": 23,
+      "text": "vertex-adapter SPEC (defense-in-depth): harden all *_ad.py token providers' httpx except-clauses to catch httpx.RequestError broadly (not just Timeout|NetworkError) \u2014 ProtocolError/ProxyError propagate unhandled, retaining signed assertion in __context__; systemic pattern shared with azure_ad.py",
+      "created": "2026-07-12T16:59:58+00:00",
+      "status": "open"
+    },
+    {
+      "id": 24,
+      "text": "vertex-adapter SPEC (defense-in-depth): validate GoogleServiceAccountCredential.project_id against GCP project-id charset before _build_url f-string interpolation \u2014 non-exploitable for host-hijack today (host is fixed literal) but worth tightening",
+      "created": "2026-07-12T16:59:58+00:00",
+      "status": "open"
+    },
+    {
+      "id": 25,
+      "text": "vertex-adapter: before shipping, optionally run scripts/live_vertex_verify.py against a real GCP service account (manual smoke, outside automated gate \u2014 no live creds were available at build/verify time)",
+      "created": "2026-07-12T16:59:58+00:00",
+      "status": "open"
+    },
+    {
+      "id": 26,
+      "text": "ADD anti-pattern (verify): when re-running a security exploit as an independent probe, model the adversary's dependency on the SECRET (private_key/client_secret), not just the public identity \u2014 a fake IDP/factory that ignores the secret can manufacture a false-positive HARD-STOP (self-caught in vertex re-verify 2026-07-13)",
+      "created": "2026-07-13T03:09:32+00:00",
+      "status": "open"
+    },
+    {
+      "id": 27,
+      "text": "SECURITY (M2 EU-pin gap, Bedrock BYOK): BedrockCredential.region (tenant-supplied via PUT /admin/provider-keys/bedrock) drives the physical dial endpoint bedrock-runtime.{region}.amazonaws.com, DECOUPLED from the catalog region tag residency-policy filters on. An EU-pinned tenant with a us-east-1 Bedrock cred has its PROMPT sent to a US endpoint (payload transit = the breach) even if AWS then rejects the eu.-profile invocation. Vertex avoided this (fixed prefix\u2192location map). Options: (a) pre-dial structural guard validating cred region vs candidate catalog-region prefix [RECOMMENDED, mirrors vertex], (b) live-AWS ValidationException test, (c) signed RISK-ACCEPTED. ESCALATED to Tin 2026-07-13 \u2014 do NOT treat M10/EU-pin as closed for Bedrock until resolved.",
+      "created": "2026-07-13T03:14:19+00:00",
+      "status": "open"
+    },
+    {
+      "id": 28,
+      "text": "service-tiers R5 rounding boundary: priority_cap+standard_cap can exceed cluster_cap by 1 when priority_pct+standard_pct near 1.0 (R5 only rejects sum>1.0); non-default config only, per-pool caps still enforced. Consider clamp or tighten R5.",
+      "created": "2026-07-13T08:40:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 29,
+      "text": "service-tiers check_and_hold: self._holds[request_id] overwritten if called twice for same request_id (not currently reachable \u2014 single call site). Guard against double-hold if a second call site is ever added.",
+      "created": "2026-07-13T08:40:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 30,
+      "text": "bedrock-region-guard case-sensitivity coupling: _assert_region_consistent is case-sensitive by design; uppercase-prefix bypass (EU.) is unreachable ONLY because model_checker.py:64 does a case-sensitive catalog PK match first. If that lookup is ever relaxed (citext/case-insensitive), the region guard becomes a live bypass. Add a cross-file invariant test or a comment pinning the coupling. (from security verify A)",
+      "created": "2026-07-13T08:49:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 31,
+      "text": "residency BYOK region cross-check (from security verify B): BedrockCredential.region (tenant-supplied BYOK) is NOT validated against tenants.residency_region at credential create/update time. For an UNPREFIXED bedrock model that passes residency-policy (catalog region=eu), a pinned tenant who registered their own Bedrock credential with region=us-east-1 would still dial US. Tenant self-misconfiguration only (not cross-tenant/attacker-reachable, outside bedrock-region-guard's frozen M3 scope). Fix = validate BedrockCredential.region vs tenants.residency_region at BYOK registration for pinned tenants. Candidate residency-policy follow-on.",
+      "created": "2026-07-13T08:51:44+00:00",
+      "status": "open"
+    },
+    {
+      "id": 32,
+      "text": "bedrock-region-guard defense-in-depth (verify B, low-pri): normalize model_id prefix casing/whitespace before _PROFILE_PREFIX_TO_GEO lookup \u2014 currently protected solely by the catalog exact-match dispatch gate; cheap insurance vs a future refactor decoupling model_id sourcing from routing.",
+      "created": "2026-07-13T08:51:44+00:00",
+      "status": "open"
+    },
+    {
+      "id": 33,
+      "text": "residency-tiers-ui (observe, \ud83d\udcad): residency-picker radios use min-h-11 (44px hit target) but lack a dedicated hit-target assertion test (TierSelector has one). Add for parity.",
+      "created": "2026-07-13T09:07:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 34,
+      "text": "residency-tiers-ui (observe, \ud83d\udcad): TierSelector.tsx line 38 (standard-after-priority toggle) untested \u2014 symmetric to tested line 50, low-risk. Add test for coverage parity.",
+      "created": "2026-07-13T09:07:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 35,
+      "text": "residency-tiers-ui (observe, \ud83d\udcad): no live screen-reader (VoiceOver/NVDA) pass on new residency/tier surfaces \u2014 axe + native semantics + live keyboard trace substitute but aren't equivalent. Consider a manual SR pass pre-GA.",
+      "created": "2026-07-13T09:07:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 36,
+      "text": "Pre-existing ruff-format debt (NOT from M2): tests/guardrails/test_guardrails_core.py + tests/migrations/test_migrations.py are format-dirty at HEAD (predate a ruff config/version change; ~40 + ~9 lines would reflow). A strict 'make ci' ruff format --check would flag them. Milestones have been merging past this via admin-merge on pytest evidence (org-billing CI block). Clean up in a dedicated format-only sweep, not mixed into feature commits.",
+      "created": "2026-07-13T09:37:19+00:00",
+      "status": "open"
+    },
+    {
+      "id": 37,
+      "text": "semantic_cache flake instance (2026-07-13 M2 pre-merge): test_semantic_hit_ledger_cached_true_cost_zero + test_semantic_cache_normalized_variant_hits failed in the full suite (shared Redis :6380 db 9 cross-test contamination \u2014 a prior test's cache entry made 'first' request a hit, cost 0). Pass 15/15 isolated. Known flake class. The xdist CI work (task #11) should give each worker its own Redis db/namespace to KILL this class permanently.",
+      "created": "2026-07-13T11:01:06+00:00",
       "status": "open"
     }
   ]

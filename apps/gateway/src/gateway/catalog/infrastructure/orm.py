@@ -37,6 +37,10 @@ class ModelRow(Base):
     # server_default 'text' gives every pre-existing row the conservative chat default.
     # The migration's UPDATE sets audio_stt rows to 'audio' after column addition.
     input_modalities: Mapped[str] = mapped_column(Text, nullable=False, server_default="text")
+    # region-catalog-dimension TASK.md §3: coarse compliance/residency tag (us|eu|ap|global).
+    # server_default 'global' is honestly correct for every pre-existing row (no differentiated
+    # backfill needed — unlike input_modalities' audio_stt data patch).
+    region: Mapped[str] = mapped_column(Text, nullable=False, server_default="global")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

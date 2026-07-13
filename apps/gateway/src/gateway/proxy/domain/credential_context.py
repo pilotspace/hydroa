@@ -34,28 +34,71 @@ current_provider_credential: ContextVar[ProviderCredential | None] = ContextVar(
     default=None,
 )
 
+# The Hydroa tenant that OWNS the currently-set provider credential. Companion to
+# current_provider_credential, mirroring guardrail_tenant_context. Read by the BYOK
+# token-provider caches (vertex_ad / azure_ad) to scope cached bearer tokens per
+# (hydroa_tenant, identity) — WITHOUT it, a tenant reusing another tenant's provider
+# identity (e.g. a GCP service-account email+project) would be served the victim's
+# cached token, a cross-tenant confused-deputy (vertex-adapter M4 CR-2, SECURITY).
+current_credential_tenant: ContextVar[object | None] = ContextVar(
+    "current_credential_tenant",
+    default=None,
+)
+
 
 # ---------------------------------------------------------------------------
 # Public helper API — thin wrappers around the contextvar
 # ---------------------------------------------------------------------------
 
 
-def set_provider_credential(cred: ProviderCredential) -> Token[ProviderCredential | None]:
-    """Set the resolved credential for the current request/task scope.
+class _CredentialScope:
+    """Paired reset handle for a credential + its owning-tenant contextvars.
 
-    Returns the ``Token`` produced by ``ContextVar.set()`` — the caller MUST
-    pass this token to ``reset_provider_credential()`` in a ``finally`` block
-    to restore the previous value and prevent cross-request credential leaks.
+    Returned by ``set_provider_credential`` when a ``tenant_id`` is supplied, so a
+    single ``reset_provider_credential(scope)`` restores BOTH contextvars in one call
+    (callers keep their existing single-token ``finally`` idiom unchanged).
+    """
+
+    __slots__ = ("cred_token", "tenant_token")
+
+    def __init__(
+        self,
+        cred_token: Token[ProviderCredential | None],
+        tenant_token: Token[object | None],
+    ) -> None:
+        self.cred_token = cred_token
+        self.tenant_token = tenant_token
+
+
+def set_provider_credential(
+    cred: ProviderCredential, tenant_id: object | None = None
+) -> Token[ProviderCredential | None] | _CredentialScope:
+    """Set the resolved credential (and, when given, its owning Hydroa tenant) for the
+    current request/task scope.
+
+    Returns a reset handle the caller MUST pass to ``reset_provider_credential()`` in a
+    ``finally`` block to restore the previous value(s) and prevent cross-request leaks.
+    When ``tenant_id`` is supplied the handle is a ``_CredentialScope`` covering both
+    contextvars; otherwise it is the bare credential ``Token`` (backward-compatible for
+    call sites that re-set only the credential, e.g. guardrail/cost-recovery flows).
+
+    The tenant is what scopes the BYOK token caches per (hydroa_tenant, identity) —
+    passing it here (at the single credential-resolution seam) is the SECURITY fix for
+    the cross-tenant token-cache confused-deputy (vertex-adapter M4 CR-2).
 
     Usage::
 
-        token = set_provider_credential(resolved_cred)
+        scope = set_provider_credential(resolved_cred, tenant_id)
         try:
             await upstream_call()
         finally:
-            reset_provider_credential(token)
+            reset_provider_credential(scope)
     """
-    return current_provider_credential.set(cred)
+    cred_token = current_provider_credential.set(cred)
+    if tenant_id is None:
+        return cred_token
+    tenant_token = current_credential_tenant.set(tenant_id)
+    return _CredentialScope(cred_token, tenant_token)
 
 
 def get_provider_credential() -> ProviderCredential | None:
@@ -69,19 +112,37 @@ def get_provider_credential() -> ProviderCredential | None:
     return current_provider_credential.get()
 
 
-def reset_provider_credential(token: Token[ProviderCredential | None]) -> None:
-    """Reset the contextvar to its previous value.
+def get_credential_tenant() -> object | None:
+    """Return the Hydroa tenant that owns the request-scoped credential, or ``None``.
 
-    Pass the token returned by ``set_provider_credential()``.
-    Call this in a ``finally`` block — never omit it, even on exception paths.
-    Resetting to the previous value (rather than to None explicitly) correctly
-    handles nested scopes if they arise in future.
+    The BYOK token caches read this to key cached bearer tokens per (hydroa_tenant,
+    identity). ``None`` (contextvar never set for this request) means the cache MUST
+    NOT share an entry across an unknown owner — degrade to per-call construction.
     """
-    current_provider_credential.reset(token)
+    return current_credential_tenant.get()
+
+
+def reset_provider_credential(
+    handle: Token[ProviderCredential | None] | _CredentialScope,
+) -> None:
+    """Reset the credential (and owning-tenant) contextvar(s) to their previous value(s).
+
+    Accepts either the bare credential ``Token`` or the ``_CredentialScope`` returned by
+    ``set_provider_credential()``. Call this in a ``finally`` block — never omit it, even
+    on exception paths. Resetting to the previous value (rather than to None explicitly)
+    correctly handles nested scopes.
+    """
+    if isinstance(handle, _CredentialScope):
+        current_credential_tenant.reset(handle.tenant_token)
+        current_provider_credential.reset(handle.cred_token)
+    else:
+        current_provider_credential.reset(handle)
 
 
 __all__ = [
+    "current_credential_tenant",
     "current_provider_credential",
+    "get_credential_tenant",
     "get_provider_credential",
     "reset_provider_credential",
     "set_provider_credential",

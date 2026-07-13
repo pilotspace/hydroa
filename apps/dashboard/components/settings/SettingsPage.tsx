@@ -34,7 +34,7 @@ export function SettingsPage() {
           <TabsTrigger value="provider-keys">Provider Keys</TabsTrigger>
           <TabsTrigger value="scim">SCIM</TabsTrigger>
           <TabsTrigger value="saml">SAML SSO</TabsTrigger>
-          <TabsTrigger value="retention">Retention & ZDR</TabsTrigger>
+          <TabsTrigger value="retention">Data & residency</TabsTrigger>
         </TabsList>
 
         <TabsContent value="cache">

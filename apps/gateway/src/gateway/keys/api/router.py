@@ -125,6 +125,7 @@ async def create_key(
         tpm_limit=body.tpm_limit,
         team_id=body.team_id,
         cache_enabled=body.cache_enabled,
+        tier=body.tier,
     )
 
     # Audit emit — fail-open fire-and-forget; key ID only, NEVER the secret material
@@ -162,6 +163,7 @@ async def create_key(
         tpm_limit=result.tpm_limit,
         team_id=result.team_id,
         cache_enabled=result.cache_enabled,
+        tier=result.tier,
     )
 
 
@@ -298,6 +300,7 @@ async def patch_key(
     new_team_id: uuid.UUID | None = None
     new_cache_enabled: bool | None = None
     new_capture_enabled: bool | None = None
+    new_tier: str | None = None
 
     if "monthly_budget_usd" in body.model_fields_set:
         if body.monthly_budget_usd is None:
@@ -353,6 +356,15 @@ async def patch_key(
     if "capture_enabled" in body.model_fields_set:
         new_capture_enabled = body.capture_enabled
 
+    # tier PATCH: absent = no change; null = clear (revert to tenant default);
+    # value = set the key-level override (service-tiers TASK.md §3 M2, mirrors
+    # team_id's own three-state clear pattern exactly).
+    if "tier" in body.model_fields_set:
+        if body.tier is None:
+            fields_to_clear.add("tier")
+        else:
+            new_tier = body.tier
+
     try:
         updated = await use_case.execute(
             key_id=key_id,
@@ -367,6 +379,7 @@ async def patch_key(
             team_id=new_team_id,
             cache_enabled=new_cache_enabled,
             capture_enabled=new_capture_enabled,
+            tier=new_tier,
             _fields_to_clear=fields_to_clear,
         )
     except ForbiddenError:
@@ -393,6 +406,7 @@ async def patch_key(
         team_id=updated.team_id,
         cache_enabled=updated.cache_enabled,
         capture_enabled=updated.capture_enabled,
+        tier=updated.tier,
     )
 
 

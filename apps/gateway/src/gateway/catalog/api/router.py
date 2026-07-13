@@ -199,6 +199,8 @@ async def list_catalog_models(
                     if m.audio_cached_per_token is not None
                     else None
                 ),
+                # region-catalog-dimension TASK.md §3: exposed here; NOT on /v1/models.
+                region=m.region,
             )
             for m in models
         ]
@@ -227,6 +229,7 @@ async def get_admin_models(
             ModelRow.name,
             ModelRow.context_length,
             ModelRow.input_modalities,
+            ModelRow.region,
             TenantModelOverrideRow.enabled,
         )
         .outerjoin(
@@ -248,6 +251,8 @@ async def get_admin_models(
                 enabled=row.enabled if row.enabled is not None else True,
                 # capabilities-admin-surface TASK.md §3: sorted list from stored CSV
                 input_modalities=sorted(parse_input_modalities(row.input_modalities)),
+                # region-catalog-dimension TASK.md §3: raw passthrough.
+                region=row.region,
             )
             for row in rows
         ]
@@ -280,6 +285,7 @@ async def put_admin_model(
                 ModelRow.name,
                 ModelRow.context_length,
                 ModelRow.input_modalities,
+                ModelRow.region,
             ).where(ModelRow.id == model_id)
         )
     ).one_or_none()
@@ -314,6 +320,9 @@ async def put_admin_model(
         enabled=body.enabled,
         # capabilities-admin-surface TASK.md §3: include in PUT response
         input_modalities=sorted(parse_input_modalities(model_row.input_modalities)),
+        # region-catalog-dimension TASK.md §3 M6: PUT never writes region — the row's
+        # existing value is simply echoed back (this endpoint only toggles `enabled`).
+        region=model_row.region,
     )
 
 

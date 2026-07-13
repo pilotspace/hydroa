@@ -59,12 +59,17 @@ const GPT4O = {
   name: "GPT-4o",
   context_length: 128000,
   enabled: true,
+  // region-catalog-dimension TASK.md §3 FROZEN: region is NOT NULL on the real
+  // backend (models.region defaults 'global') — these pre-existing fixtures predate
+  // that column; added here so RegionBadge (residency-tiers-ui M6) never sees undefined.
+  region: "global",
 };
 const CLAUDE = {
   id: "anthropic/claude-3.5-sonnet",
   name: "Claude 3.5 Sonnet",
   context_length: 200000,
   enabled: false,
+  region: "global",
 };
 
 function listResponse(models: unknown[]) {
@@ -295,5 +300,130 @@ describe("ModelsPage — nav entry + shared primitive", () => {
     const sw = await screen.findByRole("switch", { name: /gpt-4o/i });
     expect(sw.tagName).toBe("BUTTON");
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+});
+
+// ── Region column + residency ineligibility (residency-tiers-ui TASK.md §3 M6-M8) ──
+//
+// GET /admin/residency-policy is fetched independently by ModelsPage (own useQuery,
+// never blocking the base table render — M8). A default {region:null,...} INITIAL
+// handler lives in mocks/handlers.ts (unconditional query, same idiom as the
+// impersonation/catalog-models defaults) — the tests above (list/toggle/a11y) rely
+// on that default implicitly; tests below override per scenario.
+const CLAUDE_EU = { id: "eu.anthropic/claude-opus-4", name: "Claude Opus 4 (EU)", context_length: 200000, enabled: true, region: "eu" };
+const CLAUDE_US = { id: "us.anthropic/claude-opus-4", name: "Claude Opus 4 (US)", context_length: 200000, enabled: true, region: "us" };
+const GPT4O_GLOBAL = { id: "openai/gpt-4o", name: "GPT-4o", context_length: 128000, enabled: true, region: "global" };
+const TITAN_AP = { id: "apac.amazon/titan", name: "Titan (AP)", context_length: 32000, enabled: false, region: "ap" };
+
+function residencyGet(body: unknown = { region: null, updated_at: null }) {
+  return http.get(`${APP}/api/gw/admin/residency-policy`, () =>
+    HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
+}
+
+describe("ModelsPage — Region column", () => {
+  it("test_region_badge_renders_per_row", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/models`, () =>
+        HttpResponse.json(listResponse([CLAUDE_EU, CLAUDE_US, GPT4O_GLOBAL, TITAN_AP])),
+      ),
+      residencyGet(),
+    );
+    render(<ModelsPage />, { wrapper: Wrapper });
+
+    await screen.findByText("Claude Opus 4 (EU)");
+    expect(screen.getByText("EU")).toBeInTheDocument();
+    expect(screen.getByText("US")).toBeInTheDocument();
+    expect(screen.getByText("GLOBAL")).toBeInTheDocument();
+    expect(screen.getByText("AP")).toBeInTheDocument();
+  });
+});
+
+describe("ModelsPage — pinned-tenant ineligibility (M7)", () => {
+  it("test_ineligible_row_dimmed_disabled_badged_never_removed", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/models`, () =>
+        HttpResponse.json(listResponse([CLAUDE_EU, CLAUDE_US])),
+      ),
+      residencyGet({ region: "eu", updated_at: "2026-07-01T00:00:00Z" }),
+    );
+    render(<ModelsPage />, { wrapper: Wrapper });
+
+    await screen.findByText("Claude Opus 4 (EU)");
+    // eligible row: enabled Switch stays interactive, no ineligibility badge
+    const euSwitch = screen.getByRole("switch", { name: /claude opus 4 \(eu\)/i });
+    expect(euSwitch).not.toBeDisabled();
+
+    // ineligible row: Switch disabled, warning badge, row still present
+    const usSwitch = await screen.findByRole("switch", { name: /claude opus 4 \(us\)/i });
+    expect(usSwitch).toBeDisabled();
+    expect(screen.getByText("Ineligible in EU")).toBeInTheDocument();
+    expect(screen.getByText("Claude Opus 4 (US)")).toBeInTheDocument();
+  });
+
+  it("test_global_region_never_satisfies_a_specific_pin", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/models`, () => HttpResponse.json(listResponse([GPT4O_GLOBAL]))),
+      residencyGet({ region: "us", updated_at: "2026-07-01T00:00:00Z" }),
+    );
+    render(<ModelsPage />, { wrapper: Wrapper });
+
+    const sw = await screen.findByRole("switch", { name: /gpt-4o/i });
+    expect(sw).toBeDisabled();
+    expect(screen.getByText("Ineligible in US")).toBeInTheDocument();
+  });
+
+  it("test_unpinned_tenant_zero_rows_dimmed", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/models`, () =>
+        HttpResponse.json(listResponse([CLAUDE_EU, CLAUDE_US, GPT4O_GLOBAL])),
+      ),
+      residencyGet({ region: null, updated_at: null }),
+    );
+    render(<ModelsPage />, { wrapper: Wrapper });
+
+    await screen.findByText("Claude Opus 4 (EU)");
+    expect(screen.queryByText(/ineligible in/i)).not.toBeInTheDocument();
+    for (const sw of screen.getAllByRole("switch")) {
+      expect(sw).not.toBeDisabled();
+    }
+  });
+});
+
+describe("ModelsPage — residency-read degrade (M8)", () => {
+  it("test_residency_read_failure_degrades_gracefully_table_stays_usable", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/models`, () =>
+        HttpResponse.json(listResponse([CLAUDE_EU, CLAUDE_US])),
+      ),
+      http.get(`${APP}/api/gw/admin/residency-policy`, () =>
+        HttpResponse.json({ title: "Server error", status: 500 }, { status: 500 }),
+      ),
+    );
+    render(<ModelsPage />, { wrapper: Wrapper });
+
+    // Region badges still render...
+    await screen.findByText("Claude Opus 4 (EU)");
+    expect(screen.getByText("EU")).toBeInTheDocument();
+    expect(screen.getByText("US")).toBeInTheDocument();
+    // ...but no row is dimmed/disabled/badged as ineligible, and no page-level error.
+    expect(screen.queryByText(/ineligible in/i)).not.toBeInTheDocument();
+    for (const sw of screen.getAllByRole("switch")) {
+      expect(sw).not.toBeDisabled();
+    }
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("ModelsPage — Region/ineligibility axe (M12)", () => {
+  it("test_region_and_ineligibility_axe_clean", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/models`, () =>
+        HttpResponse.json(listResponse([CLAUDE_EU, CLAUDE_US])),
+      ),
+      residencyGet({ region: "eu", updated_at: "2026-07-01T00:00:00Z" }),
+    );
+    const { container } = render(<ModelsPage />, { wrapper: Wrapper });
+    await screen.findByText("Ineligible in EU");
+    expect(await axeSeriousCritical(container)).toEqual([]);
   });
 });

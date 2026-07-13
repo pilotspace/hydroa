@@ -136,8 +136,8 @@ async def test_cache_reuse_within_ttl() -> None:
 
     cfg = _make_ad_config()
 
-    p1 = cache.get_or_create(cfg)
-    p2 = cache.get_or_create(cfg)
+    p1 = cache.get_or_create(cfg, "tenant-A")
+    p2 = cache.get_or_create(cfg, "tenant-A")
 
     assert len(constructed) == 1, (
         f"Provider must be constructed ONCE for the same identity within TTL, "
@@ -175,8 +175,8 @@ async def test_cache_distinct_identities() -> None:
     cfg_a = _make_ad_config(tenant_id="tenant-A", client_id="client-A")
     cfg_b = _make_ad_config(tenant_id="tenant-B", client_id="client-B")
 
-    p_a = cache.get_or_create(cfg_a)
-    p_b = cache.get_or_create(cfg_b)
+    p_a = cache.get_or_create(cfg_a, "tenant-A")
+    p_b = cache.get_or_create(cfg_b, "tenant-A")
 
     assert len(constructed) == 2, (
         f"Two distinct identities must produce 2 provider constructions, got {len(constructed)}"
@@ -213,12 +213,12 @@ async def test_cache_ttl_expiry_rebuilds_and_closes() -> None:
     )
 
     cfg = _make_ad_config()
-    p_first = cache.get_or_create(cfg)
+    p_first = cache.get_or_create(cfg, "tenant-A")
 
     # Advance clock past TTL
     clock.t = 301.0
 
-    p_second = cache.get_or_create(cfg)
+    p_second = cache.get_or_create(cfg, "tenant-A")
 
     assert len(constructed) == 2, (
         f"TTL expiry must trigger a NEW provider construction, "
@@ -264,8 +264,8 @@ def test_cache_key_excludes_client_secret() -> None:
     cfg_secret_a = _make_ad_config(client_secret="secret-A")
     cfg_secret_b = _make_ad_config(client_secret="secret-B")
 
-    p1 = cache.get_or_create(cfg_secret_a)
-    p2 = cache.get_or_create(cfg_secret_b)
+    p1 = cache.get_or_create(cfg_secret_a, "tenant-A")
+    p2 = cache.get_or_create(cfg_secret_b, "tenant-A")
 
     assert len(constructed) == 1, (
         f"Two configs differing only in client_secret must share ONE cache entry, "
@@ -306,14 +306,14 @@ async def test_cache_size_cap_evicts_oldest_and_closes() -> None:
     providers: list[_FakeProvider] = []
     for i in range(max_size):
         cfg = _make_ad_config(tenant_id=f"tenant-{i}", client_id=f"client-{i}")
-        providers.append(cache.get_or_create(cfg))
+        providers.append(cache.get_or_create(cfg, "tenant-A"))
 
     oldest = providers[0]
     assert not oldest.closed, "Oldest provider must NOT be closed while within size cap"
 
     # Adding one more triggers eviction of the oldest
     cfg_new = _make_ad_config(tenant_id="tenant-new", client_id="client-new")
-    cache.get_or_create(cfg_new)
+    cache.get_or_create(cfg_new, "tenant-A")
 
     # Allow any async close to run
     await asyncio.sleep(0.01)
@@ -370,7 +370,7 @@ async def test_cache_mint_failure_not_cached() -> None:
     )
 
     cfg = _make_ad_config()
-    provider = cache.get_or_create(cfg)
+    provider = cache.get_or_create(cfg, "tenant-A")
 
     # First get_token fails
     with pytest.raises(UpstreamUnavailableError):
@@ -417,7 +417,7 @@ def test_cache_repeated_calls_single_construction() -> None:
 
     cfg = _make_ad_config()
 
-    results = [cache.get_or_create(cfg) for _ in range(10)]
+    results = [cache.get_or_create(cfg, "tenant-A") for _ in range(10)]
 
     assert len(constructed) == 1, (
         f"Repeated get_or_create for one identity must build the provider EXACTLY ONCE "
@@ -426,3 +426,50 @@ def test_cache_repeated_calls_single_construction() -> None:
     assert all(r is results[0] for r in results), (
         "Every caller must receive the same memoized provider instance"
     )
+
+
+# ---------------------------------------------------------------------------
+# M4 CR-2 (2026-07-13, vertex-adapter security HARD-STOP, azure sibling per
+# Tin "fix both now") — cross-Hydroa-tenant token-cache isolation. The config's
+# OWN tenant_id is the AZURE-DIRECTORY tenant, not the Hydroa tenant; two Hydroa
+# tenants sharing one Azure AD app registration must not cross bearer tokens.
+# ---------------------------------------------------------------------------
+
+
+async def test_cache_isolated_across_hydroa_tenants() -> None:
+    """Two Hydroa tenants sharing an identical AzureADConfig (same directory
+    tenant_id/client_id/authority/scope) get DISTINCT provider entries."""
+    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
+
+    constructed: list[object] = []
+    cache = AzureADTokenProviderCache(
+        ttl_s=300.0,
+        max_size=512,
+        provider_factory=lambda c: (constructed.append(c), object())[1],
+    )
+    shared_cfg = _make_ad_config()
+
+    p_a = cache.get_or_create(shared_cfg, "hydroa-tenant-A")
+    p_b = cache.get_or_create(shared_cfg, "hydroa-tenant-B")
+
+    assert len(constructed) == 2, (
+        "one Azure AD app registration under two Hydroa tenants must build TWO entries"
+    )
+    assert p_a is not p_b, "Hydroa tenant B must not receive tenant A's cached AAD token"
+
+
+async def test_cache_none_tenant_never_shares_entry() -> None:
+    """tenant_id=None -> fresh per-call provider, nothing cached (fail-safe)."""
+    from gateway.proxy.infrastructure.azure_ad import AzureADTokenProviderCache
+
+    constructed: list[object] = []
+    cache = AzureADTokenProviderCache(
+        ttl_s=300.0,
+        max_size=512,
+        provider_factory=lambda c: (constructed.append(c), object())[1],
+    )
+    cfg = _make_ad_config()
+    p1 = cache.get_or_create(cfg, None)
+    p2 = cache.get_or_create(cfg, None)
+    assert len(constructed) == 2
+    assert p1 is not p2

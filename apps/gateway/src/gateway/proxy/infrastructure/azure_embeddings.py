@@ -43,7 +43,10 @@ from gateway.core.egress_policy import (
     EgressPolicy,
 )
 from gateway.core.error_catalog import UPSTREAM_EGRESS_DENIED
-from gateway.proxy.domain.credential_context import get_provider_credential
+from gateway.proxy.domain.credential_context import (
+    get_credential_tenant,
+    get_provider_credential,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import AzureCredential, ProviderKeyMissing
 from gateway.proxy.infrastructure.azure_config import AzureConfig
@@ -131,7 +134,9 @@ class AzureOpenAIProvider:
         if cred.mode == "aad":
             ad_cfg = cred.to_azure_ad_config()
             if self._token_provider_cache is not None:
-                tp = self._token_provider_cache.get_or_create(ad_cfg)
+                # M4 CR-2: scope cached token per (hydroa_tenant, identity) — two Hydroa
+                # tenants sharing one Azure AD app registration must not cross tokens.
+                tp = self._token_provider_cache.get_or_create(ad_cfg, get_credential_tenant())
             else:
                 # No cache supplied (e.g. verify tests) — instantiate directly per-call,
                 # propagating THIS adapter's own egress_policy (e.g. a test's

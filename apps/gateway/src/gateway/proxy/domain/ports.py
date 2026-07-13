@@ -14,6 +14,11 @@ Additive extension @ provider-seam TASK.md §3:
 Additive extension @ chat-modality-guard TASK.md §3:
   - ChatModalityLookup Protocol (modality_for) — separate from ProviderResolver so the
     frozen provider_chat_dispatch Protocol/fakes never change shape.
+Additive extension @ residency-policy TASK.md §3 (FROZEN @ v2):
+  - ResidencyLookup Protocol (tenant_pin / regions_for) — the ONE shared data source
+    backing BOTH the governance-layer existence check (Tier 1) and the router-layer
+    dial-constraint filter (Tier 2). None (default wiring) = residency feature off,
+    byte-identical to pre-residency-policy behavior.
 """
 
 from __future__ import annotations
@@ -69,6 +74,16 @@ class UsageRecordExtras(TypedDict, total=False):
                           tags TASK.md §3, additive column — NOT the raw JSONB extras).
                           Omitted/empty -> the recorder stores {} (byte-identical to a
                           request that never sent the header).
+      tier_served       — the tier ACTUALLY admitted at (service-tiers TASK.md §3
+                          M10) — may differ from the requested/selected tier on
+                          overflow or Redis degradation. NEVER the requested tier.
+                          The ONLY input to resolve_tier_multiplier's billing
+                          composition. Default 'standard' on old/untiered events.
+      tier_capacity_degraded — True only when the Redis-backed tier gate was
+                          unreachable at admission time for THIS request (M8a) —
+                          distinguishes an honest standard-rate bill caused by
+                          infrastructure degradation from one caused by ordinary
+                          overflow.
     """
 
     team_id: uuid.UUID
@@ -83,6 +98,8 @@ class UsageRecordExtras(TypedDict, total=False):
     disconnect_estimate: bool
     request_id: uuid.UUID
     tags: dict[str, str]
+    tier_served: str
+    tier_capacity_degraded: bool
 
 
 class ModelAccess(Enum):
@@ -506,6 +523,34 @@ class TenantCredentialResolver(Protocol):
         ...
 
 
+@runtime_checkable
+class ResidencyLookup(Protocol):
+    """Fresh per-call residency data source (residency-policy TASK.md §3, FROZEN @ v2).
+
+    None (default wiring) = residency feature off; BOTH tiers (governance-layer
+    existence check and router-layer dial-constraint filter) skip entirely —
+    byte-identical to pre-residency-policy behavior for every tenant.
+
+    Every method is a FRESH read (mirrors
+    gateway.tenants.application.retention_policy.raise_if_zdr's "no caching beyond
+    this one SELECT" contract) — the actual admit/reject decision never trusts a
+    cached/stale value (M5).
+    """
+
+    async def tenant_pin(self, tenant_id: uuid.UUID) -> str | None:
+        """Return the tenant's current residency_region pin, or None (no pin set)."""
+        ...
+
+    async def regions_for(self, model_ids: list[str]) -> dict[str, str]:
+        """Return {model_id: region} for the given catalog ids.
+
+        An id absent from the result (unknown to the catalog) is treated as NEVER
+        eligible for a specific pin — fail-closed, the same as an explicit
+        `global`/NULL region (M6).
+        """
+        ...
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class BatchDivertedStream:
     """Wraps the SSE lifecycle generator for a genuinely-accumulated request
@@ -633,6 +678,7 @@ __all__ = [
     "PayloadCapturePort",
     "ProviderCredential",
     "ProviderResolver",
+    "ResidencyLookup",
     "ResponseCache",
     "TenantCredentialResolver",
     "UpstreamProvider",

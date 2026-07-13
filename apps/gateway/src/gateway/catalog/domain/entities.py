@@ -124,6 +124,51 @@ def parse_input_modalities(text: str) -> frozenset[str]:
     return frozenset(t.strip() for t in text.split(",") if t.strip())
 
 
+# ---------------------------------------------------------------------------
+# Region type alias (region-catalog-dimension TASK.md §3, FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: A coarse compliance/residency tag carried on every `models` (catalog) row — the
+#: ONE source of truth a residency policy filters by and a rate card multiplies by.
+#: Set EXCLUSIVELY by catalog sync (seed data or a future region-aware dynamic
+#: source) — never inferred from a provider URL, never admin/tenant-PUT-editable,
+#: never derived at request time. "global" is the default and means "no residency
+#: guarantee is asserted for this row" — NOT a fourth "worldwide-compliant" claim.
+#: Unlike input_modalities (a CSV multi-value field), region is a single scalar
+#: token — TEXT+Literal (not a Postgres ENUM), same rationale as Modality/
+#: InputModality above.
+Region = Literal["us", "eu", "ap", "global"]
+
+#: DECIDED at freeze review (2026-07-12, Tin): Asia support added mid-freeze — the
+#: region value set is us|eu|ap|global everywhere in this contract (not the 3-value
+#: us|eu|global the §3 DDL block's frozenset literal shows verbatim — that line
+#: predates the mid-freeze Asia addendum; the addendum text is authoritative).
+VALID_REGIONS: frozenset[str] = frozenset({"us", "eu", "ap", "global"})
+
+
+def normalize_region(value: str) -> str:
+    """Validate a single region token against VALID_REGIONS.
+
+    Unlike normalize_input_modalities (a CSV multi-value field needing dedup/
+    sort/join), region is a single scalar token — validation only.
+
+    Args:
+        value: Raw region token.
+
+    Returns:
+        The validated, whitespace-stripped token (unchanged case).
+
+    Raises:
+        InvalidRegionError: If the stripped token is not in VALID_REGIONS.
+    """
+    from gateway.catalog.domain.errors import InvalidRegionError
+
+    token = value.strip()
+    if token not in VALID_REGIONS:
+        raise InvalidRegionError(f"Unknown region {token!r}; valid values: {sorted(VALID_REGIONS)}")
+    return token
+
+
 @dataclass(frozen=True, slots=True)
 class CatalogModel:
     """Value object representing a model from the upstream catalog source.
@@ -143,6 +188,10 @@ class CatalogModel:
       audio_prompt_usd_per_token / audio_completion_usd_per_token / audio_cached_usd_per_token —
       a SECOND, independently-priced token stream; None for every single-stream model (everything
       except gpt-realtime today).
+
+    Additive field (region-catalog-dimension TASK.md §3):
+      region — coarse compliance/residency tag (us|eu|ap|global); defaults to "global"
+      (honest for every dynamically-synced OpenRouter row today).
     """
 
     id: str
@@ -157,6 +206,7 @@ class CatalogModel:
     audio_prompt_usd_per_token: float | None = field(default=None)
     audio_completion_usd_per_token: float | None = field(default=None)
     audio_cached_usd_per_token: float | None = field(default=None)
+    region: str = field(default="global")
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +219,9 @@ class ModelRow:
 
     Additive fields (model-input-capabilities TASK.md §3):
       input_modalities — normalized CSV; defaults to "text" (chat ⇒ {text}).
+
+    Additive field (region-catalog-dimension TASK.md §3):
+      region — coarse compliance/residency tag (us|eu|ap|global); defaults to "global".
     """
 
     id: str
@@ -178,6 +231,7 @@ class ModelRow:
     modality: str = field(default="chat")
     provider: str = field(default="openrouter")
     input_modalities: str = field(default="text")
+    region: str = field(default="global")
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +260,10 @@ class MarkedUpModel:
       audio_prompt_per_token / audio_completion_per_token / audio_cached_per_token —
       markup-multiplied mirrors of the corresponding CatalogModel audio_* fields; None when the
       model has no audio stream (same None-passthrough semantics).
+
+    Additive field (region-catalog-dimension TASK.md §3):
+      region — raw passthrough from the models row; defaults to "global". Read-only
+      surface — never derived or computed here (same convention as input_modalities).
     """
 
     id: str
@@ -218,3 +276,4 @@ class MarkedUpModel:
     audio_prompt_per_token: float | None = field(default=None)
     audio_completion_per_token: float | None = field(default=None)
     audio_cached_per_token: float | None = field(default=None)
+    region: str = field(default="global")

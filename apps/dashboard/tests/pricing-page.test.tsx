@@ -95,3 +95,49 @@ describe("test_reject_incomplete_tier", () => {
     }
   });
 });
+
+// ── residency-tiers-ui TASK.md §3 M11: residency + priority story, zero fetch ──────
+describe("test_pricing_residency_and_priority_story", () => {
+  it("Team tier lists the priority service-tier feature bullet", () => {
+    render(<PricingPage />);
+    const teamCard = screen.getByRole("article", { name: /team/i });
+    expect(
+      within(teamCard).getByText(/priority service tier \(optional, usage-priced\)/i),
+    ).toBeInTheDocument();
+  });
+
+  it("Enterprise tier lists the data-residency feature bullet", () => {
+    render(<PricingPage />);
+    const entCard = screen.getByRole("article", { name: /enterprise/i });
+    expect(
+      within(entCard).getByText(/data residency: pin inference to us or eu/i),
+    ).toBeInTheDocument();
+  });
+
+  it("a short residency + priority callout section renders as static copy", () => {
+    render(<PricingPage />);
+    expect(
+      screen.getByText(/refused, never silently\s*rerouted/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/standard traffic never starved/i)).toBeInTheDocument();
+  });
+
+  it("zero network requests are made by the page itself (still a Server Component)", () => {
+    // Reuses test_reject_public_not_gated's source-introspection guard: the new
+    // copy must not introduce cookies()/next-headers/any fetch-shaped import.
+    const src = readSource("app/(marketing)/pricing/page.tsx");
+    expect(src).not.toMatch(/cookies\(\)/);
+    expect(src).not.toMatch(/from ["']next\/headers["']/);
+    expect(src).not.toMatch(/bffGet|api-client|useQuery|fetch\(/);
+  });
+
+  it("heading order stays valid with the new callout section (no skipped levels)", () => {
+    const { container } = render(<PricingPage />);
+    const levels = Array.from(container.querySelectorAll("h1,h2,h3,h4,h5,h6")).map(
+      (h) => Number(h.tagName[1]),
+    );
+    for (let i = 1; i < levels.length; i++) {
+      expect(levels[i] - levels[i - 1]).toBeLessThanOrEqual(1);
+    }
+  });
+});

@@ -81,10 +81,12 @@ from gateway.catalog.api.router import (
     catalog_router,
     internal_catalog_router,
 )
+from gateway.catalog.infrastructure.bedrock_seed import BEDROCK_SEED_MODELS
 from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
 from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_MODELS
 from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
+from gateway.catalog.infrastructure.vertex_seed import VERTEX_SEED_MODELS
 from gateway.conversations.api.router import conversations_router
 from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
     ConversationMessageRow as _ConversationMessageRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
@@ -183,9 +185,16 @@ from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate
 from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
+from gateway.proxy.infrastructure.residency_lookup import SqlAlchemyResidencyLookup
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
 from gateway.proxy.infrastructure.tenant_model_preset_store import DbTenantModelPresetStore
 from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
+from gateway.proxy.infrastructure.tier_capacity_guard import (
+    PassthroughTierCapacityGuard,
+    RedisTierCapacityGuard,
+)
+from gateway.proxy.infrastructure.vertex_ad import VertexTokenProviderCache
+from gateway.proxy.infrastructure.vertex_upstream import VertexCompletionUpstream
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.rate_limits.infrastructure.redis_token_bucket import RedisTokenBucket
@@ -209,12 +218,16 @@ from gateway.tenants.api.plan_router import plan_router
 from gateway.tenants.api.platform_audit_router import platform_audit_router
 from gateway.tenants.api.platform_impersonation_router import platform_impersonation_router
 from gateway.tenants.api.platform_plans_router import platform_plans_router
+from gateway.tenants.api.platform_service_tier_router import platform_service_tier_router
 from gateway.tenants.api.platform_tenant_config_router import platform_tenant_config_router
 from gateway.tenants.api.platform_tenants_router import platform_tenants_router
 from gateway.tenants.api.platform_users_router import platform_users_router
 from gateway.tenants.api.rate_card_router import rate_card_router
+from gateway.tenants.api.region_pricing_router import region_pricing_router
+from gateway.tenants.api.residency_policy_router import residency_policy_router
 from gateway.tenants.api.retention_policy_router import retention_policy_router
 from gateway.tenants.api.router import router as tenants_router
+from gateway.tenants.api.service_tier_router import service_tier_router
 from gateway.tenants.api.users_router import users_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.invite_public_rate_limiter import InvitePublicRateLimiter
@@ -346,6 +359,7 @@ def build_model_router(
     completion_upstream: Any,
     cooldown_gate: Any,
     metrics_registry: Any,
+    residency_lookup: Any = None,
 ) -> FallbackModelRouter:
     """Construct the FallbackModelRouter from settings (extracted so it can be REBUILT at boot
     from a persisted routing config — v32 routing-config-store). Byte-identical to the inline
@@ -383,6 +397,7 @@ def build_model_router(
         limit_gate=limit_gate,
         fallback_on_error=settings.upstream_fallback_on_error,
         stream_resilience_enabled=settings.upstream_stream_resilience_enabled,
+        residency_lookup=residency_lookup,
     )
 
 
@@ -393,6 +408,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Configure structlog once per process (idempotent).  Must run before any
     # logger call — including those triggered during module imports below.
     configure_structlog()
+
+    # service-tiers TASK.md §3 (DECIDED at freeze-review, 2026-07-12): a REQUIRED
+    # startup warning — tier_capacity_cluster_cap < max_concurrent_requests is the one
+    # per-process-detectable certain misconfiguration (the two knobs are independently
+    # operator-set with no shared worker-count basis in this codebase; nothing else
+    # enforces they stay consistent). Fires ONLY when tiering is actually enabled
+    # (cluster_cap > 0) — a disabled tier gate (0, the default) has nothing to
+    # misconfigure relative to the back-pressure cap. Ops guidance: cluster_cap ~=
+    # workers x max_concurrent_requests (settings docstrings + runbook).
+    if (
+        settings.tier_capacity_cluster_cap > 0
+        and settings.tier_capacity_cluster_cap < settings.max_concurrent_requests
+    ):
+        structlog.get_logger(__name__).warning(
+            "tier_capacity_cluster_cap_below_max_concurrent_requests",
+            tier_capacity_cluster_cap=settings.tier_capacity_cluster_cap,
+            max_concurrent_requests=settings.max_concurrent_requests,
+            hint="cluster_cap should be >= workers x max_concurrent_requests",
+        )
 
     @contextlib.asynccontextmanager  # pyright: ignore[reportDeprecated]  — Pyright 1.1.410 stub false-positive; stdlib asynccontextmanager is not deprecated
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -451,6 +485,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     completion_upstream=app.state.completion_upstream,
                     cooldown_gate=app.state.cooldown_gate,
                     metrics_registry=app.state.metrics_registry,
+                    residency_lookup=getattr(app.state, "residency_lookup", None),
                 )
                 app.state.settings = _merged
                 app.state.model_router = _merged_router
@@ -861,12 +896,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.object_store = build_object_store(settings)
     app.state.engine = engine
     app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    # residency-policy TASK.md §3 (FROZEN @ v2): ONE shared ResidencyLookup instance,
+    # wired into BOTH enforcement tiers (Tier 1 governance checks via *_deps.py/
+    # realtime_*.py/memory/api/router.py, Tier 2 router dial-constraint filter via
+    # build_model_router below) plus the chat CompletionUseCase and cache-hit
+    # re-validation. Constructed here (not per-request) — mirrors
+    # DbTenantModelPresetStore/DbTenantProviderKeyStore: opens its own short-lived
+    # session per call, safe to share across concurrent requests. Tests override via
+    # app.state.residency_lookup.
+    app.state.residency_lookup = SqlAlchemyResidencyLookup(sessionmaker=app.state.sessionmaker)
     app.state.password_hasher = Argon2PasswordHasher()
     app.state.token_service = JwtTokenService(settings)
     # Default catalog source — tests override via app.state.catalog_source
     app.state.catalog_source = CompositeCatalogSource(
         primary=OpenRouterCatalogSource(httpx.AsyncClient()),
-        static_models=MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS,
+        static_models=MINIMAX_SEED_MODELS
+        + GPT_REALTIME_SEED_MODELS
+        + BEDROCK_SEED_MODELS
+        + VERTEX_SEED_MODELS,
     )
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()
@@ -1024,6 +1071,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         egress_policy=_azure_egress_policy,
     )
 
+    # Per-tenant Vertex JWT-bearer token provider cache — one shared instance on
+    # app.state. Keyed by the NON-SECRET identity (client_email, project_id).
+    _vertex_token_provider_cache = VertexTokenProviderCache(
+        ttl_s=settings.vertex_token_cache_ttl_s,
+        max_size=settings.vertex_token_cache_max,
+        metrics_registry=app.state.metrics_registry,
+    )
+    app.state.vertex_token_provider_cache = _vertex_token_provider_cache
+
+    # Google Vertex AI adapter — registered UNCONDITIONALLY (vertex-adapter task,
+    # mirrors every sibling adapter). Credentials (GoogleServiceAccountCredential) are
+    # resolved per-request from the tenant contextvar. A request with no tenant Vertex
+    # key → 402 at resolve time (M12/R2). Landed in the SAME diff as vertex_seed.py's
+    # VERTEX_SEED_MODELS rows joining static_models above (M10/R6 — never seed a
+    # provider="vertex" catalog row without the matching adapter registered).
+    _chat_adapters["vertex"] = VertexCompletionUpstream(
+        token_provider_cache=_vertex_token_provider_cache,
+        default_max_tokens=settings.vertex_default_max_tokens,
+        max_retries=settings.upstream_max_retries,
+        backoff_base=settings.upstream_retry_backoff_base_s,
+        retry_deadline_s=settings.upstream_retry_deadline_s,
+        metrics_registry=app.state.metrics_registry,
+    )
+
     # Public seam for wiring tests: exposes the adapter map so tests can assert
     # which adapters are registered (mirrors the openrouter_completion_upstream seam).
     app.state.chat_adapters = _chat_adapters
@@ -1115,6 +1186,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     else:
         app.state.bandwidth_bucket = PassthroughBandwidthBucket()
 
+    # Tier-capacity guard (service-tiers TASK.md §3): cluster_cap<=0 (default) →
+    # PassthroughTierCapacityGuard → byte-identical (no admission gating, no Redis).
+    # Construction does NOT connect to Redis (register_script only — safe without
+    # lifespan, same precedent as bandwidth_bucket/rate_limiter above). Tests override
+    # via app.state.tier_capacity_guard after app creation.
+    if settings.tier_capacity_cluster_cap > 0:
+        app.state.tier_capacity_guard = RedisTierCapacityGuard(
+            redis=redis_client,
+            cluster_cap=settings.tier_capacity_cluster_cap,
+            priority_reserved_pct=settings.tier_priority_reserved_pct,
+            standard_reserved_pct=settings.tier_standard_reserved_pct,
+            hold_ttl_s=settings.tier_capacity_hold_ttl_s,
+        )
+    else:
+        app.state.tier_capacity_guard = PassthroughTierCapacityGuard()
+
     # Cooldown circuit breaker gate — constructed only when threshold > 0.
     # Construction does NOT connect to Redis (safe without lifespan).
     # threshold == 0 (default) → gate is None; preserves v5 behavior byte-identically.
@@ -1147,6 +1234,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         completion_upstream=app.state.completion_upstream,
         cooldown_gate=app.state.cooldown_gate,
         metrics_registry=app.state.metrics_registry,
+        residency_lookup=getattr(app.state, "residency_lookup", None),
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).
@@ -1341,6 +1429,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(platform_users_router)
     app.include_router(platform_tenant_config_router)
     app.include_router(platform_plans_router)
+    app.include_router(platform_service_tier_router)
+    app.include_router(service_tier_router)
     app.include_router(platform_impersonation_router)
     app.include_router(platform_audit_router)
     app.include_router(cache_router)
@@ -1349,7 +1439,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
     app.include_router(retention_policy_router)
+    app.include_router(residency_policy_router)
     app.include_router(rate_card_router)
+    app.include_router(region_pricing_router)
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(key_guardrail_router)

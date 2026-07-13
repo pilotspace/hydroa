@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,15 @@ from gateway.catalog.infrastructure.orm import ModelRow, PricingSnapshotRow
 from gateway.core.ids import uuid7
 from gateway.tenants.infrastructure.orm import TenantRow
 from gateway.tenants.infrastructure.rate_card_orm import TenantRateCardEntry
+from gateway.tenants.infrastructure.region_pricing_orm import TenantRegionMultiplierOverride
+from gateway.usage.application.rate_card_resolver import resolve_tier_multiplier
+
+# region-pricing (TASK.md §3 M5): the DECIDED seed, expressed as the bulk-query
+# equivalent of rate_card_resolver's `_REGION_MULTIPLIER_SEEDS` — kept in sync by
+# hand (no shared import: this stays a plain SQL CASE literal, not a cross-layer
+# dependency on the usage/application resolver module, CONVENTIONS.md layering).
+_EU_REGION_MULTIPLIER = Decimal("1.1")
+_DEFAULT_REGION_MULTIPLIER = Decimal("1.0")
 
 
 class SqlAlchemyCatalogRepository:
@@ -84,7 +93,9 @@ class SqlAlchemyCatalogRepository:
 
         return len(all_models)
 
-    async def list_active_models_with_markup(self, tenant_id: uuid.UUID) -> list[MarkedUpModel]:
+    async def list_active_models_with_markup(
+        self, tenant_id: uuid.UUID, *, tier: str | None = None
+    ) -> list[MarkedUpModel]:
         """Single joined query: active models x latest snapshot x effective markup.
 
         No N+1 — uses a lateral/subquery approach.
@@ -95,7 +106,17 @@ class SqlAlchemyCatalogRepository:
         bulk-join form of the SAME resolve rule recorder billing and
         cost_recovery use (gateway.usage.application.rate_card_resolver), so
         catalog display never drifts from what a request actually bills.
+
+        service-tiers TASK.md §3: tier is caller-specific, not model-row-keyed like
+        region — ONE extra scalar query (not per-row) resolves tier_multiplier once via
+        the SAME shared resolver, then folds into the existing bulk multiplier. tier=None
+        (default) ⇒ tier_multiplier stays the Decimal("1") identity ⇒ byte-identical.
         """
+        tier_multiplier = (
+            await resolve_tier_multiplier(self._session, tenant_id, "", tier)
+            if tier is not None
+            else Decimal("1")
+        )
         # Subquery: latest snapshot per model_id
         snap_sub = (
             select(
@@ -118,6 +139,17 @@ class SqlAlchemyCatalogRepository:
         effective_markup_pct = func.coalesce(
             TenantRateCardEntry.markup_pct, TenantRow.markup_pct
         ).label("markup_pct")
+        # region-pricing (TASK.md §3 M5): bulk-equivalent of resolve_region_multiplier —
+        # a per-(tenant, region) override wins; ELSE the DECIDED seed keyed by the
+        # model's region (eu=1.1x, everything else=1.0x). Same override-wins-else-
+        # fallback shape as effective_markup_pct above, keyed by region instead of model.
+        effective_region_multiplier = func.coalesce(
+            TenantRegionMultiplierOverride.multiplier,
+            case(
+                (ModelRow.region == "eu", _EU_REGION_MULTIPLIER),
+                else_=_DEFAULT_REGION_MULTIPLIER,
+            ),
+        ).label("region_multiplier")
 
         stmt = (
             select(
@@ -125,6 +157,7 @@ class SqlAlchemyCatalogRepository:
                 ModelRow.name,
                 ModelRow.context_length,
                 ModelRow.input_modalities,
+                ModelRow.region,
                 snap_sub.c.prompt_usd_per_token,
                 snap_sub.c.completion_usd_per_token,
                 snap_sub.c.cached_input_usd_per_token,
@@ -132,6 +165,7 @@ class SqlAlchemyCatalogRepository:
                 snap_sub.c.audio_completion_usd_per_token,
                 snap_sub.c.audio_cached_usd_per_token,
                 effective_markup_pct,
+                effective_region_multiplier,
             )
             .join(snap_sub, snap_sub.c.model_id == ModelRow.id)
             .join(TenantRow, TenantRow.id == tenant_id)
@@ -139,6 +173,11 @@ class SqlAlchemyCatalogRepository:
                 TenantRateCardEntry,
                 (TenantRateCardEntry.tenant_id == tenant_id)
                 & (TenantRateCardEntry.model_id == ModelRow.id),
+            )
+            .outerjoin(
+                TenantRegionMultiplierOverride,
+                (TenantRegionMultiplierOverride.tenant_id == tenant_id)
+                & (TenantRegionMultiplierOverride.region == ModelRow.region),
             )
             .where(ModelRow.active.is_(True))
         )
@@ -150,7 +189,11 @@ class SqlAlchemyCatalogRepository:
 
         result: list[MarkedUpModel] = []
         for row in rows:
-            multiplier = float(Decimal("1") + row.markup_pct / Decimal("100"))
+            multiplier = float(
+                (Decimal("1") + row.markup_pct / Decimal("100"))
+                * row.region_multiplier
+                * tier_multiplier
+            )
             result.append(
                 MarkedUpModel(
                     id=row.id,
@@ -185,6 +228,8 @@ class SqlAlchemyCatalogRepository:
                         if row.audio_cached_usd_per_token is not None
                         else None
                     ),
+                    # region-catalog-dimension TASK.md §3: raw passthrough, never derived.
+                    region=row.region,
                 )
             )
         return result
@@ -284,6 +329,11 @@ class SqlAlchemyCatalogRepository:
         written on INSERT only — model-input-capabilities TASK.md §2 SC5 froze the invariant that
         sync must never clobber a seeded/admin-set input_modalities value on re-sync, so it is
         deliberately absent from the conflict-update `set_`.
+
+        region-catalog-dimension TASK.md §3: `region` is written on BOTH the insert and the
+        conflict-update — unlike input_modalities, no sibling contract freezes a no-clobber
+        invariant for region; M6 states it is "set exclusively by catalog sync," so it follows
+        the modality/provider precedent (re-affirmed every sync cycle, never silently stale).
         """
         stmt = (
             pg_insert(ModelRow)
@@ -295,6 +345,7 @@ class SqlAlchemyCatalogRepository:
                 modality=model.modality,
                 provider=model.provider,
                 input_modalities=model.input_modalities,
+                region=model.region,
             )
             .on_conflict_do_update(
                 index_elements=["id"],
@@ -304,6 +355,7 @@ class SqlAlchemyCatalogRepository:
                     "active": True,
                     "modality": model.modality,
                     "provider": model.provider,
+                    "region": model.region,
                 },
             )
         )

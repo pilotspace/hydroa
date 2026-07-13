@@ -1170,6 +1170,7 @@ class GoogleEmbeddingsProvider:
 __all__ = [
     "GeminiCompletionUpstream",
     "GoogleEmbeddingsProvider",
+    "_GeminiSSEStepper",
     "_content_to_gemini_parts",
     "_data_url_to_inline",
     "_gemini_embed_to_openai",

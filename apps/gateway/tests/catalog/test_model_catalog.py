@@ -54,6 +54,9 @@ class FakeCatalogModel:
     audio_prompt_usd_per_token: float | None = None
     audio_completion_usd_per_token: float | None = None
     audio_cached_usd_per_token: float | None = None
+    # region-catalog-dimension TASK.md §3: CatalogModel.region is now read by
+    # _upsert_model too; mirror its real default so this suite is unaffected.
+    region: str = "global"
 
 
 class FakeCatalogSource:
