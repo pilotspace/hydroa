@@ -1063,7 +1063,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T08:41:46+00:00",
+  "updated": "2026-07-13T08:51:44+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2190,6 +2190,24 @@
       "id": 29,
       "text": "service-tiers check_and_hold: self._holds[request_id] overwritten if called twice for same request_id (not currently reachable \u2014 single call site). Guard against double-hold if a second call site is ever added.",
       "created": "2026-07-13T08:40:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 30,
+      "text": "bedrock-region-guard case-sensitivity coupling: _assert_region_consistent is case-sensitive by design; uppercase-prefix bypass (EU.) is unreachable ONLY because model_checker.py:64 does a case-sensitive catalog PK match first. If that lookup is ever relaxed (citext/case-insensitive), the region guard becomes a live bypass. Add a cross-file invariant test or a comment pinning the coupling. (from security verify A)",
+      "created": "2026-07-13T08:49:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 31,
+      "text": "residency BYOK region cross-check (from security verify B): BedrockCredential.region (tenant-supplied BYOK) is NOT validated against tenants.residency_region at credential create/update time. For an UNPREFIXED bedrock model that passes residency-policy (catalog region=eu), a pinned tenant who registered their own Bedrock credential with region=us-east-1 would still dial US. Tenant self-misconfiguration only (not cross-tenant/attacker-reachable, outside bedrock-region-guard's frozen M3 scope). Fix = validate BedrockCredential.region vs tenants.residency_region at BYOK registration for pinned tenants. Candidate residency-policy follow-on.",
+      "created": "2026-07-13T08:51:44+00:00",
+      "status": "open"
+    },
+    {
+      "id": 32,
+      "text": "bedrock-region-guard defense-in-depth (verify B, low-pri): normalize model_id prefix casing/whitespace before _PROFILE_PREFIX_TO_GEO lookup \u2014 currently protected solely by the catalog exact-match dispatch gate; cheap insurance vs a future refactor decoupling model_id sourcing from routing.",
+      "created": "2026-07-13T08:51:44+00:00",
       "status": "open"
     }
   ]
