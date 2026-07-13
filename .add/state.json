@@ -1066,13 +1066,18 @@
       "title": "Data-residency & service-tier routing",
       "goal": "",
       "stage": "mvp",
-      "status": "queued",
+      "status": "done",
       "created": "2026-07-12T07:38:33+00:00",
-      "updated": "2026-07-12T14:46:20+00:00",
+      "updated": "2026-07-13T09:40:17+00:00",
       "confirmed": true,
       "confirmed_at": "2026-07-12T14:46:20+00:00",
       "confirmed_by": "tindang",
       "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "done_actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
         "source": "git"
@@ -1088,7 +1093,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T09:37:31+00:00",
+  "updated": "2026-07-13T09:40:17+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
