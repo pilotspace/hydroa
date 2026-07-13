@@ -185,6 +185,7 @@ from gateway.proxy.infrastructure.provider_registry import ProviderRegistry
 from gateway.proxy.infrastructure.redis_cooldown_gate import RedisCooldownGate
 from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate
 from gateway.proxy.infrastructure.redis_load_gate import RedisDeploymentLoadGate
+from gateway.proxy.infrastructure.residency_lookup import SqlAlchemyResidencyLookup
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
 from gateway.proxy.infrastructure.tenant_model_preset_store import DbTenantModelPresetStore
 from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
@@ -218,6 +219,7 @@ from gateway.tenants.api.platform_tenants_router import platform_tenants_router
 from gateway.tenants.api.platform_users_router import platform_users_router
 from gateway.tenants.api.rate_card_router import rate_card_router
 from gateway.tenants.api.region_pricing_router import region_pricing_router
+from gateway.tenants.api.residency_policy_router import residency_policy_router
 from gateway.tenants.api.retention_policy_router import retention_policy_router
 from gateway.tenants.api.router import router as tenants_router
 from gateway.tenants.api.users_router import users_router
@@ -351,6 +353,7 @@ def build_model_router(
     completion_upstream: Any,
     cooldown_gate: Any,
     metrics_registry: Any,
+    residency_lookup: Any = None,
 ) -> FallbackModelRouter:
     """Construct the FallbackModelRouter from settings (extracted so it can be REBUILT at boot
     from a persisted routing config — v32 routing-config-store). Byte-identical to the inline
@@ -388,6 +391,7 @@ def build_model_router(
         limit_gate=limit_gate,
         fallback_on_error=settings.upstream_fallback_on_error,
         stream_resilience_enabled=settings.upstream_stream_resilience_enabled,
+        residency_lookup=residency_lookup,
     )
 
 
@@ -456,6 +460,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     completion_upstream=app.state.completion_upstream,
                     cooldown_gate=app.state.cooldown_gate,
                     metrics_registry=app.state.metrics_registry,
+                    residency_lookup=getattr(app.state, "residency_lookup", None),
                 )
                 app.state.settings = _merged
                 app.state.model_router = _merged_router
@@ -866,6 +871,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.object_store = build_object_store(settings)
     app.state.engine = engine
     app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    # residency-policy TASK.md §3 (FROZEN @ v2): ONE shared ResidencyLookup instance,
+    # wired into BOTH enforcement tiers (Tier 1 governance checks via *_deps.py/
+    # realtime_*.py/memory/api/router.py, Tier 2 router dial-constraint filter via
+    # build_model_router below) plus the chat CompletionUseCase and cache-hit
+    # re-validation. Constructed here (not per-request) — mirrors
+    # DbTenantModelPresetStore/DbTenantProviderKeyStore: opens its own short-lived
+    # session per call, safe to share across concurrent requests. Tests override via
+    # app.state.residency_lookup.
+    app.state.residency_lookup = SqlAlchemyResidencyLookup(sessionmaker=app.state.sessionmaker)
     app.state.password_hasher = Argon2PasswordHasher()
     app.state.token_service = JwtTokenService(settings)
     # Default catalog source — tests override via app.state.catalog_source
@@ -1179,6 +1193,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         completion_upstream=app.state.completion_upstream,
         cooldown_gate=app.state.cooldown_gate,
         metrics_registry=app.state.metrics_registry,
+        residency_lookup=getattr(app.state, "residency_lookup", None),
     )
 
     # Provider registry — additive seam for non-chat modalities (provider-seam TASK.md §3).
@@ -1381,6 +1396,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(batch_policy_router)
     app.include_router(guardrail_router)
     app.include_router(retention_policy_router)
+    app.include_router(residency_policy_router)
     app.include_router(rate_card_router)
     app.include_router(region_pricing_router)
     app.include_router(catalog_router)

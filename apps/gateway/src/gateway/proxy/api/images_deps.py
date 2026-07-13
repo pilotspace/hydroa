@@ -72,6 +72,9 @@ def get_images_use_case(
         session_factory=request.app.state.sessionmaker,
         credit_guard=credit_guard,
         hold_estimate_usd=hold_estimate_usd,
+        # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same
+        # getattr pattern as tenant_credential_resolver below. None ⇒ byte-identical.
+        residency_lookup=getattr(request.app.state, "residency_lookup", None),
     )
     # credential-resolution-seam §3: per-tenant provider key resolver from app.state.
     tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)

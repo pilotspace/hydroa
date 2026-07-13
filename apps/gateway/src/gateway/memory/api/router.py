@@ -166,6 +166,9 @@ async def _embed(request: Request, raw_key: str, text: str) -> list[float] | Non
             _redis_client = getattr(_budget_guard, "_redis", None)
             _tenant_cred_resolver = getattr(request.app.state, "tenant_credential_resolver", None)
 
+            # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same
+            # getattr pattern used across every other NonChatGovernance construction.
+            _residency_lookup = getattr(request.app.state, "residency_lookup", None)
             governance = NonChatGovernance(
                 authenticator=_authenticator,
                 model_checker=_model_checker,
@@ -173,11 +176,13 @@ async def _embed(request: Request, raw_key: str, text: str) -> list[float] | Non
                 rate_limiter=_rate_limiter,
                 redis_client=_redis_client,
                 session_factory=request.app.state.sessionmaker,
+                residency_lookup=_residency_lookup,
             )
             uc = EmbeddingsUseCase(
                 governance=governance,
                 session=embed_session,
                 tenant_credential_resolver=_tenant_cred_resolver,
+                residency_lookup=_residency_lookup,
             )
             status, body, _ = await uc.execute(
                 raw_key=raw_key,

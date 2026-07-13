@@ -41,3 +41,26 @@ class AllDeploymentsSaturatedError(Exception):
     def __init__(self, alias: str) -> None:
         self.alias = alias
         super().__init__(f"All deployments for alias '{alias}' are saturated")
+
+
+class AllCandidatesOutOfRegionError(Exception):
+    """Every candidate of an alias group is outside the tenant's pinned residency region.
+
+    Raised by FallbackModelRouter.complete() / .stream() / .stream_resilient() when the
+    residency pre-loop filter (Tier 2) removes ALL candidates of the group. Distinct from
+    AllDeploymentsSaturatedError so the use case maps THIS to 403
+    ERR_RESIDENCY_NO_ELIGIBLE_REGION — never the generic 429/502 path (residency-policy
+    TASK.md §3 M4). A deliberate fail-closed refusal, never a silent out-of-region reroute.
+
+    `region` carries the tenant's pin (when known at raise time) so the catching use
+    case can render the precise error message without a second DB round-trip; may be
+    None when the raiser did not have it in scope (the use case falls back to an
+    empty-string placeholder in that case — never a crash).
+    """
+
+    def __init__(self, alias: str, region: str | None = None) -> None:
+        self.alias = alias
+        self.region = region
+        super().__init__(
+            f"All candidates for alias '{alias}' are outside the tenant's pinned region"
+        )

@@ -964,6 +964,28 @@ ZDR_PAYLOAD_BLOCKED = ErrorSpec(
 BATCH_ITEM_INVALID = ErrorSpec(422, "batch_item_invalid", "a line item failed validation")
 
 # ---------------------------------------------------------------------------
+# Residency policy (residency-policy TASK.md — FROZEN @ v2)
+# ---------------------------------------------------------------------------
+
+#: PUT /admin/residency-policy — region is not one of {null, "us", "eu", "ap"}.
+RESIDENCY_REGION_INVALID = ErrorSpec(
+    422,
+    "ERR_RESIDENCY_REGION_INVALID",
+    "region must be one of null, 'us', 'eu', 'ap'",
+)
+
+#: No deployment-selection candidate satisfies the tenant's pinned residency region
+#: (fresh per-call check, see gateway.proxy.application.residency). Raised at every
+#: deployment-selection surface (chat alias/plain, embeddings, images, audio STT/TTS,
+#: realtime relay/WS) — the request is refused, NEVER silently rerouted out-of-region
+#: (M6). A refused request is never billed and produces no usage record (M8).
+RESIDENCY_NO_ELIGIBLE_REGION = ErrorSpec(
+    403,
+    "ERR_RESIDENCY_NO_ELIGIBLE_REGION",
+    "No deployment available in tenant's pinned region '{region}' for model '{model_id}'",
+)
+
+# ---------------------------------------------------------------------------
 # Compliance export errors (compliance-export-api TASK.md §3 — FROZEN @ v1)
 # ---------------------------------------------------------------------------
 

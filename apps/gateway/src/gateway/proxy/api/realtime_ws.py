@@ -179,6 +179,9 @@ async def _real_stt(
             rate_limiter=_rate_limiter,
             redis_client=_redis,
             session_factory=app.state.sessionmaker,
+            # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same
+            # getattr pattern used across every other NonChatGovernance construction.
+            residency_lookup=getattr(app.state, "residency_lookup", None),
         )
         _cred_resolver = getattr(app.state, "tenant_credential_resolver", None)
         _settings: Settings = app.state.settings
@@ -283,6 +286,9 @@ async def _real_chat(
             # chat-modality-guard (v56 §3): reuses the SAME app.state.provider_resolver
             # instance fetched above — zero new app.state attribute, zero new instance.
             chat_modality_lookup=_provider_resolver,
+            # residency-policy TASK.md §3 (FROZEN @ v2): SAME app.state singleton the
+            # HTTP chat path (deps.py) reads — never a second instance.
+            residency_lookup=getattr(app.state, "residency_lookup", None),
         )
 
         _circuit_breaker = app.state.circuit_breaker
@@ -374,6 +380,9 @@ async def _real_tts(
             rate_limiter=_rate_limiter,
             redis_client=_redis,
             session_factory=app.state.sessionmaker,
+            # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same
+            # getattr pattern used across every other NonChatGovernance construction.
+            residency_lookup=getattr(app.state, "residency_lookup", None),
         )
         _cred_resolver = getattr(app.state, "tenant_credential_resolver", None)
         # preset-resolution-ingress (v56 §3): full coverage was the chosen scope for the

@@ -250,6 +250,9 @@ def get_completion_use_case(
 
     credit_guard = getattr(request.app.state, "credit_guard", None) or PassthroughCreditGuard()
     hold_estimate_usd = _settings.credits_hold_estimate_usd if _settings else Decimal("0.50")
+    # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same getattr
+    # pattern as tenant_credential_resolver above. None ⇒ feature off ⇒ byte-identical.
+    residency_lookup = getattr(request.app.state, "residency_lookup", None)
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -277,4 +280,5 @@ def get_completion_use_case(
         payload_capture=payload_capture,
         credit_guard=credit_guard,
         hold_estimate_usd=hold_estimate_usd,
+        residency_lookup=residency_lookup,
     )

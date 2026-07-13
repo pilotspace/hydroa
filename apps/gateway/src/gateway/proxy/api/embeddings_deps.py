@@ -87,6 +87,9 @@ def get_embeddings_use_case(
     credit_guard = getattr(request.app.state, "credit_guard", None) or PassthroughCreditGuard()
     hold_estimate_usd = _settings.credits_hold_estimate_usd if _settings else Decimal("0.50")
 
+    # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same getattr
+    # pattern as tenant_credential_resolver below. None ⇒ feature off ⇒ byte-identical.
+    residency_lookup = getattr(request.app.state, "residency_lookup", None)
     governance = NonChatGovernance(
         authenticator=authenticator,
         model_checker=model_checker,
@@ -96,6 +99,7 @@ def get_embeddings_use_case(
         session_factory=request.app.state.sessionmaker,
         credit_guard=credit_guard,
         hold_estimate_usd=hold_estimate_usd,
+        residency_lookup=residency_lookup,
     )
     # credential-resolution-seam §3: resolve per-tenant provider key from app.state
     # (tests override app.state.tenant_credential_resolver with a fake). None ⇒ unwired.
@@ -110,4 +114,5 @@ def get_embeddings_use_case(
         tenant_credential_resolver=tenant_credential_resolver,
         authenticator=authenticator,
         tenant_model_preset_store=tenant_model_preset_store,
+        residency_lookup=residency_lookup,
     )

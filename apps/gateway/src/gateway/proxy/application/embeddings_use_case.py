@@ -31,6 +31,7 @@ from gateway.core.error_catalog import (
 )
 from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.application.governance import NonChatGovernance
+from gateway.proxy.application.residency import cache_hit_region_ok
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so the fire-and-forget
 # recorder/cache helpers cannot be made public there; the frozen contract mandates
@@ -46,6 +47,7 @@ from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableErr
 from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
 from gateway.proxy.domain.ports import (
     KeyAuthenticator,
+    ResidencyLookup,
     ResponseCache,
     TenantCredentialResolver,
     UsageRecorder,
@@ -65,6 +67,7 @@ class EmbeddingsUseCase:
         tenant_credential_resolver: TenantCredentialResolver | None = None,
         authenticator: KeyAuthenticator | None = None,
         tenant_model_preset_store: TenantModelPresetStore | None = None,
+        residency_lookup: ResidencyLookup | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
@@ -77,6 +80,11 @@ class EmbeddingsUseCase:
         # into `governance` — never a second instance.
         self._authenticator = authenticator
         self._tenant_model_preset_store = tenant_model_preset_store
+        # residency-policy TASK.md §3 (FROZEN @ v2) M7: SAME instance passed into
+        # `governance` above — used HERE only for the cache-hit re-validation at
+        # Step 3.5 (Tier 1's existence check on `model_id` already covers the
+        # non-cached path; embeddings has no alias, so Tier 1 is authoritative there).
+        self._residency_lookup = residency_lookup
 
     async def execute(
         self,
@@ -149,6 +157,15 @@ class EmbeddingsUseCase:
             cache_key = build_embedding_cache_key(str(authz.tenant_id), body)
             if not no_cache:
                 hit = await cache.get(cache_key)  # swallows errors → None (degrade to MISS)
+                if hit is not None and not await cache_hit_region_ok(
+                    self._residency_lookup, model_id, authz.tenant_id
+                ):
+                    # residency-policy TASK.md §3 M7: embeddings has no alias, so the
+                    # cache key's own model_id IS the served candidate — re-validate
+                    # its CURRENT catalog region against the tenant's CURRENT pin
+                    # before treating this as a HIT. A mismatch degrades to a MISS
+                    # (falls through to Step 4's fresh catalog query below).
+                    hit = None
                 if hit is not None:
                     # CACHE HIT: bill $0, skip the catalog query + upstream entirely.
                     hit_usage = hit.get("usage")

@@ -55,6 +55,7 @@ from gateway.core.error_catalog import (
     PLAN_MODEL_NOT_ALLOWED,
     PRESET_NOT_FOUND,
     RATE_LIMITED,
+    RESIDENCY_NO_ELIGIBLE_REGION,
     UPSTREAM_RATE_LIMITED,
     UPSTREAM_UNAVAILABLE,
 )
@@ -64,11 +65,16 @@ from gateway.guardrail_analytics.application.verdict_recorder import record_guar
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.logs.domain.sse_content_extractor import extract_content_from_sse
+from gateway.proxy.application.residency import (
+    cache_hit_region_ok,
+    check_residency_existence,
+)
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
 )
 from gateway.proxy.domain.errors import (
+    AllCandidatesOutOfRegionError,
     AllDeploymentsSaturatedError,
     CircuitOpenError,
     UpstreamRateLimitedError,
@@ -96,6 +102,7 @@ from gateway.proxy.domain.ports import (
     ModelChecker,
     PayloadCapturePort,
     ProviderResolver,
+    ResidencyLookup,
     ResponseCache,
     TenantCredentialResolver,
     UsageRecorder,
@@ -654,7 +661,7 @@ async def _run_output_validation_retry(
     try:
         if model_router is not None:
             retry_status, retry_body, retry_served = await model_router.complete(
-                body, upstream=upstream
+                body, upstream=upstream, tenant_id=authz.tenant_id
             )
         else:
             retry_status, retry_body = await upstream.complete(body)
@@ -664,6 +671,11 @@ async def _run_output_validation_retry(
             detail=f"all deployments for '{exc.alias}' are rate-limited",
             headers={"Retry-After": "60"},
         ) from exc
+    except AllCandidatesOutOfRegionError as exc:
+        # residency-policy TASK.md §3 M8: never billed, no usage record — the
+        # attempt-1 usage was already fired above (M8 bounded-retry billing rule);
+        # this retry leg itself produced no usage.
+        raise RESIDENCY_NO_ELIGIBLE_REGION.exc(region=exc.region or "", model_id=exc.alias) from exc
     except UpstreamRateLimitedError as exc:
         _fire_record_with_raw(
             usage_recorder,
@@ -965,10 +977,17 @@ class CompletionUseCase:
         payload_capture: PayloadCapturePort | None = None,
         credit_guard: CreditGuard = PassthroughCreditGuard(),  # noqa: B008
         hold_estimate_usd: Decimal = Decimal("0.50"),
+        residency_lookup: ResidencyLookup | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
         self._budget_guard = budget_guard
+        # residency-policy TASK.md §3 (FROZEN @ v2): None (default) ⇒ zero DB
+        # interaction, byte-identical to pre-residency-policy behavior. Backs BOTH
+        # the Tier 1 existence check (_enforce_governance) and the M7 cache-hit
+        # re-validation below — the SAME instance FallbackModelRouter's Tier 2 filter
+        # uses (wired separately onto the router by main.py).
+        self._residency_lookup: ResidencyLookup | None = residency_lookup
         # credits-ledger TASK.md §3: PassthroughCreditGuard (default) ⇒ check_and_hold is a
         # no-op ⇒ byte-identical to today. When wired, the credit gate runs at the SAME
         # choke point as the budget ladder — see _enforce_governance for the insertion.
@@ -1434,6 +1453,16 @@ class CompletionUseCase:
         # Alias-aware when model_groups provided (§3 A4): validates all candidates.
         await self._check_model_catalog(model_id, authz.tenant_id, model_groups)
 
+        # residency-policy TASK.md §3 (FROZEN @ v2) Tier 1: governance-layer existence
+        # check, immediately after the catalog check (SAME insertion point as
+        # governance.py::NonChatGovernance.authorize — dual-copy governance, never
+        # staggered; ONE shared implementation function, see
+        # gateway.proxy.application.residency). Alias-aware via the same model_groups
+        # already threaded through the catalog check above.
+        await check_residency_existence(
+            self._residency_lookup, model_id, authz.tenant_id, model_groups
+        )
+
         # M10: Most-specific-wins budget enforcement.
         # A soft budget alone is a SIGNAL, not a limit — it must never exempt
         # the key from tenant-budget enforcement. So: hard per-key budget wins
@@ -1611,12 +1640,16 @@ class CompletionUseCase:
             try:
                 if model_router is not None:
                     status, response_body, served_model_id = await model_router.complete(
-                        body, upstream=upstream
+                        body, upstream=upstream, tenant_id=authz.tenant_id
                     )
                 else:
                     status, response_body = await upstream.complete(body)
                     served_model_id = model_id
             except Exception as exc:
+                # residency-policy TASK.md §3: AllCandidatesOutOfRegionError is caught
+                # here too (broad except, by design — this deferred fallback never
+                # raises to its SSE generator) — degrades to the same generic
+                # error-shaped body, never silently serves an out-of-region candidate.
                 _log.warning(
                     "batch window fallback upstream call failed for tenant %s",
                     authz.tenant_id,
@@ -1659,6 +1692,24 @@ class CompletionUseCase:
         finally:
             if _cred_token is not None:
                 reset_provider_credential(_cred_token)  # type: ignore[arg-type]
+
+    async def _residency_cache_ok(
+        self, cached_body: dict[str, Any], model_id: str, tenant_id: uuid.UUID
+    ) -> bool:
+        """M7 — re-validate a cache hit's stamped served region against the tenant's
+        CURRENT residency pin, BEFORE the caller decides to treat it as a HIT.
+
+        Non-destructive peek (uses .get, never .pop) — `_read_served_from_cache`'s own
+        pop still runs later, unaffected, on an actual HIT. True = safe to serve
+        (residency off, no pin, or region satisfies the pin). False = the caller must
+        degrade this fetch to a MISS (never replay a stale cross-region body).
+        """
+        served = cached_body.get(_SERVED_STAMP)
+        if not (isinstance(served, str) and served):
+            served = cached_body.get("model")
+        if not (isinstance(served, str) and served):
+            served = model_id
+        return await cache_hit_region_ok(self._residency_lookup, served, tenant_id)
 
     async def _try_cache_lookup(
         self,
@@ -1705,6 +1756,14 @@ class CompletionUseCase:
         if not no_cache:
             # Step 4.5a: Try exact-match cache lookup
             cached_body = await cache.get(cache_key)
+            if cached_body is not None and not await self._residency_cache_ok(
+                cached_body, model_id, authz.tenant_id
+            ):
+                # residency-policy TASK.md §3 M7: the stamped served region no longer
+                # satisfies the tenant's CURRENT pin — degrade to a MISS, never replay
+                # the stale cross-region body. Falls through to semantic/vector/fresh
+                # routing below, exactly like an ordinary exact-cache miss.
+                cached_body = None
             if cached_body is not None:
                 # EXACT HIT: apply post-call guardrails, then return cached body
                 x_cache = "hit"
@@ -1784,6 +1843,12 @@ class CompletionUseCase:
                     if exact_key_str is not None:
                         # Dereference pointer: GET the exact-cache key body
                         sem_cached_body = await cache.get(exact_key_str)
+                        if sem_cached_body is not None and not await self._residency_cache_ok(
+                            sem_cached_body, model_id, authz.tenant_id
+                        ):
+                            # M7: same stale-cross-region degrade-to-MISS as the exact
+                            # branch above — falls through to the vector layer below.
+                            sem_cached_body = None
                         if sem_cached_body is not None:
                             # SEMANTIC HIT
                             x_cache = "semantic_hit"
@@ -1865,6 +1930,12 @@ class CompletionUseCase:
                     vec_body = await self._vector_cache.lookup(
                         tenant_id=str(authz.tenant_id), model=model_id, body=body
                     )
+                    if vec_body is not None and not await self._residency_cache_ok(
+                        vec_body, model_id, authz.tenant_id
+                    ):
+                        # M7: same stale-cross-region degrade-to-MISS — falls through
+                        # to the ordinary MISS path (fresh, residency-filtered routing).
+                        vec_body = None
                     if vec_body is not None:
                         x_cache = "vector_hit"
                         # cache-alias-billing (B6): read+pop served BEFORE masking.
@@ -2290,7 +2361,7 @@ class CompletionUseCase:
                 # fall back to direct upstream.complete() with served_model_id = model_id.
                 if model_router is not None:
                     status, response_body, served_model_id = await model_router.complete(
-                        body, upstream=upstream
+                        body, upstream=upstream, tenant_id=authz.tenant_id
                     )
                     # Span attribution (§3 OBSERVABILITY): fallback occurred when the
                     # served candidate differs from the alias group's first choice.
@@ -2307,6 +2378,14 @@ class CompletionUseCase:
                 raise RATE_LIMITED.exc(
                     detail=f"all deployments for '{exc.alias}' are rate-limited",
                     headers={"Retry-After": "60"},
+                ) from exc
+            except AllCandidatesOutOfRegionError as exc:
+                # residency-policy TASK.md §3 M4/M8: router-layer dial-constraint filter
+                # emptied the candidate set. Fail-closed 403 — NEVER the generic
+                # RATE_LIMITED/UPSTREAM_UNAVAILABLE path, never billed, no usage record
+                # (this except fires BEFORE any _fire_record* call below).
+                raise RESIDENCY_NO_ELIGIBLE_REGION.exc(
+                    region=exc.region or "", model_id=exc.alias
                 ) from exc
             except UpstreamRateLimitedError as exc:
                 # upstream-ratelimit-passthrough: upstream returned 429 after exhausting
@@ -2870,10 +2949,35 @@ class CompletionUseCase:
                 # (§3 STREAMING BOUNDARY); no fallback on stream failure.
                 if model_router is not None and self._stream_resilience_enabled:
                     first_chunk, gen = await model_router.stream_resilient(
-                        body, upstream=upstream, on_served=_capture_served
+                        body,
+                        upstream=upstream,
+                        on_served=_capture_served,
+                        tenant_id=authz.tenant_id,
                     )
                 elif model_router is not None:
-                    gen = model_router.stream(body, upstream=upstream, on_served=_capture_served)
+                    # residency-policy TASK.md §3 Tier 2: stream() is a plain (non-async)
+                    # function that dials upstream EAGERLY (frozen model-fallbacks F11
+                    # contract) — it cannot itself await the residency DB lookup. Pre-
+                    # compute the filtered candidate set HERE (async context) and check
+                    # emptiness ourselves so the 403 carries the correct pinned region —
+                    # never even calling stream() when the residency-filtered set is
+                    # empty (stream() still defensively re-raises too, see its docstring).
+                    _residency_result = await model_router.residency_candidates(
+                        model_id, authz.tenant_id
+                    )
+                    _candidates_override: list[str] | None = None
+                    if _residency_result is not None:
+                        _pin, _candidates_override = _residency_result
+                        if not _candidates_override:
+                            raise RESIDENCY_NO_ELIGIBLE_REGION.exc(
+                                region=_pin or "", model_id=model_id
+                            )
+                    gen = model_router.stream(
+                        body,
+                        upstream=upstream,
+                        on_served=_capture_served,
+                        candidates_override=_candidates_override,
+                    )
                     # upstream-ratelimit-passthrough: peek the first chunk so a pre-first-byte
                     # UpstreamRateLimitedError surfaces here (before StreamingResponse commits).
                     # Set the partial-usage sink now so peek-time side-effects are captured.
@@ -2922,6 +3026,15 @@ class CompletionUseCase:
                         first_chunk = None
                     except StopAsyncIteration:
                         first_chunk = None  # empty stream — commit transparently
+            except AllCandidatesOutOfRegionError as exc:
+                # residency-policy TASK.md §3 M4/M8 — raised by stream_resilient()'s own
+                # Tier 2 filter (the sync stream() path is pre-checked above and never
+                # reaches here in practice, but the same mapping applies defensively).
+                # Status not yet committed — fail-closed 403, never billed, no usage
+                # record, never the generic 502/429 path.
+                raise RESIDENCY_NO_ELIGIBLE_REGION.exc(
+                    region=exc.region or "", model_id=exc.alias
+                ) from exc
             except UpstreamRateLimitedError as exc:
                 # upstream-ratelimit-passthrough: upstream returned 429 pre-first-byte.
                 # Status not yet committed — surface as client 429 ERR_UPSTREAM_RATE_LIMITED.

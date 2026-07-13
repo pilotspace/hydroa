@@ -214,6 +214,9 @@ async def _authorize_governance(app: Any, token: str, model_id: str) -> Any:
             rate_limiter=_rate_limiter,
             redis_client=_redis,
             session_factory=app.state.sessionmaker,
+            # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same
+            # getattr pattern used across every other NonChatGovernance construction.
+            residency_lookup=getattr(app.state, "residency_lookup", None),
         )
         authz = await governance.authorize(raw_key=token, model_id=model_id, estimated_tokens=None)
 
