@@ -100,4 +100,23 @@ export const defaultHandlers = [
   http.delete(`${BASE}/admin/keys/:key_id`, () =>
     new HttpResponse(null, { status: 204 })
   ),
+
+  // residency-tiers-ui (M7/M8): ModelsPage now fires GET /admin/residency-policy
+  // unconditionally (its own independent read). MUST be an INITIAL handler (not a
+  // runtime server.use) for the same reason as /api/auth/me / impersonation above —
+  // resetHandlers() must preserve it so tests/catalog-sync.test.tsx (and any other
+  // pre-existing ModelsPage render) stays green without per-test edits. Default =
+  // unpinned; tests asserting ineligibility behavior override per scenario.
+  http.get(`${APP}/api/gw/admin/residency-policy`, () =>
+    HttpResponse.json({ region: null, updated_at: null })
+  ),
+
+  // residency-tiers-ui (M10): CreateKeyDialog reads GET /admin/service-tiers once per
+  // open (plain fetch, works with or without a QueryClientProvider ancestor — several
+  // pre-existing tests in tests/keys-dialog-a11y.test.tsx and tests/ui-ux-verify.test.tsx
+  // render CreateKeyDialog standalone with NO QueryClientProvider). Default = the
+  // service-tiers seed so those tests stay green untouched.
+  http.get(`${APP}/api/gw/admin/service-tiers`, () =>
+    HttpResponse.json({ default_tier: "standard", priority_markup_pct: "25" })
+  ),
 ];

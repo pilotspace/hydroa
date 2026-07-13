@@ -193,6 +193,26 @@ export const bffHandlers = [
       choices: [{ message: { content: "" } }],
     })
   ),
+
+  // residency-tiers-ui (M7/M8): ModelsPage now fires GET /admin/residency-policy
+  // unconditionally (its own independent read, never blocking the base table render).
+  // Default = unpinned, so every pre-existing ModelsPage test (list/toggle/a11y/paging/
+  // capabilities/redesign suites) stays byte-identical without per-test edits — mirrors
+  // the impersonation/catalog-models/conversations/memories/artifacts idiom above.
+  // Tests asserting ineligibility behavior override with their own server.use(...).
+  http.get(`${APP}/api/gw/admin/residency-policy`, () =>
+    HttpResponse.json({ region: null, updated_at: null })
+  ),
+
+  // residency-tiers-ui (M10): CreateKeyDialog reads GET /admin/service-tiers once per
+  // open (a plain fetch, not react-query, so it works even for the standalone-render
+  // tests that mount CreateKeyDialog with no QueryClientProvider). Default = the
+  // service-tiers seed (+25% priority markup) so any test that opens the dialog
+  // without caring about pricing stays green. Real shape: service-tiers TASK.md §3 M11
+  // { default_tier, priority_markup_pct } (effective, override-or-seed).
+  http.get(`${APP}/api/gw/admin/service-tiers`, () =>
+    HttpResponse.json({ default_tier: "standard", priority_markup_pct: "25" })
+  ),
 ];
 
 export const defaultHandlers = [...gatewayHandlers, ...bffHandlers];

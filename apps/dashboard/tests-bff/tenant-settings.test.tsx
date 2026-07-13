@@ -138,6 +138,18 @@ const retentionGet = (body: unknown = RETENTION_DEFAULT) =>
   http.get(`${APP}/api/gw/admin/retention-policy`, () =>
     HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
 
+// residency-tiers-ui TASK.md §3 (residency-policy §3 FROZEN @ v2, CR-1 — region enum
+// is {null,"us","eu","ap"}). A default {region:null,...} is ALSO registered as an
+// INITIAL handler in mocks/handlers.ts (DataResidencyFieldset's GET now fires
+// unconditionally whenever this tab mounts) — tests below override per scenario.
+const RESIDENCY_UNSET = { region: null as string | null, updated_at: null as string | null };
+const RESIDENCY_US = { region: "us", updated_at: "2026-07-01T00:00:00Z" };
+const RESIDENCY_EU = { region: "eu", updated_at: "2026-07-05T00:00:00Z" };
+
+const residencyGet = (body: unknown = RESIDENCY_UNSET) =>
+  http.get(`${APP}/api/gw/admin/residency-policy`, () =>
+    HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
+
 async function openTab(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
   await screen.findByRole("tablist");
   await user.click(screen.getByRole("tab", { name }));
@@ -481,7 +493,7 @@ describe("SettingsPage — new tabs shell", () => {
       "Provider Keys",
       "SCIM",
       "SAML SSO",
-      "Retention & ZDR",
+      "Data & residency",
     ]);
 
     // Cache's GET fired (default tab); the three new tabs' GETs must NOT have fired yet.
@@ -841,12 +853,12 @@ describe("SettingsPage — SAML SSO tab", () => {
 });
 
 // ── Retention & ZDR tab ─────────────────────────────────────────────────────────────
-describe("SettingsPage — Retention & ZDR tab", () => {
+describe("SettingsPage — Retention & ZDR tab (now labeled Data & residency)", () => {
   it("test_retention_tab_default_state_seven_rows_no_audit", async () => {
     const user = userEvent.setup();
     server.use(cacheGet(), retentionGet());
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
 
     const windowInput = await screen.findByLabelText(/window \(days\)/i);
     expect(windowInput).toHaveValue(null);
@@ -891,7 +903,7 @@ describe("SettingsPage — Retention & ZDR tab", () => {
       }),
     );
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
     const windowInput = await screen.findByLabelText(/window \(days\)/i);
 
     await user.clear(windowInput);
@@ -914,7 +926,7 @@ describe("SettingsPage — Retention & ZDR tab", () => {
       ),
     );
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
     const windowInput = await screen.findByLabelText(/window \(days\)/i);
 
     await user.clear(windowInput);
@@ -937,7 +949,7 @@ describe("SettingsPage — Retention & ZDR tab", () => {
       }),
     );
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
     await screen.findByLabelText(/window \(days\)/i);
 
     const zdrSwitch = screen.getByRole("switch", { name: /enable zero-data-retention/i });
@@ -967,7 +979,7 @@ describe("SettingsPage — Retention & ZDR tab", () => {
       }),
     );
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
     await screen.findByLabelText(/window \(days\)/i);
 
     const zdrSwitch = screen.getByRole("switch", { name: /enable zero-data-retention/i });
@@ -990,7 +1002,7 @@ describe("SettingsPage — Retention & ZDR tab", () => {
       }),
     );
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
     await screen.findByLabelText(/window \(days\)/i);
 
     const zdrSwitch = screen.getByRole("switch", { name: /enable zero-data-retention/i });
@@ -1014,7 +1026,7 @@ describe("SettingsPage — Retention & ZDR tab", () => {
       }),
     );
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
     const zdrSwitch = await screen.findByRole("switch", { name: /enable zero-data-retention/i });
     expect(zdrSwitch).toHaveAttribute("aria-checked", "true");
 
@@ -1028,7 +1040,7 @@ describe("SettingsPage — Retention & ZDR tab", () => {
     const user = userEvent.setup();
     server.use(cacheGet(), retentionGet(RETENTION_ZDR_ON));
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
 
     const windowInput = await screen.findByLabelText(/window \(days\)/i);
     expect(windowInput).toBeDisabled();
@@ -1046,11 +1058,282 @@ describe("SettingsPage — Retention & ZDR tab", () => {
       ),
     );
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/forbidden/i);
     expect(screen.queryByLabelText(/window \(days\)/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── Data residency fieldset (residency-tiers-ui TASK.md §3 M1-M5, R1-R3) ───────────
+//
+// NOTE (CR-1, "DECIDED at freeze review", residency-tiers-ui TASK.md §3): the ORIGINAL
+// v1 draft scope-cut "ap" as a visibly-disabled option (Issue #1). That fork was
+// SUPERSEDED before this task's own freeze — residency-policy re-froze @ v2 with "ap"
+// in its region enum, so this v1 build ships "ap" as a FULLY ENABLED pin choice, with
+// its own consequence-line copy joining EU/US. The superseded "AP disabled" scenario
+// text in §2 is historical (frozen, never edited); this suite tests the CURRENT,
+// CR-1-corrected behavior per the binding freeze-review note.
+const EU_CONSEQUENCE =
+  "Pinning to EU means requests that cannot run in the EU will be refused, not rerouted. This also blocks realtime voice for this tenant — no realtime model is region-tagged yet.";
+const US_CONSEQUENCE =
+  "Pinning to US means requests that cannot run in the US will be refused, not rerouted. This also blocks realtime voice for this tenant — no realtime model is region-tagged yet.";
+
+describe("SettingsPage — Data residency fieldset", () => {
+  it("test_third_fieldset_renders_below_retention_and_zdr", async () => {
+    // M1: retention + ZDR fieldsets render unchanged; a new "Data residency" fieldset
+    // renders below them, fetching GET /admin/residency-policy independently.
+    const user = userEvent.setup();
+    server.use(cacheGet(), retentionGet(), residencyGet());
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+
+    await screen.findByLabelText(/window \(days\)/i);
+    expect(screen.getByRole("switch", { name: /enable zero-data-retention/i })).toBeInTheDocument();
+    expect(await screen.findByText(/data residency/i)).toBeInTheDocument();
+    expect(await screen.findByRole("radio", { name: /no pin \(unrestricted\)/i })).toBeChecked();
+  });
+
+  it("test_fresh_pin_eu_shows_confirm_dialog_before_put", async () => {
+    // M3: unset -> EU triggers ConfirmDialog with the EU consequence line, PUT NOT yet called.
+    const user = userEvent.setup();
+    let putCalled = false;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      residencyGet(RESIDENCY_UNSET),
+      http.put(`${APP}/api/gw/admin/residency-policy`, () => {
+        putCalled = true;
+        return HttpResponse.json(RESIDENCY_EU);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    await screen.findByRole("radio", { name: /^eu$/i });
+
+    await user.click(screen.getByRole("radio", { name: /^eu$/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(EU_CONSEQUENCE)).toBeInTheDocument();
+    expect(putCalled).toBe(false);
+  });
+
+  it("test_switching_existing_pin_us_to_eu_also_confirms", async () => {
+    // M3: pinned A -> pinned B is NOT exempt from the confirm gate.
+    const user = userEvent.setup();
+    let putBody: Record<string, unknown> | null = null;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      residencyGet(RESIDENCY_US),
+      http.put(`${APP}/api/gw/admin/residency-policy`, async ({ request }) => {
+        putBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(RESIDENCY_EU);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    const usRadio = await screen.findByRole("radio", { name: /^us$/i });
+    expect(usRadio).toBeChecked();
+
+    await user.click(screen.getByRole("radio", { name: /^eu$/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /pin to eu/i }));
+
+    await waitFor(() => expect(putBody).toEqual({ region: "eu" }));
+  });
+
+  it("test_confirming_eu_pin_persists_and_reconciles_from_response", async () => {
+    // M3: on success the fieldset displays the PUT response value, not local state.
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      residencyGet(RESIDENCY_UNSET),
+      http.put(`${APP}/api/gw/admin/residency-policy`, () => HttpResponse.json(RESIDENCY_EU)),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    await screen.findByRole("radio", { name: /^eu$/i });
+
+    await user.click(screen.getByRole("radio", { name: /^eu$/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /pin to eu/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("radio", { name: /^eu$/i })).toBeChecked();
+  });
+
+  it("test_cancelling_confirm_leaves_server_pin_unchanged", async () => {
+    // M3, mirrors handleZdrConfirmClose: cancel -> no PUT, reconciles to the last-known
+    // server value ("US"), not the pending "EU" selection.
+    const user = userEvent.setup();
+    let putCalled = false;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      residencyGet(RESIDENCY_US),
+      http.put(`${APP}/api/gw/admin/residency-policy`, () => {
+        putCalled = true;
+        return HttpResponse.json(RESIDENCY_EU);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    await screen.findByRole("radio", { name: /^us$/i });
+
+    await user.click(screen.getByRole("radio", { name: /^eu$/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("radio", { name: /^us$/i })).toBeChecked();
+    expect(putCalled).toBe(false);
+  });
+
+  it("test_clearing_pin_fires_immediately_no_confirm", async () => {
+    // M4: loosening (pin -> unrestricted) is safe/immediate, mirrors ZDR-disable.
+    const user = userEvent.setup();
+    let putBody: Record<string, unknown> | null = null;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      residencyGet(RESIDENCY_EU),
+      http.put(`${APP}/api/gw/admin/residency-policy`, async ({ request }) => {
+        putBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(RESIDENCY_UNSET);
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    await screen.findByRole("radio", { name: /^eu$/i });
+
+    await user.click(screen.getByRole("radio", { name: /no pin \(unrestricted\)/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(putBody).toEqual({ region: null }));
+  });
+
+  it("test_ap_is_a_fully_enabled_pin_with_its_own_consequence_line", async () => {
+    // CR-1 (superseding the original v1 draft's disabled-AP scope-cut): AP is a real,
+    // selectable pin, confirm-gated exactly like EU/US, naming Vietnam/SEA routing.
+    const user = userEvent.setup();
+    let putBody: Record<string, unknown> | null = null;
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      residencyGet(RESIDENCY_UNSET),
+      http.put(`${APP}/api/gw/admin/residency-policy`, async ({ request }) => {
+        putBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ region: "ap", updated_at: "2026-07-12T00:00:00Z" });
+      }),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    const apRadio = await screen.findByRole("radio", { name: /^ap$/i });
+    expect(apRadio).toBeEnabled();
+
+    await user.click(apRadio);
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/asia-pacific/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/vietnam/i)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /pin to ap/i }));
+
+    await waitFor(() => expect(putBody).toEqual({ region: "ap" }));
+  });
+
+  it("test_non_owner_gets_inline_403_and_reconciles", async () => {
+    // M5, R3: a MEMBER sees the SAME picker; PUT 403s; the fieldset shows the
+    // existing inline mutError pattern and reconciles the displayed value.
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      residencyGet(RESIDENCY_EU),
+      http.put(`${APP}/api/gw/admin/residency-policy`, () =>
+        problem("Forbidden", 403, "ERR_AUTH_FORBIDDEN"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    await screen.findByRole("radio", { name: /^eu$/i });
+
+    // clearing is the immediate (non-confirm-gated) path — simplest way to exercise
+    // "change selection and click Save" without an intervening dialog.
+    await user.click(screen.getByRole("radio", { name: /no pin \(unrestricted\)/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/forbidden/i);
+    await waitFor(() => expect(screen.getByRole("radio", { name: /^eu$/i })).toBeChecked());
+  });
+
+  it("test_defensive_422_reverts_pending_selection", async () => {
+    // R2: a 422 (should be unreachable given the FE only ever sends {null,us,eu,ap})
+    // never writes the pending selection into state; title shown inline via ConfirmDialog.
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      residencyGet(RESIDENCY_US),
+      http.put(`${APP}/api/gw/admin/residency-policy`, () =>
+        problem("Invalid residency region", 422, "ERR_RESIDENCY_REGION_INVALID"),
+      ),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    await screen.findByRole("radio", { name: /^us$/i });
+
+    await user.click(screen.getByRole("radio", { name: /^eu$/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /pin to eu/i }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/invalid residency region/i);
+    await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("radio", { name: /^us$/i })).toBeChecked();
+  });
+
+  it("test_radios_and_save_disabled_while_confirm_open_no_double_submit", async () => {
+    // Safety rule (§5): no second PUT can fire while one is already in flight/pending
+    // confirmation — mirrors zdrConfirmOpen's disabled={zdrConfirmOpen} guard.
+    const user = userEvent.setup();
+    server.use(
+      cacheGet(),
+      retentionGet(),
+      residencyGet(RESIDENCY_UNSET),
+      http.put(`${APP}/api/gw/admin/residency-policy`, () => HttpResponse.json(RESIDENCY_EU)),
+    );
+    render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    await screen.findByRole("radio", { name: /^eu$/i });
+
+    await user.click(screen.getByRole("radio", { name: /^eu$/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await screen.findByRole("dialog");
+
+    expect(screen.getByRole("radio", { name: /^eu$/i })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /^us$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+  });
+
+  it("test_residency_fieldset_axe_clean", async () => {
+    const user = userEvent.setup();
+    server.use(cacheGet(), retentionGet(), residencyGet(RESIDENCY_EU));
+    const { container } = render(<SettingsPage />, { wrapper: Wrapper });
+    await openTab(user, /^data & residency$/i);
+    await screen.findByRole("radio", { name: /^eu$/i });
+
+    expect(await axeSeriousCritical(container)).toEqual([]);
   });
 });
 
@@ -1065,7 +1348,7 @@ describe("SettingsPage — new tabs cross-tenant 404", () => {
       ),
     );
     render(<SettingsPage />, { wrapper: Wrapper });
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/tenant not found/i);
@@ -1159,7 +1442,7 @@ describe("SettingsPage — axe + nav", () => {
     await screen.findByLabelText(/idp x509 certificate/i);
     expect(await axeSeriousCritical(container)).toEqual([]);
 
-    await openTab(user, /^retention & zdr$/i);
+    await openTab(user, /^data & residency$/i);
     await screen.findByLabelText(/window \(days\)/i);
     expect(await axeSeriousCritical(container)).toEqual([]);
   });
