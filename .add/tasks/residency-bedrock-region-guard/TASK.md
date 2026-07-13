@@ -2,9 +2,8 @@
 
 slug: residency-bedrock-region-guard · created: 2026-07-13 · stage: production · sensitivity: security
 milestone: residency-service-tiers
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: verify   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -54,8 +53,6 @@ Assumptions — lowest-confidence first:
   - [ ] The guard belongs in the adapter (post-credential, pre-dial) rather than at the governance layer — confirmed: only the adapter has both the resolved credential region AND the concrete model id together; residency-policy's governance tier filters the catalog tag but never sees the credential region.
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -101,8 +98,6 @@ Scenario: the shared guard is the single source of truth for all three entry poi
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -129,7 +124,6 @@ Glossary deltas: Bedrock cross-region inference profile: an AWS model id prefixe
 Least-sure flag surfaced at freeze: ⚠ [spec] the profile-prefix→geo map is assumed complete at {us, eu, apac}. If AWS ships a NEW-geo cross-region profile (e.g. `sa.`/`ca.`) and the catalog seeds it, an id with that unknown prefix falls through M3 (treated as unprefixed) and SKIPS the guard — a fail-OPEN gap for that new geo until the map is widened. Mitigation contracted: a test pins the three known prefixes + a TODO to extend the map whenever a new-geo Bedrock row is seeded. Accepted as the residual because the only Bedrock rows shipping in M2 are us./eu./apac. (bedrock_seed.py) — the gap cannot manifest until a new-geo row is added, which is itself the trigger to widen the map.
 Status: FROZEN @ v1 — approved by Tin Dang
 Reported: <yes — the freeze report (banner/ARC/SHAPE) rendered before this froze | no>
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -148,9 +142,6 @@ Plan (one test per scenario, asserting behavior not internals):
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 Actual test path: `apps/gateway/tests/bedrock_region_guard/test_bedrock_region_guard.py` (26 tests). RED evidence: `ImportError: cannot import name '_assert_region_consistent' from 'gateway.proxy.infrastructure.bedrock_embeddings'` (collection error — right reason, no implementation existed). Committed alone as `c2a307d test(bedrock): add red suite for fail-closed BYOK region guard`.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -166,8 +157,6 @@ Strategy actually used: as planned (see ordered batches above — no material de
 Safety rule (feature-specific): the guard call is a single, unconditional, synchronous statement placed between model_id resolution and `_build_endpoint`/the first dial in all 3 entry points — no early return, no conditional bypass, no path reaches `_build_endpoint` before the guard has run.
 Code lives in: `apps/gateway/src/gateway/proxy/infrastructure/`, `apps/gateway/src/gateway/core/error_catalog.py`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear. Honored — zero new dependencies; only stdlib + existing `gateway.core.error_catalog`/`gateway.core.errors` imports (already an established infrastructure-layer import pattern, e.g. vertex_upstream.py, azure_upstream.py, azure_embeddings.py).
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -214,11 +203,9 @@ Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-13
 
 ---
 
@@ -227,11 +214,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose coarse geo-prefix match — the credential's AWS region geo-prefix (us-/eu-/ap-) MUST match the model id's cross-region-profile prefix (us./eu./apac.), fail-closed-before-dial; rejected full AWS-region-set enumeration per profile (rejected: brittle, needs maintenance as AWS adds regions, no security gain over the geo-prefix) · rely on AWS ValidationException (rejected: the payload has already transited the wrong-region endpoint by then — the leak is the transit, not the inference)
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned (see ordered batches above — no material deviation).
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

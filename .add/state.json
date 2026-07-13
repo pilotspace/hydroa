@@ -956,12 +956,12 @@
     },
     "residency-bedrock-region-guard": {
       "title": "Fail-closed Bedrock BYOK region guard for residency",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-13T08:20:36+00:00",
-      "updated": "2026-07-13T08:41:46+00:00",
+      "updated": "2026-07-13T08:52:13+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-13T08:23:31+00:00",
@@ -984,7 +984,22 @@
           "apps/gateway/src/gateway/core/error_catalog.py",
           "apps/gateway/tests/bedrock_region_guard/"
         ],
-        "snapshot_md5": "067640fe576ba0e59cf3fee6dd5725ac"
+        "snapshot_md5": "c8250a218c98bee106c40b77148c83fe"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-13T08:52:02+00:00",
+            "reason": "scope_violation: task 'residency-bedrock-region-guard' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (8 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
@@ -1063,7 +1078,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T08:51:44+00:00",
+  "updated": "2026-07-13T08:52:13+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
