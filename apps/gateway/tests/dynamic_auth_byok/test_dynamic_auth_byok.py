@@ -366,7 +366,9 @@ async def test_azure_aad_mode_reads_from_contextvar() -> None:
         def __init__(self) -> None:
             self.calls: list[object] = []
 
-        def get_or_create(self, config: object) -> _FakeTokenProvider:  # type: ignore[override]
+        def get_or_create(
+            self, config: object, tenant_id: object | None = None
+        ) -> _FakeTokenProvider:  # type: ignore[override]
             self.calls.append(config)
             return _FakeTokenProvider()
 

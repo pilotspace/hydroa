@@ -33,7 +33,10 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from gateway.core.error_catalog import PAYLOAD_INPUT_TOO_LONG, UNSUPPORTED_CONTENT_PART
-from gateway.proxy.domain.credential_context import get_provider_credential
+from gateway.proxy.domain.credential_context import (
+    get_credential_tenant,
+    get_provider_credential,
+)
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import (
     GoogleServiceAccountCredential,
@@ -203,7 +206,11 @@ class VertexCompletionUpstream:
         config = cred.to_vertex_service_account_config()
         tp: VertexTokenProvider
         if self._token_provider_cache is not None:
-            tp = self._token_provider_cache.get_or_create(config)
+            # M4 CR-2: scope the cached bearer token per (hydroa_tenant, identity) so a
+            # tenant reusing another tenant's (client_email, project_id) can never be
+            # served the victim's token. get_credential_tenant() is None only off the
+            # BYOK request path (then get_or_create builds a fresh, unshared provider).
+            tp = self._token_provider_cache.get_or_create(config, get_credential_tenant())
         else:
             # No cache supplied (e.g. verify tests) — instantiate directly per-call.
             tp = VertexTokenProvider(config=config)

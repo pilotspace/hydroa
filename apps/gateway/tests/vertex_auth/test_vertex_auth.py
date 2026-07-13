@@ -329,8 +329,8 @@ async def test_cache_key_excludes_private_key() -> None:
     # what matters is identity (client_email, project_id) drives reuse regardless.
     cfg_b = _make_config(private_key=_PRIVATE_KEY_PEM, private_key_id="different-kid")
 
-    p1 = cache.get_or_create(cfg_a)
-    p2 = cache.get_or_create(cfg_b)
+    p1 = cache.get_or_create(cfg_a, "tenant-A")
+    p2 = cache.get_or_create(cfg_b, "tenant-A")
 
     assert len(constructed) == 1, (
         "Two configs sharing (client_email, project_id) must share ONE cache entry "
@@ -349,8 +349,8 @@ async def test_cache_distinct_identities_distinct_providers() -> None:
         return object()
 
     cache = VertexTokenProviderCache(ttl_s=300.0, max_size=512, provider_factory=_factory)
-    p_a = cache.get_or_create(_make_config(client_email="a@x.iam.gserviceaccount.com"))
-    p_b = cache.get_or_create(_make_config(client_email="b@x.iam.gserviceaccount.com"))
+    p_a = cache.get_or_create(_make_config(client_email="a@x.iam.gserviceaccount.com"), "tenant-A")
+    p_b = cache.get_or_create(_make_config(client_email="b@x.iam.gserviceaccount.com"), "tenant-A")
     assert len(constructed) == 2
     assert p_a is not p_b
 
@@ -361,7 +361,7 @@ async def test_cache_default_provider_factory_builds_a_real_provider() -> None:
     from gateway.proxy.infrastructure.vertex_ad import VertexTokenProvider, VertexTokenProviderCache
 
     cache = VertexTokenProviderCache(ttl_s=300.0, max_size=512)
-    provider = cache.get_or_create(_make_config())
+    provider = cache.get_or_create(_make_config(), "tenant-A")
     assert isinstance(provider, VertexTokenProvider)
     await provider.aclose()
 
@@ -381,9 +381,9 @@ async def test_cache_ttl_expiry_evicts_and_closes_old_provider() -> None:
     cache = VertexTokenProviderCache(
         ttl_s=10.0, max_size=512, now_fn=clock, provider_factory=lambda cfg: _FakeProvider()
     )
-    first = cache.get_or_create(_make_config())
+    first = cache.get_or_create(_make_config(), "tenant-A")
     clock.t = 100.0  # past ttl_s
-    second = cache.get_or_create(_make_config())
+    second = cache.get_or_create(_make_config(), "tenant-A")
     assert first is not second
     await asyncio.sleep(0)  # let the fire-and-forget close task run
     assert closed == [first]
@@ -403,9 +403,9 @@ async def test_cache_size_cap_evicts_oldest_entry() -> None:
     cache = VertexTokenProviderCache(
         ttl_s=300.0, max_size=2, provider_factory=lambda cfg: _FakeProvider()
     )
-    p1 = cache.get_or_create(_make_config(client_email="a@x.iam.gserviceaccount.com"))
-    cache.get_or_create(_make_config(client_email="b@x.iam.gserviceaccount.com"))
-    cache.get_or_create(_make_config(client_email="c@x.iam.gserviceaccount.com"))
+    p1 = cache.get_or_create(_make_config(client_email="a@x.iam.gserviceaccount.com"), "tenant-A")
+    cache.get_or_create(_make_config(client_email="b@x.iam.gserviceaccount.com"), "tenant-A")
+    cache.get_or_create(_make_config(client_email="c@x.iam.gserviceaccount.com"), "tenant-A")
     await asyncio.sleep(0)
     assert closed == [p1]
 
@@ -586,3 +586,68 @@ async def test_no_ssrf_guard_invoked_for_vertex_put_body() -> None:
             await app.state.engine.dispose()
     finally:
         router_mod.assert_literal_host_not_denied = original  # type: ignore[assignment]
+
+
+# ---------------------------------------------------------------------------
+# M4 CR-2 (2026-07-13, security HARD-STOP) — cross-tenant token-cache isolation.
+# The 2nd adversarial security verify demonstrated that keying the cache by
+# (client_email, project_id) only lets tenant B reuse tenant A's GCP identity and
+# be served A's live token without A's private key. Fixed: key is now
+# (hydroa_tenant_id, client_email, project_id).
+# ---------------------------------------------------------------------------
+
+
+async def test_cache_isolated_across_hydroa_tenants() -> None:
+    """Tenant B reusing tenant A's exact (client_email, project_id) gets a DISTINCT
+    provider entry — A's cached token is NEVER served to B."""
+    from gateway.proxy.infrastructure.vertex_ad import VertexTokenProviderCache
+
+    constructed: list[Any] = []
+
+    def _factory(config: Any) -> Any:
+        constructed.append(config)
+        return object()
+
+    cache = VertexTokenProviderCache(ttl_s=300.0, max_size=512, provider_factory=_factory)
+    shared_identity = _make_config(client_email="shared@x.iam.gserviceaccount.com")
+
+    p_a = cache.get_or_create(shared_identity, "tenant-A")
+    p_b = cache.get_or_create(shared_identity, "tenant-B")
+
+    assert len(constructed) == 2, (
+        "same GCP identity under two Hydroa tenants must build TWO entries, not share one"
+    )
+    assert p_a is not p_b, "tenant B must not receive tenant A's cached provider/token"
+
+
+async def test_cache_same_tenant_same_identity_shares_entry() -> None:
+    """The isolation is per-(tenant, identity): the SAME tenant re-resolving the same
+    identity still shares one entry (rotation-within-TTL behavior preserved)."""
+    from gateway.proxy.infrastructure.vertex_ad import VertexTokenProviderCache
+
+    constructed: list[Any] = []
+    cache = VertexTokenProviderCache(
+        ttl_s=300.0, max_size=512, provider_factory=lambda c: (constructed.append(c), object())[1]
+    )
+    ident = _make_config()
+    p1 = cache.get_or_create(ident, "tenant-A")
+    p2 = cache.get_or_create(ident, "tenant-A")
+    assert len(constructed) == 1
+    assert p1 is p2
+
+
+async def test_cache_none_tenant_never_shares_entry() -> None:
+    """An unknown owner (tenant_id=None) gets a fresh per-call provider and nothing is
+    cached — an unknown owner can never share or poison another tenant's entry."""
+    from gateway.proxy.infrastructure.vertex_ad import VertexTokenProviderCache
+
+    constructed: list[Any] = []
+    cache = VertexTokenProviderCache(
+        ttl_s=300.0, max_size=512, provider_factory=lambda c: (constructed.append(c), object())[1]
+    )
+    ident = _make_config()
+    p1 = cache.get_or_create(ident, None)
+    p2 = cache.get_or_create(ident, None)
+    assert len(constructed) == 2, "None owner must build fresh each call (no shared entry)"
+    assert p1 is not p2
+    assert len(cache._cache) == 0, "None owner must not populate the cache"  # noqa: SLF001

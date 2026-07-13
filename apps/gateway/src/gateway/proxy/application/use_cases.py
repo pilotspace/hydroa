@@ -928,7 +928,10 @@ async def resolve_provider_credential(
     except ProviderKeyMissing as pkm:
         # §3 CONTRACT: ERR_PROVIDER_KEY_MISSING → HTTP 402 (no secret in the chain).
         raise ProblemError(402, pkm.code, "Provider key not configured for this tenant") from None
-    return set_provider_credential(cred)
+    # Pass tenant_id so the BYOK token caches (vertex_ad / azure_ad) scope cached bearer
+    # tokens per (hydroa_tenant, identity) — the cross-tenant confused-deputy fix
+    # (vertex-adapter M4 CR-2). The returned handle resets BOTH contextvars.
+    return set_provider_credential(cred, tenant_id)
 
 
 class _InlineCostRecovery(Protocol):

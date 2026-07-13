@@ -62,7 +62,7 @@ class _FakeCache:
     def __init__(self, provider: object) -> None:
         self._provider = provider
 
-    def get_or_create(self, config: object) -> object:
+    def get_or_create(self, config: object, tenant_id: object | None = None) -> object:
         return self._provider
 
 

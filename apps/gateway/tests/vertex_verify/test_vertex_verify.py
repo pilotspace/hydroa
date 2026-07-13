@@ -138,7 +138,7 @@ class _FixedCache:
     def __init__(self, provider: VertexTokenProvider) -> None:
         self._provider = provider
 
-    def get_or_create(self, config: object) -> VertexTokenProvider:
+    def get_or_create(self, config: object, tenant_id: object | None = None) -> VertexTokenProvider:
         return self._provider
 
 

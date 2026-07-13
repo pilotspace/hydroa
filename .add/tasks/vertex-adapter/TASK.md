@@ -3,7 +3,7 @@
 slug: vertex-adapter · created: 2026-07-12 · stage: production
 milestone: residency-service-tiers
 autonomy: auto
-phase: done
+phase: contract
 sensitivity: security
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -269,10 +269,24 @@ Must:
     `access_token` as an `Authorization: Bearer` header. FAIL-CLOSED on any non-200 / timeout /
     network / malformed-body response — mirrors `AzureADTokenProvider._acquire`'s failure posture
     byte-for-byte (never serves an expired/blank token, never falls back unauthenticated).
-  - M4: `VertexTokenProviderCache` (mirrors `AzureADTokenProviderCache`) caches provider
-    instances by the NON-SECRET identity `(client_email, project_id)` — `private_key` is NEVER
-    part of the cache key, log, span, or exception message. Single-flight `asyncio.Lock` +
-    double-check + expiry-skew refresh, TTL+size-capped eviction — same shape as Azure's.
+  - M4 (CR-2, 2026-07-13, Tin — SECURITY): `VertexTokenProviderCache` caches provider
+    instances by the key `(hydroa_tenant_id, client_email, project_id)`. The owning Hydroa
+    tenant_id is the FIRST key element and is MANDATORY for cross-tenant isolation — WITHOUT it,
+    a tenant who PUTs a credential reusing another tenant's GCP service-account
+    `(client_email, project_id)` is served the victim's live minted bearer token on a cache HIT
+    WITHOUT ever possessing the victim's `private_key`, defeating BYOK (a confused-deputy
+    cross-tenant token theft, demonstrated by the 2nd adversarial security verify — the reason
+    v1's identity-only key is reversed). `private_key` remains NEVER part of the key/log/span/
+    exception. The tenant_id reaches the cache via the request-scoped `current_credential_tenant`
+    contextvar (companion to `credential_context`, set at the single `resolve_provider_credential`
+    seam, mirroring `guardrail_tenant_context`); when it is unset (None — e.g. a non-BYOK path or
+    a unit test), the cache degrades to per-call provider construction (NO shared entry) rather
+    than sharing across an unknown owner — fail-safe, never fail-open. Single-flight
+    `asyncio.Lock` + double-check + expiry-skew refresh, TTL+size-capped eviction unchanged.
+    NOTE: `AzureADTokenProviderCache` carries the identical class of bug (its key includes the
+    Azure-DIRECTORY tenant_id but NOT the Hydroa tenant_id) and is fixed the same way in this
+    task's build (Tin: "fix both now") — its blast radius is narrower (needs two Hydroa tenants
+    sharing one Azure AD app registration) but it is the same confused-deputy.
   - M5: The request URL is
     `https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{bare_model}:generateContent`
     (non-stream) / `:streamGenerateContent?alt=sse` (stream). `location` resolves from a FIXED
@@ -439,13 +453,29 @@ Scenario: JWT-bearer token mint succeeds and is cached   # M3, M4
       HTTP request
 
 Scenario: token cache key excludes the private key   # M4 (security)
-  Given two GoogleServiceAccountCredentials sharing the same (client_email, project_id) but
-        DIFFERENT private_key values
-  When `VertexTokenProviderCache.get_or_create` is called with each
-  Then both resolve to the SAME cached provider entry (the cache key is (client_email, project_id)
-       only)
+  Given two GoogleServiceAccountCredentials for the SAME hydroa tenant sharing the same
+        (client_email, project_id) but DIFFERENT private_key values
+  When `VertexTokenProviderCache.get_or_create` is called with each (same tenant_id)
+  Then both resolve to the SAME cached provider entry (private_key is NOT part of the key —
+       rotation takes effect within TTL)
   And no log line, span attribute, or exception message anywhere in the mint path contains the
       raw private_key value
+
+Scenario: token cache is isolated across hydroa tenants   # M4 (CR-2, security HARD-STOP)
+  Given tenant A has minted and cached a live vertex bearer token, and tenant B then PUTs a
+        credential REUSING A's exact (client_email, project_id) but with B's own (or an invalid)
+        private_key
+  When tenant B's request resolves its provider and calls `get_or_create` under B's tenant_id
+  Then B does NOT receive A's cached provider/token — a SEPARATE cache entry keyed by
+       (B_tenant_id, client_email, project_id) is used, so B must mint with B's own key (or fail
+       closed on an invalid one)
+  And A's token is NEVER served to B (no cross-tenant confused-deputy token theft)
+
+Scenario: unknown credential owner never shares a cache entry   # M4 (CR-2, fail-safe)
+  Given the `current_credential_tenant` contextvar is unset (None) at the cache call
+  When `get_or_create` runs
+  Then a fresh per-call provider is constructed (no shared cache entry under a None owner) —
+       degrade fail-safe, never fold an unknown owner into a shared identity-only entry
 
 Scenario: single-flight refresh under concurrent expiry   # M4, edge case (race)
   Given a cached token that has just expired (past TTL-minus-skew)
@@ -640,8 +670,10 @@ vertex_ad.py   (mirrors azure_ad.py file-for-file)
     token_uri: str = "https://oauth2.googleapis.com/token"
   VertexTokenProvider: get_token() -> str   (RS256 JWT-bearer mint via pyjwt, single-flight +
     expiry-skew cache, FAIL-CLOSED -> UpstreamUnavailableError on any IDP error)
-  VertexTokenProviderCache: get_or_create(config) -> VertexTokenProvider
-    (key = (client_email, project_id) — NON-SECRET; TTL+size-capped)
+  VertexTokenProviderCache: get_or_create(config, tenant_id) -> VertexTokenProvider
+    (key = (hydroa_tenant_id, client_email, project_id) — NON-SECRET; tenant_id MANDATORY for
+    cross-tenant isolation per M4 CR-2; tenant_id=None -> fresh per-call provider, no shared
+    entry; TTL+size-capped)
 
 vertex_upstream.py   (NEW — implements CompletionUpstream)
   _ID_PREFIX_TO_LOCATION: dict[str, str] = {"eu": "europe-west4", "ap": "asia-southeast1"}
@@ -720,7 +752,7 @@ Glossary deltas:
   distinct from `BedrockCredential.region` (one AWS region pinned per credential); one Vertex
   credential serves every seeded Vertex location for that tenant.
 
-Status: FROZEN @ v1 — approved by Tin Dang
+Status: FROZEN @ v2 — approved by Tin Dang
 Reported: no — draft only; the freeze report renders when a human reviews this for FROZEN.
 
 Least-sure flag surfaced at freeze: ⚠ [spec] §1 Assumption #1 — Vertex's 4xx error-envelope shape
@@ -764,7 +796,10 @@ Plan (one test per scenario, asserting behavior not internals):
   - test_vertex_adapter_registered: arrange app boot / act inspect app.state.chat_adapters / assert "vertex" key bound to VertexCompletionUpstream · covers: M1
   - test_translation_byte_identical_to_gemini_pure_fn: arrange OpenAI request w/ tools+system / act VertexCompletionUpstream's internal translate call vs gemini_upstream._openai_to_gemini_request directly / assert byte-identical dict · covers: M2
   - test_jwt_bearer_mint_and_cache: arrange valid GoogleServiceAccountCredential / act get_token() twice within TTL / assert one HTTP POST, RS256 assertion shape (iss/scope/aud/exp) · covers: M3, M4
-  - test_token_cache_key_excludes_private_key: arrange two credentials same (client_email,project_id) diff private_key / act get_or_create both / assert same cached entry, no secret in any log/span · covers: M4
+  - test_token_cache_key_excludes_private_key: arrange two SAME-tenant credentials same (client_email,project_id) diff private_key / act get_or_create both (same tenant_id) / assert same cached entry, no secret in any log/span · covers: M4
+  - test_token_cache_isolated_across_tenants: arrange tenant A cached live token, tenant B reuses A's (client_email,project_id) with B's own key / act get_or_create under B's tenant_id / assert B gets a DISTINCT entry, A's token NEVER served to B · covers: M4 CR-2 (security HARD-STOP)
+  - test_token_cache_none_tenant_no_shared_entry: arrange tenant_id=None / act get_or_create twice / assert fresh per-call provider, no shared cache entry · covers: M4 CR-2 (fail-safe)
+  - test_azure_token_cache_isolated_across_hydroa_tenants: arrange two hydroa tenants sharing one Azure AD app registration (same directory tenant_id+client_id) / act get_or_create under each hydroa tenant_id / assert distinct entries · covers: M4 CR-2 (azure sibling fix)
   - test_single_flight_refresh_race: arrange expired cached token / act 10 concurrent get_token() / assert exactly one POST, all callers get same token · covers: M4 (edge case)
   - test_eu_prefix_resolves_europe_west4: arrange model="eu.gemini-2.5-flash" / act build request / assert host+location=europe-west4, model stripped to gemini-2.5-flash · covers: M5
   - test_ap_prefix_resolves_asia_southeast1: arrange model="ap.gemini-2.5-pro" / act build request / assert host+location=asia-southeast1 · covers: M5

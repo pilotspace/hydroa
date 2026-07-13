@@ -186,7 +186,8 @@ class AzureADTokenProvider:
 # _ProviderEntry — internal cache entry (non-secret key + provider + created time)
 # ---------------------------------------------------------------------------
 
-_CacheKey = tuple[str, str, str, str]  # (tenant_id, client_id, authority, scope)
+_CacheKey = tuple[str, str, str, str, str]
+# (hydroa_tenant_id, azure_directory_tenant_id, client_id, authority, scope) — M4 CR-2
 
 
 @dataclass
@@ -195,13 +196,26 @@ class _ProviderEntry:
     created: float  # monotonic timestamp when the provider was created
 
 
-def _make_cache_key(config: AzureADConfig) -> _CacheKey:
-    """Build the NON-SECRET cache key from an AzureADConfig.
+def _make_cache_key(hydroa_tenant_id: object, config: AzureADConfig) -> _CacheKey:
+    """Build the NON-SECRET, per-(hydroa-tenant, identity) cache key.
+
+    The owning Hydroa ``hydroa_tenant_id`` is the FIRST element and is MANDATORY for
+    cross-tenant isolation (vertex-adapter M4 CR-2, applied to the azure sibling per
+    Tin "fix both now"): the config's OWN ``tenant_id`` is the AZURE-DIRECTORY tenant,
+    NOT the Hydroa tenant — so two Hydroa tenants sharing one Azure AD app registration
+    (same directory tenant_id + client_id) would otherwise collide and one would be
+    served the other's cached bearer token without possessing its client_secret.
 
     Deliberately excludes ``client_secret`` — the key must never contain a secret
     (memory hygiene; rotation is handled as bounded staleness <= TTL).
     """
-    return (config.tenant_id, config.client_id, config.authority, config.scope)
+    return (
+        str(hydroa_tenant_id),
+        config.tenant_id,
+        config.client_id,
+        config.authority,
+        config.scope,
+    )
 
 
 def _default_provider_factory(config: AzureADConfig) -> AzureADTokenProvider:
@@ -274,18 +288,27 @@ class AzureADTokenProviderCache:
             return
         _task = loop.create_task(provider.aclose())  # noqa: RUF006 — fire-and-forget close
 
-    def get_or_create(self, config: AzureADConfig) -> Any:
-        """Return the cached provider for ``config``'s identity, constructing one if needed.
+    def get_or_create(self, config: AzureADConfig, tenant_id: object | None = None) -> Any:
+        """Return the cached provider for ``(tenant_id, config identity)``, building one if needed.
 
         SYNCHRONOUS — never awaited; provider construction is non-IO.
 
         Args:
             config: AzureADConfig whose non-secret fields form the cache key.
+            tenant_id: the owning Hydroa tenant. MANDATORY for cross-tenant isolation
+                (M4 CR-2). When ``None`` (owner unknown — non-BYOK path or a unit test),
+                a FRESH per-call provider is returned and NOTHING is cached (fail-safe).
 
         Returns:
-            An AzureADTokenProvider (or factory-supplied fake) for the config identity.
+            An AzureADTokenProvider (or factory-supplied fake).
         """
-        key = _make_cache_key(config)
+        if tenant_id is None:
+            # Fail-safe: never fold an unknown owner into a shared cache entry.
+            new_provider = self._factory(config)
+            if self._egress_policy is not None and hasattr(new_provider, "set_egress_policy"):
+                new_provider.set_egress_policy(self._egress_policy)
+            return new_provider
+        key = _make_cache_key(tenant_id, config)
         now = self._now_fn()
 
         entry = self._cache.get(key)

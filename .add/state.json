@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "residency-policy",
+  "active_task": "vertex-adapter",
   "active_milestone": "residency-service-tiers",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -860,8 +860,8 @@
       "created": "2026-07-12T15:00:50+00:00",
       "updated": "2026-07-12T17:02:10+00:00",
       "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-12T15:17:05+00:00",
+        "version": "v2",
+        "frozen_at": "2026-07-13T02:43:34+00:00",
         "approved_by": "Tin Dang",
         "actor": {
           "name": "Tin Dang",
@@ -984,7 +984,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T02:38:40+00:00",
+  "updated": "2026-07-13T02:43:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1936,7 +1936,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "residency-service-tiers": "residency-policy"
+    "residency-service-tiers": "vertex-adapter"
   },
   "todos": [
     {

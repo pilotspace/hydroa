@@ -202,7 +202,7 @@ class VertexTokenProvider:
 # _ProviderEntry — internal cache entry (non-secret key + provider + created time)
 # ---------------------------------------------------------------------------
 
-_CacheKey = tuple[str, str]  # (client_email, project_id)
+_CacheKey = tuple[str, str, str]  # (hydroa_tenant_id, client_email, project_id)
 
 
 @dataclass
@@ -211,13 +211,18 @@ class _ProviderEntry:
     created: float  # monotonic timestamp when the provider was created
 
 
-def _make_cache_key(config: VertexServiceAccountConfig) -> _CacheKey:
-    """Build the NON-SECRET cache key from a VertexServiceAccountConfig.
+def _make_cache_key(tenant_id: object, config: VertexServiceAccountConfig) -> _CacheKey:
+    """Build the NON-SECRET, per-(hydroa-tenant, identity) cache key.
+
+    The owning Hydroa ``tenant_id`` is the FIRST element and is MANDATORY for
+    cross-tenant isolation (M4 CR-2): without it, a tenant reusing another tenant's
+    ``(client_email, project_id)`` would be served the victim's cached bearer token
+    without possessing the victim's key — a confused-deputy token theft.
 
     Deliberately excludes ``private_key`` — the key must never contain a secret
     (memory hygiene; rotation is handled as bounded staleness <= TTL).
     """
-    return (config.client_email, config.project_id)
+    return (str(tenant_id), config.client_email, config.project_id)
 
 
 def _default_provider_factory(config: VertexServiceAccountConfig) -> VertexTokenProvider:
@@ -277,18 +282,25 @@ class VertexTokenProviderCache:
             return
         _task = loop.create_task(provider.aclose())  # noqa: RUF006 — fire-and-forget close
 
-    def get_or_create(self, config: VertexServiceAccountConfig) -> Any:
-        """Return the cached provider for ``config``'s identity, constructing one if needed.
+    def get_or_create(self, config: VertexServiceAccountConfig, tenant_id: object | None) -> Any:
+        """Return the cached provider for ``(tenant_id, config identity)``, building one if needed.
 
         SYNCHRONOUS — never awaited; provider construction is non-IO.
 
         Args:
             config: VertexServiceAccountConfig whose non-secret fields form the cache key.
+            tenant_id: the owning Hydroa tenant. MANDATORY for cross-tenant isolation
+                (M4 CR-2). When ``None`` (owner unknown — e.g. a non-BYOK path or a unit
+                test), a FRESH per-call provider is returned and NOTHING is cached, so an
+                unknown owner can never share or poison another tenant's entry (fail-safe).
 
         Returns:
-            A VertexTokenProvider (or factory-supplied fake) for the config identity.
+            A VertexTokenProvider (or factory-supplied fake).
         """
-        key = _make_cache_key(config)
+        if tenant_id is None:
+            # Fail-safe: never fold an unknown owner into a shared cache entry.
+            return self._factory(config)
+        key = _make_cache_key(tenant_id, config)
         now = self._now_fn()
 
         entry = self._cache.get(key)
