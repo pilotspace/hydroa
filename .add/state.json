@@ -853,12 +853,12 @@
     },
     "vertex-adapter": {
       "title": "Vertex AI adapter (service-account auth, regional endpoints) + EU/Asia entries",
-      "phase": "verify",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T15:00:50+00:00",
-      "updated": "2026-07-13T03:00:16+00:00",
+      "updated": "2026-07-13T03:09:22+00:00",
       "freeze": {
         "version": "v2",
         "frozen_at": "2026-07-13T02:43:34+00:00",
@@ -881,14 +881,19 @@
       },
       "scope": {
         "declared": [],
-        "snapshot_md5": "80bb8d4a6039defcb85c5fdc092655e6"
+        "snapshot_md5": "3c9ea3d6266c960a2fa8d23c3cfd72ad"
       },
       "heal": {
-        "attempts": 1,
+        "attempts": 2,
         "history": [
           {
             "at": "2026-07-12T16:59:28+00:00",
             "reason": "scope_violation: task 'vertex-adapter' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.ruff_cache/.gitignore \u00b7 apps/gateway/.ruff_cache/0.15.16/10508132109348331091 \u00b7 apps/gateway/.ruff_cache/0.15.16/13552431905230713158 \u00b7 apps/gateway/.ruff_cache/0.15.16/14383753139564424254 (25 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-13T03:09:13+00:00",
+            "reason": "scope_violation: task 'vertex-adapter' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.ruff_cache/.gitignore \u00b7 apps/gateway/.ruff_cache/0.15.16/10508132109348331091 \u00b7 apps/gateway/.ruff_cache/0.15.16/13552431905230713158 \u00b7 apps/gateway/.ruff_cache/0.15.16/14431028519374657422 (23 total)",
             "source": "scope"
           }
         ]
@@ -984,7 +989,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T03:00:16+00:00",
+  "updated": "2026-07-13T03:09:32+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2087,6 +2092,12 @@
       "id": 25,
       "text": "vertex-adapter: before shipping, optionally run scripts/live_vertex_verify.py against a real GCP service account (manual smoke, outside automated gate \u2014 no live creds were available at build/verify time)",
       "created": "2026-07-12T16:59:58+00:00",
+      "status": "open"
+    },
+    {
+      "id": 26,
+      "text": "ADD anti-pattern (verify): when re-running a security exploit as an independent probe, model the adversary's dependency on the SECRET (private_key/client_secret), not just the public identity \u2014 a fake IDP/factory that ignores the secret can manufacture a false-positive HARD-STOP (self-caught in vertex re-verify 2026-07-13)",
+      "created": "2026-07-13T03:09:32+00:00",
       "status": "open"
     }
   ]

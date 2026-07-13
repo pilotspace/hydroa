@@ -3,7 +3,7 @@
 slug: vertex-adapter · created: 2026-07-12 · stage: production
 milestone: residency-service-tiers
 autonomy: auto
-phase: contract
+phase: done
 sensitivity: security
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
