@@ -27,6 +27,7 @@ from tests.streaming_resilience.conftest import (
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.application.use_cases import CompletionUseCase
 from gateway.usage.domain.extractor import extract_generation_id_from_sse
+from tests import _redis_env
 
 pytestmark = pytest.mark.asyncio
 
@@ -130,7 +131,7 @@ async def test_flusher_persists_generation_id(
     from gateway.usage.application.flusher import UsageLedgerFlusher
     from gateway.usage.application.recorder import RecordingUsageRecorder
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         model_id = "openrouter/gen-id-persist"

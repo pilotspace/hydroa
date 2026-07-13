@@ -33,8 +33,9 @@ from gateway.core.config import Settings
 from gateway.main import create_app
 from tests.conftest import TEST_DATABASE_URL, TEST_JWT_SECRET
 from tests.credential_stub import install_stub_resolver
+from tests import _redis_env
 
-REDIS_URL = "redis://localhost:6380/9"
+REDIS_URL = _redis_env.TEST_REDIS_URL
 
 SIGNUP = "/admin/auth/signup"
 LOGIN = "/admin/auth/login"

@@ -23,6 +23,7 @@ import pytest
 
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from tests import _redis_env
 
 ALIAS = "fast"
 A, B, C = "model-A", "model-B", "model-C"
@@ -233,9 +234,9 @@ def test_rs7_unknown_strategy_rejected() -> None:
 
     with pytest.raises(ValidationError) as exc:
         Settings(
-            database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+            database_url=_redis_env.TEST_DATABASE_URL,
             jwt_secret="test-secret-not-for-production-0123456789",
-            redis_url="redis://localhost:6380/9",
+            redis_url=_redis_env.TEST_REDIS_URL,
             environment="test",
             routing_strategy="round-robin",
         )
@@ -246,9 +247,9 @@ def test_rs_settings_default_ordered() -> None:
     from gateway.core.config import Settings
 
     s = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )
     assert s.routing_strategy == "ordered"
@@ -287,9 +288,9 @@ def test_rs_create_app_wires_strategy() -> None:
     from gateway.proxy.application.routing_strategy import SimpleShuffleStrategy
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
         routing_strategy="simple-shuffle",
     )

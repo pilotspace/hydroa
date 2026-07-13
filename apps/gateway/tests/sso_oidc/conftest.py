@@ -18,8 +18,9 @@ import pytest
 from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
+from tests import _redis_env
 
-TEST_DATABASE_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+TEST_DATABASE_URL = _redis_env.TEST_DATABASE_URL
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
 # OIDC test constants — deterministic fake IdP parameters
@@ -53,7 +54,7 @@ def settings() -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
     )
 
 

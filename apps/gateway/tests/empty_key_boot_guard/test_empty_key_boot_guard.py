@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from gateway.core.config import Settings
+from tests import _redis_env
 
 
 def test_boot_guard_symbols_retired() -> None:
@@ -76,9 +77,9 @@ def test_create_app_ok_when_secret_keys_absent(monkeypatch: pytest.MonkeyPatch) 
     from gateway.main import create_app
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )  # type: ignore[arg-type]
     app = create_app(settings)

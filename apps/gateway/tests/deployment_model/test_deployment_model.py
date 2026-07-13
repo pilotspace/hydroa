@@ -23,10 +23,11 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
+from tests import _redis_env
 
-_DB = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+_DB = _redis_env.TEST_DATABASE_URL
 _JWT = "test-secret-not-for-production-0123456789"
-_REDIS = "redis://localhost:6380/9"
+_REDIS = _redis_env.TEST_REDIS_URL
 
 
 def _settings(**overrides: object):

@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests import _redis_env
 
 SYNC = "/internal/catalog/sync"
 MODELS = "/v1/models"
@@ -313,7 +314,7 @@ def test_grpf6_env_override_still_wins() -> None:
     from gateway.core.config import Settings
 
     overridden = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-the-dev-default-xyzzy",
         realtime_relay_openai_model="gpt-4o-realtime-preview",
     )

@@ -45,6 +45,7 @@ from tests.tiered_rate_cards.conftest import (
     FakeSessionFactory,
     StreamCapture,
 )
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Shared helpers (router tests)
@@ -239,7 +240,7 @@ async def test_catalog_price_equals_billing_for_override(
     )
 
     # --- billing side ---
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(
@@ -320,7 +321,7 @@ async def test_recovery_uses_override(
         async def sleep(self, seconds: float) -> None:
             self.t += seconds
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         model_id = "openrouter/ratecard-recover-test"
@@ -510,7 +511,7 @@ async def test_list_then_delete_reverts_to_flat(
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
     from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(

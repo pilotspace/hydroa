@@ -22,10 +22,11 @@ from gateway.usage.application.recovery_sweep import (
     OpenRouterRecoverySweeper,
     should_start_recovery_sweep,
 )
+from tests import _redis_env
 
 pytestmark = pytest.mark.asyncio
 
-_TEST_DB_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+_TEST_DB_URL = _redis_env.TEST_DATABASE_URL
 _TEST_JWT = "test-secret-not-for-production-0123456789"
 
 

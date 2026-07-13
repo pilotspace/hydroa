@@ -28,6 +28,7 @@ import pytest
 # Re-export the domain types we need; these EXIST (task-1 already shipped).
 # ---------------------------------------------------------------------------
 from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderCredential
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # CountingFakeTenantProviderKeyStore
@@ -167,9 +168,9 @@ def min_settings() -> Any:
     from gateway.core.config import Settings
 
     return Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )
 
@@ -185,9 +186,9 @@ def bedrock_settings() -> Any:
     from gateway.core.config import Settings
 
     return Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
         # No bedrock_access_key_id / bedrock_secret_access_key — fields removed in task-3.
         bedrock_region="us-east-1",

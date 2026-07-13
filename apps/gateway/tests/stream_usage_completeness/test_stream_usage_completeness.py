@@ -33,6 +33,7 @@ from .conftest import (
     PlanStreamUpstream,
     run_stream,
 )
+from tests import _redis_env
 
 # pytest is configured asyncio_mode=auto (pyproject.toml): `async def test_*` runs
 # on the loop without a marker, and the sync SU7 table stays sync. No file-level
@@ -175,7 +176,7 @@ async def test_su6_usage_source_column_additive_and_fallback_persists(
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
     from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         model_id = "openrouter/stream-usage-persist"

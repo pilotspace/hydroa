@@ -28,6 +28,7 @@ from gateway.tenants.domain.entities import Role
 from tests.conftest import TEST_DATABASE_URL, TEST_JWT_SECRET
 from tests.credential_stub import install_stub_resolver
 from tests.service_tiers.conftest import assert_problem, bearer
+from tests import _redis_env
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +112,7 @@ def test_env_boot_coerces_invalid_pct_sum_and_warns(caplog: pytest.LogCaptureFix
         settings = Settings(
             database_url=TEST_DATABASE_URL,
             jwt_secret=TEST_JWT_SECRET,
-            redis_url="redis://localhost:6380/9",
+            redis_url=_redis_env.TEST_REDIS_URL,
             tier_priority_reserved_pct=0.7,  # type: ignore[call-arg]
             tier_standard_reserved_pct=0.5,  # type: ignore[call-arg]
         )
@@ -125,7 +126,7 @@ def test_env_boot_coerces_negative_pct_and_warns(caplog: pytest.LogCaptureFixtur
         settings = Settings(
             database_url=TEST_DATABASE_URL,
             jwt_secret=TEST_JWT_SECRET,
-            redis_url="redis://localhost:6380/9",
+            redis_url=_redis_env.TEST_REDIS_URL,
             tier_priority_reserved_pct=-0.5,  # type: ignore[call-arg]
         )
     assert settings.tier_priority_reserved_pct == 0.20
@@ -159,7 +160,7 @@ def test_startup_warns_when_cluster_cap_below_max_concurrent_requests() -> None:
     settings = Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         tier_capacity_cluster_cap=5,  # type: ignore[call-arg]
         max_concurrent_requests=10,  # type: ignore[call-arg]
     )
@@ -174,7 +175,7 @@ def test_startup_does_not_warn_when_cluster_cap_sufficient() -> None:
     settings = Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         tier_capacity_cluster_cap=20,  # type: ignore[call-arg]
         max_concurrent_requests=10,  # type: ignore[call-arg]
     )
@@ -190,7 +191,7 @@ def test_startup_does_not_warn_when_tiering_disabled() -> None:
     settings = Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         max_concurrent_requests=10,  # type: ignore[call-arg]
     )
     captured = _boot_with_capture(settings)
@@ -213,7 +214,7 @@ async def test_platform_put_reconfigures_live_guard_without_restart() -> None:
     settings = Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         tier_capacity_cluster_cap=2,  # type: ignore[call-arg]
         tier_priority_reserved_pct=0.5,  # type: ignore[call-arg]
         standard_reserved_pct=0.0,  # type: ignore[call-arg]
@@ -251,7 +252,7 @@ async def test_platform_put_reconfigures_live_guard_without_restart() -> None:
         email="root@platform.internal",
     )
 
-    redis_client: Any = aioredis.from_url("redis://localhost:6380/9")
+    redis_client: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL)
     await redis_client.flushdb()
     try:
         transport = httpx.ASGITransport(app=app)  # type: ignore[arg-type]

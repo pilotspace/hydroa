@@ -20,6 +20,7 @@ import pytest
 
 from gateway.core.config import Settings
 from tests.conftest import TEST_DATABASE_URL, TEST_JWT_SECRET
+from tests import _redis_env
 
 # Small, fast-to-construct caps for the S4 scenarios in this suite.
 SMALL_MAX_JSON_BODY_BYTES = 2_000
@@ -31,7 +32,7 @@ def settings() -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         max_json_body_bytes=SMALL_MAX_JSON_BODY_BYTES,
         max_audio_upload_bytes=SMALL_MAX_AUDIO_UPLOAD_BYTES,

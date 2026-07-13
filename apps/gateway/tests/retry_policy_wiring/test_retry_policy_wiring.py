@@ -23,14 +23,15 @@ from prometheus_client import CollectorRegistry
 from gateway.core.config import Settings
 from gateway.main import create_app
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
+from tests import _redis_env
 
 
 def _make_settings(**kwargs: object) -> Settings:
     """Build a minimal Settings for unit tests (no live DB/Redis needed)."""
     defaults: dict[str, object] = {
-        "database_url": "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        "database_url": _redis_env.TEST_DATABASE_URL,
         "jwt_secret": "test-secret-not-for-production-0123456789",
-        "redis_url": "redis://localhost:6380/9",
+        "redis_url": _redis_env.TEST_REDIS_URL,
         "environment": "test",
     }
     defaults.update(kwargs)

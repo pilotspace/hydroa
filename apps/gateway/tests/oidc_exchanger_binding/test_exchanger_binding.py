@@ -24,13 +24,14 @@ import pytest
 from gateway.auth.domain.entities import OidcProviderConfig
 from gateway.auth.infrastructure.httpx_oidc_exchanger import HttpxOidcExchanger
 from gateway.core.config import Settings
+from tests import _redis_env
 
 
 def make_base_settings(**overrides: object) -> Settings:
     defaults: dict[str, object] = {
-        "database_url": "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        "database_url": _redis_env.TEST_DATABASE_URL,
         "jwt_secret": "test-secret-not-for-production-0123456789",
-        "redis_url": "redis://localhost:6380/9",
+        "redis_url": _redis_env.TEST_REDIS_URL,
         "oidc_enabled": True,
         "oidc_issuer": "https://env-idp.example",
         "oidc_client_id": "env-client",

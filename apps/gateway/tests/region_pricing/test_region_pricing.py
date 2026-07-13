@@ -47,6 +47,7 @@ from tests.region_pricing.conftest import (
     StreamCapture,
     seed_region_model,
 )
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Shared helpers (router tests)
@@ -188,7 +189,7 @@ async def test_tenant_region_override_wins(
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
     from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(
@@ -272,7 +273,7 @@ async def test_catalog_display_matches_billed_price(
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
     from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(
@@ -462,7 +463,7 @@ async def test_cost_recovery_matches_original_rate(
         async def sleep(self, seconds: float) -> None:
             self.t += seconds
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         model_id = "openrouter/eu-recover-test"
@@ -725,7 +726,7 @@ async def test_unrecognized_region_defaults_safe(
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
     from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(

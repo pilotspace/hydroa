@@ -31,6 +31,7 @@ from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from tests import _redis_env
 
 pytestmark = pytest.mark.asyncio
 
@@ -432,9 +433,9 @@ def test_cache_close_fire_and_forget_noop_with_no_running_loop() -> None:
 
 TEST_DATABASE_URL = os.environ.get(
     "GATEWAY_TEST_DATABASE_URL",
-    "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+    _redis_env.TEST_DATABASE_URL,
 )
-TEST_REDIS_URL = "redis://localhost:6380/9"
+TEST_REDIS_URL = _redis_env.TEST_REDIS_URL
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"  # noqa: S105
 PASSWORD = "correct horse battery staple"  # noqa: S105
 

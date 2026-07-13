@@ -35,6 +35,7 @@ from gateway.proxy.domain.provider_credentials import (
     ProviderKeyMissing,
 )
 from gateway.proxy.infrastructure.gemini_upstream import _openai_to_gemini_request
+from tests import _redis_env
 
 pytestmark = pytest.mark.asyncio
 
@@ -125,9 +126,9 @@ async def test_M1_vertex_adapter_registered_unconditionally() -> None:
     from gateway.proxy.infrastructure.vertex_upstream import VertexCompletionUpstream
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )  # type: ignore[arg-type]
     app = create_app(settings)
@@ -146,9 +147,9 @@ async def test_M10_R6_seed_rows_and_adapter_land_together() -> None:
     from gateway.main import create_app
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )  # type: ignore[arg-type]
     app = create_app(settings)

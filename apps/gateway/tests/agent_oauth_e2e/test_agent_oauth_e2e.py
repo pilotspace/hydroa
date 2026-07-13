@@ -27,6 +27,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+from tests import _redis_env
 
 COMPLETIONS = "/v1/chat/completions"
 AUTHZ_PATH = "/internal/authz/v1/chat/completions"
@@ -379,7 +380,7 @@ async def test_over_budget_blocked_402(
 
     from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9")
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL)
     try:
         # Per-key guard keys on usage:spend:key:{key_id}:{YYYYMM}
         yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")

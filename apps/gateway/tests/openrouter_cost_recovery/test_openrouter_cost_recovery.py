@@ -24,6 +24,7 @@ from gateway.usage.application.cost_recovery import (
 )
 from gateway.usage.application.flusher import UsageLedgerFlusher
 from gateway.usage.application.recorder import RecordingUsageRecorder
+from tests import _redis_env
 
 pytestmark = pytest.mark.asyncio
 
@@ -166,7 +167,7 @@ async def test_recover_tops_up_partial_to_authoritative_total(
 ) -> None:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         gid = "gen-topup-1"
@@ -210,7 +211,7 @@ async def test_markup_applied_to_authoritative_cost(
 ) -> None:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         gid = "gen-markup-2"
@@ -250,7 +251,7 @@ async def test_negative_delta_when_partial_overestimated(
 ) -> None:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         gid = "gen-neg-3"
@@ -290,7 +291,7 @@ async def test_idempotent_second_recover_writes_no_row(
 ) -> None:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         gid = "gen-idem-4"
@@ -342,7 +343,7 @@ async def test_empty_generation_id_skipped(
 ) -> None:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         upstream = FakeGenerationUpstream([_cost("1.00")])
@@ -363,7 +364,7 @@ async def test_empty_generation_id_skipped(
 async def test_not_settled_is_deferred(app: Any, db_session: Any, api_key: dict[str, str]) -> None:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         gid = "gen-pending-5"
@@ -398,7 +399,7 @@ async def test_anchor_not_flushed_is_deferred(
 ) -> None:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         gid = "gen-noanchor-6"  # no anchor row seeded
@@ -477,7 +478,7 @@ async def test_flusher_honors_explicit_id(
 ) -> None:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(
@@ -519,7 +520,7 @@ async def test_concurrent_double_fire_increments_counter_once(
 
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=True)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=True)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(

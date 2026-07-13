@@ -25,8 +25,12 @@ _PG_ADMIN_DSN = os.environ.get(
     "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
 ).replace("postgresql+asyncpg://", "postgresql://")
 
-# Dedicated database so migration tests never touch gateway_test schema state.
-MIGRATION_TEST_DB = "gateway_migrations_test"
+# Dedicated database so migration tests never touch gateway_test schema state. Suffixed
+# per xdist worker so a `-n N` run (even under plain --dist load, not just loadscope) never
+# has two workers racing on the same migration database.
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
+_MIGRATION_SUFFIX = "" if _XDIST_WORKER in ("", "master") else f"_{_XDIST_WORKER}"
+MIGRATION_TEST_DB = f"gateway_migrations_test{_MIGRATION_SUFFIX}"
 
 # Pure-asyncpg DSN for the dedicated migration DB (no SQLAlchemy prefix).
 MIGRATION_DSN = _PG_ADMIN_DSN.replace("/gateway_test", f"/{MIGRATION_TEST_DB}")

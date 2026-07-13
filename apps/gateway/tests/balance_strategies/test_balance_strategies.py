@@ -29,6 +29,7 @@ import pytest
 
 from gateway.proxy.application.fallback_router import FallbackModelRouter
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from tests import _redis_env
 
 # ── Module-level constants ──────────────────────────────────────────────────────
 
@@ -38,9 +39,9 @@ PAYLOAD: dict[str, Any] = {"model": ALIAS, "messages": [{"role": "user", "conten
 
 # Test-Settings kwargs — reused verbatim from test_routing_strategy (RS7 idiom).
 _SETTINGS_KWARGS: dict[str, Any] = {
-    "database_url": "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+    "database_url": _redis_env.TEST_DATABASE_URL,
     "jwt_secret": "test-secret-not-for-production-0123456789",
-    "redis_url": "redis://localhost:6380/9",
+    "redis_url": _redis_env.TEST_REDIS_URL,
     "environment": "test",
 }
 

@@ -34,6 +34,7 @@ from gateway.proxy.domain.provider_credentials import AzureCredential
 
 # RED: azure_upstream does not exist yet → ModuleNotFoundError.
 from gateway.proxy.infrastructure.azure_upstream import AzureCompletionUpstream
+from tests import _redis_env
 
 # v25 task-3: AzureCredential (api_key mode) mirrors the old _CFG.
 _AZ_CRED = AzureCredential(
@@ -185,9 +186,9 @@ def test_wiring_registers_azure_unconditionally(monkeypatch: pytest.MonkeyPatch)
 
     def _settings(**over: object) -> Settings:
         base: dict[str, object] = {
-            "database_url": "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+            "database_url": _redis_env.TEST_DATABASE_URL,
             "jwt_secret": "test-secret-not-for-production-0123456789",
-            "redis_url": "redis://localhost:6380/9",
+            "redis_url": _redis_env.TEST_REDIS_URL,
             "environment": "test",
         }
         base.update(over)

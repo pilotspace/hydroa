@@ -27,6 +27,7 @@ from starlette.websockets import WebSocketDisconnect
 from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -41,7 +42,7 @@ MODEL_CHAT = "openai/gpt-4o-mini"
 MODEL_TTS = "tts-1"
 VOICE = "alloy"
 
-TEST_DATABASE_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+TEST_DATABASE_URL = _redis_env.TEST_DATABASE_URL
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
 # ---------------------------------------------------------------------------
@@ -81,7 +82,7 @@ def settings() -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
 

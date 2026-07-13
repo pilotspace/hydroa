@@ -24,6 +24,7 @@ import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests import _redis_env
 
 SYNC = "/internal/catalog/sync"
 MODELS = "/v1/models"
@@ -331,7 +332,7 @@ async def test_cached_tokens_billed_at_cache_rate(
     key_id = uuid.UUID(created.json()["key_id"])
     # 20% default markup_pct on a freshly-signed-up tenant (established project default).
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     try:
         recorder = RecordingUsageRecorder(
             redis=redis_client, session_factory=app.state.sessionmaker

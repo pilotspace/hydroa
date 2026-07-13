@@ -25,11 +25,13 @@ from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
 from tests.credential_stub import install_stub_resolver
+from tests import _redis_env
 
-TEST_DATABASE_URL = os.environ.get(
-    "GATEWAY_TEST_DATABASE_URL",
-    "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
-)
+# Per-xdist-worker isolation lives in tests/_redis_env.py (the single source of truth):
+# under `pytest -n N` each worker gets a private Postgres database + Redis logical db, so
+# the per-test drop_all/create_all and the autouse Redis clear below never collide across
+# workers. Non-xdist runs keep the historical gateway_test / db 9 names unchanged.
+TEST_DATABASE_URL = _redis_env.TEST_DATABASE_URL
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
 
@@ -89,6 +91,53 @@ async def _isolate_stores(settings: Settings) -> AsyncIterator[None]:
     yield
 
 
+@pytest.fixture(scope="session", autouse=True)
+async def _ensure_worker_database() -> AsyncIterator[None]:
+    """Create this xdist worker's private Postgres database, drop it at session end.
+
+    No-op for a non-xdist run (the base gateway_test already exists and is managed by dev
+    tooling). Under `pytest -n N`, worker gwK needs gateway_test_gwK to exist before its
+    per-test create_all runs. Design-for-failure: bounded connect timeout, CREATE guarded
+    by an existence check AND an idempotent DuplicateDatabase catch (two workers can race),
+    and a best-effort FORCE drop on teardown so runs don't accumulate stale databases.
+    """
+    idx = _redis_env._worker_index()
+    if idx is None:
+        yield
+        return
+
+    import asyncpg  # local import: only the xdist path needs the raw driver
+
+    admin_dsn = _redis_env._BASE_DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    dbname = _redis_env.TEST_DATABASE_URL.rpartition("/")[2]
+
+    async def _admin() -> "asyncpg.Connection":  # type: ignore[type-arg]
+        return await asyncpg.connect(dsn=admin_dsn, timeout=10)
+
+    conn = await _admin()
+    try:
+        exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", dbname)
+        if not exists:
+            try:
+                await conn.execute(f'CREATE DATABASE "{dbname}"')
+            except asyncpg.DuplicateDatabaseError:
+                pass  # a sibling worker won the create race — fine, it exists now
+    finally:
+        await conn.close()
+
+    yield
+
+    try:
+        conn = await _admin()
+        try:
+            await conn.execute(f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE)')
+        finally:
+            await conn.close()
+    except (OSError, asyncpg.PostgresError):
+        # Teardown is best-effort: a stale worker DB is harmless (recreated next run).
+        pass
+
+
 @pytest.fixture
 def settings() -> Settings:
     # Redis db 9 matches every suite's redis_client fixture (flushed per test).
@@ -98,7 +147,7 @@ def settings() -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         # signup-and-routing-authz TASK.md §3 (S1): public signup now defaults OFF
         # (`Settings.public_signup_enabled`). Every OTHER suite that inherits this fixture
         # bootstraps a tenant via POST /admin/auth/signup and always assumed signup was

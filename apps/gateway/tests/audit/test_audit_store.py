@@ -112,11 +112,15 @@ async def test_action_appends_attributed_row(db_session: AsyncSession) -> None:
 @pytest.mark.parametrize(
     ("action", "target_type", "target_id"),
     [
+        # target_id values are opaque resource ids (the test asserts only action +
+        # target_type). They MUST be stable literals, not uuid4(): a random id is
+        # regenerated per process, so under `pytest -n N` each xdist worker would collect
+        # a different parametrize id and abort with "different tests were collected".
         ("routing.update", "routing", "singleton"),
-        ("key.create", "api_key", str(uuid.uuid4())),
-        ("key.revoke", "api_key", str(uuid.uuid4())),
-        ("key.rotate", "api_key", str(uuid.uuid4())),
-        ("member.role_assign", "user", str(uuid.uuid4())),
+        ("key.create", "api_key", "00000000-0000-4000-8000-0000000000c1"),
+        ("key.revoke", "api_key", "00000000-0000-4000-8000-0000000000c2"),
+        ("key.rotate", "api_key", "00000000-0000-4000-8000-0000000000c3"),
+        ("member.role_assign", "user", "00000000-0000-4000-8000-0000000000c4"),
         ("provider_key.put", "provider", "openai"),
         ("oidc.put", "oidc", "tenant_oidc_config"),
         ("budget.update", "budget", "monthly"),

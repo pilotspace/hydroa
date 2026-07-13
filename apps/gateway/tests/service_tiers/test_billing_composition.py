@@ -20,6 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.service_tiers.conftest import FakeSession, bearer
+from tests import _redis_env
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +69,7 @@ async def test_recorder_composes_tier_multiplier_for_priority_served(
     from gateway.usage.application.flusher import UsageLedgerFlusher
     from gateway.usage.application.recorder import RecordingUsageRecorder
 
-    redis_client: Any = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(
@@ -117,7 +118,7 @@ async def test_recorder_standard_served_stays_byte_identical(
     from gateway.usage.application.flusher import UsageLedgerFlusher
     from gateway.usage.application.recorder import RecordingUsageRecorder
 
-    redis_client: Any = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(
@@ -174,7 +175,7 @@ async def test_tenant_priority_markup_override_wins_others_unaffected(
     from gateway.usage.application.flusher import UsageLedgerFlusher
     from gateway.usage.application.recorder import RecordingUsageRecorder
 
-    redis_client: Any = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(
@@ -276,7 +277,7 @@ async def test_catalog_price_matches_billed_price_zero_drift(
     from gateway.usage.application.flusher import UsageLedgerFlusher
     from gateway.usage.application.recorder import RecordingUsageRecorder
 
-    redis_client: Any = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         recorder = RecordingUsageRecorder(
@@ -348,7 +349,7 @@ async def test_cost_recovery_matches_priority_served_rate(
         async def sleep(self, seconds: float) -> None:
             self.t += seconds
 
-    redis_client: Any = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         model_id = "openrouter/priority-recover-test"

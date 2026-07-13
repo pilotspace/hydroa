@@ -35,6 +35,7 @@ from gateway.proxy.infrastructure.anthropic_upstream import (
     _translate_anthropic_sse,
 )
 from gateway.usage.domain.extractor import extract_usage_from_sse
+from tests import _redis_env
 
 # Shared test credential injected via contextvar (credential-resolution-seam BUILD conversion).
 _TEST_ANTHROPIC_SECRET = "sk-ant-test"
@@ -313,9 +314,9 @@ def _make_settings(**kwargs: object):  # type: ignore[no-untyped-def]
     from gateway.core.config import Settings
 
     defaults: dict[str, object] = {
-        "database_url": "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        "database_url": _redis_env.TEST_DATABASE_URL,
         "jwt_secret": "test-secret-not-for-production-0123456789",
-        "redis_url": "redis://localhost:6380/9",
+        "redis_url": _redis_env.TEST_REDIS_URL,
         "environment": "test",
     }
     defaults.update(kwargs)

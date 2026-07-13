@@ -39,6 +39,7 @@ from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.errors import AllDeploymentsSaturatedError  # noqa: F401
 from gateway.proxy.domain.ports import DeploymentLimitGate  # noqa: F401
 from gateway.proxy.infrastructure.redis_limit_gate import RedisDeploymentLimitGate  # noqa: F401
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -49,9 +50,9 @@ A, B, C = "model-A", "model-B", "model-C"
 PAYLOAD: dict[str, Any] = {"model": ALIAS, "messages": [{"role": "user", "content": "hi"}]}
 
 _SETTINGS_KWARGS: dict[str, Any] = {
-    "database_url": "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+    "database_url": _redis_env.TEST_DATABASE_URL,
     "jwt_secret": "test-secret-not-for-production-0123456789",
-    "redis_url": "redis://localhost:6380/9",
+    "redis_url": _redis_env.TEST_REDIS_URL,
     "environment": "test",
 }
 

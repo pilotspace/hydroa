@@ -33,6 +33,7 @@ import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Constants — mirror §3 CONTRACT
@@ -43,7 +44,6 @@ SIGNUP = "/admin/auth/signup"
 LOGIN = "/admin/auth/login"
 
 _WINDOW_MS = 60_000  # 60-second window per §3 CONTRACT
-_REDIS_DB = 8  # Dedicated DB index — no collision with key_governance (9) or other suites
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +203,7 @@ async def redis_client() -> AsyncIterator[Any]:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
     client: Any = aioredis.from_url(
-        f"redis://localhost:6380/{_REDIS_DB}", decode_responses=False
+        _redis_env.TEST_REDIS_URL, decode_responses=False
     )
     await client.flushdb()
     yield client

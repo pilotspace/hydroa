@@ -30,6 +30,7 @@ from gateway.main import create_app
 from tests.conftest import TEST_DATABASE_URL, TEST_JWT_SECRET
 
 from .conftest import assign_plan, seed_active_model, seed_plan, signup_owner
+from tests import _redis_env
 
 _MODEL = "gpt-realtime-planenf"
 
@@ -39,7 +40,7 @@ async def ws_app() -> AsyncIterator[Any]:
     settings = Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # type: ignore[call-arg]
         realtime_relay_provider="openai",
         realtime_relay_openai_model=_MODEL,

@@ -61,6 +61,7 @@ from .conftest import (
     set_tenant_guardrails,
     signup_and_login,
 )
+from tests import _redis_env
 
 COMPLETIONS = "/v1/chat/completions"
 ADMIN_KEYS = "/admin/keys"
@@ -79,7 +80,7 @@ PII_CONTENT = "please email me at user@example.com for details"
 async def redis_client() -> AsyncIterator[Any]:
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    client: Any = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    client: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await client.flushdb()
     yield client
     await client.flushdb()

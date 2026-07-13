@@ -34,6 +34,7 @@ from tests.saml_sso.saml_fixtures import (
     build_signed_response,
     generate_idp_keypair,
 )
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -211,7 +212,7 @@ async def test_login_redirects_with_pinned_pending_request(client: httpx.AsyncCl
 
     import redis.asyncio as aioredis
 
-    r = aioredis.from_url("redis://localhost:6380/9")
+    r = aioredis.from_url(_redis_env.TEST_REDIS_URL)
     try:
         ttl = await r.ttl(f"saml:pending:{request_id}")
         assert 0 < ttl <= 300, f"expected TTL in (0, 300], got {ttl}"
@@ -292,7 +293,7 @@ async def test_acs_resolves_tenant_via_pending_store_not_cookie(
     # Single-use: the pending record is gone (deleted by the same GETDEL call).
     import redis.asyncio as aioredis
 
-    r = aioredis.from_url("redis://localhost:6380/9")
+    r = aioredis.from_url(_redis_env.TEST_REDIS_URL)
     try:
         assert await r.get(f"saml:pending:{request_id}") is None
     finally:

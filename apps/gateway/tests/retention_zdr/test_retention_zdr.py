@@ -48,6 +48,7 @@ from gateway.objectstore.errors import ObjectStoreUnavailableError
 from gateway.tenants.application.retention_policy import is_zdr
 from gateway.usage.application.retention_sweep import RetentionSweeper
 from gateway.video.infrastructure.repository import VideoJobRepository
+from tests import _redis_env
 
 pytestmark = pytest.mark.asyncio
 
@@ -242,7 +243,7 @@ async def _age_row(
 
 @pytest.fixture
 async def redis_client() -> Any:
-    client: Any = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    client: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await client.flushdb()
     yield client
     await client.flushdb()
