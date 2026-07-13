@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "vertex-adapter",
+  "active_task": "residency-policy",
   "active_milestone": "residency-service-tiers",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -724,12 +724,12 @@
     },
     "residency-policy": {
       "title": "Per-tenant fail-closed residency policy",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T14:46:20+00:00",
-      "updated": "2026-07-12T15:06:02+00:00",
+      "updated": "2026-07-13T02:38:40+00:00",
       "freeze": {
         "version": "v2",
         "frozen_at": "2026-07-12T15:21:10+00:00",
@@ -739,6 +739,31 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a7b34dbebcfde01721d54c86079b97d1",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/domain/errors.py",
+          "apps/gateway/src/gateway/proxy/domain/ports.py",
+          "apps/gateway/src/gateway/proxy/application/residency.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/residency_lookup.py",
+          "apps/gateway/src/gateway/proxy/application/fallback_router.py",
+          "apps/gateway/src/gateway/proxy/application/governance.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/application/embeddings_use_case.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
+          "apps/gateway/src/gateway/tenants/api/residency_policy_router.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/proxy/api/{embeddings_deps,images_deps,audio_deps,realtime_relay_ws,realtime_ws,deps}.py",
+          "apps/gateway/src/gateway/memory/api/router.py",
+          "apps/gateway/migrations/versions/"
+        ],
+        "snapshot_md5": "9e0d204ddcca82625aa0f13810609a26"
       }
     },
     "region-pricing": {
@@ -828,12 +853,12 @@
     },
     "vertex-adapter": {
       "title": "Vertex AI adapter (service-account auth, regional endpoints) + EU/Asia entries",
-      "phase": "done",
-      "gate": "PASS",
+      "phase": "contract",
+      "gate": "none",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T15:00:50+00:00",
-      "updated": "2026-07-12T16:59:37+00:00",
+      "updated": "2026-07-12T17:02:10+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T15:17:05+00:00",
@@ -872,7 +897,16 @@
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
         "source": "git"
-      }
+      },
+      "reopens": [
+        {
+          "from": "done",
+          "to": "contract",
+          "reason": "SECURITY HARD-STOP from 2nd independent adversarial verify: cross-tenant Vertex bearer-token theft. VertexTokenProviderCache keys by (client_email, project_id) only \u2014 no tenant_id \u2014 on a single app-wide instance; a Hydroa tenant reusing another tenant's GCP service-account email+project is served the victim's live minted token WITHOUT possessing their private key, defeating BYOK. Demonstrated in ~15 lines. Gate was erroneously PASS on the 1st verify (rated CLEAR); reversed. Fix touches the frozen M4 cache-key contract + is systemic (azure_ad.py identical class) \u2192 Tin decision on scope.",
+          "at": "2026-07-12T17:02:10+00:00",
+          "prior_gate": "PASS"
+        }
+      ]
     }
   },
   "milestones": {
@@ -950,7 +984,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-12T16:59:58+00:00",
+  "updated": "2026-07-13T02:38:40+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1902,7 +1936,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "residency-service-tiers": "vertex-adapter"
+    "residency-service-tiers": "residency-policy"
   },
   "todos": [
     {
