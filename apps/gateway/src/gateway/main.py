@@ -189,6 +189,10 @@ from gateway.proxy.infrastructure.residency_lookup import SqlAlchemyResidencyLoo
 from gateway.proxy.infrastructure.routing_config_repository import RoutingConfigRepository
 from gateway.proxy.infrastructure.tenant_model_preset_store import DbTenantModelPresetStore
 from gateway.proxy.infrastructure.tenant_provider_key_store import DbTenantProviderKeyStore
+from gateway.proxy.infrastructure.tier_capacity_guard import (
+    PassthroughTierCapacityGuard,
+    RedisTierCapacityGuard,
+)
 from gateway.proxy.infrastructure.vertex_ad import VertexTokenProviderCache
 from gateway.proxy.infrastructure.vertex_upstream import VertexCompletionUpstream
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
@@ -214,6 +218,7 @@ from gateway.tenants.api.plan_router import plan_router
 from gateway.tenants.api.platform_audit_router import platform_audit_router
 from gateway.tenants.api.platform_impersonation_router import platform_impersonation_router
 from gateway.tenants.api.platform_plans_router import platform_plans_router
+from gateway.tenants.api.platform_service_tier_router import platform_service_tier_router
 from gateway.tenants.api.platform_tenant_config_router import platform_tenant_config_router
 from gateway.tenants.api.platform_tenants_router import platform_tenants_router
 from gateway.tenants.api.platform_users_router import platform_users_router
@@ -222,6 +227,7 @@ from gateway.tenants.api.region_pricing_router import region_pricing_router
 from gateway.tenants.api.residency_policy_router import residency_policy_router
 from gateway.tenants.api.retention_policy_router import retention_policy_router
 from gateway.tenants.api.router import router as tenants_router
+from gateway.tenants.api.service_tier_router import service_tier_router
 from gateway.tenants.api.users_router import users_router
 from gateway.tenants.infrastructure.argon2_hasher import Argon2PasswordHasher
 from gateway.tenants.infrastructure.invite_public_rate_limiter import InvitePublicRateLimiter
@@ -402,6 +408,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Configure structlog once per process (idempotent).  Must run before any
     # logger call — including those triggered during module imports below.
     configure_structlog()
+
+    # service-tiers TASK.md §3 (DECIDED at freeze-review, 2026-07-12): a REQUIRED
+    # startup warning — tier_capacity_cluster_cap < max_concurrent_requests is the one
+    # per-process-detectable certain misconfiguration (the two knobs are independently
+    # operator-set with no shared worker-count basis in this codebase; nothing else
+    # enforces they stay consistent). Fires ONLY when tiering is actually enabled
+    # (cluster_cap > 0) — a disabled tier gate (0, the default) has nothing to
+    # misconfigure relative to the back-pressure cap. Ops guidance: cluster_cap ~=
+    # workers x max_concurrent_requests (settings docstrings + runbook).
+    if (
+        settings.tier_capacity_cluster_cap > 0
+        and settings.tier_capacity_cluster_cap < settings.max_concurrent_requests
+    ):
+        structlog.get_logger(__name__).warning(
+            "tier_capacity_cluster_cap_below_max_concurrent_requests",
+            tier_capacity_cluster_cap=settings.tier_capacity_cluster_cap,
+            max_concurrent_requests=settings.max_concurrent_requests,
+            hint="cluster_cap should be >= workers x max_concurrent_requests",
+        )
 
     @contextlib.asynccontextmanager  # pyright: ignore[reportDeprecated]  — Pyright 1.1.410 stub false-positive; stdlib asynccontextmanager is not deprecated
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -1161,6 +1186,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     else:
         app.state.bandwidth_bucket = PassthroughBandwidthBucket()
 
+    # Tier-capacity guard (service-tiers TASK.md §3): cluster_cap<=0 (default) →
+    # PassthroughTierCapacityGuard → byte-identical (no admission gating, no Redis).
+    # Construction does NOT connect to Redis (register_script only — safe without
+    # lifespan, same precedent as bandwidth_bucket/rate_limiter above). Tests override
+    # via app.state.tier_capacity_guard after app creation.
+    if settings.tier_capacity_cluster_cap > 0:
+        app.state.tier_capacity_guard = RedisTierCapacityGuard(
+            redis=redis_client,
+            cluster_cap=settings.tier_capacity_cluster_cap,
+            priority_reserved_pct=settings.tier_priority_reserved_pct,
+            standard_reserved_pct=settings.tier_standard_reserved_pct,
+            hold_ttl_s=settings.tier_capacity_hold_ttl_s,
+        )
+    else:
+        app.state.tier_capacity_guard = PassthroughTierCapacityGuard()
+
     # Cooldown circuit breaker gate — constructed only when threshold > 0.
     # Construction does NOT connect to Redis (safe without lifespan).
     # threshold == 0 (default) → gate is None; preserves v5 behavior byte-identically.
@@ -1388,6 +1429,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(platform_users_router)
     app.include_router(platform_tenant_config_router)
     app.include_router(platform_plans_router)
+    app.include_router(platform_service_tier_router)
+    app.include_router(service_tier_router)
     app.include_router(platform_impersonation_router)
     app.include_router(platform_audit_router)
     app.include_router(cache_router)

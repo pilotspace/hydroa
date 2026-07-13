@@ -16,6 +16,7 @@ from gateway.core.ids import uuid7
 from gateway.tenants.infrastructure.orm import TenantRow
 from gateway.tenants.infrastructure.rate_card_orm import TenantRateCardEntry
 from gateway.tenants.infrastructure.region_pricing_orm import TenantRegionMultiplierOverride
+from gateway.usage.application.rate_card_resolver import resolve_tier_multiplier
 
 # region-pricing (TASK.md §3 M5): the DECIDED seed, expressed as the bulk-query
 # equivalent of rate_card_resolver's `_REGION_MULTIPLIER_SEEDS` — kept in sync by
@@ -92,7 +93,9 @@ class SqlAlchemyCatalogRepository:
 
         return len(all_models)
 
-    async def list_active_models_with_markup(self, tenant_id: uuid.UUID) -> list[MarkedUpModel]:
+    async def list_active_models_with_markup(
+        self, tenant_id: uuid.UUID, *, tier: str | None = None
+    ) -> list[MarkedUpModel]:
         """Single joined query: active models x latest snapshot x effective markup.
 
         No N+1 — uses a lateral/subquery approach.
@@ -103,7 +106,17 @@ class SqlAlchemyCatalogRepository:
         bulk-join form of the SAME resolve rule recorder billing and
         cost_recovery use (gateway.usage.application.rate_card_resolver), so
         catalog display never drifts from what a request actually bills.
+
+        service-tiers TASK.md §3: tier is caller-specific, not model-row-keyed like
+        region — ONE extra scalar query (not per-row) resolves tier_multiplier once via
+        the SAME shared resolver, then folds into the existing bulk multiplier. tier=None
+        (default) ⇒ tier_multiplier stays the Decimal("1") identity ⇒ byte-identical.
         """
+        tier_multiplier = (
+            await resolve_tier_multiplier(self._session, tenant_id, "", tier)
+            if tier is not None
+            else Decimal("1")
+        )
         # Subquery: latest snapshot per model_id
         snap_sub = (
             select(
@@ -177,7 +190,9 @@ class SqlAlchemyCatalogRepository:
         result: list[MarkedUpModel] = []
         for row in rows:
             multiplier = float(
-                (Decimal("1") + row.markup_pct / Decimal("100")) * row.region_multiplier
+                (Decimal("1") + row.markup_pct / Decimal("100"))
+                * row.region_multiplier
+                * tier_multiplier
             )
             result.append(
                 MarkedUpModel(

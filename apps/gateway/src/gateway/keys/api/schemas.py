@@ -16,7 +16,19 @@ from gateway.core.error_catalog import (
     PAYLOAD_MONTHLY_BUDGET_NEGATIVE,
     PAYLOAD_SOFT_BUDGET_NEGATIVE,
     PAYLOAD_SOFT_EXCEEDS_HARD,
+    PAYLOAD_TIER_INVALID,
 )
+
+_VALID_TIERS = {"priority", "standard"}
+
+
+def _validate_tier(v: Any) -> str | None:
+    """service-tiers TASK.md §3 R1: tier not in {priority, standard, null} -> 422."""
+    if v is None:
+        return None
+    if not isinstance(v, str) or v not in _VALID_TIERS:
+        raise PAYLOAD_TIER_INVALID.exc()
+    return v
 
 
 class CreateKeyRequest(BaseModel):
@@ -33,6 +45,8 @@ class CreateKeyRequest(BaseModel):
     team_id: uuid.UUID | None = None
     # response-caching additive field — default false
     cache_enabled: bool = False
+    # service-tiers additive field — omit/null = inherit tenant default (§3 M2)
+    tier: str | None = None
 
     @field_validator("rpm_limit", mode="before")
     @classmethod
@@ -75,6 +89,11 @@ class CreateKeyRequest(BaseModel):
             if not isinstance(item, str) or item == "":
                 raise PAYLOAD_ALLOWLIST_BAD_ELEMENT.exc()
         return v
+
+    @field_validator("tier", mode="before")
+    @classmethod
+    def validate_tier(cls, v: Any) -> str | None:
+        return _validate_tier(v)
 
     @model_validator(mode="after")
     def validate_soft_lte_hard(self) -> "CreateKeyRequest":
@@ -109,6 +128,9 @@ class PatchKeyRequest(BaseModel):
     cache_enabled: bool | None = None
     # payload-capture-store additive field — absent = no change; True/False = set
     capture_enabled: bool | None = None
+    # service-tiers additive field — absent = no change; null = clear (revert to
+    # tenant default); value = set the key-level override (§3 M2)
+    tier: str | None = None
 
     @field_validator("rpm_limit", mode="before")
     @classmethod
@@ -151,6 +173,11 @@ class PatchKeyRequest(BaseModel):
             if not isinstance(item, str) or item == "":
                 raise PAYLOAD_ALLOWLIST_BAD_ELEMENT.exc()
         return v
+
+    @field_validator("tier", mode="before")
+    @classmethod
+    def validate_tier(cls, v: Any) -> str | None:
+        return _validate_tier(v)
 
     @model_validator(mode="after")
     def validate_soft_lte_hard(self) -> "PatchKeyRequest":
@@ -221,6 +248,8 @@ class CreateKeyResponse(BaseModel):
     team_id: uuid.UUID | None = None
     # response-caching additive field
     cache_enabled: bool = False
+    # service-tiers additive field — null = inherit tenant default
+    tier: str | None = None
 
 
 class PlaygroundTokenResponse(BaseModel):
@@ -267,6 +296,8 @@ class KeyInfoResponse(BaseModel):
     cache_enabled: bool = False
     # payload-capture-store additive field
     capture_enabled: bool = False
+    # service-tiers additive field — null = inherit tenant default
+    tier: str | None = None
 
 
 class AuthzResponse(BaseModel):

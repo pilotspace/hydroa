@@ -129,6 +129,12 @@ async def insert_usage_row(
             tags_dict: dict[str, str] = tags_parsed if isinstance(tags_parsed, dict) else {}
         except (json.JSONDecodeError, ValueError):
             tags_dict = {}
+        # service-tiers TASK.md §3: tier ACTUALLY SERVED (old events / corrections without
+        # this field -> "standard", the safe/honest default — tiering did not exist yet).
+        tier_served = _event_field(fields, "tier_served") or "standard"
+        # "true"/"false" string encoding (Redis Stream fields are strings) -> bool; any
+        # other/absent value -> False (old-event-safe default, mirrors tier_served above).
+        tier_capacity_degraded = _event_field(fields, "tier_capacity_degraded") == "true"
 
         # Required identifiers — a bad UUID here is poison, same as a bad numeric.
         tenant_id = uuid.UUID(_event_field(fields, "tenant_id"))
@@ -163,7 +169,7 @@ async def insert_usage_row(
                     "  cache_creation_tokens,"
                     "  audio_prompt_tokens, audio_completion_tokens, audio_cached_tokens,"
                     "  cost_basis, provider_cost, usage_source,"
-                    "  provider_generation_id, tags)"
+                    "  provider_generation_id, tags, tier_served, tier_capacity_degraded)"
                     " VALUES"
                     " (:id, :tenant_id, :key_id, :model_id, :prompt_tokens,"
                     "  :completion_tokens, :cost_usd, :status, :pricing_snapshot_id,"
@@ -172,7 +178,7 @@ async def insert_usage_row(
                     "  :cache_creation_tokens,"
                     "  :audio_prompt_tokens, :audio_completion_tokens, :audio_cached_tokens,"
                     "  :cost_basis, :provider_cost, :usage_source,"
-                    "  :provider_generation_id, :tags)"
+                    "  :provider_generation_id, :tags, :tier_served, :tier_capacity_degraded)"
                     " ON CONFLICT (id) DO NOTHING"
                 ),
                 {
@@ -200,6 +206,8 @@ async def insert_usage_row(
                     "usage_source": usage_source,
                     "provider_generation_id": provider_generation_id,
                     "tags": json.dumps(tags_dict),
+                    "tier_served": tier_served,
+                    "tier_capacity_degraded": tier_capacity_degraded,
                 },
             )
 

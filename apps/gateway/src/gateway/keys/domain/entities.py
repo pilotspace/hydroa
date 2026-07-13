@@ -64,6 +64,16 @@ class ApiKey:
     plan_id: uuid.UUID | None = None
     plan_model_allowlist: list[str] | None = None
     plan_name: str | None = None
+    # service-tiers additive field (TASK.md §3, FROZEN @ v1) — DUAL ROLE, mirrors
+    # cache_enabled/capture_enabled's own dual convention: the RAW key-level
+    # override value (NULL = inherit tenant default) in create()/update()/
+    # list_by_tenant(); the RESOLVED effective tier in get_by_id() (zero extra DB
+    # reads, via the existing LEFT JOIN tenants — M1).
+    tier: Literal["priority", "standard"] | None = None
+    # Populated ONLY by get_by_id() (mirrors guardrail_policy_source's own
+    # get_by_id()-only population) — which layer the resolved `tier` above came
+    # from. Meaningless (default "tenant") on the create()/update() raw-override role.
+    tier_source: Literal["key", "tenant"] = "tenant"
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +97,8 @@ class ApiKeyInfo:
     team_id: uuid.UUID | None = None
     # Response-caching additive field (response-caching migration)
     cache_enabled: bool = False
+    # service-tiers additive field (TASK.md §3, FROZEN @ v1) — raw key-level override.
+    tier: Literal["priority", "standard"] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,3 +162,9 @@ class AuthzResult:
     plan_id: uuid.UUID | None = None
     plan_model_allowlist: list[str] | None = None
     plan_name: str | None = None
+    # service-tiers additive fields (TASK.md §3, FROZEN @ v1) — resolved at auth time:
+    # tier = api_keys.tier if not NULL else tenants.default_tier (the EXISTING LEFT
+    # JOIN tenants in ApiKeyRepository.get_by_id — zero extra DB reads, M1).
+    # tier_source mirrors policy_source's key/tenant discriminator shape.
+    tier: Literal["priority", "standard"] = "standard"
+    tier_source: Literal["key", "tenant"] = "tenant"

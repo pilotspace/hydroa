@@ -571,6 +571,76 @@ class Settings(BaseSettings):
             return 0
         return n
 
+    # ── Service tiers / admission-capacity pools (service-tiers task) ──────────
+    # GATEWAY_TIER_CAPACITY_CLUSTER_CAP — the cluster-wide concurrent-request budget the
+    # priority/standard/shared Redis ZSET pools carve up. 0 (default) = disabled = pass-
+    # through mode (RedisTierCapacityGuard never touches Redis; opt-in, byte-identical).
+    # Distinct from max_concurrent_requests (the tier-blind per-worker back-pressure cap
+    # — GlobalBackPressureMiddleware stays frozen/unmodified); this is the tier-AWARE
+    # capacity layer that runs AFTER that guard has already admitted the request.
+    tier_capacity_cluster_cap: int = Field(default=0)  # GATEWAY_TIER_CAPACITY_CLUSTER_CAP
+    # GATEWAY_TIER_PRIORITY_RESERVED_PCT — fraction of cluster_cap reserved exclusively
+    # for priority-tier requests (the "priority_floor" pool). Default 0.20 (20%).
+    tier_priority_reserved_pct: float = Field(default=0.20)  # GATEWAY_TIER_PRIORITY_RESERVED_PCT
+    # GATEWAY_TIER_STANDARD_RESERVED_PCT — fraction of cluster_cap reserved exclusively
+    # for standard-tier requests (the "standard_floor" pool, guarantees standard is never
+    # starved by a priority surge). Default 0.20 (20%). The remainder (1 - both pcts) is
+    # the "shared" pool both tiers may draw from.
+    tier_standard_reserved_pct: float = Field(default=0.20)  # GATEWAY_TIER_STANDARD_RESERVED_PCT
+    # GATEWAY_TIER_CAPACITY_HOLD_TTL_S — passive TTL-based leak-reclaim bound for a tier
+    # admission hold (ZREMRANGEBYSCORE at the start of every admission-Lua-script
+    # invocation) — the backstop when a release() is somehow never reached. Default 600s
+    # — DECIDED at freeze-review (2026-07-12, Tin): amended UP from the drafted 300s
+    # because realtime WS sessions routinely exceed 5 minutes and expiry errs toward
+    # soft over-admission (never a hard reject) rather than a stranded-forever hold.
+    tier_capacity_hold_ttl_s: int = Field(default=600)  # GATEWAY_TIER_CAPACITY_HOLD_TTL_S
+
+    @field_validator("tier_priority_reserved_pct", "tier_standard_reserved_pct", mode="after")
+    @classmethod
+    def _validate_tier_reserved_pct_range(cls, v: float) -> float:
+        """A single negative pct is a misconfiguration — coerce IT ALONE to 0.20 + WARN.
+
+        The cross-field sum>1.0 check (below, a model_validator) handles the OTHER half
+        of R5 ("either pct negative, OR pct sum > 1.0 -> coerce BOTH pcts to 0.20/0.20").
+        This per-field validator only catches a negative value in isolation; a negative
+        value here still lets the sum-check re-coerce both if the combination is also
+        invalid, but a single negative pct with an otherwise-valid partner is safely
+        normalized right here without discarding the partner's valid value.
+        """
+        import logging as _logging
+
+        if v < 0:
+            _logging.getLogger(__name__).warning(
+                "INVALID_TIER_RESERVED_PCT: a GATEWAY_TIER_*_RESERVED_PCT value=%r is "
+                "negative; coercing to 0.20 (the DECIDED default).",
+                v,
+            )
+            return 0.20
+        return v
+
+    @model_validator(mode="after")
+    def _validate_tier_reserved_pct_sum(self) -> "Settings":
+        """R5: pct sum > 1.0 -> coerce BOTH pcts to 0.20/0.20 + WARN (env path only).
+
+        The equivalent platform-route write (PUT /admin/platform/service-tiers/capacity)
+        REJECTS the same invalid combination with 422 instead of silently coercing —
+        env-var misconfiguration at boot cannot block startup, but an explicit live
+        operator write can and should fail loudly (R5).
+        """
+        import logging as _logging
+
+        if self.tier_priority_reserved_pct + self.tier_standard_reserved_pct > 1.0:
+            _logging.getLogger(__name__).warning(
+                "INVALID_TIER_RESERVED_PCT_SUM: GATEWAY_TIER_PRIORITY_RESERVED_PCT (%r) + "
+                "GATEWAY_TIER_STANDARD_RESERVED_PCT (%r) > 1.0; coercing BOTH to 0.20/0.20 "
+                "(the DECIDED default — a shared pool of at least 60%% is always preserved).",
+                self.tier_priority_reserved_pct,
+                self.tier_standard_reserved_pct,
+            )
+            self.tier_priority_reserved_pct = 0.20
+            self.tier_standard_reserved_pct = 0.20
+        return self
+
     # ── Per-key bandwidth pacing (bandwidth-token-bucket task, v36) ─────────────
     # GATEWAY_BANDWIDTH_TOKENS_PER_SEC — per-API-key throughput ceiling (tokens/sec) the
     # aggregate Redis token-bucket paces toward. 0 (default) = disabled = today's unbounded

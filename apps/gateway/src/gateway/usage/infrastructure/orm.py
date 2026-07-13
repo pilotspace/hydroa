@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, Text, func, text
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, Numeric, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -123,4 +123,15 @@ class UsageRecordRow(Base):
     # (byte-identical to every pre-task row). Queryable via GET /admin/usage/cost-by-tag.
     tags: Mapped[dict[str, str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    # service-tiers (TASK.md §3): tier ACTUALLY SERVED — mirrors cost_basis/usage_source
+    # discriminator-column convention exactly; every pre-existing row is honestly
+    # "standard" (tiering did not exist yet), no backfill needed (append-only ledger).
+    tier_served: Mapped[str] = mapped_column(Text, nullable=False, server_default="standard")
+    # True only when Redis was unavailable at admission time for THIS specific request
+    # (M8a) — mirrors the guardrail_blocked-style boolean-flag convention; the audit
+    # trail distinguishing "billed standard because the gate genuinely degraded" from
+    # "billed standard because that's simply what was served."
+    tier_capacity_degraded: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
     )

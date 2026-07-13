@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gateway.usage.application.rate_card_resolver import (
     resolve_markup_pct,
     resolve_region_multiplier,
+    resolve_tier_multiplier,
 )
 from gateway.usage.infrastructure.redis_stream import STREAM_KEY
 
@@ -95,6 +96,8 @@ class RecordingUsageRecorder:
             "disconnect_estimate",
             "request_id",
             "tags",
+            "tier_served",
+            "tier_capacity_degraded",
         }
     )
 
@@ -127,6 +130,8 @@ class RecordingUsageRecorder:
         disconnect_estimate: bool = False,
         request_id: uuid.UUID | None = None,
         tags: dict[str, str] | None = None,
+        tier_served: str = "standard",
+        tier_capacity_degraded: bool = False,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -165,6 +170,8 @@ class RecordingUsageRecorder:
             disconnect_estimate=disconnect_estimate,
             request_id=request_id,
             tags=tags,
+            tier_served=tier_served,
+            tier_capacity_degraded=tier_capacity_degraded,
         )
         return None
 
@@ -188,6 +195,8 @@ class RecordingUsageRecorder:
         disconnect_estimate: bool = False,
         request_id: uuid.UUID | None = None,
         tags: dict[str, str] | None = None,
+        tier_served: str = "standard",
+        tier_capacity_degraded: bool = False,
     ) -> UsageRecordOutcome | None:
         """Identical to record(), but RETURNS the computed outcome instead of discarding
         it (credits-ledger TASK.md §3: "settle must consume the cost already computed by
@@ -221,6 +230,8 @@ class RecordingUsageRecorder:
                 disconnect_estimate=disconnect_estimate,
                 request_id=request_id,
                 tags=tags,
+                tier_served=tier_served,
+                tier_capacity_degraded=tier_capacity_degraded,
             )
         except Exception as exc:
             _log.warning(
@@ -254,6 +265,8 @@ class RecordingUsageRecorder:
         disconnect_estimate: bool = False,
         request_id: uuid.UUID | None = None,
         tags: dict[str, str] | None = None,
+        tier_served: str = "standard",
+        tier_capacity_degraded: bool = False,
     ) -> UsageRecordOutcome:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -281,6 +294,10 @@ class RecordingUsageRecorder:
         # THIS single resolution point. Identity (1.0, no premium) on the cached branch,
         # where it is never fetched — mirrors the existing markup_pct skip.
         region_multiplier: Decimal = Decimal("1")
+        # service-tiers TASK.md §3 (M11): per-tier markup multiplier composed with markup +
+        # region at THIS single resolution point. Identity (1.0, no premium) on the cached
+        # branch, where it is never fetched — mirrors the existing markup_pct/region skip.
+        tier_multiplier: Decimal = Decimal("1")
 
         if not cached:
             # Only fetch pricing for non-cached records; cached hits always cost 0
@@ -288,6 +305,12 @@ class RecordingUsageRecorder:
                 pricing = await _fetch_latest_pricing(session, model)
                 markup_pct = await _fetch_markup_pct(session, tenant_id, model)
                 region_multiplier = await _fetch_region_multiplier(session, tenant_id, model)
+                # service-tiers TASK.md §3 (M11): resolved once here, alongside
+                # region_multiplier, in the SAME batch (no N+1) — keyed on tier_served
+                # (the tier ACTUALLY SERVED, never the requested/selected tier — §1 M9).
+                tier_multiplier = await resolve_tier_multiplier(
+                    session, tenant_id, model, tier_served
+                )
 
             if pricing is not None:
                 (
@@ -426,7 +449,10 @@ class RecordingUsageRecorder:
         # per-token, non-token), BEFORE the disconnect back-derivation must divide it back
         # out (M3). A harmless no-op on the cached branch (cost_usd is already 0 there;
         # region_multiplier stays the Decimal("1") identity — never fetched, per M2).
-        cost_usd = cost_usd * region_multiplier
+        # service-tiers TASK.md §3 (M11): tier_multiplier extends the SAME line — a
+        # harmless no-op on the cached branch (tier_multiplier stays the Decimal("1")
+        # identity there too).
+        cost_usd = cost_usd * region_multiplier * tier_multiplier
 
         # disconnect-provider-cost (v33): a NON-RECOVERABLE client-disconnect (non-OpenRouter
         # or no generation id) gets no out-of-band recovery, so a positive partial estimate
@@ -447,8 +473,13 @@ class RecordingUsageRecorder:
             # recorded provider_cost by the region factor (the drift trap found in
             # grounding: an EU model's back-derivation would otherwise over-report the
             # unbilled-upstream-cost signal by 1.1x).
+            # service-tiers TASK.md §3 (M11): divide tier_multiplier back out too, for the
+            # identical reason — a disconnect estimate on a priority-tier request would
+            # otherwise silently inflate the recorded provider_cost by the tier premium.
             provider_cost = cost_usd / (
-                (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100")) * region_multiplier
+                (Decimal("1") + Decimal(str(markup_pct)) / Decimal("100"))
+                * region_multiplier
+                * tier_multiplier
             )
             cost_usd = _ZERO
             cost_basis = "provider"
@@ -524,6 +555,12 @@ class RecordingUsageRecorder:
             # the dedicated usage_records.tags JSONB column. Falsy (None/{}) -> "{}",
             # byte-identical to a request that never sent X-Gateway-Tags (M3).
             "tags": json.dumps(tags) if tags else "{}",
+            # service-tiers TASK.md §3 (M9): tier ACTUALLY SERVED — new discriminator,
+            # mirrors cost_basis/usage_source. "tier_capacity_degraded" mirrors the
+            # guardrail_blocked-style boolean-flag convention: encoded as "true"/"false"
+            # (Redis Stream fields are strings) — parsed back in flusher.py.
+            "tier_served": tier_served,
+            "tier_capacity_degraded": "true" if tier_capacity_degraded else "false",
         }
 
         # Push to Redis Stream — must not drop the event even on cost-0. Bounded by a
