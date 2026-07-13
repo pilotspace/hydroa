@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.8.0 — 2026-07-13 — Commercial platform
+
+The release that turns Hydroa from a proxy into a business: bill your own downstream
+tenants, sell EU data residency and service tiers, and run the whole thing behind a
+hardened enterprise-identity and platform-operator surface. Bundles 9 milestones + 3
+loose tasks closed since 0.7.0.
+
+### Monetization — bill downstream tenants (operator-as-a-business)
+- Immutable monthly **invoices** (`GET /admin/invoices` + PDF/CSV) from `usage_records`
+  via the one shared rate-card resolver; every line drills to its usage-row evidence;
+  invoices/lines append-only under a DB trigger (a correction is a new row).
+- Prepaid **credits** with a fail-closed spend gate wired into both governance choke
+  points; balance provably never driven below grace under concurrency; idempotent top-ups.
+- **Plan enforcement + seat caps** at admission time (four membership seams, row-locked);
+  **per-seat billing** with month-boundary proration; **cost-attribution tags**; an
+  operator **margin view**; and a tenant **Billing console** (Aurora financial-doc idiom).
+
+### Data residency & service tiers — region-pinned, tier-priced inference
+- **Region** as a first-class deployment dimension (`us|eu|ap|global`) — live Bedrock
+  EU/APAC seeds + a real **Vertex AI adapter** (EU + asia-southeast1). VN tenants pin `ap`.
+- **Fail-closed residency policy** — zero eligible in-region candidates → structured 4xx
+  before any dial (never a silent reroute); composes with ZDR. Reinforced by a fail-closed
+  **Bedrock BYOK dial guard** (dual adversarially security-verified).
+- Region (EU 1.1×) + Priority-tier (+25%) pricing through the one resolver; **priority/
+  standard service tiers** (Redis cross-worker capacity pools, overflow, fail-open bills
+  served tier). Console + marketing surfaces, axe-clean.
+
+### Enterprise identity, compliance & hardening
+- **Enterprise Identity & Compliance Pack** — SCIM 2.0 provisioning, SAML 2.0 SSO, domain
+  capture, retention + ZDR controls, compliance export.
+- **Logs Explorer + Guardrails v2** — payload capture + Request Logs Explorer, per-key
+  guardrail policies, ML moderation, output-schema validation, guardrail analytics.
+- **Enterprise Hardening** — realtime-relay governance, edge input hardening, signup/
+  routing authorization.
+
+### Platform operator surface
+- **Platform Identity Foundation** + **platform console flat/borderless redesign** — the
+  cross-tenant superadmin console.
+
+### Also
+- **v57** — batch-discounted chat completions.
+- **GPT-Realtime cache-discount pricing** — dual-stream cache-discount billing. ⚠️ **Caveat:
+  the billing math is unit/adversarially-tested but was never live-verified against real
+  OpenAI Realtime infrastructure** (no live credential has been available). Code is merged
+  and running (not feature-flagged); credited here at Tin's discretion with this caveat.
+- Loose tasks: role-update-persistence-fix, batch-observability-scaffolding,
+  declare-components-registry.
+
+### Security notes
+- Two HARD-STOP-disciplined saves in residency-service-tiers: a dual-verify catch of a
+  cross-tenant provider-token-cache confused-deputy (Vertex + Azure BYOK), and the
+  dual-verified Bedrock BYOK region dial guard. The credits ledger cleared a healed
+  security HARD-STOP verify in monetization-core.
+
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic versioning.
 

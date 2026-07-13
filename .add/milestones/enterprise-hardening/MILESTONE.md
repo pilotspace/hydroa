@@ -3,6 +3,7 @@
 goal: Every confirmed blocking defect in the 2026-07-02 enterprise-readiness diagnostic — revenue-integrity, resilience, realtime governance, and security — is fixed, tested red→green, and verified.
 rationale: new-major (a new theme — "harden the AI gateway to enterprise-grade + monetization-integrity" — that no active milestone covers). Bundles what ADD would normally split into a roadmap (revenue · durability · governance · security · pricing are each milestone-sized lines); kept as ONE milestone per Tin's explicit "draft all into one milestone, implement in parallel + auto." Per Tin's 2026-07-02 scope choice, ONE commercial task ships here too: tiered/per-model rate cards (the monetization lever, internal-only). Deferred commercial GAPs (invoicing/dunning — needs Stripe/external infra; margin reporting; budget reserve-then-settle) go to a future queued `monetization-commercial` milestone. B1 (stream-alias→$0) already shipped as fast task `stream-alias-billing` (PR #53, awaiting merge — this milestone's fork base); this milestone closes the rest.
 stage: mvp · status: active · created: 2026-07-02T04:42:17+00:00
+release: 0.8.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

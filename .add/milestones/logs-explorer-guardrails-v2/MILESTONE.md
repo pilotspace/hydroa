@@ -3,7 +3,7 @@
 goal: A tenant admin can opt into PII-scrubbed request/response capture, explore and replay logged calls from the console, and enforce per-key guardrail policies with ML moderation, output schema validation, and guardrail analytics.
 rationale: new-major — "cluster 2: Trust & Observability" of the Tin-approved 2026-07-10 SaaS-gateway roadmap (approved twice: at the 4-cluster roadmap decision and re-confirmed at the Claude-vs-Hydroa competitive review, "both in parallel" with enterprise-identity-compliance). A new theme no active milestone covers: today `usage_records.raw` holds only token frames (no payload store exists), guardrail policies are tenant-level only, and there is no ML moderation, no output-schema validation, and no guardrail analytics.
 stage: production · status: active · created: 2026-07-10T12:17:06+00:00
-release: pending
+release: 0.8.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

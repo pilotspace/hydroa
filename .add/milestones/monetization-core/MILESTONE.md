@@ -3,7 +3,7 @@
 goal: A gateway operator can bill their downstream tenants end-to-end — an immutable monthly invoice with row-level usage evidence, a prepaid-credits spend gate, an enforced plan (seats · budgets · allowlists · features), and a per-tenant margin view — with every dollar traceable from usage_record to invoice line.
 rationale: new-major (roadmap M1 of 3, Tin-confirmed 2026-07-12 after the July-2026 Claude-cloud + gateway-market analysis) — "commercial platform that bills its own tenants" is a theme no active milestone covers, and downstream tenant billing/invoicing/margin is the uncontested market whitespace (none of the 12 scanned gateway vendors productize it). Strategy artifact: claude.ai/code/artifact/714afaab-749b-4518-9167-1e240924ad8a. Salvages plan-enforcement + cost-attribution-tags from the demoted cluster 4.
 stage: production · status: active · created: 2026-07-12T07:38:27+00:00
-release: pending — feeds 0.8.0 "the commercial release" (with residency-service-tiers + the 14 unreleased cluster tasks)
+release: 0.8.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

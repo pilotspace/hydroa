@@ -736,7 +736,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T11:01:27+00:00",
+  "updated": "2026-07-13T11:09:33+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1924,6 +1924,12 @@
       "id": 37,
       "text": "semantic_cache flake instance (2026-07-13 M2 pre-merge): test_semantic_hit_ledger_cached_true_cost_zero + test_semantic_cache_normalized_variant_hits failed in the full suite (shared Redis :6380 db 9 cross-test contamination \u2014 a prior test's cache entry made 'first' request a hit, cost 0). Pass 15/15 isolated. Known flake class. The xdist CI work (task #11) should give each worker its own Redis db/namespace to KILL this class permanently.",
       "created": "2026-07-13T11:01:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 38,
+      "text": "Delta-hygiene sweep (systemic): 273 open SPEC deltas accumulated across 76 archived milestones, riding unresolved across 7 releases (0.8.0 cut with --force, 15 bundle-deltas riding). Dedicate a triage pass: carry-delta the genuine defers, new-task --from-delta the real work (e.g. the recurring 'coverage under-attributes async-DB lines / greenlet concurrency' delta appears many times \u2014 worth ONE fix), drop-delta the obsolete. Not blocking releases but the floor re-fires every cut.",
+      "created": "2026-07-13T11:09:33+00:00",
       "status": "open"
     }
   ]

@@ -11,6 +11,7 @@ rationale: change-request — Tin asked to reuse catalog-pricing-fields' cached_
   chose the full-scope option (schema migration + relay billing wiring + catalog seed) over a
   smaller display-only or partial alternative.
 stage: production · status: active · created: 2026-07-01T15:44:18+00:00
+release: 0.8.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

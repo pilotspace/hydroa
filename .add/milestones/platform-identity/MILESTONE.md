@@ -3,6 +3,7 @@
 goal: A reserved platform tenant and a superadmin role exist and can authenticate via a new JWT role plus the existing ops-mTLS mechanism, with no new cross-tenant capability granted yet
 rationale: new-major — a new product pillar (cross-tenant platform administration) that no active milestone's goal covers; resolves the open SPEC delta recorded 2026-07-01 in minimax-catalog-seed/TASK.md:743 ("introduce a platform-wide superadmin role / system-or-platform tenant concept") and unblocks its dependent MiniMax-refetch delta; first (admin-first order) of a confirmed 5-milestone roadmap: platform-identity -> platform-admin-console -> tenant-impersonation -> platform-key-default -> platform-access-plan. Related to but distinct from the separate, unmerged enterprise-hardening branch work (margin/circuit-breaker/monetization hardening) — no overlap in scope.
 stage: production · status: active · created: 2026-07-02T15:53:53+00:00
+release: 0.8.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

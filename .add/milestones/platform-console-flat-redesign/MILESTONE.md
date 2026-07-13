@@ -10,7 +10,7 @@ rationale: new-major (precedent: v13 design-system-foundation → v23 enterprise
   UDD precedent; `add.py search` confirms no existing milestone's goal already covers this (only
   self-matches + unrelated tangential keyword hits).
 stage: production · status: active · created: 2026-07-05T07:03:08+00:00
-release: pending
+release: 0.8.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

@@ -16,6 +16,7 @@ rationale: Intake → new-major (confirmed by Tin 2026-07-02). No existing miles
   increasing the savings rate). Tenant-admin enable/disable + a savings/value display added to scope
   by Tin 2026-07-02, folded into batch-dashboard-surface.
 stage: production · status: active · created: 2026-07-02T15:00:40+00:00
+release: 0.8.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

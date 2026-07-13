@@ -3,7 +3,7 @@
 goal: A tenant can pin inference to a region (EU via Bedrock/Vertex EU deployments) with a fail-closed residency policy, and buy priority-vs-standard service tiers with tier- and region-differentiated pricing — selling what Anthropic verifiably lacks (no first-party EU; US-pin monetized at 1.1x).
 rationale: roadmap M2 of 3 (Tin-confirmed 2026-07-12) — Track C of the approved roadmap; durable competitive whitespace validated by the July-2026 research (only Requesty stakes an EU claim). Detail drafted at activation.
 stage: mvp · status: active · created: 2026-07-12T07:38:33+00:00
-release: pending
+release: 0.8.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

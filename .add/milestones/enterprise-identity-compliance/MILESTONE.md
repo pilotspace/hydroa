@@ -3,7 +3,7 @@
 goal: An enterprise tenant can provision users via SCIM, sign in via SAML or OIDC, capture its email domain, set its own retention policy including a Zero-Data-Retention mode, and export its audit trail through a compliance API.
 rationale: new-major — Track A of the Tin-approved 2026-07-10 Claude-vs-Hydroa competitive gap analysis (all four tracks approved; A recommended first as procurement-checkbox items). No active milestone covers enterprise identity lifecycle or per-tenant compliance posture: today Hydroa has OIDC SSO + invites but NO SCIM, NO SAML, NO domain capture; retention is one operator-wide sweeper (no per-tenant policy, no ZDR); the immutable audit store has an admin read view but no compliance-grade export.
 stage: production · status: active · created: 2026-07-10T12:17:07+00:00
-release: pending
+release: 0.8.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,
