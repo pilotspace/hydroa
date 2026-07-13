@@ -853,12 +853,12 @@
     },
     "vertex-adapter": {
       "title": "Vertex AI adapter (service-account auth, regional endpoints) + EU/Asia entries",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T15:00:50+00:00",
-      "updated": "2026-07-12T17:02:10+00:00",
+      "updated": "2026-07-13T03:00:16+00:00",
       "freeze": {
         "version": "v2",
         "frozen_at": "2026-07-13T02:43:34+00:00",
@@ -871,17 +871,17 @@
       },
       "flag_verified": true,
       "tripwire": {
-        "contract_md5": "70a2fc1d161c7ac7d5ae8a48cdb618d9",
+        "contract_md5": "71e8bed3d70f1e27befc8e2584b7c050",
         "tests": {
           "apps/gateway/tests/vertex_upstream/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/vertex_upstream/test_vertex_upstream.py": "071d6592aedfff170aaf40730fe7e203",
+          "apps/gateway/tests/vertex_upstream/test_vertex_upstream.py": "78d2ecb35b83faeaf4cb020341a1626b",
           "apps/gateway/tests/vertex_auth/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/vertex_auth/test_vertex_auth.py": "ad989032053a021a6f7bf70f916e8340"
+          "apps/gateway/tests/vertex_auth/test_vertex_auth.py": "c32405ce01c38d7568911bd4c574e664"
         }
       },
       "scope": {
         "declared": [],
-        "snapshot_md5": "961da4d5b6df322e47ad29bf27c03063"
+        "snapshot_md5": "80bb8d4a6039defcb85c5fdc092655e6"
       },
       "heal": {
         "attempts": 1,
@@ -984,7 +984,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T02:43:34+00:00",
+  "updated": "2026-07-13T03:00:16+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
