@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "residency-policy",
+  "active_task": "service-tiers",
   "active_milestone": "residency-service-tiers",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -830,12 +830,12 @@
     },
     "service-tiers": {
       "title": "Priority/standard service tiers \u2014 capacity preference, overflow, tier markup",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T14:46:20+00:00",
-      "updated": "2026-07-12T15:55:03+00:00",
+      "updated": "2026-07-13T08:18:59+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T15:55:03+00:00",
@@ -845,6 +845,17 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "6a12025d99fc73bbf53b4a6d820a2358",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/service-tiers/src/gateway/proxy/infrastructure/tier_capacity_guard.py"
+        ],
+        "snapshot_md5": "90cb9cc4a3e7cdbe50fda364ca23bf13"
       }
     },
     "residency-tiers-ui": {
@@ -1004,7 +1015,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T03:14:19+00:00",
+  "updated": "2026-07-13T08:18:59+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1956,7 +1967,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "residency-service-tiers": "residency-policy"
+    "residency-service-tiers": "service-tiers"
   },
   "todos": [
     {
