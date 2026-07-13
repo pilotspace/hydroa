@@ -1394,6 +1394,11 @@ async def test_guardrails_core_migration_column_exists(
     # on Base.metadata via tenants/infrastructure/orm.py (same file as TenantRow/
     # UserRow, so no separate side-effect import is needed). Guardrails still adds
     # no tables of its own; invariant intent unchanged.
+    # SANCTIONED EDIT (region-pricing + service-tiers TASK.md §3 manifest
+    # maintenance, 2026-07-13): added tenant_region_multiplier_overrides (migration
+    # d608e56c7485) and tenant_priority_markup_overrides (migration 4583689a7b8b) —
+    # NEW tables owned by the M2 pricing tasks' own tenants/ context, not by
+    # guardrails-core; invariant intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1412,7 +1417,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'scim_tokens','saml_provider_configs','guardrail_verdict_events',"
                 " 'tenant_domain_claims','invoices','invoice_lines',"
                 " 'invoice_corrections','credit_ledger','tenant_credit_balances',"
-                " 'seat_membership_events')"
+                " 'seat_membership_events','tenant_region_multiplier_overrides',"
+                " 'tenant_priority_markup_overrides')"
             )
         )
     ).fetchall()

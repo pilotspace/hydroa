@@ -643,6 +643,10 @@ async def test_redacted_key_list_field_set_exact(
         "team_id",
         "cache_enabled",
         "capture_enabled",
+        # SANCTIONED EDIT (service-tiers TASK.md §3 manifest maintenance,
+        # 2026-07-13): added tier to this manifest — additive field on
+        # KeyInfoResponse (per-key service tier; same additive idiom as above).
+        "tier",
     }
 
 
