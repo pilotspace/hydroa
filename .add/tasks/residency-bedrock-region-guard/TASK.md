@@ -119,7 +119,7 @@ Error: ERR_BEDROCK_REGION_MISMATCH -> HTTP 403 problem+json
 Schema: none (no migration, no new column, no new route, no new setting).
 ```
 
-Glossary deltas: Bedrock cross-region inference profile: an AWS model id prefixed us./eu./apac. that fans out server-side across that geo's AWS regions; the prefix is the residency signal this guard binds the credential's region to.
+Glossary deltas: Bedrock cross-region inference profile: an AWS model id prefixed us./eu./apac. that fans out server-side across that geo's AWS regions; the prefix is the residency signal this guard binds the credential's region to. [folded foundation-version 52]
 
 Least-sure flag surfaced at freeze: ⚠ [spec] the profile-prefix→geo map is assumed complete at {us, eu, apac}. If AWS ships a NEW-geo cross-region profile (e.g. `sa.`/`ca.`) and the catalog seeds it, an id with that unknown prefix falls through M3 (treated as unprefixed) and SKIPS the guard — a fail-OPEN gap for that new geo until the map is widened. Mitigation contracted: a test pins the three known prefixes + a TODO to extend the map whenever a new-geo Bedrock row is seeded. Accepted as the residual because the only Bedrock rows shipping in M2 are us./eu./apac. (bedrock_seed.py) — the gap cannot manifest until a new-geo row is added, which is itself the trigger to widen the map.
 Status: FROZEN @ v1 — approved by Tin Dang

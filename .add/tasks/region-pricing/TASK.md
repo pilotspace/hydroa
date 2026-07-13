@@ -243,7 +243,7 @@ apps/gateway/src/gateway/usage/api/margin_router.py                     [ZERO CH
 
 Glossary deltas:
 - **Region multiplier**: a per-region price multiplier composed with tenant markup at the ONE shared rate-card resolver (`resolve_region_multiplier`) — DECIDED seed eu=1.1×, us/global=1.0×, tenant-overridable via `tenant_region_multiplier_overrides`; applied exactly once, at usage-record time (`recorder.py`), never recomputed downstream — invoice lines and the margin dashboard inherit it for free via `usage_records.cost_usd`.
-- **tenant_region_multiplier_overrides**: the per-(tenant, region) override table; an ABSENT row means "fall back to the DECIDED seed" — the same override-wins-else-fallback shape as `tenant_rate_card_entries` (GLOSSARY `Markup`), keyed by region instead of model.
+- **tenant_region_multiplier_overrides**: the per-(tenant, region) override table; an ABSENT row means "fall back to the DECIDED seed" — the same override-wins-else-fallback shape as `tenant_rate_card_entries` (GLOSSARY `Markup`), keyed by region instead of model. [folded foundation-version 52]
 
 Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no

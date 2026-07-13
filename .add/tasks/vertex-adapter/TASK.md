@@ -750,7 +750,7 @@ Glossary deltas:
   service-account's `project_id`/`client_email`/`private_key` (PEM RSA), used to mint short-lived
   OAuth2 bearer tokens via the RFC 7523 JWT-bearer grant. Project-scoped, NOT region-scoped —
   distinct from `BedrockCredential.region` (one AWS region pinned per credential); one Vertex
-  credential serves every seeded Vertex location for that tenant.
+  credential serves every seeded Vertex location for that tenant. [folded foundation-version 52]
 
 Status: FROZEN @ v2 — approved by Tin Dang
 Reported: no — draft only; the freeze report renders when a human reviews this for FROZEN.
