@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "service-tiers",
+  "active_task": "residency-bedrock-region-guard",
   "active_milestone": "residency-service-tiers",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -956,12 +956,12 @@
     },
     "residency-bedrock-region-guard": {
       "title": "Fail-closed Bedrock BYOK region guard for residency",
-      "phase": "tests",
+      "phase": "verify",
       "gate": "none",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-13T08:20:36+00:00",
-      "updated": "2026-07-13T08:23:52+00:00",
+      "updated": "2026-07-13T08:41:46+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-13T08:23:31+00:00",
@@ -971,6 +971,20 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "b7420fb9aec9f4ec01412c85e80ac846",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_embeddings.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/tests/bedrock_region_guard/"
+        ],
+        "snapshot_md5": "067640fe576ba0e59cf3fee6dd5725ac"
       }
     }
   },
@@ -1049,7 +1063,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T08:40:01+00:00",
+  "updated": "2026-07-13T08:41:46+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2001,7 +2015,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "residency-service-tiers": "service-tiers"
+    "residency-service-tiers": "residency-bedrock-region-guard"
   },
   "todos": [
     {
