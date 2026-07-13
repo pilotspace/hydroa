@@ -44,8 +44,17 @@ from gateway.keys.domain.errors import InvalidApiKeyError
 # non-chat hold sat unsettled until the M6 sweep blindly refunded it in full,
 # regardless of real metered cost.
 from gateway.proxy.application.residency import check_residency_existence
+
+# service-tiers TASK.md §3 (FROZEN @ v1): the SAME dual-copy-governance precedent as
+# _credit_hold_ctx above — _tier_hold_ctx/_tier_served_ctx are the ONE ContextVar pair
+# CompletionUseCase._enforce_governance publishes to; reusing them here means
+# _dispatch_record (fired later in this SAME asyncio Task) finds the open tier hold and
+# releases it, and the resolved (tier_served, tier_capacity_degraded) pair reaches the
+# usage record for images/audio/embeddings exactly like the chat path.
 from gateway.proxy.application.use_cases import (
     _credit_hold_ctx,  # pyright: ignore[reportPrivateUsage]
+    _tier_hold_ctx,  # pyright: ignore[reportPrivateUsage]
+    _tier_served_ctx,  # pyright: ignore[reportPrivateUsage]
 )
 from gateway.proxy.domain.ports import (
     KeyAuthenticator,
@@ -53,6 +62,8 @@ from gateway.proxy.domain.ports import (
     ModelChecker,
     ResidencyLookup,
 )
+from gateway.proxy.domain.tier_capacity import TierCapacityGuard
+from gateway.proxy.infrastructure.tier_capacity_guard import PassthroughTierCapacityGuard
 from gateway.rate_limits.domain.errors import RateLimitExceededError
 from gateway.rate_limits.domain.ports import RateLimiter
 
@@ -93,6 +104,7 @@ class NonChatGovernance:
         credit_guard: CreditGuard = PassthroughCreditGuard(),  # noqa: B008
         hold_estimate_usd: Decimal = Decimal("0.50"),
         residency_lookup: ResidencyLookup | None = None,
+        tier_capacity_guard: TierCapacityGuard = PassthroughTierCapacityGuard(),  # noqa: B008
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -113,6 +125,11 @@ class NonChatGovernance:
         # rather than a precise per-call settle hook — see TASK.md §7 spec delta).
         self._credit_guard: CreditGuard = credit_guard
         self._hold_estimate_usd: Decimal = hold_estimate_usd
+        # service-tiers TASK.md §3 (FROZEN @ v1): PassthroughTierCapacityGuard (default)
+        # ⇒ check_and_hold returns an undegraded TierHold at the tenant's default tier ⇒
+        # byte-identical to pre-service-tiers behavior. Runs at the SAME choke point as
+        # the credit hold — see authorize() below.
+        self._tier_capacity_guard: TierCapacityGuard = tier_capacity_guard
 
     async def authorize(
         self,
@@ -187,13 +204,34 @@ class NonChatGovernance:
             # Step 7: Tenant budget enforces (RedisBudgetGuard)
             await self._budget_guard.check(authz.tenant_id)
 
+        # service-tiers TASK.md §3 (M3/M5/M7): admission-capacity HOLD, immediately
+        # BEFORE the credit hold — same insertion point/ordering as
+        # CompletionUseCase._enforce_governance (dual-copy governance, never staggered).
+        # check_and_hold raises ERR_TIER_CAPACITY_EXHAUSTED (503) ONLY when every
+        # applicable pool is genuinely full (R4) — a Redis/infra failure fails OPEN into
+        # a degraded TierHold instead (M8a), never raises here.
+        _tier_request_id = request_id if request_id is not None else uuid.uuid4()
+        _tier_hold = await self._tier_capacity_guard.check_and_hold(
+            authz.tenant_id, authz.tier, _tier_request_id
+        )
+        tier_served, tier_capacity_degraded = _tier_hold.tier_served, _tier_hold.degraded
+        _tier_served_ctx.set((tier_served, tier_capacity_degraded))
+
         # credits-ledger TASK.md §3 (M1/M2/M3): admission-time HOLD, after the budget
         # ladder (step 7), before RPM/TPM (steps 8-9) — same insertion point as
         # CompletionUseCase._enforce_governance ("both pipeline copies").
+        #
+        # service-tiers TASK.md §3 (M3): wrapped so a credit-hold rejection ALSO
+        # releases the just-placed tier hold — the tenant is never left holding a
+        # capacity slot for a request that will never reach the provider.
         _credit_request_id = request_id if request_id is not None else uuid.uuid4()
-        await self._credit_guard.check_and_hold(
-            authz.tenant_id, _credit_request_id, self._hold_estimate_usd
-        )
+        try:
+            await self._credit_guard.check_and_hold(
+                authz.tenant_id, _credit_request_id, self._hold_estimate_usd
+            )
+        except Exception:
+            await self._tier_capacity_guard.release(authz.tenant_id, _tier_request_id)
+            raise
         # HEAL (finding 2): publish (credit_guard, request_id) so this request's later
         # _dispatch_record call (fired from the non-chat use case's _fire_record_with_raw
         # / _fire_record_cached, in this SAME Task) settles or releases the hold just
@@ -232,8 +270,18 @@ class NonChatGovernance:
             # already-admitted request must fully reverse the hold (never-charged-for-a-
             # request-that-never-reached-the-provider). release() is best-effort/never-
             # raises, so this cannot mask or replace the original RATE_LIMITED error.
+            #
+            # service-tiers TASK.md §3 (M3): extended to release BOTH holds — a later
+            # RPM/TPM rejection must not strand the tier-capacity slot either.
             await self._credit_guard.release(authz.tenant_id, _credit_request_id)
+            await self._tier_capacity_guard.release(authz.tenant_id, _tier_request_id)
             raise
+
+        # service-tiers TASK.md §3 (M9): publish the tier hold for release once this
+        # request's usage record is fully dispatched (mirrors _credit_hold_ctx.set()
+        # above) — consumed by _settle_or_release_hold via _tier_hold_ctx (M9's own
+        # named symbol, the SAME ContextVar CompletionUseCase._enforce_governance uses).
+        _tier_hold_ctx.set((self._tier_capacity_guard, _tier_request_id))
 
         return authz
 

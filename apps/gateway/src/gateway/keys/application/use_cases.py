@@ -34,6 +34,8 @@ class CreateKeyResult:
     team_id: uuid.UUID | None = None
     # response-caching additive field
     cache_enabled: bool = False
+    # service-tiers additive field (TASK.md §3, FROZEN @ v1) — raw key-level override.
+    tier: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +71,7 @@ class CreateKeyUseCase:
         tpm_limit: int | None = None,
         team_id: uuid.UUID | None = None,
         cache_enabled: bool = False,
+        tier: str | None = None,
     ) -> CreateKeyResult:
         """Issue a new API key.
 
@@ -93,6 +96,7 @@ class CreateKeyUseCase:
             tpm_limit=tpm_limit,
             team_id=team_id,
             cache_enabled=cache_enabled,
+            tier=tier,
         )
         return CreateKeyResult(
             key_id=key_id,
@@ -106,6 +110,7 @@ class CreateKeyUseCase:
             tpm_limit=tpm_limit,
             team_id=team_id,
             cache_enabled=cache_enabled,
+            tier=tier,
         )
 
 
@@ -162,6 +167,7 @@ class UpdateKeyUseCase:
         team_id: uuid.UUID | None = None,
         cache_enabled: bool | None = None,
         capture_enabled: bool | None = None,
+        tier: str | None = None,
         _fields_to_clear: set[str] | None = None,
     ) -> ApiKey:
         """Update governance fields.
@@ -183,6 +189,7 @@ class UpdateKeyUseCase:
             team_id=team_id,
             cache_enabled=cache_enabled,
             capture_enabled=capture_enabled,
+            tier=tier,
             _fields_to_clear=_fields_to_clear,
         )
         if result is None:
@@ -323,6 +330,8 @@ class AuthzUseCase:
             plan_id=getattr(row, "plan_id", None),
             plan_model_allowlist=getattr(row, "plan_model_allowlist", None),
             plan_name=getattr(row, "plan_name", None),
+            tier=getattr(row, "tier", "standard"),
+            tier_source=getattr(row, "tier_source", "tenant"),
         )
 
 

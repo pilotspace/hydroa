@@ -59,9 +59,16 @@ class ListModelsForTenantUseCase:
     def __init__(self, repository: CatalogRepository) -> None:
         self._repository = repository
 
-    async def execute(self, tenant_id: uuid.UUID) -> list[MarkedUpModel]:
+    async def execute(
+        self, tenant_id: uuid.UUID, *, tier: str | None = None
+    ) -> list[MarkedUpModel]:
         """Return marked-up active models for the given tenant.
 
         Raises CatalogEmptyError when zero active models exist.
+
+        tier (service-tiers TASK.md §3): optional, additive — the JWT-authenticated
+        catalog routes (dashboard/admin session auth) carry no per-sk-key tier signal,
+        so callers on those paths never pass it (tier stays None ⇒ byte-identical).
+        Exists so the seam is directly testable without a live tier context.
         """
-        return await self._repository.list_active_models_with_markup(tenant_id)
+        return await self._repository.list_active_models_with_markup(tenant_id, tier=tier)

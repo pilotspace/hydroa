@@ -21,6 +21,7 @@ from gateway.proxy.api.embeddings_deps import get_provider_registry as get_provi
 from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.application.images_use_case import ImagesUseCase
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
+from gateway.proxy.infrastructure.tier_capacity_guard import PassthroughTierCapacityGuard
 
 # Singleton stateless hasher — safe to share across requests
 _hasher = Sha256SecretHasher()
@@ -62,6 +63,11 @@ def get_images_use_case(
 
     credit_guard = getattr(request.app.state, "credit_guard", None) or PassthroughCreditGuard()
     hold_estimate_usd = _settings.credits_hold_estimate_usd if _settings else Decimal("0.50")
+    # service-tiers TASK.md §3 (FROZEN @ v1): same app.state-boot singleton pattern as
+    # credit_guard above. Absent ⇒ PassthroughTierCapacityGuard ⇒ byte-identical.
+    tier_capacity_guard = getattr(request.app.state, "tier_capacity_guard", None) or (
+        PassthroughTierCapacityGuard()
+    )
 
     governance = NonChatGovernance(
         authenticator=authenticator,
@@ -75,6 +81,7 @@ def get_images_use_case(
         # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same
         # getattr pattern as tenant_credential_resolver below. None ⇒ byte-identical.
         residency_lookup=getattr(request.app.state, "residency_lookup", None),
+        tier_capacity_guard=tier_capacity_guard,
     )
     # credential-resolution-seam §3: per-tenant provider key resolver from app.state.
     tenant_credential_resolver = getattr(request.app.state, "tenant_credential_resolver", None)

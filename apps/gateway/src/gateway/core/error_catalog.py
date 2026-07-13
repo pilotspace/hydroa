@@ -244,6 +244,19 @@ PAYLOAD_SOFT_EXCEEDS_HARD = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "soft_budget_usd must be <= monthly_budget_usd"
 )
 
+#: ``tier`` is not one of {priority, standard, null} (service-tiers TASK.md §3 R1).
+PAYLOAD_TIER_INVALID = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "tier must be one of 'priority', 'standard', or null"
+)
+
+#: ``priority_reserved_pct + standard_reserved_pct`` exceeds 1.0 (service-tiers
+#: TASK.md §3 R5 — the live PUT /admin/platform/service-tiers write path).
+PAYLOAD_TIER_PCT_SUM_INVALID = ErrorSpec(
+    422,
+    "ERR_PAYLOAD_INVALID",
+    "priority_reserved_pct + standard_reserved_pct must be <= 1.0",
+)
+
 #: A decimal field cannot be parsed (dynamic: field_name).
 PAYLOAD_DECIMAL_INVALID = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "{field_name} must be a valid decimal string"
@@ -418,6 +431,13 @@ RATE_LIMITED = ErrorSpec(429, "ERR_RATE_LIMITED", "Rate limit exceeded")
 #: 503 on the non-stream PRE-FLIGHT shed path (Retry-After always provided by the caller);
 #: mid-stream it is only the SSE error-frame body's ``code`` (status is already 200).
 BANDWIDTH_EXHAUSTED = ErrorSpec(503, "ERR_BANDWIDTH_EXHAUSTED", "Bandwidth limit exceeded")
+
+#: A request's tier-reserved + shared capacity is exhausted, even though the frozen
+#: base GlobalBackPressureMiddleware admitted it (service-tiers TASK.md §3 M8/R4).
+#: Distinct from ERR_OVERLOADED — this means "the base guard admitted you, but your
+#: tier's pools are full cluster-wide". Retry-After always provided by the caller.
+#: App/upstream NEVER invoked; no usage record is written for a shed request.
+TIER_CAPACITY_EXHAUSTED = ErrorSpec(503, "ERR_TIER_CAPACITY_EXHAUSTED", "Tier capacity exhausted")
 
 # ---------------------------------------------------------------------------
 # Guardrail / content policy

@@ -74,6 +74,16 @@ class UsageRecordExtras(TypedDict, total=False):
                           tags TASK.md §3, additive column — NOT the raw JSONB extras).
                           Omitted/empty -> the recorder stores {} (byte-identical to a
                           request that never sent the header).
+      tier_served       — the tier ACTUALLY admitted at (service-tiers TASK.md §3
+                          M10) — may differ from the requested/selected tier on
+                          overflow or Redis degradation. NEVER the requested tier.
+                          The ONLY input to resolve_tier_multiplier's billing
+                          composition. Default 'standard' on old/untiered events.
+      tier_capacity_degraded — True only when the Redis-backed tier gate was
+                          unreachable at admission time for THIS request (M8a) —
+                          distinguishes an honest standard-rate bill caused by
+                          infrastructure degradation from one caused by ordinary
+                          overflow.
     """
 
     team_id: uuid.UUID
@@ -88,6 +98,8 @@ class UsageRecordExtras(TypedDict, total=False):
     disconnect_estimate: bool
     request_id: uuid.UUID
     tags: dict[str, str]
+    tier_served: str
+    tier_capacity_degraded: bool
 
 
 class ModelAccess(Enum):

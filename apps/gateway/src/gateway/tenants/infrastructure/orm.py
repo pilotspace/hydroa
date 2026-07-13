@@ -105,6 +105,8 @@ class TenantRow(Base):
         CheckConstraint(
             "plan_id IS NULL OR kind != 'platform'", name="ck_tenants_platform_no_plan"
         ),
+        # service-tiers TASK.md §3 (FROZEN @ v1) — additive.
+        CheckConstraint("default_tier IN ('priority', 'standard')", name="ck_tenants_default_tier"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
@@ -173,6 +175,9 @@ class TenantRow(Base):
     residency_region_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # service-tiers TASK.md §3 (FROZEN @ v1) — additive, NOT NULL DEFAULT 'standard'.
+    # The tenant-wide fallback tier when a key carries no per-key override (M1).
+    default_tier: Mapped[str] = mapped_column(Text, nullable=False, server_default="standard")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # updated_at — NOT in the baseline (ad14442336db created tenants with created_at only);
     # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without

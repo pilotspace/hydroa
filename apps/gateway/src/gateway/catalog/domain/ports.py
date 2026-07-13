@@ -53,11 +53,17 @@ class CatalogRepository(Protocol):
         """
         ...
 
-    async def list_active_models_with_markup(self, tenant_id: uuid.UUID) -> list[MarkedUpModel]:
+    async def list_active_models_with_markup(
+        self, tenant_id: uuid.UUID, *, tier: str | None = None
+    ) -> list[MarkedUpModel]:
         """Return active models with the tenant's markup_pct applied.
 
         Single joined query — no N+1.
         Raises CatalogEmptyError when zero active models exist.
+
+        tier (service-tiers TASK.md §3): caller-specific, not model-row-keyed like
+        region — None (default) ⇒ tier_multiplier stays the Decimal("1") identity ⇒
+        byte-identical to pre-service-tiers behavior.
         """
         ...
 

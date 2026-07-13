@@ -114,6 +114,8 @@ from gateway.proxy.domain.provider_credentials import (
     ProviderKeyMissing,
 )
 from gateway.proxy.domain.response_format_translation import extract_response_format
+from gateway.proxy.domain.tier_capacity import ServiceTier, TierCapacityGuard
+from gateway.proxy.infrastructure.tier_capacity_guard import PassthroughTierCapacityGuard
 from gateway.rate_limits.application.passthrough import (
     PassthroughBandwidthBucket,
     PassthroughRateLimiter,
@@ -307,12 +309,50 @@ _credit_hold_ctx: contextvars.ContextVar[tuple[CreditGuard, uuid.UUID] | None] =
     contextvars.ContextVar("_credit_hold_ctx", default=None)
 )
 
+# service-tiers TASK.md §3 (FROZEN @ v1, M9): set alongside _credit_hold_ctx.set(...),
+# immediately after the tier hold succeeds — consumed by _settle_or_release_hold to
+# release the tier-capacity slot once the (possibly-streaming) request's usage record
+# is fully dispatched, mirroring _credit_hold_ctx's own publish/consume shape exactly.
+_tier_hold_ctx: contextvars.ContextVar[tuple[TierCapacityGuard, uuid.UUID] | None] = (
+    contextvars.ContextVar("_tier_hold_ctx", default=None)
+)
+
+# service-tiers TASK.md §3 (M10, a Build judgment call — not itself a §3-named symbol):
+# the (tier_served, tier_capacity_degraded) pair resolved ONCE in _enforce_governance/
+# NonChatGovernance.authorize, published alongside _tier_hold_ctx, and consumed by
+# _dispatch_record so tier_served/tier_capacity_degraded reach whichever _fire_record*
+# call site this SAME request eventually dispatches through — WITHOUT threading two new
+# kwargs through ~25 _fire_record*/_fire_record_with_raw call sites (the same rationale
+# _credit_hold_ctx's own docstring gives for its contextvar-publish-then-consume shape).
+_tier_served_ctx: contextvars.ContextVar[tuple[ServiceTier, bool] | None] = contextvars.ContextVar(
+    "_tier_served_ctx", default=None
+)
+
 
 def _settle_or_release_hold(task: asyncio.Task[object | None]) -> None:
     """Task done-callback: consume the recorder's UsageRecordOutcome (if any) and settle
     or release the open credit hold for the current request. Never raises — a missing
     outcome (older/duck-typed recorder, or record() itself failed) is a no-op; the M6
-    reconciliation sweep is the backstop for anything left unresolved here."""
+    reconciliation sweep is the backstop for anything left unresolved here.
+
+    service-tiers TASK.md §3 M9: ALSO consumes _tier_hold_ctx and releases the tier
+    capacity hold UNCONDITIONALLY (no settle/release split needed — a capacity slot is
+    a binary occupied/free thing, not a money amount, deliberate simplification vs
+    CreditGuard's separate settle()/release()). This release fires regardless of
+    whether the credit-hold branch above found anything to settle, so a tier hold is
+    never stranded by a credit-side no-op (e.g. a free/cached response).
+    """
+    tier_ctx = _tier_hold_ctx.get()
+    if tier_ctx is not None and not task.cancelled() and task.exception() is None:
+        tier_guard, tier_request_id = tier_ctx
+        result = task.result()
+        tier_tenant_id = getattr(result, "tenant_id", None)
+        if tier_tenant_id is not None:
+            release_task = asyncio.ensure_future(
+                tier_guard.release(tier_tenant_id, tier_request_id)
+            )
+            release_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
     if task.cancelled() or task.exception() is not None:
         return
     ctx = _credit_hold_ctx.get()
@@ -366,6 +406,16 @@ def _dispatch_record(
     read back the already-computed cost. record()'s own contract/behavior is completely
     unchanged for every other caller (byte-identical — see record_with_outcome's
     docstring for why this is a NEW method rather than widening record()'s return).
+
+    service-tiers TASK.md §3 (M9/M10, a Build judgment call): the SAME
+    record_with_outcome branch also fires when a TIER hold is open (independent of
+    whether a credit hold is ALSO open — the two guards are orthogonal, and a
+    tenant may have tiering wired without credits), so _settle_or_release_hold
+    always gets a chance to release the tier-capacity slot. Before dispatch,
+    tier_served/tier_capacity_degraded (resolved once in _enforce_governance,
+    published via _tier_served_ctx) are folded into kwargs — filtered against
+    `supported_extras` exactly like every other extra, so a v1-Protocol fake
+    without the capability silently receives only the base kwargs.
     """
     supported: frozenset[str] = getattr(usage_recorder, "supported_extras", frozenset())
     kwargs: dict[str, Any] = {
@@ -378,7 +428,14 @@ def _dispatch_record(
     if extras:
         kwargs.update({k: v for k, v in extras.items() if k in supported})
 
+    tier_served_ctx = _tier_served_ctx.get()
+    if tier_served_ctx is not None and "tier_served" in supported:
+        _tier_served_value, _tier_degraded_value = tier_served_ctx
+        kwargs["tier_served"] = _tier_served_value
+        kwargs["tier_capacity_degraded"] = _tier_degraded_value
+
     credit_ctx = _credit_hold_ctx.get()
+    tier_hold_ctx = _tier_hold_ctx.get()
     # Explicit annotation (not `callable()` narrowing) — callable() narrows to
     # Callable[..., object], which pyright then rejects as an ensure_future() arg
     # (object is not Awaitable). getattr's own Any-typed return, propagated through
@@ -386,7 +443,7 @@ def _dispatch_record(
     record_with_outcome: Callable[..., Awaitable[Any]] | None = getattr(
         usage_recorder, "record_with_outcome", None
     )
-    if credit_ctx is not None and record_with_outcome is not None:
+    if (credit_ctx is not None or tier_hold_ctx is not None) and record_with_outcome is not None:
         task = asyncio.ensure_future(record_with_outcome(**kwargs))
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         task.add_done_callback(_settle_or_release_hold)
@@ -981,6 +1038,7 @@ class CompletionUseCase:
         credit_guard: CreditGuard = PassthroughCreditGuard(),  # noqa: B008
         hold_estimate_usd: Decimal = Decimal("0.50"),
         residency_lookup: ResidencyLookup | None = None,
+        tier_capacity_guard: TierCapacityGuard = PassthroughTierCapacityGuard(),  # noqa: B008
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -1070,6 +1128,11 @@ class CompletionUseCase:
         # request_logs row via _dispatch_capture at each hook site — see complete()/
         # stream()/_fire_record_cached call sites for the insertion points.
         self._payload_capture: PayloadCapturePort | None = payload_capture
+        # service-tiers TASK.md §3 (FROZEN @ v1): PassthroughTierCapacityGuard
+        # (default) ⇒ check_and_hold always returns the requested tier unchanged,
+        # release is a no-op ⇒ byte-identical to today. When wired, the tier gate
+        # runs at the SAME choke point as the credit hold — see _enforce_governance.
+        self._tier_capacity_guard: TierCapacityGuard = tier_capacity_guard
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -1486,25 +1549,58 @@ class CompletionUseCase:
             # No hard per-key budget — tenant budget enforces (RedisBudgetGuard)
             await budget_guard.check(authz.tenant_id)
 
+        # service-tiers TASK.md §3 (M3/M5/M7): admission-capacity HOLD, immediately
+        # BEFORE the credit hold (capacity is a gateway-wide scarce-resource concern,
+        # closer to the base back-pressure guard's job than to per-tenant
+        # affordability, §1 M3). check_and_hold raises ERR_TIER_CAPACITY_EXHAUSTED
+        # (503) ONLY when every applicable pool is genuinely full (R4) — a Redis/infra
+        # failure fails OPEN into a degraded TierHold instead (M8a), never raises here.
+        _tier_request_id = request_id if request_id is not None else uuid.uuid4()
+        _tier_hold = await self._tier_capacity_guard.check_and_hold(
+            authz.tenant_id, authz.tier, _tier_request_id
+        )
+        tier_served, tier_capacity_degraded = _tier_hold.tier_served, _tier_hold.degraded
+        _tier_served_ctx.set((tier_served, tier_capacity_degraded))
+
         # credits-ledger TASK.md §3 (M1/M2/M3): admission-time HOLD, after the budget
         # ladder, before RPM/TPM. check_and_hold raises ERR_CREDITS_EXHAUSTED (402) INSIDE
         # a row-locked DB transaction — a rejection here writes NO hold row (R1).
+        #
+        # service-tiers TASK.md §3 (M3): wrapped so a credit-hold rejection ALSO
+        # releases the just-placed tier hold — the tenant is never left holding a
+        # capacity slot for a request that will never reach the provider.
         _credit_request_id = request_id if request_id is not None else uuid.uuid4()
-        await self._credit_guard.check_and_hold(
-            authz.tenant_id, _credit_request_id, self._hold_estimate_usd
-        )
+        try:
+            await self._credit_guard.check_and_hold(
+                authz.tenant_id, _credit_request_id, self._hold_estimate_usd
+            )
+        except Exception:
+            await self._tier_capacity_guard.release(authz.tenant_id, _tier_request_id)
+            raise
 
         # M5 (edge: partial failure) — a LATER governance step (RPM/TPM) rejecting an
         # already-admitted request must fully reverse the hold: the tenant is never
         # charged for a request that never reached the provider. release() is a no-op
         # against PassthroughCreditGuard and best-effort (never raises) against a real
         # guard, so this never masks or replaces the original RATE_LIMITED error.
+        #
+        # service-tiers TASK.md §3 (M3): extended to release BOTH holds — a later
+        # RPM/TPM rejection must not strand the tier-capacity slot either.
         try:
             # M10 (rate limits): RPM check → TPM check — after governance, before upstream
             await self._enforce_rate_limits(authz)
         except Exception:
             await self._credit_guard.release(authz.tenant_id, _credit_request_id)
+            await self._tier_capacity_guard.release(authz.tenant_id, _tier_request_id)
             raise
+
+        # service-tiers TASK.md §3 (M9): publish the tier hold for release once this
+        # request's usage record is fully dispatched (mirrors _credit_hold_ctx.set()
+        # in complete()/stream(), immediately after _enforce_governance returns) — set
+        # HERE rather than in every caller because _enforce_governance is the ONE
+        # choke point where the tier hold's own request_id is minted/known; consumed
+        # by _settle_or_release_hold via _tier_hold_ctx (M9's own named symbol).
+        _tier_hold_ctx.set((self._tier_capacity_guard, _tier_request_id))
 
     async def _check_per_key_budget(self, authz: AuthzResult) -> None:
         """Check per-key Redis spend counter against key's monthly_budget_usd.

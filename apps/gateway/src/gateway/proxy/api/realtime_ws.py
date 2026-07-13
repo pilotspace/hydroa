@@ -171,6 +171,15 @@ async def _real_stt(
         _budget_guard = app.state.budget_guard
         _rate_limiter = getattr(app.state, "rate_limiter", None)
         _redis = getattr(_budget_guard, "_redis", None)
+        from gateway.proxy.infrastructure.tier_capacity_guard import (
+            PassthroughTierCapacityGuard,
+        )
+
+        # service-tiers TASK.md §3 (FROZEN @ v1): same app.state-boot singleton pattern
+        # as residency_lookup below. Absent ⇒ PassthroughTierCapacityGuard ⇒ byte-identical.
+        _tier_capacity_guard = (
+            getattr(app.state, "tier_capacity_guard", None) or PassthroughTierCapacityGuard()
+        )
 
         _governance = NonChatGovernance(
             authenticator=_authenticator,
@@ -182,6 +191,7 @@ async def _real_stt(
             # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same
             # getattr pattern used across every other NonChatGovernance construction.
             residency_lookup=getattr(app.state, "residency_lookup", None),
+            tier_capacity_guard=_tier_capacity_guard,
         )
         _cred_resolver = getattr(app.state, "tenant_credential_resolver", None)
         _settings: Settings = app.state.settings
@@ -372,6 +382,15 @@ async def _real_tts(
         _rate_limiter = getattr(app.state, "rate_limiter", None)
         _redis = getattr(_budget_guard, "_redis", None)
         _settings: Settings = app.state.settings
+        from gateway.proxy.infrastructure.tier_capacity_guard import (
+            PassthroughTierCapacityGuard,
+        )
+
+        # service-tiers TASK.md §3 (FROZEN @ v1): same app.state-boot singleton pattern
+        # as residency_lookup below. Absent ⇒ PassthroughTierCapacityGuard ⇒ byte-identical.
+        _tier_capacity_guard = (
+            getattr(app.state, "tier_capacity_guard", None) or PassthroughTierCapacityGuard()
+        )
 
         _governance = NonChatGovernance(
             authenticator=_authenticator,
@@ -383,6 +402,7 @@ async def _real_tts(
             # residency-policy TASK.md §3 (FROZEN @ v2): app.state-boot singleton, same
             # getattr pattern used across every other NonChatGovernance construction.
             residency_lookup=getattr(app.state, "residency_lookup", None),
+            tier_capacity_guard=_tier_capacity_guard,
         )
         _cred_resolver = getattr(app.state, "tenant_credential_resolver", None)
         # preset-resolution-ingress (v56 §3): full coverage was the chosen scope for the

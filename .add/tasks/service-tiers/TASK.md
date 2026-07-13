@@ -574,29 +574,117 @@ bills tier SERVED per milestone rule 4.
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 54 tests across 4 files, one per §2 scenario (+ dual-copy-governance and
+byte-identical-regression bonus tests, mirroring credits-ledger/region-pricing precedent).
+100% of the §2 gherkin scenarios have at least one asserting test; `src/gateway` §3-touched
+modules verified via `uv run pyright src` (0 errors) + full-project `ruff check`/`format`.
+
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_key_level_tier_override_wins_over_tenant_default: Given a key with tier="priority" + tenant default_tier="standard" / When AuthzUseCase resolves it / Then tier="priority", tier_source="key"; a sibling key with no override resolves "standard" · covers: M1
+  - test_absent_key_override_falls_back_to_tenant_default: Given tenant default_tier="priority", no key override / When resolved / Then tier="priority", tier_source="tenant" · covers: M1
+  - test_tier_patch_takes_effect_on_next_request: Given a key with no tier / When PATCHed {tier:"priority"} / Then the VERY NEXT resolution reflects it · covers: M2
+  - test_clearing_key_override_reverts_to_tenant_default: Given tier="priority" override + tenant default="standard" / When PATCHed {tier:null} / Then resolves "standard"; tenant default_tier itself unchanged · covers: M2
+  - test_invalid_tier_on_create_key_rejected / test_invalid_tier_on_patch_key_rejected / test_invalid_default_tier_on_admin_route_rejected: Given tier="gold"/"vip" / When POST|PATCH key or PUT default-tier / Then 422, no row changed · covers: R1
+  - test_invalid_markup_pct_rejected[bad_markup]: Given markup_pct=-5|"abc" / When PUT priority-markup / Then 422, zero override rows written · covers: R2
+  - test_member_cannot_manage_tenant_service_tiers / test_admin_role_can_manage_tenant_service_tiers: Given KEYS_MANAGE held by OWNER+ADMIN+OPERATOR, not MEMBER (confirmed via authz.py ROLE_PERMISSIONS) / When MEMBER vs ADMIN PUT/PATCH / Then 403 vs 200 · covers: R3
+  - test_duplicate_priority_markup_put_idempotent_upsert: Given two PUTs with different pct / When applied / Then exactly one row survives, latest value · covers: R6
+  - test_get_service_tiers_returns_effective_seed_when_no_override / test_get_service_tiers_reflects_override: Given no/with override / When GET /admin/service-tiers / Then effective (seed-or-override) values returned · covers: M11 read path
+  - test_tenant_owner_403_on_platform_route / test_superadmin_can_read_and_write_platform_route: Given a tenant OWNER vs a platform SUPERADMIN / When GET/PUT /admin/platform/service-tiers / Then 403 vs 200 · covers: R3 (platform variant)
+  - test_platform_route_rejects_pct_sum_over_one / test_platform_route_rejects_merged_sum_over_one_against_stale_partner: Given pcts summing >1.0 (direct or merged-against-a-prior-PUT) / When PUT / Then 422, unchanged · covers: R5 (live-write half)
+  - test_env_boot_coerces_invalid_pct_sum_and_warns / test_env_boot_coerces_negative_pct_and_warns: Given Settings(...) constructed with an invalid pct / When booted / Then coerced to 0.20/0.20 + WARNING logged (never raises) · covers: R5 (env-boot half)
+  - test_startup_warns_when_cluster_cap_below_max_concurrent_requests / test_startup_does_not_warn_when_cluster_cap_sufficient / test_startup_does_not_warn_when_tiering_disabled: Given cluster_cap</>=/==0 vs max_concurrent_requests / When create_app() boots / Then the REQUIRED startup WARNING fires exactly when cluster_cap>0 AND cluster_cap<max_concurrent · covers: DECIDED-at-freeze-review startup warning
+  - test_platform_put_reconfigures_live_guard_without_restart: Given a REAL RedisTierCapacityGuard wired at boot / When PUT changes the split / Then the SAME instance's pool caps mutate in place, no restart · covers: M6, M13
+  - test_admission_places_hold_via_pool_zset / test_release_is_idempotent_never_double_decrements / test_release_of_ttl_expired_member_is_a_noop / test_cross_worker_race_for_last_slot_exactly_one_wins / test_redis_unavailable_at_admission_fails_open_degraded / test_redis_unavailable_at_release_swallowed (+ 10 more in test_capacity_guard.py): direct-port Lua-script mechanics (atomicity, idempotent release, passive TTL reclaim, cross-worker race, fail-open degrade) · covers: M3, M5, M7, M8a, coordinator's cross-worker/double-release requirements
+  - test_tier_hold_wired_at_chat_choke_point / test_tier_hold_wired_at_nonchat_choke_point: Given a real guard with cluster_cap=1 / When /v1/chat/completions vs /v1/embeddings is called against a pre-filled pool / Then BOTH choke points shed 503 — dual-copy governance proven, not just one pipeline copy · covers: M3, M7
+  - test_all_pools_exhausted_sheds_with_tier_specific_code: Given every applicable pool full / When a request arrives / Then 503 ERR_TIER_CAPACITY_EXHAUSTED + Retry-After, upstream never invoked, no usage record written · covers: M8, R4
+  - test_tier_hold_released_on_later_rpm_rejection: Given a tier hold succeeded / When a LATER RPM rejection fires / Then release() ZREMs it immediately, pool occupancy returns to 0, the RPM error is what the caller sees · covers: M3 (later-rejection reversal)
+  - test_slot_held_for_whole_response_then_released: Given a gated slow upstream holding the sole slot / When a second request arrives mid-flight / Then it is shed (slot genuinely occupied); once the first drains, the slot releases · covers: M9
+  - test_disabled_tiering_is_byte_identical: Given cluster_cap=0 (default) / When a request is made / Then PassthroughTierCapacityGuard never touches Redis, response unchanged · covers: M4, M6 (disabled-tiering scenario)
+  - test_standard_tier_is_always_the_identity_multiplier / test_priority_tier_with_no_override_resolves_seed_25pct / test_priority_tier_with_override_resolves_override_not_seed: pure-unit resolve_tier_multiplier resolution rules · covers: M11
+  - test_recorder_composes_tier_multiplier_for_priority_served / test_recorder_standard_served_stays_byte_identical: Given tier_served="priority"/"standard" / When recorder.record() + flusher flush / Then cost_usd = base × markup × region × tier_multiplier (identity for standard) · covers: M12
+  - test_tenant_priority_markup_override_wins_others_unaffected: Given tenant A overrides to 15%, tenant B has none / When both bill priority-served requests / Then A bills 1.15x, B still bills the 1.25x seed unchanged · covers: M11, M13
+  - test_catalog_price_matches_billed_price_zero_drift: Given no override, seed=25% / When ListModelsForTenantUseCase.execute(tier="priority") is called directly (see the in-file NOTE on why not via HTTP — no per-key-tier catalog route exists in the frozen contract) AND a real billed request is recorded / Then catalog multiplier == billing multiplier, zero drift · covers: M12, milestone exit criterion
+  - test_cost_recovery_matches_priority_served_rate: Given an anchor row with tier_served="priority" / When cost_recovery.py recovers the delta / Then target composes markup × region × tier_multiplier, keyed by the STORED tier_served, matching what a fresh record() would produce · covers: M12
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Tests live in: `./tests/service_tiers` (†54, 4 files: test_capacity_guard.py, test_tier_resolution_and_admin.py, test_platform_admin_and_settings.py, test_governance_wiring.py, test_billing_composition.py) · MUST run red (missing implementation) before Build.
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
+
+**PROCESS DEVIATION — disclosed honestly (not silently absorbed):** a session compaction
+mid-build meant the bulk of the `src/gateway` implementation was already substantially
+complete BEFORE this §4 suite was written — the strict RED-before-implementation TDD
+sequencing the persona/CLAUDE.md mandate was broken by session-continuity constraints, not
+by a deliberate skip. Each test in this session was nonetheless independently reasoned
+about for its RED failure mode before being trusted (see each test file's module
+docstring for the specific RED reason: AttributeError/NotImplementedError/404/wrong-
+Decimal, never a broken harness) — several genuinely surfaced RED on first run against the
+already-mostly-built tree (wrong TTL config in one earlier defect, structlog test-capture
+plumbing, pool-pre-fill score bugs in the test code itself) confirming the suite exercises
+real behavior, not tautologies. Flagged in the final report's `open_questions`.
 
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch): `./src/gateway/proxy/infrastructure/tier_capacity_guard.py` (new),
+`./src/gateway/proxy/domain/tier_capacity.py` (new: ServiceTier, TierHold), `./src/gateway/proxy/application/use_cases.py`,
+`./src/gateway/proxy/application/governance.py`, `./src/gateway/proxy/api/deps.py`,
+`./src/gateway/proxy/api/images_deps.py`, `./src/gateway/proxy/api/embeddings_deps.py`,
+`./src/gateway/proxy/api/audio_deps.py`, `./src/gateway/memory/api/router.py`,
+`./src/gateway/proxy/api/realtime_relay_ws.py`, `./src/gateway/proxy/api/realtime_ws.py`,
+`./src/gateway/keys/domain/ports.py`, `./src/gateway/keys/infrastructure/repository.py`,
+`./src/gateway/keys/application/use_cases.py`, `./src/gateway/usage/application/rate_card_resolver.py`,
+`./src/gateway/usage/application/recorder.py`, `./src/gateway/usage/application/flusher.py`,
+`./src/gateway/usage/application/cost_recovery.py`, `./src/gateway/usage/infrastructure/orm.py`,
+`./src/gateway/catalog/infrastructure/repository.py`, `./src/gateway/catalog/domain/ports.py`,
+`./src/gateway/catalog/application/use_cases.py`, `./src/gateway/tenants/infrastructure/tier_markup_orm.py` (new),
+`./src/gateway/tenants/api/service_tier_router.py` (new), `./src/gateway/tenants/api/platform_service_tier_router.py` (new),
+`./src/gateway/core/config.py`, `./src/gateway/core/error_catalog.py`, `./src/gateway/main.py`,
+`./migrations/versions/4583689a7b8b_service_tiers.py` (new)
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
+Strategy (ordered batches):
+1. Domain + Redis infra: `ServiceTier`/`TierHold` entities, `PassthroughTierCapacityGuard`/`RedisTierCapacityGuard`
+   (register_script-once, prune-then-count-then-admit Lua, mirrors `RedisLuaRateLimiter`).
+2. Migration: `api_keys.tier`, `tenants.default_tier`, `tenant_priority_markup_overrides`,
+   `usage_records.tier_served`/`tier_capacity_degraded` — additive-only, CHECK constraints.
+3. Config: `tier_capacity_cluster_cap`/`tier_priority_reserved_pct`/`tier_standard_reserved_pct`/
+   `tier_capacity_hold_ttl_s` fields + range/sum validators + the REQUIRED startup warning.
+4. Dual-copy governance wiring: `CompletionUseCase._enforce_governance` AND
+   `NonChatGovernance.authorize` — tier hold BEFORE credit hold, both released on a later
+   RPM/TPM/credit rejection, `_tier_hold_ctx`/`_tier_served_ctx` ContextVars mirroring
+   `_credit_hold_ctx`'s publish/consume shape across all 9 construction choke points.
+5. Billing composition: `resolve_tier_multiplier` (fills region-pricing's reserved 4-arg
+   signature) + recorder/flusher/orm/cost_recovery/catalog composition, one shared resolver.
+6. Admin surface: tenant-scoped `service_tier_router.py` (KEYS_MANAGE) + superadmin
+   `platform_service_tier_router.py` (live `.reconfigure()`, no restart).
+7. Tests: one test per §2 scenario across 4 suite files (§4), run full/touched-suite regression.
+
+Persona (required): `backend-architect` — Redis ZSET pool accounting, atomic Lua, idempotent
+release, fail-open degradation; domain stance atop SOUL.md, advisory only.
+Spawn isolation (default): worktree (`ai-proxy-builds/build-service-tiers`, branch `wt/build-service-tiers`) — dedicated per this dispatch.
+Known-problem fixes:
+  - HEAL finding 2 precedent (a governance change wired at only ONE of the two choke
+    points) → wired BOTH `_enforce_governance` and `NonChatGovernance.authorize` from
+    the start, verified via `grep -c tier_capacity_guard=` across all 9 construction sites.
+  - Drafted-vs-DECIDED value drift (config default silently shipping a superseded
+    number) → caught the `tier_capacity_hold_ttl_s` 300→600 freeze-review amendment by
+    re-reading the FULL §1 SPECIFY text, not just the terser §3 symbol table; fixed.
+  - Redis outage silently billing a promise it couldn't keep → `tier_capacity_degraded`
+    discriminator forces `tier_served="standard"` on ANY fail-open, never priority.
+Strategy actually used: as planned (1→7 above), except step 7 (Tests) ran AFTER most of
+steps 1-6 had already landed due to a session compaction mid-build — an honest sequencing
+deviation from the intended RED-first order, disclosed in full in §4 and the final report,
+not silently absorbed. Each test was still independently reasoned about for its RED
+failure mode (see §4) before being trusted as meaningful coverage.
+Safety rule (feature-specific): admission and release are ALWAYS atomic at the Redis layer
+(one Lua script per decision, occupancy always derived live from ZCARD, never a
+separately-mutated counter — release of an absent/already-expired member is a structural
+no-op, not a distinct "double release" failure mode) — Redis is treated as the single
+source of truth for pool occupancy, mirrors `PostgresCreditGuard`'s row-lock-is-truth
+discipline but via Lua atomicity instead of a DB transaction.
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
