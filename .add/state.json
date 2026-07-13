@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "residency-bedrock-region-guard",
+  "active_task": "residency-tiers-ui",
   "active_milestone": "residency-service-tiers",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -875,12 +875,12 @@
     },
     "residency-tiers-ui": {
       "title": "Data & residency settings, region badges, tier selector, pricing page",
-      "phase": "contract",
+      "phase": "verify",
       "gate": "none",
       "milestone": "residency-service-tiers",
       "depends_on": [],
       "created": "2026-07-12T14:46:21+00:00",
-      "updated": "2026-07-12T15:55:04+00:00",
+      "updated": "2026-07-13T08:56:49+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-12T15:55:04+00:00",
@@ -890,6 +890,11 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "9a871fd694cb54b9067c8eb370856067",
+        "tests": {}
       }
     },
     "vertex-adapter": {
@@ -1078,7 +1083,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T08:52:13+00:00",
+  "updated": "2026-07-13T08:56:49+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2030,7 +2035,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "residency-service-tiers": "residency-bedrock-region-guard"
+    "residency-service-tiers": "residency-tiers-ui"
   },
   "todos": [
     {
