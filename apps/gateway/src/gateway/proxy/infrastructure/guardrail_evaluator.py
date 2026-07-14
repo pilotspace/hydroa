@@ -39,6 +39,7 @@ pii-v2 custom patterns:
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 import time
@@ -270,6 +271,26 @@ def mask_pii_in_messages(
     return masked
 
 
+@functools.lru_cache(maxsize=512)
+def _compile_patterns_cached(
+    items: tuple[tuple[str, str], ...],
+) -> tuple[tuple[re.Pattern[str], str], ...]:
+    """Compile a frozen (name, pattern) tuple → ((compiled, literal), ...), memoised.
+
+    Keyed by the pattern CONTENT, so an unchanged tenant config reuses the compiled
+    result across every request and a config edit keys to a fresh entry automatically
+    (no explicit invalidation). Bounded LRU (512) caps memory; entries are tiny.
+    """
+    compiled: list[tuple[re.Pattern[str], str]] = []
+    for name, pattern_str in items:
+        try:
+            compiled_pat = re.compile(pattern_str)
+        except re.error:
+            continue  # defensive: PUT validation should have blocked this
+        compiled.append((compiled_pat, f"[{name}_REDACTED]"))
+    return tuple(compiled)
+
+
 def _compile_custom_patterns(
     pii_cfg: dict[str, Any],
 ) -> list[tuple[re.Pattern[str], str]]:
@@ -278,26 +299,23 @@ def _compile_custom_patterns(
     Returns a list of (compiled_pattern, literal) pairs.
     Literal is derived server-side: f"[{name}_REDACTED]".
     Invalid patterns are silently skipped (validation is enforced at PUT time).
+
+    The compile is memoised by pattern content (see _compile_patterns_cached): this
+    function is on the per-request PII path, but the config only changes on an admin PUT,
+    so the common case is a cache hit that skips the whole scan-and-compile loop.
     """
     raw_list = pii_cfg.get("pii_custom_patterns")
     if not isinstance(raw_list, list) or not raw_list:
         return []
 
-    compiled: list[tuple[re.Pattern[str], str]] = []
-    for item in raw_list:
-        if not isinstance(item, dict):
-            continue
-        name = item.get("name", "")
-        pattern_str = item.get("pattern", "")
-        if not name or not pattern_str:
-            continue
-        try:
-            compiled_pat = re.compile(pattern_str)
-        except re.error:
-            continue  # defensive: PUT validation should have blocked this
-        literal = f"[{name}_REDACTED]"
-        compiled.append((compiled_pat, literal))
-    return compiled
+    # Freeze to a hashable, order-preserving key of the (name, pattern) pairs that
+    # actually contribute; anything malformed is dropped before the cache key is built.
+    items = tuple(
+        (item["name"], item["pattern"])
+        for item in raw_list
+        if isinstance(item, dict) and item.get("name") and item.get("pattern")
+    )
+    return list(_compile_patterns_cached(items))
 
 
 def _apply_custom_patterns_to_messages(
