@@ -922,7 +922,7 @@
     },
     "agents-console": {
       "title": "Agents console (UDD): directory, session explorer, MCP allow-list management, kill switch",
-      "phase": "tests",
+      "phase": "build",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [
@@ -931,7 +931,7 @@
         "tool-call-metering"
       ],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T05:21:28+00:00",
+      "updated": "2026-07-14T05:49:20+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T05:21:14+00:00",
@@ -941,6 +941,17 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f4ddf067f9bfdec96fc9fe5129f66e88",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/agents-console/src/"
+        ],
+        "snapshot_md5": "418bcc81bc0737a8fded8ec7a9504599"
       }
     }
   },
@@ -1011,7 +1022,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T05:26:47+00:00",
+  "updated": "2026-07-14T05:49:20+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
