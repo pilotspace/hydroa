@@ -678,12 +678,12 @@
     },
     "art12-record-keeping-preset": {
       "title": "Art. 12 record-keeping export preset (one-click evidence bundle over compliance-export-api)",
-      "phase": "contract",
+      "phase": "build",
       "gate": "none",
       "milestone": "eu-ai-act-readiness",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T03:51:47+00:00",
+      "updated": "2026-07-14T05:07:45+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T03:58:05+00:00",
@@ -693,6 +693,15 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a363d6dd9b4849fffef9b16244427f93",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "f44051d98f5a3297e6d08a924b3b940c"
       }
     },
     "compliance-report-center": {
@@ -708,12 +717,12 @@
     },
     "ai-act-marketing-page": {
       "title": "EU AI Act readiness marketing page + docs (accurate Art. 101 figures; live before 2026-08-02)",
-      "phase": "contract",
+      "phase": "build",
       "gate": "none",
       "milestone": "eu-ai-act-readiness",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T03:52:30+00:00",
+      "updated": "2026-07-14T05:07:47+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T03:58:29+00:00",
@@ -723,6 +732,17 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "70eefb2e77f5582908580935e49ec2bb",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/ai-act-marketing-page/src/"
+        ],
+        "snapshot_md5": "f44051d98f5a3297e6d08a924b3b940c"
       }
     },
     "anthropic-messages-ingress": {
@@ -755,12 +775,12 @@
     },
     "mcp-connector-passthrough": {
       "title": "MCP connector egress passthrough with per-tenant allow/deny lists (fail-closed) + session tracing",
-      "phase": "contract",
+      "phase": "build",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T03:51:47+00:00",
+      "updated": "2026-07-14T04:49:06+00:00",
       "freeze": {
         "version": "v2",
         "frozen_at": "2026-07-14T04:17:55+00:00",
@@ -770,16 +790,38 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "d1bc4fe60367cda9e4827cca1e1663e1",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/mcp_connector/",
+          "apps/gateway/src/gateway/keys/domain/entities.py",
+          "apps/gateway/src/gateway/keys/domain/AuthzResult.mcp_allowed_servers",
+          "apps/gateway/src/gateway/proxy/infrastructure/key_authenticator.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/composite_key_authenticator.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/core/ERR_MCP_*",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/core/mcp_connector_dial_timeout_seconds",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          ".add/tasks/mcp-connector-passthrough/tests/"
+        ],
+        "snapshot_md5": "acc2224c28a3bb01d419df2b8f8e78a0"
       }
     },
     "agent-identity-governance": {
       "title": "Agent-as-principal on device-OAuth: named identities, per-agent budgets/limits, universal kill switch",
-      "phase": "contract",
+      "phase": "build",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T03:51:47+00:00",
+      "updated": "2026-07-14T05:07:11+00:00",
       "freeze": {
         "version": "v2",
         "frozen_at": "2026-07-14T04:42:45+00:00",
@@ -789,6 +831,17 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "d02847d8e2069426310489e14599c1b7",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/agent-identity-governance/src/"
+        ],
+        "snapshot_md5": "6b1b084bef8103571f8b2e741df5ae5c"
       }
     },
     "claude-gateway-protocol-compat": {
@@ -904,7 +957,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T04:46:50+00:00",
+  "updated": "2026-07-14T05:07:47+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
