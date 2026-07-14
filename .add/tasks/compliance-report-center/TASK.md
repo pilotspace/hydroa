@@ -4,7 +4,7 @@ slug: compliance-report-center · created: 2026-07-14 · revised: 2026-07-14 (sc
 milestone: eu-ai-act-readiness
 autonomy: conservative   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
 risk: high   <!-- REVISION 2026-07-14: this task now writes a new background loop that persists tenant compliance-evidence bytes (audit/log/usage-lineage metadata) unattended, monthly, server-side — a genuinely new persistent-write capability with a cross-tenant / ZDR / retention threat surface, not the read-only FE-only consumer it was drafted as. Declared per the engine's own guard (unguarded_high_risk_auto) — a comment alone would not count as the declaration. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- content below is drafted through §3 CONTRACT (DRAFT, unfrozen) by the design agent; phase
      marker left at "ground" to match state.json (engine-tracked) — the orchestrator advances
      phase via add.py, this draft does not self-advance it. -->

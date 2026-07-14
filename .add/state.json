@@ -706,14 +706,14 @@
     },
     "compliance-report-center": {
       "title": "Compliance report center console surface (generate/download/schedule the Art. 12 bundle)",
-      "phase": "contract",
+      "phase": "tests",
       "gate": "none",
       "milestone": "eu-ai-act-readiness",
       "depends_on": [
         "art12-record-keeping-preset"
       ],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T06:07:57+00:00",
+      "updated": "2026-07-14T06:08:26+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T06:08:07+00:00",
@@ -1032,7 +1032,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T06:08:07+00:00",
+  "updated": "2026-07-14T06:21:27+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2236,6 +2236,18 @@
       "id": 39,
       "text": "test-parallel -n 12 can stall near completion on shared-Postgres DDL contention (12-way per-test drop_all/create_all + pg_catalog autovacuum, all workers wait_event_type=IO). 2/4 full runs finished 5:37-6:19, 2 stalled. Follow-up: replace per-test drop_all/create_all with a template-DB clone (CREATE DATABASE ... TEMPLATE) or transaction-rollback isolation, or cap -n to ~8, to remove the DDL-per-test cost.",
       "created": "2026-07-14T03:02:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 40,
+      "text": "agent-identity: decide whether agent-principal OAuth tokens should authenticate to /v1/realtime (today they silently cannot \u2014 realtime_ws/realtime_relay_ws build bare SqlAlchemyKeyAuthenticator, not CompositeKeyAuthenticator). Verify-surfaced spec-delta, 2026-07-14.",
+      "created": "2026-07-14T06:21:26+00:00",
+      "status": "open"
+    },
+    {
+      "id": 41,
+      "text": "agent-budget: add a chat-pipeline live test mirroring test_disconnect_correction_reaches_agent_principal_counter_via_recovery_sweep step-4 against CompletionUseCase._check_agent_principal_budget via a real /v1/chat/completions call (currently only NonChatGovernance.authorize path is live-tested; chat copy verified by code-diff parity). Low priority, 2026-07-14.",
+      "created": "2026-07-14T06:21:27+00:00",
       "status": "open"
     }
   ]
