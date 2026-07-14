@@ -49,7 +49,7 @@ def _s(v: Any) -> str:
 class FakeRedis:
     """Minimal async Redis faithful to redis.asyncio (bytes values, decode_responses=False).
 
-    Supports the ops RedisVectorCache uses: get / set(ex) / lpush / lrange / ltrim / expire.
+    Supports the ops RedisVectorCache uses: get / mget / set(ex) / lpush / lrange / ltrim / expire.
     `fail=True` makes every op raise (to prove the layer's fail-safe → MISS / no-op).
     """
 
@@ -66,6 +66,11 @@ class FakeRedis:
     async def get(self, k: Any) -> bytes | None:
         self._guard()
         return self.kv.get(_b(k))
+
+    async def mget(self, keys: list[Any]) -> list[bytes | None]:
+        self._guard()
+        # real Redis MGET: one value per key, in order, None for a missing key.
+        return [self.kv.get(_b(k)) for k in keys]
 
     async def set(self, k: Any, v: Any, ex: int | None = None) -> None:
         self._guard()
