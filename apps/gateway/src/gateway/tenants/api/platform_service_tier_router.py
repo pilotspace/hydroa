@@ -31,12 +31,17 @@ either kept or replaced, never nulled).
 
 from __future__ import annotations
 
+import asyncio
+import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, model_validator
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.error_catalog import PAYLOAD_TIER_PCT_SUM_INVALID
 from gateway.tenants.domain.authz import require_superadmin
 from gateway.tenants.domain.entities import Identity
@@ -131,6 +136,32 @@ async def put_platform_service_tiers(
             priority_reserved_pct=new_priority_pct,
             standard_reserved_pct=new_standard_pct,
         )
+
+    # Audit emit — fail-open fire-and-forget (mirrors teams/api/router.py add_member's own
+    # idiom exactly). FLEET-WIDE config has no single target tenant — tenant_id=None,
+    # mirroring platform_tenants_router.py's own "platform.tenant.list" system-level-event
+    # precedent (AuditEvent permits tenant_id=None as long as an actor is still attributed).
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=None,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="platform.service_tier.update",
+                target_type="service_tier",
+                target_id="config",
+                result="success",
+                metadata={
+                    "cluster_cap": int(new_cluster_cap),
+                    "priority_reserved_pct": str(new_priority_pct),
+                    "standard_reserved_pct": str(new_standard_pct),
+                },
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
 
     return PlatformServiceTiersResponse(
         cluster_cap=int(new_cluster_cap),

@@ -107,6 +107,7 @@ async def list_teams(
 
 @teams_router.patch("/{team_id}", response_model=TeamResponse)
 async def patch_team_budget(
+    request: Request,
     team_id: uuid.UUID,
     body: PatchTeamBudgetRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
@@ -124,6 +125,29 @@ async def patch_team_budget(
         )
     except TeamNotFoundError:
         raise TEAM_NOT_FOUND.exc() from None
+
+    # Audit emit — fail-open fire-and-forget (mirrors add_member's own idiom exactly)
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="team.budget_update",
+                target_type="team",
+                target_id=str(team_id),
+                result="success",
+                metadata={
+                    "team_budget_usd": str(team.team_budget_usd)
+                    if team.team_budget_usd is not None
+                    else None
+                },
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
 
     return TeamResponse(
         id=team.id,
@@ -172,6 +196,7 @@ async def get_team(
 
 @teams_router.delete("/{team_id}", status_code=204)
 async def delete_team(
+    request: Request,
     team_id: uuid.UUID,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
     use_case: Annotated[DeleteTeamUseCase, Depends(get_delete_team_use_case)],
@@ -184,6 +209,25 @@ async def delete_team(
         )
     except TeamNotFoundError:
         raise TEAM_NOT_FOUND.exc() from None
+
+    # Audit emit — fail-open fire-and-forget (mirrors add_member's own idiom exactly)
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="team.delete",
+                target_type="team",
+                target_id=str(team_id),
+                result="success",
+                metadata={},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
 
 
 @teams_router.post("/{team_id}/members", status_code=201, response_model=AddMemberResponse)
@@ -242,6 +286,7 @@ async def add_member(
 
 @teams_router.delete("/{team_id}/members/{user_id}", status_code=204)
 async def remove_member(
+    request: Request,
     team_id: uuid.UUID,
     user_id: uuid.UUID,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
@@ -258,3 +303,22 @@ async def remove_member(
         raise TEAM_NOT_FOUND.exc() from None
     except MemberNotFoundError:
         raise MEMBER_NOT_FOUND.exc() from None
+
+    # Audit emit — fail-open fire-and-forget (mirrors add_member's own idiom exactly)
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="member.remove",
+                target_type="user",
+                target_id=str(user_id),
+                result="success",
+                metadata={"team_id": str(team_id)},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )

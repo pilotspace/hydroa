@@ -16,13 +16,18 @@ Extended @ v5 (semantic-cache TASK.md §3) — ADDITIVE:
 
 from __future__ import annotations
 
+import asyncio
+import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.db import get_session
 from gateway.keys.api.deps import get_identity, require_owner_or_admin
 from gateway.tenants.domain.entities import Identity
@@ -70,6 +75,7 @@ async def get_cache(
 
 @cache_router.put("", response_model=CachePutResponse)
 async def put_cache(
+    request: Request,
     body: CachePutRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -109,4 +115,25 @@ async def put_cache(
 
     current_enabled = bool(row[0]) if row is not None and row[0] is not None else False
     current_semantic = bool(row[1]) if row is not None and row[1] is not None else False
+
+    # Audit emit — fail-open fire-and-forget (mirrors teams/api/router.py add_member's own
+    # idiom exactly).
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="cache.update",
+                target_type="cache",
+                target_id="config",
+                result="success",
+                metadata={"enabled": current_enabled, "semantic_enabled": current_semantic},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return CachePutResponse(enabled=current_enabled, semantic_enabled=current_semantic)
