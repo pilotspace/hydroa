@@ -127,18 +127,31 @@ async def _key_row(session: AsyncSession, key_id: str) -> Any:
 
 
 # ===========================================================================
-# Scenario 1 — key with an explicit non-empty override enforces it, tenant ignored (M1)
+# Scenario 1 — key with an explicit non-empty override enforces its OWN config,
+# but a tenant-mandated guardrail the override never mentions is now FLOORED in
+# (audit-remediation package A1, finding 3: "key override no floor"). Was
+# `test_key_override_enforces_ignoring_tenant`, asserting the OLD wholesale-
+# replace-with-no-floor behavior verbatim ("tenant's block config must NOT
+# apply") — that IS the confirmed security gap (a key override touching only
+# pii_mask silently and irreversibly dropped a tenant-mandated prompt_injection
+# block for that one key). Per the fix-team hard rule, a repro test that
+# encodes buggy behavior is corrected to assert the FIXED contract rather than
+# forced back to a false "green"; the M1 CONTRACT itself changed: wholesale
+# replace still holds for guardrails the tenant does NOT mandate, but a
+# tenant-mandated guardrail can now only be tightened by a key override, never
+# silently dropped. See `key_guardrail_router.py::_apply_tenant_floor`.
 # ===========================================================================
 
 
-async def test_key_override_enforces_ignoring_tenant(
+async def test_key_override_enforces_own_config_but_floors_untouched_tenant_mandate(
     client: httpx.AsyncClient,
     app: Any,
     active_model: str,
     redis_client: Any,
 ) -> None:
-    """Key override has ONLY pii_mask -> injection block from the tenant config is
-    never consulted (not blocked); PII is masked per the key's own config."""
+    """Key override has ONLY pii_mask -> the key's own pii_mask config is honored,
+    AND the tenant's prompt_injection block (never mentioned by the key override)
+    is floored in rather than silently dropped."""
     jwt, _tenant_id = await signup_and_login(client, tenant_name="M1Co", email="owner@m1.io")
     key_info = await create_key(client, jwt, name="m1-key")
 
@@ -155,7 +168,8 @@ async def test_key_override_enforces_ignoring_tenant(
     )
     assert put_resp.status_code == 200, f"PUT key guardrails failed: {put_resp.text}"
 
-    # Injection payload through the key: must NOT be blocked (tenant config ignored)
+    # Injection payload through the key: the tenant-mandated block is FLOORED in
+    # even though the key override never mentioned prompt_injection.
     upstream = FakeCompletionUpstream()
     app.state.completion_upstream = upstream
     injection_resp = await client.post(
@@ -163,9 +177,10 @@ async def test_key_override_enforces_ignoring_tenant(
         json=completion_payload(active_model, INJECTION_CONTENT),
         headers=auth_key(key_info["key"]),
     )
-    assert injection_resp.status_code == 200, (
-        f"key override has no prompt_injection entry — tenant's block config must "
-        f"NOT apply; expected 200, got {injection_resp.status_code}: {injection_resp.text}"
+    assert injection_resp.status_code == 400, (
+        f"tenant-mandated prompt_injection must be floored into a key override that "
+        f"never mentions it, not silently dropped; expected 400, got "
+        f"{injection_resp.status_code}: {injection_resp.text}"
     )
 
     # PII payload through the key: masked per the key's own pii_mask config
@@ -185,18 +200,26 @@ async def test_key_override_enforces_ignoring_tenant(
 
 
 # ===========================================================================
-# Scenario 2 — key override explicitly empty ({}) disables all guardrails (M1 edge)
+# Scenario 2 — key override explicitly empty ({}) still floors in any
+# tenant-mandated guardrail (audit-remediation package A1, finding 3). Was
+# `test_key_override_empty_disables_all_guardrails`, asserting the OLD
+# no-floor behavior verbatim ("must disable ALL guardrails (tenant not
+# consulted)") — corrected per the same fix-team hard rule as Scenario 1
+# above: an empty override no longer means "nothing applies" when the tenant
+# mandates something; it means "no key-specific tightening beyond the floor".
 # ===========================================================================
 
 
-async def test_key_override_empty_disables_all_guardrails(
+async def test_key_override_empty_still_floors_tenant_mandated_guardrails(
     client: httpx.AsyncClient,
     app: Any,
     active_model: str,
     redis_client: Any,
 ) -> None:
-    """A key PUT as {} wholesale-overrides the tenant — no guardrails apply at all,
-    distinct from a key with guardrail_policy = NULL (next scenario)."""
+    """A key PUT as {} no longer disables all guardrails: the tenant's
+    mandated pii_mask is floored into the (otherwise empty) key override,
+    distinct from a key with guardrail_policy = NULL (next scenario, which
+    inherits the tenant wholesale rather than storing a floored copy)."""
     jwt, _tenant_id = await signup_and_login(
         client, tenant_name="M1EdgeCo", email="owner@m1edge.io"
     )
@@ -208,6 +231,10 @@ async def test_key_override_empty_disables_all_guardrails(
         key_guardrails_path(key_info["key_id"]), json={}, headers=auth_jwt(jwt)
     )
     assert put_resp.status_code == 200, f"PUT key guardrails failed: {put_resp.text}"
+    assert put_resp.json().get("pii_mask") == {"enabled": True, "mode": "mask"}, (
+        f"an empty key override must still be floored to the tenant's mandated "
+        f"pii_mask; got body={put_resp.json()!r}"
+    )
 
     upstream = FakeCompletionUpstream()
     app.state.completion_upstream = upstream
@@ -218,11 +245,67 @@ async def test_key_override_empty_disables_all_guardrails(
     )
     assert resp.status_code == 200, f"completion failed: {resp.text}"
     sent_content = str(upstream.received_messages[0][0]["content"])
-    assert "user@example.com" in sent_content, (
-        f"empty key override ({{}}) must disable ALL guardrails (tenant not consulted) "
-        f"— PII must reach upstream unmasked; got: {sent_content!r}"
+    assert "[EMAIL_REDACTED]" in sent_content, (
+        f"the tenant-mandated pii_mask must still apply through an empty key "
+        f"override (floored, not disabled); got: {sent_content!r}"
     )
-    assert "[EMAIL_REDACTED]" not in sent_content
+    assert "user@example.com" not in sent_content
+
+
+# ===========================================================================
+# HOLE 3a (adversarial-verification follow-up on package A1, finding 3): the
+# PUT-time floor (Scenario 1/2 above) is only a SNAPSHOT taken when the key
+# override is written. `_resolve_effective_guardrails` in
+# keys/infrastructure/repository.py did pure wholesale key-or-tenant with NO
+# floor at auth time — so a tenant RAISING its floor after a key was PUT
+# never propagated to that pre-existing key override. Fix: the floor is now
+# ALSO applied at auth-resolution time (every request), making it a true
+# per-request invariant rather than a write-time snapshot.
+# ===========================================================================
+
+
+async def test_tenant_floor_raise_propagates_to_existing_key_without_re_put(
+    client: httpx.AsyncClient,
+    app: Any,
+    active_model: str,
+    redis_client: Any,
+) -> None:
+    jwt, _tenant_id = await signup_and_login(
+        client, tenant_name="FloorRaiseCo", email="owner@floorraise.io"
+    )
+    key_info = await create_key(client, jwt, name="floor-raise-key")
+
+    # Tenant starts at the WEAK (audit) floor for pii_mask.
+    await set_tenant_guardrails(client, jwt, {"pii_mask": {"enabled": True, "mode": "audit"}})
+
+    # Key PUT matches the (weak) floor at PUT-time -- legal, no clamp needed,
+    # nothing here should mask anything.
+    put_resp = await client.put(
+        key_guardrails_path(key_info["key_id"]),
+        json={"pii_mask": {"enabled": True, "mode": "audit"}},
+        headers=auth_jwt(jwt),
+    )
+    assert put_resp.status_code == 200, f"PUT failed: {put_resp.text}"
+
+    # Tenant RAISES the floor to the strong (mask) mode -- the key's STORED
+    # override is deliberately left untouched (no re-PUT).
+    await set_tenant_guardrails(client, jwt, {"pii_mask": {"enabled": True, "mode": "mask"}})
+
+    upstream = FakeCompletionUpstream()
+    app.state.completion_upstream = upstream
+    resp = await client.post(
+        COMPLETIONS,
+        json=completion_payload(active_model, PII_CONTENT),
+        headers=auth_key(key_info["key"]),
+    )
+    assert resp.status_code == 200, f"completion failed: {resp.text}"
+    sent_content = str(upstream.received_messages[0][0]["content"])
+    assert "[EMAIL_REDACTED]" in sent_content, (
+        f"raising the tenant floor must propagate to a pre-existing key "
+        f"override at auth-resolution time, without re-PUTting the key; "
+        f"got: {sent_content!r}"
+    )
+    assert "user@example.com" not in sent_content
 
 
 # ===========================================================================

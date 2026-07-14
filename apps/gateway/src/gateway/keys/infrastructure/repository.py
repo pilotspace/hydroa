@@ -21,10 +21,98 @@ def _resolve_effective_guardrails(
     per-key-guardrail-policies §3 CONTRACT. A non-NULL key_policy (including an
     explicit {}) is used AS-IS; tenant_configs is never consulted when key_policy
     is not None -- the NULL-vs-{} distinction is the caller's to preserve.
+
+    Callers MUST additionally pass the result through
+    `apply_tenant_guardrail_floor(result, tenant_configs)` -- this function
+    alone still performs the raw, floor-less wholesale resolution; the floor
+    is a separate, composable step (see `apply_tenant_guardrail_floor`'s own
+    docstring for why the two are kept apart).
     """
     if key_policy is not None:
         return key_policy
     return tenant_configs
+
+
+_WEAK_GUARDRAIL_MODES = frozenset({"audit"})
+
+
+def apply_tenant_guardrail_floor(
+    effective: dict[str, Any],
+    tenant_configs: dict[str, Any],
+) -> dict[str, Any]:
+    """Enforce a non-overridable tenant floor on an EFFECTIVE (already
+    key-or-tenant resolved, wholesale) guardrail config.
+
+    A key may TIGHTEN a tenant-mandated guardrail (a stricter mode, a
+    stricter `failure_mode`, or simply leaving it enabled) but can never
+    DISABLE it, downgrade its mode below the tenant's mandated mode, or
+    weaken a tenant-mandated `failure_mode="fail_closed"` down to
+    `"fail_open"`. A tenant guardrail that is itself disabled/unconfigured
+    imposes no floor at all.
+
+    "Weak" vs "strong" mode is uniform across every guardrail type this repo
+    defines today (prompt_injection, pii_mask, ml_moderation): mode ==
+    "audit" is always the weak (log-only) mode; the other valid mode
+    ("block" for prompt_injection/ml_moderation, "mask" for pii_mask) is
+    always the strong (enforcing) mode. `failure_mode` (currently only
+    ml_moderation) is orthogonal to `mode` -- it governs what happens when
+    the CHECK ITSELF cannot be evaluated, and is floored independently:
+    tenant `failure_mode="fail_closed"` always wins over a key's
+    `"fail_open"` (explicit or via the "fail_open" default when the field is
+    simply absent from the key's config).
+
+    Iterates the tenant's OWN configured guardrail field names (not a fixed
+    Pydantic-model field list) so this stays dependency-free of the API
+    layer and automatically covers any guardrail type the tenant mandates,
+    present or future.
+
+    SHARED by two callers that both need the SAME floor semantics applied at
+    two different times -- never a parallel reimplementation of the same
+    rule:
+      1. `SqlAlchemyApiKeyRepository.get_by_id()` (this module) -- applied to
+         the RESULT of `_resolve_effective_guardrails` on every auth
+         resolution, so the floor is a true PER-REQUEST invariant: a tenant
+         RAISING its floor after a key override was written takes effect on
+         the very next request, without requiring the key to be re-PUT.
+      2. `keys/api/key_guardrail_router.py::put_key_guardrails` -- applied to
+         the STORED key override at PUT time, so what a subsequent GET
+         echoes back (and what an operator inspecting the raw `api_keys`
+         row sees) also honestly reflects the floor, not just what a live
+         request would resolve to.
+    """
+    floored = dict(effective)
+    for field_name, tenant_cfg in tenant_configs.items():
+        if not isinstance(tenant_cfg, dict) or not tenant_cfg.get("enabled"):
+            continue  # tenant does not mandate this guardrail -- no floor to enforce
+
+        key_cfg = floored.get(field_name)
+        if not isinstance(key_cfg, dict) or not key_cfg.get("enabled"):
+            # Key disables it, or the effective config omits it entirely --
+            # adopt the tenant's mandated config verbatim as the floor.
+            floored[field_name] = dict(tenant_cfg)
+            continue
+
+        result = key_cfg
+        tenant_mode = tenant_cfg.get("mode")
+        if tenant_mode not in _WEAK_GUARDRAIL_MODES and result.get("mode") in _WEAK_GUARDRAIL_MODES:
+            # Key kept it enabled but downgraded to the weak (audit) mode
+            # while the tenant mandates the strong (enforcing) mode -- clamp
+            # the mode back up.
+            result = {**result, "mode": tenant_mode}
+
+        if tenant_cfg.get("failure_mode") == "fail_closed" and result.get(
+            "failure_mode", "fail_open"
+        ) != "fail_closed":
+            # Tenant mandates fail-closed failure handling; the key's
+            # effective config (explicitly or via the default) is weaker --
+            # clamp it up. Every OTHER field of the key's own config for this
+            # guardrail (e.g. pii_custom_patterns) is preserved untouched.
+            result = {**result, "failure_mode": "fail_closed"}
+
+        if result is not key_cfg:
+            floored[field_name] = result
+
+    return floored
 
 
 def _row_to_api_key(row: ApiKeyRow) -> ApiKey:
@@ -245,6 +333,16 @@ class SqlAlchemyApiKeyRepository:
             key_guardrail_policy = None
 
         guardrail_configs = _resolve_effective_guardrails(key_guardrail_policy, tenant_guardrails)
+        # HOLE 3a fix (adversarial-verification follow-up on per-key-guardrail-
+        # policies): apply the non-overridable tenant floor HERE, on every auth
+        # resolution -- not only at PUT time (key_guardrail_router.py, a
+        # write-time snapshot). This makes the floor a true PER-REQUEST
+        # invariant: a tenant RAISING its floor after a key override was
+        # already written takes effect on the very next request through that
+        # key, with no re-PUT required. A no-op whenever the key has no
+        # override (guardrail_configs IS tenant_guardrails already) or already
+        # meets/exceeds the floor.
+        guardrail_configs = apply_tenant_guardrail_floor(guardrail_configs, tenant_guardrails)
         # NOTE for the sibling guardrail-analytics task (depends-on this task):
         # this discriminator is DELIBERATELY finer-grained than
         # key_guardrail_router.get_key_guardrails()'s GET `source` field. GET's

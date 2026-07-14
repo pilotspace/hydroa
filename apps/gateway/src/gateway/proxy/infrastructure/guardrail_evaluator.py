@@ -143,12 +143,116 @@ def _has_block_mode(guardrail_configs: dict[str, Any]) -> bool:
     return False
 
 
-def _get_message_content(msg: dict[str, Any]) -> str:
-    """Extract string content from a message dict; return '' if not a str."""
-    content = msg.get("content", "")
-    if not isinstance(content, str):
+def _extract_text_from_content_list(content: list[Any]) -> str:
+    """Join scannable text out of a list-shaped message content field.
+
+    Mirrors the list-content traversal idiom in
+    `proxy/application/modality_guard.py::required_input_modalities_for_chat`:
+    only dict parts with `type == "text"` and a str `text` field contribute
+    (Anthropic content-blocks and OpenAI vision `text` parts share this shape);
+    `image_url`/`image`/other part types carry no scannable text and are
+    skipped, never raising on an unknown or malformed shape. A part that
+    self-identifies as `type == "text"` but whose `text` field is missing or
+    not a str is ALSO skipped here (nothing to join) — callers that need to
+    know about that unreadable-but-text-typed case use
+    `_message_has_unresolvable_text_block` to fail closed instead of silently
+    treating it as PII-free.
+    """
+    texts: list[str] = []
+    for part in content:
+        if isinstance(part, dict) and part.get("type") == "text":
+            text = part.get("text")
+            if isinstance(text, str):
+                texts.append(text)
+    return "\n".join(texts)
+
+
+def _extract_tool_call_text(tool_calls: Any) -> str:
+    """Join scannable text out of a message's `tool_calls` field (OpenAI shape).
+
+    HOLE 1 (adversarial-verification follow-up, audit-remediation package A1):
+    `tool_calls[].function.arguments` is a JSON string carrying arbitrary
+    tenant-supplied or model-emitted data (the primary agent-gateway traffic
+    shape — Anthropic `tool_use` blocks are translated into this exact shape at
+    ingress, see `anthropic_ingress.py::_assistant_content_to_openai`) — it was
+    previously invisible to every scan (injection detection, moderation concat)
+    because only `content` was ever read. Each call's `function.name` and
+    `function.arguments` are treated as plain scannable text; the regex table
+    is applied to the raw `arguments` string verbatim, never parsed as JSON, so
+    detection/masking can never depend on (or break) JSON structure.
+    Non-list/malformed input contributes "" and is skipped, mirroring the
+    fail-open-on-unknown-shape posture of `_extract_text_from_content_list`.
+    """
+    if not isinstance(tool_calls, list):
         return ""
-    return content
+    texts: list[str] = []
+    for call in tool_calls:
+        if not isinstance(call, dict):
+            continue
+        function = call.get("function")
+        if not isinstance(function, dict):
+            continue
+        name = function.get("name")
+        if isinstance(name, str):
+            texts.append(name)
+        arguments = function.get("arguments")
+        if isinstance(arguments, str):
+            texts.append(arguments)
+    return "\n".join(texts)
+
+
+def _get_message_content(msg: dict[str, Any]) -> str:
+    """Extract scannable text from a message dict's content field AND tool_calls.
+
+    str content -> returned verbatim (the common path, unchanged).
+    list content (Anthropic content-blocks, incl. cache_control-bearing blocks,
+    and OpenAI vision `image_url` parts) -> the joined text of every recognized
+    `{"type": "text", "text": <str>}` part; other part types contribute "".
+    Any other shape (missing/None/dict/etc.) -> "" (no scannable text) — same
+    fail-open-on-unknown-shape posture `modality_guard` uses for content it
+    cannot interpret.
+
+    HOLE 1: `tool_calls[].function.{name,arguments}` text (see
+    `_extract_tool_call_text`) is appended so injection detection
+    (`_check_injection`, the sole caller of this function) also covers PII/
+    injection payloads smuggled inside tool-call arguments, not just `content`.
+    """
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        text = _extract_text_from_content_list(content)
+    else:
+        text = ""
+    tool_call_text = _extract_tool_call_text(msg.get("tool_calls"))
+    if tool_call_text:
+        return f"{text}\n{tool_call_text}" if text else tool_call_text
+    return text
+
+
+def _message_has_unresolvable_text_block(msg: dict[str, Any]) -> bool:
+    """True if `msg["content"]` is a list containing a block that declares
+    itself `type == "text"` but whose `text` field is missing or not a str —
+    a recognized-but-unreadable text-bearing block.
+
+    PII masking cannot safely scan OR rewrite such a block: mirrors the
+    MCP-connector `_get_block_text` / `_build_scan_messages` idiom (mcp_connector/
+    application/use_cases.py) where only a WELL-FORMED text field is ever
+    substituted into and anything else fails the relay CLOSED rather than
+    silently passing content that might carry unmasked PII in a field the
+    evaluator cannot read.
+    """
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return False
+    for part in content:
+        if (
+            isinstance(part, dict)
+            and part.get("type") == "text"
+            and not isinstance(part.get("text"), str)
+        ):
+            return True
+    return False
 
 
 def _check_injection(messages: list[dict[str, Any]]) -> bool:
@@ -163,33 +267,151 @@ def _check_injection(messages: list[dict[str, Any]]) -> bool:
     return False
 
 
+def _apply_pattern_table(text: str, patterns: list[tuple[re.Pattern[str], str]]) -> str:
+    """Sequentially apply every (pattern, replacement) pair to text."""
+    for pattern, replacement in patterns:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _mask_tool_calls(tool_calls: Any) -> tuple[Any, bool]:
+    """Apply built-in PII regexes to a message's `tool_calls[*].function`
+    `name` and `arguments` fields (HOLE 1 — see `_extract_tool_call_text`).
+
+    `arguments` is a JSON string; the regex table is applied to it verbatim
+    (never parsed/re-serialized), so a well-formed JSON string stays a
+    well-formed JSON string after masking — the frozen replacement literals
+    (e.g. `[EMAIL_REDACTED]`) contain no characters that could break JSON
+    string-literal syntax.
+
+    Returns (new_tool_calls, changed). Non-list/malformed input is returned
+    unchanged (nothing to safely mask) — same fail-open-on-unknown-shape
+    posture as the content-side helpers.
+    """
+    if not isinstance(tool_calls, list):
+        return tool_calls, False
+    changed = False
+    new_calls: list[Any] = []
+    for call in tool_calls:
+        if not isinstance(call, dict):
+            new_calls.append(call)
+            continue
+        function = call.get("function")
+        if not isinstance(function, dict):
+            new_calls.append(call)
+            continue
+        new_function = function
+        function_changed = False
+        name = function.get("name")
+        if isinstance(name, str) and name:
+            new_name = _apply_pattern_table(name, _PII_PATTERNS)
+            if new_name != name:
+                new_function = {**new_function, "name": new_name}
+                function_changed = True
+        arguments = function.get("arguments")
+        if isinstance(arguments, str) and arguments:
+            new_arguments = _apply_pattern_table(arguments, _PII_PATTERNS)
+            if new_arguments != arguments:
+                new_function = {**new_function, "arguments": new_arguments}
+                function_changed = True
+        if function_changed:
+            changed = True
+            new_calls.append({**call, "function": new_function})
+        else:
+            new_calls.append(call)
+    return new_calls, changed
+
+
+def _mask_message_content(msg: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Apply built-in PII regexes to ONE message's `content` field AND
+    `tool_calls[*].function.{name,arguments}` (HOLE 1), whatever their shapes.
+
+    str content -> masked string (the common path, unchanged behavior).
+    list content -> a NEW list where every recognized `{"type": "text", "text":
+    <str>}` part has its `text` field masked IN PLACE (all other keys on that
+    part, e.g. `cache_control`, are carried through byte-identical via dict
+    spread); every other part (image_url, image, or any part this evaluator
+    doesn't recognize) is carried through unchanged, by identity, in the same
+    position — mirrors the MCP-connector `_apply_masked_blocks` idiom of only
+    ever rewriting the recognized text field, nothing else.
+    Any other content shape -> unchanged, not-replaced (nothing to safely mask).
+    `tool_calls` (if present on the message) is masked via `_mask_tool_calls`.
+
+    Returns (updates, changed): `updates` is a dict containing ONLY the fields
+    that changed (`"content"` and/or `"tool_calls"`), meant to be splatted by
+    the caller as `{**msg, **updates}`; `({}, False)` when nothing changed.
+    Reused verbatim by the response-side `_mask_pii_in_body` so request- and
+    response-leg masking share one implementation.
+    """
+    updates: dict[str, Any] = {}
+    changed = False
+
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        if content:
+            new_content = _apply_pattern_table(content, _PII_PATTERNS)
+            if new_content != content:
+                updates["content"] = new_content
+                changed = True
+    elif isinstance(content, list):
+        content_changed = False
+        new_parts: list[Any] = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text = part.get("text")
+                if isinstance(text, str) and text:
+                    new_text = _apply_pattern_table(text, _PII_PATTERNS)
+                    if new_text != text:
+                        content_changed = True
+                        new_parts.append({**part, "text": new_text})
+                        continue
+            new_parts.append(part)
+        if content_changed:
+            updates["content"] = new_parts
+            changed = True
+
+    if "tool_calls" in msg:
+        new_tool_calls, tool_calls_changed = _mask_tool_calls(msg.get("tool_calls"))
+        if tool_calls_changed:
+            updates["tool_calls"] = new_tool_calls
+            changed = True
+
+    return updates, changed
+
+
 def _mask_pii(messages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
-    """Apply all built-in PII regexes to each message's content field.
+    """Apply all built-in PII regexes to each message's content AND tool_calls.
 
     Returns (masked_messages, any_replaced).
     Creates a deep copy only when at least one replacement was made.
+    Handles plain str content, list-shaped content (Anthropic content-blocks /
+    OpenAI vision parts), and `tool_calls[*].function.{name,arguments}` (HOLE 1)
+    via `_mask_message_content`, which rewrites recognized text in place and
+    leaves every other part (image_url, image, cache_control, etc.) byte-identical.
     Built-in patterns only — no budget guard (they are linear-time and pre-verified).
     """
     any_replaced = False
     result: list[dict[str, Any]] = []
     for msg in messages:
-        content = _get_message_content(msg)
-        if not content:
-            result.append(msg)
-            continue
-        new_content = content
-        for pattern, replacement in _PII_PATTERNS:
-            new_content = pattern.sub(replacement, new_content)
-        if new_content != content:
+        updates, changed = _mask_message_content(msg)
+        if changed:
             any_replaced = True
-            result.append({**msg, "content": new_content})
+            result.append({**msg, **updates})
         else:
             result.append(msg)
     return result, any_replaced
 
 
 def _mask_pii_in_body(response_body: dict[str, Any]) -> dict[str, Any]:
-    """Apply built-in PII masking to choices[*].message.content in an upstream response body.
+    """Apply built-in PII masking to choices[*].message in an upstream response body.
+
+    HOLE 2 / HOLE 1 response-side (adversarial-verification follow-up, audit-
+    remediation package A1 rework): reuses `_mask_message_content` — the SAME
+    function the request-side `_mask_pii` uses — so list-shaped content
+    (Anthropic content-blocks reaching this path through any future adapter)
+    AND `tool_calls[*].function.{name,arguments}` (a model-EMITTED tool call
+    carrying PII in its arguments) get the identical masking treatment on the
+    response leg as on the request leg, with no parallel reimplementation.
 
     Returns a (shallow-copy-of-top-level) modified body. Deep-copies only choices.
     Built-in patterns only — no budget guard.
@@ -208,16 +430,10 @@ def _mask_pii_in_body(response_body: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(message, dict):
             new_choices.append(choice)
             continue
-        content = message.get("content", "")
-        if not isinstance(content, str) or not content:
-            new_choices.append(choice)
-            continue
-        new_content = content
-        for pattern, replacement in _PII_PATTERNS:
-            new_content = pattern.sub(replacement, new_content)
-        if new_content != content:
+        updates, changed = _mask_message_content(message)
+        if changed:
             any_changed = True
-            new_message = {**message, "content": new_content}
+            new_message = {**message, **updates}
             new_choices.append({**choice, "message": new_message})
         else:
             new_choices.append(choice)
@@ -318,6 +534,61 @@ def _compile_custom_patterns(
     return list(_compile_patterns_cached(items))
 
 
+def _apply_capped_pattern(
+    text: str, pattern: re.Pattern[str], literal: str
+) -> tuple[str, bool]:
+    """Apply one custom pattern to `text`, scanning only the first
+    `_CUSTOM_INPUT_CAP` bytes (the uncapped remainder is preserved verbatim).
+    Returns (new_text, changed)."""
+    capped = text[:_CUSTOM_INPUT_CAP]
+    new_text = pattern.sub(literal, capped)
+    remainder = text[_CUSTOM_INPUT_CAP:]
+    full_new = new_text + remainder
+    return full_new, full_new != text
+
+
+def _apply_capped_pattern_to_tool_calls(
+    tool_calls: Any, pattern: re.Pattern[str], literal: str
+) -> tuple[Any, bool]:
+    """Apply one custom pattern (capped to `_CUSTOM_INPUT_CAP` bytes per field)
+    to each `tool_calls[*].function`'s `name`/`arguments` (HOLE 1). Mirrors
+    `_apply_capped_pattern`'s per-field cap discipline, applied to the two
+    additional maskable text fields tool_calls carries.
+    """
+    if not isinstance(tool_calls, list):
+        return tool_calls, False
+    changed = False
+    new_calls: list[Any] = []
+    for call in tool_calls:
+        if not isinstance(call, dict):
+            new_calls.append(call)
+            continue
+        function = call.get("function")
+        if not isinstance(function, dict):
+            new_calls.append(call)
+            continue
+        new_function = function
+        function_changed = False
+        name = function.get("name")
+        if isinstance(name, str) and name:
+            new_name, name_changed = _apply_capped_pattern(name, pattern, literal)
+            if name_changed:
+                new_function = {**new_function, "name": new_name}
+                function_changed = True
+        arguments = function.get("arguments")
+        if isinstance(arguments, str) and arguments:
+            new_arguments, arguments_changed = _apply_capped_pattern(arguments, pattern, literal)
+            if arguments_changed:
+                new_function = {**new_function, "arguments": new_arguments}
+                function_changed = True
+        if function_changed:
+            changed = True
+            new_calls.append({**call, "function": new_function})
+        else:
+            new_calls.append(call)
+    return new_calls, changed
+
+
 def _apply_custom_patterns_to_messages(
     messages: list[dict[str, Any]],
     custom_compiled: list[tuple[re.Pattern[str], str]],
@@ -329,7 +600,10 @@ def _apply_custom_patterns_to_messages(
 
     Returns (result_messages, any_replaced, budget_exceeded).
     Applies patterns AFTER built-ins have already run on messages.
-    Each field is capped to _CUSTOM_INPUT_CAP bytes before scanning.
+    Each field is capped to _CUSTOM_INPUT_CAP bytes before scanning. Handles
+    both plain str content and list-shaped content (Anthropic content-blocks /
+    OpenAI vision parts) — only recognized `{"type": "text", "text": <str>}`
+    parts are scanned; every other part is carried through unchanged.
     On budget exceeded: skip remaining patterns, fail-OPEN.
     """
     if not custom_compiled:
@@ -351,20 +625,53 @@ def _apply_custom_patterns_to_messages(
 
         new_result: list[dict[str, Any]] = []
         for msg in result:
-            content = _get_message_content(msg)
-            if not content:
-                new_result.append(msg)
-                continue
-            # Cap input to first 64 KB for custom pattern scanning
-            capped = content[:_CUSTOM_INPUT_CAP]
-            new_content = pattern.sub(literal, capped)
-            # Reconstruct: capped portion replaced + rest (uncapped) preserved verbatim
-            # Since we only scan capped portion, append the remainder unchanged
-            remainder = content[_CUSTOM_INPUT_CAP:]
-            full_new = new_content + remainder
-            if full_new != content:
+            updates: dict[str, Any] = {}
+            msg_changed = False
+
+            msg_content = msg.get("content", "")
+            if isinstance(msg_content, str):
+                if msg_content:
+                    full_new, part_changed = _apply_capped_pattern(msg_content, pattern, literal)
+                    if part_changed:
+                        updates["content"] = full_new
+                        msg_changed = True
+            elif isinstance(msg_content, list):
+                # List-shaped content (Anthropic content-blocks / OpenAI vision
+                # parts): only recognized `{"type": "text", "text": <str>}`
+                # parts are scanned+capped; every other part is carried through
+                # unchanged, same idiom as `_mask_message_content`.
+                content_changed = False
+                new_parts: list[Any] = []
+                for part in msg_content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        text = part.get("text")
+                        if isinstance(text, str) and text:
+                            full_new, part_changed = _apply_capped_pattern(
+                                text, pattern, literal
+                            )
+                            if part_changed:
+                                content_changed = True
+                                new_parts.append({**part, "text": full_new})
+                                continue
+                    new_parts.append(part)
+                if content_changed:
+                    updates["content"] = new_parts
+                    msg_changed = True
+
+            # HOLE 1: tool_calls[*].function.{name,arguments} custom-pattern
+            # scan, capped per field just like content — same idiom as
+            # `_mask_tool_calls`/`_apply_capped_pattern_to_tool_calls`.
+            if "tool_calls" in msg:
+                new_tool_calls, tool_calls_changed = _apply_capped_pattern_to_tool_calls(
+                    msg.get("tool_calls"), pattern, literal
+                )
+                if tool_calls_changed:
+                    updates["tool_calls"] = new_tool_calls
+                    msg_changed = True
+
+            if msg_changed:
                 any_replaced = True
-                new_result.append({**msg, "content": full_new})
+                new_result.append({**msg, **updates})
             else:
                 new_result.append(msg)
         result = new_result
@@ -377,10 +684,18 @@ def _apply_custom_patterns_to_body(
     custom_compiled: list[tuple[re.Pattern[str], str]],
     deadline: float,
 ) -> tuple[dict[str, Any], bool]:
-    """Apply custom patterns to response body choices[*].message.content.
+    """Apply custom patterns to response body choices[*].message.
+
+    HOLE 2 / HOLE 1 response-side (adversarial-verification follow-up, audit-
+    remediation package A1 rework): reuses `_apply_custom_patterns_to_messages`
+    — the SAME per-message custom-pattern application the request-side uses —
+    by treating each choice's `message` dict as a message-shaped dict, so
+    list-shaped content and `tool_calls[*].function.{name,arguments}` get the
+    identical capped-scan treatment as the request leg, with no parallel
+    reimplementation.
 
     Returns (modified_body, budget_exceeded).
-    Each content field is capped to _CUSTOM_INPUT_CAP bytes.
+    Each content/tool_calls text field is capped to _CUSTOM_INPUT_CAP bytes.
     On budget exceeded: skip remaining patterns, fail-OPEN (return what was done so far).
     """
     if not custom_compiled:
@@ -390,75 +705,30 @@ def _apply_custom_patterns_to_body(
     if not isinstance(choices, list) or not choices:
         return response_body, False
 
-    budget_exceeded = False
-    # Build a working copy of choices as mutable dicts
-    working_choices: list[Any] = []
-    for choice in choices:
+    messages: list[dict[str, Any]] = []
+    message_indices: list[int] = []
+    for idx, choice in enumerate(choices):
         if not isinstance(choice, dict):
-            working_choices.append(choice)
             continue
         message = choice.get("message")
-        if not isinstance(message, dict):
-            working_choices.append(choice)
-            continue
-        content = message.get("content", "")
-        if not isinstance(content, str):
-            working_choices.append(choice)
-            continue
-        # Store current content for mutation
-        working_choices.append(
-            {
-                "_choice": choice,
-                "_message": message,
-                "_content": content,
-            }
-        )
+        if isinstance(message, dict):
+            messages.append(message)
+            message_indices.append(idx)
 
-    any_changed = False
-    for pat_idx, (pattern, literal) in enumerate(custom_compiled):
-        if time.monotonic() > deadline:
-            budget_exceeded = True
-            _slog.warning(
-                "guardrail_custom_budget_exceeded_post",
-                patterns_applied=pat_idx,
-                patterns_total=len(custom_compiled),
-            )
-            break
+    if not messages:
+        return response_body, False
 
-        for _i, wc in enumerate(working_choices):
-            if not isinstance(wc, dict) or "_content" not in wc:
-                continue
-            content = wc["_content"]
-            capped = content[:_CUSTOM_INPUT_CAP]
-            new_content = pattern.sub(literal, capped)
-            remainder = content[_CUSTOM_INPUT_CAP:]
-            full_new = new_content + remainder
-            if full_new != content:
-                any_changed = True
-                wc["_content"] = full_new
-
-    if not any_changed and not budget_exceeded:
-        # No changes made — short-circuit
-        # Check if any change was made even with budget exceeded
-        pass
-
-    # Reconstruct the response body from working copies
-    new_choices: list[Any] = []
-    for wc in working_choices:
-        if not isinstance(wc, dict) or "_content" not in wc:
-            new_choices.append(wc)
-            continue
-        orig_choice = wc["_choice"]
-        orig_message = wc["_message"]
-        current_content = wc["_content"]
-        if current_content != orig_message.get("content", ""):
-            new_message = {**orig_message, "content": current_content}
-            new_choices.append({**orig_choice, "message": new_message})
-        else:
-            new_choices.append(orig_choice)
+    new_messages, any_changed, budget_exceeded = _apply_custom_patterns_to_messages(
+        messages, custom_compiled, deadline, "mask", []
+    )
 
     if not any_changed:
         return response_body, budget_exceeded
+
+    new_choices: list[Any] = list(choices)
+    for new_message, idx in zip(new_messages, message_indices, strict=True):
+        new_choices[idx] = {**choices[idx], "message": new_message}
+
     return {**response_body, "choices": new_choices}, budget_exceeded
 
 
@@ -630,8 +900,39 @@ class RegexGuardrailEvaluator:
                             )
                         )
 
+                # Fail-CLOSED: mode=mask promises to strip PII before the request
+                # is relayed/logged, but a message may carry a block that
+                # self-identifies as `type == "text"` while its `text` field is
+                # missing/non-str — a shape this evaluator cannot read, let alone
+                # rewrite. Silently masking everything ELSE and relaying such a
+                # message would risk leaking whatever PII lives in the unreadable
+                # field. Mirrors the MCP-connector `mask_unresolved` idiom
+                # (mcp_connector/application/use_cases.py): when a masked value
+                # cannot be safely substituted back into the message structure,
+                # block the relay instead of guessing. Only applies to mode=mask
+                # — audit mode never substitutes anything, so there is nothing to
+                # "unresolve".
+                unresolved = mode == "mask" and any(
+                    _message_has_unresolvable_text_block(m) for m in messages
+                )
+
                 # Emit the primary pii_mask event based on detection result
-                if any_replaced:
+                if unresolved:
+                    blocked = True
+                    blocked_by = "pii_mask"
+                    masked_messages = None
+                    events.append(
+                        GuardrailEvent(
+                            guardrail="pii_mask",
+                            action="blocked",
+                            detail=(
+                                "Unmaskable text block present "
+                                "(masked value cannot be safely substituted back); "
+                                "relay blocked (fail-closed)"
+                            ),
+                        )
+                    )
+                elif any_replaced:
                     if mode == "mask":
                         masked_messages = replaced_msgs
                         events.append(
