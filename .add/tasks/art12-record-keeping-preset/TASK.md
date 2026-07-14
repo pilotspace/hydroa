@@ -378,7 +378,14 @@ Glossary deltas:
 - **Bundle token**: the opaque, base64url-encoded continuation marker minted on an Art. 12 bundle's first page, carrying the PINNED cover snapshot plus each section's own `(created_at, id)` keyset cursor — extends the existing Export cursor idiom to also guarantee the cover stays internally consistent across every page of the same bundle walk, with nothing persisted server-side.
 - **Usage lineage**: the per-request `usage_records` rows (model, tokens, cost, `cost_basis`, `usage_source`, `tier_served`) underlying a tenant's billed activity for a bundle's period — the audit-trail counterpart to Compliance export's audit events; this task adds the first bounded/paginated read over `usage_records` for an arbitrary period (previously only 50-newest + aggregate-window reads existed).
 
-Status: DRAFT
+**Freeze decisions (Tin, 2026-07-14 — recorded at freeze, resolve the open questions above):**
+- New compliance/ bounded context accepted (FREEZE-Q3).
+- Gate on existing Permission.AUDIT_READ, no new plan-feature/permission now (FREEZE-Q2).
+- Uniform 1..5000/default-1000 page ceiling across all 3 sections accepted (FREEZE-Q1).
+- Usage-lineage stays an internal-only read; the standalone public export endpoint is the recorded follow-up change-request (FREEZE-Q4).
+- bundle_token period-mismatch -> REJECT (deterministic evidence beats silent trust) (FREEZE-Q5).
+
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — awaiting human freeze (this draft, plus FREEZE-QUESTIONS below, is the freeze report input)
 
 ### FREEZE-QUESTIONS (Tin decides at freeze — each: options + recommendation)

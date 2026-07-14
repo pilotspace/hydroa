@@ -47,7 +47,7 @@ Issues/Risks (→ feed §1):
 1. The in-process `/v1` authn seam (`get_raw_api_key`) does not read `X-Api-Key` today — a real gap vs. the milestone's "both authn seams agree, byte-identical 401s" invariant; must add extraction mirroring `_extract_raw_key`'s priority (Bearer first, X-Api-Key fallback) for `/v1/messages` specifically (NOT retrofitted onto `/v1/chat/completions` — out of this task's scope).
 2. Extended-thinking `budget_tokens` has no Bedrock/Vertex equivalent — a client sending `thinking:{budget_tokens}` whose request gets routed (by tier/fallback/preset) to a non-Anthropic candidate has no faithful destination for that field.
 3. The internal OpenAI-shape stream never carries a prompt-token count until its terminal chunk (unlike real Anthropic's `message_start.usage.input_tokens`, accurate up front) — a byte-faithful `message_start` is not achievable without either (a) a token-count pre-flight call before every streamed response, or (b) reporting 0/absent `usage` at `message_start` and correcting only at `message_delta`/`message_stop`.
-4. `count_tokens` has no existing analog anywhere in the codebase — genuinely new ground: unclear whether it should traverse the SAME governance chokepoint (budget hold/rate-limit consumption/usage-record billing) given it produces no completion and costs nothing to compute.
+4. `count_tokens` has no existing analog anywhere in the codebase — genuinely new ground. RESOLVED (Freeze decision, Tin 2026-07-14): it DOES traverse the full governance chokepoint (authn, model-check, budget, rate-limit, plan/credit) exactly like `/v1/messages` — the only difference is a $0-billed, no-usage-record SUCCESS outcome; see M12.
 5. `CompletionUseCase.__init__` takes ~20 optional collaborators wired via `getattr(request.app.state, ...)` in `get_completion_use_case` (L114-294) — the ingress endpoint must reuse this SAME function unmodified, or every optional governance feature (budget, tier capacity, residency, guardrails, credit hold, …) silently goes missing for Anthropic-wire traffic.
 6. `usage_records.usage_source` (`usage/infrastructure/orm.py` L107) is an established discriminator with a fixed vocabulary (`frame`/`stream_fallback`/`client_disconnect`/`openrouter_recovered`, consumed by reconciliation queries in `usage/application/reconciliation.py`/`cost_recovery.py`) — it must NOT be overloaded with an ingress-dialect value; a `/v1/messages`-served row must be schema-indistinguishable from an equivalent `/v1/chat/completions` row (billing parity, M11).
 
@@ -79,14 +79,14 @@ Must:
   - M9: every governance-layer rejection that already raises a `ProblemError` for `/v1/chat/completions` (auth, model, payload, budget, rate-limit, guardrail, residency, tier) is caught at the `/v1/messages` boundary and re-emitted as an Anthropic-shaped error envelope (`{"type":"error","error":{"type":<mapped>,"message":<m>}}`) with the SAME HTTP status — never a raw problem+json body reaches an Anthropic-wire client (mirrors the SCIM `/scim/v2/*` documented carve-out from the project-wide RFC 9457 convention).
   - M10: a provider/upstream failure mid-stream (5xx, timeout, circuit-open, or an Anthropic-native `error` event surfacing while HTTP stays 200) terminates the SSE stream with an Anthropic-shaped terminal `error` event — never a silent truncation or hang.
   - M11: every served `/v1/messages` request bills through the SAME shared `UsageRecorder`/`RecordingUsageRecorder` into `usage_records` exactly once — no parallel ledger, no double-count, no under-count relative to the equivalent `/v1/chat/completions` call for the same tokens/model/tenant; the written row is schema-indistinguishable (same `usage_source` vocabulary, no new discriminator).
-  - M12: `POST /v1/messages/count_tokens` accepts an Anthropic-wire request body (same shape as M1 minus `max_tokens`/`stream`) and returns `{"input_tokens": <int>}`; it authenticates and validates the model exists/is permitted for the tenant, but is EXEMPT from budget hold, rate-limit consumption, and usage-record billing (produces no completion, costs nothing to compute) — an explicit, named, human-confirmed deviation from the "same governance path" invariant (M2), scoped to this ONE read-only utility endpoint.
+  - M12: `POST /v1/messages/count_tokens` accepts an Anthropic-wire request body (same shape as M1 minus `max_tokens`/`stream`) and returns `{"input_tokens": <int>}`. **Freeze decision (Tin 2026-07-14): count_tokens passes the SAME admission gates as `/v1/messages`** — authn, model-check, budget, rate-limit, and plan/credit gates ALL run exactly as they do for a chat call — and is billed **$0**: it produces NO `usage_records` row and NO charge, but an over-budget / over-rate-limit / no-credit tenant gets the identical structured refusal a chat call would get. The milestone's "same governance path" invariant now holds with **zero carve-outs**; M2 applies to `count_tokens` without exception.
 </must>
 Reject:
 <reject>
   - R1: request body fails Anthropic schema validation (missing `model`/`messages`/`max_tokens`, malformed `messages` roles/content, a `tool_result` referencing an unknown `tool_use_id`) -> "ERR_PAYLOAD_INVALID" (400, Anthropic-shaped `invalid_request_error`).
   - R2: neither `x-api-key` nor a `Bearer` `Authorization` header is present, or the credential is invalid/revoked -> "ERR_AUTH_INVALID_KEY" (401, Anthropic-shaped `authentication_error`) — identical trigger set/opacity as today's `/v1/chat/completions` 401 (no enumeration hint).
   - R3: `model` does not resolve to any active catalog row / preset / alias the tenant is permitted to use -> "ERR_MODEL_UNKNOWN" | "ERR_MODEL_NOT_ALLOWED" (400/403 per existing mapping, Anthropic-shaped `invalid_request_error`/`permission_error`).
-  - R4: budget / credit / rate-limit / tier-capacity / residency gate rejects -> the SAME ERR_* code the OpenAI-wire path already raises, re-wrapped Anthropic-shaped, SAME HTTP status (e.g. 429 budget/rate-limit → `rate_limit_error`; 403 residency refusal → `permission_error`).
+  - R4: budget / credit / rate-limit / tier-capacity / residency gate rejects -> the SAME ERR_* code the OpenAI-wire path already raises, re-wrapped Anthropic-shaped, SAME HTTP status (e.g. 429 budget/rate-limit → `rate_limit_error`; 403 residency refusal → `permission_error`) — applies identically to `/v1/messages` AND `/v1/messages/count_tokens` (Freeze decision 2026-07-14: no governance carve-out for count_tokens; only the $0-billing/no-usage-row outcome differs on the SUCCESS path).
   - R5: a guardrail blocks the request pre-call -> the SAME ERR_* guardrail code, Anthropic-shaped `invalid_request_error`, refused BEFORE any upstream dial (fail-closed, zero egress — mirrors the MCP/residency refuse-not-reroute idiom).
   - R6: mid-stream upstream failure (5xx/timeout/circuit-open) -> "ERR_UPSTREAM_UNAVAILABLE" surfaced as a terminal Anthropic-shaped SSE `error` event (`api_error` type) + stream close — never a bare disconnect.
   - R7: `thinking.budget_tokens` present but the resolved provider is non-Anthropic -> NOT a reject; degrades per M7 (field dropped, request still served) — listed here only to make explicit this is NOT reject-class behavior despite looking like an incompatibility.
@@ -99,10 +99,10 @@ After:
 </after>
 Assumptions — lowest-confidence first:
 <assumptions>
-  ⚠ count_tokens' governance exemption (M12: authn+model-check only, no budget hold/rate-limit consumption/usage-record billing) is a deliberate, named deviation from the milestone's "ingress is translation-only, same governance path" invariant — lowest confidence because the milestone doc does not explicitly anticipate a non-billable ingress endpoint, so this framing needs the human's explicit blessing at freeze, not just a design-agent judgment call; if wrong (e.g. it should carry at least a lightweight rate-limit): a client class that calls count_tokens on every turn to size context windows (Claude-Code-SDK-style) could hit an under-governed endpoint, or this needs a follow-up rate-limit-only task.
-  - [ ] `message_start.usage.input_tokens` will report 0 (or omit `usage`) rather than an accurate upfront count, since the internal OpenAI-shape stream surfaces prompt-token count only in its terminal chunk — confirm this degrade is acceptable vs. requiring a token-count pre-flight before `message_start` (extra latency on every streamed call); cost if wrong: clients relying on early cost telemetry (cost dashboards) see a transient wrong number until `message_delta`.
-  - [ ] thinking/cache_control silently-dropped-for-non-Anthropic-providers (M7/M8) is the right default vs. rejecting the request outright when a non-Anthropic candidate is the ONLY candidate — confirm silent degrade (not reject) is preferred; cost if wrong: a tenant pinned to Bedrock/Azure-only routing gets quietly-ignored thinking requests instead of an explicit error telling them to change tier/model.
-  - [ ] new `messages_router.py` (mirroring `embeddings_router.py`'s per-modality-file convention) vs. adding functions to the existing `router.py` — confirm file-placement preference; low cost if wrong (a pure file-move, no behavior change).
+  RESOLVED (Freeze decision, Tin 2026-07-14): count_tokens' governance path — decided AGAINST the draft's exemption. count_tokens now passes the FULL admission path (authn, model-check, budget, rate-limit, plan/credit gates) exactly like `/v1/messages`, billed $0, zero usage rows. The milestone's "same governance path" invariant holds with zero carve-outs; no longer an open assumption (see M12).
+  - [x] DECIDED-AT-FREEZE (Tin 2026-07-14): `message_start.usage.input_tokens` reporting 0/absent (rather than an accurate upfront count) — ACCEPTED as a disclosed degrade. No redesign; build proceeds on this basis.
+  - [x] DECIDED-AT-FREEZE (Tin 2026-07-14): thinking/cache_control silently degrade (translate-through, field dropped, never a reject) for a request served by a non-Anthropic provider — ACCEPTED. No redesign; M7/M8 stand as drafted.
+  - [x] DECIDED-AT-FREEZE (Tin 2026-07-14): new `messages_router.py` file (mirroring `embeddings_router.py`'s per-modality-file convention) rather than appending to `router.py` — ACCEPTED. §5 Scope reflects this.
 </assumptions>
 
 <!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
@@ -222,17 +222,30 @@ Scenario: Billing parity — token counts and cost match the equivalent OpenAI-w
   Then both produce exactly one usage_records row each, with matching prompt/completion token counts and matching cost_usd computed via the same rate-card resolver
   And neither call produces more or fewer than one row (no double-count, no missing row)
 
-Scenario: count_tokens returns an estimate without billing or holding budget   # M12
-  Given a valid tenant API key and an active catalog model
+Scenario: Healthy tenant calls count_tokens — full governance path, $0 billed   # M12 (Freeze decision 2026-07-14)
+  Given a valid tenant API key, an active catalog model, sufficient budget/credit, and a key that is not rate-limited
   When the client POSTs /v1/messages/count_tokens with {model, messages}
   Then the response is 200 {"input_tokens": <int>}
-  And no budget hold was placed, no rate-limit counter was consumed, and no usage_records row was written
+  And the request passed the SAME admission gates as /v1/messages (authn, model-check, budget, rate-limit, plan/credit) — none were skipped or exempted
+  And no usage_records row was written and no charge was made (the $0-billed outcome is a SUCCESS-path property, not a governance skip)
+
+Scenario: Over-budget tenant calls count_tokens — structured refusal, zero usage rows   # M12, R4 (Freeze decision 2026-07-14)
+  Given a tenant whose per-key or team budget is already exhausted
+  When the client POSTs /v1/messages/count_tokens
+  Then the response is a structured 4xx Anthropic-shaped refusal (the SAME ERR_* budget code /v1/messages would raise for the identical tenant state)
+  And zero usage_records rows were written and no upstream/token-counting work was performed
+
+Scenario: Rate-limited key calls count_tokens — 429 with Retry-After parity   # M12, R4 (Freeze decision 2026-07-14)
+  Given a tenant whose API key has exceeded its configured rate limit
+  When the client POSTs /v1/messages/count_tokens
+  Then the response is 429 Anthropic-shaped rate_limit_error, carrying the SAME Retry-After semantics /v1/messages already returns for a rate-limited request
+  And zero usage_records rows were written
 
 Scenario: count_tokens still enforces authn and model existence   # M12
   Given a request to /v1/messages/count_tokens naming a model absent from the catalog
   When the client POSTs the request
   Then the response is 400 ERR_MODEL_UNKNOWN, Anthropic-shaped
-  And the exemption from budget/rate-limit/billing does NOT extend to skipping authn or model validation
+  And this is one instance of the general rule (M12): count_tokens never skips any admission gate, only the billing/usage-record OUTCOME on success differs from /v1/messages
 
 Scenario: Duplicate/consecutive tool-result messages collapse correctly (boundary)   # M1
   Given an Anthropic request whose messages include two consecutive tool_result blocks for two different tool_use_ids
@@ -306,11 +319,17 @@ POST /v1/messages/count_tokens
     tool_choice?: {...}, thinking?: {type:"enabled", budget_tokens: int}
   }                                                       # NOTE: no max_tokens, no stream
   200 -> { "input_tokens": int }
-  4xx -> { "type":"error", "error": {"type":"invalid_request_error"|"authentication_error", "message":"<m>"} }
+  4xx -> { "type":"error", "error": {"type":"invalid_request_error"|"authentication_error"|"permission_error"|"rate_limit_error", "message":"<m>"} }
     400 -> "ERR_PAYLOAD_INVALID" | "ERR_MODEL_UNKNOWN"
     401 -> "ERR_AUTH_INVALID_KEY"
-  # Exempt from budget hold / rate-limit consumption / usage_records write (M12) — authn + model
-  # existence/permission ARE still enforced.
+    403 -> "ERR_MODEL_NOT_ALLOWED" | residency ERR_* (per existing mapping)
+    429 -> budget / rate-limit ERR_* (per existing mapping), Retry-After parity with /v1/messages
+  # Freeze decision (Tin 2026-07-14): full governance path, $0-billed, no usage record. count_tokens
+  # passes the SAME admission gates as /v1/messages (authn, model-check, budget, rate-limit,
+  # plan/credit) — an over-budget/over-limit/no-credit tenant gets the identical structured 4xx a
+  # chat call would get. On SUCCESS ONLY: billed $0, writes NO usage_records row (it produces no
+  # completion). This supersedes the earlier drafted governance-exemption framing; the milestone's
+  # "same governance path" invariant now holds with zero carve-outs for this endpoint.
 
 Schema: no new tables, no new columns. usage_records rows written via the existing RecordingUsageRecorder
   (apps/gateway/src/gateway/usage/application/recorder.py) — same columns, same usage_source vocabulary
@@ -359,7 +378,7 @@ Strategy (ordered batches):
   1. `anthropic_ingress.py` request-translation (Anthropic request -> internal OpenAI-shape body): mirror-in-reverse `_openai_to_anthropic_request`'s field vocabulary (system/tool_use/tool_result/tools/tool_choice/stop_sequences/cache_control/thinking); unit-test against the same fixtures class as `anthropic_upstream.py`'s existing egress tests, run in isolation from governance.
   2. `messages_router.py` non-stream endpoint wired to `get_completion_use_case`/`get_completion_upstream`/`get_usage_recorder` UNCHANGED (reuse `deps.py` verbatim) + the new x-api-key-aware raw-key dependency; response translation (`_anthropic_ingress_response` mirroring `_anthropic_to_openai` in reverse) + error-envelope translation (catch `ProblemError`, map ERR_* -> Anthropic error type).
   3. Streaming: an `_OpenAIToAnthropicSSEStepper` (mirrors `_AnthropicSSEStepper`'s one-event-at-a-time design) consuming the internal SSE byte stream `use_case.stream()` yields and emitting Anthropic event frames; wire into `messages_router.py`'s stream branch.
-  4. `count_tokens` endpoint: lightweight path — authn + `_check_model_catalog` only (reuse existing model-checker collaborator), explicitly bypassing budget/rate-limit/usage-recorder; token estimate via a documented, simple heuristic (no new third-party tokenizer dependency unless already vendored — check `pyproject.toml` first).
+  4. `count_tokens` endpoint (Freeze decision 2026-07-14: FULL governance path, $0-billed): reuse the SAME `CompletionUseCase`-adjacent admission sequence as `/v1/messages` — authn, `_check_model_catalog`, rate limit, team/per-key budget, credit/plan gates — all UNCHANGED; only skip the actual upstream dial and the terminal `usage_recorder.record(...)` call (produces no completion, so nothing to bill or record). Token estimate via a documented, simple heuristic (no new third-party tokenizer dependency unless already vendored — check `pyproject.toml` first).
   5. Cross-cutting: thinking/cache_control conditional forwarding gated on which adapter `model_router`/`provider_resolver` actually selects (mirrors the existing `chat_modality_lookup`/`provider_resolver` getattr pattern in `deps.py` — do not invent a new resolution mechanism).
 
 Persona (required): generic — no existing `.add/personas/` file matches a protocol-translation/wire-compat domain stance yet; recommend `add-persona` draft one (e.g. "protocol-translation-engineer") before BUILD if this milestone's remaining tasks (claude-gateway-protocol-compat) would reuse it.

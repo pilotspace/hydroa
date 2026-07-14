@@ -414,7 +414,14 @@ Glossary deltas:
 - **MCP session trace**: an ordinary `request_logs` row (no new table) whose `model` column is namespaced `mcp::<server_host>::<tool_name>`, written via the EXISTING `SqlAlchemyPayloadCapture` seam — distinct from a chat completion's `request_logs` row only by that namespacing convention.
 - **Egress-checked dial**: an outbound MCP-server connection whose TCP peer IP is the SAME IP `EgressPolicy.check()` validated (not a second, independently-resolved IP) — the specific DNS-rebind-TOCTOU-closing property M6 requires, distinct from the BYOK egress_policy.py precedent which accepts that residual gap for a fixed enterprise endpoint.
 
-Status: DRAFT
+**Freeze decisions (Tin, 2026-07-14 — recorded at freeze, resolve the open questions above):**
+- M6 IP-pinned dial CONFIRMED contract-level Must (Tin): connect to the exact IP EgressPolicy validated, SNI/Host preserved — the dual security verifies attack this seam.
+- Blocked tool result surfaces as an in-band JSON-RPC error (protocol-conformant), not an HTTP-level rejection.
+- ToolCallObserver no-op Protocol accepted as the tool-call-metering hand-off seam.
+
+Least-sure flag surfaced at freeze: [contract] M6's DNS-rebind close (IP-pinning the httpx dial to the exact EgressPolicy-validated address, SNI/Host preserved) is a genuinely new mechanism for this codebase and the first tenant-controlled egress target — httpx implementation risk; resolved by Tin as contract-level Must; the dual security verifies attack exactly this seam.
+
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 

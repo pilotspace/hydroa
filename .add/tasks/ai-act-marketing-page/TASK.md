@@ -497,7 +497,14 @@ Glossary deltas:
   page tells as one story; NOT a priced SKU/line-item as of this contract (no `pricing/page.tsx`
   `TIERS` entry exists for it).
 
-Status: DRAFT
+**Freeze decisions (Tin, 2026-07-14 — recorded at freeze, resolve the open questions above):**
+- Route /ai-act-readiness CONFIRMED.
+- Placement: footer link + pricing-page cross-link only — no MarketingShell nav widening.
+- /docs/ai-act-compliance ships as plain JSX (no MDX pipeline exists).
+
+Least-sure flag surfaced at freeze: [contract] Route name /ai-act-readiness has no naming precedent in this flat product-shaped marketing IA (a wrong choice costs a post-launch rename with broken external links after 2026-08-02); CONFIRMED by Tin at freeze, footer-only placement.
+
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no — the freeze report (banner/ARC/SHAPE) renders when a human reviews this draft for the
 freeze decision; it has not been rendered yet because this contract has not been approved.
 

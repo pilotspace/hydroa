@@ -292,7 +292,14 @@ Glossary deltas:
 - **agent principal**: a named, tenant-scoped identity grouping ≥0 already-minted device-OAuth agent tokens under one admin-managed record carrying an aggregate budget cap, ownership, lifecycle timestamps (created/last-seen/killed), and a single kill switch that revokes every attached token at once. (Matches and formalizes the term MILESTONE.md already names but does not yet define.)
 - **kill switch**: the one admin action that atomically revokes every `agent_tokens` row attached to an agent principal and marks the principal itself killed — fail-closed, idempotent, audited, and effective at both authn seams on the next request with no separate propagation step (no cache exists to invalidate).
 
-Status: DRAFT
+**Freeze decisions (Tin, 2026-07-14 — recorded at freeze, resolve the open questions above):**
+- RBAC ceiling {OWNER, ADMIN} for create/attach/kill CONFIRMED (Tin) — kill switch has tenant-wide blast radius.
+- Per-principal RPM/TPM aggregation DEFERRED (Tin) — per-principal budgets ship now; record the deferral as an observe-phase delta.
+- last_seen_at = mint-time only (disclosed); principal names unique per tenant.
+
+Least-sure flag surfaced at freeze: [spec] The {OWNER, ADMIN} RBAC ceiling for create/attach/kill has no exact precedent (closest analog RevokeKeyUseCase only forbids MEMBER — a wider allow-list); chosen for the kill switch's tenant-wide blast radius and CONFIRMED by Tin at freeze.
+
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
 
 ---
