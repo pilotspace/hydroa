@@ -1026,3 +1026,60 @@ async def test_open_circuit_short_circuits_without_dialing(
     assert len(failing_dialer.calls) == calls_before, (
         "an OPEN circuit must short-circuit further calls WITHOUT ever invoking the dialer"
     )
+
+
+# SECURITY FIX ROUND 3 (post-mask verification scan): the per-block scan only sees
+# RECOGNIZED text (top-level `text` / `resource.text`). PII embedded in a STRUCTURAL
+# field — a resource `uri`/`mimeType` — is invisible to it. When such a field co-exists
+# with a recognized text block the per-block path runs (text_block_indices non-empty),
+# `mask_unresolved` stays False, and the structural PII is relayed VERBATIM. The same
+# PII is caught fail-closed when it is ALONE (whole-body fallback) — an asymmetric leak.
+# The fix re-scans the FINAL relayed body's whole-body JSON; any residual PII fails the
+# relay CLOSED. Masked prose carries redaction placeholders that no longer match, so a
+# clean structural field never false-trips.
+async def test_pii_mask_pii_in_resource_uri_alongside_text_block_fails_closed(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """ADVERSARIAL round-3: an email embedded in a resource `uri` PATH, alongside a
+    clean top-level text block (so the per-block mask path runs and NEVER scans the uri).
+    Pre-fix: the uri — raw email included — is relayed VERBATIM (detected-when-alone but
+    NOT when a text block co-exists). Post-fix: the post-mask verification scan sees the
+    email in the whole-body JSON and fails the relay CLOSED."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "See the attached report."},
+                        {
+                            "type": "resource",
+                            "resource": {
+                                "uri": "file:///exports/jane.doe@example.com/report.pdf",
+                                "mimeType": "text/plain",
+                                "text": "Quarterly summary, nothing sensitive.",
+                            },
+                        },
+                    ]
+                },
+            },
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # The relay MUST fail closed — the raw email must never reach the caller in ANY field.
+    assert "jane.doe@example.com" not in resp.text, "structural-field PII leaked verbatim"
+    assert "error" in body, "PII in a resource uri must fail the relay CLOSED"
+    assert body["error"]["message"] == "ERR_MCP_TOOL_RESULT_BLOCKED"

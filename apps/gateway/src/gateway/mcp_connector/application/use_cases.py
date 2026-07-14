@@ -85,6 +85,18 @@ def _extract_result_content_blocks(body: dict[str, Any]) -> list[Any] | None:
     return None
 
 
+def _whole_body_scan_text(body: dict[str, Any]) -> str:
+    """The ENTIRE relayed body serialized as one JSON string — for the round-3 post-mask
+    verification scan. Unlike `_extract_result_text` this NEVER prefers per-block text:
+    it always dumps the whole body so STRUCTURAL fields (a resource `uri`/`mimeType`,
+    any field carried through byte-identical by block substitution) are included in the
+    scan. That is exactly the surface the per-block mask scan is blind to."""
+    try:
+        return json.dumps(body)
+    except Exception:
+        return ""
+
+
 def _extract_result_text(body: dict[str, Any]) -> str:
     """Best-effort text extraction for guardrail scanning — the recognized MCP
     `result.content[*].text` shape, else a whole-body scan (never misses a substring
@@ -441,7 +453,35 @@ class McpCallUseCase:
         relayed_body: dict[str, Any]
         trace_status: int
         audit_result: Literal["success", "blocked"]
-        if guardrail_result.blocked or mask_unresolved:
+        block_relay = guardrail_result.blocked or mask_unresolved
+        if not block_relay:
+            candidate_body = dial_result.body
+            if guardrail_result.masked_messages:
+                candidate_body = _apply_masked_blocks(
+                    dial_result.body, text_block_indices, guardrail_result.masked_messages
+                )
+            # Round-3 fix (post-mask verification scan): the per-block scan above only
+            # sees RECOGNIZED text (top-level `text` / `resource.text`). PII embedded in
+            # a STRUCTURAL field — a resource `uri`/`mimeType`, or any field the block
+            # substitution carries through byte-identical — is invisible to it, so when
+            # such a field co-exists with a recognized text block (text_block_indices
+            # non-empty ⇒ mask_unresolved False) the structural PII would relay VERBATIM.
+            # The same PII is caught fail-closed when it is ALONE (whole-body fallback) —
+            # an asymmetric leak (confirmed HARD-STOP, security). Re-scan the FINAL body
+            # we are about to relay as ONE whole-body-JSON message (NOT per-block — that
+            # would re-introduce the same blind spot); if the guardrail would still block
+            # OR mask anything, residual PII remains somewhere structural, so fail the
+            # relay CLOSED. Already-masked prose carries redaction placeholders that no
+            # longer match, so a clean structural field never false-trips. Runs only on
+            # the success path; audit-mode guardrails never block/mask, preserving
+            # pass-through. See test_pii_mask_pii_in_resource_uri_alongside_text_block_*.
+            verify_result = await self._guardrail_evaluator.evaluate_pre(
+                [{"role": "tool", "content": _whole_body_scan_text(candidate_body)}],
+                authz.guardrail_configs,
+            )
+            if verify_result.blocked or verify_result.masked_messages is not None:
+                block_relay = True
+        if block_relay:
             relayed_body = {
                 "jsonrpc": "2.0",
                 "id": message.get("id"),
@@ -453,11 +493,7 @@ class McpCallUseCase:
             trace_status = 200
             audit_result = "blocked"
         else:
-            relayed_body = dial_result.body
-            if guardrail_result.masked_messages:
-                relayed_body = _apply_masked_blocks(
-                    dial_result.body, text_block_indices, guardrail_result.masked_messages
-                )
+            relayed_body = candidate_body
             trace_status = dial_result.status
             audit_result = "success"
 
