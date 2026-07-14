@@ -37,6 +37,11 @@ class _StubGovernance:
             tenant_id=uuid.uuid4(),
             key_id=uuid.uuid4(),
             team_id=None,
+            # agent-gateway-r1 (agent-identity-governance, b49d1c7): AuthzResult grew
+            # agent_principal_id, now stamped into the audio metering event
+            # (audio_use_case.py). This stub authz must carry it (None = no agent
+            # principal) to match the approved shape — billing assertions unchanged.
+            agent_principal_id=None,
         )
 
 
