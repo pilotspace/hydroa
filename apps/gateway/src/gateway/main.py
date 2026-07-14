@@ -87,6 +87,7 @@ from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_M
 from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 from gateway.catalog.infrastructure.vertex_seed import VERTEX_SEED_MODELS
+from gateway.compliance.api.router import compliance_router
 from gateway.conversations.api.router import conversations_router
 from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
     ConversationMessageRow as _ConversationMessageRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
@@ -1460,6 +1461,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(usage_router)
     app.include_router(guardrail_analytics_router)
     app.include_router(audit_export_router)
+    app.include_router(compliance_router)
     app.include_router(ops_router)
     app.include_router(budget_router)
     app.include_router(plan_router)
