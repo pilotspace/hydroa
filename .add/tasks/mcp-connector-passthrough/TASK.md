@@ -79,7 +79,7 @@ Must:
   - M8 The outbound dial is bounded by `mcp_connector_dial_timeout_seconds` (default 30s), gated by a per-(tenant_id, server-host) circuit breaker, and is NEVER automatically retried by the gateway.
   - M9 Every MCP tool-call RESULT's text content is scanned by the tenant/key's EXISTING `prompt_injection` guardrail (`GuardrailEvaluator.evaluate_pre`, unchanged config surface) before relay to the caller; a block-mode match replaces the result with a synthetic JSON-RPC error object (never the raw content) and is recorded `blocked` on both the session-trace row and an audit event. Audit/pass-through mode never mutates the relayed content (mirrors existing guardrail mode semantics).
   - M10 Every `/v1/mcp/call` outcome (dialed, refused, or blocked) writes exactly one `request_logs` row via the EXISTING `SqlAlchemyPayloadCapture.capture()` seam (ZDR-gated, PII-scrubbed via `mask_pii_in_messages`, fire-and-forget, never blocks the proxied response) — `model=f"mcp::{server_host}::{tool_name}"` names the call; no new table.
-  - M11 Every successful (non-refused, non-blocked) tool call additionally makes ONE fire-and-forget call to a new `ToolCallObserver.record(...)` Protocol (no-op default in this task) that the sibling `tool-call-metering` task (depends-on this task) wires to the real pricing_unit dispatcher — this task never writes a `usage_records` row itself (one billing path).
+  - M11 Every successful (non-refused, non-blocked) tool call additionally makes ONE fire-and-forget call to a new `ToolCallObserver.record(...)` Protocol (no-op default in this task) that the sibling `tool-call-metering` task (depends-on this task) wires to the real pricing_unit dispatcher — this task never writes a `usage_records` row itself (one billing path). The call carries a `call_id: UUID` generated EXACTLY ONCE per tool invocation (at admission, before the dial) so the metering implementation can deduplicate — a repeated `record()` with the same call_id must be billable exactly once downstream. [CR-1, Tin 2026-07-14]
   - M12 A DB/JSONB-parse failure while resolving the effective allow-list is treated as an EMPTY list (deny-all) — logged, never raised, never "allow".
   - M13 Neither the session-trace row nor any audit-event metadata ever contains the raw credential/auth header the agent supplied for the upstream MCP server — only `server_host`, `tool_name`, and outcome are recorded.
   - M14 Auth for `/v1/mcp/call` reuses `CompositeKeyAuthenticator` UNCHANGED — an `sk-` API key or a device-OAuth agent token both resolve to one `AuthzResult`; no new credential class.
@@ -266,7 +266,7 @@ Scenario: ZDR tenant suppresses the session-trace row entirely   # M10
 Scenario: Successful tool call emits the metering hook exactly once   # M11
   Given an allow-listed, egress-clean, non-blocked tool call completes successfully
   When the response is returned
-  Then ToolCallObserver.record(...) is invoked exactly once with tenant_id, key_id, server_host, tool_name, status, latency_ms
+  Then ToolCallObserver.record(...) is invoked exactly once with call_id (unique per invocation), tenant_id, key_id, server_host, tool_name, status, latency_ms
   And no usage_records row is written by this task's own code
 
 Scenario: Refused or blocked calls do NOT emit the metering hook   # M11, R1, M9
@@ -393,8 +393,11 @@ Schema:
                                                                              -- SAME LEFT JOIN SqlAlchemyKeyAuthenticator/
                                                                              -- CompositeKeyAuthenticator already run for guardrail_configs/model_allowlist
   gateway.mcp_connector.domain.ports.ToolCallObserver (NEW Protocol):
-    async def record(self, *, tenant_id: UUID, key_id: UUID, server_host: str, tool_name: str,
+    async def record(self, *, call_id: UUID, tenant_id: UUID, key_id: UUID, server_host: str, tool_name: str,
                       status: Literal["success"], latency_ms: int) -> None
+    -- call_id: generated exactly once per tool invocation at admission (uuid4), the downstream
+    -- idempotency/dedupe key for billing (CR-1, Tin 2026-07-14 — closes the double-invocation double-bill gap
+    -- flagged by tool-call-metering's design).
     -- no-op default implementation shipped by THIS task; tool-call-metering (depends-on this task) wires the
     -- real pricing_unit-dispatcher implementation via DI, mirroring the ModelHealthGate/UsageRecorder injectable-port style.
   gateway.mcp_connector.domain.ports.McpDialer (NEW Protocol, prod impl wraps httpx):
@@ -421,7 +424,9 @@ Glossary deltas:
 
 Least-sure flag surfaced at freeze: [contract] M6's DNS-rebind close (IP-pinning the httpx dial to the exact EgressPolicy-validated address, SNI/Host preserved) is a genuinely new mechanism for this codebase and the first tenant-controlled egress target — httpx implementation risk; resolved by Tin as contract-level Must; the dual security verifies attack exactly this seam.
 
-Status: FROZEN @ v1 — approved by Tin Dang
+CR-1 (Tin, 2026-07-14): add call_id to ToolCallObserver.record — requested by tool-call-metering's freeze review; billing exactly-once made structural.
+
+Status: FROZEN @ v2 — approved by Tin Dang
 Reported: no
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
