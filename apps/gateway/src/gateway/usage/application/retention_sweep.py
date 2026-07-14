@@ -314,6 +314,29 @@ _DELETE_VIDEO_JOBS_ZDR_TENANT = text(
 )
 
 
+# ---------------------------------------------------------------------------
+# compliance-report-center TASK.md §3 M21 — ADDITIVE SQL (sweeps compliance_report_runs
+# like artifacts; every row is s3-backed by construction, §3 CONTRACT — no
+# storage_backend column/branch needed, unlike artifacts' inline-vs-s3 split).
+# ---------------------------------------------------------------------------
+
+_SELECT_COMPLIANCE_REPORTS_WINDOW = text(
+    """
+    SELECT c.id, c.object_key FROM compliance_report_runs c
+    JOIN tenants tn ON tn.id = c.tenant_id
+     WHERE tn.retention_window_days IS NOT NULL
+       AND c.generated_at < now() - (tn.retention_window_days * interval '1 day')
+     LIMIT :batch
+    """
+)
+
+_DELETE_COMPLIANCE_REPORTS_BY_ID = text("DELETE FROM compliance_report_runs WHERE id = ANY(:ids)")
+
+_SELECT_COMPLIANCE_REPORTS_ZDR_TENANT = text(
+    "SELECT id, object_key FROM compliance_report_runs WHERE tenant_id = :tid LIMIT :batch"
+)
+
+
 class RetentionSweeper:
     """Periodically delete aged rows from time-series tables in bounded batches.
 
@@ -633,6 +656,62 @@ class RetentionSweeper:
             return total
         return total
 
+    async def _purge_compliance_reports_batch(
+        self,
+        select_sql: Any,
+        batch_size: int,
+        extra_params: dict[str, Any] | None = None,
+    ) -> int:
+        """compliance-report-center TASK.md §3 M21 — SELECT candidate
+        compliance_report_runs rows, delete their s3 objects, THEN delete the DB rows
+        that were safe to drop. Mirrors _purge_artifacts_batch verbatim (an
+        object-delete failure DEFERS the row to the next tick, never orphans bytes) —
+        every row here is s3-backed by construction (§3 CONTRACT: object_key is
+        NOT NULL, no inline-BYTEA branch exists for this table)."""
+        total = 0
+        params: dict[str, Any] = {**(extra_params or {}), "batch": batch_size}
+        try:
+            while True:
+                async with self._session_factory() as session:
+                    rows = (await session.execute(select_sql, params)).all()
+                if not rows:
+                    break
+                deletable_ids: list[Any] = []
+                for row_id, object_key in rows:
+                    if object_key:
+                        if self._object_store is None:
+                            # Honest-degrade: no object store configured — defer
+                            # rather than orphan an object with a dangling key.
+                            continue
+                        try:
+                            await self._object_store.delete(object_key)
+                        except ObjectStoreUnavailableError as exc:
+                            _log.warning(
+                                "retention_sweep: compliance report object delete "
+                                "failed for key=%s (deferred to next tick): %s",
+                                object_key,
+                                exc,
+                            )
+                            continue
+                    deletable_ids.append(row_id)
+                if deletable_ids:
+                    async with self._session_factory() as session:
+                        async with session.begin():
+                            cursor: CursorResult[Any] = await session.execute(  # type: ignore[assignment]
+                                _DELETE_COMPLIANCE_REPORTS_BY_ID, {"ids": deletable_ids}
+                            )
+                            total += cursor.rowcount or 0
+                if len(rows) < batch_size or not deletable_ids:
+                    break
+        except Exception as exc:
+            _log.warning(
+                "retention_sweep: compliance report purge pass failed (swallowed): %s",
+                exc,
+                exc_info=exc,
+            )
+            return total
+        return total
+
     async def _sweep_new_payload_window_pass(self, batch_size: int) -> dict[str, int]:
         """Per-tenant window-cutoff pass over the 5 newly-swept payload tables.
 
@@ -655,6 +734,11 @@ class RetentionSweeper:
         )
         results["video_generation_jobs"] = await self._delete_batched_extra(
             "video_generation_jobs", _DELETE_VIDEO_JOBS_WINDOW, {}, batch_size
+        )
+        # compliance-report-center TASK.md §3 M21 — additive, same tenant-window-
+        # cutoff discipline as artifacts above.
+        results["compliance_report_runs"] = await self._purge_compliance_reports_batch(
+            _SELECT_COMPLIANCE_REPORTS_WINDOW, batch_size
         )
         return results
 
@@ -757,6 +841,15 @@ class RetentionSweeper:
                 "video_generation_jobs",
                 await self._delete_batched_extra(
                     "video_generation_jobs", _DELETE_VIDEO_JOBS_ZDR_TENANT, tid_params, batch_size
+                ),
+            )
+            # compliance-report-center TASK.md §3 M21 — additive, same unconditional
+            # per-tenant ZDR purge discipline as artifacts above.
+            _fire_audit(
+                tenant_id,
+                "compliance_report_runs",
+                await self._purge_compliance_reports_batch(
+                    _SELECT_COMPLIANCE_REPORTS_ZDR_TENANT, batch_size, extra_params=tid_params
                 ),
             )
 

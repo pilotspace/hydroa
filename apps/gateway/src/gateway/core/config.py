@@ -736,6 +736,14 @@ class Settings(BaseSettings):
     # env: GATEWAY_INVOICE_STABILIZATION_HOURS
     invoice_stabilization_hours: int = Field(default=72)
 
+    # ── Compliance report scheduling (compliance-report-center TASK.md §3 M15) ──
+    # Conditionally-started monthly Art. 12 bundle generation loop (mirrors
+    # RetentionSweeper/InvoiceGenerator's should_start_*/run_forever shape). Default-safe:
+    # 0 = OFF entirely — no schedule ever ticks until an operator sets this > 0 AND a
+    # tenant owner opts in via PUT /admin/compliance/report-schedule.
+    # env: GATEWAY_COMPLIANCE_REPORT_SCHEDULE_INTERVAL_SECONDS
+    compliance_report_schedule_interval_seconds: int = Field(default=0)
+
     # ── Payload capture (payload-capture-store task) ─────────────────────────────
     # Opt-in, PII-scrubbed request/response capture (request_logs). Bounded-timeout,
     # non-retried, fire-and-forget IO seam (§3 Freeze questions #2/#3, Tin-approved

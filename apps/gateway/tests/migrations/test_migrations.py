@@ -73,6 +73,8 @@ EXPECTED_TABLES = frozenset(
         "tenant_region_multiplier_overrides",  # SANCTIONED EDIT — region-pricing TASK.md §3 manifest maintenance; disposition: additive migration d608e56c7485 adds this table
         "tenant_priority_markup_overrides",  # SANCTIONED EDIT — service-tiers TASK.md §3 manifest maintenance; disposition: additive migration 4583689a7b8b adds this table
         "agent_principals",  # SANCTIONED EDIT — agent-identity-governance TASK.md §3 manifest maintenance; disposition: additive migration 9cb98362515f adds this table
+        "tenant_report_schedules",  # SANCTIONED EDIT — compliance-report-center TASK.md §3 manifest maintenance; disposition: additive migration f5a8c1e3b6d9 adds this table
+        "compliance_report_runs",  # SANCTIONED EDIT — compliance-report-center TASK.md §3 manifest maintenance; disposition: additive migration f5a8c1e3b6d9 adds this table
     }
 )
 
@@ -192,9 +194,7 @@ async def test_autogenerate_empty_diff() -> None:
     try:
         command.check(cfg)
     except CommandError as exc:
-        pytest.fail(
-            f"alembic check reported a pending migration after upgrade head: {exc}"
-        )
+        pytest.fail(f"alembic check reported a pending migration after upgrade head: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -223,9 +223,7 @@ async def test_second_upgrade_idempotent() -> None:
     assert version_after_second == version_after_first, (
         "Revision changed after idempotent re-upgrade"
     )
-    assert tables_after_second == EXPECTED_TABLES, (
-        "Table set changed after idempotent re-upgrade"
-    )
+    assert tables_after_second == EXPECTED_TABLES, "Table set changed after idempotent re-upgrade"
 
 
 # ---------------------------------------------------------------------------
