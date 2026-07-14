@@ -69,6 +69,16 @@ class UsageRecordRow(Base):
         # breakdown's jsonb_each_text GROUP BY expansion (a tenant+window-scoped
         # table scan, same scale as get_spend/get_guardrail_analytics).
         Index("ix_usage_records_tags_gin", "tags", postgresql_using="gin"),
+        # art12-record-keeping-preset (TASK.md §3): backs UsageRepository.list_for_tenant_keyset's
+        # keyset predicate over (tenant_id, created_at DESC, id DESC) — mirrors the audit_events /
+        # request_logs keyset precedent. Migration 776ecf702f3f. Declared here for alembic
+        # autogenerate parity (same convention as ix_usage_records_request_id above).
+        Index(
+            "usage_records_tenant_created_id_idx",
+            "tenant_id",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
