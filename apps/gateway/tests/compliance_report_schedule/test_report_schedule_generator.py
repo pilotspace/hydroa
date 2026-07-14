@@ -231,3 +231,50 @@ async def test_object_store_unavailable_error_class_is_caught(
     generator = make_generator(app, object_store=_RaisingStore())
     outcome = await generator.generate_for_tenant(uuid.UUID(tenant_id), 1)
     assert outcome == "deferred"
+
+
+async def test_zdr_flip_mid_tick_persists_nothing_toctou(
+    client: httpx.AsyncClient, db_session: AsyncSession, app: Any
+) -> None:
+    """CR (close ZDR TOCTOU, compliance-report-center §3 M17 v2): a tenant that is
+    NOT zdr at the up-front M17 check but flips zdr_enabled=true DURING bundle assembly
+    — the window between the up-front check and the first persistence (object PUT + row
+    INSERT) — must still persist NOTHING. Pre-fix: the single up-front check let the tick
+    proceed to write both an object and a row for a now-ZDR tenant. Post-fix: the
+    generator re-reads is_zdr immediately before the first write and skips fail-closed."""
+    _owner, tenant_id = await signup_tenant(
+        client, tenant_name="FlipCo", email="owner@flipco.example"
+    )
+    # NOT zdr at the up-front check; schedule due now.
+    past = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
+    await set_schedule_due(db_session, tenant_id, day_of_month=1, next_run_at=past)
+
+    store = FakeObjectStore()
+    generator = make_generator(app, object_store=store)
+
+    # Simulate the tenant enabling ZDR mid-tick: flip the flag INSIDE _assemble_bundle,
+    # which runs AFTER the up-front M17 check and BEFORE any persistence — precisely the
+    # TOCTOU window. A separate committed session so the re-check (its own session) sees it.
+    orig_assemble = generator._assemble_bundle
+
+    async def _flip_then_assemble(session: Any, **kwargs: Any) -> Any:
+        result = await orig_assemble(session, **kwargs)
+        async with app.state.sessionmaker() as flip_session:
+            await set_tenant_zdr(flip_session, tenant_id, enabled=True)
+        return result
+
+    generator._assemble_bundle = _flip_then_assemble  # type: ignore[method-assign]
+
+    counts = await generator.generate_due_schedules()
+
+    assert counts["skipped_zdr"] == 1, counts
+    assert counts["success"] == 0, counts
+    assert len(store.store) == 0, "no object may be persisted once ZDR flipped mid-tick"
+    run_count = await count_report_runs(db_session, tenant_id)
+    assert run_count == 0, "no compliance_report_runs row may be written once ZDR flipped mid-tick"
+    row = await fetch_schedule_row(db_session, tenant_id)
+    assert row is not None
+    _enabled, _last_run_at, last_run_status, _next_run_at = row
+    assert last_run_status == "skipped_zdr", (
+        "a mid-tick ZDR flip must record a skipped_zdr outcome, never success"
+    )

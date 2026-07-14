@@ -414,6 +414,27 @@ class ReportScheduleGenerator:
                 exc_info=exc,
             )
 
+    async def _record_zdr_skip(
+        self, tenant_id: uuid.UUID, day_of_month: int, now: datetime.datetime
+    ) -> str:
+        """Persist a fail-closed ZDR skip for one tenant: advance the schedule row to
+        last_run_status='skipped_zdr' (self-heals next tick), emit the skipped audit, and
+        return 'skipped_zdr'. NOTHING of the tenant's data is written. Shared by the M17
+        up-front gate AND the pre-persistence re-check so both close identically."""
+        next_run = compute_next_run_at(day_of_month, now=now)
+        async with self._session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE tenant_report_schedules"
+                    " SET last_run_at = :now, last_run_status = 'skipped_zdr',"
+                    "     next_run_at = :next_run"
+                    " WHERE tenant_id = :tid"
+                ),
+                {"now": _as_naive_utc(now), "next_run": next_run, "tid": tenant_id},
+            )
+        asyncio.ensure_future(self._emit_skipped_audit(tenant_id=tenant_id))  # noqa: RUF006
+        return "skipped_zdr"
+
     async def generate_for_tenant(self, tenant_id: uuid.UUID, day_of_month: int) -> str:
         """Returns one of 'success' | 'skipped_zdr' | 'deferred' (object-store/failure —
         row left unchanged, never advances) — the caller counts each outcome."""
@@ -424,19 +445,7 @@ class ReportScheduleGenerator:
             tenant_is_zdr = await is_zdr(zdr_session, tenant_id)
 
         if tenant_is_zdr:
-            next_run = compute_next_run_at(day_of_month, now=now)
-            async with self._session_factory() as session, session.begin():
-                await session.execute(
-                    text(
-                        "UPDATE tenant_report_schedules"
-                        " SET last_run_at = :now, last_run_status = 'skipped_zdr',"
-                        "     next_run_at = :next_run"
-                        " WHERE tenant_id = :tid"
-                    ),
-                    {"now": _as_naive_utc(now), "next_run": next_run, "tid": tenant_id},
-                )
-            asyncio.ensure_future(self._emit_skipped_audit(tenant_id=tenant_id))  # noqa: RUF006
-            return "skipped_zdr"
+            return await self._record_zdr_skip(tenant_id, day_of_month, now)
 
         period_start, period_end = previous_completed_month(now)
 
@@ -448,6 +457,16 @@ class ReportScheduleGenerator:
         payload = json.dumps(bundle, default=str).encode("utf-8")
         report_id = uuid7()
         object_key = f"compliance-reports/{tenant_id}/{report_id}.json"
+
+        # M17 v2 (CR — close ZDR TOCTOU): the up-front check above and the persistence
+        # below are separated by bundle assembly (two DB round-trips) and are about to do
+        # a network object PUT. A tenant that flips zdr_enabled=true in that window would
+        # otherwise get a bundle persisted (object + row). Re-read is_zdr on a FRESH
+        # session immediately before the FIRST persistence and skip fail-closed if it
+        # flipped — nothing is written (no object, no row), self-heals next tick.
+        async with self._session_factory() as recheck_session:
+            if await is_zdr(recheck_session, tenant_id):
+                return await self._record_zdr_skip(tenant_id, day_of_month, now)
 
         if self._object_store is None:
             _log.warning(
