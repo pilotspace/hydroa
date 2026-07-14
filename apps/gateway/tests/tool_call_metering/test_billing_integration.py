@@ -224,8 +224,8 @@ async def test_mcp_tool_call_survives_catalog_sync_stale_deactivation_sweep(
                     id="openai/gpt-4o",
                     name="GPT-4o",
                     context_length=128000,
-                    prompt_usd_per_token=0.0000025,
-                    completion_usd_per_token=0.00001,
+                    prompt_usd_per_token=Decimal("0.0000025"),
+                    completion_usd_per_token=Decimal("0.00001"),
                 )
             ],
             embedding_models=None,

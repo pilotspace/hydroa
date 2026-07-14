@@ -20,6 +20,8 @@ too, tracked by the same TASK.md §1 ⚠).
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from gateway.catalog.domain.entities import CatalogModel
 
 MINIMAX_SEED_MODELS: list[CatalogModel] = [
@@ -27,8 +29,9 @@ MINIMAX_SEED_MODELS: list[CatalogModel] = [
         id="MiniMax-M3",
         name="MiniMax-M3",
         context_length=1_000_000,
-        prompt_usd_per_token=0.0000003,
-        completion_usd_per_token=0.0000012,
+        # audit-remediation package C1: Decimal literals (money-is-Decimal rule).
+        prompt_usd_per_token=Decimal("0.0000003"),
+        completion_usd_per_token=Decimal("0.0000012"),
         modality="chat",
         provider="minimax",
         input_modalities="text",
@@ -38,8 +41,8 @@ MINIMAX_SEED_MODELS: list[CatalogModel] = [
         id="MiniMax-M2.7",
         name="MiniMax-M2.7",
         context_length=204_800,
-        prompt_usd_per_token=0.0000003,
-        completion_usd_per_token=0.0000012,
+        prompt_usd_per_token=Decimal("0.0000003"),
+        completion_usd_per_token=Decimal("0.0000012"),
         modality="chat",
         provider="minimax",
         input_modalities="text",
@@ -49,8 +52,8 @@ MINIMAX_SEED_MODELS: list[CatalogModel] = [
         id="MiniMax-M2.7-highspeed",
         name="MiniMax-M2.7-highspeed",
         context_length=204_800,
-        prompt_usd_per_token=0.0000006,
-        completion_usd_per_token=0.0000024,
+        prompt_usd_per_token=Decimal("0.0000006"),
+        completion_usd_per_token=Decimal("0.0000024"),
         modality="chat",
         provider="minimax",
         input_modalities="text",

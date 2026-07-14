@@ -966,6 +966,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()
+    # audit-remediation package C1 (MED proxy global breaker): per-provider breaker
+    # registry consulted by proxy/api/deps.py::get_completion_upstream. Keyed lazily
+    # by resolved catalog provider (dict.setdefault) so a trip on one provider's
+    # breaker never blocks another's. app.state.circuit_breaker above is kept
+    # unchanged for backward compatibility with callers outside deps.py (e.g. the
+    # realtime websocket path in proxy/api/realtime_ws.py, which is out of scope
+    # for this fix and still uses the single legacy breaker).
+    # dict[str, CircuitBreaker], lazily populated per resolved provider.
+    app.state.provider_circuit_breakers = {}
     # Raw OpenRouter upstream — used directly by the provider adapter map and the
     # OpenRouterUpstreamFacade (embeddings/images). NOT the dispatch wrapper.
     # No api_key= argument: auth is resolved per-request from the contextvar

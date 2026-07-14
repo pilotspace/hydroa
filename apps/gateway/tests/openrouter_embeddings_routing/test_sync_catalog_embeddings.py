@@ -10,6 +10,7 @@ _upsert_model now writes modality.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -29,8 +30,8 @@ _GEMINI = CatalogModel(
     id="google/gemini-embedding-2",
     name="Gemini Embedding 2",
     context_length=2048,
-    prompt_usd_per_token=1.5e-7,
-    completion_usd_per_token=0.0,
+    prompt_usd_per_token=Decimal("1.5e-7"),
+    completion_usd_per_token=Decimal("0.0"),
     modality="embedding",
     provider="openrouter",
 )
@@ -38,8 +39,8 @@ _OPUS = CatalogModel(
     id="anthropic/claude-opus-4",
     name="Claude Opus 4",
     context_length=200_000,
-    prompt_usd_per_token=15e-6,
-    completion_usd_per_token=75e-6,
+    prompt_usd_per_token=Decimal("15e-6"),
+    completion_usd_per_token=Decimal("75e-6"),
     modality="chat",
     provider="openrouter",
 )
@@ -47,8 +48,8 @@ _SONNET = CatalogModel(
     id="anthropic/claude-sonnet-4",
     name="Claude Sonnet 4",
     context_length=200_000,
-    prompt_usd_per_token=3e-6,
-    completion_usd_per_token=15e-6,
+    prompt_usd_per_token=Decimal("3e-6"),
+    completion_usd_per_token=Decimal("15e-6"),
     modality="chat",
     provider="openrouter",
 )
@@ -159,8 +160,8 @@ async def test_sync_deactivates_genuinely_retired_embedding_model(
         id="old-embed-model",
         name="Old Embed",
         context_length=None,
-        prompt_usd_per_token=1e-7,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("1e-7"),
+        completion_usd_per_token=Decimal("0.0"),
         modality="embedding",
         provider="openrouter",
     )
@@ -201,8 +202,8 @@ async def test_upsert_updates_modality_on_conflict(db_session: AsyncSession) -> 
         id="some-id",
         name="Some Model",
         context_length=1000,
-        prompt_usd_per_token=1e-6,
-        completion_usd_per_token=2e-6,
+        prompt_usd_per_token=Decimal("1e-6"),
+        completion_usd_per_token=Decimal("2e-6"),
         modality="chat",
         provider="openrouter",
     )
@@ -217,8 +218,8 @@ async def test_upsert_updates_modality_on_conflict(db_session: AsyncSession) -> 
         id="some-id",
         name="Some Model (embedding)",
         context_length=2000,
-        prompt_usd_per_token=1e-6,
-        completion_usd_per_token=2e-6,
+        prompt_usd_per_token=Decimal("1e-6"),
+        completion_usd_per_token=Decimal("2e-6"),
         modality="embedding",
         provider="openrouter",
     )

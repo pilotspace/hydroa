@@ -14,6 +14,8 @@ preview model it previously defaulted to — see core/config.py:realtime_relay_o
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from gateway.catalog.domain.entities import CatalogModel
 
 GPT_REALTIME_SEED_MODELS: list[CatalogModel] = [
@@ -21,8 +23,9 @@ GPT_REALTIME_SEED_MODELS: list[CatalogModel] = [
         id="gpt-realtime",
         name="gpt-realtime",
         context_length=None,
-        prompt_usd_per_token=0.000004,
-        completion_usd_per_token=0.000016,
+        # audit-remediation package C1: Decimal literals (money-is-Decimal rule).
+        prompt_usd_per_token=Decimal("0.000004"),
+        completion_usd_per_token=Decimal("0.000016"),
         modality="chat",
         provider="openai",
         input_modalities="text",

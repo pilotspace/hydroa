@@ -23,6 +23,7 @@ PS10b— openai_api_key="" → registry has no "openai" entry
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -248,8 +249,8 @@ def test_ps5_catalog_model_entity_has_modality_provider() -> None:
         id="text-embedding-3-small",
         name="text-embedding-3-small",
         context_length=None,
-        prompt_usd_per_token=0.0,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("0.0"),
+        completion_usd_per_token=Decimal("0.0"),
         # modality and provider omitted — must default
     )
     assert model.modality == "chat" or hasattr(model, "modality"), (  # type: ignore[attr-defined]
@@ -264,8 +265,8 @@ def test_ps5_catalog_model_entity_has_modality_provider() -> None:
         id="text-embedding-3-large",
         name="text-embedding-3-large",
         context_length=None,
-        prompt_usd_per_token=0.00013,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("0.00013"),
+        completion_usd_per_token=Decimal("0.0"),
         modality="embedding",  # type: ignore[call-arg]
         provider="openai",  # type: ignore[call-arg]
     )

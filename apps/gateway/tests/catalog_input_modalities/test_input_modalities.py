@@ -19,6 +19,8 @@ Run only this suite (from apps/gateway/):
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -243,8 +245,8 @@ async def test_sc5_seed_sets_sync_never_clobbers(
         id="gpt-4o-sc5",
         name="GPT-4o (synced update)",  # name changed
         context_length=256_000,  # context_length changed
-        prompt_usd_per_token=5e-6,
-        completion_usd_per_token=15e-6,
+        prompt_usd_per_token=Decimal("5e-6"),
+        completion_usd_per_token=Decimal("15e-6"),
         modality="chat",
         provider="openrouter",
         # input_modalities NOT provided on CatalogModel — defaults to 'text'
@@ -292,8 +294,8 @@ def test_sc6_field_readable_from_entity_no_api_surfacing() -> None:
         id="m-sc6",
         name="Model SC6",
         context_length=None,
-        prompt_usd_per_token=0.0,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("0.0"),
+        completion_usd_per_token=Decimal("0.0"),
         # input_modalities omitted — must default to 'text'
     )
     assert hasattr(cat_model, "input_modalities"), "CatalogModel must have 'input_modalities' field"
