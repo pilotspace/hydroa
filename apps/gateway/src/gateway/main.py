@@ -141,6 +141,7 @@ from gateway.observability.middleware import RequestIdMiddleware
 from gateway.ops.api.router import ops_router
 from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.concurrency_guard import GlobalBackPressureMiddleware
+from gateway.proxy.api.discovery_router import discovery_router
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
 from gateway.proxy.api.messages_router import messages_router
@@ -1454,6 +1455,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routing_admin_router)
     app.include_router(proxy_router)
     app.include_router(messages_router)
+    app.include_router(discovery_router)
     app.include_router(embeddings_router)
     app.include_router(images_router)
     app.include_router(audio_router)
