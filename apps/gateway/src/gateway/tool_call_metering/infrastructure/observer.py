@@ -86,6 +86,7 @@ class MeteringToolCallObserver:
         tool_name: str,
         status: Literal["success"],
         latency_ms: int,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> None:
         """Never raises and never blocks its caller (M10) — the mcp-connector-
         passthrough call site fires this fire-and-forget; any failure here (dedupe
@@ -94,6 +95,13 @@ class MeteringToolCallObserver:
 
         latency_ms is accepted per the frozen Protocol signature but not persisted by
         v1 (no usage_records column for it — TASK.md §3 CONTRACT note).
+
+        agent_principal_id (audit-remediation, HIGH: agent-principal MCP metering
+        unfunded): forwarded byte-for-byte into the injected UsageRecorder, exactly
+        like every other kwarg — None for a token unattached to any principal, in
+        which case RecordingUsageRecorder simply skips the per-principal Redis
+        counter increment (its own existing `if agent_principal_id is not None`
+        guard), same as it always has for a plain sk- key call.
         """
         del latency_ms  # accepted-but-unused, per §3 CONTRACT note (v1 scope)
         del status  # the Protocol only ever carries "success" (Literal) — no branch
@@ -142,6 +150,13 @@ class MeteringToolCallObserver:
                 "quantity": Decimal("1"),
                 "tags": {"mcp_server": server_host, "mcp_tool": tool_name},
             }
+            # audit-remediation (HIGH): only add the kwarg when set, so a v1-Protocol
+            # fake recorder lacking `agent_principal_id` in its own accepted-kwargs
+            # set (e.g. this suite's FakeUsageRecorder) is unaffected when no
+            # principal is attached — mirrors this SAME file's own optional-extras
+            # idiom described in the module docstring above.
+            if agent_principal_id is not None:
+                kwargs["agent_principal_id"] = agent_principal_id
             await self._usage_recorder.record(**kwargs)
         except Exception as exc:  # M10: never raises into the caller
             _log.warning(

@@ -205,6 +205,7 @@ class StubToolCallObserver:
         tool_name: str,
         status: str,
         latency_ms: int,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> None:
         self.records.append(
             {
@@ -215,6 +216,7 @@ class StubToolCallObserver:
                 "tool_name": tool_name,
                 "status": status,
                 "latency_ms": latency_ms,
+                "agent_principal_id": agent_principal_id,
             }
         )
 

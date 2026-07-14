@@ -131,6 +131,60 @@ async def test_distinct_call_ids_both_billed() -> None:
     assert len(recorder.calls) == 2
 
 
+# ===========================================================================
+# audit-remediation (HIGH): agent_principal_id must be forwarded when present,
+# and omitted (never a stray None kwarg) when absent — so a v1-Protocol fake
+# recorder that never declared the kwarg (e.g. this file's own FakeUsageRecorder)
+# is unaffected by an unattached-principal call, exactly as before this fix.
+# ===========================================================================
+
+
+async def test_agent_principal_id_forwarded_to_usage_recorder_when_present() -> None:
+    recorder = FakeUsageRecorder()
+    observer = _observer(usage_recorder=recorder, redis=FakeRedis())
+    tenant_id, key_id, call_id, principal_id = (
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+    )
+
+    await observer.record(  # type: ignore[attr-defined]
+        call_id=call_id,
+        tenant_id=tenant_id,
+        key_id=key_id,
+        server_host="mcp.acme.example",
+        tool_name="search",
+        status="success",
+        latency_ms=120,
+        agent_principal_id=principal_id,
+    )
+
+    assert len(recorder.calls) == 1
+    assert recorder.calls[0]["agent_principal_id"] == principal_id
+
+
+async def test_agent_principal_id_omitted_when_absent() -> None:
+    """An sk- key call (no attached principal) must NOT add a stray
+    agent_principal_id kwarg — a narrow v1 UsageRecorder fake that never declared
+    the keyword would TypeError on an unconditional forward."""
+    recorder = FakeUsageRecorder()
+    observer = _observer(usage_recorder=recorder, redis=FakeRedis())
+
+    await observer.record(  # type: ignore[attr-defined]
+        call_id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        key_id=uuid.uuid4(),
+        server_host="mcp.acme.example",
+        tool_name="search",
+        status="success",
+        latency_ms=120,
+    )
+
+    assert len(recorder.calls) == 1
+    assert "agent_principal_id" not in recorder.calls[0]
+
+
 async def test_dedupe_check_failure_fails_open_and_still_bills() -> None:
     """If the Redis dedupe gate itself raises (Redis unreachable), the observer must
     still forward to usage_recorder.record() — never a silently dropped bill (R1)."""
