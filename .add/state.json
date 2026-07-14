@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "claude-gateway-protocol-compat",
-  "active_milestone": "agent-gateway-v1",
+  "active_task": "compliance-report-center",
+  "active_milestone": "eu-ai-act-readiness",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -706,14 +706,24 @@
     },
     "compliance-report-center": {
       "title": "Compliance report center console surface (generate/download/schedule the Art. 12 bundle)",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "eu-ai-act-readiness",
       "depends_on": [
         "art12-record-keeping-preset"
       ],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T03:34:46+00:00"
+      "updated": "2026-07-14T06:07:57+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-14T06:08:07+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "ai-act-marketing-page": {
       "title": "EU AI Act readiness marketing page + docs (accurate Art. 101 figures; live before 2026-08-02)",
@@ -1022,7 +1032,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T05:49:20+00:00",
+  "updated": "2026-07-14T06:08:07+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1990,7 +2000,7 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "eu-ai-act-readiness": "art12-record-keeping-preset",
+    "eu-ai-act-readiness": "compliance-report-center",
     "agent-gateway-v1": "claude-gateway-protocol-compat"
   },
   "todos": [

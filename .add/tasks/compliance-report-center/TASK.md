@@ -2,9 +2,9 @@
 
 slug: compliance-report-center · created: 2026-07-14 · revised: 2026-07-14 (scheduling scope expansion, Tin-authorized) · stage: production
 milestone: eu-ai-act-readiness
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
+autonomy: conservative   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
 risk: high   <!-- REVISION 2026-07-14: this task now writes a new background loop that persists tenant compliance-evidence bytes (audit/log/usage-lineage metadata) unattended, monthly, server-side — a genuinely new persistent-write capability with a cross-tenant / ZDR / retention threat surface, not the read-only FE-only consumer it was drafted as. Declared per the engine's own guard (unguarded_high_risk_auto) — a comment alone would not count as the declaration. -->
-phase: ground   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- content below is drafted through §3 CONTRACT (DRAFT, unfrozen) by the design agent; phase
      marker left at "ground" to match state.json (engine-tracked) — the orchestrator advances
      phase via add.py, this draft does not self-advance it. -->
@@ -585,8 +585,7 @@ Glossary deltas:
 - **Generated reports (inbox)**: the in-app list (`GET /admin/compliance/reports`) of every `compliance_report_runs` row a tenant's scheduler has produced, each individually downloadable (`GET /admin/compliance/reports/{id}`) — the v1 delivery mechanism for scheduled generation (Framing #4); no push/email/webhook notification exists yet (§7 Spec delta).
 - **`tenant_report_schedules`** / **`compliance_report_runs`**: the two new tables this task owns (§3 Schema) — the former is the per-tenant schedule POLICY (one row, OWNER-writable), the latter is the per-run EVIDENCE RECORD (many rows, system-inserted only, `source='scheduled'`).
 
-Status: DRAFT
-
+Status: FROZEN @ v1 — approved by Tin Dang
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 Least-sure flag surfaced at freeze: [contract] RBAC tier for `PUT`/`DELETE /admin/compliance/report-schedule` — this design chose `Permission.SECURITY_CONFIG` (OWNER only), mirroring `PUT /admin/retention-policy`'s exact precedent, the nearest real sibling policy-toggle in the SAME Data & residency/Compliance settings surface (§1 ⚠, full reasoning there). Recommendation: freeze OWNER-only as drafted — it is the stricter, already-precedented gate for a genuinely NEW automated persistent-write capability, and is easy to WIDEN later (a role-set relaxation) but hard to safely NARROW after tenants have already delegated it to non-owner admins. Tin should confirm or correct this tier at freeze; every other design point in this revision (the ZDR-skip-not-degrade resolution, M17; the RetentionSweeper extension closing the no-purge-path gap, M21; the in-app-inbox-over-webhook delivery decision, Framing #4) is HIGH confidence and resolved, not flagged.
