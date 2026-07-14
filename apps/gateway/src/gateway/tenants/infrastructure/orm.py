@@ -16,6 +16,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -182,7 +183,7 @@ class TenantRow(Base):
     # JSONB NOT NULL DEFAULT '[]'::jsonb — list[{url,label}]; empty = deny-all (secure
     # default for every existing + new tenant row, byte-identical to pre-task behavior).
     mcp_allowed_servers: Mapped[list[Any]] = mapped_column(
-        sa.JSON, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
+        JSONB, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
     )
     # Implementation-detail bookkeeping column (NOT in §3's Schema block) — null until
     # the first PUT /admin/mcp-servers; mirrors residency_region_updated_at's precedent.
