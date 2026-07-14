@@ -28,10 +28,11 @@ from .conftest import (
     signup_tenant,
     today_dedupe_key,
 )
+from tests import _redis_env
 
 # pytest asyncio_mode=auto: `async def test_*` runs without a marker.
 
-_TEST_DB_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+_TEST_DB_URL = _redis_env.TEST_DATABASE_URL
 _TEST_JWT = "test-secret-not-for-production-0123456789"
 
 

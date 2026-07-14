@@ -68,6 +68,7 @@ import pytest
 # Imports from EXISTING modules (task-1 shipped; these must succeed even in RED)
 # ---------------------------------------------------------------------------
 from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderCredential
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Imports from NOT-YET-EXISTING modules — these ARE the red targets.
@@ -520,9 +521,9 @@ def test_bedrock_azure_resolve() -> None:
 
     # Part A: unconditional wiring (no env creds)
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )  # type: ignore[call-arg]
 

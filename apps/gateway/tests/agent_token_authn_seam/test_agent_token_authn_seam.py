@@ -24,6 +24,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
+from tests import _redis_env
 
 COMPLETIONS = "/v1/chat/completions"
 EMBEDDINGS = "/v1/embeddings"
@@ -412,7 +413,7 @@ async def test_agent_token_over_budget_402(
 
     from gateway.budgets.infrastructure.redis_guard import RedisBudgetGuard
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9")
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL)
     try:
         # The per-key guard keys on usage:spend:key:{key_id}:{YYYYMM}
         yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
@@ -543,14 +544,14 @@ def test_settings_agent_oauth_default_budget_usd_knob() -> None:
 
     # Default value
     s = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
     )
     assert s.agent_oauth_default_budget_usd == Decimal("100.00")
 
     # Configurable via env-prefixed field
     s2 = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
         agent_oauth_default_budget_usd=Decimal("50.00"),
     )

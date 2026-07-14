@@ -33,10 +33,11 @@ from gateway.usage.application.reconciliation import (
 )
 
 from .conftest import seed_disconnect_row, seed_priced_model
+from tests import _redis_env
 
 pytestmark = pytest.mark.asyncio
 
-_REDIS_URL = "redis://localhost:6380/9"
+_REDIS_URL = _redis_env.TEST_REDIS_URL
 
 
 async def _record_and_flush(app: Any, recorder_kwargs: dict[str, Any]) -> None:

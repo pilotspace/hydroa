@@ -21,6 +21,7 @@ from gateway.core.db import Base
 from gateway.main import create_app
 from tests.credential_stub import install_stub_resolver
 from gateway.usage.application.flusher import UsageLedgerFlusher
+from tests import _redis_env
 
 # payload-capture-store build-time fix: this suite-local override previously
 # hardcoded the shared, un-suffixed `gateway_test` database, bypassing the
@@ -32,7 +33,7 @@ from gateway.usage.application.flusher import UsageLedgerFlusher
 # this 100% behavior-preserving for any caller that doesn't set it.
 TEST_DATABASE_URL = os.environ.get(
     "GATEWAY_TEST_DATABASE_URL",
-    "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+    _redis_env.TEST_DATABASE_URL,
 )
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
@@ -42,7 +43,7 @@ def settings() -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         # signup-and-routing-authz S1: this suite bootstraps a tenant via signup
         public_signup_enabled=True,
     )

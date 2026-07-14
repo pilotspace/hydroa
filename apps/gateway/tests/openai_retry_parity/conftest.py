@@ -21,6 +21,7 @@ from gateway.proxy.domain.credential_context import (
 from gateway.proxy.domain.provider_credentials import BearerCredential
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
+from tests import _redis_env
 
 FAKE_OPENAI_BASE_URL = "https://api.openai.com/v1"
 FAKE_API_KEY = "sk-openai-retry-parity"
@@ -70,9 +71,9 @@ def make_openai_upstream(
 def make_settings(**kwargs: object) -> Settings:
     """Minimal Settings for create_app() wiring tests (no live DB/Redis needed)."""
     defaults: dict[str, object] = {
-        "database_url": "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        "database_url": _redis_env.TEST_DATABASE_URL,
         "jwt_secret": "test-secret-not-for-production-0123456789",
-        "redis_url": "redis://localhost:6380/9",
+        "redis_url": _redis_env.TEST_REDIS_URL,
         "environment": "test",
     }
     defaults.update(kwargs)

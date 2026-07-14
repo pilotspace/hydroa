@@ -36,6 +36,22 @@ allowlist-node:
 test:
 	cd $(GATEWAY) && uv run pytest
 
+# Parallel full suite — same tests as `test`, fanned across xdist workers.
+# Isolation: tests/_redis_env.py gives each worker a private Postgres database
+# (gateway_test_gwN, auto-created/dropped by conftest) + a private Redis logical db
+# (workers use dbs 1..12, non-xdist keeps db 9), so the per-test drop_all/create_all and
+# the autouse Redis clear never collide across workers. `--dist loadscope` keeps every
+# test FILE on one worker (module-level state + single migration DB per worker). `-n 12`
+# fits this 12-core host inside Redis's 16 logical dbs — do NOT switch to `-n auto` on a
+# >15-core host without widening the db mapping in _redis_env.py. pytest-cov combines
+# per-worker coverage automatically, so the --cov-fail-under gate still holds.
+# `--reruns 1` auto-heals the small flake tail that 12-way contention on the shared
+# Postgres/Redis exposes (audit/health timing + a realtime DDL deadlock — all green in
+# isolation); a genuinely broken test still fails both attempts. The serial `make test`
+# stays strict (no reruns) and remains the authoritative gate.
+test-parallel:
+	cd $(GATEWAY) && uv run pytest -n 12 --dist loadscope --reruns 1 --reruns-delay 2
+
 # Fast per-change gate: no-DB blast-radius suites (translation + dispatch + provider).
 # MockTransport / pure-unit — runs without Postgres/Redis, no coverage gating.
 test-fast:

@@ -41,6 +41,7 @@ from tests.provider_seam.conftest import (
     make_json_response,
     EMBEDDING_RESPONSE_BODY,
 )
+from tests import _redis_env
 
 
 # ===========================================================================
@@ -125,9 +126,9 @@ def test_ps3_settings_gains_openai_fields_wiring() -> None:
     )
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
         openai_base_url=FAKE_OPENAI_BASE_URL,
     )
@@ -300,9 +301,9 @@ async def test_ps6_client_provider_field_ignored(
     from gateway.main import create_app
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )
     app = create_app(settings)
@@ -498,9 +499,9 @@ async def test_ps9_chat_path_not_consulting_provider_registry(
     from gateway.main import create_app
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )
     app = create_app(settings)
@@ -544,9 +545,9 @@ def test_ps10_production_wiring_registry_has_openrouter_and_openai() -> None:
     from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
         openai_base_url=FAKE_OPENAI_BASE_URL,
     )
@@ -595,9 +596,9 @@ def test_ps10b_openai_absent_when_key_empty() -> None:
     from gateway.main import create_app
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )
     app = create_app(settings)

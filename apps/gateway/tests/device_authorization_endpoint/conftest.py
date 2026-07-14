@@ -25,8 +25,9 @@ from gateway.core.db import Base
 from gateway.main import create_app
 from tests.conftest import TEST_DATABASE_URL, TEST_JWT_SECRET
 from tests.credential_stub import install_stub_resolver
+from tests import _redis_env
 
-_REDIS_URL = "redis://localhost:6380/9"
+_REDIS_URL = _redis_env.TEST_REDIS_URL
 
 
 async def _clear_rate_limit_keys() -> None:
@@ -59,7 +60,7 @@ def settings() -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         # agent_oauth knobs for the happy-path suite
         agent_oauth_verification_uri="https://app.test/activate",
         agent_oauth_device_code_ttl_seconds=600,
@@ -111,7 +112,7 @@ async def low_rpm_app_and_client() -> AsyncIterator[tuple[Any, httpx.AsyncClient
     s = Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         agent_oauth_verification_uri="https://app.test/activate",
         agent_oauth_device_code_ttl_seconds=600,
         agent_oauth_poll_interval_seconds=5,
@@ -131,7 +132,7 @@ async def empty_uri_app_and_client() -> AsyncIterator[tuple[Any, httpx.AsyncClie
     s = Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         agent_oauth_verification_uri="",
         agent_oauth_device_code_ttl_seconds=600,
         agent_oauth_poll_interval_seconds=5,

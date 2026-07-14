@@ -27,8 +27,9 @@ from gateway.main import create_app
 from gateway.tenants.domain.entities import Role
 from tests.conftest import TEST_DATABASE_URL, TEST_JWT_SECRET
 from tests.credential_stub import install_stub_resolver
+from tests import _redis_env
 
-_REDIS_URL = "redis://localhost:6380/9"
+_REDIS_URL = _redis_env.TEST_REDIS_URL
 
 
 async def _clear_rate_limit_keys() -> None:

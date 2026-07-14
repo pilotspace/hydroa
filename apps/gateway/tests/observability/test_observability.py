@@ -36,6 +36,7 @@ from gateway.observability.middleware import RequestIdMiddleware  # RED
 # ── Re-use existing helpers ────────────────────────────────────────────────
 from gateway.core.config import Settings
 from gateway.main import create_app
+from tests import _redis_env
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +96,9 @@ class BrokenRedisForMetrics(FakeRedisForMetrics):
 def _metrics_settings() -> Settings:
     """Minimal Settings that bypass real DB/Redis for metrics-only tests."""
     return Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
     )
 
 

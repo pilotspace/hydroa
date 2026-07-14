@@ -50,6 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -162,9 +163,9 @@ def make_oidc_settings(*, tenant_id: str | None = None, domain: str = FAKE_DOMAI
     if tenant_id is not None:
         mapping = [{"email_domain": domain, "tenant_id": tenant_id}]
     return Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         oidc_enabled=True,
         oidc_issuer=FAKE_ISSUER,
@@ -178,9 +179,9 @@ def make_oidc_settings(*, tenant_id: str | None = None, domain: str = FAKE_DOMAI
 def make_disabled_settings() -> Settings:
     """Build Settings with OIDC disabled (default)."""
     return Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         # oidc_enabled defaults to False
     )
@@ -353,9 +354,9 @@ async def test_happy_path_new_user_provisioned() -> None:
     """
     # First, create a tenant to map to
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -428,9 +429,9 @@ async def test_second_login_no_duplicate() -> None:
     AssertionError: expected 302, got 404.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -490,9 +491,9 @@ async def test_unknown_domain_rejected() -> None:
     AssertionError: expected code ERR_OIDC_DOMAIN_NOT_MAPPED.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -548,9 +549,9 @@ async def test_state_mismatch_rejected() -> None:
     AssertionError: expected code ERR_OIDC_STATE_MISMATCH.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -606,9 +607,9 @@ async def test_missing_state_cookie() -> None:
     AssertionError: expected code ERR_OIDC_SESSION_EXPIRED.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -659,9 +660,9 @@ async def test_idp_timeout_returns_502() -> None:
     AssertionError: expected code ERR_OIDC_UPSTREAM_ERROR.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -716,9 +717,9 @@ async def test_wrong_issuer_rejected() -> None:
     AssertionError: expected code ERR_OIDC_TOKEN_INVALID.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -777,9 +778,9 @@ async def test_expired_token_rejected() -> None:
     AssertionError: expected code ERR_OIDC_TOKEN_EXPIRED.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -833,9 +834,9 @@ async def test_nonce_mismatch_rejected() -> None:
     AssertionError: expected code ERR_OIDC_TOKEN_INVALID.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -893,9 +894,9 @@ async def test_provisioned_role_always_member() -> None:
     AssertionError: expected 302, got 404.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -964,9 +965,9 @@ async def test_login_sets_state_nonce_cookies() -> None:
     AssertionError: expected 302, got 404.
     """
     oidc_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         oidc_enabled=True,
         oidc_issuer=FAKE_ISSUER,
@@ -1032,9 +1033,9 @@ async def test_session_cookie_attributes() -> None:
     AssertionError: expected 302, got 404.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -1051,9 +1052,9 @@ async def test_session_cookie_attributes() -> None:
 
     # Use environment="production" to trigger Secure flag
     oidc_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         environment="production",
         oidc_enabled=True,
@@ -1122,9 +1123,9 @@ async def test_missing_id_token_in_response() -> None:
     AssertionError: expected code ERR_OIDC_UPSTREAM_ERROR.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -1179,9 +1180,9 @@ async def test_cross_tenant_email_conflict() -> None:
     AssertionError: expected code ERR_OIDC_TENANT_CONFLICT.
     """
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)

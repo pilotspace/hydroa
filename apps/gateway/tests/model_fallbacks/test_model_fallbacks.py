@@ -38,6 +38,7 @@ from .conftest import (
     SequencedFakeUpstream,
     make_payload,
 )
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Import the not-yet-existing module — causes red ImportError until BUILD.
@@ -557,9 +558,9 @@ def test_f10_settings_default_model_groups_empty_dict() -> None:
     from gateway.core.config import Settings
 
     s = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )
     # Field must exist (AttributeError = correct red reason before build)
@@ -587,9 +588,9 @@ def test_f10_settings_validation_alias_collides_with_candidate() -> None:
     # Pre-condition: field must exist before the validator can be tested.
     # If field is absent, this line raises AssertionError (correct red for phase 1).
     probe = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )
     assert hasattr(probe, "model_groups"), (
@@ -599,9 +600,9 @@ def test_f10_settings_validation_alias_collides_with_candidate() -> None:
     # Now assert the validator fires on collision input.
     with pytest.raises(ValidationError) as exc_info:
         Settings(
-            database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+            database_url=_redis_env.TEST_DATABASE_URL,
             jwt_secret="test-secret-not-for-production-0123456789",
-            redis_url="redis://localhost:6380/9",
+            redis_url=_redis_env.TEST_REDIS_URL,
             environment="test",
             model_groups={CANDIDATE_A: [CANDIDATE_A, CANDIDATE_B]},
         )
@@ -625,9 +626,9 @@ def test_f10_settings_validation_empty_candidate_list() -> None:
 
     # Pre-condition: field must exist.
     probe = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )
     assert hasattr(probe, "model_groups"), (
@@ -636,9 +637,9 @@ def test_f10_settings_validation_empty_candidate_list() -> None:
 
     with pytest.raises(ValidationError) as exc_info:
         Settings(
-            database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+            database_url=_redis_env.TEST_DATABASE_URL,
             jwt_secret="test-secret-not-for-production-0123456789",
-            redis_url="redis://localhost:6380/9",
+            redis_url=_redis_env.TEST_REDIS_URL,
             environment="test",
             model_groups={ALIAS_FAST: []},
         )
@@ -664,9 +665,9 @@ def test_f10_settings_validation_too_many_candidates() -> None:
 
     # Pre-condition: field must exist.
     probe = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )
     assert hasattr(probe, "model_groups"), (
@@ -675,9 +676,9 @@ def test_f10_settings_validation_too_many_candidates() -> None:
 
     with pytest.raises(ValidationError) as exc_info:
         Settings(
-            database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+            database_url=_redis_env.TEST_DATABASE_URL,
             jwt_secret="test-secret-not-for-production-0123456789",
-            redis_url="redis://localhost:6380/9",
+            redis_url=_redis_env.TEST_REDIS_URL,
             environment="test",
             model_groups={ALIAS_FAST: [f"vendor/model-{i}" for i in range(6)]},
         )

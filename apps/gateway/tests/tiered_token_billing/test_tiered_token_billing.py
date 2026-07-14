@@ -28,6 +28,7 @@ from tests.tiered_token_billing.conftest import (
     FakeSessionFactory,
     StreamCapture,
 )
+from tests import _redis_env
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +422,7 @@ async def test_tt5_db_tier_counts_persist_through_flusher(
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
     from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         model_id = "openai/gpt-x-tier-persist"

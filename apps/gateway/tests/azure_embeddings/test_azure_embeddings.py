@@ -32,6 +32,7 @@ from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 
 # RED: azure_embeddings does not exist yet → ModuleNotFoundError.
 from gateway.proxy.infrastructure.azure_embeddings import AzureEmbeddingsProvider
+from tests import _redis_env
 
 # v25 task-3: AzureCredential (api_key mode) mirrors the old _AZ_CFG.
 _AZ_CRED = AzureCredential(
@@ -338,9 +339,9 @@ def test_wiring_registers_azure_provider_unconditionally(monkeypatch: pytest.Mon
         monkeypatch.delenv(name, raising=False)
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
         # No azure_api_key, no azure_client_secret, no azure_endpoint
     )  # type: ignore[arg-type]
@@ -373,9 +374,9 @@ def test_wiring_azure_cache_shared_across_chat_and_embeddings(
         monkeypatch.delenv(name, raising=False)
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
     )  # type: ignore[arg-type]
     app = create_app(settings)

@@ -104,12 +104,13 @@ from gateway.proxy.infrastructure.tenant_provider_key_store import (  # type: ig
 from gateway.proxy.infrastructure.azure_ad import DEFAULT_AUTHORITY, DEFAULT_SCOPE, AzureADConfig
 from gateway.proxy.infrastructure.azure_config import AzureConfig
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-TEST_DATABASE_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+TEST_DATABASE_URL = _redis_env.TEST_DATABASE_URL
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"  # noqa: S105
 TEST_FERNET_KEY = Fernet.generate_key().decode()
 
@@ -124,7 +125,7 @@ def make_settings_with_key(encryption_key: str = TEST_FERNET_KEY) -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         provider_key_encryption_key=encryption_key,
     )
 
@@ -134,7 +135,7 @@ def make_settings_no_key() -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         provider_key_encryption_key="",
     )
 

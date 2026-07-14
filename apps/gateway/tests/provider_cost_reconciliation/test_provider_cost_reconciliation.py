@@ -32,6 +32,7 @@ from tests.provider_cost_reconciliation.conftest import (
     StreamCapture,
     make_openrouter_upstream,
 )
+from tests import _redis_env
 
 
 def _markup(pct: str) -> Decimal:
@@ -340,7 +341,7 @@ async def test_pc9_db_provider_basis_row_persisted(
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
     from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         model_id = "openrouter/provider-cost-persist"
@@ -409,7 +410,7 @@ async def test_pc10_db_catalog_basis_row_persisted(
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
     from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
     try:
         model_id = "openai/catalog-basis-persist"
@@ -560,9 +561,9 @@ def test_pc14_settings_knob_threads_into_upstream() -> None:
 
     def _settings(*, usage_accounting: bool) -> Settings:
         return Settings(
-            database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+            database_url=_redis_env.TEST_DATABASE_URL,
             jwt_secret="test-secret-not-for-production-0123456789",
-            redis_url="redis://localhost:6380/9",
+            redis_url=_redis_env.TEST_REDIS_URL,
             openrouter_usage_accounting=usage_accounting,
         )
 

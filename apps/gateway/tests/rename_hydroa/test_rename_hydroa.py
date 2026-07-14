@@ -44,6 +44,7 @@ import tomllib
 from pathlib import Path
 
 import yaml
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Repo-root resolution (suite runs from apps/gateway/ via pytest testpaths)
@@ -84,9 +85,9 @@ def _make_minimal_settings():  # type: ignore[return]
     from gateway.core.config import Settings  # noqa: PLC0415
 
     return Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",  # noqa: S106
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
     )
 
 

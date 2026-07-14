@@ -31,14 +31,15 @@ from gateway.core.config import Settings
 from gateway.main import create_app
 from gateway.tenants.domain.entities import Role
 from gateway.tenants.infrastructure.jwt_service import JwtTokenService
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 TEST_JWT_SECRET = "test-routing-admin-secret-xyzzy-0123456789"
-TEST_DATABASE_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
-TEST_REDIS_URL = "redis://localhost:6380/9"
+TEST_DATABASE_URL = _redis_env.TEST_DATABASE_URL
+TEST_REDIS_URL = _redis_env.TEST_REDIS_URL
 
 ADMIN_ROUTING = "/admin/routing"
 ADMIN_MODELS = "/admin/models"

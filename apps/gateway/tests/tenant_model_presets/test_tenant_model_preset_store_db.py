@@ -39,12 +39,13 @@ from gateway.proxy.domain.model_presets import (  # type: ignore[import]
 from gateway.proxy.infrastructure.tenant_model_preset_store import (  # type: ignore[import]
     DbTenantModelPresetStore,
 )
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-TEST_DATABASE_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+TEST_DATABASE_URL = _redis_env.TEST_DATABASE_URL
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"  # noqa: S105
 
 
@@ -52,7 +53,7 @@ def make_settings() -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
     )
 
 

@@ -24,6 +24,7 @@ from tests.pricing_units.conftest import (
     SpyRecorder,
     StreamCapture,
 )
+from tests import _redis_env
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +337,7 @@ async def test_pu6_usage_records_row_carries_pricing_unit_and_quantity(
     from gateway.usage.application.flusher import UsageLedgerFlusher  # type: ignore[import]
     from gateway.usage.application.recorder import RecordingUsageRecorder  # type: ignore[import]
 
-    redis_client = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
 
     try:

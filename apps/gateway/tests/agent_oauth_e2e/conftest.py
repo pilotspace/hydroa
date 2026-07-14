@@ -29,8 +29,9 @@ from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.main import create_app
 from tests.conftest import TEST_DATABASE_URL, TEST_JWT_SECRET
 from tests.credential_stub import install_stub_resolver
+from tests import _redis_env
 
-_REDIS_URL = "redis://localhost:6380/9"
+_REDIS_URL = _redis_env.TEST_REDIS_URL
 
 # Default token knobs used across tests
 _ACCESS_TTL = 3600

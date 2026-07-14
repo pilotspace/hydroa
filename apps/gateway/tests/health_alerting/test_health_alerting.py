@@ -46,6 +46,7 @@ import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -54,7 +55,7 @@ SIGNUP = "/admin/auth/signup"
 LOGIN = "/admin/auth/login"
 ADMIN_KEYS = "/admin/keys"
 
-_TEST_DB_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+_TEST_DB_URL = _redis_env.TEST_DATABASE_URL
 
 # ---------------------------------------------------------------------------
 # Fakes — injected via ports (WebhookSink / UpstreamPinger Protocols)
@@ -587,7 +588,7 @@ async def test_s08_drain_timeout_emits_event(session_factory: Any) -> None:
     from gateway.usage.application.flusher import UsageLedgerFlusher
 
     # Use real Redis on db 7 (dedicated for this suite)
-    redis_client = aioredis.from_url("redis://localhost:6380/7", decode_responses=False)
+    redis_client = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await redis_client.flushdb()
 
     try:

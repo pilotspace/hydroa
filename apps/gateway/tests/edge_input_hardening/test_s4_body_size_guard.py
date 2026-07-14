@@ -28,6 +28,7 @@ from tests.edge_input_hardening.conftest import (
     inject_fake_openai_audio_provider,
     seed_stt_model,
 )
+from tests import _redis_env
 
 COMPLETIONS_PATH = "/v1/chat/completions"
 TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
@@ -243,7 +244,7 @@ async def test_s4_6_pre_auth_4096_byte_cap_reachable_under_default_json_cap() ->
     settings = Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
     )
     assert settings.max_json_body_bytes == 20_971_520  # unchanged real default — outer cap
     app = create_app(settings)

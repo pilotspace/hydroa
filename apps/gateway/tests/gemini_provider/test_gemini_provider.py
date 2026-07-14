@@ -35,6 +35,7 @@ from gateway.proxy.infrastructure.gemini_upstream import (
     _openai_to_gemini_request,
 )
 from gateway.usage.domain.extractor import extract_usage_from_sse
+from tests import _redis_env
 
 pytestmark = pytest.mark.asyncio
 
@@ -348,9 +349,9 @@ def _make_settings(**kwargs: object):  # type: ignore[no-untyped-def]
     from gateway.core.config import Settings
 
     defaults: dict[str, object] = {
-        "database_url": "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        "database_url": _redis_env.TEST_DATABASE_URL,
         "jwt_secret": "test-secret-not-for-production-0123456789",
-        "redis_url": "redis://localhost:6380/9",
+        "redis_url": _redis_env.TEST_REDIS_URL,
         "environment": "test",
     }
     defaults.update(kwargs)

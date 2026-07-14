@@ -51,6 +51,7 @@ from gateway.proxy.domain.provider_credentials import (
     BearerCredential,
     ProviderKeyMissing,
 )
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # RED imports — reference FUTURE symbols; will fail ImportError / AttributeError
@@ -534,9 +535,9 @@ def test_unconditional_wiring_no_env_creds() -> None:
     from gateway.core.config import Settings
 
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret="test-secret-not-for-production-0123456789",
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         environment="test",
         # NO bedrock_access_key_id / bedrock_secret_access_key
         # NO azure_api_key / azure_client_secret

@@ -91,6 +91,7 @@ from gateway.auth.domain.errors import OidcTokenInvalidError, OidcUpstreamError
 from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -348,9 +349,9 @@ def make_oidc_settings(*, tenant_id: str | None = None, domain: str = FAKE_DOMAI
     if tenant_id is not None:
         mapping = [{"email_domain": domain, "tenant_id": tenant_id}]
     return Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         oidc_enabled=True,
         oidc_issuer=FAKE_ISSUER,
@@ -364,9 +365,9 @@ def make_oidc_settings(*, tenant_id: str | None = None, domain: str = FAKE_DOMAI
 
 def make_disabled_settings() -> Settings:
     return Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
 
@@ -453,9 +454,9 @@ def build_callback_url(*, code: str = "valid-code", state: str = FAKE_STATE) -> 
 async def bootstrap_tenant(tenant_name: str, owner_email: str) -> tuple[Any, str, str]:
     """Create a fresh DB, sign up a tenant, return (engine, sessionmaker, tenant_id)."""
     base_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
     bootstrap_app = create_app(base_settings)
@@ -971,9 +972,9 @@ async def test_unconfigured_jwks_preserves_v4_flow() -> None:
 
     mapping = [{"email_domain": FAKE_DOMAIN, "tenant_id": tenant_id}]
     oidc_settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         oidc_enabled=True,
         oidc_issuer=FAKE_ISSUER,
         oidc_client_id=FAKE_CLIENT_ID,

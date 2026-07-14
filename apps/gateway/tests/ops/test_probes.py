@@ -23,6 +23,7 @@ import pytest
 
 from gateway.core.config import Settings
 from gateway.main import create_app
+from tests import _redis_env
 
 
 # ── Minimal fake Redis for probe tests ────────────────────────────────────
@@ -153,7 +154,7 @@ async def test_ready_probe_503_db_down() -> None:
     """
     settings = Settings(
         database_url="postgresql+asyncpg://bad:password123@127.0.0.1:19999/nonexistent",
-        redis_url="redis://localhost:6380/0",
+        redis_url=_redis_env.TEST_REDIS_URL,
     )
     app = create_app(settings)
     # Inject a healthy fake redis so the redis check passes
@@ -185,7 +186,7 @@ async def test_ready_probe_503_redis_down() -> None:
     RED reason: route does not exist yet — returns 404.
     """
     settings = Settings(
-        database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+        database_url=_redis_env.TEST_DATABASE_URL,
         redis_url="redis://:secretpassword@127.0.0.1:19998/0",
     )
     app = create_app(settings)

@@ -21,13 +21,14 @@ from cryptography.fernet import Fernet
 from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
+from tests import _redis_env
 
 PROVIDER_KEYS = "/admin/provider-keys"
 TEST_DATABASE_URL = os.environ.get(
     "GATEWAY_TEST_DATABASE_URL",
-    "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
+    _redis_env.TEST_DATABASE_URL,
 )
-TEST_REDIS_URL = "redis://localhost:6380/9"
+TEST_REDIS_URL = _redis_env.TEST_REDIS_URL
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"  # noqa: S105
 TEST_FERNET_KEY = Fernet.generate_key().decode()
 PASSWORD = "correct horse battery staple"  # noqa: S105

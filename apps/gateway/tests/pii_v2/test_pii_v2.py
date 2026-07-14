@@ -130,6 +130,7 @@ from gateway.core.db import Base
 from gateway.main import create_app
 from tests.credential_stub import install_stub_resolver
 from gateway.usage.application.flusher import UsageLedgerFlusher
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -317,7 +318,7 @@ class FakeCompletionUpstream:
 # Suite-local fixtures (never use repo-root conftest for this suite)
 # ---------------------------------------------------------------------------
 
-TEST_DATABASE_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+TEST_DATABASE_URL = _redis_env.TEST_DATABASE_URL
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
 
@@ -326,7 +327,7 @@ def settings() -> Settings:
     return Settings(
         database_url=TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
     )
 
@@ -391,7 +392,7 @@ async def redis_client() -> AsyncIterator[Any]:
     """Real redis.asyncio client on db index 9; flushed before and after each test."""
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    rc: Any = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    rc: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await rc.flushdb()
     yield rc
     await rc.flushdb()

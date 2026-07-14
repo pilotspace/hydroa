@@ -28,8 +28,9 @@ import redis.asyncio as aioredis
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.domain.errors import BandwidthExhaustedError
 from gateway.rate_limits.infrastructure.redis_token_bucket import RedisTokenBucket
+from tests import _redis_env
 
-_REDIS_URL = "redis://localhost:6380/7"  # dedicated db index — no collision with other suites
+_REDIS_URL = _redis_env.TEST_REDIS_URL  # per-worker db (tests/_redis_env.py) — isolated under xdist
 # asyncio_mode=auto (pyproject) runs the async tests without an explicit mark.
 
 

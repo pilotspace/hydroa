@@ -62,6 +62,7 @@ from tests.preset_capability_validation.conftest import (
     seed_stt_model,
     seed_tts_model,
 )
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Route constants
@@ -75,7 +76,7 @@ SPEECH_PATH = "/v1/audio/speech"
 
 FAKE_AUDIO_BYTES = b"RIFF\x00\x00\x00\x00WAVEfmt "
 
-REALTIME_TEST_DATABASE_URL = "postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test"
+REALTIME_TEST_DATABASE_URL = _redis_env.TEST_DATABASE_URL
 REALTIME_TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
 
@@ -439,7 +440,7 @@ def _make_realtime_settings() -> Settings:
     return Settings(
         database_url=REALTIME_TEST_DATABASE_URL,
         jwt_secret=REALTIME_TEST_JWT_SECRET,
-        redis_url="redis://localhost:6380/9",
+        redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         input_modality_guard_enabled=True,
     )

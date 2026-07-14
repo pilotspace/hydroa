@@ -35,6 +35,7 @@ import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests import _redis_env
 
 # ---------------------------------------------------------------------------
 # Constants — mirror §3 CONTRACT
@@ -148,7 +149,7 @@ async def redis_client() -> AsyncIterator[Any]:
     """Real redis.asyncio client on db index 9; flushed before and after each test."""
     import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-    client: Any = aioredis.from_url("redis://localhost:6380/9", decode_responses=False)
+    client: Any = aioredis.from_url(_redis_env.TEST_REDIS_URL, decode_responses=False)
     await client.flushdb()
     yield client
     await client.flushdb()
