@@ -174,6 +174,7 @@ class SqlAlchemyApiKeyRepository:
                 PlanRow.model_allowlist,
                 PlanRow.name,
                 TenantRow.default_tier,
+                TenantRow.mcp_allowed_servers,
             )
             .outerjoin(TeamRow, ApiKeyRow.team_id == TeamRow.id)
             .outerjoin(TenantRow, ApiKeyRow.tenant_id == TenantRow.id)
@@ -196,6 +197,7 @@ class SqlAlchemyApiKeyRepository:
             plan_model_allowlist_raw,
             plan_name,
             tenant_default_tier,
+            tenant_mcp_allowed_servers_raw,
         ) = result
         # Effective cache = key-level OR tenant-level (both default false)
         effective_cache = bool(getattr(row, "cache_enabled", False)) or bool(
@@ -299,6 +301,41 @@ class SqlAlchemyApiKeyRepository:
         else:
             plan_model_allowlist = None
 
+        # mcp-connector-passthrough (M4/M12): resolve key > tenant > default-deny, fail-
+        # CLOSED (empty list) on ANY JSONB-parse/shape failure — never raised, never
+        # "allow". Rides along on the SAME LEFT JOIN tenants — zero extra DB reads.
+        def _parse_mcp_entries(raw: Any) -> list[str] | None:
+            """Parse a raw mcp_allowed_servers-shaped JSONB value into URL strings.
+
+            Returns None on ANY malformed/unexpected shape — never raises. Caller
+            treats None the same as an empty (deny-all) list.
+            """
+            parsed = raw
+            if isinstance(parsed, str):
+                try:
+                    parsed = _json.loads(parsed)
+                except Exception:
+                    return None
+            if not isinstance(parsed, list):
+                return None
+            urls: list[str] = []
+            for entry in parsed:
+                if isinstance(entry, dict) and isinstance(entry.get("url"), str):
+                    urls.append(entry["url"])
+                else:
+                    return None
+            return urls
+
+        raw_key_mcp_override = getattr(row, "mcp_allowed_servers_override", None)
+        if raw_key_mcp_override is not None:
+            # Explicit key-level override (including an explicit [] = deny-all-for-key).
+            # A parse failure on a non-null override ALSO fails closed to [] (M12).
+            key_mcp_urls = _parse_mcp_entries(raw_key_mcp_override)
+            resolved_mcp_servers = key_mcp_urls if key_mcp_urls is not None else []
+        else:
+            tenant_mcp_urls = _parse_mcp_entries(tenant_mcp_allowed_servers_raw)
+            resolved_mcp_servers = tenant_mcp_urls if tenant_mcp_urls is not None else []
+
         return ApiKey(
             id=row.id,
             tenant_id=row.tenant_id,
@@ -327,6 +364,7 @@ class SqlAlchemyApiKeyRepository:
             plan_name=plan_name,
             tier=resolved_tier,
             tier_source=tier_source,
+            mcp_allowed_servers=resolved_mcp_servers,
         )
 
     async def update(

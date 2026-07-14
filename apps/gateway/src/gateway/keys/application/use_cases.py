@@ -332,6 +332,7 @@ class AuthzUseCase:
             plan_name=getattr(row, "plan_name", None),
             tier=getattr(row, "tier", "standard"),
             tier_source=getattr(row, "tier_source", "tenant"),
+            mcp_allowed_servers=getattr(row, "mcp_allowed_servers", []),
         )
 
 

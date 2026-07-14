@@ -750,6 +750,18 @@ class Settings(BaseSettings):
     # semaphore try-acquire; a saturated pool skips the capture, never queues/blocks).
     capture_max_concurrent_tasks: int = Field(default=50, gt=0)
 
+    # ── MCP connector (mcp-connector-passthrough task) ───────────────────────────
+    # env: GATEWAY_MCP_CONNECTOR_DIAL_TIMEOUT_SECONDS — bounds every outbound MCP-server
+    # dial (M8); never auto-retried.
+    mcp_connector_dial_timeout_seconds: float = Field(default=30.0, gt=0)
+    # env: GATEWAY_MCP_CONNECTOR_BREAKER_FAILURE_THRESHOLD — consecutive dial failures
+    # (timeout/connection error) that trip the per-(tenant, server-host) circuit (M8).
+    # Mirrors proxy/infrastructure/circuit_breaker.py's own default (5).
+    mcp_connector_breaker_failure_threshold: int = Field(default=5, ge=1)
+    # env: GATEWAY_MCP_CONNECTOR_BREAKER_COOLDOWN_SECONDS — seconds an open circuit stays
+    # open before a single HALF_OPEN probe is allowed. Mirrors the same default (30s).
+    mcp_connector_breaker_cooldown_seconds: float = Field(default=30.0, gt=0)
+
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip
     # the cooldown for a model. 0 = disabled (feature off, v5 byte-identical behavior).

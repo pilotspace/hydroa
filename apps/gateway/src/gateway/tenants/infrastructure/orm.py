@@ -178,6 +178,17 @@ class TenantRow(Base):
     # service-tiers TASK.md §3 (FROZEN @ v1) — additive, NOT NULL DEFAULT 'standard'.
     # The tenant-wide fallback tier when a key carries no per-key override (M1).
     default_tier: Mapped[str] = mapped_column(Text, nullable=False, server_default="standard")
+    # mcp-connector-passthrough TASK.md §3 (FROZEN @ v1) — additive.
+    # JSONB NOT NULL DEFAULT '[]'::jsonb — list[{url,label}]; empty = deny-all (secure
+    # default for every existing + new tenant row, byte-identical to pre-task behavior).
+    mcp_allowed_servers: Mapped[list[Any]] = mapped_column(
+        sa.JSON, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
+    )
+    # Implementation-detail bookkeeping column (NOT in §3's Schema block) — null until
+    # the first PUT /admin/mcp-servers; mirrors residency_region_updated_at's precedent.
+    mcp_allowed_servers_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # updated_at — NOT in the baseline (ad14442336db created tenants with created_at only);
     # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without

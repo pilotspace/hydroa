@@ -130,6 +130,9 @@ from gateway.logs.infrastructure.orm import (  # noqa: F401 — registers Reques
 )
 from gateway.logs.infrastructure.sqlalchemy_capture import SqlAlchemyPayloadCapture
 from gateway.logs.infrastructure.zdr_retention_adapter import RetentionZdrPort
+from gateway.mcp_connector.api.admin_router import mcp_admin_router
+from gateway.mcp_connector.api.key_router import mcp_key_router
+from gateway.mcp_connector.api.proxy_router import mcp_proxy_router
 from gateway.memory.api.router import memories_router
 from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
     MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -1445,6 +1448,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(key_guardrail_router)
+    app.include_router(mcp_admin_router)
+    app.include_router(mcp_key_router)
+    app.include_router(mcp_proxy_router)
     app.include_router(keys_authz_router)
     app.include_router(platform_keys_router)
     app.include_router(teams_router)
