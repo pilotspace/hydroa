@@ -269,7 +269,7 @@ from gateway.usage.application.recovery_sweep import (
 )
 from gateway.usage.application.retention_sweep import (
     RetentionSweeper,
-    should_start_retention_sweep,
+    should_start_retention_sweep_with_zdr,
 )
 from gateway.usage.infrastructure.alert_events_orm import (
     AlertEventRow as _AlertEventRow,  # noqa: F401 — registers alert_events ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -640,7 +640,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # (data-retention-controls v38). Default-ON at configured defaults; started only
         # when interval>0 AND at least one per-table window>0. Wired after recovery sweep.
         app.state.retention_sweeper_task = None
-        if should_start_retention_sweep(_settings):
+        # audit-remediation: ZDR-aware start-gate — also start the sweeper when any tenant
+        # has zdr_enabled=true, even if every operator-level window knob is 0 (so ZDR
+        # unconditional purge always runs). Honest-degrades to settings-only on DB error.
+        if await should_start_retention_sweep_with_zdr(_settings, session_factory=_sessionmaker):
             retention_sweeper = RetentionSweeper(
                 session_factory=_sessionmaker,
                 settings=_settings,

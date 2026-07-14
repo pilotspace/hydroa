@@ -7,17 +7,26 @@ they are a separate, untouched code path. Three NEW passes are layered alongside
 sweep_once():
   1. A per-tenant window-cutoff pass over the 5 newly-swept payload tables (artifacts,
      conversations[+conversation_messages via CASCADE], memories, batch_job_items,
-     video_generation_jobs) — only tenants with tenants.retention_window_days IS NOT
-     NULL are touched; nothing else changes for any other tenant.
+     video_generation_jobs), PLUS compliance_report_runs (compliance-report-center
+     §3 M21) — EVERY tenant is touched: the cutoff is
+     COALESCE(tenants.retention_window_days, retention_tenant_window_ceiling_days), i.e.
+     a tenant with no override (column IS NULL) is swept at the operator ceiling, byte-
+     identical to what tenants/application/retention_policy.py effective_window_days()
+     already REPORTS for that tenant via GET /admin/retention-policy (CRIT fix: before
+     this, the query itself required retention_window_days IS NOT NULL, so a default-
+     posture tenant's data was NEVER purged even though the API claimed a finite
+     effective window — see TASK.md remediation notes).
   2. A per-tenant SHORTENING pass over usage_records/alert_events — only tenants with an
      override AND only down to min(tenant_window, operator_default); the operator's own
      per-table default remains an outer bound the original unconditional pass already
      enforces for everyone, so a tenant can only end up with EARLIER deletion, never later.
   3. An unconditional (no-cutoff) per-tenant ZDR purge pass across the 5 payload tables
-     for every tenant with zdr_enabled=true, PLUS ObjectStore.delete() for every s3-backed
-     artifact and a bounded Redis SCAN+DEL over that tenant's resp-cache:/vec-cache:
-     namespaces. Self-healing: re-runs every tick for as long as zdr_enabled=true, so a
-     mid-purge crash is recovered automatically at the next tick (no job-tracking table).
+     PLUS request_logs (payload-capture-store — a ZDR tenant's captured raw PII payloads
+     must never survive independently of the 5 original tables) for every tenant with
+     zdr_enabled=true, PLUS ObjectStore.delete() for every s3-backed artifact and a
+     bounded Redis SCAN+DEL over that tenant's resp-cache:/vec-cache: namespaces.
+     Self-healing: re-runs every tick for as long as zdr_enabled=true, so a mid-purge
+     crash is recovered automatically at the next tick (no job-tracking table).
   audit_events is NEVER touched by any of the three new passes (R4) — effective_audit_window
   logic (below) is completely unchanged.
 
@@ -26,7 +35,12 @@ CONTRACT (FROZEN @ data-retention-controls v1 — TASK.md §3):
     the per-table window in bounded batches; returns {table: rows_deleted}.
   - run_forever(interval_seconds, *, _sleep): background loop; swallows all errors;
     cancellable via asyncio.CancelledError propagation. _sleep is injectable for tests.
-  - should_start_retention_sweep(settings) -> bool: interval>0 AND at least one window>0.
+  - should_start_retention_sweep(settings) -> bool: interval>0 AND at least one
+    operator-level window knob>0 (settings-only; blind to per-tenant DB state).
+  - should_start_retention_sweep_with_zdr(settings, session_factory=None) -> bool:
+    superset of the above — ALSO True when at least one tenant has zdr_enabled=true,
+    even if every operator-level window knob is 0 (remediation for the MED finding:
+    a ZDR-only deployment must still get the self-healing ZDR purge pass to run).
   - effective_audit_window: max(retention_audit_events_days, retention_audit_floor_days).
   - AUDIT FLOOR: effective = max(audit_events_days, audit_floor_days) — the floor is
     inviolable; even if the operator sets audit_events_days=30, the effective window
@@ -75,14 +89,29 @@ class _Settings(Protocol):
     # payload-capture-store additive field — request_logs mirrors usage_records exactly
     # (plain _delete_batched, no immutability trigger).
     retention_request_logs_days: int
+    # tenant-retention-zdr TASK.md §3 — the operator-wide ceiling a tenant's own
+    # retention_window_days may never exceed; ALSO the fallback cutoff for the 5 (+
+    # compliance_report_runs) newly-swept payload tables when a tenant's own column is
+    # NULL (default posture) — see effective_window_days in tenants/application/
+    # retention_policy.py, which this sweep must stay byte-identical with.
+    retention_tenant_window_ceiling_days: int
 
 
 def should_start_retention_sweep(settings: _Settings) -> bool:
-    """The default-ON guard: start the sweeper when interval>0 AND at least one window>0.
+    """The default-ON guard: start the sweeper when interval>0 AND at least one
+    operator-level window knob is positive.
 
     A zero (or negative) interval disables the sweeper entirely. When the interval is
     positive, at least one per-table window must also be positive for the sweep to be
-    meaningful. If all windows are 0 (all tables opted out), there is nothing to sweep.
+    meaningful. If all windows are 0 (all tables opted out), there is nothing to sweep —
+    from a PURE SETTINGS point of view. This function cannot see per-tenant DB state
+    (e.g. a tenant with zdr_enabled=true while every operator knob is 0); see
+    should_start_retention_sweep_with_zdr for the DB-aware variant that also accounts
+    for that case.
+
+    getattr(..., 0) on the two newer knobs (retention_request_logs_days,
+    retention_tenant_window_ceiling_days) keeps this backward-compatible with any
+    pre-existing minimal settings-like object that predates those fields.
     """
     if settings.retention_check_interval_seconds <= 0:
         return False
@@ -90,7 +119,54 @@ def should_start_retention_sweep(settings: _Settings) -> bool:
         settings.retention_usage_records_days > 0
         or settings.retention_alert_events_days > 0
         or settings.retention_audit_events_days > 0
+        or getattr(settings, "retention_request_logs_days", 0) > 0
+        or getattr(settings, "retention_tenant_window_ceiling_days", 0) > 0
     )
+
+
+async def should_start_retention_sweep_with_zdr(
+    settings: _Settings,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> bool:
+    """DB-aware superset of should_start_retention_sweep.
+
+    should_start_retention_sweep is a pure-settings guard: it cannot see that some
+    tenant currently has zdr_enabled=true, so a deployment with every operator-level
+    window knob left at 0 (retention entirely opted-out at the operator level) would
+    never start the sweeper at all — even though a ZDR tenant's unconditional purge
+    pass (_sweep_zdr_purge_pass) is supposed to self-heal every tick regardless of any
+    window knob. This wraps the settings-only gate with one extra check: also start
+    when at least one tenant has zdr_enabled=true.
+
+    session_factory is optional — None honest-degrades to the settings-only answer
+    (never raises; a caller that cannot supply a session_factory still gets the
+    pre-existing behavior). A DB error during the extra check is logged and swallowed,
+    falling back to the settings-only answer (fail-open on STARTING an already fail-
+    open, idempotent background sweep — never fail-closed on a broken DB check here,
+    since should_start_retention_sweep(settings) already covers the primary case).
+    """
+    if settings.retention_check_interval_seconds <= 0:
+        return False
+    if should_start_retention_sweep(settings):
+        return True
+    if session_factory is None:
+        return False
+    try:
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    text("SELECT 1 FROM tenants WHERE zdr_enabled = true LIMIT 1")
+                )
+            ).first()
+        return row is not None
+    except Exception as exc:
+        _log.warning(
+            "retention_sweep: should_start_retention_sweep_with_zdr DB check failed"
+            " (swallowed, falling back to settings-only answer): %s",
+            exc,
+            exc_info=exc,
+        )
+        return False
 
 
 def _naive_utc_cutoff(days: int) -> datetime.datetime:
@@ -170,9 +246,12 @@ _DELETE_AUDIT_BATCH = text(
 
 # Pass 1 (per-tenant window-cutoff, 4 of the 5 new payload tables — artifacts is
 # special-cased below because an s3-backed row needs an ObjectStore.delete() call
-# before its DB row is safe to drop). Only tenants with an explicit override are
-# touched; every other tenant is untouched by these queries (WHERE tn.retention_
-# window_days IS NOT NULL).
+# before its DB row is safe to drop). EVERY tenant is touched: the cutoff is
+# COALESCE(tn.retention_window_days, :operator_ceiling_days) — a tenant with no
+# override (column IS NULL) falls back to the operator-wide ceiling, matching
+# tenants/application/retention_policy.py effective_window_days() exactly (CRIT fix:
+# the old `WHERE tn.retention_window_days IS NOT NULL` guard meant a default-posture
+# tenant was NEVER purged even though the API reported a finite effective window).
 
 _DELETE_CONVERSATIONS_WINDOW = text(
     """
@@ -180,8 +259,9 @@ _DELETE_CONVERSATIONS_WINDOW = text(
      WHERE id IN (
            SELECT c.id FROM conversations c
            JOIN tenants tn ON tn.id = c.tenant_id
-            WHERE tn.retention_window_days IS NOT NULL
-              AND c.updated_at < now() - (tn.retention_window_days * interval '1 day')
+            WHERE c.updated_at < now() - (
+                  COALESCE(tn.retention_window_days, :operator_ceiling_days) * interval '1 day'
+                  )
             LIMIT :batch
      )
     """
@@ -193,8 +273,9 @@ _DELETE_MEMORIES_WINDOW = text(
      WHERE id IN (
            SELECT m.id FROM memories m
            JOIN tenants tn ON tn.id = m.tenant_id
-            WHERE tn.retention_window_days IS NOT NULL
-              AND m.created_at < now() - (tn.retention_window_days * interval '1 day')
+            WHERE m.created_at < now() - (
+                  COALESCE(tn.retention_window_days, :operator_ceiling_days) * interval '1 day'
+                  )
             LIMIT :batch
      )
     """
@@ -206,8 +287,9 @@ _DELETE_BATCH_ITEMS_WINDOW = text(
      WHERE id IN (
            SELECT i.id FROM batch_job_items i
            JOIN tenants tn ON tn.id = i.tenant_id
-            WHERE tn.retention_window_days IS NOT NULL
-              AND i.created_at < now() - (tn.retention_window_days * interval '1 day')
+            WHERE i.created_at < now() - (
+                  COALESCE(tn.retention_window_days, :operator_ceiling_days) * interval '1 day'
+                  )
             LIMIT :batch
      )
     """
@@ -219,8 +301,9 @@ _DELETE_VIDEO_JOBS_WINDOW = text(
      WHERE id IN (
            SELECT v.id FROM video_generation_jobs v
            JOIN tenants tn ON tn.id = v.tenant_id
-            WHERE tn.retention_window_days IS NOT NULL
-              AND v.created_at < now() - (tn.retention_window_days * interval '1 day')
+            WHERE v.created_at < now() - (
+                  COALESCE(tn.retention_window_days, :operator_ceiling_days) * interval '1 day'
+                  )
             LIMIT :batch
      )
     """
@@ -232,8 +315,9 @@ _SELECT_ARTIFACTS_WINDOW = text(
     """
     SELECT a.id, a.object_key, a.storage_backend FROM artifacts a
     JOIN tenants tn ON tn.id = a.tenant_id
-     WHERE tn.retention_window_days IS NOT NULL
-       AND a.created_at < now() - (tn.retention_window_days * interval '1 day')
+     WHERE a.created_at < now() - (
+           COALESCE(tn.retention_window_days, :operator_ceiling_days) * interval '1 day'
+           )
      LIMIT :batch
     """
 )
@@ -313,6 +397,15 @@ _DELETE_VIDEO_JOBS_ZDR_TENANT = text(
     " (SELECT id FROM video_generation_jobs WHERE tenant_id = :tid LIMIT :batch)"
 )
 
+# request_logs (payload-capture-store) — a ZDR tenant's captured raw request/response
+# PII payloads must be purged unconditionally alongside the 5 original payload tables,
+# not merely subject to the separate operator-level retention_request_logs_days window
+# (MED fix: the ZDR purge pass previously omitted this table entirely).
+_DELETE_REQUEST_LOGS_ZDR_TENANT = text(
+    "DELETE FROM request_logs WHERE id IN"
+    " (SELECT id FROM request_logs WHERE tenant_id = :tid LIMIT :batch)"
+)
+
 
 # ---------------------------------------------------------------------------
 # compliance-report-center TASK.md §3 M21 — ADDITIVE SQL (sweeps compliance_report_runs
@@ -324,8 +417,9 @@ _SELECT_COMPLIANCE_REPORTS_WINDOW = text(
     """
     SELECT c.id, c.object_key FROM compliance_report_runs c
     JOIN tenants tn ON tn.id = c.tenant_id
-     WHERE tn.retention_window_days IS NOT NULL
-       AND c.generated_at < now() - (tn.retention_window_days * interval '1 day')
+     WHERE c.generated_at < now() - (
+           COALESCE(tn.retention_window_days, :operator_ceiling_days) * interval '1 day'
+           )
      LIMIT :batch
     """
 )
@@ -713,32 +807,44 @@ class RetentionSweeper:
         return total
 
     async def _sweep_new_payload_window_pass(self, batch_size: int) -> dict[str, int]:
-        """Per-tenant window-cutoff pass over the 5 newly-swept payload tables.
+        """Per-tenant window-cutoff pass over the 5 newly-swept payload tables + the
+        compliance_report_runs table.
 
-        Only tenants with tenants.retention_window_days IS NOT NULL are ever touched by
-        this pass — every other tenant's rows are untouched (the queries themselves carry
-        the WHERE tn.retention_window_days IS NOT NULL guard).
+        EVERY tenant is touched: the cutoff is COALESCE(tenants.retention_window_days,
+        retention_tenant_window_ceiling_days) — a tenant with no override (column IS
+        NULL) is swept at the operator ceiling (CRIT fix — see module docstring §1 and
+        _Settings.retention_tenant_window_ceiling_days).
+
+        Read directly off self._settings (NOT getattr(..., 0)): this field is a
+        required member of the _Settings Protocol above and every real Settings
+        instance always carries it (config.py default=365) — a getattr-with-0
+        fallback would be a silent mass-immediate-purge footgun if the attribute were
+        EVER absent (a NULL tenant's cutoff would become "now", i.e. immediately
+        eligible for every default-posture tenant on every tick, with no error and no
+        log). Fail loud (AttributeError) instead of fail-silent-and-destructive.
         """
+        operator_ceiling_days = self._settings.retention_tenant_window_ceiling_days
+        ceiling_params = {"operator_ceiling_days": operator_ceiling_days}
         results: dict[str, int] = {}
         results["artifacts"] = await self._purge_artifacts_batch(
-            _SELECT_ARTIFACTS_WINDOW, batch_size
+            _SELECT_ARTIFACTS_WINDOW, batch_size, extra_params=ceiling_params
         )
         results["conversations"] = await self._delete_batched_extra(
-            "conversations", _DELETE_CONVERSATIONS_WINDOW, {}, batch_size
+            "conversations", _DELETE_CONVERSATIONS_WINDOW, ceiling_params, batch_size
         )
         results["memories"] = await self._delete_batched_extra(
-            "memories", _DELETE_MEMORIES_WINDOW, {}, batch_size
+            "memories", _DELETE_MEMORIES_WINDOW, ceiling_params, batch_size
         )
         results["batch_job_items"] = await self._delete_batched_extra(
-            "batch_job_items", _DELETE_BATCH_ITEMS_WINDOW, {}, batch_size
+            "batch_job_items", _DELETE_BATCH_ITEMS_WINDOW, ceiling_params, batch_size
         )
         results["video_generation_jobs"] = await self._delete_batched_extra(
-            "video_generation_jobs", _DELETE_VIDEO_JOBS_WINDOW, {}, batch_size
+            "video_generation_jobs", _DELETE_VIDEO_JOBS_WINDOW, ceiling_params, batch_size
         )
         # compliance-report-center TASK.md §3 M21 — additive, same tenant-window-
         # cutoff discipline as artifacts above.
         results["compliance_report_runs"] = await self._purge_compliance_reports_batch(
-            _SELECT_COMPLIANCE_REPORTS_WINDOW, batch_size
+            _SELECT_COMPLIANCE_REPORTS_WINDOW, batch_size, extra_params=ceiling_params
         )
         return results
 
@@ -841,6 +947,15 @@ class RetentionSweeper:
                 "video_generation_jobs",
                 await self._delete_batched_extra(
                     "video_generation_jobs", _DELETE_VIDEO_JOBS_ZDR_TENANT, tid_params, batch_size
+                ),
+            )
+            # payload-capture-store — MED fix: request_logs must be purged unconditionally
+            # alongside the 5 original payload tables for a ZDR tenant (previously omitted).
+            _fire_audit(
+                tenant_id,
+                "request_logs",
+                await self._delete_batched_extra(
+                    "request_logs", _DELETE_REQUEST_LOGS_ZDR_TENANT, tid_params, batch_size
                 ),
             )
             # compliance-report-center TASK.md §3 M21 — additive, same unconditional

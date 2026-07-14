@@ -17,20 +17,43 @@ CONTRACT:
          the bundle IN-PROCESS from the SAME 3 repositories the frozen
          GET /admin/compliance/art12-bundle route reads (AuditRepository,
          LogsRepository, UsageRepository) — NEVER an HTTP self-call.
-      3. ObjectStore.put() BEFORE the DB insert (mirrors artifacts' create() ordering:
-         object first, then row — a failed put never leaves a dangling row). An
-         ObjectStoreUnavailableError (or an unconfigured store) is a FAIL-OPEN,
-         PER-TENANT skip: logged and swallowed, the schedule row is left COMPLETELY
-         UNCHANGED (last_run_status is NOT set to 'success', next_run_at does NOT
-         advance) so the very next tick retries the SAME due period (R13,
-         self-healing — never a silent partial write).
-      4. INSERT compliance_report_runs, ON CONFLICT (tenant_id, period_start) DO
-         NOTHING (M16, mirrors InvoiceGenerator's own idempotent-insert idiom
-         verbatim) — a restart-during-tick, an overlapping tick, or a re-run never
-         double-inserts (R14).
-      5. UPDATE tenant_report_schedules SET last_run_at/last_run_status='success'/
-         next_run_at.
-      6. fire-and-forget SYSTEM-scoped record_audit (M20) — tenant_id=None,
+      3. is_zdr(tenant_id) RECHECKED on a fresh session (cheap early-exit only, NOT
+         load-bearing by itself — see step 4): bundle assembly is a couple of DB
+         round-trips: a tenant that flipped during that window skips here, before
+         ever touching the object store.
+      4. audit-remediation v2 (closes CRIT#2-adjacent HOLE 1 + HOLE 2 found in
+         adversarial re-verification of the original M17 v2 CR — see TASK.md
+         remediation notes): the ZDR decision, the compliance_report_runs INSERT,
+         and the ObjectStore.put() are made ATOMIC in ONE DB transaction, gated by
+         `SELECT tenants.zdr_enabled ... FOR UPDATE` (_is_zdr_locked) taken at the
+         START of that transaction:
+           - ZDR true  -> skip immediately. NO ObjectStore.put() is EVER attempted
+             for this tenant — there is structurally nothing to orphan (this is
+             what actually closes HOLE 1: the prior design's failure mode was a
+             best-effort cleanup-DELETE of an ALREADY-WRITTEN object failing and
+             being swallowed, silently orphaning it forever since every reclaim path
+             in RetentionSweeper is row-driven and no row was ever written for that
+             object_key; the new design never reaches PUT for a ZDR tenant in the
+             first place, so that failure mode cannot occur).
+           - ZDR false -> INSERT (uncommitted, ON CONFLICT (tenant_id, period_start)
+             DO NOTHING, M16/R14) -> PUT the object (ONLY when the INSERT actually
+             inserted a fresh row — a conflicting/duplicate tick has nothing to
+             reference a new object with, so the PUT is skipped rather than writing
+             an unreferenced object) -> UPDATE tenant_report_schedules SET
+             last_run_status='success' -> COMMIT.
+             A PUT failure (ObjectStoreUnavailableError) propagates out of the open
+             transaction, rolling EVERYTHING in it back — no row, no object — and is
+             caught one level up: last_run_status is left COMPLETELY UNCHANGED (R13,
+             self-healing retry-next-tick, unchanged from the pre-remediation
+             contract).
+         The FOR UPDATE row lock is held for the transaction's whole lifetime, so a
+         CONCURRENT PUT /admin/retention-policy {zdr_enabled: true} for the SAME
+         tenant blocks on ordinary Postgres row-lock contention until this
+         transaction resolves — it can never land strictly BETWEEN the ZDR decision
+         and the INSERT (this is what closes HOLE 2: the prior design's recheck and
+         INSERT ran in SEPARATE, non-atomic transactions/sessions with no lock held
+         across the gap between them).
+      5. fire-and-forget SYSTEM-scoped record_audit (M20) — tenant_id=None,
          actor=None, the real tenant named in metadata (mirrors
          RetentionSweeper._emit_zdr_purge_audit's exact resolution of the
          audit_missing_actor invariant — a background job has no human actor).
@@ -45,10 +68,13 @@ CONTRACT:
     InvoiceGenerator verbatim).
   - should_start_report_schedule_generator(settings) -> bool: interval > 0.
 
-SAFETY (the load-bearing security rule, M17): the ZDR check happens BEFORE anything
-else in the per-tenant block — before any repository read, before any bytes are
-assembled, before any object-store call. A ZDR tenant's bundle is NEVER assembled,
-NEVER touches the object store, NEVER gets a DB row — skip, never degrade-and-persist.
+SAFETY (the load-bearing security rule, M17 + audit-remediation v2): the ZDR check
+happens BEFORE anything else in the per-tenant block — before any repository read,
+before any bytes are assembled. The FINAL, load-bearing ZDR check (step 4 above) is
+made ATOMIC with the object-store PUT and the DB INSERT via a single transaction and
+a `SELECT ... FOR UPDATE` row lock — a ZDR tenant's bundle is NEVER assembled into a
+persisted object, NEVER gets a DB row — skip, never degrade-and-persist, and never a
+window where the decision and the write can be observed to disagree.
 """
 
 from __future__ import annotations
@@ -197,6 +223,36 @@ async def _is_logs_explorer_entitled(session: AsyncSession, tenant_id: uuid.UUID
     except ProblemError:
         return False
     return True
+
+
+async def _is_zdr_locked(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    """LOCK-TAKING read of tenants.zdr_enabled: SELECT ... FOR UPDATE, scoped to the
+    CALLER's own already-open transaction (the caller must be inside
+    `async with session.begin()` — this does not open one itself).
+
+    Deliberately NOT the shared `is_zdr` port (tenants/application/retention_policy.py)
+    — that function's contract is FROZEN v1 and is the read every gated write choke
+    point uses (ArtifactRepository.create, ConversationRepository.create/
+    append_message, MemoryRepository.create, BatchJobRepository.create,
+    VideoJobRepository.create): adding FOR UPDATE there would take a row lock on every
+    one of those unrelated writes too, serializing them per-tenant for no reason. This
+    is a LOCAL, load-bearing helper used ONLY by ReportScheduleGenerator to make the
+    ZDR decision and the compliance_report_runs INSERT atomic (audit-remediation v2 —
+    module docstring step 4): the row lock is held until the caller's transaction
+    commits or rolls back, so a concurrent zdr_enabled flip for the SAME tenant blocks
+    on ordinary Postgres row-lock contention until this transaction resolves — it can
+    never land strictly between this read and the INSERT it gates.
+
+    Fail-open on an unknown tenant_id (mirrors is_zdr's own documented behavior) — the
+    actual authorization decision for an unknown tenant is made elsewhere.
+    """
+    row = (
+        await session.execute(
+            text("SELECT zdr_enabled FROM tenants WHERE id = :tid FOR UPDATE"),
+            {"tid": str(tenant_id)},
+        )
+    ).first()
+    return bool(row[0]) if row is not None else False
 
 
 def _audit_item(event: AuditEvent) -> dict[str, Any]:
@@ -458,12 +514,11 @@ class ReportScheduleGenerator:
         report_id = uuid7()
         object_key = f"compliance-reports/{tenant_id}/{report_id}.json"
 
-        # M17 v2 (CR — close ZDR TOCTOU): the up-front check above and the persistence
-        # below are separated by bundle assembly (two DB round-trips) and are about to do
-        # a network object PUT. A tenant that flips zdr_enabled=true in that window would
-        # otherwise get a bundle persisted (object + row). Re-read is_zdr on a FRESH
-        # session immediately before the FIRST persistence and skip fail-closed if it
-        # flipped — nothing is written (no object, no row), self-heals next tick.
+        # Cheap early-exit (step 3, NOT load-bearing by itself — the atomic block
+        # below is what actually guarantees correctness): the up-front check and this
+        # point are separated by bundle assembly (a couple of DB round-trips). A
+        # tenant that flipped zdr_enabled=true in that window skips here, before ever
+        # touching the object store — an optimization, not a security boundary.
         async with self._session_factory() as recheck_session:
             if await is_zdr(recheck_session, tenant_id):
                 return await self._record_zdr_skip(tenant_id, day_of_month, now)
@@ -475,47 +530,80 @@ class ReportScheduleGenerator:
                 tenant_id,
             )
             return "deferred"
+
+        # audit-remediation v2 (module docstring step 4 — closes HOLE 1 + HOLE 2): the
+        # ZDR decision (_is_zdr_locked, SELECT ... FOR UPDATE), the compliance_report_
+        # runs INSERT, and the ObjectStore.put() are ATOMIC in one transaction.
+        #   - ZDR true  -> skip_zdr=True, NO put() is ever attempted — nothing to
+        #     orphan, by construction (closes HOLE 1: the old code's failure mode was
+        #     a cleanup-DELETE of an ALREADY-WRITTEN object failing and being
+        #     swallowed with no DB row ever pointing at it for the sweep to reclaim).
+        #   - ZDR false -> INSERT (ON CONFLICT DO NOTHING) -> put() ONLY when the
+        #     INSERT actually inserted a fresh row (a conflicting/duplicate tick has
+        #     no fresh row to reference a new object with) -> advance the schedule ->
+        #     implicit COMMIT at the end of this block.
+        # A put() failure (ObjectStoreUnavailableError) propagates out of the
+        # `session.begin()` block, rolling the WHOLE transaction back (INSERT
+        # included) — "no row, no object" — and is caught below: 'deferred', schedule
+        # row left completely unchanged (R13, retried next tick).
+        # The FOR UPDATE lock is held for the transaction's lifetime, so a concurrent
+        # zdr_enabled flip for this tenant blocks on ordinary Postgres row-lock
+        # contention until this transaction resolves — it cannot land strictly
+        # between the decision and the INSERT (closes HOLE 2: the old recheck and
+        # INSERT ran in separate, non-atomic sessions with no lock held across them).
+        skip_zdr = False
+        inserted_id: uuid.UUID | None = None
         try:
-            await self._object_store.put(object_key, payload, "application/json")
+            async with self._session_factory() as session, session.begin():
+                skip_zdr = await _is_zdr_locked(session, tenant_id)
+                if not skip_zdr:
+                    insert_stmt = (
+                        pg_insert(ComplianceReportRunRow)
+                        .values(
+                            id=report_id,
+                            tenant_id=tenant_id,
+                            period_start=period_start,
+                            period_end=period_end,
+                            generated_at=_as_naive_utc(now),
+                            object_key=object_key,
+                            size_bytes=len(payload),
+                            format_version=_FORMAT_VERSION,
+                            source="scheduled",
+                        )
+                        .on_conflict_do_nothing(index_elements=["tenant_id", "period_start"])
+                        .returning(ComplianceReportRunRow.id)
+                    )
+                    result = await session.execute(insert_stmt)
+                    inserted_id = result.scalar_one_or_none()
+
+                    if inserted_id is not None:
+                        # Inside the still-open, uncommitted transaction: a raise
+                        # here propagates out of this `async with` block and rolls
+                        # the INSERT back too — never "object without row".
+                        await self._object_store.put(object_key, payload, "application/json")
+
+                    next_run = compute_next_run_at(day_of_month, now=now)
+                    await session.execute(
+                        text(
+                            "UPDATE tenant_report_schedules"
+                            " SET last_run_at = :now, last_run_status = 'success',"
+                            "     next_run_at = :next_run"
+                            " WHERE tenant_id = :tid"
+                        ),
+                        {"now": _as_naive_utc(now), "next_run": next_run, "tid": tenant_id},
+                    )
         except ObjectStoreUnavailableError as exc:
             _log.warning(
                 "report_schedule_generator: object store put failed for tenant=%s"
-                " (deferred to next tick): %s",
+                " (transaction rolled back — no row, no object; deferred to next"
+                " tick): %s",
                 tenant_id,
                 exc,
             )
             return "deferred"
 
-        async with self._session_factory() as session, session.begin():
-            insert_stmt = (
-                pg_insert(ComplianceReportRunRow)
-                .values(
-                    id=report_id,
-                    tenant_id=tenant_id,
-                    period_start=period_start,
-                    period_end=period_end,
-                    generated_at=_as_naive_utc(now),
-                    object_key=object_key,
-                    size_bytes=len(payload),
-                    format_version=_FORMAT_VERSION,
-                    source="scheduled",
-                )
-                .on_conflict_do_nothing(index_elements=["tenant_id", "period_start"])
-                .returning(ComplianceReportRunRow.id)
-            )
-            result = await session.execute(insert_stmt)
-            inserted_id = result.scalar_one_or_none()
-
-            next_run = compute_next_run_at(day_of_month, now=now)
-            await session.execute(
-                text(
-                    "UPDATE tenant_report_schedules"
-                    " SET last_run_at = :now, last_run_status = 'success',"
-                    "     next_run_at = :next_run"
-                    " WHERE tenant_id = :tid"
-                ),
-                {"now": _as_naive_utc(now), "next_run": next_run, "tid": tenant_id},
-            )
+        if skip_zdr:
+            return await self._record_zdr_skip(tenant_id, day_of_month, now)
 
         effective_report_id = inserted_id if inserted_id is not None else report_id
         asyncio.ensure_future(  # noqa: RUF006

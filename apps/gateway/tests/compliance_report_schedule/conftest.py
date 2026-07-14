@@ -256,8 +256,10 @@ class FakeObjectStore:
         self.deleted: list[str] = []
         self.fail_keys: set[str] = set()
         self.put_fail: bool = False
+        self.put_calls: list[str] = []
 
     async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.put_calls.append(key)
         if self.put_fail:
             raise ObjectStoreUnavailableError("simulated put outage")
         self.store[key] = data

@@ -73,6 +73,7 @@ class FakeObjectStore:
         self.fail_put = False
         self.fail_get = False
         self.missing_get = False
+        self.fail_delete = False
         self.put_calls: list[str] = []
         self.get_calls: list[str] = []
         self.delete_calls: list[str] = []
@@ -93,6 +94,8 @@ class FakeObjectStore:
 
     async def delete(self, key: str) -> None:
         self.delete_calls.append(key)
+        if self.fail_delete:
+            raise ObjectStoreUnavailableError("injected delete failure")
         self.objects.pop(key, None)
 
     async def health(self) -> bool:
@@ -253,9 +256,14 @@ class TestS3Persistence:
         dl = await client.get(f"/v1/artifacts/{artifact_id}", headers=_bearer(api_key_info["key"]))
         assert dl.status_code == 503  # honest: exists but unreachable — NOT a 404
 
-    async def test_delete_soft_only_leaves_object(
+    async def test_delete_purges_object_at_router_layer(
         self, client: Any, app: Any, fake_store: FakeObjectStore, api_key_info: dict[str, str]
     ) -> None:
+        """audit-remediation: DELETE /v1/artifacts/{id} now PURGES the s3 object at the
+        router layer. `_get_repo` injects the request's ObjectStore into
+        ArtifactRepository, so soft_delete() sets deleted_at, clears inline BYTEA, AND
+        calls ObjectStore.delete(object_key). (Was `test_delete_soft_only_leaves_object`,
+        which documented the pre-fix wiring gap where the object was left behind.)"""
         resp = await _upload(
             client, api_key_info["key"], name="d.bin", ct="application/octet-stream", data=b"d"
         )
@@ -265,12 +273,130 @@ class TestS3Persistence:
             f"/v1/artifacts/{artifact_id}", headers=_bearer(api_key_info["key"])
         )
         assert dele.status_code == 204
-        assert fake_store.delete_calls == []  # soft-only: object left for the sweep
+        # the object's bytes are now purged from the store, not left dangling
+        assert len(fake_store.delete_calls) == 1
 
         row = await _get_row(app, artifact_id)
         assert row is not None and row.deleted_at is not None
         dl = await client.get(f"/v1/artifacts/{artifact_id}", headers=_bearer(api_key_info["key"]))
         assert dl.status_code == 404  # soft-deleted
+
+
+class TestSoftDeletePurgesBytes:
+    """MED remediation, repository layer: ArtifactRepository.soft_delete() must best-
+    effort purge the underlying bytes (s3 object + inline BYTEA), not merely flip
+    deleted_at. Exercised directly against the repository (bypassing the router, whose
+    own object_store wiring is a separate, out-of-scope follow-up — see the docstring
+    on test_delete_soft_only_leaves_object above)."""
+
+    async def test_soft_delete_purges_s3_object_and_clears_inline_content(
+        self, app: Any, db_session: Any, api_key_info: dict[str, str]
+    ) -> None:
+        from gateway.artifacts.infrastructure.repository import ArtifactRepository
+
+        store = FakeObjectStore()
+        object_key = f"artifacts/{api_key_info['tenant_id']}/purge-me"
+        await store.put(object_key, b"secret-bytes", "application/octet-stream")
+
+        repo = ArtifactRepository(db_session, object_store=store)
+        row = await repo.create(
+            id=uuid.uuid4(),
+            tenant_id=uuid.UUID(api_key_info["tenant_id"]),
+            key_id=uuid.UUID(api_key_info["key_id"]),
+            name="s3.bin",
+            content_type="application/octet-stream",
+            size_bytes=12,
+            storage_backend="s3",
+            object_key=object_key,
+            content=None,
+        )
+        await db_session.commit()
+
+        deleted = await repo.soft_delete(
+            tenant_id=uuid.UUID(api_key_info["tenant_id"]), artifact_id=row.id
+        )
+        await db_session.commit()
+
+        assert deleted is True
+        assert object_key in store.delete_calls, (
+            "soft_delete must call ObjectStore.delete() for an s3-backed artifact"
+        )
+        assert object_key not in store.objects, "the object bytes must actually be gone"
+
+        persisted = await _get_row(app, str(row.id))
+        assert persisted is not None
+        assert persisted.deleted_at is not None
+
+    async def test_soft_delete_clears_inline_content_bytes(
+        self, app: Any, db_session: Any, api_key_info: dict[str, str]
+    ) -> None:
+        from gateway.artifacts.infrastructure.repository import ArtifactRepository
+
+        repo = ArtifactRepository(db_session)  # no object_store — inline path only
+        row = await repo.create(
+            id=uuid.uuid4(),
+            tenant_id=uuid.UUID(api_key_info["tenant_id"]),
+            key_id=uuid.UUID(api_key_info["key_id"]),
+            name="inline.bin",
+            content_type="application/octet-stream",
+            size_bytes=5,
+            storage_backend="inline",
+            object_key=None,
+            content=b"abcde",
+        )
+        await db_session.commit()
+
+        deleted = await repo.soft_delete(
+            tenant_id=uuid.UUID(api_key_info["tenant_id"]), artifact_id=row.id
+        )
+        await db_session.commit()
+        assert deleted is True
+
+        persisted = await _get_row(app, str(row.id))
+        assert persisted is not None
+        assert persisted.deleted_at is not None
+        assert persisted.content is None, (
+            "the inline BYTEA content must be cleared on soft_delete, not merely"
+            " hidden behind deleted_at"
+        )
+
+    async def test_soft_delete_object_store_failure_still_soft_deletes(
+        self, app: Any, db_session: Any, api_key_info: dict[str, str]
+    ) -> None:
+        """Design for failure: an ObjectStoreUnavailableError during the best-effort
+        purge must NEVER block or roll back the DB soft-delete."""
+        from gateway.artifacts.infrastructure.repository import ArtifactRepository
+
+        store = FakeObjectStore()
+        object_key = f"artifacts/{api_key_info['tenant_id']}/unreachable"
+        await store.put(object_key, b"x", "application/octet-stream")
+        store.fail_delete = True
+
+        repo = ArtifactRepository(db_session, object_store=store)
+        row = await repo.create(
+            id=uuid.uuid4(),
+            tenant_id=uuid.UUID(api_key_info["tenant_id"]),
+            key_id=uuid.UUID(api_key_info["key_id"]),
+            name="s3.bin",
+            content_type="application/octet-stream",
+            size_bytes=1,
+            storage_backend="s3",
+            object_key=object_key,
+            content=None,
+        )
+        await db_session.commit()
+
+        deleted = await repo.soft_delete(
+            tenant_id=uuid.UUID(api_key_info["tenant_id"]), artifact_id=row.id
+        )
+        await db_session.commit()
+
+        assert deleted is True, (
+            "the DB soft-delete must still succeed even though the object-store"
+            " delete failed"
+        )
+        persisted = await _get_row(app, str(row.id))
+        assert persisted is not None and persisted.deleted_at is not None
 
     async def test_cross_tenant_download_404_no_store_call(
         self,
