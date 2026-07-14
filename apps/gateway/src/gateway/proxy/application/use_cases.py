@@ -858,6 +858,211 @@ def _capture_response_body(collected: list[bytes]) -> dict[str, Any] | None:
     return {"content": content} if content is not None else None
 
 
+def _extract_content_by_choice(chunks: list[bytes]) -> dict[int, str]:
+    """Assemble assistant text PER CHOICE INDEX from a completed SSE byte stream.
+
+    Mirrors extract_content_from_sse's frame-parsing (`data: {...}` frames,
+    `delta.content` / `message.content`) but keeps EACH choice's fragments
+    separate, keyed by its `index` field (default 0 when absent — the
+    single-choice case every provider adapter this gateway wraps uses).
+
+    streaming-output-pii-mask (A3, HOLE 1 fix): needed because evaluate_post /
+    _mask_pii_in_body masks each choice's content INDEPENDENTLY (complete()'s
+    contract) — merging every choice into one string (as extract_content_from_sse
+    does, by design, for capture/billing where choice identity doesn't matter)
+    would corrupt an n>1 response: choice 0's masked text would be a blend of
+    every choice's content and every other choice would render empty.
+
+    Pure, total, never raises (malformed lines are skipped, matching
+    extract_content_from_sse's tolerance).
+    """
+    text_stream = b"".join(chunks).decode("utf-8", errors="replace")
+    by_choice: dict[int, list[str]] = {}
+    for line in text_stream.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("data:"):
+            continue
+        payload = stripped[len("data:") :].strip()
+        if payload in ("[DONE]", ""):
+            continue
+        try:
+            parsed = json.loads(payload)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        choices = parsed.get("choices")
+        if not isinstance(choices, list):
+            continue
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            idx_raw = choice.get("index", 0)
+            idx = idx_raw if isinstance(idx_raw, int) else 0
+            content: Any = None
+            delta = choice.get("delta")
+            if isinstance(delta, dict):
+                c = delta.get("content")
+                if isinstance(c, str) and c:
+                    content = c
+            if content is None:
+                message = choice.get("message")
+                if isinstance(message, dict):
+                    c = message.get("content")
+                    if isinstance(c, str) and c:
+                        content = c
+            if content is not None:
+                by_choice.setdefault(idx, []).append(content)
+    return {idx: "".join(parts) for idx, parts in by_choice.items()}
+
+
+def _rewrite_sse_content(chunks: list[bytes], new_content_by_choice: dict[int, str]) -> list[bytes]:
+    """Rewrite a completed SSE byte stream so EACH choice's assembled delta content
+    becomes its OWN entry in `new_content_by_choice`, WITHOUT disturbing any other
+    frame (ids, roles, finish_reason, the usage frame, [DONE]) — used by
+    streaming-output-pii-mask (HIGH remediation A3) to emit the evaluate_post-MASKED
+    text instead of the raw upstream text.
+
+    Post-call masking (regex substitution over each choice's assembled string) can
+    change a choice's text length and can span that choice's original per-chunk
+    delta boundaries (a provider may split a PII match, e.g. an email, across two
+    chunks) — so this does NOT try to preserve the original per-chunk split. Instead,
+    for each choice INDEX independently, the FIRST content-bearing field found for
+    that index gets the FULL new content for that index, every subsequent
+    content-bearing field for the SAME index is blanked to "" — tracked via a
+    PER-INDEX `assigned` map (HOLE 1 fix: previously a single call-wide flag, which
+    corrupted n>1 responses by merging every choice into choice 0's slot and blanking
+    every other choice to empty). The concatenation invariant
+    (`_extract_content_by_choice` sums all of a choice's own fragments) still holds
+    per choice for downstream consumers. Choice indices with no entry in
+    `new_content_by_choice` (e.g. a choice that carried no content at all) are left
+    byte-for-byte unchanged. Every non-content frame is untouched.
+
+    Total + pure: never raises. Falls back to returning `chunks` unchanged if the byte
+    stream can't be round-tripped (defensive — must never corrupt/drop the stream).
+    """
+    try:
+        text_stream = b"".join(chunks).decode("utf-8", errors="replace")
+        lines = text_stream.split("\n")
+        assigned: dict[int, bool] = {}
+        out_lines: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped.startswith("data:"):
+                out_lines.append(line)
+                continue
+            payload = stripped[len("data:") :].strip()
+            if payload in ("[DONE]", ""):
+                out_lines.append(line)
+                continue
+            parsed = json.loads(payload)
+            if not isinstance(parsed, dict):
+                out_lines.append(line)
+                continue
+            choices = parsed.get("choices")
+            if not isinstance(choices, list):
+                out_lines.append(line)
+                continue
+            frame_changed = False
+            for choice in choices:
+                if not isinstance(choice, dict):
+                    continue
+                idx_raw = choice.get("index", 0)
+                idx = idx_raw if isinstance(idx_raw, int) else 0
+                if idx not in new_content_by_choice:
+                    continue
+                for key in ("delta", "message"):
+                    holder = choice.get(key)
+                    if (
+                        isinstance(holder, dict)
+                        and isinstance(holder.get("content"), str)
+                        and holder["content"]
+                    ):
+                        holder["content"] = (
+                            new_content_by_choice[idx] if not assigned.get(idx) else ""
+                        )
+                        assigned[idx] = True
+                        frame_changed = True
+            out_lines.append("data: " + json.dumps(parsed) if frame_changed else line)
+        return [("\n".join(out_lines)).encode("utf-8")]
+    except Exception:
+        return chunks
+
+
+async def _apply_stream_post_mask(
+    collected: list[bytes],
+    guardrail_evaluator: Any,
+    guardrail_configs: dict[str, Any],
+) -> list[bytes]:
+    """Buffer-mask a completed streaming response before its bytes reach the client.
+
+    streaming-output-pii-mask (HIGH remediation A3): mirrors complete()'s Step 5.5
+    post-call evaluate_post call, but for the streaming path — the defect this closes
+    is that stream() never called evaluate_post at all, so a `pii_mask=mask` guardrail
+    that masked non-streaming output left `stream:true` responses completely raw.
+
+    Assembles each choice's text INDEPENDENTLY from the collected SSE frames
+    (_extract_content_by_choice — HOLE 1 fix: NOT the all-choices-merged
+    extract_content_from_sse, which would corrupt an n>1 response), builds ONE
+    synthetic {"choices": [...]} envelope with one entry per choice index (position
+    order = sorted index order), and runs it through evaluate_post EXACTLY ONCE — the
+    same _mask_pii_in_body contract complete() already relies on masks each choice
+    independently and preserves list order/length, so the returned choices are
+    zipped back to their original indices by position. Only choices whose masked
+    text actually differs trigger a rewrite (_rewrite_sse_content) — a per-choice
+    diff, not an all-or-nothing one.
+
+    Fail-OPEN, identically to every other evaluate_post call site in this module
+    (complete(), cache HIT branches): an evaluator exception, or a shape mismatch
+    (masked_choices length disagreeing with what was sent), is logged/treated as
+    fail-open and the ORIGINAL unmasked `collected` bytes are returned — post-call
+    masking is MASK/AUDIT only, never BLOCK, so a broken evaluator must never drop or
+    corrupt the stream. When there is no content, or masking made no change anywhere
+    (no PII found in any choice), the original bytes are returned untouched
+    (byte-identical passthrough).
+    """
+    original_by_choice = _extract_content_by_choice(collected)
+    if not original_by_choice:
+        return collected
+    ordered_indices = sorted(original_by_choice)
+    try:
+        masked_body = await guardrail_evaluator.evaluate_post(
+            {
+                "choices": [
+                    {"index": idx, "message": {"content": original_by_choice[idx]}}
+                    for idx in ordered_indices
+                ]
+            },
+            guardrail_configs,
+        )
+    except Exception as _exc:
+        _log.warning(
+            "guardrail evaluate_post raised in stream (fail-OPEN, streaming original bytes)",
+            exc_info=_exc,
+        )
+        return collected
+    masked_choices = masked_body.get("choices") if isinstance(masked_body, dict) else None
+    if not isinstance(masked_choices, list) or len(masked_choices) != len(ordered_indices):
+        # Defensive fail-OPEN: an evaluator that changes shape (drops/adds choices) is
+        # untrusted output — never guess a mapping, just stream the original text.
+        return collected
+    new_content_by_choice: dict[int, str] = {}
+    any_changed = False
+    for idx, masked_choice in zip(ordered_indices, masked_choices, strict=True):
+        original_text = original_by_choice[idx]
+        text = original_text
+        if isinstance(masked_choice, dict):
+            message = masked_choice.get("message")
+            if isinstance(message, dict) and isinstance(message.get("content"), str):
+                text = message["content"]
+        new_content_by_choice[idx] = text
+        if text != original_text:
+            any_changed = True
+    if not any_changed:
+        return collected
+    return _rewrite_sse_content(collected, new_content_by_choice)
+
+
 def _dispatch_capture(
     payload_capture: PayloadCapturePort | None,
     *,
@@ -3122,18 +3327,12 @@ class CompletionUseCase:
                         # masking fired (defect found by live v4 verification).
                         _stream_pii_masked = True
 
-                # §1 documented v4 limitation: stream BODIES are not post-call inspected.
-                # Emit the one-time audit-log event when pii_mask mode=mask is active.
-                pii_cfg = guardrail_configs.get("pii_mask")
-                if (
-                    isinstance(pii_cfg, dict)
-                    and pii_cfg.get("enabled")
-                    and pii_cfg.get("mode") == "mask"
-                ):
-                    _log.info(
-                        "streaming_pii_mask_skipped: post-call PII masking does not apply "
-                        "to stream bodies (guardrails-core v4 documented limitation)"
-                    )
+                # streaming-output-pii-mask (HIGH remediation A3): the v4 "stream bodies
+                # are not post-call inspected" limitation is CLOSED — _post_mask_active
+                # below gates a buffer-then-mask pass in _wrapped() so a configured
+                # pii_mask=mask guardrail (or any evaluate_post-capable evaluator) masks
+                # streamed output exactly like complete() already masks non-streaming
+                # output. No stale skip-log needed: the masking now actually happens.
 
             # first_chunk is the peeked pre-first-byte chunk from the resilient path (when
             # enabled) or from the rate-limit peek below; None on the old paths.
@@ -3305,6 +3504,16 @@ class CompletionUseCase:
             # payload-capture-store §3: captured before _wrapped() (mirrors the locals above).
             _capture_enabled = authz.payload_capture_enabled
             _payload_capture = self._payload_capture
+            # streaming-output-pii-mask (HIGH remediation A3): identical gate to
+            # complete()'s Step 5.5 (hasattr + guardrail_configs truthy) — when False,
+            # _wrapped() below yields chunks live exactly as before this fix (no
+            # buffering overhead added for the common no-guardrail case). When True,
+            # content is buffered and masked before any content bytes reach the client.
+            _post_mask_active = bool(
+                guardrail_evaluator is not None
+                and guardrail_configs
+                and hasattr(guardrail_evaluator, "evaluate_post")
+            )
 
             async def _wrapped() -> AsyncIterator[bytes]:
                 collected: list[bytes] = []
@@ -3336,7 +3545,12 @@ class CompletionUseCase:
                     # COMMITS the stream — yield it before draining the rest (no replay after).
                     if first_chunk is not None:
                         collected.append(first_chunk)
-                        yield first_chunk  # TTFB commit — UNPACED (never delay the first byte)
+                        # streaming-output-pii-mask (A3): when a post-call mask guardrail
+                        # is configured, TTFB is intentionally deferred — nothing is sent
+                        # until the full text can be assembled + masked (CORRECTNESS wins
+                        # over TTFB here). Byte-identical (still unpaced TTFB) otherwise.
+                        if not _post_mask_active:
+                            yield first_chunk  # TTFB commit — UNPACED (never delay the first byte)
                     async for chunk in gen:
                         # bandwidth-pacing (v36): meter each OUTBOUND chunk against the per-key
                         # bucket BEFORE yielding. estimate = max(1, len(chunk)//4) (chars/4; the
@@ -3401,6 +3615,15 @@ class CompletionUseCase:
                             # record fired — gate the disconnect handler so a drop during the
                             # two yields below cannot double-bill this request.
                             _bw_shed_handled = True
+                            # streaming-output-pii-mask (A3): masking mode withholds ALL
+                            # content bytes until now — flush the buffered (masked)
+                            # prefix before the truncation error frame so the client
+                            # still receives the (masked) content it was paying for.
+                            if _post_mask_active:
+                                for _flush_chunk in await _apply_stream_post_mask(
+                                    collected, guardrail_evaluator, guardrail_configs
+                                ):
+                                    yield _flush_chunk
                             yield _sse_error_frame(
                                 "ERR_BANDWIDTH_EXHAUSTED", "bandwidth limit exceeded"
                             )
@@ -3411,7 +3634,18 @@ class CompletionUseCase:
                         # estimate→real reconcile at close (bandwidth-usage-reconcile v36).
                         _bw_estimate_total += _bw_chunk_est
                         collected.append(chunk)
-                        yield chunk
+                        if not _post_mask_active:
+                            yield chunk
+                    # streaming-output-pii-mask (A3): the upstream generator drained
+                    # normally (no bandwidth-shed, no mid-stream upstream error) — mask
+                    # the fully-assembled content now and flush it in one shot. No-op
+                    # (returns `collected` unchanged) when masking is inactive, when
+                    # there's no content, or when evaluate_post found nothing to mask.
+                    if _post_mask_active:
+                        for _flush_chunk in await _apply_stream_post_mask(
+                            collected, guardrail_evaluator, guardrail_configs
+                        ):
+                            yield _flush_chunk
                 except (UpstreamUnavailableError, CircuitOpenError) as exc:
                     # Can't change status code mid-stream; record and stop
                     _fire_record(
@@ -3432,6 +3666,14 @@ class CompletionUseCase:
                         if isinstance(exc, UpstreamRateLimitedError)
                         else "ERR_UPSTREAM_UNAVAILABLE"
                     )
+                    # streaming-output-pii-mask (A3): same flush-before-error-frame
+                    # reasoning as the bandwidth-shed branch above — masking mode has
+                    # withheld all content bytes so far.
+                    if _post_mask_active:
+                        for _flush_chunk in await _apply_stream_post_mask(
+                            collected, guardrail_evaluator, guardrail_configs
+                        ):
+                            yield _flush_chunk
                     yield _sse_error_frame(_code, "upstream error")
                     if not (collected and b"[DONE]" in collected[-1]):
                         yield b"data: [DONE]\n\n"
@@ -3602,6 +3844,37 @@ class CompletionUseCase:
                             _recovery_task.add_done_callback(
                                 lambda t: t.exception() if not t.cancelled() else None
                             )
+                    raise
+                except Exception as _unexpected_exc:
+                    # streaming-output-pii-mask (A3, HOLE 2 fix): a catch-all for any
+                    # exception type OTHER than the two upstream error types explicitly
+                    # handled above (BandwidthExhaustedError is caught inline in the loop,
+                    # not here). `except Exception` never catches GeneratorExit /
+                    # CancelledError — those are BaseException subclasses already handled
+                    # by the clause above and must keep re-raising WITHOUT a flush attempt
+                    # (the client is already gone, nothing to flush TO).
+                    #
+                    # Before this fix: when _post_mask_active withheld content (buffering,
+                    # never yielding live), an unexpected adapter/provider exception type
+                    # propagated straight out of this generator with `collected` NEVER
+                    # flushed — a SILENT TOTAL LOSS of already-generated content the client
+                    # would have received live in the non-masking (pre-fix) path. Flush the
+                    # masked buffered prefix (best-effort — `contextlib.suppress` so a
+                    # SECONDARY failure during the flush itself can never mask the
+                    # ORIGINAL exception being re-raised) THEN re-raise unchanged. When
+                    # masking is inactive this is a no-op (nothing was withheld — content
+                    # was already yielded live as it arrived) — byte-identical to today
+                    # for the common no-guardrail case.
+                    if _post_mask_active:
+                        with contextlib.suppress(BaseException):
+                            for _flush_chunk in await _apply_stream_post_mask(
+                                collected, guardrail_evaluator, guardrail_configs
+                            ):
+                                yield _flush_chunk
+                    _log.warning(
+                        "stream_unexpected_exception_flushed_buffered_prefix",
+                        exc_info=_unexpected_exc,
+                    )
                     raise
                 finally:
                     # disconnect-billing-all-providers (v34): reset the partial-usage sink
