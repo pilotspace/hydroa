@@ -522,11 +522,12 @@ GET /app/agents   (new Next.js App Router page, apps/dashboard/app/(app)/app/age
 ```
 AgentsConsolePage.tsx     — orchestrator: PageHeader + controlled Tabs (Directory default /
                              Sessions / Policy); each tab owns its own query state.
-AgentIdentityCard.tsx     — the signature element (M2): principal, resolved owner, cap, spend
-                             (degraded per ⚠), last-seen, attached count, live/killed Badge,
-                             Kill (ConfirmDialog) + "Manage tokens" actions.
+AgentIdentityCard.tsx     — the signature element (M2): principal, resolved owner, cap,
+                             spend_usd_this_month (real, "0.00" floor), last-seen, attached count,
+                             live/killed Badge, Kill (ConfirmDialog) + "Manage tokens" actions.
 CreateAgentDialog.tsx     — name/owner/budget/rpm/tpm form -> POST /admin/agents (M3).
-ManageTokensDialog.tsx    — explicit-id attach/detach form (M5; no picker — Ground Issue 2).
+ManageTokensDialog.tsx    — token picker (M5): lists GET /admin/agents/{id}/tokens
+                             (AgentTokenInfo[], CR-B RESOLVED), each row attach/detach.
 McpSessionsFilterBar.tsx  — LogsFilterBar's fields + one exact server::tool field (M6).
 McpAllowListEditor.tsx    — {url,label} row list, add/remove/Save; mounted twice (tenant + key
                              scope) by McpPolicyPanel.tsx (M9).
@@ -542,14 +543,21 @@ No new primitive is added to `components/ui/` — `Tabs`, `Card`, `Badge`, `Dial
 ### Props / data-binding contract
 
 ```ts
-interface AgentPrincipal {   // GET /admin/agents item shape, per FROZEN agent-identity-governance §3 v1
+interface AgentPrincipal {   // GET /admin/agents item shape, per FROZEN agent-identity-governance §3 v2
   id: string; tenant_id: string; name: string; owner_user_id: string | null;
   monthly_budget_usd: string | null; rpm_limit: number | null; tpm_limit: number | null;
   created_at: string; last_seen_at: string | null; killed_at: string | null;
   attached_token_count: number;
-  // spent_usd_month: string | null   — NOT in the frozen shape today; consumed OPTIONALLY
-  //   (`spent_usd_month?: string | null`) so this UI degrades honestly if/until the CR (§1 ⚠)
-  //   lands, and upgrades for free (no UI code change) once it does.
+  spend_usd_this_month: string;   // CR-2 RESOLVED (Tin, freeze): agent-identity-governance §3 v2
+  //   ships this field — a 2-dp string read from the SAME
+  //   usage:spend:agent_principal:{id}:{YYYYMM} counter M4 enforces; NEVER null ("0.00" when the
+  //   counter hasn't been written yet, never fabricated). AgentIdentityCard renders it directly.
+}
+
+interface AgentTokenInfo {   // GET /admin/agents/{id}/tokens item, per FROZEN agent-identity-governance §3 v2
+  id: string; name: string;   // `name` maps to the token's OAuth scope (no free-text label column
+  //   on RFC-8628 mints) — a disclosed parent-task judgment call (verify residue), rendered as-is.
+  created_at: string; revoked_at: string | null; access_expires_at: string;
 }
 
 interface AgentIdentityCardProps {
@@ -567,7 +575,7 @@ interface CreateAgentDialogProps {
 
 interface ManageTokensDialogProps {
   open: boolean;
-  principalId: string | null;
+  principalId: string | null;   // GET /admin/agents/{principalId}/tokens -> AgentTokenInfo[] picker
   onClose: () => void;
 }
 
@@ -600,8 +608,9 @@ interface McpAllowListEditorProps {
 ### Consumes — FROZEN parent surfaces (cited exactly, not redesigned)
 
 ```
-GET/POST /admin/agents, POST .../tokens/{token_id}/attach, DELETE .../tokens/{token_id},
-POST .../kill                                   — agent-identity-governance §3, FROZEN @ v1
+GET/POST /admin/agents, GET /admin/agents/{id}/tokens,
+POST .../tokens/{token_id}/attach, DELETE .../tokens/{token_id},
+POST .../kill                                   — agent-identity-governance §3, FROZEN @ v2
 GET/PUT /admin/mcp-servers,
 GET/PUT/DELETE /admin/keys/{key_id}/mcp-servers  — mcp-connector-passthrough §3, FROZEN @ v2
 GET /admin/logs, GET /admin/logs/{id}            — logs-explorer-api (unchanged; reused verbatim)
@@ -609,22 +618,17 @@ GET /admin/users, GET /admin/keys                — existing (owner-name / key-
 (tool-call-metering §3 v1 contributes NO HTTP surface this page calls; it is cited only to
  justify the M8 "trace cost ≠ billed cost" disclosure)
 ```
+CR-A (spend field) and CR-B (token enumeration) are RESOLVED in agent-identity-governance §3 v2 —
+this page consumes `spend_usd_this_month` and `GET /admin/agents/{id}/tokens` directly (above),
+NOT the degrade paths the earlier draft carried.
 
 ### Consumes — gap / change-request candidates (NOT designed here; flagged for the parent tasks)
 
 ```
-CR-A (⚠, agent-identity-governance): GET /admin/agents response gains
-  spent_usd_month: string | null — an additive read of the SAME Redis counter
-  _check_agent_principal_budget already maintains (usage:spend:agent_principal:{id}:{YYYYMM}).
-  Until this lands, AgentIdentityCard renders "Spend: not available yet" — never a fabricated $0.
-
-CR-B (agent-identity-governance or agent_oauth): a token-enumeration read surface (e.g.
-  GET /admin/agents/{id}/tokens, or an id array on the existing list response) — until this
-  lands, ManageTokensDialog stays an explicit-paste-the-id form, not a picker.
-
 CR-C (logs-explorer-api): GET /admin/logs gains an optional model_prefix (or mcp_only) filter —
-  until this lands, Sessions' empty-server::tool state stays a disclosed, page-scoped
-  client-side approximation (M6/M7), not a precise "every MCP session" view.
+  NOT opened for R1 (Tin freeze decision). Until it lands, Sessions' server::tool filter stays a
+  disclosed, page-scoped client-side approximation (M6/M7), not a precise "every MCP session"
+  view. This is a designed v1 degrade, not a blocker.
 ```
 
 Glossary deltas:
@@ -636,18 +640,18 @@ Glossary deltas:
   glossary deltas already recorded by its parent contracts (agent principal, MCP allow-list,
   tool-call pricing unit) are unchanged.
 
-**Freeze decisions (recorded here for the human freeze — none yet confirmed):**
-- [ ] Nav placement inside "Govern" vs. a dedicated new nav group (§1 ⚠ #3).
-- [ ] Whether CR-A (spend field) blocks this task's build or ships as a disclosed v1 gap.
-- [ ] Whether CR-B (token enumeration) blocks `ManageTokensDialog`'s v1 shape.
-- [ ] Whether CR-C (model_prefix filter) is opened now or the page-scoped Sessions degradation
-  ships as-is for v1.
+**Freeze decisions (Tin-confirmed 2026-07-14):**
+- [x] Nav placement: inside the existing **"Govern"** group (§1 ⚠ #3 — "Govern group").
+- [x] CR-A (spend field): **spend in v1** — agent-identity-governance §3 amended to v2 with
+  `spend_usd_this_month`; this page consumes it directly (no degrade). Shipped + integrated.
+- [x] CR-B (token enumeration): resolved in the same v2 — `GET /admin/agents/{id}/tokens`;
+  `ManageTokensDialog` is a real picker. Shipped + integrated.
+- [x] CR-C (model_prefix filter): **NOT opened for R1** — the page-scoped Sessions approximation
+  ships as a disclosed v1 degrade.
 
-Least-sure flag surfaced at freeze: [spec] `GET /admin/agents`'s FROZEN response (agent-identity-governance §3 v1) has no current-month spend field, only `monthly_budget_usd` (the cap) — yet MILESTONE.md's own signature-element wording and this task's dispatch brief both name "spend" as a directory-card field; this task cannot invent a new backend read surface itself, so it renders an honest "Spend: not available yet" degrade and files CR-A rather than fabricate a $0. Confirm at freeze whether CR-A should land before this task's build, or whether the v1 disclosed gap is acceptable to ship first.
+Least-sure flag surfaced at freeze: [spec] The Sessions tab's server::tool filter is a page-scoped, client-side approximation (M6/M7) because CR-C (a `model_prefix`/`mcp_only` filter on `GET /admin/logs`) was deliberately deferred out of R1 — so the tab cannot promise "every MCP tool-call session for this tenant", only "the MCP rows visible in the loaded log page, filtered client-side". This is the one place the page's data completeness is bounded by a parent surface it does not own; it is disclosed in-UI (a page-scoped banner, M7) rather than presented as authoritative. Confirm this degrade is acceptable to ship for v1 (the alternative is opening CR-C on logs-explorer-api and blocking this build on it).
 
-Status: DRAFT
-
----
+Status: FROZEN @ v1 — approved by Tin Dang---
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
