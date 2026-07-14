@@ -38,6 +38,7 @@ from .conftest import (
     WINDOW_TO,
     audit_count,
     audit_row,
+    await_audit_count,
     seed_invoice,
     seed_row,
     seed_tenant,
@@ -540,7 +541,9 @@ async def test_m9_summary_read_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    after = await audit_count(db_session, action="platform.margin.view_summary")
+    after = await await_audit_count(
+        db_session, action="platform.margin.view_summary", expected=before + 1
+    )
     assert after == before + 1
 
     row = await audit_row(db_session, action="platform.margin.view_summary")

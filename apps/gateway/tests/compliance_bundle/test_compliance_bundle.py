@@ -29,6 +29,7 @@ import base64
 import datetime
 import json
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -69,6 +70,43 @@ async def _drain_fire_and_forget() -> None:
     """Let a fire-and-forget asyncio.ensure_future(record_audit(...)) task complete before
     querying audit_events (mirrors tests/audit_export's own idiom)."""
     await asyncio.sleep(0.05)
+
+
+async def _await_audit_count(
+    session: AsyncSession,
+    *,
+    action: str,
+    tenant_id: str | None = None,
+    expected: int = 1,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> int:
+    """Poll until `count_audit_rows(action[, tenant_id])` reaches `expected`, or `timeout`
+    elapses. De-flakes the fire-and-forget audit-of-generation write under `pytest -n 12`
+    CPU saturation — a fixed `_drain_fire_and_forget()` sleep can read before the scheduled
+    asyncio.ensure_future(record_audit(...)) task has run. Positive-assertion sites only;
+    mirrors tests/superadmin_audit_foundation/conftest.py::await_audit_count. Never masks a
+    genuinely-absent row — after `timeout` it returns the real count, so the caller's own
+    `==`/`len(...)` assertion still fails honestly if the write never happened.
+    """
+    count = await count_audit_rows(session, action=action, tenant_id=tenant_id)
+    deadline = time.monotonic() + timeout
+    while count < expected and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        count = await count_audit_rows(session, action=action, tenant_id=tenant_id)
+    return count
+
+
+async def _await_call_count_at_least(
+    call_count: dict[str, int], *, expected: int, timeout: float = 3.0, interval: float = 0.02  # noqa: ASYNC109
+) -> int:
+    """Poll a mutable call-count dict until a fire-and-forget task's Nth sessionmaker() call
+    has landed (or timeout) — same bounded-loop de-flake, for a non-DB fire-and-forget
+    completion signal (mirrors tests/audit_export/test_audit_export.py's own helper)."""
+    deadline = time.monotonic() + timeout
+    while call_count["n"] < expected and time.monotonic() < deadline:  # noqa: ASYNC110
+        await asyncio.sleep(interval)
+    return call_count["n"]
 
 
 def _period(since_min: int = 0, until_min: int = 60) -> dict[str, str]:
@@ -469,7 +507,7 @@ async def test_bundle_success_is_itself_audited(
     )
     assert page2.status_code == 200, page2.text
 
-    await _drain_fire_and_forget()
+    await _await_audit_count(db_session, action="compliance.art12_bundle", tenant_id=tid, expected=2)
     rows = await fetch_audit_rows(db_session, action="compliance.art12_bundle", tenant_id=tid)
     assert len(rows) == 2, "expected exactly 2 audit rows after 2 successful bundle pages"
     for r_tenant_id, _r_actor_user_id, r_action, r_result, r_metadata, _r_created_at in rows:
@@ -518,7 +556,7 @@ async def test_bundle_audit_write_failure_does_not_fail_bundle(
             resp = await client.get(BUNDLE, params=_period(), headers=auth(token))
             assert resp.status_code == 200, resp.text
             assert len(resp.json()["sections"]["audit_events"]["items"]) == 1
-            await _drain_fire_and_forget()
+            await _await_call_count_at_least(call_count, expected=2)
     finally:
         app.state.sessionmaker = real_sessionmaker
 
@@ -659,7 +697,7 @@ async def test_bundle_token_period_mismatch_rejected(
     )
 
     assert_problem(resp, 422, "ERR_CURSOR_INVALID")
-    await _drain_fire_and_forget()
+    await _await_audit_count(db_session, action="compliance.art12_bundle", tenant_id=tid, expected=1)
     # Rejected before any DB read — only whatever mint-page-1 wrote exists (never a 2nd row).
     assert await count_audit_rows(db_session, action="compliance.art12_bundle", tenant_id=tid) == 1
 
@@ -731,8 +769,9 @@ async def test_bundle_duplicate_token_request_idempotent(
     token1 = page1.json()["bundle_token"]
     assert token1
 
-    await _drain_fire_and_forget()
-    baseline = await count_audit_rows(db_session, action="compliance.art12_bundle", tenant_id=tid)
+    baseline = await _await_audit_count(
+        db_session, action="compliance.art12_bundle", tenant_id=tid, expected=1
+    )
 
     retry_params = {**_period(), "limit": "2", "bundle_token": token1}
     retry1 = await client.get(BUNDLE, params=retry_params, headers=auth(token))
@@ -743,6 +782,7 @@ async def test_bundle_duplicate_token_request_idempotent(
     assert retry1.json()["cover"] == retry2.json()["cover"]
     assert retry1.json()["sections"] == retry2.json()["sections"]
 
-    await _drain_fire_and_forget()
-    after = await count_audit_rows(db_session, action="compliance.art12_bundle", tenant_id=tid)
+    after = await _await_audit_count(
+        db_session, action="compliance.art12_bundle", tenant_id=tid, expected=baseline + 2
+    )
     assert after == baseline + 2, "each successful read fires its own audit row (M11, no dedupe)"

@@ -32,6 +32,7 @@ helpers between suites):
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from typing import Any
 
@@ -95,6 +96,36 @@ async def _drain_fire_and_forget() -> None:
     await asyncio.sleep(0.05)
 
 
+async def _await_audit_row(
+    session: AsyncSession, *, action: str, timeout: float = 3.0, interval: float = 0.02  # noqa: ASYNC109
+) -> Row[Any] | None:
+    """Poll fetch_one_audit_row until the fire-and-forget audit write lands (or timeout).
+
+    De-flakes assertions on a fire-and-forget `asyncio.ensure_future(record_audit(...))`
+    write under CPU-saturated `pytest -n 12` runs, where a fixed sleep is sometimes shorter
+    than the scheduler delay before the task actually runs. POSITIVE sites only — never used
+    for `row is None` / absence assertions.
+    """
+    row = await fetch_one_audit_row(session, action=action)
+    deadline = time.monotonic() + timeout
+    while row is None and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        row = await fetch_one_audit_row(session, action=action)
+    return row
+
+
+async def _await_call_count_at_least(
+    call_count: dict[str, int], *, expected: int, timeout: float = 3.0, interval: float = 0.02  # noqa: ASYNC109
+) -> int:
+    """Poll a mutable call-count dict until a fire-and-forget task's second sessionmaker()
+    call has landed (or timeout). Same bounded-loop shape as `_await_audit_row`, applied to a
+    non-DB fire-and-forget completion signal."""
+    deadline = time.monotonic() + timeout
+    while call_count["n"] < expected and time.monotonic() < deadline:  # noqa: ASYNC110
+        await asyncio.sleep(interval)
+    return call_count["n"]
+
+
 @pytest.fixture
 async def platform_tenant_id(db_session: AsyncSession) -> uuid.UUID:
     from gateway.tenants.infrastructure.repository import get_platform_tenant
@@ -151,8 +182,7 @@ async def test_put_guardrails_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="guardrails.update")
+    row = await _await_audit_row(db_session, action="guardrails.update")
     assert row is not None, "expected exactly one guardrails.update audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -181,8 +211,7 @@ async def test_put_capture_is_audited(
     resp = await client.put("/admin/capture", json={"enabled": True}, headers=_bearer(jwt))
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="capture.update")
+    row = await _await_audit_row(db_session, action="capture.update")
     assert row is not None, "expected exactly one capture.update audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -213,8 +242,7 @@ async def test_put_platform_service_tiers_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.service_tier.update")
+    row = await _await_audit_row(db_session, action="platform.service_tier.update")
     assert row is not None, "expected exactly one platform.service_tier.update audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -247,8 +275,7 @@ async def test_put_rate_card_entry_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="rate_card.upsert")
+    row = await _await_audit_row(db_session, action="rate_card.upsert")
     assert row is not None, "expected exactly one rate_card.upsert audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -281,8 +308,7 @@ async def test_delete_rate_card_entry_is_audited(
     )
     assert resp.status_code == 204, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="rate_card.delete")
+    row = await _await_audit_row(db_session, action="rate_card.delete")
     assert row is not None, "expected exactly one rate_card.delete audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, _metadata = (
         row
@@ -314,8 +340,7 @@ async def test_put_region_pricing_entry_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="region_pricing.upsert")
+    row = await _await_audit_row(db_session, action="region_pricing.upsert")
     assert row is not None, "expected exactly one region_pricing.upsert audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -346,8 +371,7 @@ async def test_delete_region_pricing_entry_is_audited(
     resp = await client.delete("/admin/region-pricing/eu", headers=_bearer(jwt))
     assert resp.status_code == 204, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="region_pricing.delete")
+    row = await _await_audit_row(db_session, action="region_pricing.delete")
     assert row is not None, "expected exactly one region_pricing.delete audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, _metadata = (
         row
@@ -377,8 +401,7 @@ async def test_put_cache_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="cache.update")
+    row = await _await_audit_row(db_session, action="cache.update")
     assert row is not None, "expected exactly one cache.update audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -407,8 +430,7 @@ async def test_put_batch_policy_is_audited(
     resp = await client.put("/admin/batch-policy", json={"enabled": True}, headers=_bearer(jwt))
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="batch_policy.update")
+    row = await _await_audit_row(db_session, action="batch_policy.update")
     assert row is not None, "expected exactly one batch_policy.update audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -441,8 +463,7 @@ async def test_put_default_tier_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="service_tier.default_tier_update")
+    row = await _await_audit_row(db_session, action="service_tier.default_tier_update")
     assert row is not None, "expected exactly one service_tier.default_tier_update audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -470,8 +491,7 @@ async def test_put_priority_markup_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="service_tier.priority_markup_update")
+    row = await _await_audit_row(db_session, action="service_tier.priority_markup_update")
     assert row is not None, "expected exactly one service_tier.priority_markup_update audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -514,7 +534,7 @@ async def test_audit_write_failure_never_blocks_put_cache_response(
     try:
         resp = await client.put("/admin/cache", json={"enabled": True}, headers=_bearer(jwt))
         assert resp.status_code == 200, resp.text
-        await _drain_fire_and_forget()
+        await _await_call_count_at_least(call_count, expected=2)
     finally:
         app.state.sessionmaker = real_sessionmaker
 

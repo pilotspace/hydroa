@@ -39,6 +39,7 @@ from .conftest import (
     FAKE_STATE,
     TEST_JWT_SECRET,
     FakeOidcExchanger,
+    await_audit_count,
     count_audit_rows,
     fetch_one_audit_row,
     make_id_token,
@@ -111,7 +112,7 @@ async def test_existing_superadmin_oidc_login_is_audited(
     assert claims["role"] == "superadmin", "JWT shape must be byte-identical to today's"
     assert claims["tenant_id"] == str(platform_id)
 
-    await asyncio.sleep(0.05)  # let the fire-and-forget audit write complete
+    await await_audit_count(db_session, action=AUDIT_ACTION, expected=1)
     row = await fetch_one_audit_row(db_session, action=AUDIT_ACTION)
     assert row is not None, "Expected exactly one auth.superadmin_login audit row"
     tenant_id, actor_user_id, actor_email, action, target_type, target_id, result, metadata = row

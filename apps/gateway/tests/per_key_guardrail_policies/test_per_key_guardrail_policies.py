@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import time
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -117,6 +118,25 @@ async def _fetch_one_audit_row(session: AsyncSession, *, action: str) -> Any:
         {"action": action},
     )
     return result.fetchone()
+
+
+async def _await_audit_row(
+    session: AsyncSession,
+    *,
+    action: str,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> Any:
+    """Poll _fetch_one_audit_row until present, or timeout. The audit write is fire-and-forget
+    (off the request path, frozen v1 contract); a fixed `_drain_fire_and_forget()` 50ms wait is
+    racy under `pytest -n 12` CPU saturation. Never masks a truly-absent row — returns None
+    after timeout so the caller's `is not None` assertion still fails honestly."""
+    row = await _fetch_one_audit_row(session, action=action)
+    deadline = time.monotonic() + timeout
+    while row is None and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        row = await _fetch_one_audit_row(session, action=action)
+    return row
 
 
 async def _key_row(session: AsyncSession, key_id: str) -> Any:
@@ -626,8 +646,7 @@ async def test_audit_event_recorded_on_put(
     )
     assert resp.status_code == 200, f"PUT failed: {resp.text}"
 
-    await _drain_fire_and_forget()
-    row = await _fetch_one_audit_row(db_session, action="key_guardrail_policy.put")
+    row = await _await_audit_row(db_session, action="key_guardrail_policy.put")
     assert row is not None, "expected exactly one key_guardrail_policy.put audit event"
     (
         _tenant_id_col,
@@ -671,8 +690,7 @@ async def test_audit_event_recorded_on_delete(
     resp = await client.delete(key_guardrails_path(key_info["key_id"]), headers=auth_jwt(jwt))
     assert resp.status_code == 204, f"DELETE failed: {resp.status_code}"
 
-    await _drain_fire_and_forget()
-    row = await _fetch_one_audit_row(db_session, action="key_guardrail_policy.delete")
+    row = await _await_audit_row(db_session, action="key_guardrail_policy.delete")
     assert row is not None, "expected exactly one key_guardrail_policy.delete audit event"
     assert row.action == "key_guardrail_policy.delete"
     assert row.target_type == "api_key"
