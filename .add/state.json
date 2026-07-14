@@ -857,14 +857,14 @@
     },
     "tool-call-metering": {
       "title": "Per-tool-call metering: $/1k-query pricing units through the shared rate-card resolver to invoice lines",
-      "phase": "contract",
+      "phase": "build",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [
         "mcp-connector-passthrough"
       ],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T04:15:17+00:00",
+      "updated": "2026-07-14T05:17:02+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T04:18:42+00:00",
@@ -874,6 +874,29 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "63c5c30468170d10331bc0416a4af359",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tool_call_metering/",
+          "infrastructure/observer.py",
+          "infrastructure/MeteringToolCallObserver",
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/usage/application/\"per_tool_call\"",
+          "apps/gateway/src/gateway/usage/application/_known_units",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/MeteringToolCallObserver",
+          "apps/gateway/src/gateway/mcp-connector-passthrough",
+          "apps/gateway/src/gateway/ToolCallObserver",
+          "apps/gateway/src/gateway/NoopToolCallObserver",
+          "apps/gateway/migrations/versions/",
+          ".add/tasks/tool-call-metering/tests/"
+        ],
+        "snapshot_md5": "90bc85e40975d190de0efff6fafd27a9"
       }
     },
     "agents-console": {
@@ -957,7 +980,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T05:07:47+00:00",
+  "updated": "2026-07-14T05:17:02+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
