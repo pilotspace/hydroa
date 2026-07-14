@@ -585,6 +585,12 @@ class RecordingUsageRecorder:
             "created_at": created_at,
             # team-attribution: empty string encodes NULL (backward-compatible with old consumers)
             "team_id": str(team_id) if team_id is not None else "",
+            # agent-identity-governance defect fix: persist agent_principal_id durably
+            # (mirrors team_id's "" encodes NULL idiom exactly) so the disconnect
+            # cost-recovery correction path can read it back off the anchor row —
+            # previously this value only ever reached the transient Redis INCR below,
+            # never a durable column, so recovery_sweep.py had no way to recover it.
+            "agent_principal_id": str(agent_principal_id) if agent_principal_id is not None else "",
             # pricing-units: new contract fields (pricing-units TASK.md §3)
             "pricing_unit": resolved_pricing_unit,
             "quantity": quantity_str,
@@ -761,6 +767,15 @@ class RecordingUsageRecorder:
                 "provider_cost": str(provider_cost),
                 "usage_source": usage_source,
                 "provider_generation_id": provider_generation_id,
+                # agent-identity-governance defect fix: persist the correction row's
+                # agent_principal_id attribution too (mirrors record()'s own "" encodes
+                # NULL idiom above; team_id above was ALREADY wired — just never called
+                # with a value, which the cost_recovery.py caller fix addresses) — a
+                # correction is a real ledger row like any other and should carry the
+                # SAME durable attribution as the anchor row it corrects.
+                "agent_principal_id": (
+                    str(agent_principal_id) if agent_principal_id is not None else ""
+                ),
             }
             await self._redis.xadd(STREAM_KEY, event_fields)
 

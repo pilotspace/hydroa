@@ -466,6 +466,230 @@ async def test_agent_principal_correction_counter_exactly_once_on_double_fire(
     )
 
 
+async def test_disconnect_correction_reaches_agent_principal_counter_via_recovery_sweep(
+    client: httpx.AsyncClient,
+    app: Any,
+    redis_client: Any,
+    owner: dict[str, Any],
+    db_session: Any,
+    active_model: str,
+) -> None:
+    """Defect fix (adversarial verify, conf 0.93): the disconnect/cost-recovery
+    CORRECTION path never attributed to the agent-principal spend counter, letting a
+    principal spend past its cap after a mid-stream disconnect + later true-up.
+
+    Root cause: OpenRouterCostRecoveryService.recover() had no team_id/
+    agent_principal_id params and never passed either to record_correction() — even
+    though agent_principal_id was already threaded to record()'s main-path Redis
+    INCR at every call site, it was NEVER persisted durably anywhere (not even the
+    `raw` JSONB), so recovery_sweep.py's candidate scan had no way to recover it for
+    an already-flushed anchor row.
+
+    Unlike the pre-existing test_agent_principal_correction_counter_exactly_once_on_
+    double_fire above (a fixture-overfit: it calls recorder.record_correction(
+    agent_principal_id=...) DIRECTLY — a parameter the real production caller never
+    supplied), THIS test drives the correction through the ACTUAL production chain
+    end to end, with agent_principal_id flowing automatically — never passed
+    explicitly to recover() or record_correction() by this test:
+      1. A real disconnect anchor row lands via RecordingUsageRecorder.record() (the
+         SAME call proxy/application/use_cases.py's stream-disconnect handler makes)
+         + UsageLedgerFlusher.flush_once() (lands the Redis-stream event into
+         usage_records, including the NEW agent_principal_id column).
+      2. OpenRouterRecoverySweeper.sweep_once() — the periodic backstop — scans
+         usage_records via the real _CANDIDATE_SQL (now selecting agent_principal_id
+         off the anchor row) and calls OpenRouterCostRecoveryService.recover() with
+         it threaded automatically.
+      3. Asserts the SAME usage:spend:agent_principal:{id}:{YYYYMM} counter the main
+         path increments now reflects the full CORRECTED (trued-up) total —
+         partial-floor + delta — not just the partial estimate frozen at disconnect.
+      4. Asserts the principal's VERY NEXT call is refused 402 BUDGET_EXCEEDED —
+         proving the corrected counter is the SAME one enforcement reads.
+    """
+    from gateway.proxy.infrastructure.openrouter_upstream import GenerationCost
+    from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
+    from gateway.usage.application.flusher import UsageLedgerFlusher
+    from gateway.usage.application.recovery_sweep import OpenRouterRecoverySweeper
+
+    class _FakeGenerationUpstream:
+        def __init__(self, total_cost: str) -> None:
+            self._cost = GenerationCost(
+                total_cost=Decimal(total_cost),
+                upstream_inference_cost=Decimal(total_cost),
+                native_tokens_prompt=0,
+                native_tokens_completion=0,
+                native_tokens_cached=0,
+            )
+
+        async def get_generation(self, generation_id: str) -> GenerationCost:
+            return self._cost
+
+    class _FakeProviderResolver:
+        def __init__(self, model_id: str) -> None:
+            self._model_id = model_id
+
+        async def provider_for(self, model_id: str) -> str:
+            return "openrouter" if model_id == self._model_id else "unknown"
+
+    # A budget the partial floor alone ($0.01, per active_model's fixed 10+5 token
+    # pricing — the SAME deterministic cost the M4 write-side test above relies on)
+    # does NOT trip, but the trued-up total ($0.05, after the $0.04 correction) does.
+    recorder = RecordingUsageRecorder(redis=app.state.redis_client, session_factory=app.state.sessionmaker)
+
+    created = await client.post(
+        _AGENTS,
+        json={"name": "disconnect-correction-bot", "monthly_budget_usd": "0.05"},
+        headers=_auth(owner["owner_jwt"]),
+    )
+    assert created.status_code == 200, created.text
+    principal_id = uuid.UUID(created.json()["id"])
+
+    token = await mint_agent_token(app, tenant_id=owner["tenant_id"], user_id=owner["user_id"])
+    attach = await client.post(
+        f"{_AGENTS}/{principal_id}/tokens/{token['token_id']}/attach",
+        headers=_auth(owner["owner_jwt"]),
+    )
+    assert attach.status_code == 200, attach.text
+
+    spend_key = _principal_spend_key(str(principal_id))
+    assert await redis_client.get(spend_key) is None  # clean slate
+
+    gid = f"gen-agent-defect2-{uuid.uuid4().hex[:8]}"
+
+    # 1. The REAL disconnect anchor write (mirrors use_cases.py's stream-disconnect
+    #    handler exactly: same recorder.record() call shape, usage_source=
+    #    "client_disconnect", agent_principal_id threaded). Deterministic $0.012
+    #    (10 prompt + 5 completion tokens @ active_model's fixed pricing = $0.01,
+    #    times the tenant's default 20% markup_pct = $0.012).
+    await recorder.record(
+        tenant_id=owner["tenant_id"],
+        key_id=token["token_id"],
+        model=active_model,
+        usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        status=200,
+        agent_principal_id=principal_id,
+        usage_source="client_disconnect",
+        provider_generation_id=gid,
+    )
+    # Land the Redis-stream event into usage_records (including the anchor row's
+    # NEW agent_principal_id column) — the flusher the sweep's _CANDIDATE_SQL reads.
+    flusher = UsageLedgerFlusher(redis=app.state.redis_client, session_factory=app.state.sessionmaker)
+    await flusher.flush_once()
+
+    anchor_row = (
+        await db_session.execute(
+            text(
+                "SELECT agent_principal_id, cost_usd FROM usage_records"
+                " WHERE provider_generation_id = :g AND usage_source = 'client_disconnect'"
+            ),
+            {"g": gid},
+        )
+    ).fetchone()
+    assert anchor_row is not None, "anchor row did not land — flusher setup broken"
+    assert anchor_row[0] == principal_id, (
+        "anchor row's agent_principal_id column was not persisted — the recorder/"
+        "flusher wiring fix is broken"
+    )
+    assert Decimal(str(anchor_row[1])) == Decimal("0.012")
+
+    partial_spend = await redis_client.get(spend_key)
+    assert partial_spend is not None
+    assert Decimal(partial_spend.decode()) == Decimal("0.012")
+
+    # 2. The periodic backstop — the SAME service both the inline hook and the
+    #    sweep call — recovers the authoritative $0.05 upstream cost via the real
+    #    chain. With the tenant's 20% markup_pct applied (the SAME multiplier that
+    #    priced the partial floor above), the billed target is $0.06.
+    service = OpenRouterCostRecoveryService(
+        upstream=_FakeGenerationUpstream("0.05"),
+        recorder=recorder,
+        session_factory=app.state.sessionmaker,
+        credential_resolver=None,
+    )
+    sweeper = OpenRouterRecoverySweeper(
+        session_factory=app.state.sessionmaker,
+        recovery_service=service,
+        provider_resolver=_FakeProviderResolver(active_model),
+    )
+    attempts = await sweeper.sweep_once()
+    assert attempts == 1
+
+    # record_correction() only XADDs to the Redis stream (unlike record()'s XADD, it
+    # has no synchronous DB fallback) — flush again to land the correction row itself
+    # into usage_records so the DB assertions below can see it. The Redis counter INCR
+    # a few lines below is independent of this and already fired synchronously inside
+    # record_correction() above.
+    await flusher.flush_once()
+
+    correction_row = (
+        await db_session.execute(
+            text(
+                "SELECT agent_principal_id, cost_usd FROM usage_records"
+                " WHERE provider_generation_id = :g AND usage_source = 'openrouter_recovered'"
+            ),
+            {"g": gid},
+        )
+    ).fetchone()
+    assert correction_row is not None, "recover() never appended a correction row"
+    assert correction_row[0] == principal_id, (
+        "correction row's agent_principal_id was not persisted — record_correction "
+        "was not threaded the id"
+    )
+    assert Decimal(str(correction_row[1])) == Decimal("0.048")  # 0.06 target - 0.012 already-billed
+
+    # 3. The SAME agent-principal counter now reflects the FULL trued-up total.
+    trued_up_spend = await redis_client.get(spend_key)
+    assert trued_up_spend is not None
+    spend = Decimal(trued_up_spend.decode())
+    assert spend == Decimal("0.06"), (
+        f"expected the corrected total (0.012 partial + 0.048 delta = 0.06), got {spend} "
+        "— the correction delta never reached the agent-principal counter"
+    )
+
+    # 4. Enforcement: the principal's VERY NEXT call is refused — proving the
+    #    counter the correction just moved is the SAME one GovernanceService reads.
+    next_call = await client.post(
+        "/internal/authz", headers={"Authorization": f"Bearer {token['access_token']}"}
+    )
+    # /internal/authz only authenticates (no governance budget check on that seam —
+    # confirmed by M4's own test using /v1/chat/completions for enforcement); the
+    # budget gate lives in GovernanceService.authorize, exercised the SAME way M4's
+    # write-side test above does.
+    assert next_call.status_code == 200  # authn is unaffected — sanity only
+
+    class _StaticAuthenticator:
+        async def authenticate(self, raw_key: str) -> AuthzResult:
+            return AuthzResult(
+                tenant_id=owner["tenant_id"],
+                key_id=token["token_id"],
+                monthly_budget_usd=None,
+                agent_principal_id=principal_id,
+                agent_principal_budget_usd=Decimal("0.05"),
+            )
+
+    class _StaticModelChecker:
+        async def is_active(self, model_id: str) -> bool:
+            return True
+
+        async def check_for_tenant(self, model_id: str, tenant_id: uuid.UUID) -> ModelAccess:
+            return ModelAccess.ACTIVE
+
+    class _StaticBudgetGuard:
+        async def check(self, tenant_id: uuid.UUID) -> None:
+            return None
+
+    governance = NonChatGovernance(
+        authenticator=_StaticAuthenticator(),
+        model_checker=_StaticModelChecker(),
+        budget_guard=_StaticBudgetGuard(),
+        rate_limiter=None,
+        redis_client=app.state.redis_client,
+    )
+    with pytest.raises(ProblemError) as exc_info:
+        await governance.authorize(token["access_token"], active_model)
+    assert exc_info.value.status == 402
+    assert exc_info.value.code == "ERR_BUDGET_EXCEEDED"
+
+
 # --------------------------------------------------------------------------- M5
 
 
@@ -895,6 +1119,85 @@ async def test_kill_racing_attach_never_leaves_token_attached_to_killed_principa
             assert attach_result.status_code == 409
             assert attach_result.json()["code"] == "ERR_AGENT_PRINCIPAL_KILLED"
             assert token_row.principal_id is None
+
+
+async def test_resolve_access_token_fails_closed_when_attached_principal_killed_out_of_band(
+    client: httpx.AsyncClient, owner: dict[str, Any], app: Any
+) -> None:
+    """DETERMINISTIC reproduction of the attach-vs-kill race (defect fix, adversarial
+    verify conf 0.95) — no asyncio.gather timing dependency, unlike
+    test_kill_racing_attach_never_leaves_token_attached_to_killed_principal above.
+
+    Root cause: attach_token's conditional UPDATE gates on a plain (non-locking) EXISTS
+    subquery against agent_principals.killed_at, which under READ COMMITTED can miss a
+    concurrent kill_principal transaction's not-yet-committed write. When that happens,
+    kill_principal's bulk-revoke sweep (which only touches ALREADY-attached tokens) runs
+    BEFORE the attach commits — so the token lands attached to a killed principal with
+    revoked_at left NULL, and nothing ever re-sweeps it.
+
+    This test arranges that exact end state directly (bypassing the actual race window,
+    which is too narrow to hit reliably under gather): attach a token normally, then set
+    killed_at on its principal WITHOUT going through kill_principal's bulk-revoke sweep
+    (simulating "the sweep already ran and missed this token"). Asserts the FAIL-CLOSED
+    read (resolve_access_token, exercised via both authn seams) rejects it — proving M9's
+    guarantee ("every attached token stops authenticating... starting with the very next
+    request") holds even for this race outcome, not just the by-construction revoked_at
+    case.
+    """
+    principal = (
+        await client.post(
+            _AGENTS, json={"name": "race-outcome-bot"}, headers=_auth(owner["owner_jwt"])
+        )
+    ).json()
+    token = await mint_agent_token(app, tenant_id=owner["tenant_id"], user_id=owner["user_id"])
+    attach = await client.post(
+        f"{_AGENTS}/{principal['id']}/tokens/{token['token_id']}/attach",
+        headers=_auth(owner["owner_jwt"]),
+    )
+    assert attach.status_code == 200, attach.text
+
+    # Sanity: the token authenticates BEFORE the out-of-band kill.
+    pre_kill = await client.post(
+        "/internal/authz", headers={"Authorization": f"Bearer {token['access_token']}"}
+    )
+    assert pre_kill.status_code == 200
+
+    # Simulate the race OUTCOME directly: killed_at set on the principal, but
+    # revoked_at deliberately left untouched on the already-attached token — exactly
+    # what a kill_principal sweep that ran BEFORE this attach committed would produce.
+    async with app.state.sessionmaker() as session:
+        principal_row = await session.scalar(
+            select(AgentPrincipalRow).where(AgentPrincipalRow.id == uuid.UUID(principal["id"]))
+        )
+        assert principal_row is not None
+        principal_row.killed_at = datetime.now(UTC)
+        await session.commit()
+
+    async with app.state.sessionmaker() as session:
+        token_row = await session.scalar(
+            select(AgentTokenRow).where(AgentTokenRow.id == token["token_id"])
+        )
+        assert token_row is not None
+        assert token_row.principal_id == uuid.UUID(principal["id"])
+        assert token_row.revoked_at is None, (
+            "test setup invariant: the token must still be UN-revoked — proving any "
+            "rejection below comes from the NEW killed-principal re-check, not the "
+            "pre-existing revoked_at fail-closed path"
+        )
+
+    # Both authn seams must now reject it — the additive killed-principal check in
+    # resolve_access_token, not revoked_at (which this test proved stays NULL above).
+    seam_1 = await client.post(
+        "/internal/authz", headers={"Authorization": f"Bearer {token['access_token']}"}
+    )
+    seam_2 = await client.post(
+        "/internal/authz/v1/chat/completions",
+        headers={"Authorization": f"Bearer {token['access_token']}"},
+    )
+    assert seam_1.status_code == 401, seam_1.text
+    assert seam_2.status_code == 401, seam_2.text
+    assert seam_1.json() == seam_2.json()
+    assert seam_1.json()["code"] == "ERR_AUTH_INVALID_KEY"
 
 
 # --------------------------------------------------------------------------- M13 / CR-B

@@ -145,3 +145,14 @@ class UsageRecordRow(Base):
     tier_capacity_degraded: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    # Defect fix on agent-identity-governance TASK.md §3's frozen M4 budget guarantee
+    # (migration a2b4c6d8e0f1): nullable, no FK — mirrors team_id exactly (append-only
+    # ledger; a principal deletion must not cascade). Durable home for the id already
+    # threaded to record()'s Redis-counter INCR at every call site but never persisted
+    # anywhere before this — lets recovery_sweep.py read it back off the anchor
+    # client_disconnect row and thread it into the correction, so the SAME
+    # usage:spend:agent_principal:{id}:{YYYYMM} counter the main path increments also
+    # receives the disconnect true-up delta.
+    agent_principal_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
