@@ -30,25 +30,29 @@ UI/UX in scope (compliance-report-center): extends the Settings → Data & resid
 - [ ] ai-act-marketing-page         depends-on: none — marketing page + docs: fail-closed residency, ZDR, audit story; accurate Art. 101 figures; Fable-5 export-suspension vendor-risk narrative. DEADLINE 2026-08-02.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] An EU tenant downloads a dated, deterministic Art. 12 bundle in one action via the API        (← art12-record-keeping-preset)
-- [ ] The bundle is generatable, downloadable, and monthly-schedulable from the console, axe-clean        (← compliance-report-center)
-- [ ] The AI-Act readiness marketing page is live with accurate Art. 101 figures before 2026-08-02        (← ai-act-marketing-page)
+- [x] An EU tenant downloads a dated, deterministic Art. 12 bundle in one action via the API        (← art12-record-keeping-preset, 33 tests)
+- [x] The bundle is generatable, downloadable, and monthly-schedulable from the console, axe-clean        (← compliance-report-center, 26 BE + 34 FE axe-clean)
+- [x] The AI-Act readiness marketing page is live with accurate Art. 101 figures before 2026-08-02        (← ai-act-marketing-page, delivered + merge-ready; deploy-before-Aug-2 = human release step)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- tooling : untouched (engine only recorded phase/gate state for the 3 tasks; no add.py/template change).
+- skill   : untouched.
+- book    : untouched (product docs shipped under apps/dashboard marketing/docs routes, not `.add/docs/`).
+- gateway (BE): art12 Art.12-bundle export route + preset (migration 776ecf702f3f); compliance report-schedule router (5 endpoints) + ReportScheduleGenerator background loop + 2 tables (migration f5a8c1e3b6d9) + RetentionSweeper compliance-report purge extension.
+- dashboard (FE): Compliance tab in Settings (ComplianceReportCenter / ScheduleControl / GeneratedReportsList / BundleEvidenceSeal); AI-Act readiness marketing page + /docs/ai-act-compliance.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- art12-record-keeping-preset : gate=PASS · tests=33 green (migration 776ecf702f3f) · residue=none — one-click Art.12 bundle (audit+logs-metadata+usage-lineage) over compliance-export-api, deterministic cover.
+- compliance-report-center : gate=PASS · tests=26 BE + 34 FE (incl. axe) green · residue=ZDR TOCTOU **CLOSED** (M17 v2 CR 308bad5, pre-persistence re-check + red/green test) after adversarial verify a854c67d reproduced all 7 focus areas CLEAN live (RBAC OWNER-only, cross-tenant 404, ZDR fail-closed, idempotency, loop resilience, retention, audit). 2 follow-up tickets: RetentionSweeper start-gate ignores new payload/ZDR passes; optional separate report-runs retention knob.
+- ai-act-marketing-page : gate=PASS · tests=41 green (dashboard 730/730) · residue=none — accurate Art.101 (3%/€15M, 2026-08-02), Fable-5 export-suspension vendor-risk narrative; DEPLOY-before-Aug-2 is the human release step.
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row (criterion 1 ← art12; criterion 2 ← compliance-report-center; criterion 3 ← ai-act-marketing-page — code delivered + merge-ready, "live" pending the human deploy step).
+- goal: An EU tenant can self-serve a dated Art.12-mapped record-keeping evidence bundle from the console before Aug 2, 2026 — proven by compliance-report-center's 26 BE + 34 FE (axe-clean) tests exercising generate→pin→download→schedule end-to-end over art12's deterministic bundle, all green on feat @ 308bad5.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one

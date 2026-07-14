@@ -2,13 +2,9 @@
 
 slug: compliance-report-center · created: 2026-07-14 · revised: 2026-07-14 (scheduling scope expansion, Tin-authorized) · stage: production
 milestone: eu-ai-act-readiness
-autonomy: conservative   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-risk: high   <!-- REVISION 2026-07-14: this task now writes a new background loop that persists tenant compliance-evidence bytes (audit/log/usage-lineage metadata) unattended, monthly, server-side — a genuinely new persistent-write capability with a cross-tenant / ZDR / retention threat surface, not the read-only FE-only consumer it was drafted as. Declared per the engine's own guard (unguarded_high_risk_auto) — a comment alone would not count as the declaration. -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- content below is drafted through §3 CONTRACT (DRAFT, unfrozen) by the design agent; phase
-     marker left at "ground" to match state.json (engine-tracked) — the orchestrator advances
-     phase via add.py, this draft does not self-advance it. -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: conservative
+risk: high
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -116,8 +112,6 @@ Assumptions — lowest-confidence first:
   - [ ] The 500-page ceiling (M11) is a reasonable default for "large but real-world" EU tenants — confirm or tune against an actual EU tenant's expected audit/log/usage row volume once one exists; a wrong ceiling either aborts a legitimate large tenant too early or lets the browser tab hang too long before erroring. Low blast-radius (a client-only constant), easy to revise post-ship. (Unchanged from the original draft — applies only to the on-demand path, M2/M11.)
   - [ ] The new `BundleEvidenceSeal` component (rather than widening `InvoiceStatusSeal`'s `status` union) is the right call — confirmed reasoning: an Art. 12 bundle has no "draft" state (every response IS a generated, pinned snapshot), so a shared component would need a permanently-unused branch; kept as two small, single-purpose components instead of one component with a dead code path. (Unchanged from the original draft.)
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -315,8 +309,6 @@ Scenario: Schedule control and Generated reports list are axe-clean and disclose
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -587,7 +579,6 @@ Glossary deltas:
 - **`tenant_report_schedules`** / **`compliance_report_runs`**: the two new tables this task owns (§3 Schema) — the former is the per-tenant schedule POLICY (one row, OWNER-writable), the latter is the per-run EVIDENCE RECORD (many rows, system-inserted only, `source='scheduled'`).
 
 Status: FROZEN @ v1 — approved by Tin Dang
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 Least-sure flag surfaced at freeze: [contract] RBAC tier for `PUT`/`DELETE /admin/compliance/report-schedule` — this design chose `Permission.SECURITY_CONFIG` (OWNER only), mirroring `PUT /admin/retention-policy`'s exact precedent, the nearest real sibling policy-toggle in the SAME Data & residency/Compliance settings surface (§1 ⚠, full reasoning there). Recommendation: freeze OWNER-only as drafted — it is the stricter, already-precedented gate for a genuinely NEW automated persistent-write capability, and is easy to WIDEN later (a role-set relaxation) but hard to safely NARROW after tenants have already delegated it to non-owner admins. Tin should confirm or correct this tier at freeze; every other design point in this revision (the ZDR-skip-not-degrade resolution, M17; the RetentionSweeper extension closing the no-purge-path gap, M21; the in-app-inbox-over-webhook delivery decision, Framing #4) is HIGH confidence and resolved, not flagged.
 
@@ -633,17 +624,6 @@ Known-problem fixes: the OLD localStorage/lazy-`useState`-initializer known-prob
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-<!-- STALE FLAG (2026-07-14 scheduling revision): the test_plan below was drafted against the
-     ORIGINAL client-only-reminder design and still contains one now-obsolete entry
-     (test_schedule_preference_local_only, M6's old meaning). §1/§2/§3 above have been revised
-     with M15-M23/R9-R14 and their matching scenarios/contract entries; this §4 test_plan has NOT
-     yet been re-passed to add the corresponding backend + FE test entries (ReportScheduleGenerator
-     unit tests, the 2 new endpoints' RBAC/tenant-scoping/idempotency/ZDR-skip tests,
-     ScheduleControl/GeneratedReportsList component+axe tests, the RetentionSweeper-extension
-     test). Explicitly OUT of this revision's declared scope (§0-§3 + DESIGN.md only, per the
-     dispatch prompt) — flagged here so the next phase agent (or whoever runs TESTS) does not
-     silently build against a stale plan. -->
-
 Coverage target: >=80% lines on every new/touched module (project-wide vitest.config.ts threshold, cited from `residency-tiers-ui` TASK.md §4's own precedent), no regression on any pre-existing file's coverage.
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
@@ -668,11 +648,8 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 `apps/dashboard/tests/art12-bundle-assembly.test.ts` † · `apps/dashboard/tests/compliance-report-center.test.tsx` † · `apps/dashboard/tests/settings-page.test.tsx` †
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -688,8 +665,6 @@ Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "
 Safety rule (feature-specific): the client-side cursor-assembly loop (`assembleArt12Bundle`) NEVER retries a failed page and NEVER re-derives since/until from a live source mid-walk — one captured period, one pass, fail closed (abort + discard partial state) on ANY non-2xx, matching M2/M14/R2/R4/R5/R6 exactly; no "best-effort partial download" fallback is ever offered.
 Code lives in: `apps/dashboard/`
 Constraints: do NOT change any test or the contract; allow-list packages only (no new npm dependency — `Blob`/`URL.createObjectURL` are browser built-ins, `localStorage` is a browser built-in, no new package needed for either); ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -739,11 +714,9 @@ Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-14
 
 ---
 
@@ -752,7 +725,10 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): client-side walk abort rate by errorKind (401/403/422-payload/422-cursor/504/too-large) — a spike in "too-large" signals the 500-page ceiling (§1 assumption) needs tuning against real EU-tenant volume; schedule enable-rate (`tenant_report_schedules.enabled=true` count) and `last_run_status` distribution (a rising `skipped_zdr` share signals ZDR-tenant demand for a distinct evidence-retention story; a rising `failed`/never-`success` share signals the object store or generator loop itself needs attention) — both feed whether the webhook-notify-on-ready follow-up (§7 Spec delta) should be prioritized sooner.
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [human] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
@@ -761,5 +737,5 @@ One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence �
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
 - [UDD · open] A financial-document idiom (InvoiceStatusSeal/InvoiceDetailPage) does not always transplant its exact vocabulary onto a structurally-similar-but-semantically-different document (an Art. 12 bundle has no draft state) — the lesson is to translate the IDIOM (dated header, tabular-nums, visible immutability marker) rather than force-reuse the exact component/prop union (evidence: BundleEvidenceSeal introduced as a sibling, not an InvoiceStatusSeal prop-union widening).

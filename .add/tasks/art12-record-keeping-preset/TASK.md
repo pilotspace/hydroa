@@ -3,9 +3,8 @@
 slug: art12-record-keeping-preset · created: 2026-07-14 · stage: production
 milestone: eu-ai-act-readiness
 sensitivity: data
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -110,8 +109,6 @@ Assumptions — lowest-confidence first:
   - [ ] `usage_lineage`'s new repository method is added as an INTERNAL-only read (no new standalone public `/admin/usage/export` endpoint) — recorded as a proposed follow-up change-request (Issue #1) rather than built now; confirm this scoping call, or decide the standalone endpoint should ship as part of THIS task instead.
   - [ ] M14's reject-on-period-mismatch (vs. silently trusting the token's embedded period and ignoring the call's own since/until query params on a continuation call) — confirm this is the right failure mode; the alternative is also defensible and arguably simpler for a client to implement.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -253,8 +250,6 @@ Scenario: duplicate bundle_token request is idempotent   # concurrency/retry-saf
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -443,9 +438,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -461,8 +453,6 @@ Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "
 Safety rule (feature-specific): the cover snapshot MUST be read/pinned exactly once per bundle (mint call only) and never re-queried on a continuation call — a build that accidentally re-reads `tenants` on every page reintroduces the exact determinism risk (Issue #3) this contract exists to close.
 Code lives in: `apps/gateway/src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -509,11 +499,9 @@ Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-14
 
 ---
 
@@ -522,11 +510,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

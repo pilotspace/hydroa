@@ -2,9 +2,8 @@
 
 slug: mcp-connector-passthrough · created: 2026-07-14 · stage: production · sensitivity: security
 milestone: agent-gateway-v1
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -110,8 +109,6 @@ Assumptions — lowest-confidence first:
   - [ ] `ToolCallObserver` as a no-op-by-default injectable Protocol (rather than a plain domain-event log row `tool-call-metering` polls) is the right hand-off shape — confirm the sibling task's build is comfortable wiring a DI-injected Protocol implementation.
   - [ ] The 50-entry allow-list cap (R3) is an arbitrary hygiene bound, not sized against any real enterprise MCP-fleet count — confirm or adjust at freeze; low cost either way (a config-shape-only change).
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -343,8 +340,6 @@ Scenario: Key revoked between allow-list read and write loses the race safely   
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -434,7 +429,6 @@ CR-2 (Tin, 2026-07-14 — "fix now" via AskUserQuestion): a budget-governance ga
 
 Status: FROZEN @ v3 — approved by Tin Dang
 Reported: no
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -447,9 +441,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -477,8 +468,6 @@ Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "
 Safety rule (feature-specific): the allow-list membership check (M5) and the fresh `EgressPolicy.check()` (M6) MUST both complete, in that order, strictly BEFORE any `McpDialer.dial()` call is constructed — no code path may construct the outbound HTTP request object before both gates pass (the "zero egress dials on refusal" guarantee is a construction-order invariant, not just a status-code one; a test must assert the dialer mock was never invoked, not just that the response was a 403).
 Code lives in: `apps/gateway/src/gateway/mcp_connector/`
 Constraints: do NOT change any test or the contract; allow-list packages only (no new MCP SDK / third-party dependency — httpx only, per Ground); ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -525,11 +514,9 @@ Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-14
 
 ---
 
@@ -538,11 +525,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v3 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "compliance-report-center",
+  "active_task": "ai-act-marketing-page",
   "active_milestone": "eu-ai-act-readiness",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -678,12 +678,12 @@
     },
     "art12-record-keeping-preset": {
       "title": "Art. 12 record-keeping export preset (one-click evidence bundle over compliance-export-api)",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "eu-ai-act-readiness",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T05:07:45+00:00",
+      "updated": "2026-07-14T07:40:40+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T03:58:05+00:00",
@@ -701,19 +701,34 @@
       },
       "scope": {
         "declared": [],
-        "snapshot_md5": "f44051d98f5a3297e6d08a924b3b940c"
+        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-14T07:39:24+00:00",
+            "reason": "scope_violation: task 'art12-record-keeping-preset' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/components/agents/AgentIdentityCard.tsx \u00b7 apps/dashboard/components/agents/AgentsConsolePage.tsx \u00b7 apps/dashboard/components/agents/CreateAgentDialog.tsx \u00b7 apps/dashboard/components/agents/ManageTokensDialog.tsx (86 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "compliance-report-center": {
       "title": "Compliance report center console surface (generate/download/schedule the Art. 12 bundle)",
-      "phase": "tests",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "eu-ai-act-readiness",
       "depends_on": [
         "art12-record-keeping-preset"
       ],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T06:08:26+00:00",
+      "updated": "2026-07-14T07:38:29+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T06:08:07+00:00",
@@ -723,16 +738,37 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ca4e40ca06daacde1ce6eb9e405f469f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/lib/art12-bundle.ts",
+          "apps/dashboard/components/compliance/",
+          "apps/dashboard/components/settings/SettingsPage.tsx",
+          "apps/dashboard/tests/art12-bundle-assembly.test.ts",
+          "apps/dashboard/tests/compliance-report-center.test.tsx",
+          "apps/dashboard/tests/settings-page.test.tsx"
+        ],
+        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "ai-act-marketing-page": {
       "title": "EU AI Act readiness marketing page + docs (accurate Art. 101 figures; live before 2026-08-02)",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "eu-ai-act-readiness",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T05:07:47+00:00",
+      "updated": "2026-07-14T07:40:42+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T03:58:29+00:00",
@@ -752,17 +788,32 @@
         "declared": [
           ".add/tasks/ai-act-marketing-page/src/"
         ],
-        "snapshot_md5": "f44051d98f5a3297e6d08a924b3b940c"
+        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-14T07:39:26+00:00",
+            "reason": "scope_violation: task 'ai-act-marketing-page' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/components/agents/AgentIdentityCard.tsx \u00b7 apps/dashboard/components/agents/AgentsConsolePage.tsx \u00b7 apps/dashboard/components/agents/CreateAgentDialog.tsx \u00b7 apps/dashboard/components/agents/ManageTokensDialog.tsx (86 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "anthropic-messages-ingress": {
       "title": "Native /v1/messages ingress (+ count_tokens): Anthropic-wire in, shared governance/router/recorder path, billing parity",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T04:46:50+00:00",
+      "updated": "2026-07-14T07:40:27+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T03:59:40+00:00",
@@ -780,17 +831,32 @@
       },
       "scope": {
         "declared": [],
-        "snapshot_md5": "6daecac34d2a722184f2fc28bca30b84"
+        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-14T07:39:10+00:00",
+            "reason": "scope_violation: task 'anthropic-messages-ingress' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/app/(marketing)/ai-act-readiness/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/ai-act-compliance/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/page.tsx \u00b7 apps/dashboard/app/(marketing)/pricing/page.tsx (143 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "mcp-connector-passthrough": {
       "title": "MCP connector egress passthrough with per-tenant allow/deny lists (fail-closed) + session tracing",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T04:49:06+00:00",
+      "updated": "2026-07-14T07:40:30+00:00",
       "freeze": {
         "version": "v2",
         "frozen_at": "2026-07-14T04:17:55+00:00",
@@ -803,7 +869,7 @@
       },
       "flag_verified": true,
       "tripwire": {
-        "contract_md5": "d1bc4fe60367cda9e4827cca1e1663e1",
+        "contract_md5": "44b6005e21a8ad1c21bff6635cb12a1f",
         "tests": {}
       },
       "scope": {
@@ -821,17 +887,32 @@
           "apps/gateway/migrations/versions/",
           ".add/tasks/mcp-connector-passthrough/tests/"
         ],
-        "snapshot_md5": "acc2224c28a3bb01d419df2b8f8e78a0"
+        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-14T07:39:11+00:00",
+            "reason": "tamper_detected:contract_tampered",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "agent-identity-governance": {
       "title": "Agent-as-principal on device-OAuth: named identities, per-agent budgets/limits, universal kill switch",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T05:07:11+00:00",
+      "updated": "2026-07-14T07:40:32+00:00",
       "freeze": {
         "version": "v2",
         "frozen_at": "2026-07-14T04:42:45+00:00",
@@ -851,19 +932,34 @@
         "declared": [
           ".add/tasks/agent-identity-governance/src/"
         ],
-        "snapshot_md5": "6b1b084bef8103571f8b2e741df5ae5c"
+        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-14T07:39:13+00:00",
+            "reason": "scope_violation: task 'agent-identity-governance' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/app/(marketing)/ai-act-readiness/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/ai-act-compliance/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/page.tsx \u00b7 apps/dashboard/app/(marketing)/pricing/page.tsx (103 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "claude-gateway-protocol-compat": {
       "title": "Claude apps gateway protocol compatibility: Claude Code fronts Hydroa first-class",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "agent-gateway-v1",
       "depends_on": [
         "anthropic-messages-ingress"
       ],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T05:26:47+00:00",
+      "updated": "2026-07-14T07:40:34+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T05:26:43+00:00",
@@ -881,21 +977,43 @@
       },
       "scope": {
         "declared": [
-          ".add/tasks/claude-gateway-protocol-compat/src/"
+          "apps/gateway/src/gateway/proxy/",
+          "apps/gateway/src/gateway/usage/application/recorder.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/claude_gateway_protocol_compat/",
+          "apps/gateway/src/gateway/catalog/api/router.py"
         ],
-        "snapshot_md5": "85709e6d96466afa5f927f73ef59a8d4"
+        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-14T07:39:16+00:00",
+            "reason": "scope_violation: task 'claude-gateway-protocol-compat' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/components/agents/AgentIdentityCard.tsx \u00b7 apps/dashboard/components/agents/AgentsConsolePage.tsx \u00b7 apps/dashboard/components/agents/CreateAgentDialog.tsx \u00b7 apps/dashboard/components/agents/ManageTokensDialog.tsx (77 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "tool-call-metering": {
       "title": "Per-tool-call metering: $/1k-query pricing units through the shared rate-card resolver to invoice lines",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "agent-gateway-v1",
       "depends_on": [
         "mcp-connector-passthrough"
       ],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T05:17:02+00:00",
+      "updated": "2026-07-14T07:40:36+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T04:18:42+00:00",
@@ -908,7 +1026,7 @@
       },
       "flag_verified": true,
       "tripwire": {
-        "contract_md5": "63c5c30468170d10331bc0416a4af359",
+        "contract_md5": "0a7cb40f42da25097bdecedaaee1ea95",
         "tests": {}
       },
       "scope": {
@@ -927,13 +1045,28 @@
           "apps/gateway/migrations/versions/",
           ".add/tasks/tool-call-metering/tests/"
         ],
-        "snapshot_md5": "90bc85e40975d190de0efff6fafd27a9"
+        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-14T07:39:17+00:00",
+            "reason": "tamper_detected:contract_tampered",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "agents-console": {
       "title": "Agents console (UDD): directory, session explorer, MCP allow-list management, kill switch",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "agent-gateway-v1",
       "depends_on": [
         "mcp-connector-passthrough",
@@ -941,7 +1074,7 @@
         "tool-call-metering"
       ],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T05:49:20+00:00",
+      "updated": "2026-07-14T07:40:38+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T05:21:14+00:00",
@@ -961,7 +1094,22 @@
         "declared": [
           ".add/tasks/agents-console/src/"
         ],
-        "snapshot_md5": "418bcc81bc0737a8fded8ec7a9504599"
+        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-14T07:39:21+00:00",
+            "reason": "scope_violation: task 'agents-console' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/components/compliance/BundleEvidenceSeal.tsx \u00b7 apps/dashboard/components/compliance/ComplianceReportCenter.tsx \u00b7 apps/dashboard/components/compliance/GeneratedReportsList.tsx \u00b7 apps/dashboard/components/compliance/ScheduleControl.tsx \u00b7 apps/dashboard/components/settings/SettingsPage.tsx (51 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
@@ -1032,7 +1180,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T06:21:27+00:00",
+  "updated": "2026-07-14T07:40:42+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2000,8 +2148,8 @@
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
-    "eu-ai-act-readiness": "compliance-report-center",
-    "agent-gateway-v1": "claude-gateway-protocol-compat"
+    "eu-ai-act-readiness": "ai-act-marketing-page",
+    "agent-gateway-v1": "agents-console"
   },
   "todos": [
     {
