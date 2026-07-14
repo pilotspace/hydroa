@@ -1190,7 +1190,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T08:08:27+00:00",
+  "updated": "2026-07-14T09:27:17+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2406,6 +2406,42 @@
       "id": 41,
       "text": "agent-budget: add a chat-pipeline live test mirroring test_disconnect_correction_reaches_agent_principal_counter_via_recovery_sweep step-4 against CompletionUseCase._check_agent_principal_budget via a real /v1/chat/completions call (currently only NonChatGovernance.authorize path is live-tested; chat copy verified by code-diff parity). Low priority, 2026-07-14.",
       "created": "2026-07-14T06:21:27+00:00",
+      "status": "open"
+    },
+    {
+      "id": 42,
+      "text": "compliance-report-center (verify a854c67d, \ud83d\udfe1\u2192ticket): RetentionSweeper.should_start_retention_sweep gates ONLY on the 3 original knobs (usage/alert/audit days) \u2014 if an operator zeroes all three, the whole sweeper loop never starts, INCLUDING the new compliance_report_runs window + ZDR purge passes (pre-existing from tenant-retention-zdr, surfaced by R1). Fix: start-gate should also consider new-payload-window/ZDR-purge applicability.",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 43,
+      "text": "compliance-report-center (verify open-Q + TASK.md \u00a71 low-conf flag): generated compliance EVIDENCE (compliance_report_runs) is swept on the SAME retention_window_days as operational logs \u2014 an Art.12 bundle may need LONGER retention than a tenant's short log window. Consider a separate retention_report_runs_days knob (carve-out) if EU-tenant demand shows (monitor: rising skipped_zdr / never-success share).",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 44,
+      "text": "tool-call-metering (accepted v1 residual follow-on): exactly-once is fail-open under Redis outage (SETNX dedupe in MeteringToolCallObserver, not recorder ON CONFLICT \u2014 frozen recorder sig has no call_id passthrough). Add a DB-level UNIQUE backstop on a call_id-derived tag so a duplicate record() during a Redis outage can't double-bill. NOT a 0.9.0 blocker (disclosed).",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 45,
+      "text": "mcp-connector-passthrough budget CR (deferred at freeze): NonChatGovernance.check_budgets() enforces the per-key/team/agent-principal/tenant $ ladder but NOT RPM/TPM rate limits or credit-hold \u2014 deferred because there is no MCP settle hook yet. Wire RPM/TPM + credit-hold for /v1/mcp/call once a settle/refund path exists.",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 46,
+      "text": "agents-console (follow-on CR): ManageTokensDialog / the agent-tokens endpoint enumerate ONLY tokens already ATTACHED to a principal; a token created-but-unattached is invisible. Decide whether to surface unattached tokens (broaden the enumeration) or document the attach-first flow explicitly.",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 47,
+      "text": "ADD docs-check (R1 milestone-close gap): runbooks 02-admin-guide / 03-api-client-guide / 06-dashboard-ui do NOT yet cover the new agent-gateway surfaces (/v1/messages ingress, MCP connector allow-lists, Agents console, Compliance report center). R1 was additive so nothing is stale-WRONG, only incomplete. Add sections in a docs-only sweep.",
+      "created": "2026-07-14T09:27:17+00:00",
       "status": "open"
     }
   ]
