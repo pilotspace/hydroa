@@ -3,7 +3,7 @@
 goal: An EU tenant can self-serve produce a dated, Art. 12-mapped record-keeping evidence bundle from the console before EU AI Act GPAI enforcement lands on Aug 2, 2026.
 rationale: sub-milestone (quick strike) of the Tin-approved 2026-07-14 enterprise roadmap R1 (docs/roadmap/2026-07-14-enterprise-roadmap.html). EU AI Act Art. 101 GPAI penalty powers apply Aug 2, 2026 (3% global turnover / €15M — NEVER quote the Art. 99 €35M/7% figure; that is the general ceiling, a known competitor-marketing error). Obligations sit on upstream GPAI *providers*; the honest sellable is deployer-side Art. 12 record-keeping + fail-closed EU residency — Hydroa shipped ALL the machinery in 0.8.0 (compliance-export-api, audit store, Logs Explorer, residency, ZDR); this milestone is packaging/assembly + UI + marketing, not new engine surface. Extends: enterprise-identity-compliance (compliance-export-api is the anchor), residency-service-tiers (the residency story being sold), v38 marketing site. HARD DEADLINE: ai-act-marketing-page live before 2026-08-02. Runs parallel to agent-gateway-v1 wave 1; both feed release 0.9.0.
 stage: mvp · status: active · created: 2026-07-14T03:32:21+00:00
-release: pending
+release: 0.9.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

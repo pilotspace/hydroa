@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0 — 2026-07-14
+
+- Agent-era gateway — MCP governance, tool metering, Messages ingress — 0 carried · 0 key decision(s)
+- EU AI Act readiness pack — 1 carried · 0 key decision(s)
+
 ## 0.8.0 — 2026-07-13 — Commercial platform
 
 The release that turns Hydroa from a proxy into a business: bill your own downstream

@@ -3,7 +3,7 @@
 goal: An enterprise can front its agent fleet (Claude Code / Cowork / Agent SDK / MCP clients) through Hydroa — a native /v1/messages-compatible ingress, MCP connector allow-lists, per-tool-call metering, and agent-as-principal governance — inheriting guardrails, budgets, logs, and invoices.
 rationale: roadmap M3 of 3 (Tin-confirmed 2026-07-12) — Track D + the NEW anthropic-messages-ingress task (Anthropic officially supports gateway-fronting since Apr 2026; verified absent in Hydroa). Sequenced after monetization-core because tool metering bills through its rails. EXPANDED 2026-07-14 (Tin-approved R1, docs/roadmap/2026-07-14-enterprise-roadmap.html): + claude-gateway-protocol-compat (Anthropic shipped its own single-org Claude-only "Claude apps gateway" Jun 29–Jul 2 2026 and is PUBLISHING the protocol — Hydroa becomes the multi-tenant multi-provider implementation), + agent-identity-governance (agent identity is a named 2026 budget line: Okta GA Apr 30, Auth0 May 21), + agents-console (UDD). Extends: monetization-core (billing rails), v39 device-OAuth (agent principal substrate), logs-explorer-guardrails-v2 (session tracing surface). Target release 0.9.0 "Agent gateway", early Aug 2026.
 stage: mvp · status: active · created: 2026-07-12T07:38:33+00:00
-release: pending
+release: 0.9.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

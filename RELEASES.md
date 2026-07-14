@@ -1,5 +1,12 @@
 # Releases
 
+## 0.9.0 — 2026-07-14
+milestones: agent-gateway-v1, eu-ai-act-readiness
+loose tasks: none
+waivers: none
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: 9 tasks/2 milestones (agent-gateway-v1 + eu-ai-act-readiness); BE 3802 pass (5 R1-drift fixed + routing_admin xdist flakes green in isolation), dashboard 147 files/1394 pass; 2 security tasks dual-verified + all reproduced defects healed (MCP PII 3-round output-invariant close, kill-switch fail-closed, ZDR TOCTOU CR); 0 HARD-STOP blockers; forceable spec-deltas ride as disclosed follow-ups
+
 ## 0.8.0 — 2026-07-13 — Commercial platform
 milestones: gpt-realtime-pricing, platform-identity, v57, platform-console-flat-redesign, enterprise-hardening, logs-explorer-guardrails-v2, enterprise-identity-compliance, monetization-core, residency-service-tiers
 loose tasks: role-update-persistence-fix, batch-observability-scaffolding, declare-components-registry
