@@ -200,6 +200,13 @@ static_resources:
                             prefix: "/v1/"
                           route:
                             cluster: gateway_cluster
+                            # LLM completions (streaming SSE / reasoning) can exceed Envoy's
+                            # 15s default route timeout — which applies to non-upgrade
+                            # responses and would truncate the stream mid-flight. Disable the
+                            # overall deadline; idle_timeout (resets on each byte) still reaps
+                            # a genuinely stalled stream, so a slow-but-progressing one lives.
+                            timeout: 0s
+                            idle_timeout: 300s
                           typed_per_filter_config:
                             envoy.filters.http.ext_authz:
                               "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
