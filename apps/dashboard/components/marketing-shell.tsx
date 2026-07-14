@@ -42,6 +42,9 @@ const FOOTER_COLUMNS = [
     links: [
       { label: "Blog", href: "/blog" },
       { label: "Status", href: "/status" },
+      // ai-act-marketing-page TASK.md §3 v1 M11 + Tin freeze decision:
+      // footer-only placement — no MarketingShell nav (NAV_LINKS) widening.
+      { label: "AI Act readiness", href: "/ai-act-readiness" },
     ],
   },
   {

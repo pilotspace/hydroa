@@ -178,6 +178,15 @@ export default function PricingPage() {
                 rerouted. Need priority throughput? Priority-tier keys get preference
                 under contention, with Standard traffic never starved.
               </p>
+              {/* ai-act-marketing-page TASK.md §3 v1: one cross-link sentence, no
+                  TIERS change — this Card's frozen v1 shape is otherwise untouched. */}
+              <p className="mt-3 text-sm text-muted-foreground">
+                Preparing for the EU AI Act?{" "}
+                <Link href="/ai-act-readiness" className="font-medium text-primary hover:underline">
+                  See our AI Act readiness page
+                </Link>{" "}
+                for the Art. 101 details.
+              </p>
             </CardContent>
           </Card>
         </div>
