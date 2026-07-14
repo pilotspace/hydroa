@@ -3,7 +3,7 @@
 slug: claude-gateway-protocol-compat · created: 2026-07-14 · stage: production
 milestone: agent-gateway-v1
 autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: contract   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
+phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
 <!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
@@ -258,7 +258,7 @@ Glossary deltas:
 
 Least-sure flag surfaced at freeze: ⚠ [contract] M1's tenant-model-enumeration query for GET /v1/models is new, unverified-at-scale ground (no existing code enumerates a tenant's full permitted catalog); a wrong-shaped or slow implementation degrades gracefully to Claude Code's cached/built-in model list (documented client-side fallback) rather than hard-breaking a session, but would quietly cost Hydroa the "aliased models in the picker" differentiator until fixed. M6/M7's round-trip-fidelity requirements are integration-VERIFIED-not-assumed against the still-unbuilt sibling and will surface as a named change-request there if they fail, per §1.
 
-Status: DRAFT
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
