@@ -678,12 +678,12 @@
     },
     "art12-record-keeping-preset": {
       "title": "Art. 12 record-keeping export preset (one-click evidence bundle over compliance-export-api)",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "eu-ai-act-readiness",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T03:34:46+00:00"
+      "updated": "2026-07-14T03:51:47+00:00"
     },
     "compliance-report-center": {
       "title": "Compliance report center console surface (generate/download/schedule the Art. 12 bundle)",
@@ -698,39 +698,39 @@
     },
     "ai-act-marketing-page": {
       "title": "EU AI Act readiness marketing page + docs (accurate Art. 101 figures; live before 2026-08-02)",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "eu-ai-act-readiness",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T03:34:46+00:00"
+      "updated": "2026-07-14T03:52:30+00:00"
     },
     "anthropic-messages-ingress": {
       "title": "Native /v1/messages ingress (+ count_tokens): Anthropic-wire in, shared governance/router/recorder path, billing parity",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T03:34:46+00:00"
+      "updated": "2026-07-14T03:51:47+00:00"
     },
     "mcp-connector-passthrough": {
       "title": "MCP connector egress passthrough with per-tenant allow/deny lists (fail-closed) + session tracing",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T03:34:46+00:00"
+      "updated": "2026-07-14T03:51:47+00:00"
     },
     "agent-identity-governance": {
       "title": "Agent-as-principal on device-OAuth: named identities, per-agent budgets/limits, universal kill switch",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T03:34:47+00:00"
+      "updated": "2026-07-14T03:51:47+00:00"
     },
     "claude-gateway-protocol-compat": {
       "title": "Claude apps gateway protocol compatibility: Claude Code fronts Hydroa first-class",
@@ -835,7 +835,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T03:36:06+00:00",
+  "updated": "2026-07-14T03:52:30+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
