@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "plan-seat-cap",
-  "active_milestone": "platform-access-plan",
+  "active_task": "art12-record-keeping-preset",
+  "active_milestone": "eu-ai-act-readiness",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -675,6 +675,97 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "art12-record-keeping-preset": {
+      "title": "Art. 12 record-keeping export preset (one-click evidence bundle over compliance-export-api)",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "eu-ai-act-readiness",
+      "depends_on": [],
+      "created": "2026-07-14T03:34:46+00:00",
+      "updated": "2026-07-14T03:34:46+00:00"
+    },
+    "compliance-report-center": {
+      "title": "Compliance report center console surface (generate/download/schedule the Art. 12 bundle)",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "eu-ai-act-readiness",
+      "depends_on": [
+        "art12-record-keeping-preset"
+      ],
+      "created": "2026-07-14T03:34:46+00:00",
+      "updated": "2026-07-14T03:34:46+00:00"
+    },
+    "ai-act-marketing-page": {
+      "title": "EU AI Act readiness marketing page + docs (accurate Art. 101 figures; live before 2026-08-02)",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "eu-ai-act-readiness",
+      "depends_on": [],
+      "created": "2026-07-14T03:34:46+00:00",
+      "updated": "2026-07-14T03:34:46+00:00"
+    },
+    "anthropic-messages-ingress": {
+      "title": "Native /v1/messages ingress (+ count_tokens): Anthropic-wire in, shared governance/router/recorder path, billing parity",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "agent-gateway-v1",
+      "depends_on": [],
+      "created": "2026-07-14T03:34:46+00:00",
+      "updated": "2026-07-14T03:34:46+00:00"
+    },
+    "mcp-connector-passthrough": {
+      "title": "MCP connector egress passthrough with per-tenant allow/deny lists (fail-closed) + session tracing",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "agent-gateway-v1",
+      "depends_on": [],
+      "created": "2026-07-14T03:34:46+00:00",
+      "updated": "2026-07-14T03:34:46+00:00"
+    },
+    "agent-identity-governance": {
+      "title": "Agent-as-principal on device-OAuth: named identities, per-agent budgets/limits, universal kill switch",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "agent-gateway-v1",
+      "depends_on": [],
+      "created": "2026-07-14T03:34:47+00:00",
+      "updated": "2026-07-14T03:34:47+00:00"
+    },
+    "claude-gateway-protocol-compat": {
+      "title": "Claude apps gateway protocol compatibility: Claude Code fronts Hydroa first-class",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "agent-gateway-v1",
+      "depends_on": [
+        "anthropic-messages-ingress"
+      ],
+      "created": "2026-07-14T03:34:47+00:00",
+      "updated": "2026-07-14T03:34:47+00:00"
+    },
+    "tool-call-metering": {
+      "title": "Per-tool-call metering: $/1k-query pricing units through the shared rate-card resolver to invoice lines",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "agent-gateway-v1",
+      "depends_on": [
+        "mcp-connector-passthrough"
+      ],
+      "created": "2026-07-14T03:34:47+00:00",
+      "updated": "2026-07-14T03:34:47+00:00"
+    },
+    "agents-console": {
+      "title": "Agents console (UDD): directory, session explorer, MCP allow-list management, kill switch",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "agent-gateway-v1",
+      "depends_on": [
+        "mcp-connector-passthrough",
+        "agent-identity-governance",
+        "tool-call-metering"
+      ],
+      "created": "2026-07-14T03:34:47+00:00",
+      "updated": "2026-07-14T03:34:47+00:00"
     }
   },
   "milestones": {
@@ -730,13 +821,21 @@
       "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
       "goal": "",
       "stage": "mvp",
-      "status": "queued",
+      "status": "active",
       "created": "2026-07-12T07:38:33+00:00",
       "updated": "2026-07-12T07:38:33+00:00"
+    },
+    "eu-ai-act-readiness": {
+      "title": "EU AI Act readiness pack",
+      "goal": "An EU tenant can self-serve produce a dated, Art. 12-mapped record-keeping evidence bundle from the console before EU AI Act GPAI enforcement lands on Aug 2, 2026.",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-07-14T03:32:21+00:00",
+      "updated": "2026-07-14T03:32:21+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-13T11:09:33+00:00",
+  "updated": "2026-07-14T03:36:06+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1695,13 +1794,17 @@
   ],
   "active_milestones": [
     "platform-admin-console",
-    "platform-access-plan"
+    "platform-access-plan",
+    "eu-ai-act-readiness",
+    "agent-gateway-v1"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
     "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
-    "platform-access-plan": "plan-seat-cap"
+    "platform-access-plan": "plan-seat-cap",
+    "eu-ai-act-readiness": "art12-record-keeping-preset",
+    "agent-gateway-v1": "agents-console"
   },
   "todos": [
     {
@@ -1930,6 +2033,12 @@
       "id": 38,
       "text": "Delta-hygiene sweep (systemic): 273 open SPEC deltas accumulated across 76 archived milestones, riding unresolved across 7 releases (0.8.0 cut with --force, 15 bundle-deltas riding). Dedicate a triage pass: carry-delta the genuine defers, new-task --from-delta the real work (e.g. the recurring 'coverage under-attributes async-DB lines / greenlet concurrency' delta appears many times \u2014 worth ONE fix), drop-delta the obsolete. Not blocking releases but the floor re-fires every cut.",
       "created": "2026-07-13T11:09:33+00:00",
+      "status": "open"
+    },
+    {
+      "id": 39,
+      "text": "test-parallel -n 12 can stall near completion on shared-Postgres DDL contention (12-way per-test drop_all/create_all + pg_catalog autovacuum, all workers wait_event_type=IO). 2/4 full runs finished 5:37-6:19, 2 stalled. Follow-up: replace per-test drop_all/create_all with a template-DB clone (CREATE DATABASE ... TEMPLATE) or transaction-rollback isolation, or cap -n to ~8, to remove the DDL-per-test cost.",
+      "created": "2026-07-14T03:02:29+00:00",
       "status": "open"
     }
   ]
