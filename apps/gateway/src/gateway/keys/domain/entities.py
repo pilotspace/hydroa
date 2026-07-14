@@ -183,3 +183,10 @@ class AuthzResult:
     # effective allow-list and needs no further lookup — populated by the sk- key path's
     # existing LEFT JOIN (SqlAlchemyApiKeyRepository.get_by_id(), zero extra DB reads).
     mcp_allowed_servers: list[str] | None = None
+    # agent-identity-governance TASK.md §3 (FROZEN @ v1) additive fields — mirror
+    # team_id/team_budget_usd exactly. Populated in CompositeKeyAuthenticator.authenticate's
+    # agent-token branch via a LEFT JOIN agent_principals inside resolve_access_token's
+    # existing query (zero extra DB reads). Both stay None for an unattached token
+    # (every existing v39 row, and every sk- API-key AuthzResult) — byte-identical.
+    agent_principal_id: uuid.UUID | None = None
+    agent_principal_budget_usd: Decimal | None = None

@@ -98,6 +98,7 @@ class RecordingUsageRecorder:
             "tags",
             "tier_served",
             "tier_capacity_degraded",
+            "agent_principal_id",
         }
     )
 
@@ -132,6 +133,7 @@ class RecordingUsageRecorder:
         tags: dict[str, str] | None = None,
         tier_served: str = "standard",
         tier_capacity_degraded: bool = False,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -172,6 +174,7 @@ class RecordingUsageRecorder:
             tags=tags,
             tier_served=tier_served,
             tier_capacity_degraded=tier_capacity_degraded,
+            agent_principal_id=agent_principal_id,
         )
         return None
 
@@ -197,6 +200,7 @@ class RecordingUsageRecorder:
         tags: dict[str, str] | None = None,
         tier_served: str = "standard",
         tier_capacity_degraded: bool = False,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> UsageRecordOutcome | None:
         """Identical to record(), but RETURNS the computed outcome instead of discarding
         it (credits-ledger TASK.md §3: "settle must consume the cost already computed by
@@ -232,6 +236,7 @@ class RecordingUsageRecorder:
                 tags=tags,
                 tier_served=tier_served,
                 tier_capacity_degraded=tier_capacity_degraded,
+                agent_principal_id=agent_principal_id,
             )
         except Exception as exc:
             _log.warning(
@@ -267,6 +272,7 @@ class RecordingUsageRecorder:
         tags: dict[str, str] | None = None,
         tier_served: str = "standard",
         tier_capacity_degraded: bool = False,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> UsageRecordOutcome:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -607,6 +613,16 @@ class RecordingUsageRecorder:
                     if team_id is not None:
                         per_team_spend_key = f"usage:spend:team:{team_id}:{yyyymm}"
                         await self._redis.incrbyfloat(per_team_spend_key, float(cost_usd))
+                    # Per-agent-principal counter (agent-identity-governance M4/CR-2 seam —
+                    # fail-open same as per-key/per-team). usage:spend:agent_principal:
+                    # {principal_id}:{YYYYMM} — only when the token is attached to a
+                    # principal. Read by GovernanceService._check_agent_principal_budget()
+                    # (enforcement) and GET /admin/agents (CR-2 read-side display).
+                    if agent_principal_id is not None:
+                        per_principal_spend_key = (
+                            f"usage:spend:agent_principal:{agent_principal_id}:{yyyymm}"
+                        )
+                        await self._redis.incrbyfloat(per_principal_spend_key, float(cost_usd))
             except Exception as exc:
                 _log.warning(
                     "usage_recorder: advisory spend increment failed "
@@ -649,6 +665,7 @@ class RecordingUsageRecorder:
         provider_generation_id: str,
         usage_source: str = "openrouter_recovered",
         team_id: uuid.UUID | None = None,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> None:
         """Append a pre-priced SIGNED cost CORRECTION to the ledger (cost-recovery v30 t6).
 
@@ -721,6 +738,11 @@ class RecordingUsageRecorder:
                     if team_id is not None:
                         await self._redis.incrbyfloat(
                             f"usage:spend:team:{team_id}:{yyyymm}", float(cost_usd)
+                        )
+                    if agent_principal_id is not None:
+                        await self._redis.incrbyfloat(
+                            f"usage:spend:agent_principal:{agent_principal_id}:{yyyymm}",
+                            float(cost_usd),
                         )
         except Exception as exc:
             _log.warning(

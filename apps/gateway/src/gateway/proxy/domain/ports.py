@@ -84,6 +84,9 @@ class UsageRecordExtras(TypedDict, total=False):
                           distinguishes an honest standard-rate bill caused by
                           infrastructure degradation from one caused by ordinary
                           overflow.
+      agent_principal_id — per-agent-principal spend attribution (agent-identity-
+                          governance M4/CR-2), a structural mirror of team_id:
+                          None for a token unattached to any principal.
     """
 
     team_id: uuid.UUID
@@ -100,6 +103,7 @@ class UsageRecordExtras(TypedDict, total=False):
     tags: dict[str, str]
     tier_served: str
     tier_capacity_degraded: bool
+    agent_principal_id: uuid.UUID
 
 
 class ModelAccess(Enum):
