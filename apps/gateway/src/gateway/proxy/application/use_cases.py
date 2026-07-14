@@ -1058,6 +1058,8 @@ class _InlineCostRecovery(Protocol):
         key_id: Any,
         model: str,
         provider_generation_id: str,
+        team_id: Any = None,
+        agent_principal_id: Any = None,
     ) -> Any: ...
 
 
@@ -3582,6 +3584,15 @@ class CompletionUseCase:
                                     # candidate, not the alias (which has no pricing snapshot).
                                     model=_stream_model_id,
                                     provider_generation_id=disconnect_gen_id,
+                                    # agent-identity-governance defect fix: thread the
+                                    # SAME team_id/agent_principal_id already stamped on
+                                    # the disconnect anchor row a few lines above, so the
+                                    # inline recovery's correction reaches the per-team/
+                                    # per-agent-principal spend counters too — no DB
+                                    # round trip needed here (unlike the sweep backstop,
+                                    # which reads it back off the anchor row).
+                                    team_id=team_id,
+                                    agent_principal_id=agent_principal_id,
                                 )
                             )
                             # Same fire-and-forget hygiene as the other ensure_future sites

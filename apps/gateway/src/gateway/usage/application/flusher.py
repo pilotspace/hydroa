@@ -97,6 +97,16 @@ async def insert_usage_row(
                 team_id = uuid.UUID(team_id_str)
             except ValueError:
                 team_id = None
+        # agent-identity-governance defect fix: missing/empty/corrupt → NULL, same
+        # old-event-safe idiom as team_id above (an event XADD'd before this column
+        # existed simply never carries the field).
+        agent_principal_id_str = _event_field(fields, "agent_principal_id")
+        agent_principal_id: uuid.UUID | None = None
+        if agent_principal_id_str:
+            try:
+                agent_principal_id = uuid.UUID(agent_principal_id_str)
+            except ValueError:
+                agent_principal_id = None
         # pricing-units: backward-compat with pre-v7 events (missing → 'per_token'/NULL).
         pricing_unit_str = _event_field(fields, "pricing_unit") or "per_token"
         quantity_str = _event_field(fields, "quantity")
@@ -169,7 +179,8 @@ async def insert_usage_row(
                     "  cache_creation_tokens,"
                     "  audio_prompt_tokens, audio_completion_tokens, audio_cached_tokens,"
                     "  cost_basis, provider_cost, usage_source,"
-                    "  provider_generation_id, tags, tier_served, tier_capacity_degraded)"
+                    "  provider_generation_id, tags, tier_served, tier_capacity_degraded,"
+                    "  agent_principal_id)"
                     " VALUES"
                     " (:id, :tenant_id, :key_id, :model_id, :prompt_tokens,"
                     "  :completion_tokens, :cost_usd, :status, :pricing_snapshot_id,"
@@ -178,7 +189,8 @@ async def insert_usage_row(
                     "  :cache_creation_tokens,"
                     "  :audio_prompt_tokens, :audio_completion_tokens, :audio_cached_tokens,"
                     "  :cost_basis, :provider_cost, :usage_source,"
-                    "  :provider_generation_id, :tags, :tier_served, :tier_capacity_degraded)"
+                    "  :provider_generation_id, :tags, :tier_served, :tier_capacity_degraded,"
+                    "  :agent_principal_id)"
                     " ON CONFLICT (id) DO NOTHING"
                 ),
                 {
@@ -208,6 +220,7 @@ async def insert_usage_row(
                     "tags": json.dumps(tags_dict),
                     "tier_served": tier_served,
                     "tier_capacity_degraded": tier_capacity_degraded,
+                    "agent_principal_id": agent_principal_id,
                 },
             )
 

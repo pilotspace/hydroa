@@ -225,23 +225,39 @@ class SqlAlchemyAgentOAuthRepository:
     async def resolve_access_token(
         self, *, access_token_hash: str, now: datetime
     ) -> AgentTokenBinding | None:
-        # agent-identity-governance TASK.md §3 (FROZEN @ v1): LEFT JOIN agent_principals
+        # agent-identity-governance TASK.md §3 (FROZEN @ v2): LEFT JOIN agent_principals
         # so an attached token's principal budget rides along for free (zero extra DB
         # reads — mirrors SqlAlchemyApiKeyRepository.get_by_id's own team/tenant LEFT
-        # JOIN precedent). No killed-principal re-check needed here: a kill's own
-        # transaction already sets THIS row's revoked_at (M7), so the FAIL-CLOSED check
-        # immediately below already rejects it — the kill is effective BY CONSTRUCTION.
+        # JOIN precedent).
+        #
+        # Defect fix (adversarial verify, conf 0.95): a killed-principal re-check IS
+        # required here after all — the "effective BY CONSTRUCTION via revoked_at"
+        # assumption in the removed comment above does not hold. attach_token's
+        # conditional UPDATE gates on a plain (non-locking) EXISTS subquery against
+        # agent_principals.killed_at; under READ COMMITTED that subquery reads a
+        # snapshot taken at attach_token's OWN statement start, so it can miss
+        # kill_principal's not-yet-committed killed_at write. In that narrow interleaving
+        # — kill_principal's bulk-revoke sweep runs BEFORE attach_token commits
+        # principal_id onto the token — the token is left attached to a killed principal
+        # with revoked_at still NULL, and no later sweep ever re-catches it. This
+        # additive killed_at check makes M9's guarantee ("every attached token stops
+        # authenticating at BOTH seams starting with the very next request") actually
+        # true for that race, the same live-per-request-recheck convention
+        # DbImpersonationSessionGuard.ensure_live already establishes elsewhere in this
+        # codebase for credential/session revocation (fail-CLOSED, never cached).
         row_result = await self._session.execute(
-            select(AgentTokenRow, AgentPrincipalRow.monthly_budget_usd)
+            select(AgentTokenRow, AgentPrincipalRow.monthly_budget_usd, AgentPrincipalRow.killed_at)
             .outerjoin(AgentPrincipalRow, AgentTokenRow.principal_id == AgentPrincipalRow.id)
             .where(AgentTokenRow.access_token_hash == access_token_hash)
         )
-        pair = row_result.first()
-        if pair is None:
+        triple = row_result.first()
+        if triple is None:
             return None
-        row, principal_budget_usd = pair
+        row, principal_budget_usd, principal_killed_at = triple
         if row.revoked_at is not None or row.access_expires_at <= now:
             return None  # FAIL-CLOSED
+        if principal_killed_at is not None:
+            return None  # FAIL-CLOSED — attached principal is killed (race-proof re-check)
         return AgentTokenBinding(
             token_id=row.id,
             tenant_id=row.tenant_id,

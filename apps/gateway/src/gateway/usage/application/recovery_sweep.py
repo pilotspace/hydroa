@@ -31,9 +31,18 @@ _OPENROUTER = "openrouter"
 
 # Candidate scan: flushed client_disconnect rows carrying a generation id, newer than the
 # max-age window, with NO openrouter_recovered sibling. Backed by ix_usage_records_gen_recovery.
+# agent-identity-governance defect fix: also selects the anchor row's team_id/
+# agent_principal_id attribution (columns added by migration a2b4c6d8e0f1 /
+# e1a3f5b9c7d2) so the sweep can thread them into recover() -> record_correction(),
+# which previously omitted both — the correction never moved the per-team or
+# per-agent-principal spend counters, letting an attached principal spend past its
+# cap after a disconnect+true-up. DISTINCT stays correct: team_id/agent_principal_id
+# are themselves functionally determined by (tenant_id, provider_generation_id) here
+# (one anchor row per generation), so adding them never multiplies row count.
 _CANDIDATE_SQL = text(
     """
-    SELECT DISTINCT u.tenant_id, u.key_id, u.model_id, u.provider_generation_id
+    SELECT DISTINCT u.tenant_id, u.key_id, u.model_id, u.provider_generation_id,
+           u.team_id, u.agent_principal_id
       FROM usage_records u
      WHERE u.provider_generation_id IS NOT NULL
        AND u.usage_source = 'client_disconnect'
@@ -65,6 +74,8 @@ class _RecoveryService(Protocol):
         key_id: Any,
         model: str,
         provider_generation_id: str,
+        team_id: Any = None,
+        agent_principal_id: Any = None,
     ) -> Any: ...
 
 
@@ -124,7 +135,7 @@ class OpenRouterRecoverySweeper:
 
             # Resolve providers once per distinct model this cycle (cheap, bounded).
             provider_cache: dict[str, str] = {}
-            for tenant_id, key_id, model_id, gid in candidates:
+            for tenant_id, key_id, model_id, gid, team_id, agent_principal_id in candidates:
                 try:
                     provider = provider_cache.get(model_id)
                     if provider is None:
@@ -137,6 +148,11 @@ class OpenRouterRecoverySweeper:
                         key_id=key_id,
                         model=model_id,
                         provider_generation_id=gid,
+                        # agent-identity-governance defect fix: thread the anchor row's
+                        # own attribution through so the correction moves the SAME
+                        # per-team/per-agent-principal counters the main path does.
+                        team_id=team_id,
+                        agent_principal_id=agent_principal_id,
                     )
                     attempts += 1
                 except Exception as exc:  # one bad row must not abort the cycle
