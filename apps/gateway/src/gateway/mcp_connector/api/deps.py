@@ -23,9 +23,11 @@ from gateway.mcp_connector.domain.ports import NoopToolCallObserver, ToolCallObs
 from gateway.mcp_connector.infrastructure.breaker_registry import McpCircuitBreakerRegistry
 from gateway.mcp_connector.infrastructure.httpx_dialer import HttpxMcpDialer
 from gateway.mcp_connector.infrastructure.repository import McpServerPolicyRepository
+from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
 from gateway.proxy.infrastructure.guardrail_evaluator import RegexGuardrailEvaluator
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
+from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
 
 _hasher = Sha256SecretHasher()
 _repo = McpServerPolicyRepository()
@@ -89,6 +91,24 @@ def get_mcp_call_use_case(
 
     payload_capture = getattr(request.app.state, "payload_capture", None)
 
+    # mcp-budget-governance CR (mcp-connector-passthrough TASK.md §3 -> v3):
+    # NonChatGovernance, wired the SAME way embeddings_deps.py/images_deps.py/
+    # audio_deps.py already do (budget_guard/redis_client/session_factory from
+    # app.state) — but only its check_budgets() subset is ever called by
+    # McpCallUseCase, so authenticator/model_checker/rate_limiter below are never
+    # invoked; they exist only to satisfy NonChatGovernance's constructor.
+    # authenticator reuses get_mcp_authenticator's own construction verbatim (M14
+    # — zero behavior change to the real request-authenticating instance, which
+    # the router builds separately via the get_mcp_authenticator dependency).
+    governance = NonChatGovernance(
+        authenticator=get_mcp_authenticator(request, session),
+        model_checker=SqlAlchemyModelChecker(session),
+        budget_guard=request.app.state.budget_guard,
+        rate_limiter=None,
+        redis_client=getattr(request.app.state, "redis_client", None),
+        session_factory=getattr(request.app.state, "sessionmaker", None),
+    )
+
     return McpCallUseCase(
         session=session,
         audit_session_factory=request.app.state.sessionmaker,
@@ -99,6 +119,7 @@ def get_mcp_call_use_case(
         payload_capture=payload_capture,
         tool_call_observer=tool_call_observer,
         breaker_registry=breaker_registry,
+        governance=governance,
     )
 
 

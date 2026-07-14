@@ -292,6 +292,47 @@ class NonChatGovernance:
 
         return authz
 
+    async def check_budgets(self, authz: AuthzResult) -> None:
+        """Run ONLY the budget ladder (authorize()'s steps 5-7, same order, same
+        most-specific-wins semantics) — WITHOUT auth/expiry/allowlist/catalog/
+        residency/tier-capacity/credit-hold/RPM/TPM.
+
+        Added by the mcp-budget-governance CR (mcp-connector-passthrough TASK.md
+        §3 -> v3): POST /v1/mcp/call authenticates via CompositeKeyAuthenticator
+        strictly BEFORE reaching McpCallUseCase (M14, unchanged) and has no
+        "model"/token-estimate concept to catalog-check or rate-limit — it needs
+        exactly this budget-only subset, never the full 9-step authorize().
+
+        Purely additive: authorize() itself is UNTOUCHED, byte-identical, and does
+        NOT call this method — its own inline steps 5-7 stay exactly as
+        embeddings-endpoint TASK.md §3 froze them. This is a second, narrower
+        entry point over the SAME private budget-check helpers (never a
+        parallel/duplicated CHECK implementation) — _check_per_key_budget /
+        _check_team_budget / _check_agent_principal_budget / the injected
+        RedisBudgetGuard.check() below are the IDENTICAL calls authorize() makes.
+
+        RPM/TPM (authorize()'s steps 8-9) are explicitly OUT of scope for MCP
+        calls under this CR — a documented follow-up, never silently implied as
+        covered. Tenant credit holds (credit_guard.check_and_hold) are ALSO out
+        of scope here: MCP calls have no settle/release hook analogous to
+        CompletionUseCase._dispatch_record, so an admission-time credit hold
+        would rely on the M6 reconciliation sweep with no per-call test coverage
+        — deferred to a follow-up CR rather than wired half-tested.
+
+        Raises BUDGET_EXCEEDED (402, ERR_BUDGET_EXCEEDED) on any dimension breach
+        — the SAME ErrorSpec every chat/non-chat pipeline raises.
+        """
+        if authz.monthly_budget_usd is not None:
+            await self._check_per_key_budget(authz)
+            await self._check_team_budget(authz)
+            await self._check_agent_principal_budget(authz)
+        else:
+            if authz.soft_budget_usd is not None:
+                await self._check_per_key_budget(authz)
+            await self._check_team_budget(authz)
+            await self._check_agent_principal_budget(authz)
+            await self._budget_guard.check(authz.tenant_id)
+
     # ---------------------------------------------------------------------------
     # Private governance helpers (mirrors use_cases.py module-level functions)
     # ---------------------------------------------------------------------------

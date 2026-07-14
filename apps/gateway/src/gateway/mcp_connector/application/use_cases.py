@@ -1,5 +1,5 @@
 """McpCallUseCase — the /v1/mcp/call orchestration (mcp-connector-passthrough TASK.md
-§3/§5, FROZEN @ v1).
+§3/§5, FROZEN @ v2; §3 amended -> v3 by the mcp-budget-governance CR, 2026-07-14).
 
 Safety rule (§5, verbatim): the allow-list membership check (M5) and the fresh
 `EgressPolicy.check()` (M6) MUST both complete, in that order, strictly BEFORE any
@@ -9,10 +9,21 @@ ordering (M5 before `self._dialer.dial()` is ever called); `HttpxMcpDialer` itse
 enforces the second half (`egress_policy.check()` strictly before the httpx request is
 built — see infrastructure/httpx_dialer.py).
 
-Order: allow-list check (fail-closed, zero dials) -> McpDialer.dial() (egress-checked)
--> GuardrailEvaluator.evaluate_pre on the tool-result content (M9) ->
-PayloadCapturePort.capture() fire-and-forget (M10) -> ToolCallObserver.record()
-fire-and-forget, success only (M11) -> response.
+mcp-budget-governance CR (2026-07-14, Tin-approved): before this CR, /v1/mcp/call ran
+NO budget governance at all — every MCP tool call silently bypassed the agent-principal/
+per-key/tenant/team budget caps chat and non-chat calls already enforce. A
+budget-governance gate (NonChatGovernance.check_budgets — the SAME per-key/team/agent-
+principal Redis-counter checks + RedisBudgetGuard.check() every other pipeline uses) now
+runs FIRST, strictly before the allow-list check, so a budget-refused call costs ZERO
+work of any kind (no allow-list DB read, no egress check, no dial, no usage_records row,
+no tool-call meter). RPM/TPM and tenant-credit holds are explicitly OUT of scope for this
+CR (see NonChatGovernance.check_budgets docstring) — documented follow-ups, not silently
+covered.
+
+Order: budget-governance gate (fail-closed, zero dials) -> allow-list check (fail-closed,
+zero dials) -> McpDialer.dial() (egress-checked) -> GuardrailEvaluator.evaluate_pre on the
+tool-result content (M9) -> PayloadCapturePort.capture() fire-and-forget (M10) ->
+ToolCallObserver.record() fire-and-forget, success only (M11) -> response.
 """
 
 from __future__ import annotations
@@ -36,11 +47,13 @@ from gateway.core.error_catalog import (
     MCP_UPSTREAM_REDIRECT_REJECTED,
     MCP_UPSTREAM_UNAVAILABLE,
 )
+from gateway.core.errors import ProblemError
 from gateway.keys.domain.entities import AuthzResult
 from gateway.mcp_connector.domain.errors import McpDialTimeoutError, McpRedirectRejectedError
 from gateway.mcp_connector.domain.ports import McpDialer, ToolCallObserver
 from gateway.mcp_connector.infrastructure.breaker_registry import McpCircuitBreakerRegistry
 from gateway.mcp_connector.infrastructure.repository import McpServerPolicyRepository
+from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.domain.ports import GuardrailEvaluator, PayloadCapturePort
 
 _TOOL_RESULT_BLOCKED_CODE = -32050
@@ -160,6 +173,7 @@ class McpCallUseCase:
         payload_capture: PayloadCapturePort | None,
         tool_call_observer: ToolCallObserver,
         breaker_registry: McpCircuitBreakerRegistry,
+        governance: NonChatGovernance,
     ) -> None:
         self._session = session
         self._audit_session_factory = audit_session_factory
@@ -170,6 +184,9 @@ class McpCallUseCase:
         self._payload_capture = payload_capture
         self._tool_call_observer = tool_call_observer
         self._breakers = breaker_registry
+        # mcp-budget-governance CR (mcp-connector-passthrough TASK.md §3 -> v3):
+        # reuses NonChatGovernance.check_budgets() — see execute() below.
+        self._governance = governance
 
     async def _resolve_effective_servers(self, authz: AuthzResult) -> list[str]:
         """Key > tenant > default-deny (M4/M14). AuthzResult.mcp_allowed_servers is
@@ -250,6 +267,29 @@ class McpCallUseCase:
         started = time.monotonic()
         tool_name = _extract_tool_name(message)
         server_host = urlsplit(server_url).hostname or "unknown"
+
+        # --- mcp-budget-governance CR: budget-governance gate — FIRST, strictly
+        # before the allow-list check / egress check / dial, so a refused call
+        # costs ZERO work of any kind (mirrors M5's "allow-list check FIRST"
+        # discipline, extended one gate earlier). Reuses NonChatGovernance.
+        # check_budgets() — the SAME per-key/team/agent-principal/tenant budget
+        # ladder chat/non-chat calls already enforce. A breach raises
+        # ProblemError(BUDGET_EXCEEDED) — the SAME 402 ErrorSpec every other
+        # pipeline raises, caught by the app-wide exception handler. ---
+        try:
+            await self._governance.check_budgets(authz)
+        except ProblemError as exc:
+            self._audit(authz=authz, server_host=server_host, tool_name=tool_name, result="refused")
+            self._capture(
+                authz=authz,
+                server_host=server_host,
+                tool_name=tool_name,
+                message=message,
+                response_body=None,
+                status=exc.status,
+                latency_ms=int((time.monotonic() - started) * 1000),
+            )
+            raise
 
         effective_servers = await self._resolve_effective_servers(authz)
 
