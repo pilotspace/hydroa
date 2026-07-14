@@ -141,3 +141,15 @@ describe("test_pricing_residency_and_priority_story", () => {
     }
   });
 });
+
+// ── ai-act-marketing-page TASK.md §3 v1: one cross-link sentence into the ──
+// ── new /ai-act-readiness page, added to the existing residency Card ───────
+describe("test_pricing_cross_links_ai_act_readiness", () => {
+  it("the residency callout links to /ai-act-readiness", () => {
+    render(<PricingPage />);
+    const link = screen
+      .getAllByRole("link")
+      .find((l) => l.getAttribute("href") === "/ai-act-readiness");
+    expect(link).toBeTruthy();
+  });
+});
