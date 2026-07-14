@@ -47,6 +47,10 @@ loose tasks closed since 0.7.0.
   and running (not feature-flagged); credited here at Tin's discretion with this caveat.
 - Loose tasks: role-update-persistence-fix, batch-observability-scaffolding,
   declare-components-registry.
+- **Developer experience** — `make test-parallel` fans the full backend suite across
+  pytest-xdist workers with per-worker Postgres/Redis isolation (a single
+  `tests/_redis_env.py` source of truth), cutting the local run ~26 min → ~5.5 min
+  (~4.6×); serial `make test` is unchanged and stays the authoritative gate.
 
 ### Security notes
 - Two HARD-STOP-disciplined saves in residency-service-tiers: a dual-verify catch of a

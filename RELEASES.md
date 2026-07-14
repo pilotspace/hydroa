@@ -4,7 +4,7 @@
 milestones: gpt-realtime-pricing, platform-identity, v57, platform-console-flat-redesign, enterprise-hardening, logs-explorer-guardrails-v2, enterprise-identity-compliance, monetization-core, residency-service-tiers
 loose tasks: role-update-persistence-fix, batch-observability-scaffolding, declare-components-registry
 waivers: none
-notes: gpt-realtime-pricing credited WITH caveat — billing math unit/adversarially-tested but NOT live-verified against real OpenAI Realtime infra (no live cred available); code merged/running, not feature-flagged. 15 bundle SPEC-deltas rode in via --force (forceable floor; 0 security/blockers). Merge evidence: full BE 3556 passed @ 90.94% cov + dashboard 1276/1276; residency-service-tiers via PR #69 (merge 14d7bd9), admin-merged past org-billing 0-step CI.
+notes: gpt-realtime-pricing credited WITH caveat — billing math unit/adversarially-tested but NOT live-verified against real OpenAI Realtime infra (no live cred available); code merged/running, not feature-flagged. 15 bundle SPEC-deltas rode in via --force (forceable floor; 0 security/blockers). Merge evidence: full BE 3556 passed @ 90.94% cov + dashboard 1276/1276; residency-service-tiers via PR #69 (merge 14d7bd9), admin-merged past org-billing 0-step CI. Also folds in a dev-experience chore (PR #70, merge da9551f): `make test-parallel` — pytest-xdist per-worker Postgres/Redis isolation, ~26 min → ~5.5 min (~4.6×), 3566 passed @ 90.95% cov, serial `make test` unchanged.
 actor: Tin Dang <tindang.ht97@gmail.com> (git)
 evidence: recorded by add.py release
 
