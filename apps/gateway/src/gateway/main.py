@@ -88,7 +88,18 @@ from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_M
 from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 from gateway.catalog.infrastructure.vertex_seed import VERTEX_SEED_MODELS
+from gateway.compliance.api.report_schedule_router import report_schedule_router
 from gateway.compliance.api.router import compliance_router
+from gateway.compliance.application.report_schedule_generator import (
+    ReportScheduleGenerator,
+    should_start_report_schedule_generator,
+)
+from gateway.compliance.infrastructure.orm import (  # noqa: F401 — registers TenantReportScheduleRow/ComplianceReportRunRow on Base.metadata
+    ComplianceReportRunRow as _ComplianceReportRunRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.compliance.infrastructure.orm import (  # noqa: F401
+    TenantReportScheduleRow as _TenantReportScheduleRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.conversations.api.router import conversations_router
 from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
     ConversationMessageRow as _ConversationMessageRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
@@ -723,6 +734,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # ReportScheduleGenerator — monthly Art. 12 bundle generation background loop
+        # (compliance-report-center TASK.md §3 M15). Default-safe: OFF unless an
+        # operator sets compliance_report_schedule_interval_seconds>0. Structurally
+        # copied from the InvoiceGenerator wiring immediately above.
+        app.state.report_schedule_generator_task = None
+        if should_start_report_schedule_generator(_settings):
+            _report_schedule_generator = ReportScheduleGenerator(
+                session_factory=_sessionmaker,
+                object_store=app.state.object_store,
+                settings=_settings,
+            )
+            app.state.report_schedule_generator = _report_schedule_generator
+            app.state.report_schedule_generator_task = asyncio.create_task(
+                _report_schedule_generator.run_forever(
+                    interval_seconds=float(_settings.compliance_report_schedule_interval_seconds)
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -794,6 +823,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             invoice_generator_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await invoice_generator_task
+
+        report_schedule_generator_task: asyncio.Task[None] | None = getattr(
+            app.state, "report_schedule_generator_task", None
+        )
+        if report_schedule_generator_task is not None:
+            report_schedule_generator_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await report_schedule_generator_task
 
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
@@ -875,6 +912,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.retention_sweeper_task = None
     app.state.batch_window_flusher_task = None
     app.state.invoice_generator_task = None
+    app.state.report_schedule_generator_task = None
 
     # Video generation seam — default: no provider (honest degradation).
     # Tests override via app.state.video_generator = <stub>.
@@ -1488,6 +1526,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(guardrail_analytics_router)
     app.include_router(audit_export_router)
     app.include_router(compliance_router)
+    app.include_router(report_schedule_router)
     app.include_router(ops_router)
     app.include_router(budget_router)
     app.include_router(plan_router)
