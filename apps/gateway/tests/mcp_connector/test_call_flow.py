@@ -513,6 +513,56 @@ async def test_pii_mask_clean_resource_only_result_passes_through_unchanged(
     assert body["result"]["content"][0] == resource_block
 
 
+async def test_pii_mask_blob_only_resource_block_passes_through_unchanged(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """Regression/edge case: an EmbeddedResource block carrying BINARY `blob` data
+    (no `text` field at all) alongside a text block with PII. The blob-only resource
+    block has no maskable text — it must be treated like an image block: relayed
+    byte-identical, never scanned/substituted, and never mistaken for a maskable-but-
+    unresolved shape (must not trip the fail-closed path either)."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    blob_resource_block = {
+        "type": "resource",
+        "resource": {
+            "uri": "file:///data.bin",
+            "mimeType": "application/octet-stream",
+            "blob": "base64-opaque-binary-bytes",
+        },
+    }
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "contact alice@example.com"},
+                        blob_resource_block,
+                    ]
+                },
+            },
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "error" not in body, "a blob-only resource block must never trip fail-closed"
+    blocks = body["result"]["content"]
+    assert "alice@example.com" not in blocks[0]["text"]
+    assert "[EMAIL_REDACTED]" in blocks[0]["text"]
+    assert blocks[1] == blob_resource_block, "blob-only resource must be relayed unchanged"
+
+
 async def test_pii_mask_whole_body_fallback_shape_fails_closed_never_leaks(
     client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
 ) -> None:
