@@ -17,6 +17,7 @@ problem+json body ever reaches an Anthropic-wire client.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import uuid
 from typing import Annotated, Any
@@ -26,6 +27,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
+from gateway.core.error_catalog import NO_ELIGIBLE_ANTHROPIC_CANDIDATE
 from gateway.core.errors import ProblemError
 from gateway.proxy.api.deps import (
     get_completion_upstream,
@@ -34,6 +36,11 @@ from gateway.proxy.api.deps import (
     get_usage_recorder,
 )
 from gateway.proxy.api.messages_deps import ANTHROPIC_PROVIDER, resolve_model_provider
+from gateway.proxy.application.claude_failover_gate import (
+    has_no_eligible_anthropic_candidate,
+    is_claude_named,
+    tenant_allows_non_claude_failover,
+)
 from gateway.proxy.application.json_sanitize import sanitize_non_finite
 from gateway.proxy.application.use_cases import CompletionUseCase
 from gateway.proxy.domain.ports import BatchDivertedStream, CompletionUpstream, UsageRecorder
@@ -44,6 +51,11 @@ from gateway.proxy.infrastructure.anthropic_ingress import (
     anthropic_response_from_openai,
     estimate_input_tokens,
     translate_openai_stream_to_anthropic,
+)
+from gateway.proxy.infrastructure.anthropic_passthrough_headers import (
+    capture_passthrough_headers,
+    drop_unpaired_beta_fields,
+    set_passthrough_headers,
 )
 from gateway.proxy.infrastructure.response_cache import resolve_cache_ttl
 
@@ -131,6 +143,9 @@ async def messages(
         return err
     assert internal_body is not None  # narrows for the type checker; err is None here
 
+    req_headers = {k.lower(): v for k, v in request.headers.items()}
+    model_router = getattr(getattr(request.app, "state", None), "model_router", None)
+
     # M7/M8: gate thinking/cache_control forwarding on the resolved provider.
     # Only strip on POSITIVE knowledge the candidate is non-Anthropic — a catalog
     # lookup MISS (e.g. a preset/alias selector `_resolve_preset` will resolve
@@ -138,12 +153,47 @@ async def messages(
     # defaults to "forward" and is harmless: every non-Anthropic adapter already
     # ignores both fields (see anthropic_ingress.py docstring's disclosed gap).
     provider = await resolve_model_provider(session, internal_body["model"])
-    if provider is not None and provider != ANTHROPIC_PROVIDER:
+    is_direct_anthropic = provider == ANTHROPIC_PROVIDER
+    if provider is not None and not is_direct_anthropic:
         internal_body.pop("thinking", None)
         _strip_cache_control(internal_body)
 
-    req_headers = {k.lower(): v for k, v in request.headers.items()}
-    model_router = getattr(getattr(request.app, "state", None), "model_router", None)
+    # claude-gateway-protocol-compat TASK.md §3 M2/M3: capture the Claude gateway
+    # protocol headers at THIS boundary and publish them onto the request-scoped
+    # ContextVar (mirrors every adapter's own credential-ContextVar convention — see
+    # anthropic_passthrough_headers.py's module docstring for the disclosed gap: the
+    # frozen anthropic_upstream.py adapter has no seam yet to READ this ContextVar, so
+    # the value does not reach the real outbound dial today; recorded as a §7 CR, not
+    # patched here). A beta-paired body field is dropped together with its header
+    # value for a non-Anthropic-resolved request (M2) — never split.
+    passthrough = capture_passthrough_headers(req_headers)
+    if not is_direct_anthropic and passthrough.anthropic_beta:
+        surviving_beta = drop_unpaired_beta_fields(passthrough.anthropic_beta, internal_body)
+        passthrough = dataclasses.replace(passthrough, anthropic_beta=surviving_beta)
+    set_passthrough_headers(passthrough)
+
+    # M8: non-Claude-failover gate — refuses BEFORE any governance/dial when this
+    # request names (directly or via alias) a Claude model whose configured fallback
+    # candidates are ALL non-Anthropic and the tenant has not opted in. Runs only for
+    # /v1/messages (never count_tokens, which never dials upstream or bills regardless).
+    if model_router is not None and is_claude_named(internal_body["model"]):
+        candidates = model_router.candidates_for(internal_body["model"])
+        if candidates:
+            try:
+                authz_for_gate = await use_case._authenticate(raw_key)  # pyright: ignore[reportPrivateUsage]
+            except ProblemError as exc:
+                return _problem_to_anthropic_response(exc)
+            candidate_providers = {
+                c: await resolve_model_provider(session, c) for c in candidates
+            }
+            if has_no_eligible_anthropic_candidate(candidate_providers):
+                allowed = await tenant_allows_non_claude_failover(
+                    session, authz_for_gate.tenant_id
+                )
+                if not allowed:
+                    return _problem_to_anthropic_response(
+                        NO_ELIGIBLE_ANTHROPIC_CANDIDATE.exc(model_id=internal_body["model"])
+                    )
 
     if stream_requested:
         try:

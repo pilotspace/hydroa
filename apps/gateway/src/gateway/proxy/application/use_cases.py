@@ -328,6 +328,32 @@ _tier_served_ctx: contextvars.ContextVar[tuple[ServiceTier, bool] | None] = cont
     "_tier_served_ctx", default=None
 )
 
+# claude-gateway-protocol-compat TASK.md §3 (M4): published once near the top of
+# complete()/stream() from `request_headers` (already a parameter of both), consumed
+# by _dispatch_record alongside _tier_served_ctx — the SAME "avoid threading 3 new
+# kwargs through ~25 _fire_record*/_fire_record_with_raw call sites" rationale
+# _credit_hold_ctx's own docstring gives. None (default, or every header absent) ⇒
+# every entry stays None ⇒ _dispatch_record adds nothing ⇒ byte-identical to today.
+_cc_attribution_ctx: contextvars.ContextVar[tuple[str | None, str | None, str | None] | None] = (
+    contextvars.ContextVar("_cc_attribution_ctx", default=None)
+)
+
+
+def _publish_cc_attribution(request_headers: dict[str, str] | None) -> None:
+    """Extract x-claude-code-session-id/-agent-id/-parent-agent-id from the inbound
+    request headers (CONSUMED here, never forwarded upstream — no adapter ever reads
+    `request_headers`) and publish them onto `_cc_attribution_ctx` for this request.
+
+    A no-op call (all three absent) still `.set()`s a (None, None, None) tuple rather
+    than leaving the ContextVar unset — harmless (the consumer already checks each
+    element for None) and cheaper than a conditional set.
+    """
+    headers = request_headers or {}
+    session_id = headers.get("x-claude-code-session-id")
+    agent_id = headers.get("x-claude-code-agent-id")
+    parent_agent_id = headers.get("x-claude-code-parent-agent-id")
+    _cc_attribution_ctx.set((session_id, agent_id, parent_agent_id))
+
 
 def _settle_or_release_hold(task: asyncio.Task[object | None]) -> None:
     """Task done-callback: consume the recorder's UsageRecordOutcome (if any) and settle
@@ -433,6 +459,21 @@ def _dispatch_record(
         _tier_served_value, _tier_degraded_value = tier_served_ctx
         kwargs["tier_served"] = _tier_served_value
         kwargs["tier_capacity_degraded"] = _tier_degraded_value
+
+    # claude-gateway-protocol-compat TASK.md §3 (M4): fold cc_session_id/cc_agent_id/
+    # cc_parent_agent_id in from the ContextVar published once by
+    # _publish_cc_attribution — same filter-against-supported_extras discipline as
+    # every other extra above; a v1-Protocol fake without the capability silently
+    # receives nothing new.
+    cc_ctx = _cc_attribution_ctx.get()
+    if cc_ctx is not None:
+        _cc_session_id, _cc_agent_id, _cc_parent_agent_id = cc_ctx
+        if _cc_session_id is not None and "cc_session_id" in supported:
+            kwargs["cc_session_id"] = _cc_session_id
+        if _cc_agent_id is not None and "cc_agent_id" in supported:
+            kwargs["cc_agent_id"] = _cc_agent_id
+        if _cc_parent_agent_id is not None and "cc_parent_agent_id" in supported:
+            kwargs["cc_parent_agent_id"] = _cc_parent_agent_id
 
     credit_ctx = _credit_hold_ctx.get()
     tier_hold_ctx = _tier_hold_ctx.get()
@@ -2209,6 +2250,10 @@ class CompletionUseCase:
         # request-log-metering-fields TASK.md §3: one correlation UUID minted once per
         # call, mirroring _emit_span_fire_forget's own local-generation idiom (trace_id).
         _request_id = uuid.uuid4()
+        # claude-gateway-protocol-compat TASK.md §3 (M4): publish Claude Code
+        # session/subagent attribution EARLY (pure header extraction, no side effect) so
+        # it is set in this request's async context before any _dispatch_record fires.
+        _publish_cc_attribution(request_headers)
         _authz: AuthzResult | None = None
         _status_code: int = 502
         _model_id: str = ""

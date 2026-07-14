@@ -87,6 +87,14 @@ class UsageRecordExtras(TypedDict, total=False):
       agent_principal_id — per-agent-principal spend attribution (agent-identity-
                           governance M4/CR-2), a structural mirror of team_id:
                           None for a token unattached to any principal.
+      cc_session_id      — Claude Code's `x-claude-code-session-id` header value,
+                          CONSUMED (never forwarded upstream) and stamped verbatim
+                          (claude-gateway-protocol-compat TASK.md §3 M4). Same
+                          "correlation key rides the raw JSONB extras seam, never a
+                          new column" idiom as `request_id`.
+      cc_agent_id        — `x-claude-code-agent-id` header value, same treatment.
+      cc_parent_agent_id — `x-claude-code-parent-agent-id` header value, same
+                          treatment.
     """
 
     team_id: uuid.UUID
@@ -104,6 +112,9 @@ class UsageRecordExtras(TypedDict, total=False):
     tier_served: str
     tier_capacity_degraded: bool
     agent_principal_id: uuid.UUID
+    cc_session_id: str
+    cc_agent_id: str
+    cc_parent_agent_id: str
 
 
 class ModelAccess(Enum):

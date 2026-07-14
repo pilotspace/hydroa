@@ -6,6 +6,7 @@ import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,7 @@ from gateway.catalog.api.deps import (
     get_current_identity,
     get_list_use_case,
     get_sync_use_case,
+    get_token_service,
     require_catalog_sync,
     require_owner_or_admin,
 )
@@ -39,12 +41,18 @@ from gateway.catalog.domain.errors import (
     CatalogSourceUnavailableError,
 )
 from gateway.catalog.infrastructure.orm import ModelRow, TenantModelOverrideRow
+from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     CATALOG_EMPTY,
     CATALOG_UPSTREAM_UNAVAILABLE,
     MODEL_NOT_FOUND,
 )
+from gateway.core.errors import ProblemError
+from gateway.proxy.api.deps import get_completion_use_case, get_raw_key_ingress
+from gateway.proxy.application.model_discovery import list_entitled_claude_models
+from gateway.proxy.application.use_cases import CompletionUseCase
 from gateway.tenants.domain.entities import Identity
+from gateway.tenants.domain.ports import TokenService
 
 # Internal router — Envoy guards /internal/* at the edge (no auth in MVP).
 internal_catalog_router = APIRouter(prefix="/internal/catalog", tags=["catalog-internal"])
@@ -90,21 +98,66 @@ async def sync_catalog(
     return SyncResponse(synced=synced)
 
 
-@catalog_router.get("/models", response_model=ModelsListResponse)
+@catalog_router.get("/models", response_model=None)
 async def list_models(
-    identity: Annotated[Identity, Depends(get_current_identity)],
-    use_case: Annotated[ListModelsForTenantUseCase, Depends(get_list_use_case)],
-) -> ModelsListResponse:
-    """Return active models with tenant-specific markup applied.
+    request: Request,
+    use_case: Annotated[CompletionUseCase, Depends(get_completion_use_case)],
+    list_use_case: Annotated[ListModelsForTenantUseCase, Depends(get_list_use_case)],
+    tokens: Annotated[TokenService, Depends(get_token_service)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> JSONResponse:
+    """GET /v1/models — TWO distinct audiences share this ONE path (a real, pre-
+    existing collision surfaced by claude-gateway-protocol-compat TASK.md §3 M1 — the
+    external Claude gateway protocol hardcodes this exact path; it cannot be moved).
 
-    Requires a valid Bearer JWT.  Returns 409 ERR_CATALOG_EMPTY when no
-    active models have been synced yet.
+    Branch 1 (claude-gateway-protocol-compat TASK.md §3 M1, NEW): an sk-/agent-token
+    credential (Authorization: Bearer <key> | x-api-key: <key> — the SAME
+    CompositeKeyAuthenticator /v1/messages already uses) gets the Claude Code
+    model-discovery shape: {"data":[{"id":"claude-...", "display_name"?}]}, scoped to
+    catalog rows the tenant/key is entitled to that resolve to a claude-/anthropic--
+    prefixed id. Never redirects.
+
+    Branch 2 (PRE-EXISTING, byte-identical): a Bearer JWT (browser dashboard session)
+    gets the ORIGINAL tenant-priced OpenAI-compatible list — UNCHANGED shape/behavior.
+    409 ERR_CATALOG_EMPTY when no active models have been synced yet.
+
+    Dispatch: try the API-key/agent-token path FIRST (fails cleanly — InvalidApiKeyError
+    -> ProblemError — for a JWT, which is never sk--prefixed and never resolves via the
+    agent-token store); only on that failure does the JWT branch run. A caller with NO
+    credential at all fails the API-key branch and then genuinely fails the JWT branch
+    too (AUTH_TOKEN_MISSING) — the SAME final 401 as before this change.
     """
+    raw_key = get_raw_key_ingress(request)
+    if raw_key is not None:
+        try:
+            authz = await use_case._authenticate(raw_key)  # pyright: ignore[reportPrivateUsage]
+        except ProblemError:
+            authz = None
+        if authz is not None:
+            model_router = getattr(getattr(request.app, "state", None), "model_router", None)
+            model_groups: dict[str, list[str]] = (
+                model_router.model_groups if model_router is not None else {}
+            )
+            entries = await list_entitled_claude_models(
+                session,
+                tenant_id=authz.tenant_id,
+                model_groups=model_groups,
+                key_model_allowlist=authz.model_allowlist,
+                plan_model_allowlist=authz.plan_model_allowlist,
+            )
+            data = [
+                {"id": e.id, **({"display_name": e.display_name} if e.display_name else {})}
+                for e in entries
+            ]
+            return JSONResponse(content={"data": data}, status_code=200)
+
+    # PRE-EXISTING JWT (dashboard) branch — UNCHANGED behavior/shape.
+    identity: Identity = await get_current_identity(request, tokens, session)
     try:
-        models = await use_case.execute(tenant_id=identity.tenant_id)
+        models = await list_use_case.execute(tenant_id=identity.tenant_id)
     except CatalogEmptyError:
         raise CATALOG_EMPTY.exc() from None
-    return ModelsListResponse(
+    body = ModelsListResponse(
         data=[
             ModelItem(
                 id=m.id,
@@ -138,6 +191,7 @@ async def list_models(
             for m in models
         ]
     )
+    return JSONResponse(content=body.model_dump(mode="json"), status_code=200)
 
 
 @admin_catalog_router.get("/models", response_model=AdminCatalogModelsListResponse)

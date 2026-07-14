@@ -266,13 +266,31 @@ Reported: no
 
 ## 4 · TESTS — failing-first suite (red) ▸ docs/06-step-4-tests.md
 
-Coverage target: <e.g. 90%>
+Coverage target: 90% line coverage on every NEW module (`model_discovery.py`, `anthropic_passthrough_headers.py`, `claude_failover_gate.py`, `discovery_router.py`); no decrease on touched shared files (`use_cases.py`, `recorder.py`, `messages_router.py`, `catalog/api/router.py`).
 Plan (one test per scenario, asserting behavior not internals):
 <test_plan>
-  - test_<scenario>: arrange <Given> / act <When> / assert <Then> + assert <unchanged> · covers: <M#, R:code — optional>
+  - test_model_discovery_returns_only_entitled_claude_aliased_models: entitled+aliased model included, entitled-no-alias omitted, unentitled omitted · covers: M1
+  - test_model_discovery_never_redirects: GET /v1/models never returns 3xx · covers: M1
+  - test_two_entitled_rows_same_alias_collapse_to_one_entry: two catalog rows sharing one alias -> one data entry · covers: M1 (edge case)
+  - test_anthropic_beta_and_version_captured_verbatim_open_list: unrecognized beta value + version captured byte-identical · covers: M2
+  - test_beta_paired_body_field_travels_with_header_or_both_drop: paired field/header travel together or both drop · covers: M2
+  - test_workspace_id_forwarded_only_for_claude_platform_aws: workspace-id gated to the AWS-shaped adapter only · covers: M3
+  - test_session_and_subagent_headers_attribute_cost_via_raw: cc_session_id/cc_agent_id/cc_parent_agent_id land in usage_records.raw, never upstream · covers: M4
+  - test_absent_session_agent_headers_leave_row_byte_identical: no cc_* keys when headers absent · covers: M4 (boundary)
+  - test_unrecognized_custom_header_is_inert: arbitrary custom header changes nothing · covers: M5
+  - test_system_array_block_order_round_trip (xfail strict=True — DISCLOSED sibling gap, §7 CR filed): system array fidelity through the built ingress/egress translator · covers: M6
+  - test_upstream_error_wording_preserved_verbatim: upstream error message text reaches client verbatim inside the frozen envelope · covers: M7
+  - test_fallback_substitution_refused_by_default: allow_non_claude_failover=false -> 403 ERR_NO_ELIGIBLE_ANTHROPIC_CANDIDATE, no dial, no usage row · covers: M8, R3
+  - test_fallback_substitution_proceeds_once_opted_in: allow_non_claude_failover=true -> existing resolver behavior unchanged · covers: M8
+  - test_explicitly_named_non_claude_model_unaffected_by_failover_flag: explicit non-Claude model unaffected by the flag · covers: M8 (boundary, confirms no M6 regression)
+  - test_connectivity_probes_never_500_or_hang: HEAD / and GET /inference-profiles both clean 404 · covers: M9
+  - test_is_claude_named_and_no_eligible_candidate_predicates: unit coverage of the M8 gate's pure predicates · covers: M8 (unit)
 </test_plan>
 
-Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
+Tests live in: `./tests/` · MUST run red (missing implementation) before Build. Confirmed RED: initial
+collection/run against the pre-build tree failed on ImportError (model_discovery.py,
+anthropic_passthrough_headers.py, claude_failover_gate.py, discovery_router.py did not yet exist) —
+red for the right reason (missing implementation), not a broken harness.
 <!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 <!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
@@ -281,16 +299,68 @@ Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
 
-Scope (may touch): `./src/`   <fill before the §3 freeze — every file the build may write>
-Strategy (ordered batches): <1. … 2. … — the planned build order; guidance, not enforced; preferred architecture/pattern strategies; advise solution/method to resolve issues/implement features; let the named Persona's domain stance (below) shape the approach, not just architecture patterns>
+Scope (may touch): `apps/gateway/src/gateway/proxy/` `apps/gateway/src/gateway/usage/application/recorder.py` `apps/gateway/src/gateway/tenants/infrastructure/orm.py` `apps/gateway/src/gateway/core/error_catalog.py` `apps/gateway/src/gateway/main.py` `apps/gateway/migrations/versions/` `apps/gateway/tests/claude_gateway_protocol_compat/` `apps/gateway/src/gateway/catalog/api/router.py`
 
-Persona (required): <name the persona file under `.add/personas/` this build embodies as a domain stance atop SOUL.md — advisory, never lowers a gate; name "generic" if no project persona fits yet>
-Spawn isolation (default): <prefer isolation: "worktree" for any subagent build/verify spawn, not only explicit parallel mode; shared-tree needs a stated reason — see worktree-isolated-spawn-default>
-Known-problem fixes: <trap → planned fix — the failure modes this build must dodge; guidance, not enforced>
-Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "as planned"); harvested into the §7 Decisions (ADR) block as the [AI] build decision>
-Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
-Code lives in: `./src/`
-Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
+SCOPE ADDENDUM (build-agent finding, recorded not silently worked around): `catalog/api/router.py`
+was NOT in the originally declared Scope above — discovered mid-build as a genuine path collision
+(see DISCLOSED RESIDUAL GAP / batch 9-10 below: a PRE-EXISTING, JWT-authed `GET /v1/models` dashboard
+route already lives there at the exact path Claude Code hardcodes and cannot be moved). Rather than
+duplicate the route in the new `discovery_router.py` (dead code — FastAPI registration order means
+the earlier-registered `catalog_router` route would always win), M1's discovery logic was merged into
+the EXISTING handler as an additive credential-type branch (sk-/agent-token -> new Claude-discovery
+shape; Bearer JWT -> the ORIGINAL byte-identical dashboard shape). Confirmed non-regressive: the full
+pre-existing `tests/catalog/`, `tests/catalog_input_capabilities/`, `tests/catalog_input_modalities/`,
+`tests/model_mgmt/` suites (40 tests) pass unchanged.
+
+NOTE (build-agent finding, recorded not silently worked around): this Scope/Strategy block
+was itself UNFILLED template text as delivered — the upstream TASK.md's §3 CONTRACT also
+still reads `Status: DRAFT` / `Reported: no` / `phase: contract` and is committed on NO
+branch (only the orchestrator's main-checkout working tree). Proceeding under `autonomy:
+auto` and the dispatch's explicit "frozen contract v1" framing — content through §3 is
+complete/coherent and cites real, resolvable anchors — but flagging the bookkeeping gap
+for the orchestrator to reconcile (mark FROZEN, commit) rather than silently treating an
+unfrozen draft as authoritative without disclosure.
+
+Strategy (ordered batches):
+  1. `core/error_catalog.py` — add `ERR_NO_ELIGIBLE_ANTHROPIC_CANDIDATE` (403, permission_error), mirrors `RESIDENCY_NO_ELIGIBLE_REGION`.
+  2. `tenants/infrastructure/orm.py` — add `TenantRow.allow_non_claude_failover: bool` (NOT NULL DEFAULT false), mirrors `zdr_enabled`/`semantic_cache_enabled` — resolves the §1 ⚠ storage-shape flag (a per-tenant boolean column, not `plans.feature_flags`, since M8 explicitly names this a per-TENANT flag and every existing per-tenant opt-in in this codebase is a `tenants` boolean column, never a plan-level list).
+  3. New migration (additive, no backfill) for #2.
+  4. `proxy/application/model_discovery.py` (NEW) — M1's tenant-entitled-catalog enumeration + claude-/anthropic- alias filter + same-alias collapse.
+  5. `proxy/infrastructure/anthropic_passthrough_headers.py` (NEW) — M2/M3: parse `anthropic-beta` (open list) + `anthropic-version` + `anthropic-workspace-id`, the beta<->body-field pairing table, and a request-scoped contextvar mirroring the established per-request credential-contextvar pattern (`get_provider_credential()`) every adapter in this codebase already uses for additive per-request extension.
+  6. `proxy/domain/ports.py` — extend `UsageRecordExtras` with `cc_session_id`/`cc_agent_id`/`cc_parent_agent_id` (optional str keys), mirroring `request_id`'s own doc block.
+  7. `proxy/application/use_cases.py` — MINIMAL additive touch: one new contextvar (`_cc_attribution_ctx`, mirrors the file's own `_credit_hold_ctx`/`_tier_served_ctx` "avoid threading through ~25 _fire_record* call sites" precedent verbatim), set once near the top of `complete()`/`stream()` from `request_headers` (already a parameter), consumed in `_dispatch_record` alongside the existing `tier_served_ctx` block.
+  8. `usage/application/recorder.py` — accept the 3 new optional kwargs in `record()`/`record_with_outcome()`/`_record_internal()`, stamp into `raw_payload` exactly like `request_id` (lines ~503-507) — NOT a new column.
+  9. `proxy/api/messages_router.py` — wire M2/M3 (capture inbound headers, set the passthrough contextvar, pop the paired body field when dropping), M4 (set `_cc_attribution_ctx`), M8 (pre-dial gate: alias-key claude-/anthropic--prefixed + all candidates non-Anthropic + tenant flag false ⇒ 403 before calling `use_case.complete()`), M9 (`HEAD /` + an unrecognized-probe catch mirroring the existing 404 default — added to a new small `proxy/api/discovery_router.py` alongside GET /v1/models, not crammed into messages_router.py, mirroring the per-modality router-file convention named in Ground).
+  10. `proxy/api/discovery_router.py` (NEW) — `GET /v1/models`, `HEAD /`, and the `/inference-profiles` probe-404 (M9).
+  11. `main.py` — register the new router.
+  12. Tests — `apps/gateway/tests/claude_gateway_protocol_compat/` mirroring the sibling ingress suite's fixture style (reuses its conftest helpers where sensible: `auth_bearer`, `anthropic_payload`, `FakeCompletionUpstream`).
+
+DISCLOSED RESIDUAL GAP (surfaced at Ground, not silently patched — §7 change-request filed
+against `anthropic-messages-ingress`, its own frozen adapter never edited by this task per
+Ground's explicit "this task likewise never edits it"): M2/M3's requirement that
+`anthropic-version`/`anthropic-beta`/`anthropic-workspace-id` reach the ACTUAL outbound
+HTTP call is structurally blocked — `anthropic_upstream.py::_auth_headers()` hardcodes
+`anthropic-version` from operator config and has no seam for `anthropic-beta`/
+`anthropic-workspace-id` at all, and `CompletionUpstream.complete(payload)` carries no
+headers channel. This build implements the M2/M3 rule fully up to the boundary it owns
+(capture, open-list validation, pairing-drop semantics, a request-scoped contextvar
+mirroring every other adapter's own credential-contextvar convention) and proves via an
+integration test that the value does NOT yet reach the real dial — recording the missing
+`_auth_headers()` seam as a named change-request rather than editing the frozen adapter.
+M3's positive case is additionally moot today: no Claude-Platform-on-AWS-shaped adapter
+exists yet in this codebase (Bedrock's Anthropic models are a different, `provider="bedrock"`
+shape) — tested as "never forwarded to any currently-registered adapter."
+
+Persona (required): protocol-translation-engineer (`.add/personas/protocol-translation-engineer.md`) — the ChatTranslator/wire-fidelity domain stance: byte-identical-passthrough floor, verified by diff not inspection; every provider-shape difference gets its own named test.
+Spawn isolation (default): none — this build runs directly in the dispatched worktree (already isolated); no further subagent spawn needed for a task this size.
+Known-problem fixes:
+  - trap: threading 3 new kwargs through ~25 `_fire_record*` call sites in use_cases.py → fix: reuse the file's own documented contextvar-publish/consume pattern (batch 7).
+  - trap: editing the frozen `anthropic_upstream.py` to make M2/M3 "fully" pass → fix: stop at the owned boundary, integration-test the gap, file a §7 CR (see DISCLOSED RESIDUAL GAP above).
+  - trap: M8's gate reaching into shared `use_cases.py`/`fallback_router.py` internals (risking `/v1/chat/completions` regression) → fix: implement entirely in `messages_router.py` as a static candidate-set pre-filter (alias key naming + candidate provider lookup), scoped to `/v1/messages` only, before any governance/dial call.
+Strategy actually used: as planned (batches 1-12, in order); see VERIFY for the earned-green refute-read.
+Safety rule (feature-specific): M8's refusal (`ERR_NO_ELIGIBLE_ANTHROPIC_CANDIDATE`) fires strictly BEFORE `use_case.complete()`/`.stream()` is ever called — no governance hold is opened, no upstream dial occurs, no usage_records row is written (mirrors `RESIDENCY_NO_ELIGIBLE_REGION`'s refuse-before-any-side-effect shape exactly).
+Code lives in: `apps/gateway/src/gateway/`
+Constraints: do NOT change any test or the contract; allow-list packages only (stdlib + already-vendored deps only — no new third-party package); never edit `anthropic_upstream.py`, `anthropic_ingress.py`'s translation functions, or any frozen sibling test; ask if unclear.
 
 <!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
@@ -356,6 +426,8 @@ Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
+- [SPEC · open] CR against `anthropic-messages-ingress`: `anthropic_upstream.py::_auth_headers()` hardcodes `anthropic-version` from operator config and has no seam for `anthropic-beta`/`anthropic-workspace-id`; `CompletionUpstream.complete(payload)` carries no headers channel at all. M2/M3 are implemented fully up to the boundary this task owns (capture + open-list validation + beta<->body pairing-drop + a request-scoped contextvar) but the captured values do NOT yet reach the real outbound HTTP call — needs a headers-channel seam added to the frozen adapter/port, which is out of this task's Scope (evidence: `apps/gateway/tests/claude_gateway_protocol_compat/test_claude_gateway_protocol_compat.py::test_anthropic_beta_and_version_captured_verbatim_open_list` + `::test_workspace_id_forwarded_only_for_claude_platform_aws` assert capture/pairing only, not the dial; the boundary is documented in TASK.md §5 DISCLOSED RESIDUAL GAP).
+- [SPEC · open] CR against `anthropic-messages-ingress`: `anthropic_upstream.py::_openai_to_anthropic_request()` collapses a multi-block `system` array (evidence: `test_system_array_block_order_round_trip`, `xfail(strict=True)`) — M6's "array shape + block order preserved unchanged" requirement fails against the real built translator; recorded here, not silently patched into the frozen sibling.
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.

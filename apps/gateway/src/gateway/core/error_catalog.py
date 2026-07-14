@@ -1209,3 +1209,18 @@ MCP_UPSTREAM_REDIRECT_REJECTED = ErrorSpec(
 MCP_UPSTREAM_UNAVAILABLE = ErrorSpec(
     503, "ERR_MCP_UPSTREAM_UNAVAILABLE", "The MCP server is currently unavailable"
 )
+
+# Claude gateway protocol compat (claude-gateway-protocol-compat TASK.md §3)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/messages — the tenant has NOT set allow_non_claude_failover=true and the
+#: existing FallbackModelRouter candidate set for a request naming (directly or via
+#: alias) a Claude model contains no Anthropic-provider candidate. Refused BEFORE any
+#: upstream dial — never billed, no usage_records row (mirrors
+#: RESIDENCY_NO_ELIGIBLE_REGION's refuse/never-bill/no-usage-row shape exactly).
+NO_ELIGIBLE_ANTHROPIC_CANDIDATE = ErrorSpec(
+    403,
+    "ERR_NO_ELIGIBLE_ANTHROPIC_CANDIDATE",
+    "No Anthropic candidate available for '{model_id}' and allow_non_claude_failover is not "
+    "enabled for this tenant",
+)

@@ -99,6 +99,9 @@ class RecordingUsageRecorder:
             "tier_served",
             "tier_capacity_degraded",
             "agent_principal_id",
+            "cc_session_id",
+            "cc_agent_id",
+            "cc_parent_agent_id",
         }
     )
 
@@ -134,6 +137,9 @@ class RecordingUsageRecorder:
         tier_served: str = "standard",
         tier_capacity_degraded: bool = False,
         agent_principal_id: uuid.UUID | None = None,
+        cc_session_id: str | None = None,
+        cc_agent_id: str | None = None,
+        cc_parent_agent_id: str | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -149,6 +155,11 @@ class RecordingUsageRecorder:
         tags: client-supplied key/value request labels (cost-attribution-tags TASK.md
           §3) — stored into the dedicated usage_records.tags JSONB column. None/empty
           → "{}" (byte-identical to a request that never sent X-Gateway-Tags).
+        cc_session_id/cc_agent_id/cc_parent_agent_id: Claude Code's
+          x-claude-code-session-id/-agent-id/-parent-agent-id header values
+          (claude-gateway-protocol-compat TASK.md §3 M4) — stored verbatim into
+          raw["cc_session_id"]/raw["cc_agent_id"]/raw["cc_parent_agent_id"] when set;
+          NOT a new column (usage_records is FROZEN), same idiom as request_id.
 
         Return value is always None — byte-identical to every pre-existing caller/test
         (see record_with_outcome() for the credits-ledger settle hook's variant, which
@@ -175,6 +186,9 @@ class RecordingUsageRecorder:
             tier_served=tier_served,
             tier_capacity_degraded=tier_capacity_degraded,
             agent_principal_id=agent_principal_id,
+            cc_session_id=cc_session_id,
+            cc_agent_id=cc_agent_id,
+            cc_parent_agent_id=cc_parent_agent_id,
         )
         return None
 
@@ -201,6 +215,9 @@ class RecordingUsageRecorder:
         tier_served: str = "standard",
         tier_capacity_degraded: bool = False,
         agent_principal_id: uuid.UUID | None = None,
+        cc_session_id: str | None = None,
+        cc_agent_id: str | None = None,
+        cc_parent_agent_id: str | None = None,
     ) -> UsageRecordOutcome | None:
         """Identical to record(), but RETURNS the computed outcome instead of discarding
         it (credits-ledger TASK.md §3: "settle must consume the cost already computed by
@@ -237,6 +254,9 @@ class RecordingUsageRecorder:
                 tier_served=tier_served,
                 tier_capacity_degraded=tier_capacity_degraded,
                 agent_principal_id=agent_principal_id,
+                cc_session_id=cc_session_id,
+                cc_agent_id=cc_agent_id,
+                cc_parent_agent_id=cc_parent_agent_id,
             )
         except Exception as exc:
             _log.warning(
@@ -273,6 +293,9 @@ class RecordingUsageRecorder:
         tier_served: str = "standard",
         tier_capacity_degraded: bool = False,
         agent_principal_id: uuid.UUID | None = None,
+        cc_session_id: str | None = None,
+        cc_agent_id: str | None = None,
+        cc_parent_agent_id: str | None = None,
     ) -> UsageRecordOutcome:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -529,6 +552,16 @@ class RecordingUsageRecorder:
             # above. NOT a new usage_records column (FROZEN @ v1, append-only); rides
             # inside the existing raw JSONB extras seam.
             raw_payload["request_id"] = str(request_id)
+        # claude-gateway-protocol-compat TASK.md §3 M4: Claude Code session/subagent
+        # attribution — same additive-raw-key idiom as request_id above. Absent on
+        # every pre-existing row and on every row from a non-Claude-Code-originated
+        # request (the three headers are simply never present there).
+        if cc_session_id is not None:
+            raw_payload["cc_session_id"] = cc_session_id
+        if cc_agent_id is not None:
+            raw_payload["cc_agent_id"] = cc_agent_id
+        if cc_parent_agent_id is not None:
+            raw_payload["cc_parent_agent_id"] = cc_parent_agent_id
 
         # Encode quantity: empty string for per_token (NULL), str(q) for non-token
         quantity_str = str(resolved_quantity) if resolved_quantity is not None else ""

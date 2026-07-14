@@ -212,6 +212,18 @@ class TenantRow(Base):
     # resolve the actual value at PUT time — this column is a bare override slot, not a
     # live join).
     seat_cap: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # claude-gateway-protocol-compat TASK.md §3 (M8) — additive, NOT NULL DEFAULT false.
+    # Mirrors zdr_enabled/semantic_cache_enabled's own per-tenant boolean opt-in
+    # convention (a plain tenants column, not plans.feature_flags — M8 is explicitly a
+    # per-TENANT flag). Gates ONLY whether the existing FallbackModelRouter substitution
+    # mechanism may ever choose a non-Anthropic candidate for a request that named
+    # (directly or via alias) a Claude model over the Anthropic-wire /v1/messages
+    # surface — false (default) refuses fail-closed instead of silently serving a
+    # non-Claude model; every pre-existing tenant defaults to the safer, disclosed-opt-in
+    # state.
+    allow_non_claude_failover: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
 
 
 class UserRow(Base):
