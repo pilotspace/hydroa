@@ -1166,21 +1166,31 @@
       "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
       "goal": "",
       "stage": "mvp",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-12T07:38:33+00:00",
-      "updated": "2026-07-12T07:38:33+00:00"
+      "updated": "2026-07-14T08:08:27+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "eu-ai-act-readiness": {
       "title": "EU AI Act readiness pack",
       "goal": "An EU tenant can self-serve produce a dated, Art. 12-mapped record-keeping evidence bundle from the console before EU AI Act GPAI enforcement lands on Aug 2, 2026.",
       "stage": "mvp",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-14T03:32:21+00:00",
-      "updated": "2026-07-14T03:32:21+00:00"
+      "updated": "2026-07-14T08:08:20+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T07:40:42+00:00",
+  "updated": "2026-07-14T08:08:27+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
