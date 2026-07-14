@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.egress_policy import EgressDeniedError
 from gateway.logs.infrastructure.sqlalchemy_capture import SqlAlchemyPayloadCapture
 from gateway.logs.infrastructure.zdr_retention_adapter import RetentionZdrPort
+from gateway.mcp_connector.domain.entities import McpDialResult
 from gateway.mcp_connector.domain.errors import McpDialTimeoutError, McpRedirectRejectedError
 from gateway.mcp_connector.infrastructure.breaker_registry import McpCircuitBreakerRegistry
 from tests.agent_token_authn_seam.conftest import mint_agent_token
@@ -236,6 +237,128 @@ async def test_clean_result_passes_through_and_writes_exactly_one_trace_row(
     await asyncio.sleep(0.3)
     rows = await _request_log_rows(db_session, owner["tenant_id"])
     assert len(rows) == 1
+
+
+# ===========================================================================
+# SECURITY FIX (fix/mcp-multiblock-pii-mask): pii_mask mode=mask must mask PII in
+# EVERY content block of a tool-call result relayed to the caller, not just a lone
+# recognized single-block shape. The original `_apply_masked_text` computed the mask
+# over the full joined text but only ever substituted it back for `len(blocks) == 1`
+# — for 0, 2, 3+ blocks it silently relayed the ORIGINAL UNMASKED body across the
+# exact trust boundary pii_mask exists to protect (confirmed HARD-STOP, both
+# independent adversarial verify passes, confidence 0.85/0.95).
+# ===========================================================================
+
+
+async def test_pii_mask_single_block_result_is_masked(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """Happy-path sanity: the single-recognized-block shape must still mask correctly
+    after the fix (no regression on the one shape that worked before)."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=jsonrpc_text_result("contact me at alice@example.com")
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    text = resp.json()["result"]["content"][0]["text"]
+    assert "alice@example.com" not in text
+    assert "[EMAIL_REDACTED]" in text
+
+
+async def test_pii_mask_multi_block_result_masks_every_block(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """ADVERSARIAL: a tool result with TWO text blocks, both carrying PII, must have
+    BOTH blocks masked in the body relayed to the caller — the exact multi-block leak.
+    Pre-fix: `_apply_masked_text` only substitutes for `len(blocks) == 1`, so this
+    asserts the CALLER-FACING body (not just the persisted trace row, which was already
+    independently re-masked by capture_writer and is NOT what this test checks)."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "primary contact alice@example.com"},
+                        {"type": "text", "text": "backup contact bob@example.com"},
+                    ]
+                },
+            },
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    blocks = resp.json()["result"]["content"]
+    assert len(blocks) == 2, "block count/order must be preserved"
+
+    # Every block that carried PII must be masked in the body relayed to the caller —
+    # a leak in EITHER block is a HARD-STOP-class failure, not a partial pass.
+    assert "alice@example.com" not in blocks[0]["text"]
+    assert "[EMAIL_REDACTED]" in blocks[0]["text"]
+    assert "bob@example.com" not in blocks[1]["text"]
+    assert "[EMAIL_REDACTED]" in blocks[1]["text"]
+
+
+async def test_pii_mask_mixed_text_and_nontext_blocks_masks_text_only(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """ADVERSARIAL: a TEXT block carrying PII alongside a NON-TEXT block (e.g. an image
+    resource) — total block count is 2, so this ALSO tripped the original `len(blocks)
+    == 1` guard and leaked the raw SSN. The text block must be masked; the non-text
+    block must be relayed byte-identical, unchanged, in its original position."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    image_block = {"type": "image", "data": "base64-opaque-image-bytes", "mimeType": "image/png"}
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "customer ssn is 123-45-6789"},
+                        image_block,
+                    ]
+                },
+            },
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    blocks = resp.json()["result"]["content"]
+    assert len(blocks) == 2
+
+    assert "123-45-6789" not in blocks[0]["text"]
+    assert "[SSN_REDACTED]" in blocks[0]["text"]
+    assert blocks[1] == image_block, "non-text blocks must be relayed unchanged, in place"
 
 
 # ===========================================================================

@@ -89,15 +89,62 @@ def _extract_result_text(body: dict[str, Any]) -> str:
         return ""
 
 
-def _apply_masked_text(body: dict[str, Any], masked_text: str) -> dict[str, Any]:
-    """Best-effort: replace a single recognized text block with its masked form.
-    Multi-block masking is out of this task's tested scenarios — left unchanged."""
+def _text_block_indices(blocks: list[Any]) -> list[int]:
+    """Indices of blocks shaped {"text": <str>} within a content-block list, in order."""
+    return [
+        i for i, b in enumerate(blocks) if isinstance(b, dict) and isinstance(b.get("text"), str)
+    ]
+
+
+def _build_scan_messages(body: dict[str, Any]) -> tuple[list[dict[str, Any]], list[int]]:
+    """Build the guardrail-scan messages for a tool-call result body.
+
+    ONE scan message PER recognized `{"text": ...}` content block — scanned and, in mask
+    mode, masked independently — never a single "\\n"-joined blob. Joining then splitting
+    is the exact ambiguity that let a 2nd/3rd+ block's PII survive unmasked (the original
+    defect): `_apply_masked_text` could only map a masked JOINED string back onto exactly
+    one recognized block, so it silently gave up (returned the UNMASKED body) for any other
+    block count. Per-block scan/mask has no join to unambiguously reverse.
+
+    Returns (scan_messages, text_block_indices) where text_block_indices[i] is the index
+    into `result.content` that scan_messages[i] came from. An EMPTY text_block_indices means
+    the best-effort whole-body-JSON fallback scan was used (no recognized content-block
+    shape) — the caller must not attempt block-level substitution in that case (matches the
+    pre-existing fallback behavior: this body shape was never masked before, for any block
+    count, and stays out of this fix's scope).
+    """
     blocks = _extract_result_content_blocks(body)
-    if blocks and len(blocks) == 1 and isinstance(blocks[0], dict) and "text" in blocks[0]:
-        new_blocks = [{**blocks[0], "text": masked_text}]
-        new_result = {**body["result"], "content": new_blocks}
-        return {**body, "result": new_result}
-    return body
+    if blocks:
+        indices = _text_block_indices(blocks)
+        if indices:
+            return [{"role": "tool", "content": blocks[i]["text"]} for i in indices], indices
+    return [{"role": "tool", "content": _extract_result_text(body)}], []
+
+
+def _apply_masked_blocks(
+    body: dict[str, Any],
+    text_block_indices: list[int],
+    masked_scan_messages: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Rebuild `result.content`, substituting EVERY recognized text block's `text` with its
+    independently-masked counterpart (positional 1:1 with `text_block_indices`, produced by
+    `_build_scan_messages`). Every other block — including non-text blocks (image/resource)
+    and any block that wasn't a recognized text block — is carried through unchanged, in
+    place, in order. A no-op (returns `body` unmodified) when there is no known block
+    structure to substitute into."""
+    blocks = _extract_result_content_blocks(body)
+    if not blocks or not text_block_indices:
+        return body
+    new_blocks = list(blocks)
+    for pos, idx in enumerate(text_block_indices):
+        if pos >= len(masked_scan_messages):
+            break
+        masked_content = masked_scan_messages[pos].get("content")
+        block = new_blocks[idx]
+        if isinstance(masked_content, str) and isinstance(block, dict):
+            new_blocks[idx] = {**block, "text": masked_content}
+    new_result = {**body["result"], "content": new_blocks}
+    return {**body, "result": new_result}
 
 
 class McpCallUseCase:
@@ -287,10 +334,13 @@ class McpCallUseCase:
 
         breaker.record_success()
 
-        # --- M9: scan the tool-call RESULT via the existing prompt_injection guardrail. ---
-        result_text = _extract_result_text(dial_result.body)
+        # --- M9: scan the tool-call RESULT via the existing prompt_injection/pii_mask
+        # guardrails — one scan message PER recognized text content block (see
+        # _build_scan_messages) so a mask-mode match masks ALL blocks that carry PII, not
+        # just a single recognized block. ---
+        scan_messages, text_block_indices = _build_scan_messages(dial_result.body)
         guardrail_result = await self._guardrail_evaluator.evaluate_pre(
-            [{"role": "tool", "content": result_text}], authz.guardrail_configs
+            scan_messages, authz.guardrail_configs
         )
 
         latency_ms = int((time.monotonic() - started) * 1000)
@@ -311,9 +361,9 @@ class McpCallUseCase:
         else:
             relayed_body = dial_result.body
             if guardrail_result.masked_messages:
-                masked_text = guardrail_result.masked_messages[0].get("content", result_text)
-                if masked_text != result_text:
-                    relayed_body = _apply_masked_text(dial_result.body, masked_text)
+                relayed_body = _apply_masked_blocks(
+                    dial_result.body, text_block_indices, guardrail_result.masked_messages
+                )
             trace_status = dial_result.status
             audit_result = "success"
 
