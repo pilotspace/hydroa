@@ -1,4 +1,4 @@
-# DESIGN: compliance-report-center — Compliance report center (Settings extension, financial-document idiom)
+# DESIGN: compliance-report-center — Compliance report center (Settings extension, financial-document idiom, + REAL server-side monthly schedule)
 
 > UDD design-definition artifact (MILESTONE.md eu-ai-act-readiness: "console Compliance report
 > center...extending Settings → Data & residency; the generated bundle renders in the Billing
@@ -6,6 +6,12 @@
 > immutability seal"). Companion to `TASK.md` §0–§3 (DRAFT). Wireframes are annotated ASCII
 > structure trees, not pixel mocks — every element cites the real component/token it maps to, so
 > BUILD has no guessing left. Confirm alongside the TASK.md freeze review.
+>
+> **REVISION 2026-07-14**: Tin chose real server-side monthly scheduling over the client-only
+> reminder originally drafted here (§6 below, entirely replaced). Sections 1-5 and 7-11 describe
+> the on-demand generate/download path, UNCHANGED by this revision. Section 6 now covers the REAL
+> `ScheduleControl` (OWNER-gated write, any-AUDIT_READ-role read) and the new `GeneratedReportsList`
+> inbox — the v1 delivery mechanism for scheduled runs.
 
 ---
 
@@ -69,6 +75,18 @@ today; the DATA call itself is what gates):
 | viewer        | yes                     | **no → 403**          | `ErrorState` (M9) |
 | member        | yes                     | **no → 403**          | `ErrorState` (M9) |
 
+REVISION — a SECOND, narrower gate applies only to `ScheduleControl`'s WRITE action (the
+enable/disable toggle + day-of-month select); every AUDIT_READ role above still SEES the current
+schedule state and the Generated reports list read-only:
+
+| Role          | GET schedule / GET reports list+download | PUT/DELETE schedule |
+|---------------|:------------------------------------------:|:----------------------:|
+| owner         | yes                                          | yes |
+| admin         | yes                                          | **no → control disabled client-side; 403 if forced (R10)** |
+| operator      | yes                                          | **no → same as admin** |
+| superadmin (own tenant) | yes                              | **no → same as admin** |
+| billing_admin / viewer / member | **no → 403 (M9, unchanged)** | **no → 403** |
+
 ---
 
 ## 3 · Compliance tab — idle / picker state
@@ -130,23 +148,72 @@ today; the DATA call itself is what gates):
   (Blob + createObjectURL, filename art12-bundle-{tenant_id}-{since}-{until}.json — M4)
 ```
 
-## 6 · Compliance tab — scheduled generation (preview) fieldset (M6, the ⚠-flagged part)
+## 6 · Compliance tab — REAL scheduled generation control + Generated reports inbox (REVISION — M6, M15-M23)
+
+> Entirely replaces the original client-only "Scheduled generation (preview)" fieldback above.
+> No `localStorage`, no "preview" framing — this control writes a real backend row and drives a
+> real background loop.
+
+### 6a · `ScheduleControl` — owner can write, any AUDIT_READ role can read
 
 ```
-┌─ fieldset: "Scheduled generation (preview)" ───────────────────────────────┐
-│  Remind me monthly                              [○──●]  (Switch)           │
+┌─ fieldset: "Scheduled generation" ─────────────────────────────────────────┐
+│  Generate automatically every month             [○──●]  (Switch)           │
 │  Day of month   [ 1 ▾]  (1–28, own <select>)                               │
 │                                                                              │
-│  ⓘ This is a browser-local reminder only — it does not automatically       │
-│    generate or deliver anything. Come back to this tab and click           │
-│    "Generate bundle" each time. A fully automated monthly delivery is a    │
-│    tracked follow-up.                                                      │
+│  ⓘ Generates on day 1 of each month, UTC. The bundle is generated and      │
+│    stored automatically — you'll find it in "Generated reports" below.     │
+│    No email or notification is sent yet; check back here after the        │
+│    scheduled date.                                                        │
+│                                                                              │
+│  Last run: Jul 1, 2026, 00:04 UTC — success        (last_run_at/status)   │
 └─────────────────────────────────────────────────────────────────────────┘
+
+  NON-OWNER (admin/operator/superadmin — AUDIT_READ but not SECURITY_CONFIG):
+┌─ fieldset: "Scheduled generation" ─────────────────────────────────────────┐
+│  Generate automatically every month             [○──●]  (Switch, disabled) │
+│  Day of month   [ 1 ▾]  (disabled)                                         │
+│                                                                              │
+│  ⓘ Only the tenant owner can change this. Current state shown above is    │
+│    live — you can still view it and download from Generated reports.      │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  ZDR-SKIPPED last run (last_run_status='skipped_zdr' — honest, not hidden):
+│  Last run: Jul 1, 2026, 00:04 UTC — skipped (Zero-Data-Retention is on for │
+│  this tenant; scheduled generation does not persist a bundle while ZDR is │
+│  on — use "Generate bundle" above for an on-demand copy instead)          │
 ```
 
 Deliberately NOT a `ConfirmDialog`-gated action (unlike ZDR-enable in `RetentionZdrSettings.tsx`)
-— toggling this control is non-destructive, writes nothing server-side, and fires no network call;
-a confirm gate would be a false signal of consequence this control does not actually carry.
+— toggling this control only starts/stops FUTURE ticks, never deletes an already-generated report;
+a confirm gate would overstate the consequence of a single toggle.
+
+### 6b · `GeneratedReportsList` — the v1 delivery mechanism (in-app inbox, Framing #4)
+
+```
+┌─ "Generated reports" ───────────────────────────────────────────────────────┐
+│  Period                    Generated              Size        Download     │
+│  ─────────────────────────────────────────────────────────────────────────│
+│  Jun 1 – Jun 30, 2026       Jul 1, 2026, 00:04 UTC  842 KB     [Download]  │
+│  May 1 – May 31, 2026       Jun 1, 2026, 00:03 UTC  790 KB     [Download]  │
+│  Apr 1 – Apr 30, 2026       May 1, 2026, 00:05 UTC  ⚠ unavailable (R13)    │
+│                                                                              │
+│  [ Load more ]  (keyset cursor, mirrors LogsExplorerPage's has_more idiom) │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  EMPTY STATE (no schedule ever run yet):
+┌─ "Generated reports" ───────────────────────────────────────────────────────┐
+│  No reports generated yet — enable Scheduled generation above, or check    │
+│  back after the next monthly run.                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+Each row's [Download] is a plain `<a href="/api/gw/admin/compliance/reports/{id}">` — the BFF
+catch-all already forwards this path (no new BFF route file, same confirmed-at-Ground precedent
+as the on-demand `art12-bundle` route); `Content-Disposition: attachment` on the backend means the
+browser downloads natively, no client-side Blob assembly needed here (unlike M4's on-demand path,
+which has no server export endpoint to hit). A row whose bytes are unreachable (R13, object store
+down) shows an inline "⚠ unavailable" state on THAT row only — the rest of the list stays usable.
 
 ## 7 · Compliance tab — error states (R2/R3/R4/R5/R6/R7)
 
@@ -186,11 +253,14 @@ Client-side page-count ceiling exceeded (M11, R7):
 | `BundleEvidenceSeal.tsx` | `Badge variant="success"` + `Lock` icon (`InvoiceStatusSeal.tsx`'s issued-branch shape) | no-prop, single-state variant (no draft branch) |
 | `lib/art12-bundle.ts:assembleArt12Bundle` | the backend's own `bundle_token`/`has_more` continuation idiom (consumed, not re-implemented) | the client-side full-walk-then-assemble loop itself (Ground Issue #1 — no prior client-side precedent) |
 | `SettingsPage.tsx` (modified) | `PlatformTenantDetail.tsx`'s controlled-tab-via-`?tab=` pattern, verbatim | one new `TabsTrigger`/`TabsContent` pair |
+| `ScheduleControl.tsx` (REVISION, NEW) | `RetentionZdrSettings.tsx`'s `useQuery`/`useMutation` + role-gated-disabled-control shape (mirrors its own OWNER-only ZDR-toggle gating pattern), `Switch` + `<select>` primitives | the owner-vs-non-owner disabled-with-explanation dual rendering, the `last_run_status='skipped_zdr'` honest-degrade copy |
+| `GeneratedReportsList.tsx` (REVISION, NEW) | `LogsExplorerPage.tsx`'s keyset `cursorStack`/`has_more`/"Load more" idiom, plain `<a>` download links (mirrors `InvoiceDetailPage.tsx`'s export-link pattern, but hitting a REAL server endpoint this time, not a client Blob) | the per-row (not whole-list) 503-unavailable degrade state |
 
-Zero new base primitives; zero new `globals.css` tokens; zero new backend routes; the ONE
-genuinely new interaction pattern is the client-side full-bundle cursor-assembly loop (Ground
-Issue #1), isolated in a pure, unit-testable module (`lib/art12-bundle.ts`) precisely because it
-has no prior in-repo shape to copy.
+Zero new base primitives; zero new `globals.css` tokens; the on-demand path's ONE genuinely new
+interaction pattern remains the client-side full-bundle cursor-assembly loop (Ground Issue #1),
+isolated in a pure, unit-testable module (`lib/art12-bundle.ts`) precisely because it has no prior
+in-repo shape to copy. REVISION adds real backend routes (5 new endpoints) and 2 new tables — see
+`TASK.md` §3 for the backend contract; this DESIGN.md file covers FE presentation only.
 
 ---
 
@@ -237,3 +307,9 @@ has no prior in-repo shape to copy.
 - Color is never the only state cue: the evidence seal pairs a tint (`success`) with an ICON (lock)
   and TEXT ("Generated & pinned"); the schedule Switch's on/off state is legible from its own
   accessible name + visual track position, not tint alone.
+- REVISION: a `disabled` `ScheduleControl` (non-owner) still exposes an accessible explanation
+  (`aria-describedby` pointing at the "Only the tenant owner can change this" text), never a bare
+  disabled control with no stated reason. `GeneratedReportsList`'s "Load more" button and each row's
+  download `<a>` follow the same ≥44px/focus-visible bar as every other interactive element on this
+  tab (M22); a row-level "⚠ unavailable" (R13) uses `role="status"` (not `alert` — it's informational
+  per-row, not a page-level failure) so it doesn't steal focus from the rest of the list.
