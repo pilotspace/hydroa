@@ -772,8 +772,8 @@
       "created": "2026-07-14T03:34:47+00:00",
       "updated": "2026-07-14T03:51:47+00:00",
       "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-14T03:58:29+00:00",
+        "version": "v2",
+        "frozen_at": "2026-07-14T04:42:45+00:00",
         "approved_by": "Tin Dang",
         "actor": {
           "name": "Tin Dang",
@@ -784,14 +784,14 @@
     },
     "claude-gateway-protocol-compat": {
       "title": "Claude apps gateway protocol compatibility: Claude Code fronts Hydroa first-class",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [
         "anthropic-messages-ingress"
       ],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T03:34:47+00:00"
+      "updated": "2026-07-14T04:35:56+00:00"
     },
     "tool-call-metering": {
       "title": "Per-tool-call metering: $/1k-query pricing units through the shared rate-card resolver to invoice lines",
@@ -816,7 +816,7 @@
     },
     "agents-console": {
       "title": "Agents console (UDD): directory, session explorer, MCP allow-list management, kill switch",
-      "phase": "ground",
+      "phase": "contract",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [
@@ -825,7 +825,7 @@
         "tool-call-metering"
       ],
       "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T03:34:47+00:00"
+      "updated": "2026-07-14T04:35:56+00:00"
     }
   },
   "milestones": {
@@ -895,7 +895,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T04:18:42+00:00",
+  "updated": "2026-07-14T04:42:45+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
