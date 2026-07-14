@@ -336,6 +336,7 @@ class TranscriptionUseCase:
             usage=None,
             status=status,
             team_id=authz.team_id,
+            agent_principal_id=authz.agent_principal_id,
             pricing_unit="per_second",
             quantity=Decimal(str(duration_s)),
         )
@@ -510,6 +511,7 @@ class SpeechUseCase:
             usage=None,
             status=200,
             team_id=authz.team_id,
+            agent_principal_id=authz.agent_principal_id,
             pricing_unit="per_character",
             quantity=Decimal(len(input_text)),
         )

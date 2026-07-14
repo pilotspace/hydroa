@@ -26,15 +26,18 @@ from gateway.agent_oauth.api.deps import (
     get_identity,
     get_kill_agent_principal_use_case,
     get_list_agent_principals_use_case,
+    get_list_principal_tokens_use_case,
     require_agents_manage,
 )
 from gateway.agent_oauth.api.schemas import (
     AgentPrincipalResponse,
+    AgentTokenInfo,
     AttachTokenResponse,
     CreateAgentPrincipalRequest,
     DetachTokenResponse,
     KillAgentPrincipalResponse,
     ListAgentPrincipalsResponse,
+    ListPrincipalTokensResponse,
 )
 from gateway.agent_oauth.application.principal_use_cases import (
     AttachAgentTokenUseCase,
@@ -42,8 +45,10 @@ from gateway.agent_oauth.application.principal_use_cases import (
     DetachAgentTokenUseCase,
     KillAgentPrincipalUseCase,
     ListAgentPrincipalsUseCase,
+    ListPrincipalTokensUseCase,
+    get_principal_spend_this_month,
 )
-from gateway.agent_oauth.domain.entities import AgentPrincipal
+from gateway.agent_oauth.domain.entities import AgentPrincipal, AgentToken
 from gateway.agent_oauth.domain.errors import (
     AgentPrincipalKilledError,
     AgentPrincipalNameConflictError,
@@ -67,7 +72,7 @@ from gateway.tenants.domain.entities import Identity
 agents_router = APIRouter(prefix="/admin/agents", tags=["agent-principals"])
 
 
-def _to_response(principal: AgentPrincipal) -> AgentPrincipalResponse:
+def _to_response(principal: AgentPrincipal, *, spend_usd_this_month: str) -> AgentPrincipalResponse:
     return AgentPrincipalResponse(
         id=principal.id,
         tenant_id=principal.tenant_id,
@@ -82,6 +87,17 @@ def _to_response(principal: AgentPrincipal) -> AgentPrincipalResponse:
         last_seen_at=principal.last_seen_at,
         killed_at=principal.killed_at,
         attached_token_count=principal.attached_token_count,
+        spend_usd_this_month=spend_usd_this_month,
+    )
+
+
+def _to_token_info(token: AgentToken) -> AgentTokenInfo:
+    return AgentTokenInfo(
+        id=token.id,
+        name=token.scope,
+        created_at=token.created_at,
+        revoked_at=token.revoked_at,
+        access_expires_at=token.access_expires_at,
     )
 
 
@@ -108,17 +124,55 @@ async def create_agent_principal(
         raise AUTH_FORBIDDEN.exc() from None
     except AgentPrincipalNameConflictError:
         raise AGENT_PRINCIPAL_NAME_CONFLICT.exc() from None
-    return _to_response(principal)
+    # A brand-new principal has zero recorded spend by construction (M1) — no
+    # Redis read needed; "0.00" is exact, not a placeholder.
+    return _to_response(principal, spend_usd_this_month="0.00")
 
 
 @agents_router.get("", response_model=ListAgentPrincipalsResponse)
 async def list_agent_principals(
+    request: Request,
     identity: Annotated[Identity, Depends(get_identity)],
     use_case: Annotated[ListAgentPrincipalsUseCase, Depends(get_list_agent_principals_use_case)],
 ) -> ListAgentPrincipalsResponse:
-    """M5: any authenticated tenant role may list."""
+    """M5: any authenticated tenant role may list.
+
+    CR-2 (contract v2): each principal carries spend_usd_this_month, read from
+    the SAME usage:spend:agent_principal:{id}:{YYYYMM} counter M4 enforces on —
+    "0.00" (never null) when no counter has been written yet.
+    """
     principals = await use_case.execute(tenant_id=identity.tenant_id)
-    return ListAgentPrincipalsResponse(agents=[_to_response(p) for p in principals])
+    redis = getattr(request.app.state, "redis_client", None)
+    responses = [
+        _to_response(p, spend_usd_this_month=await get_principal_spend_this_month(redis, p.id))
+        for p in principals
+    ]
+    return ListAgentPrincipalsResponse(agents=responses)
+
+
+@agents_router.get(
+    "/{principal_id}/tokens",
+    response_model=ListPrincipalTokensResponse,
+)
+async def list_principal_tokens(
+    principal_id: uuid.UUID,
+    identity: Annotated[Identity, Depends(require_agents_manage)],
+    use_case: Annotated[ListPrincipalTokensUseCase, Depends(get_list_principal_tokens_use_case)],
+) -> ListPrincipalTokensResponse:
+    """M13/CR-B (contract v2): enumerate a principal's attached tokens for the
+    console's "Manage tokens" picker. RBAC ceiling {OWNER, ADMIN} — same as
+    create/attach/detach/kill. Tenant-scoped fail-closed identical to M12:
+    cross-tenant/unknown principal_id -> the SAME 404 as kill/attach/detach.
+    """
+    try:
+        tokens = await use_case.execute(
+            tenant_id=identity.tenant_id, role=identity.role, principal_id=principal_id
+        )
+    except ForbiddenError:
+        raise AUTH_FORBIDDEN.exc() from None
+    except AgentPrincipalNotFoundError:
+        raise AGENT_PRINCIPAL_NOT_FOUND.exc() from None
+    return ListPrincipalTokensResponse(tokens=[_to_token_info(t) for t in tokens])
 
 
 @agents_router.post(

@@ -14,16 +14,22 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from gateway.agent_oauth.domain.entities import AgentPrincipal
+from gateway.agent_oauth.domain.entities import AgentPrincipal, AgentToken
 from gateway.agent_oauth.domain.ports import AgentOAuthRepository
 from gateway.agent_oauth.infrastructure.orm import AgentPrincipalRow, AgentTokenRow
 from gateway.keys.domain.errors import ForbiddenError
+
+# Reuse the SAME Redis-value parser NonChatGovernance._check_agent_principal_budget
+# uses (fail-open on any malformed/None value) — one source of truth, not a second
+# hand-rolled Decimal(...) parse.
+from gateway.proxy.application.governance import _parse_spend  # pyright: ignore[reportPrivateUsage]
 from gateway.tenants.domain.entities import Role
 
 _log = logging.getLogger(__name__)
@@ -137,6 +143,52 @@ class KillAgentPrincipalUseCase:
         return await self._repo.kill_principal(
             principal_id=principal_id, tenant_id=tenant_id, now=now
         )
+
+
+class ListPrincipalTokensUseCase:
+    """CR-B (contract v2, M13): enumerate a principal's attached tokens.
+
+    RBAC ceiling {OWNER, ADMIN} — same as create/attach/detach/kill (the token
+    picker is an admin-management surface, not the M5 any-role read).
+    """
+
+    def __init__(self, repository: AgentOAuthRepository) -> None:
+        self._repo = repository
+
+    async def execute(
+        self, *, tenant_id: uuid.UUID, role: Role, principal_id: uuid.UUID
+    ) -> list[AgentToken]:
+        _ensure_owner_or_admin(role)
+        return await self._repo.list_principal_tokens(
+            principal_id=principal_id, tenant_id=tenant_id
+        )
+
+
+async def get_principal_spend_this_month(redis: Any, principal_id: uuid.UUID) -> str:
+    """CR-2 (contract v2, M5 amended): read the SAME advisory spend counter M4's
+    enforcement check reads (usage:spend:agent_principal:{id}:{YYYYMM}) and the
+    write-side fix (recorder.py) now increments. Format 2-dp string.
+
+    Fail-open, NEVER null, NEVER fabricated: a Redis error or a not-yet-written
+    counter both read as "0.00" — byte-identical key string to
+    NonChatGovernance._check_agent_principal_budget (governance.py) and
+    CompletionUseCase._check_agent_principal_budget (use_cases.py).
+    """
+    if redis is None:
+        return "0.00"
+    yyyymm = datetime.now(UTC).strftime("%Y%m")
+    spend_key = f"usage:spend:agent_principal:{principal_id}:{yyyymm}"
+    try:
+        raw = await redis.get(spend_key)
+    except Exception as exc:
+        _log.warning(
+            "get_principal_spend_this_month: Redis GET failed (fail open -> 0.00)",
+            exc_info=exc,
+            extra={"agent_principal_id": str(principal_id), "spend_key": spend_key},
+        )
+        return "0.00"
+    spent = _parse_spend(raw)
+    return f"{spent:.2f}"
 
 
 async def bump_principal_last_seen(

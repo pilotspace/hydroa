@@ -1,16 +1,20 @@
-"""RED suite for agent-identity-governance (TASK.md §3 CONTRACT FROZEN @ v1).
+"""Suite for agent-identity-governance (TASK.md §3 CONTRACT FROZEN @ v2).
 
-One test per §2 scenario (M1-M12 + rejects + edge cases). Asserts observable
+One test per §2 scenario (M1-M13 + CR-2 + rejects + edge cases). Asserts observable
 behavior (HTTP status/body shape, DB row state) — never internals.
 
-M4 (principal aggregate budget) is unit-tested directly against NonChatGovernance
-with fakes — mirrors the established pattern in
+M4 (principal aggregate budget CHECK) is unit-tested directly against
+NonChatGovernance with fakes — mirrors the established pattern in
 tests/nonchat_soft_budget_alert/test_nonchat_soft_budget_alert.py (a real
-Postgres/HTTP round trip through the full data plane is unnecessary to prove the
-governance CHECK fires; the write-side Redis INCR is a disclosed, out-of-scope
-follow-up — see TASK.md §7 OBSERVE, mirrors team_budget_usd's own precedent, whose
-recorder-side increment is ALSO not yet wired: "recorder does not yet INCRBYFLOAT
-usage:spend:team:..." per tests/team_governance/test_team_governance.py).
+Postgres/HTTP round trip is unnecessary to prove the governance CHECK fires in
+isolation). Correction to an earlier (FALSE) claim in this docstring: the
+recorder-side Redis INCR for usage:spend:agent_principal:{id}:{YYYYMM} is now
+wired end-to-end (recorder.py, mirrors team_budget_usd's OWN write-side, which
+IS incremented in production — see recorder.py's per-team INCRBYFLOAT block).
+test_agent_principal_spend_counter_increments_and_enforces_on_next_call below
+proves the FULL loop through a real billed /v1/chat/completions call: the
+counter increments AND a principal at/over budget is refused on the NEXT call
+— not Redis-seeded, unlike the M4 CHECK-only unit test above it.
 
 M6 (last_seen_at) note: TASK.md §0 Ground note #6 establishes that a principal can
 ONLY be attached to an ALREADY-MINTED agent_tokens row (never a pending/unminted
@@ -28,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -40,6 +45,7 @@ from gateway.agent_oauth.application.principal_use_cases import bump_principal_l
 from gateway.agent_oauth.infrastructure.orm import AgentPrincipalRow, AgentTokenRow
 from gateway.core.error_catalog import ProblemError
 from gateway.keys.domain.entities import AuthzResult
+from gateway.usage.application.recorder import RecordingUsageRecorder
 from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.domain.ports import ModelAccess
 from gateway.tenants.domain.entities import Role
@@ -323,6 +329,143 @@ async def test_principal_budget_untouched_when_unattached() -> None:
     assert result is authz
 
 
+class _FakeCompletionUpstream:
+    """Minimal non-streaming fake upstream (mirrors tests/team_governance's own).
+
+    usage 10 prompt + 5 completion tokens, paired with active_model's pricing
+    (0.0005/0.001 per token) -> EXACTLY $0.01 per call, a deterministic cost
+    chosen so a "0.01" principal budget trips precisely on the call AFTER the
+    one that reaches it (M4/CR write-side enforcement — never Redis-seeded).
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        self.calls += 1
+        return 200, {
+            "id": f"gen-aig-{self.calls}",
+            "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        }
+
+    def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
+        raise NotImplementedError("non-streaming fake — this suite never streams")
+
+
+def _principal_spend_key(principal_id: str) -> str:
+    yyyymm = datetime.now(UTC).strftime("%Y%m")
+    return f"usage:spend:agent_principal:{principal_id}:{yyyymm}"
+
+
+async def test_agent_principal_spend_counter_increments_and_enforces_on_next_call(
+    client: httpx.AsyncClient,
+    owner: dict[str, Any],
+    app: Any,
+    redis_client: Any,
+    active_model: str,
+) -> None:
+    """Build-completeness fix (contract v2 note): the write-side Redis INCR for
+    usage:spend:agent_principal:{id}:{YYYYMM} — proves the FULL loop end-to-end
+    through a real billed /v1/chat/completions call, NOT Redis-seeded (unlike
+    the M4 CHECK-only unit test above, which manually seeds _FakeRedis).
+
+    1. A principal with monthly_budget_usd="0.01" and one attached token.
+    2. First billed call succeeds (200) — spend was $0 going in.
+    3. The recorder's real INCRBYFLOAT fires; usage:spend:agent_principal:{id}:
+       {YYYYMM} reads > $0 (the catalog cost composed with the tenant's markup —
+       intentionally not asserted to the exact cent, only that it moved AND
+       meets/exceeds the $0.01 budget, which active_model's pricing guarantees).
+    4. The SAME token's NEXT call is refused 402 BUDGET_EXCEEDED — spend now
+       meets/exceeds the budget, proving the counter this test just verified is
+       the SAME one the enforcement check reads (byte-identical key string).
+    """
+    app.state.completion_upstream = _FakeCompletionUpstream()
+
+    principal = (
+        await client.post(
+            _AGENTS,
+            json={"name": "spend-bot", "monthly_budget_usd": "0.01"},
+            headers=_auth(owner["owner_jwt"]),
+        )
+    ).json()
+    token = await mint_agent_token(app, tenant_id=owner["tenant_id"], user_id=owner["user_id"])
+    attach = await client.post(
+        f"{_AGENTS}/{principal['id']}/tokens/{token['token_id']}/attach",
+        headers=_auth(owner["owner_jwt"]),
+    )
+    assert attach.status_code == 200, attach.text
+
+    spend_key = _principal_spend_key(principal["id"])
+    assert await redis_client.get(spend_key) is None  # clean slate (autouse _clear_state)
+
+    payload = {"model": active_model, "messages": [{"role": "user", "content": "hi"}]}
+    headers = {"Authorization": f"Bearer {token['access_token']}"}
+
+    first = await client.post("/v1/chat/completions", json=payload, headers=headers)
+    assert first.status_code == 200, first.text
+
+    # Fire-and-forget recorder coroutine — allow it to complete.
+    await asyncio.sleep(0.3)
+
+    raw = await redis_client.get(spend_key)
+    assert raw is not None, (
+        f"usage:spend:agent_principal:{principal['id']}:<YYYYMM> was never written — "
+        "the write-side INCR did not fire"
+    )
+    spend = Decimal(raw.decode() if isinstance(raw, bytes) else raw)
+    assert spend > Decimal("0"), f"expected counter to move off zero, got {spend}"
+    assert spend >= Decimal("0.01"), (
+        f"expected spend to meet/exceed the $0.01 budget (active_model's pricing "
+        f"guarantees this), got {spend} — the enforcement assertion below would be "
+        "vacuous otherwise"
+    )
+
+    second = await client.post("/v1/chat/completions", json=payload, headers=headers)
+    assert second.status_code == 402, second.text
+    assert second.json()["code"] == "ERR_BUDGET_EXCEEDED"
+
+
+async def test_agent_principal_correction_counter_exactly_once_on_double_fire(
+    app: Any, redis_client: Any
+) -> None:
+    """record_correction's SET-NX exactly-once guard (recorder.py) covers the NEW
+    agent-principal counter too, not just the pre-existing team/key ones — a
+    duplicate correction firing twice for the SAME event_id (inline recovery
+    racing the periodic sweep — cost_recovery.py's own documented race) must
+    move usage:spend:agent_principal:{id}:{YYYYMM} by the delta exactly ONCE.
+    """
+    recorder = RecordingUsageRecorder(
+        redis=app.state.redis_client, session_factory=app.state.sessionmaker
+    )
+    principal_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    key_id = uuid.uuid4()
+    event_id = uuid.uuid4()
+    spend_key = _principal_spend_key(str(principal_id))
+    assert await redis_client.get(spend_key) is None
+
+    for _ in range(2):  # simulates inline recovery + the periodic sweep re-firing
+        await recorder.record_correction(
+            event_id=event_id,
+            tenant_id=tenant_id,
+            key_id=key_id,
+            model="openai/gpt-4o-mini",
+            cost_usd=Decimal("2.50"),
+            provider_cost=Decimal("2.50"),
+            provider_generation_id="gen-correction-1",
+            agent_principal_id=principal_id,
+        )
+
+    raw = await redis_client.get(spend_key)
+    assert raw is not None
+    spend = Decimal(raw.decode() if isinstance(raw, bytes) else raw)
+    assert spend == Decimal("2.50"), (
+        f"expected exactly-once delta application ($2.50), got {spend} — "
+        "the SET-NX guard did not dedupe the double-fire"
+    )
+
+
 # --------------------------------------------------------------------------- M5
 
 
@@ -346,6 +489,29 @@ async def test_list_agent_principals_any_role(
     agents_by_id = {a["id"]: a for a in r.json()["agents"]}
     assert agents_by_id[p1["id"]]["killed_at"] is None
     assert agents_by_id[p2["id"]]["killed_at"] is not None
+
+
+async def test_list_agent_principals_includes_spend_usd_this_month(
+    client: httpx.AsyncClient, owner: dict[str, Any], redis_client: Any
+) -> None:
+    """CR-2 (contract v2, M5 amended): a seeded counter renders as a 2-dp string;
+    a principal with no counter yet reads "0.00" — never null, never fabricated.
+    Reads the SAME usage:spend:agent_principal:{id}:{YYYYMM} key the write-side
+    fix increments and _check_agent_principal_budget enforces on.
+    """
+    seeded = (
+        await client.post(_AGENTS, json={"name": "seeded-bot"}, headers=_auth(owner["owner_jwt"]))
+    ).json()
+    unseeded = (
+        await client.post(_AGENTS, json={"name": "unseeded-bot"}, headers=_auth(owner["owner_jwt"]))
+    ).json()
+    await redis_client.set(_principal_spend_key(seeded["id"]), "12.50")
+
+    r = await client.get(_AGENTS, headers=_auth(owner["owner_jwt"]))
+    assert r.status_code == 200
+    agents_by_id = {a["id"]: a for a in r.json()["agents"]}
+    assert agents_by_id[seeded["id"]]["spend_usd_this_month"] == "12.50"
+    assert agents_by_id[unseeded["id"]]["spend_usd_this_month"] == "0.00"
 
 
 # --------------------------------------------------------------------------- M6
@@ -729,3 +895,95 @@ async def test_kill_racing_attach_never_leaves_token_attached_to_killed_principa
             assert attach_result.status_code == 409
             assert attach_result.json()["code"] == "ERR_AGENT_PRINCIPAL_KILLED"
             assert token_row.principal_id is None
+
+
+# --------------------------------------------------------------------------- M13 / CR-B
+
+
+async def test_list_principal_tokens_happy_path_and_secret_redaction(
+    client: httpx.AsyncClient, owner: dict[str, Any], app: Any
+) -> None:
+    """M13/CR-B: an ADMIN lists a principal's attached tokens (one revoked) —
+    id/name/created_at/revoked_at/access_expires_at present, NO token hash or
+    secret field anywhere in the response (mirrors ScimTokenInfo's redaction).
+    """
+    admin_jwt = mint_role_jwt(
+        app, tenant_id=owner["tenant_id"], role=Role.ADMIN, email="admin-picker@agentco.io"
+    )
+    principal = (
+        await client.post(_AGENTS, json={"name": "picker-bot"}, headers=_auth(owner["owner_jwt"]))
+    ).json()
+    live_token = await mint_agent_token(app, tenant_id=owner["tenant_id"], user_id=owner["user_id"])
+    revoked_token = await mint_agent_token(
+        app, tenant_id=owner["tenant_id"], user_id=owner["user_id"]
+    )
+    for t in (live_token, revoked_token):
+        attach = await client.post(
+            f"{_AGENTS}/{principal['id']}/tokens/{t['token_id']}/attach",
+            headers=_auth(owner["owner_jwt"]),
+        )
+        assert attach.status_code == 200, attach.text
+
+    async with app.state.sessionmaker() as session:
+        row = await session.scalar(
+            select(AgentTokenRow).where(AgentTokenRow.id == revoked_token["token_id"])
+        )
+        assert row is not None
+        row.revoked_at = datetime.now(UTC)
+        await session.commit()
+
+    r = await client.get(f"{_AGENTS}/{principal['id']}/tokens", headers=_auth(admin_jwt))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    tokens_by_id = {t["id"]: t for t in body["tokens"]}
+    live_id = str(live_token["token_id"])
+    revoked_id = str(revoked_token["token_id"])
+    assert set(tokens_by_id) == {live_id, revoked_id}
+
+    live_info = tokens_by_id[live_id]
+    revoked_info = tokens_by_id[revoked_id]
+    assert live_info["revoked_at"] is None
+    assert revoked_info["revoked_at"] is not None
+    for info in (live_info, revoked_info):
+        assert set(info) == {"id", "name", "created_at", "revoked_at", "access_expires_at"}
+        assert "token" not in info
+        assert "access_token" not in info
+        assert "access_token_hash" not in info
+        assert "hash" not in info
+        assert "secret" not in info
+
+
+async def test_list_principal_tokens_forbidden_for_viewer(
+    client: httpx.AsyncClient, owner: dict[str, Any], app: Any
+) -> None:
+    principal = (
+        await client.post(
+            _AGENTS, json={"name": "viewer-blocked-bot"}, headers=_auth(owner["owner_jwt"])
+        )
+    ).json()
+    viewer_jwt = mint_role_jwt(
+        app, tenant_id=owner["tenant_id"], role=Role.VIEWER, email="viewer-picker@agentco.io"
+    )
+    r = await client.get(f"{_AGENTS}/{principal['id']}/tokens", headers=_auth(viewer_jwt))
+    assert r.status_code == 403
+
+
+async def test_list_principal_tokens_not_found_cross_tenant_and_unknown(
+    client: httpx.AsyncClient, owner: dict[str, Any], other_tenant: dict[str, Any]
+) -> None:
+    principal = (
+        await client.post(
+            _AGENTS, json={"name": "cross-tenant-picker-bot"}, headers=_auth(owner["owner_jwt"])
+        )
+    ).json()
+
+    cross_tenant = await client.get(
+        f"{_AGENTS}/{principal['id']}/tokens", headers=_auth(other_tenant["owner_jwt"])
+    )
+    unknown = await client.get(
+        f"{_AGENTS}/{uuid.uuid4()}/tokens", headers=_auth(other_tenant["owner_jwt"])
+    )
+    assert cross_tenant.status_code == 404
+    assert unknown.status_code == 404
+    assert cross_tenant.json() == unknown.json()
+    assert cross_tenant.json()["code"] == "ERR_AGENT_PRINCIPAL_NOT_FOUND"

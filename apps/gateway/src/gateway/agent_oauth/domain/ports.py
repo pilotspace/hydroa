@@ -155,3 +155,15 @@ class AgentOAuthRepository(Protocol):
         principal — byte-identical, no leak of the token's TRUE attachment state).
         """
         ...
+
+    async def list_principal_tokens(
+        self, *, principal_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> list[AgentToken]:
+        """CR-B (contract v2, M13): every agent_tokens row attached to this
+        principal, newest-first — the "Manage tokens" picker's data source.
+
+        Raises AgentPrincipalNotFoundError if principal_id is unknown or belongs
+        to another tenant (byte-identical to kill/attach/detach's own 404 — no
+        enumeration leak).
+        """
+        ...

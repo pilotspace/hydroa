@@ -13,6 +13,7 @@ from gateway.agent_oauth.application.principal_use_cases import (
     DetachAgentTokenUseCase,
     KillAgentPrincipalUseCase,
     ListAgentPrincipalsUseCase,
+    ListPrincipalTokensUseCase,
 )
 from gateway.agent_oauth.infrastructure.repository import SqlAlchemyAgentOAuthRepository
 from gateway.core.db import get_session
@@ -73,3 +74,9 @@ def get_kill_agent_principal_use_case(
     repo: Annotated[SqlAlchemyAgentOAuthRepository, Depends(get_agent_principal_repository)],
 ) -> KillAgentPrincipalUseCase:
     return KillAgentPrincipalUseCase(repo)
+
+
+def get_list_principal_tokens_use_case(
+    repo: Annotated[SqlAlchemyAgentOAuthRepository, Depends(get_agent_principal_repository)],
+) -> ListPrincipalTokensUseCase:
+    return ListPrincipalTokensUseCase(repo)

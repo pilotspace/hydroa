@@ -410,3 +410,22 @@ class SqlAlchemyAgentOAuthRepository:
         if principal is None:
             raise AgentPrincipalNotFoundError()
         raise AgentTokenNotFoundError()
+
+    async def list_principal_tokens(
+        self, *, principal_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> list[AgentToken]:
+        # Tenant-scoped existence check in the SAME method (mirrors every other
+        # lookup in this repository) — a cross-tenant/unknown principal_id gets
+        # the identical 404, never a leaked "0 tokens" 200.
+        principal = await self._get_principal_scoped(principal_id=principal_id, tenant_id=tenant_id)
+        if principal is None:
+            raise AgentPrincipalNotFoundError()
+        result = await self._session.execute(
+            select(AgentTokenRow)
+            .where(
+                AgentTokenRow.principal_id == principal_id,
+                AgentTokenRow.tenant_id == tenant_id,
+            )
+            .order_by(AgentTokenRow.created_at.desc())
+        )
+        return [_to_token(row) for row in result.scalars().all()]

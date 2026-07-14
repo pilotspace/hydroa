@@ -111,6 +111,36 @@ async def redis_client(app: Any) -> AsyncIterator[Any]:
     yield app.state.redis_client
 
 
+@pytest.fixture
+async def active_model(db_session: AsyncSession) -> str:
+    """Insert a minimal active model + pricing snapshot (mirrors tests/team_governance's
+    fixture) so a real completion through FakeCompletionUpstream computes a non-zero,
+    DETERMINISTIC cost: 10 prompt + 5 completion tokens @ these rates = exactly $0.01
+    per call — chosen so a principal budget of "0.01" trips on the SECOND call (M4/CR-2
+    write-side enforcement tests need a call whose cost is precisely controllable).
+    """
+    model_id = "openai/gpt-4o-mini"
+    await db_session.execute(
+        text(
+            "INSERT INTO models (id, name, context_length, active)"
+            " VALUES (:i, :n, 128000, true)"
+            " ON CONFLICT (id) DO NOTHING"
+        ),
+        {"i": model_id, "n": "GPT-4o-mini"},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO pricing_snapshots"
+            " (id, model_id, prompt_usd_per_token, completion_usd_per_token, captured_at)"
+            " VALUES (:id, :m, 0.0005, 0.001, now())"
+            " ON CONFLICT DO NOTHING"
+        ),
+        {"id": str(uuid.uuid4()), "m": model_id},
+    )
+    await db_session.commit()
+    return model_id
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

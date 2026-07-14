@@ -60,12 +60,43 @@ class AgentPrincipalResponse(BaseModel):
     last_seen_at: datetime | None
     killed_at: datetime | None
     attached_token_count: int
+    # CR-2 (contract v2, M5 amended): current-month spend read from the SAME
+    # usage:spend:agent_principal:{id}:{YYYYMM} counter M4's enforcement check
+    # reads and the write-side fix now increments. 2-dp string, NEVER null —
+    # "0.00" when the counter hasn't been written yet (never fabricated).
+    spend_usd_this_month: str
 
 
 class ListAgentPrincipalsResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     agents: list[AgentPrincipalResponse]
+
+
+class AgentTokenInfo(BaseModel):
+    """CR-B (contract v2, M13): one attached token's picker-safe projection.
+
+    Deliberately NO access_token_hash / secret field (mirrors ScimTokenInfo's
+    redaction in scim/api/token_router.py). `name` maps to the token's OAuth
+    `scope` — agent_tokens (RFC 8628 device-flow mints) carry no free-text
+    client-supplied label/name column, unlike scim_tokens' user-supplied
+    `name`; disclosed judgment call, flagged for a follow-up CR if the
+    agents-console needs a real display name.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: uuid.UUID
+    name: str
+    created_at: datetime
+    revoked_at: datetime | None
+    access_expires_at: datetime
+
+
+class ListPrincipalTokensResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tokens: list[AgentTokenInfo]
 
 
 class AttachTokenResponse(BaseModel):

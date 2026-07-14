@@ -465,6 +465,7 @@ def _fire_record(
     team_id: uuid.UUID | None = None,
     request_id: uuid.UUID | None = None,
     tags: dict[str, str] | None = None,
+    agent_principal_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget usage record; forwards team_id when set (team-governance seam)."""
     extras: UsageRecordExtras = {}
@@ -474,6 +475,8 @@ def _fire_record(
         extras["request_id"] = request_id
     if tags:
         extras["tags"] = tags
+    if agent_principal_id is not None:
+        extras["agent_principal_id"] = agent_principal_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -495,6 +498,7 @@ def _fire_record_cached(
     team_id: uuid.UUID | None = None,
     request_id: uuid.UUID | None = None,
     tags: dict[str, str] | None = None,
+    agent_principal_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget usage record for a cache hit (cached=true, cost_usd=0).
 
@@ -508,6 +512,8 @@ def _fire_record_cached(
         extras["request_id"] = request_id
     if tags:
         extras["tags"] = tags
+    if agent_principal_id is not None:
+        extras["agent_principal_id"] = agent_principal_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -616,6 +622,7 @@ def _fire_record_with_raw(
     disconnect_estimate: bool = False,
     request_id: uuid.UUID | None = None,
     tags: dict[str, str] | None = None,
+    agent_principal_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget usage record with optional guardrail raw markers.
 
@@ -656,6 +663,8 @@ def _fire_record_with_raw(
         extras["request_id"] = request_id
     if tags:
         extras["tags"] = tags
+    if agent_principal_id is not None:
+        extras["agent_principal_id"] = agent_principal_id
     _dispatch_record(
         usage_recorder,
         tenant_id=tenant_id,
@@ -708,6 +717,7 @@ async def _run_output_validation_retry(
         usage=usage1,
         status=status,
         team_id=authz.team_id,
+        agent_principal_id=authz.agent_principal_id,
         usage_source="validation_retry",
         tags=tags,
     )
@@ -742,6 +752,7 @@ async def _run_output_validation_retry(
             usage=None,
             status=429,
             team_id=authz.team_id,
+            agent_principal_id=authz.agent_principal_id,
             usage_source="validation_retry",
             tags=tags,
         )
@@ -781,6 +792,7 @@ async def _run_output_validation_retry(
         usage=usage2,
         status=retry_status,
         team_id=authz.team_id,
+        agent_principal_id=authz.agent_principal_id,
         usage_source="validation_retry",
         tags=tags,
     )
@@ -1808,6 +1820,7 @@ class CompletionUseCase:
                     usage=None,
                     status=502,
                     team_id=authz.team_id,
+                    agent_principal_id=authz.agent_principal_id,
                 )
                 return {
                     "error": {
@@ -1832,6 +1845,7 @@ class CompletionUseCase:
                 usage=usage,
                 status=status,
                 team_id=authz.team_id,
+                agent_principal_id=authz.agent_principal_id,
             )
             return response_body
         finally:
@@ -1946,6 +1960,7 @@ class CompletionUseCase:
                     model=_served_cached,
                     usage=cached_usage,
                     team_id=authz.team_id,
+                    agent_principal_id=authz.agent_principal_id,
                     request_id=request_id,
                     tags=tags,
                 )
@@ -2030,6 +2045,7 @@ class CompletionUseCase:
                                 model=_served_cached_sem,
                                 usage=sem_usage,
                                 team_id=authz.team_id,
+                                agent_principal_id=authz.agent_principal_id,
                                 request_id=request_id,
                                 tags=tags,
                             )
@@ -2114,6 +2130,7 @@ class CompletionUseCase:
                             model=_served_cached_vec,
                             usage=vec_usage,
                             team_id=authz.team_id,
+                            agent_principal_id=authz.agent_principal_id,
                             request_id=request_id,
                             tags=tags,
                         )
@@ -2315,6 +2332,7 @@ class CompletionUseCase:
                             usage=None,
                             status=400,
                             team_id=authz.team_id,
+                            agent_principal_id=authz.agent_principal_id,
                             guardrail_blocked=True,
                             blocked_by="error",
                             request_id=_request_id,
@@ -2383,6 +2401,7 @@ class CompletionUseCase:
                             usage=None,
                             status=400,
                             team_id=authz.team_id,
+                            agent_principal_id=authz.agent_principal_id,
                             guardrail_blocked=True,
                             blocked_by=result.blocked_by,
                             request_id=_request_id,
@@ -2544,6 +2563,7 @@ class CompletionUseCase:
                     usage=None,
                     status=429,
                     team_id=authz.team_id,
+                    agent_principal_id=authz.agent_principal_id,
                     tags=_tags,
                 )
                 _status_code = 429
@@ -2562,6 +2582,7 @@ class CompletionUseCase:
                     usage=None,
                     status=502,
                     team_id=authz.team_id,
+                    agent_principal_id=authz.agent_principal_id,
                     tags=_tags,
                 )
                 _status_code = 502
@@ -2750,6 +2771,7 @@ class CompletionUseCase:
                 usage=usage,
                 status=status,
                 team_id=authz.team_id,
+                agent_principal_id=authz.agent_principal_id,
                 pii_masked=_pii_masked,
                 # output-schema-validation (M8): None (default) on every request that
                 # never engaged the retry loop — "frame", unchanged. Set to
@@ -2963,6 +2985,7 @@ class CompletionUseCase:
                             usage=None,
                             status=400,
                             team_id=authz.team_id,
+                            agent_principal_id=authz.agent_principal_id,
                             guardrail_blocked=True,
                             blocked_by="error",
                             request_id=_request_id,
@@ -3019,6 +3042,7 @@ class CompletionUseCase:
                             usage=None,
                             status=400,
                             team_id=authz.team_id,
+                            agent_principal_id=authz.agent_principal_id,
                             guardrail_blocked=True,
                             blocked_by=stream_result.blocked_by,
                             request_id=_request_id,
@@ -3195,6 +3219,7 @@ class CompletionUseCase:
                     usage=None,
                     status=429,
                     team_id=authz.team_id,
+                    agent_principal_id=authz.agent_principal_id,
                     tags=_tags,
                 )
                 _stream_error_status = 429
@@ -3212,6 +3237,7 @@ class CompletionUseCase:
                     usage=None,
                     status=502,
                     team_id=authz.team_id,
+                    agent_principal_id=authz.agent_principal_id,
                     tags=_tags,
                 )
                 _stream_error_status = 502
@@ -3226,6 +3252,7 @@ class CompletionUseCase:
             tenant_id = authz.tenant_id
             key_id = authz.key_id
             team_id = authz.team_id
+            agent_principal_id = authz.agent_principal_id
             tpm_limit = authz.tpm_limit
             rate_limiter = self._rate_limiter
             # payload-capture-store §3: captured before _wrapped() (mirrors the locals above).
@@ -3296,6 +3323,7 @@ class CompletionUseCase:
                                 usage=_bw_usage,
                                 status=200,
                                 team_id=team_id,
+                                agent_principal_id=agent_principal_id,
                                 pii_masked=_stream_pii_masked,
                                 usage_source=_bw_source,
                                 request_id=_request_id,
@@ -3347,6 +3375,7 @@ class CompletionUseCase:
                         usage=None,
                         status=502,
                         team_id=team_id,
+                        agent_principal_id=agent_principal_id,
                         tags=_tags,
                     )
                     # stream-upstream-error-frame (v35): emit a parseable error chunk so
@@ -3424,6 +3453,7 @@ class CompletionUseCase:
                         usage=disconnect_usage,
                         status=200,
                         team_id=team_id,
+                        agent_principal_id=agent_principal_id,
                         pii_masked=_stream_pii_masked,
                         usage_source=disconnect_source,
                         provider_generation_id=disconnect_gen_id,
@@ -3561,6 +3591,7 @@ class CompletionUseCase:
                     usage=extracted_usage,
                     status=200,
                     team_id=team_id,
+                    agent_principal_id=agent_principal_id,
                     pii_masked=_stream_pii_masked,
                     usage_source=usage_source,
                     request_id=_request_id,

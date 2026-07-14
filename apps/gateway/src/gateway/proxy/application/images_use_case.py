@@ -185,6 +185,7 @@ class ImagesUseCase:
             usage=None,
             status=status,
             team_id=authz.team_id,
+            agent_principal_id=authz.agent_principal_id,
             pricing_unit="per_image",
             quantity=Decimal(n_images),
         )
