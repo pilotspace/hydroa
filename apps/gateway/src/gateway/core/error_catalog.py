@@ -1143,3 +1143,41 @@ LOGS_QUERY_TIMEOUT = ErrorSpec(
     "ERR_LOGS_QUERY_TIMEOUT",
     "Logs query exceeded the time budget; narrow the range or reduce limit",
 )
+
+# ---------------------------------------------------------------------------
+# MCP connector (mcp-connector-passthrough TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/mcp/call — server_url is not an exact member of the effective allow-list.
+#: Raised BEFORE any DNS lookup or socket connect (R1, M5).
+MCP_SERVER_NOT_ALLOWED = ErrorSpec(
+    403, "ERR_MCP_SERVER_NOT_ALLOWED", "The requested MCP server is not on the effective allow-list"
+)
+
+#: PUT /admin/mcp-servers | PUT /admin/keys/{key_id}/mcp-servers — a server url is
+#: non-https, hostless, or a literal metadata/private/loopback/link-local IP (R2, M3).
+MCP_SERVER_URL_INVALID = ErrorSpec(
+    422, "ERR_MCP_SERVER_URL_INVALID", "MCP server URL failed the egress-safety check"
+)
+
+#: PUT /admin/mcp-servers | PUT /admin/keys/{key_id}/mcp-servers — more than 50 entries (R3).
+MCP_SERVER_LIST_TOO_LONG = ErrorSpec(
+    422, "ERR_MCP_SERVER_LIST_TOO_LONG", "MCP server allow-list may not exceed 50 entries"
+)
+
+#: POST /v1/mcp/call — the allow-listed server_url resolved, fresh, to a denied IP at
+#: dial time (R4, M6) — the DNS-rebind close.
+MCP_EGRESS_DENIED = ErrorSpec(
+    403, "ERR_MCP_EGRESS_DENIED", "The MCP server resolved to a disallowed network destination"
+)
+
+#: POST /v1/mcp/call — upstream MCP server responded with a 3xx; never followed (R5, M7).
+MCP_UPSTREAM_REDIRECT_REJECTED = ErrorSpec(
+    502, "ERR_MCP_UPSTREAM_REDIRECT_REJECTED", "The MCP server attempted a redirect; refused"
+)
+
+#: POST /v1/mcp/call — dial exceeded mcp_connector_dial_timeout_seconds, or the
+#: per-(tenant,host) circuit is open (R6, M8).
+MCP_UPSTREAM_UNAVAILABLE = ErrorSpec(
+    503, "ERR_MCP_UPSTREAM_UNAVAILABLE", "The MCP server is currently unavailable"
+)
