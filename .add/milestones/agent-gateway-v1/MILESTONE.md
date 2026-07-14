@@ -23,6 +23,10 @@ UI/UX in scope (agents-console): information architecture = new top-level Agents
 - **Security tasks get TWO independent adversarial verifies** (mcp-connector-passthrough, agent-identity-governance) — M2 dual-verify lesson; a PASS is reversible on a security finding.
 - Glossary deltas: **agent principal** (an identity-bearing non-human actor scoped to a tenant), **MCP allow-list** (tenant-admin policy naming permitted MCP servers), **tool-call pricing unit** ($/1k-query metering dimension).
 
+## Accepted v1 residuals   (verify-surfaced; disclose at milestone close for Tin's risk-acceptance)
+- **tool-call-metering exactly-once is fail-open under Redis outage**: the shipped dedupe is a Redis SETNX in `MeteringToolCallObserver` (not the contract's "recorder ON CONFLICT" — recorder's frozen signature has no call_id passthrough), so a genuine duplicate `record()` during a Redis outage double-bills (narrow window; fail-open chosen deliberately — a missed bill judged worse than a rare double-bill; tested). Follow-on fix: a DB-level unique backstop on a call_id-derived tag. NOT a 0.9.0 blocker (verify's own recommendation). Corrects the tool-call-metering §3 "structural, no residual" wording.
+- **ingress header/system-array fidelity gaps** (protocol-compat CRs vs frozen ingress): `anthropic-beta`/`anthropic-version` headers are captured/validated but not yet threaded to the direct-Anthropic dial (M2/M3); multi-block `system` array collapses (M6, xfail-proven). Disclosed; fix is a CR back to `anthropic-messages-ingress`.
+
 ## Shared / risky contracts (freeze these first)
 - `/v1/messages` wire contract (request/response/SSE event mapping + usage frame + error shape) -> owning task `anthropic-messages-ingress`
 - MCP allow-list policy shape + refusal error contract -> owning task `mcp-connector-passthrough`
