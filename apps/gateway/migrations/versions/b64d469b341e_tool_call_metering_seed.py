@@ -62,7 +62,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "b64d469b341e"
-down_revision: str | None = "5c8f3a1e9b2d"
+down_revision: str | None = "776ecf702f3f"  # re-parented onto art12 head at R1 integration (was 5c8f3a1e9b2d)
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
