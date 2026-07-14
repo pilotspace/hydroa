@@ -732,7 +732,17 @@
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T03:51:47+00:00"
+      "updated": "2026-07-14T03:51:47+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-14T03:59:40+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      }
     },
     "mcp-connector-passthrough": {
       "title": "MCP connector egress passthrough with per-tenant allow/deny lists (fail-closed) + session tracing",
@@ -875,7 +885,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T03:58:29+00:00",
+  "updated": "2026-07-14T03:59:40+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

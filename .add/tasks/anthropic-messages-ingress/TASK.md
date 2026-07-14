@@ -343,7 +343,9 @@ Glossary deltas:
 - `Anthropic-wire ingress`: the client-facing `/v1/messages` (+`count_tokens`) surface that accepts Anthropic Messages API request/response/SSE shapes and translates them, at the edge, into the SAME internal OpenAI-shape `CompletionUseCase` consumes — the reverse-direction counterpart to the existing egress `AnthropicCompletionUpstream` adapter.
 - `Anthropic error envelope`: the `{"type":"error","error":{"type":<t>,"message":<m>}}` response shape `/v1/messages` returns on any rejection — a documented, precedented exception to the project-wide RFC 9457 problem+json convention (same class as the SCIM `/scim/v2/*` carve-out), never leaking a raw problem+json body to an Anthropic-wire client.
 
-Status: DRAFT
+Least-sure flag surfaced at freeze: [contract] message_start.usage.input_tokens reports 0/absent (the internal OpenAI-shape stream surfaces prompt tokens only at the terminal chunk) — an honestly disclosed degrade vs real Anthropic, ACCEPTED by Tin at freeze; count_tokens governance exemption was REJECTED by Tin (full governance path, $0-billed) and the contract amended accordingly.
+
+Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
