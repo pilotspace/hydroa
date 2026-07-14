@@ -109,11 +109,17 @@ class RedisVectorCache:
                 return None  # embedder unavailable / empty → fail-safe MISS
             namespace = _namespace(tenant_id, model)
             ids = await self._redis.lrange(f"{namespace}:idx", 0, self._max_candidates - 1)
+            if not ids:
+                return None  # no candidates → MISS (skip the mget round trip entirely)
+            entry_ids = [
+                raw_id.decode("utf-8") if isinstance(raw_id, bytes) else str(raw_id)
+                for raw_id in ids
+            ]
+            # Fetch every candidate entry in ONE mget instead of an N+1 of per-id gets.
+            raw_entries = await self._redis.mget([f"{namespace}:{eid}" for eid in entry_ids])
             best_pointer: str | None = None
             best_sim = -1.0
-            for raw_id in ids:
-                entry_id = raw_id.decode("utf-8") if isinstance(raw_id, bytes) else str(raw_id)
-                raw_entry = await self._redis.get(f"{namespace}:{entry_id}")
+            for raw_entry in raw_entries:
                 if raw_entry is None:
                     continue
                 entry = json.loads(raw_entry)

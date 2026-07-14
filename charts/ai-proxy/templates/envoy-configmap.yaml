@@ -149,8 +149,11 @@ data:
                                 envoy.filters.http.ext_authz:
                                   "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
                                   disabled: true
+                            # timeout 0s: LLM streaming/reasoning responses can exceed
+                            # Envoy's 15s default and would be truncated; idle_timeout reaps
+                            # only genuinely stalled streams (resets on activity).
                             - match: { prefix: "/v1/" }
-                              route: { cluster: gateway_cluster }
+                              route: { cluster: gateway_cluster, timeout: 0s, idle_timeout: 300s }
                               typed_per_filter_config:
                                 envoy.filters.http.ext_authz:
                                   "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
