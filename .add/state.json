@@ -727,12 +727,12 @@
     },
     "anthropic-messages-ingress": {
       "title": "Native /v1/messages ingress (+ count_tokens): Anthropic-wire in, shared governance/router/recorder path, billing parity",
-      "phase": "tests",
+      "phase": "build",
       "gate": "none",
       "milestone": "agent-gateway-v1",
       "depends_on": [],
       "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T04:09:35+00:00",
+      "updated": "2026-07-14T04:46:50+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-14T03:59:40+00:00",
@@ -742,6 +742,15 @@
           "email": "tindang.ht97@gmail.com",
           "source": "git"
         }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "01fe7be5ab921c59db286fa345ba43b3",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "6daecac34d2a722184f2fc28bca30b84"
       }
     },
     "mcp-connector-passthrough": {
@@ -895,7 +904,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T04:42:45+00:00",
+  "updated": "2026-07-14T04:46:50+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
