@@ -193,6 +193,10 @@ class NonChatGovernance:
             await self._check_per_key_budget(authz)
             # Step 6: Team budget — key under its own cap can still be stopped by team cap
             await self._check_team_budget(authz)
+            # agent-identity-governance TASK.md §3 (M4): agent-principal aggregate
+            # budget — an ADDITIONAL dimension, same insertion point as the team check,
+            # never replacing the per-key/per-team result above.
+            await self._check_agent_principal_budget(authz)
             # Step 7: tenant budget SKIPPED — per-key wins (most-specific-wins)
         else:
             # Step 5: No hard per-key budget — but the soft-alert seam still runs
@@ -201,6 +205,9 @@ class NonChatGovernance:
                 await self._check_per_key_budget(authz)
             # Step 6: Team budget check — fail-open on Redis errors
             await self._check_team_budget(authz)
+            # agent-identity-governance TASK.md §3 (M4): agent-principal aggregate
+            # budget — runs regardless of key-budget presence, mirrors team budget.
+            await self._check_agent_principal_budget(authz)
             # Step 7: Tenant budget enforces (RedisBudgetGuard)
             await self._budget_guard.check(authz.tenant_id)
 
@@ -441,4 +448,43 @@ class NonChatGovernance:
         if spent >= budget:
             raise BUDGET_EXCEEDED.exc(
                 detail=f"Team spend {spent} >= budget {budget} for team {team_id}"
+            )
+
+    async def _check_agent_principal_budget(self, authz: AuthzResult) -> None:
+        """agent-identity-governance TASK.md §3 (FROZEN @ v1) — M4.
+
+        Structural mirror of _check_team_budget: an ADDITIONAL aggregate-spend
+        dimension summed across every token attached to the principal, never
+        replacing the existing per-token monthly_budget_usd check.
+        Fail-open: Redis unavailable → allow.
+        Counter key: usage:spend:agent_principal:{agent_principal_id}:{YYYYMM}
+        """
+        budget = authz.agent_principal_budget_usd
+        principal_id = authz.agent_principal_id
+        if budget is None or principal_id is None:
+            return
+
+        yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
+        spend_key = f"usage:spend:agent_principal:{principal_id}:{yyyymm}"
+
+        try:
+            redis = self._redis_client
+            if redis is None:
+                return  # No Redis wired — fail open
+            raw = await redis.get(spend_key)
+        except Exception as exc:
+            _log.warning(
+                "agent_principal_budget_check: Redis GET failed (fail open)",
+                exc_info=exc,
+                extra={"agent_principal_id": str(principal_id), "spend_key": spend_key},
+            )
+            return
+
+        spent = _parse_spend(raw)
+
+        if spent >= budget:
+            raise BUDGET_EXCEEDED.exc(
+                detail=(
+                    f"Agent principal spend {spent} >= budget {budget} for principal {principal_id}"
+                )
             )

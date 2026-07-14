@@ -346,6 +346,34 @@ KEY_NOT_FOUND_IN_TENANT = ErrorSpec(
 #: Team not found or does not belong to the caller's tenant.
 TEAM_NOT_FOUND = ErrorSpec(404, "ERR_TEAM_NOT_FOUND", "Team not found")
 
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): agent principal id unknown
+#: or belongs to another tenant (byte-identical — no enumeration leak).
+AGENT_PRINCIPAL_NOT_FOUND = ErrorSpec(
+    404, "ERR_AGENT_PRINCIPAL_NOT_FOUND", "Agent principal not found"
+)
+
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): agent_tokens id unknown or
+#: belongs to another tenant (byte-identical — no enumeration leak).
+AGENT_TOKEN_NOT_FOUND = ErrorSpec(404, "ERR_AGENT_TOKEN_NOT_FOUND", "Agent token not found")
+
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): attach target token is already
+#: attached to a (possibly different) principal.
+AGENT_TOKEN_ALREADY_ATTACHED = ErrorSpec(
+    409, "ERR_AGENT_TOKEN_ALREADY_ATTACHED", "Agent token is already attached to a principal"
+)
+
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): create with a name already
+#: used by another principal in the same tenant.
+AGENT_PRINCIPAL_NAME_CONFLICT = ErrorSpec(
+    409, "ERR_AGENT_PRINCIPAL_NAME_CONFLICT", "Agent principal name already in use"
+)
+
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): a fresh token cannot be
+#: attached to an already-killed principal.
+AGENT_PRINCIPAL_KILLED = ErrorSpec(
+    409, "ERR_AGENT_PRINCIPAL_KILLED", "Agent principal has been killed"
+)
+
 #: User not found in the team / tenant.
 USER_NOT_FOUND = ErrorSpec(404, "ERR_USER_NOT_FOUND", "User not found in this tenant")
 

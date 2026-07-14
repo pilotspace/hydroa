@@ -10,6 +10,11 @@ AgentOAuthErrorCode = Literal[
     "authorization_not_pending",
     "authorization_not_approved",
     "authorization_already_consumed",
+    "agent_principal_not_found",
+    "agent_token_not_found",
+    "agent_token_already_attached",
+    "agent_principal_name_conflict",
+    "agent_principal_killed",
 ]
 
 
@@ -40,3 +45,38 @@ class AuthorizationNotApprovedError(AgentOAuthError):
 
 class AuthorizationAlreadyConsumedError(AgentOAuthError):
     code: ClassVar[AgentOAuthErrorCode] = "authorization_already_consumed"
+
+
+# ---------------------------------------------------------------------------
+# agent-identity-governance TASK.md §3 (FROZEN @ v1) — agent principal errors
+# ---------------------------------------------------------------------------
+
+
+class AgentPrincipalNotFoundError(AgentOAuthError):
+    """Unknown principal id, or belongs to another tenant (byte-identical — no leak)."""
+
+    code: ClassVar[AgentOAuthErrorCode] = "agent_principal_not_found"
+
+
+class AgentTokenNotFoundError(AgentOAuthError):
+    """Unknown agent_tokens id, or belongs to another tenant (byte-identical — no leak)."""
+
+    code: ClassVar[AgentOAuthErrorCode] = "agent_token_not_found"
+
+
+class AgentTokenAlreadyAttachedError(AgentOAuthError):
+    """The target token is already attached to a (possibly different) principal."""
+
+    code: ClassVar[AgentOAuthErrorCode] = "agent_token_already_attached"
+
+
+class AgentPrincipalNameConflictError(AgentOAuthError):
+    """Another principal in the same tenant already holds this name."""
+
+    code: ClassVar[AgentOAuthErrorCode] = "agent_principal_name_conflict"
+
+
+class AgentPrincipalKilledError(AgentOAuthError):
+    """A fresh token cannot be attached to an already-killed principal."""
+
+    code: ClassVar[AgentOAuthErrorCode] = "agent_principal_killed"

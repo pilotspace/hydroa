@@ -1466,6 +1466,46 @@ class CompletionUseCase:
                 detail=f"Team spend {spent} >= budget {budget} for team {team_id}"
             )
 
+    async def _check_agent_principal_budget(self, authz: AuthzResult) -> None:
+        """agent-identity-governance TASK.md §3 (FROZEN @ v1) — M4.
+
+        Dual-copy governance: structural mirror of _check_team_budget and of
+        governance.py::NonChatGovernance._check_agent_principal_budget (never
+        staggered). An ADDITIONAL aggregate-spend dimension across every token
+        attached to the principal — never replaces the existing per-token check.
+        Fail-open: Redis unavailable → allow.
+        Counter key: usage:spend:agent_principal:{agent_principal_id}:{YYYYMM}
+        """
+        budget = authz.agent_principal_budget_usd
+        principal_id = authz.agent_principal_id
+        if budget is None or principal_id is None:
+            return
+
+        yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
+        spend_key = f"usage:spend:agent_principal:{principal_id}:{yyyymm}"
+
+        try:
+            redis = self._get_redis()
+            if redis is None:
+                return  # No Redis wired — fail open
+            raw = await redis.get(spend_key)
+        except Exception as exc:
+            _log.warning(
+                "agent_principal_budget_check: Redis GET failed (fail open)",
+                exc_info=exc,
+                extra={"agent_principal_id": str(principal_id), "spend_key": spend_key},
+            )
+            return
+
+        spent = _parse_spend(raw)
+
+        if spent >= budget:
+            raise BUDGET_EXCEEDED.exc(
+                detail=(
+                    f"Agent principal spend {spent} >= budget {budget} for principal {principal_id}"
+                )
+            )
+
     async def _enforce_governance(
         self,
         authz: AuthzResult,
@@ -1539,6 +1579,9 @@ class CompletionUseCase:
             # Team budget check (§3 step 5) — most-specific-wins continues upward:
             # a key under its own cap can still be stopped by its team's cap.
             await self._check_team_budget(authz)
+            # agent-identity-governance TASK.md §3 (M4): agent-principal aggregate
+            # budget — ADDITIONAL dimension, same insertion point as team budget.
+            await self._check_agent_principal_budget(authz)
         else:
             if authz.soft_budget_usd is not None:
                 # Soft-alert seam only (budget None → no per-key 402 possible)
@@ -1546,6 +1589,9 @@ class CompletionUseCase:
             # Team budget check (§3 step 5) — before the tenant guard (step 6);
             # fail-open on Redis errors (same guarantee as per-key budget check).
             await self._check_team_budget(authz)
+            # agent-identity-governance TASK.md §3 (M4): runs regardless of
+            # key-budget presence, mirrors team budget exactly.
+            await self._check_agent_principal_budget(authz)
             # No hard per-key budget — tenant budget enforces (RedisBudgetGuard)
             await budget_guard.check(authz.tenant_id)
 

@@ -72,6 +72,7 @@ EXPECTED_TABLES = frozenset(
         "seat_membership_events",  # SANCTIONED EDIT — seat-billing TASK.md §3 manifest maintenance; disposition: additive migration f1ef6b05a732 adds this table
         "tenant_region_multiplier_overrides",  # SANCTIONED EDIT — region-pricing TASK.md §3 manifest maintenance; disposition: additive migration d608e56c7485 adds this table
         "tenant_priority_markup_overrides",  # SANCTIONED EDIT — service-tiers TASK.md §3 manifest maintenance; disposition: additive migration 4583689a7b8b adds this table
+        "agent_principals",  # SANCTIONED EDIT — agent-identity-governance TASK.md §3 manifest maintenance; disposition: additive migration 9cb98362515f adds this table
     }
 )
 

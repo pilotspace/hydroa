@@ -13,6 +13,7 @@ from prometheus_client import CollectorRegistry
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from gateway.agent_oauth.api.agent_principal_router import agents_router
 from gateway.agent_oauth.api.device_approval_router import agent_oauth_approval_router
 from gateway.agent_oauth.api.device_authorize_router import agent_oauth_device_router
 from gateway.agent_oauth.api.token_router import agent_oauth_token_router
@@ -1409,6 +1410,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(agent_oauth_device_router)
     app.include_router(agent_oauth_approval_router)
     app.include_router(agent_oauth_token_router)
+    app.include_router(agents_router)
     app.include_router(oidc_router)
     app.include_router(saml_router)
     app.include_router(saml_admin_router)

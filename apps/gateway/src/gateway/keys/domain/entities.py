@@ -168,3 +168,10 @@ class AuthzResult:
     # tier_source mirrors policy_source's key/tenant discriminator shape.
     tier: Literal["priority", "standard"] = "standard"
     tier_source: Literal["key", "tenant"] = "tenant"
+    # agent-identity-governance TASK.md §3 (FROZEN @ v1) additive fields — mirror
+    # team_id/team_budget_usd exactly. Populated in CompositeKeyAuthenticator.authenticate's
+    # agent-token branch via a LEFT JOIN agent_principals inside resolve_access_token's
+    # existing query (zero extra DB reads). Both stay None for an unattached token
+    # (every existing v39 row, and every sk- API-key AuthzResult) — byte-identical.
+    agent_principal_id: uuid.UUID | None = None
+    agent_principal_budget_usd: Decimal | None = None

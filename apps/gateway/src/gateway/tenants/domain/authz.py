@@ -78,6 +78,13 @@ class Permission(StrEnum):
     # document persona (owner/admin/billing_admin/superadmin; NOT operator/viewer/
     # member — confirmed at freeze).
     INVOICES_READ = "invoices_read"
+    # agent-identity-governance TASK.md §3 (FROZEN @ v1): create/attach/detach/kill
+    # on a named agent principal — a NARROWER ceiling than KEYS_MANAGE (which OPERATOR
+    # also holds). A kill switch's blast radius (every session of a named agent,
+    # tenant-wide, in one action) reads as categorically more destructive than
+    # revoking one API key, so this is OWNER/ADMIN only (CONFIRMED by Tin at freeze —
+    # see TASK.md §3 "Least-sure flag").
+    AGENTS_MANAGE = "agents_manage"
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +105,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.AUDIT_READ,
             Permission.LOGS_READ,
             Permission.INVOICES_READ,
+            Permission.AGENTS_MANAGE,
             # NOT PROVIDER_SECRETS, NOT SECURITY_CONFIG (owner-only preserved)
         }
     ),
