@@ -143,6 +143,7 @@ from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.concurrency_guard import GlobalBackPressureMiddleware
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
+from gateway.proxy.api.messages_router import messages_router
 from gateway.proxy.api.presets_admin_router import presets_admin_router
 from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
 from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
@@ -1452,6 +1453,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_catalog_router)
     app.include_router(routing_admin_router)
     app.include_router(proxy_router)
+    app.include_router(messages_router)
     app.include_router(embeddings_router)
     app.include_router(images_router)
     app.include_router(audio_router)
