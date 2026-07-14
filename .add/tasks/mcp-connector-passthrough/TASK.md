@@ -378,6 +378,10 @@ POST /v1/mcp/call   body: { server_url: str, message: <JSON-RPC 2.0 envelope, op
   200 -> <proxied JSON-RPC response body, streamed verbatim>
        | 200 -> { jsonrpc: "2.0", id: <echoed>, error: { code: -32050, message: "ERR_MCP_TOOL_RESULT_BLOCKED" } }   (M9 in-band block)
   401 -> { code: "ERR_AUTH_INVALID_KEY" }   (existing CompositeKeyAuthenticator failure path, unchanged)
+  402 -> { code: "ERR_BUDGET_EXCEEDED" }    (CR-2 v3: budget-governance gate — FIRST step of execute(), before
+                                             the allow-list check; refuse-never-bill: zero dial, zero usage row,
+                                             zero ToolCallObserver.record. Ladder = per-key/team/agent-principal/
+                                             tenant, reusing NonChatGovernance's exact helpers.)
   403 -> { code: "ERR_MCP_SERVER_NOT_ALLOWED" | "ERR_MCP_EGRESS_DENIED" }
   502 -> { code: "ERR_MCP_UPSTREAM_REDIRECT_REJECTED" }
   503 -> { code: "ERR_MCP_UPSTREAM_UNAVAILABLE" }
@@ -426,7 +430,9 @@ Least-sure flag surfaced at freeze: [contract] M6's DNS-rebind close (IP-pinning
 
 CR-1 (Tin, 2026-07-14): add call_id to ToolCallObserver.record — requested by tool-call-metering's freeze review; billing exactly-once made structural.
 
-Status: FROZEN @ v2 — approved by Tin Dang
+CR-2 (Tin, 2026-07-14 — "fix now" via AskUserQuestion): a budget-governance gate on POST /v1/mcp/call. Dual-verify (identity budget-lens, conf 0.9) found MCP tool calls bypassed EVERY budget cap (per-key/team/agent-principal/tenant), defeating the milestone's "agents inherit budgets" promise. Fix: McpCallUseCase.__init__ gains a required `governance: NonChatGovernance` param; execute() runs `governance.check_budgets(authz)` as its FIRST step (before allow-list/circuit/egress/dial) → 402 ERR_BUDGET_EXCEEDED on breach, refuse-never-bill. check_budgets() is a new additive public method running only the budget ladder authorize() already runs (authorize() untouched). RPM/TPM and tenant-credit-hold DEFERRED (no MCP settle/release hook — documented v1 follow-up, not shipped soft). tool-call-metering unaffected (a refused call was already contractually "never invokes the observer"). Integrated `fa21baf`.
+
+Status: FROZEN @ v3 — approved by Tin Dang
 Reported: no
 <!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
