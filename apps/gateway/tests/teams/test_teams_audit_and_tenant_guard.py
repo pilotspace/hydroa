@@ -27,6 +27,7 @@ Fixture/helper provenance (suite-local convention, mirrors tests/teams/test_team
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from typing import Any
 
@@ -111,6 +112,25 @@ async def _drain_fire_and_forget() -> None:
     await asyncio.sleep(0.05)
 
 
+async def _await_audit_row(
+    session: AsyncSession,
+    *,
+    action: str,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> Row[Any] | None:
+    """Poll fetch_one_audit_row until present, or timeout. The audit write is
+    fire-and-forget (off the request path, frozen v1 contract); a fixed 50ms wait
+    is racy under `pytest -n 12`. Never masks a truly-absent row — returns None
+    after timeout so the caller's `is not None` assertion still fails honestly."""
+    row = await fetch_one_audit_row(session, action=action)
+    deadline = time.monotonic() + timeout
+    while row is None and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        row = await fetch_one_audit_row(session, action=action)
+    return row
+
+
 # ===========================================================================
 # delete_team is audited
 # ===========================================================================
@@ -129,8 +149,7 @@ async def test_delete_team_is_audited(
     resp = await client.delete(f"{ADMIN_TEAMS}/{team_id}", headers=auth_jwt(jwt))
     assert resp.status_code == 204, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="team.delete")
+    row = await _await_audit_row(db_session, action="team.delete")
     assert row is not None, "expected exactly one team.delete audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, _metadata = (
         row
@@ -164,8 +183,7 @@ async def test_patch_team_budget_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="team.budget_update")
+    row = await _await_audit_row(db_session, action="team.budget_update")
     assert row is not None, "expected exactly one team.budget_update audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
@@ -207,8 +225,7 @@ async def test_remove_member_is_audited(
     )
     assert del_resp.status_code == 204, del_resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="member.remove")
+    row = await _await_audit_row(db_session, action="member.remove")
     assert row is not None, "expected exactly one member.remove audit event"
     row_tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, result, metadata = (
         row
