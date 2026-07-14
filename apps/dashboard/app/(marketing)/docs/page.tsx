@@ -21,11 +21,19 @@ export const metadata = buildMetadata({
  * content + an MDX pipeline are deferred (SPEC delta). Categories link to
  * "coming soon" anchors so nav resolves without dangling.
  */
-const CATEGORIES = [
+const CATEGORIES: Array<{ title: string; blurb: string; href?: string }> = [
   { title: "Quickstart", blurb: "Point your OpenAI-compatible client at Hydroa and make your first proxied call." },
   { title: "Providers", blurb: "Route to OpenAI, Anthropic, Gemini, Bedrock, and Azure with fallback and load balancing." },
   { title: "Admin API", blurb: "Manage keys, routing config, budgets, and tenants programmatically." },
   { title: "BYOK", blurb: "Bring your own provider keys, encrypted at rest per tenant." },
+  // ai-act-marketing-page TASK.md §3 v1 M9: the ONE real content category
+  // carved out of this page's frozen "coming soon" scaffold (disclosed,
+  // scoped exception — the 4 categories above are untouched stubs).
+  {
+    title: "AI Act readiness",
+    blurb: "Audit-readiness support for the EU AI Act's Art. 101 GPAI regime — residency, ZDR, and Art. 12 record-keeping.",
+    href: "/docs/ai-act-compliance",
+  },
 ];
 
 export default function DocsPage() {
@@ -51,10 +59,10 @@ export default function DocsPage() {
               </CardHeader>
               <CardContent>
                 <Link
-                  href="#coming-soon"
+                  href={c.href ?? "#coming-soon"}
                   className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  Coming soon →
+                  {c.href ? "Read more →" : "Coming soon →"}
                 </Link>
               </CardContent>
             </Card>

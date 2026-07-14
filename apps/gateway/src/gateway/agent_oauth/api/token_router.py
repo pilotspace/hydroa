@@ -22,6 +22,7 @@ Response shape (§3 CONTRACT, RFC 8628 §3.5):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -31,6 +32,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, ValidationError
 from redis.exceptions import RedisError
 
+from gateway.agent_oauth.application.principal_use_cases import bump_principal_last_seen
 from gateway.agent_oauth.application.use_cases import AgentOAuthService
 from gateway.agent_oauth.domain.errors import (
     AuthorizationAlreadyConsumedError,
@@ -199,6 +201,16 @@ async def token_endpoint(request: Request) -> JSONResponse:
         error = "slow_down" if slow_down_probe == "too_fast" else "authorization_pending"
         return JSONResponse(status_code=400, content={"error": error})
     if minted is not None:
+        # agent-identity-governance TASK.md §3 (M6): fire-and-forget last_seen_at bump
+        # — never a synchronous write on this hot path. A brand-new mint's token is
+        # unattached by construction (§0 Ground note #6), so this is a guaranteed
+        # no-op today; wired now so the hook fires the instant a token IS attached at
+        # mint-commit time, with zero additional hot-path latency either way.
+        asyncio.ensure_future(  # noqa: RUF006
+            bump_principal_last_seen(
+                request.app.state.sessionmaker, token_id=minted.token.id, now=now
+            )
+        )
         # SECURITY: plaintext tokens are emitted ONCE here and NEVER logged.
         response_body: dict[str, Any] = {
             "access_token": minted.access_token,

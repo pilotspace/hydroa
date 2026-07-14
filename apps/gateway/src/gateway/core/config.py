@@ -736,6 +736,14 @@ class Settings(BaseSettings):
     # env: GATEWAY_INVOICE_STABILIZATION_HOURS
     invoice_stabilization_hours: int = Field(default=72)
 
+    # ── Compliance report scheduling (compliance-report-center TASK.md §3 M15) ──
+    # Conditionally-started monthly Art. 12 bundle generation loop (mirrors
+    # RetentionSweeper/InvoiceGenerator's should_start_*/run_forever shape). Default-safe:
+    # 0 = OFF entirely — no schedule ever ticks until an operator sets this > 0 AND a
+    # tenant owner opts in via PUT /admin/compliance/report-schedule.
+    # env: GATEWAY_COMPLIANCE_REPORT_SCHEDULE_INTERVAL_SECONDS
+    compliance_report_schedule_interval_seconds: int = Field(default=0)
+
     # ── Payload capture (payload-capture-store task) ─────────────────────────────
     # Opt-in, PII-scrubbed request/response capture (request_logs). Bounded-timeout,
     # non-retried, fire-and-forget IO seam (§3 Freeze questions #2/#3, Tin-approved
@@ -749,6 +757,18 @@ class Settings(BaseSettings):
     # env: GATEWAY_CAPTURE_MAX_CONCURRENT_TASKS — bounded-concurrency shed size (non-blocking
     # semaphore try-acquire; a saturated pool skips the capture, never queues/blocks).
     capture_max_concurrent_tasks: int = Field(default=50, gt=0)
+
+    # ── MCP connector (mcp-connector-passthrough task) ───────────────────────────
+    # env: GATEWAY_MCP_CONNECTOR_DIAL_TIMEOUT_SECONDS — bounds every outbound MCP-server
+    # dial (M8); never auto-retried.
+    mcp_connector_dial_timeout_seconds: float = Field(default=30.0, gt=0)
+    # env: GATEWAY_MCP_CONNECTOR_BREAKER_FAILURE_THRESHOLD — consecutive dial failures
+    # (timeout/connection error) that trip the per-(tenant, server-host) circuit (M8).
+    # Mirrors proxy/infrastructure/circuit_breaker.py's own default (5).
+    mcp_connector_breaker_failure_threshold: int = Field(default=5, ge=1)
+    # env: GATEWAY_MCP_CONNECTOR_BREAKER_COOLDOWN_SECONDS — seconds an open circuit stays
+    # open before a single HALF_OPEN probe is allowed. Mirrors the same default (30s).
+    mcp_connector_breaker_cooldown_seconds: float = Field(default=30.0, gt=0)
 
     # ── Per-model cooldown circuit breaker (cooldown-circuit task) ──────────────
     # GATEWAY_COOLDOWN_FAILURE_THRESHOLD — number of consecutive failures that trip

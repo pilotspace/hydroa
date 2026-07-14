@@ -16,6 +16,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -178,6 +179,17 @@ class TenantRow(Base):
     # service-tiers TASK.md §3 (FROZEN @ v1) — additive, NOT NULL DEFAULT 'standard'.
     # The tenant-wide fallback tier when a key carries no per-key override (M1).
     default_tier: Mapped[str] = mapped_column(Text, nullable=False, server_default="standard")
+    # mcp-connector-passthrough TASK.md §3 (FROZEN @ v1) — additive.
+    # JSONB NOT NULL DEFAULT '[]'::jsonb — list[{url,label}]; empty = deny-all (secure
+    # default for every existing + new tenant row, byte-identical to pre-task behavior).
+    mcp_allowed_servers: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
+    )
+    # Implementation-detail bookkeeping column (NOT in §3's Schema block) — null until
+    # the first PUT /admin/mcp-servers; mirrors residency_region_updated_at's precedent.
+    mcp_allowed_servers_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # updated_at — NOT in the baseline (ad14442336db created tenants with created_at only);
     # added by migration e2b7f4c9a1d8 (provider-credential-store). Declared here without
@@ -201,6 +213,18 @@ class TenantRow(Base):
     # resolve the actual value at PUT time — this column is a bare override slot, not a
     # live join).
     seat_cap: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # claude-gateway-protocol-compat TASK.md §3 (M8) — additive, NOT NULL DEFAULT false.
+    # Mirrors zdr_enabled/semantic_cache_enabled's own per-tenant boolean opt-in
+    # convention (a plain tenants column, not plans.feature_flags — M8 is explicitly a
+    # per-TENANT flag). Gates ONLY whether the existing FallbackModelRouter substitution
+    # mechanism may ever choose a non-Anthropic candidate for a request that named
+    # (directly or via alias) a Claude model over the Anthropic-wire /v1/messages
+    # surface — false (default) refuses fail-closed instead of silently serving a
+    # non-Claude model; every pre-existing tenant defaults to the safer, disclosed-opt-in
+    # state.
+    allow_non_claude_failover: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
 
 
 class UserRow(Base):

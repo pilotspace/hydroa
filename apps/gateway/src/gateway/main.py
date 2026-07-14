@@ -13,6 +13,7 @@ from prometheus_client import CollectorRegistry
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from gateway.agent_oauth.api.agent_principal_router import agents_router
 from gateway.agent_oauth.api.device_approval_router import agent_oauth_approval_router
 from gateway.agent_oauth.api.device_authorize_router import agent_oauth_device_router
 from gateway.agent_oauth.api.token_router import agent_oauth_token_router
@@ -87,6 +88,18 @@ from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_M
 from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 from gateway.catalog.infrastructure.vertex_seed import VERTEX_SEED_MODELS
+from gateway.compliance.api.report_schedule_router import report_schedule_router
+from gateway.compliance.api.router import compliance_router
+from gateway.compliance.application.report_schedule_generator import (
+    ReportScheduleGenerator,
+    should_start_report_schedule_generator,
+)
+from gateway.compliance.infrastructure.orm import (  # noqa: F401 — registers TenantReportScheduleRow/ComplianceReportRunRow on Base.metadata
+    ComplianceReportRunRow as _ComplianceReportRunRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.compliance.infrastructure.orm import (  # noqa: F401
+    TenantReportScheduleRow as _TenantReportScheduleRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.conversations.api.router import conversations_router
 from gateway.conversations.infrastructure.orm import (  # noqa: F401 — registers ConversationRow/ConversationMessageRow on Base.metadata
     ConversationMessageRow as _ConversationMessageRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
@@ -130,6 +143,9 @@ from gateway.logs.infrastructure.orm import (  # noqa: F401 — registers Reques
 )
 from gateway.logs.infrastructure.sqlalchemy_capture import SqlAlchemyPayloadCapture
 from gateway.logs.infrastructure.zdr_retention_adapter import RetentionZdrPort
+from gateway.mcp_connector.api.admin_router import mcp_admin_router
+from gateway.mcp_connector.api.key_router import mcp_key_router
+from gateway.mcp_connector.api.proxy_router import mcp_proxy_router
 from gateway.memory.api.router import memories_router
 from gateway.memory.infrastructure.orm import (  # noqa: F401 — registers MemoryRow on Base.metadata
     MemoryRow as _MemoryRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -141,8 +157,10 @@ from gateway.observability.middleware import RequestIdMiddleware
 from gateway.ops.api.router import ops_router
 from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.concurrency_guard import GlobalBackPressureMiddleware
+from gateway.proxy.api.discovery_router import discovery_router
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
+from gateway.proxy.api.messages_router import messages_router
 from gateway.proxy.api.presets_admin_router import presets_admin_router
 from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
 from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
@@ -235,6 +253,7 @@ from gateway.tenants.infrastructure.jwt_service import JwtTokenService
 from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.tool_call_metering.infrastructure.observer import MeteringToolCallObserver
 from gateway.usage.api.margin_router import margin_router
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
@@ -715,6 +734,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # ReportScheduleGenerator — monthly Art. 12 bundle generation background loop
+        # (compliance-report-center TASK.md §3 M15). Default-safe: OFF unless an
+        # operator sets compliance_report_schedule_interval_seconds>0. Structurally
+        # copied from the InvoiceGenerator wiring immediately above.
+        app.state.report_schedule_generator_task = None
+        if should_start_report_schedule_generator(_settings):
+            _report_schedule_generator = ReportScheduleGenerator(
+                session_factory=_sessionmaker,
+                object_store=app.state.object_store,
+                settings=_settings,
+            )
+            app.state.report_schedule_generator = _report_schedule_generator
+            app.state.report_schedule_generator_task = asyncio.create_task(
+                _report_schedule_generator.run_forever(
+                    interval_seconds=float(_settings.compliance_report_schedule_interval_seconds)
+                )
+            )
+
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
@@ -786,6 +823,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             invoice_generator_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await invoice_generator_task
+
+        report_schedule_generator_task: asyncio.Task[None] | None = getattr(
+            app.state, "report_schedule_generator_task", None
+        )
+        if report_schedule_generator_task is not None:
+            report_schedule_generator_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await report_schedule_generator_task
 
         # 2. Final run_once()/check_once() drain cycle for dispatcher/health
         with contextlib.suppress(Exception):
@@ -867,6 +912,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.retention_sweeper_task = None
     app.state.batch_window_flusher_task = None
     app.state.invoice_generator_task = None
+    app.state.report_schedule_generator_task = None
 
     # Video generation seam — default: no provider (honest degradation).
     # Tests override via app.state.video_generator = <stub>.
@@ -1113,6 +1159,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.usage_recorder = RecordingUsageRecorder(
         redis=redis_client,
         session_factory=app.state.sessionmaker,
+    )
+
+    # tool-call-metering TASK.md §3 M1: MeteringToolCallObserver is the ONLY production
+    # wiring for gateway.mcp_connector.domain.ports.ToolCallObserver, replacing the
+    # sibling mcp-connector-passthrough task's NoopToolCallObserver default (its
+    # api/deps.py getattr()-falls-back-to-Noop pattern is unchanged; this just makes
+    # app.state.mcp_tool_call_observer non-None in production). Constructed with the
+    # SAME usage_recorder + redis_client instances already wired immediately above —
+    # no second Redis/session instance (M1). Tests override via
+    # app.state.mcp_tool_call_observer AFTER app creation, same pattern as usage_recorder.
+    app.state.mcp_tool_call_observer = MeteringToolCallObserver(
+        usage_recorder=app.state.usage_recorder,
+        redis=redis_client,
     )
 
     # Budget guard: wire RedisBudgetGuard for production;
@@ -1409,6 +1468,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(agent_oauth_device_router)
     app.include_router(agent_oauth_approval_router)
     app.include_router(agent_oauth_token_router)
+    app.include_router(agents_router)
     app.include_router(oidc_router)
     app.include_router(saml_router)
     app.include_router(saml_admin_router)
@@ -1445,6 +1505,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(keys_admin_router)
     app.include_router(key_guardrail_router)
+    app.include_router(mcp_admin_router)
+    app.include_router(mcp_key_router)
+    app.include_router(mcp_proxy_router)
     app.include_router(keys_authz_router)
     app.include_router(platform_keys_router)
     app.include_router(teams_router)
@@ -1452,6 +1515,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_catalog_router)
     app.include_router(routing_admin_router)
     app.include_router(proxy_router)
+    app.include_router(messages_router)
+    app.include_router(discovery_router)
     app.include_router(embeddings_router)
     app.include_router(images_router)
     app.include_router(audio_router)
@@ -1460,6 +1525,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(usage_router)
     app.include_router(guardrail_analytics_router)
     app.include_router(audit_export_router)
+    app.include_router(compliance_router)
+    app.include_router(report_schedule_router)
     app.include_router(ops_router)
     app.include_router(budget_router)
     app.include_router(plan_router)

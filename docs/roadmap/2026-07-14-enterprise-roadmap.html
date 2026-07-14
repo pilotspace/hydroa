@@ -1,0 +1,277 @@
+<title>Hydroa vs Claude Cloud — Enterprise Roadmap (post-0.8.0)</title>
+<style>
+  :root{
+    --ground:#FAFAF8; --panel:#FFFFFF; --ink:#1F2A2C; --ink-2:#51605F; --ink-3:#7C8886;
+    --line:#E2E5E1; --accent:#0E6E6D; --accent-soft:#E3F0EE; --amber:#9A6A14; --amber-soft:#F7EDDA;
+    --good:#2E7D4F; --good-soft:#E2F1E6; --bad:#B3392E; --bad-soft:#F8E6E3;
+    --mono:"SF Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
+    --sans:"Avenir Next","Segoe UI",system-ui,-apple-system,sans-serif;
+    --serif:Charter,Georgia,"Times New Roman",serif;
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --ground:#131A1A; --panel:#1A2323; --ink:#E6EAE7; --ink-2:#A9B4B0; --ink-3:#78827F;
+    --line:#2A3534; --accent:#4FB3AE; --accent-soft:#173231; --amber:#D9A64A; --amber-soft:#312814;
+    --good:#6CC08D; --good-soft:#16291D; --bad:#E08578; --bad-soft:#331A16;
+  }}
+  :root[data-theme="dark"]{
+    --ground:#131A1A; --panel:#1A2323; --ink:#E6EAE7; --ink-2:#A9B4B0; --ink-3:#78827F;
+    --line:#2A3534; --accent:#4FB3AE; --accent-soft:#173231; --amber:#D9A64A; --amber-soft:#312814;
+    --good:#6CC08D; --good-soft:#16291D; --bad:#E08578; --bad-soft:#331A16;
+  }
+  :root[data-theme="light"]{
+    --ground:#FAFAF8; --panel:#FFFFFF; --ink:#1F2A2C; --ink-2:#51605F; --ink-3:#7C8886;
+    --line:#E2E5E1; --accent:#0E6E6D; --accent-soft:#E3F0EE; --amber:#9A6A14; --amber-soft:#F7EDDA;
+    --good:#2E7D4F; --good-soft:#E2F1E6; --bad:#B3392E; --bad-soft:#F8E6E3;
+  }
+  html{background:var(--ground)}
+  body{font-family:var(--serif);color:var(--ink);line-height:1.62;font-size:16.5px;margin:0;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:880px;margin:0 auto;padding:56px 28px 96px}
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:28px;margin-bottom:44px}
+  .eyebrow{font-family:var(--sans);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+           color:var(--accent);font-weight:600;margin:0 0 14px}
+  h1{font-family:var(--sans);font-weight:700;font-size:clamp(28px,4.4vw,40px);line-height:1.12;
+     margin:0 0 14px;text-wrap:balance;letter-spacing:-.015em}
+  .lede{font-size:19px;color:var(--ink-2);margin:0;max-width:62ch}
+  .meta{font-family:var(--sans);font-size:13px;color:var(--ink-3);margin-top:18px;display:flex;
+        flex-wrap:wrap;gap:6px 22px}
+  h2{font-family:var(--sans);font-weight:700;font-size:23px;letter-spacing:-.01em;margin:56px 0 6px;
+     text-wrap:balance}
+  h2 .no{color:var(--accent);font-variant-numeric:tabular-nums;margin-right:10px}
+  h3{font-family:var(--sans);font-weight:650;font-size:17px;margin:30px 0 8px}
+  .kicker{font-family:var(--sans);font-size:13px;color:var(--ink-3);margin:0 0 18px}
+  p{margin:0 0 14px;max-width:70ch}
+  ul,ol{margin:0 0 16px;padding-left:22px}
+  li{margin-bottom:7px;max-width:66ch}
+  strong{font-weight:650}
+  code{font-family:var(--mono);font-size:.83em;background:var(--accent-soft);padding:1px 5px;
+       border-radius:3px}
+  a{color:var(--accent)}
+  .callout{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);
+           padding:16px 20px;margin:20px 0;border-radius:0 4px 4px 0}
+  .callout.warn{border-left-color:var(--amber)}
+  .callout p:last-child{margin-bottom:0}
+  .callout .tag{font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.1em;
+                text-transform:uppercase;color:var(--accent);display:block;margin-bottom:6px}
+  .callout.warn .tag{color:var(--amber)}
+  .tablebox{overflow-x:auto;margin:18px 0 26px;border:1px solid var(--line);border-radius:4px;
+            background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:13.5px;line-height:1.45}
+  th{text-align:left;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);
+     font-weight:650;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:9px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+  td:first-child{color:var(--ink);font-weight:550;min-width:170px}
+  tr:last-child td{border-bottom:none}
+  .num{font-variant-numeric:tabular-nums}
+  .chip{display:inline-block;font-family:var(--sans);font-size:11px;font-weight:700;
+        letter-spacing:.05em;padding:2px 9px;border-radius:99px;white-space:nowrap}
+  .chip.have{background:var(--good-soft);color:var(--good)}
+  .chip.partial{background:var(--amber-soft);color:var(--amber)}
+  .chip.missing{background:var(--bad-soft);color:var(--bad)}
+  .chip.ahead{background:var(--accent-soft);color:var(--accent)}
+  .chip.na{background:var(--line);color:var(--ink-3)}
+  .mstone{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:22px 24px;
+          margin:18px 0}
+  .mstone .mhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;margin-bottom:4px}
+  .mstone .mid{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600}
+  .mstone h3{margin:0;font-size:18px}
+  .mstone .when{font-family:var(--sans);font-size:12.5px;color:var(--ink-3);margin-left:auto}
+  .mstone .goal{font-size:15.5px;color:var(--ink-2);margin:6px 0 14px}
+  .tasklist{font-family:var(--sans);font-size:14px;padding-left:20px}
+  .tasklist li{margin-bottom:8px;max-width:none}
+  .tasklist .tname{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--ink)}
+  .sec{font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.07em;color:var(--bad);
+       background:var(--bad-soft);padding:1px 7px;border-radius:3px;text-transform:uppercase}
+  .uix{font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.07em;color:var(--accent);
+       background:var(--accent-soft);padding:1px 7px;border-radius:3px;text-transform:uppercase}
+  .exit{font-family:var(--sans);font-size:13px;color:var(--ink-3);border-top:1px dashed var(--line);
+        padding-top:12px;margin-top:14px}
+  .exit strong{color:var(--ink-2)}
+  .relmap{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0}
+  .rel{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--accent);
+       border-radius:4px;padding:16px 18px;font-family:var(--sans)}
+  .rel .v{font-family:var(--mono);font-weight:700;font-size:15px;color:var(--accent)}
+  .rel .n{font-weight:650;font-size:14.5px;margin:4px 0 2px;color:var(--ink)}
+  .rel .d{font-size:12.5px;color:var(--ink-3)}
+  .rel ul{font-size:13px;color:var(--ink-2);margin:10px 0 0;padding-left:18px}
+  .rel li{margin-bottom:4px}
+  .decision{background:var(--amber-soft);border:1px solid var(--line);border-radius:6px;
+            padding:20px 24px;margin:24px 0}
+  .decision h3{margin-top:0;color:var(--amber)}
+  .decision ol{margin-bottom:0}
+  footer{margin-top:64px;border-top:1px solid var(--line);padding-top:18px;font-family:var(--sans);
+         font-size:12.5px;color:var(--ink-3)}
+</style>
+
+<div class="wrap">
+<header class="doc">
+  <p class="eyebrow">Strategy · Post-0.8.0 · Confidential draft for Tin</p>
+  <h1>Hydroa as an enterprise LLM provider: gap analysis vs Claude cloud &amp; the ship roadmap</h1>
+  <p class="lede">Anthropic's cloud business decomposed against what Hydroa ships today, what changed in the last 60 days, and a three-release roadmap — Agent Gateway → Cost Optimizer → Platform Complete — with UI/UX as a first-class track. <strong>Approved by Tin 2026-07-14</strong> (1.0.0 reserved for SOC 2 attestation).</p>
+  <div class="meta">
+    <span>2026-07-14</span><span>Basis: Hydroa 0.8.0 (FEATURES.md · CHANGELOG · PRs #60–71)</span>
+    <span>2 fresh research sweeps, primary-sourced</span>
+  </div>
+</header>
+
+<h2><span class="no">0</span>The thesis</h2>
+<p><strong>Hydroa's 0.8.0 already covers most of what Anthropic's <em>enterprise wrapper</em> monetizes</strong> — seats, SCIM/SAML, domain capture, ZDR, compliance export, audit, spend controls (and Hydroa's budgets are API-managed where Anthropic's are still Console-UI-only). The two places Anthropic is running away with the market are <strong>agent-era surfaces</strong> (Managed Agents, MCP connectors, its own new first-party gateway) and <strong>distribution economics</strong> (cache/batch/priority/regional price mechanics).</p>
+<p>The re-verified whitespace is unchanged and still uncontested: <strong>no vendor among 14 scanned ships downstream-tenant billing</strong> (reseller invoices, prepaid credits, seats for <em>your customers'</em> customers) — Hydroa shipped exactly that in 0.8.0. The play now is to defend that lead while closing the agent-gateway gap before it commoditizes, and to convert the EU residency work into revenue while the <strong>EU AI Act Art. 101 enforcement date (Aug 2, 2026)</strong> makes every EU platform team's audit posture urgent.</p>
+<div class="callout">
+  <span class="tag">What changed since the July-12 analysis</span>
+  <p><strong>Anthropic shipped its own gateway.</strong> "Claude apps gateway" (launched Jun 29–Jul 2) fronts Claude Code across Bedrock/Vertex/Foundry with SSO, per-user cost tracking, spend caps, and failover — <em>and Anthropic is publishing the gateway protocol for third parties.</em> It is single-org and Claude-only. It validates the category, competes with the narrow "front Claude Code" slice of M3, and hands Hydroa a spec to implement: be the <em>multi-tenant, multi-provider, billing-grade</em> implementation of the protocol Anthropic just legitimized.</p>
+</div>
+
+<h2><span class="no">1</span>How Anthropic monetizes Claude in the cloud</h2>
+<p class="kicker">Six revenue layers, per official pricing pages, July 2026.</p>
+<div class="tablebox"><table>
+  <tr><th>Layer</th><th>Mechanics</th><th class="num">Price points</th></tr>
+  <tr><td>Seats</td><td>Free → Pro → Max → Team (Standard/Premium) → Enterprise (base + usage at API rates; self-serve since Feb 2026)</td><td class="num">$0 · $17–20 · $100–200 · $20/$100 per seat · $20/seat + usage</td></tr>
+  <tr><td>Tokens</td><td>Per-MTok in/out; Fable 5 = Mythos-class flagship; Sonnet 5 intro pricing to Aug 31</td><td class="num">Haiku $1/$5 → Opus $5/$25 → Fable $10/$50</td></tr>
+  <tr><td>Price mechanics</td><td>Prompt-cache (write 1.25–2×, read 0.1×), Batch −50%, Fast-mode premium, Priority Tier (committed spend, ~99.5%)</td><td class="num">0.1× cache reads · −50% batch</td></tr>
+  <tr><td>Region pinning</td><td><code>inference_geo</code> accepts <strong>us | global only — still no first-party EU</strong>; hyperscaler regional = +10%</td><td class="num">1.1× US-pin · +10% Bedrock/Vertex regional</td></tr>
+  <tr><td>Agent runtime</td><td>Managed Agents (sandbox/checkpoint/trace), Agent SDK, Routines, Cowork, Claude Tag; tools: web search, code exec</td><td class="num">$0.08/session-hr + tokens · $10/1k searches</td></tr>
+  <tr><td>Enterprise wrapper</td><td>SAML/SCIM, domain capture, audit + Compliance API (6-yr feed), ZDR, BAA, spend alerts (75/90%), model entitlements, FedRAMP</td><td class="num">gates the Enterprise SKU</td></tr>
+</table></div>
+<p>Two exploitable seams in their own platform: <strong>workspace spend/rate limits have no Admin API</strong> (Console-UI-only — Hydroa's API-managed budgets already beat this), and the <strong>Fable 5 export-control suspension (Jun 12–30)</strong> is documented proof that single-vendor dependence carries jurisdictional tail risk only a multi-provider gateway can hedge.</p>
+
+<h2><span class="no">2</span>Gap matrix — Claude cloud vs Hydroa 0.8.0</h2>
+<p class="kicker">Status: <span class="chip ahead">ahead</span> Hydroa beats the Anthropic offer · <span class="chip have">have</span> parity · <span class="chip partial">partial</span> · <span class="chip missing">missing</span> · <span class="chip na">out of scope</span> (gateway-first positioning)</p>
+<div class="tablebox"><table>
+  <tr><th>Capability Anthropic sells</th><th>Status</th><th>Hydroa today → action</th></tr>
+  <tr><td>EU data residency</td><td><span class="chip ahead">ahead</span></td><td>Fail-closed EU/AP pinning + Bedrock/Vertex EU + dial guards (0.8.0). Anthropic has none, and charges 1.1×/+10% for mere US-pin. <strong>Action: sell it — AI-Act pack (R1).</strong></td></tr>
+  <tr><td>Downstream tenant billing</td><td><span class="chip ahead">ahead</span></td><td>Invoices/credits/plans/seats/margin (0.8.0); uncontested across 14 vendors. <strong>Action: market as Enterprise anchor; re-verify each release.</strong></td></tr>
+  <tr><td>Programmatic spend controls</td><td><span class="chip ahead">ahead</span></td><td>API-managed budgets + fail-closed credit gate; Anthropic's workspace limits are UI-only. <strong>Action: add threshold alerts (75/90%) + per-tenant webhook sinks (R2).</strong></td></tr>
+  <tr><td>Priority / service tiers</td><td><span class="chip have">have</span></td><td>Priority +25% w/ capacity pools (0.8.0). Parity with Priority Tier economics.</td></tr>
+  <tr><td>Identity &amp; compliance wrapper</td><td><span class="chip have">have</span></td><td>SCIM/SAML/domain capture/ZDR/audit/compliance export (0.8.0). Parity minus org certs (§6).</td></tr>
+  <tr><td>Model entitlements &amp; presets</td><td><span class="chip have">have</span></td><td>Plans + allowlists + per-tenant presets. Parity with their July entitlements launch.</td></tr>
+  <tr><td>Batch −50% economics</td><td><span class="chip partial">partial</span></td><td><code>/v1/batches</code> + admin diversion exist; no auto-classification of latency-insensitive traffic. <strong>Action: batch brokering (R2).</strong></td></tr>
+  <tr><td>Prompt-cache economics</td><td><span class="chip partial">partial</span></td><td>Cache-breakpoint passthrough + own 3-layer response cache; no savings analytics / ROI surface. <strong>Action: cache ROI dashboard (R2).</strong></td></tr>
+  <tr><td>Claude-native ingress (<code>/v1/messages</code>)</td><td><span class="chip missing">missing</span></td><td>OpenAI-compatible only; Claude Code/Agent SDK can't front Hydroa natively. <strong>Action: M3 ingress + implement Anthropic's published gateway protocol (R1).</strong></td></tr>
+  <tr><td>MCP connectors &amp; governance</td><td><span class="chip missing">missing</span></td><td>No MCP passthrough/allow-lists/tool metering. Fastest-moving category race; no vendor owns all five primitives. <strong>Action: M3 core (R1).</strong></td></tr>
+  <tr><td>Agent identity &amp; sessions</td><td><span class="chip partial">partial</span></td><td>Device-OAuth tokens + per-token budgets exist; no agent-as-principal governance, kill switch, session analytics. Okta/Auth0 launched the budget line in Apr–May. <strong>Action: M3 (R1).</strong></td></tr>
+  <tr><td>Spend anomaly detection</td><td><span class="chip missing">missing</span></td><td>Budgets are hard gates only. <strong>Action: anomaly detection + alerts (R2).</strong></td></tr>
+  <tr><td>Evals / prompt registry</td><td><span class="chip missing">missing</span></td><td>Table stakes for LLMOps platforms, differentiator for gateways. <strong>Action: R3, differentiator scope.</strong></td></tr>
+  <tr><td>Files API</td><td><span class="chip missing">missing</span></td><td>Low urgency — Anthropic itself doesn't offer it on Bedrock/Vertex. P2 backlog.</td></tr>
+  <tr><td>Hosted agent runtime (Managed Agents)</td><td><span class="chip na">out of scope</span></td><td>Gateway-first: govern &amp; meter agent traffic, don't host sandboxes. Revisit post-1.0 only if M3 demand proves it.</td></tr>
+  <tr><td>App layer (Projects/Artifacts/Cowork/Tag)</td><td><span class="chip na">out of scope</span></td><td>Playgrounds stay demo-grade proof surfaces, not products. No app-layer Claude competitor (standing decision).</td></tr>
+</table></div>
+
+<h2><span class="no">3</span>Market signals that shaped the sequencing</h2>
+<ul>
+  <li><strong>EU AI Act:</strong> Art. 101 GPAI penalty powers apply <strong>Aug 2, 2026</strong> (3% global turnover / €15M — don't quote the €35M/7% Art. 99 figure; competitors get this wrong). Obligations sit on model <em>providers</em>, so the honest sellable is deployer-side: EU-pinned routing + Art. 12-mapped record-keeping + audit export. Hydroa has all the machinery; it needs packaging, not code.</li>
+  <li><strong>MCP is enterprise-real:</strong> ~97M SDK downloads/mo, 28% of the Fortune 500 deployed, CISA-KEV'd gateway CVEs — and governance demand (allow-lists, agent rate limits, session tracing) is outpacing supply.</li>
+  <li><strong>Agent identity is a budget line now</strong> (Okta for AI Agents GA Apr 30; Auth0 May 21): 88% of orgs report agent security incidents, 22% treat agents as identity-bearing principals.</li>
+  <li><strong>FinOps:</strong> 98% of orgs now manage AI spend. The maturity ladder is showback → chargeback → <em>gateway-enforced pre-spend blocking</em>; Hydroa's fail-closed credit gate is already top-rung — market it that way.</li>
+  <li><strong>Pricing norms:</strong> unlimited seats is the anti-incumbent wedge (only TrueFoundry seat-gates); platform fees ≈ 5% (OpenRouter 5.5%, Requesty 5%, Vercel/CF 0%); the only hard enterprise-contract data is Kong's Vendr median <strong>$63k/yr</strong> (range $30k–$249k).</li>
+  <li><strong>Consolidation is fast:</strong> Portkey→Palo Alto, Helicone→Mintlify (maintenance mode), Promptfoo→OpenAI, 4 new gateway entrants in 5 months. The billing whitespace is a lead, not a moat.</li>
+  <li><strong>OTel GenAI semconv is not stable</strong> (zero tagged releases). Say "OTel-aligned, tracking the spec," never "fully compliant."</li>
+</ul>
+
+<h2><span class="no">4</span>The roadmap — three releases to 1.0</h2>
+<p class="kicker">Sequenced by revenue timing: the AI-Act window closes Aug 2; the MCP race is being run now; cost optimization compounds after the agent traffic exists. Every milestone runs the ADD loop (spec bundle → frozen contract → red/green build → adversarial verify; security tasks get dual independent verifies per the M2 lesson).</p>
+
+<div class="mstone">
+  <div class="mhead"><span class="mid">R1a · quick strike</span><h3>eu-ai-act-readiness</h3><span class="when">~1 week, parallel to M3 wave 1 — pegged to Aug 2</span></div>
+  <p class="goal">Convert the shipped residency + compliance stack into a sellable "EU AI Act readiness" package before enforcement day makes every EU buyer ask for it.</p>
+  <ol class="tasklist">
+    <li><span class="tname">art12-record-keeping-preset</span> — a one-click compliance-export bundle mapped to Art. 12 record-keeping (logs + audit + usage lineage), with a generated cover report. Assembly over existing export APIs.</li>
+    <li><span class="tname">ai-act-marketing-page</span> <span class="uix">UI/UX</span> — marketing page + docs: residency (fail-closed, refuse-not-reroute) + ZDR + audit story; correct Art. 101 figures; Fable-5 export-suspension vendor-risk narrative for multi-provider failover.</li>
+    <li><span class="tname">compliance-report-center</span> <span class="uix">UI/UX</span> — console surface: generate/download the Art. 12 bundle, scheduled monthly generation.</li>
+  </ol>
+  <p class="exit"><strong>Exit:</strong> an EU tenant can produce a dated record-keeping bundle in one action; the marketing page ships before Aug 2.</p>
+</div>
+
+<div class="mstone">
+  <div class="mhead"><span class="mid">R1b · M3 (queued, expanded)</span><h3>agent-gateway-v1</h3><span class="when">~2–3 weeks → release 0.9.0</span></div>
+  <p class="goal">Make Hydroa the multi-tenant, multi-provider, billing-grade agent gateway — the full five-primitive governance set no competitor holds (session governance · MCP allow/deny lists · tracing · agent rate limits · tool metering).</p>
+  <ol class="tasklist">
+    <li><span class="tname">anthropic-messages-ingress</span> — native <code>/v1/messages</code> (+ token counting), SSE translation, billing parity across the shared recorder. Already Tin-approved; unlocks Claude Code / Agent SDK traffic.</li>
+    <li><span class="tname">claude-gateway-protocol-compat</span> — <em>new since the research:</em> implement Anthropic's published gateway protocol so Claude Code fronts Hydroa first-class; differentiate on multi-tenant + non-Claude failover, which their gateway won't do.</li>
+    <li><span class="tname">mcp-connector-passthrough</span> <span class="sec">security hard-stop ×2</span> — MCP egress proxy with tenant-admin allow/deny lists, fail-closed on unlisted servers; session tracing into the Logs Explorer.</li>
+    <li><span class="tname">tool-call-metering</span> — per-tool-call pricing units (<code>$/1k-query</code> via the existing pricing_unit dispatcher) → usage_records → invoice lines. First-mover: no metering standard exists yet.</li>
+    <li><span class="tname">agent-identity-governance</span> <span class="sec">security hard-stop ×2</span> — agent-as-principal on device-OAuth: named agent identities, per-agent budgets/rate limits, universal kill switch (instant revoke of all sessions/tokens).</li>
+    <li><span class="tname">agents-console</span> <span class="uix">UI/UX · UDD loop</span> — Agents page: directory (identity, owner, last-seen, spend), session explorer with traces, MCP allow-list management, kill switch with typed-confirm gate (ZDR idiom).</li>
+  </ol>
+  <p class="exit"><strong>Exit:</strong> a tenant fronts Claude Code through Hydroa, governs which MCP servers its agents may touch, sees per-agent spend on the invoice, and can kill an agent in one click. <strong>0.9.0 "Agent gateway".</strong></p>
+</div>
+
+<div class="mstone">
+  <div class="mhead"><span class="mid">R2 · M4 (cluster-3 reframed)</span><h3>cost-optimizer</h3><span class="when">~2 weeks → release 0.10.0</span></div>
+  <p class="goal">Monetize the price mechanics Anthropic invented: capture cache/batch/channel deltas as tenant savings and operator margin, and finish FinOps parity.</p>
+  <ol class="tasklist">
+    <li><span class="tname">per-alias-routing-override</span> — routing strategy per alias (today one global setting) + cost-aware "cheapest capable" strategy.</li>
+    <li><span class="tname">batch-brokering</span> — auto-classify latency-insensitive traffic into the −50% batch window (opt-in per key), delayed-billing reconciliation via the existing signed-delta path.</li>
+    <li><span class="tname">tenant-vector-cache-toggle</span> — per-tenant vector-cache opt-in + embedding-model choice (today a global env flag).</li>
+    <li><span class="tname">spend-anomaly-alerts</span> — threshold alerts (75/90% parity with Anthropic) + z-score spike detection, per-tenant webhook sinks (today one global sink).</li>
+    <li><span class="tname">finops-dashboard</span> <span class="uix">UI/UX · UDD loop</span> — savings view ($ saved by cache/batch/routing vs list price), anomaly feed, spend forecast; OTel-aligned analytics export (Datadog et al.).</li>
+  </ol>
+  <p class="exit"><strong>Exit:</strong> the dashboard shows a real "you saved $X this month" figure computed from usage_records, and an anomalous key pages the tenant's own webhook. <strong>0.10.0 "Cost optimizer".</strong></p>
+</div>
+
+<div class="mstone">
+  <div class="mhead"><span class="mid">R3 · M5 + M6</span><h3>prompt-evals-lite &amp; commercial hardening</h3><span class="when">~3 weeks → release 0.11.0</span></div>
+  <p class="goal">The last gateway-category differentiators plus the commercial finish line.</p>
+  <ol class="tasklist">
+    <li><span class="tname">prompt-registry</span> — versioned prompts callable as <code>prompt:name@ver</code> (reuses the preset colon-prefix seam), git-like immutable versions + environment tags.</li>
+    <li><span class="tname">shadow-ab-routing</span> — traffic mirroring to a silent model + weighted canary with auto-revert; results into eval analytics.</li>
+    <li><span class="tname">golden-set-evals</span> — tenant-defined eval sets run against gateway traffic samples; guardrail-policy playground (test before rollout).</li>
+    <li><span class="tname">developer-portal</span> <span class="uix">UI/UX · UDD loop</span> — onboarding wizard (tenant → BYOK → first call in &lt;5 min), API docs surface, model deprecation lifecycle notices.</li>
+    <li><span class="tname">ga-commercial-hardening</span> — SOC 2 evidence automation groundwork (independent auditor — the LiteLLM cert scandal made auditor identity a buying criterion), pricing page final, SPEC-delta triage sweep (todo #38), perf catalog remainder.</li>
+  </ol>
+  <p class="exit"><strong>Exit:</strong> a stranger can self-serve onboard and pay; prompts/evals close the last differentiator gap. <strong>0.11.0 "Platform complete" — the 1.0.0 label is reserved for the SOC 2 attestation milestone (Tin's call, 2026-07-14).</strong></p>
+</div>
+
+<h3>Release map</h3>
+<div class="relmap">
+  <div class="rel"><span class="v">0.9.0</span><div class="n">Agent gateway</div><div class="d">early Aug 2026</div>
+    <ul><li>AI-Act readiness pack (before Aug 2)</li><li>M3 agent-gateway-v1 (6 tasks)</li></ul></div>
+  <div class="rel"><span class="v">0.10.0</span><div class="n">Cost optimizer</div><div class="d">late Aug 2026</div>
+    <ul><li>M4 cost-optimizer (5 tasks)</li><li>FinOps dashboard + analytics export</li></ul></div>
+  <div class="rel"><span class="v">0.11.0</span><div class="n">Platform complete</div><div class="d">Sep 2026</div>
+    <ul><li>M5 prompt-evals-lite (promoted from P2)</li><li>M6 commercial hardening + developer portal</li></ul></div>
+  <div class="rel"><span class="v">1.0.0</span><div class="n">GA — trust milestone</div><div class="d">post-SOC 2 attestation</div>
+    <ul><li>Reserved for the SOC 2 Type II attestation (independent auditor)</li><li>Org-level process, 3–6+ months; groundwork starts in R3</li></ul></div>
+</div>
+
+<h2><span class="no">5</span>UI/UX track</h2>
+<p>Per the standing bar: every user-facing milestone gets the full UDD design loop before build — no bare CRUD+table. All surfaces stay on Aurora tokens, WCAG 2.2 AA, axe-checked. The new surfaces, in order:</p>
+<ul>
+  <li><strong>Agents console (0.9.0)</strong> — the flagship new page. Agent directory with identity/spend/last-seen; session explorer reusing the Logs Explorer drawer idiom; MCP allow-list manager (fail-closed default visible in the UI copy: "unlisted servers are refused, not warned"); kill switch behind the typed-confirm destructive-action idiom.</li>
+  <li><strong>Compliance report center (0.9.0)</strong> — extends Settings → Data &amp; residency; financial-document idiom from the Billing console (this is evidence, so it should look like evidence).</li>
+  <li><strong>FinOps dashboard (0.10.0)</strong> — savings/forecast/anomaly in the dataviz system; the "$ saved" figure is the hero stat; honest nulls where provider cost is unknown (margin-view precedent).</li>
+  <li><strong>Prompt registry studio + eval playground (0.11.0)</strong> — version diff view, environment-tag promotion flow, side-by-side eval results.</li>
+  <li><strong>Developer portal + onboarding wizard (0.11.0)</strong> — the &lt;5-minute first-call path; marketing pricing page rewritten to the packaging below.</li>
+</ul>
+
+<h2><span class="no">6</span>Packaging &amp; pricing (refined)</h2>
+<div class="tablebox"><table>
+  <tr><th>SKU</th><th class="num">Price</th><th>Gates</th></tr>
+  <tr><td>Starter</td><td class="num">$0 · BYOK · 0% markup</td><td>Core proxy, playgrounds, budgets, basic guardrails. Land.</td></tr>
+  <tr><td>Pro</td><td class="num">~$299/mo · unlimited seats</td><td>Logs Explorer, guardrails v2, presets, caching + batch brokering, FinOps dashboard, alerts. <em>Unlimited seats is the wedge — the market punishes seat-gating.</em></td></tr>
+  <tr><td>Enterprise</td><td class="num">from ~$2.5k/mo (~$30k/yr floor)</td><td>Residency + tiers, SCIM/SAML/ZDR, AI-Act pack, <strong>downstream billing suite</strong> (the anchor — nobody else has it), MCP governance + agent identity, compliance export, custom SLA.</td></tr>
+  <tr><td>Usage</td><td class="num">≤5% platform fee</td><td>Market norm (OpenRouter 5.5 / Requesty 5 / Vercel-CF 0). Plus operator margin from channel/cache/batch arbitrage — invisible to list price.</td></tr>
+</table></div>
+<p>Keep seat <em>billing</em> (shipped in 0.8.0) as an Enterprise <em>feature Hydroa's tenants use on their customers</em> — not as Hydroa's own primary lever. $30k/yr floor per the only hard market datapoint (Kong Vendr median $63k).</p>
+
+<h2><span class="no">7</span>Risks &amp; counters</h2>
+<ul>
+  <li><strong>Anthropic's gateway grows multi-provider.</strong> Unlikely soon (ToS forbids routing Claude surfaces to non-Claude models; single-org design) — but implement their protocol early so Hydroa rides their docs, not against them.</li>
+  <li><strong>Whitespace closes.</strong> Kong Metering &amp; Billing is one positioning pivot away. Counter: ship agent-era billing (tool metering on invoices, 0.9.0) so the moat compounds; re-verify the vendor scan at every release cut.</li>
+  <li><strong>MCP spec churn</strong> (RC locked May 21, six auth SEPs). Build the passthrough against the RC; keep the allow-list model transport-agnostic.</li>
+  <li><strong>Foundry-EU lands.</strong> "Coming 2026," no date. When it does, Hydroa's residency story shifts from "only path to EU Claude" to "one policy across every provider's EU" — still sellable, weaker headline. Another reason to sell hard <em>now</em>.</li>
+  <li><strong>Cert gap:</strong> ZDR/HIPAA-shaped features exist but Hydroa-the-operator has no SOC 2. That's the real Enterprise-sales blocker beyond ~$30k deals; groundwork starts in R3, audit is a business decision outside the codebase.</li>
+</ul>
+
+<h2><span class="no">8</span>Decisions needed</h2>
+<div class="decision">
+  <h3>Decided — Tin, 2026-07-14</h3>
+  <ol>
+    <li><strong>R1 shape: APPROVED as proposed</strong> — AI-Act quick strike in parallel with the expanded 6-task M3 (incl. <code>claude-gateway-protocol-compat</code>, <code>tool-call-metering</code>, <code>agent-identity-governance</code>, Agents console). Security tasks get dual independent verifies.</li>
+    <li><strong>1.0.0: HELD for SOC 2.</strong> The R3 release ships as <strong>0.11.0 "Platform complete"</strong>; 1.0.0 is reserved as the enterprise-trust milestone once an independent-auditor SOC 2 attestation exists. Groundwork starts in R3.</li>
+    <li><strong>Prompt registry + evals + shadow/A-B: PROMOTED</strong> from P2 into R3 (M5), feeding 0.11.0.</li>
+  </ol>
+</div>
+
+<footer>Sources: claude.com/platform.claude.com/code.claude.com pricing &amp; docs · anthropic.com announcements · vendor pricing pages (OpenRouter, Requesty, Kong/Vendr, Portkey, TrueFoundry, Helicone) · EU digital-strategy.ec.europa.eu · FinOps Foundation 2026 survey · OTel semconv repos. Full agent research transcripts in session task outputs. Figures marked in-text where single-source/unverified.</footer>
+</div>

@@ -1400,6 +1400,16 @@ async def test_guardrails_core_migration_column_exists(
     # d608e56c7485) and tenant_priority_markup_overrides (migration 4583689a7b8b) —
     # NEW tables owned by the M2 pricing tasks' own tenants/ context, not by
     # guardrails-core; invariant intent unchanged.
+    # SANCTIONED EDIT (agent-gateway-r1 milestone-close manifest maintenance,
+    # 2026-07-14): added agent_principals (agent-identity-governance, migration
+    # 9cb98362515f, owned by agent_oauth/ context) and tenant_report_schedules +
+    # compliance_report_runs (compliance-report-center, migration f5a8c1e3b6d9, owned
+    # by compliance/ context) — NEW tables owned by their own R1 task modules, each
+    # registered on Base.metadata via main.py's side-effect ORM imports (same precedent
+    # as every entry above). Guardrails-core still adds no tables of its own; invariant
+    # intent unchanged. (Surfaced by the R1 pre-merge full-suite cross-task-drift check —
+    # this manifest lives separately from tests/migrations EXPECTED_TABLES, so a table
+    # added there does not auto-appear here; the M1/M2 lesson in action.)
     new_tables = (
         await db_session.execute(
             text(
@@ -1419,7 +1429,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'tenant_domain_claims','invoices','invoice_lines',"
                 " 'invoice_corrections','credit_ledger','tenant_credit_balances',"
                 " 'seat_membership_events','tenant_region_multiplier_overrides',"
-                " 'tenant_priority_markup_overrides')"
+                " 'tenant_priority_markup_overrides',"
+                " 'agent_principals','tenant_report_schedules','compliance_report_runs')"
             )
         )
     ).fetchall()

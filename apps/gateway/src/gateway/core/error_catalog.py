@@ -346,6 +346,34 @@ KEY_NOT_FOUND_IN_TENANT = ErrorSpec(
 #: Team not found or does not belong to the caller's tenant.
 TEAM_NOT_FOUND = ErrorSpec(404, "ERR_TEAM_NOT_FOUND", "Team not found")
 
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): agent principal id unknown
+#: or belongs to another tenant (byte-identical — no enumeration leak).
+AGENT_PRINCIPAL_NOT_FOUND = ErrorSpec(
+    404, "ERR_AGENT_PRINCIPAL_NOT_FOUND", "Agent principal not found"
+)
+
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): agent_tokens id unknown or
+#: belongs to another tenant (byte-identical — no enumeration leak).
+AGENT_TOKEN_NOT_FOUND = ErrorSpec(404, "ERR_AGENT_TOKEN_NOT_FOUND", "Agent token not found")
+
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): attach target token is already
+#: attached to a (possibly different) principal.
+AGENT_TOKEN_ALREADY_ATTACHED = ErrorSpec(
+    409, "ERR_AGENT_TOKEN_ALREADY_ATTACHED", "Agent token is already attached to a principal"
+)
+
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): create with a name already
+#: used by another principal in the same tenant.
+AGENT_PRINCIPAL_NAME_CONFLICT = ErrorSpec(
+    409, "ERR_AGENT_PRINCIPAL_NAME_CONFLICT", "Agent principal name already in use"
+)
+
+#: agent-identity-governance TASK.md §3 (FROZEN @ v1): a fresh token cannot be
+#: attached to an already-killed principal.
+AGENT_PRINCIPAL_KILLED = ErrorSpec(
+    409, "ERR_AGENT_PRINCIPAL_KILLED", "Agent principal has been killed"
+)
+
 #: User not found in the team / tenant.
 USER_NOT_FOUND = ErrorSpec(404, "ERR_USER_NOT_FOUND", "User not found in this tenant")
 
@@ -1142,4 +1170,57 @@ LOGS_QUERY_TIMEOUT = ErrorSpec(
     504,
     "ERR_LOGS_QUERY_TIMEOUT",
     "Logs query exceeded the time budget; narrow the range or reduce limit",
+)
+
+# ---------------------------------------------------------------------------
+# MCP connector (mcp-connector-passthrough TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/mcp/call — server_url is not an exact member of the effective allow-list.
+#: Raised BEFORE any DNS lookup or socket connect (R1, M5).
+MCP_SERVER_NOT_ALLOWED = ErrorSpec(
+    403, "ERR_MCP_SERVER_NOT_ALLOWED", "The requested MCP server is not on the effective allow-list"
+)
+
+#: PUT /admin/mcp-servers | PUT /admin/keys/{key_id}/mcp-servers — a server url is
+#: non-https, hostless, or a literal metadata/private/loopback/link-local IP (R2, M3).
+MCP_SERVER_URL_INVALID = ErrorSpec(
+    422, "ERR_MCP_SERVER_URL_INVALID", "MCP server URL failed the egress-safety check"
+)
+
+#: PUT /admin/mcp-servers | PUT /admin/keys/{key_id}/mcp-servers — more than 50 entries (R3).
+MCP_SERVER_LIST_TOO_LONG = ErrorSpec(
+    422, "ERR_MCP_SERVER_LIST_TOO_LONG", "MCP server allow-list may not exceed 50 entries"
+)
+
+#: POST /v1/mcp/call — the allow-listed server_url resolved, fresh, to a denied IP at
+#: dial time (R4, M6) — the DNS-rebind close.
+MCP_EGRESS_DENIED = ErrorSpec(
+    403, "ERR_MCP_EGRESS_DENIED", "The MCP server resolved to a disallowed network destination"
+)
+
+#: POST /v1/mcp/call — upstream MCP server responded with a 3xx; never followed (R5, M7).
+MCP_UPSTREAM_REDIRECT_REJECTED = ErrorSpec(
+    502, "ERR_MCP_UPSTREAM_REDIRECT_REJECTED", "The MCP server attempted a redirect; refused"
+)
+
+#: POST /v1/mcp/call — dial exceeded mcp_connector_dial_timeout_seconds, or the
+#: per-(tenant,host) circuit is open (R6, M8).
+MCP_UPSTREAM_UNAVAILABLE = ErrorSpec(
+    503, "ERR_MCP_UPSTREAM_UNAVAILABLE", "The MCP server is currently unavailable"
+)
+
+# Claude gateway protocol compat (claude-gateway-protocol-compat TASK.md §3)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/messages — the tenant has NOT set allow_non_claude_failover=true and the
+#: existing FallbackModelRouter candidate set for a request naming (directly or via
+#: alias) a Claude model contains no Anthropic-provider candidate. Refused BEFORE any
+#: upstream dial — never billed, no usage_records row (mirrors
+#: RESIDENCY_NO_ELIGIBLE_REGION's refuse/never-bill/no-usage-row shape exactly).
+NO_ELIGIBLE_ANTHROPIC_CANDIDATE = ErrorSpec(
+    403,
+    "ERR_NO_ELIGIBLE_ANTHROPIC_CANDIDATE",
+    "No Anthropic candidate available for '{model_id}' and allow_non_claude_failover is not "
+    "enabled for this tenant",
 )

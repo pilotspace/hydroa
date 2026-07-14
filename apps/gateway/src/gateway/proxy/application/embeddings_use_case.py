@@ -176,6 +176,7 @@ class EmbeddingsUseCase:
                         model=model_id,
                         usage=hit_usage if isinstance(hit_usage, dict) else None,
                         team_id=authz.team_id,
+                        agent_principal_id=authz.agent_principal_id,
                     )
                     return 200, hit, "hit"
                 x_cache = "miss"
@@ -235,6 +236,7 @@ class EmbeddingsUseCase:
             usage=resp_body.get("usage"),
             status=status,
             team_id=authz.team_id,
+            agent_principal_id=authz.agent_principal_id,
         )
 
         # Step 7.5: Store the MISS on a 200 only (never non-200, never on bypass).

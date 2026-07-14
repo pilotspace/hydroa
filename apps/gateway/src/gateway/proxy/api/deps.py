@@ -111,6 +111,33 @@ def get_raw_api_key(request: Request) -> str | None:
     return None
 
 
+def get_raw_key_ingress(request: Request) -> str | None:
+    """Extract the raw API key for /v1/messages (anthropic-messages-ingress §3 M3).
+
+    Additive sibling of get_raw_api_key — does NOT change get_raw_api_key's own
+    behavior (that dependency, and /v1/chat/completions, are untouched).
+
+    Priority mirrors keys/api/router.py::_extract_raw_key's documented contract
+    EXACTLY, so both authn seams (Envoy ext_authz + this in-process one) accept
+    identical credentials and reject identical failures with identical opacity:
+      1. Authorization: Bearer <raw-key>  — checked first; any non-Bearer scheme
+         is treated as absent and falls through to x-api-key.
+      2. x-api-key: <raw-key>             — fallback when Authorization is absent
+         or non-Bearer.
+    Returns None when neither header yields a usable token (CompletionUseCase's
+    private _authenticate — reused unmodified — raises AUTH_KEY_INVALID for a
+    falsy raw_key, the SAME 401 get_raw_api_key's None already produces today).
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header:
+        scheme, _, token = auth_header.partition(" ")
+        if scheme.lower() == "bearer":
+            return token or None
+        # Non-Bearer scheme: treat as absent, fall through to x-api-key.
+    api_key = request.headers.get("x-api-key", "")
+    return api_key or None
+
+
 def get_completion_use_case(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],

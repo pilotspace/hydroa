@@ -28,6 +28,8 @@ import { metadata as statusMeta } from "@/app/(marketing)/status/page";
 import { metadata as privacyMeta } from "@/app/(marketing)/legal/privacy/page";
 import { metadata as securityMeta } from "@/app/(marketing)/legal/security/page";
 import { metadata as termsMeta } from "@/app/(marketing)/legal/terms/page";
+import { metadata as aiActReadinessMeta } from "@/app/(marketing)/ai-act-readiness/page";
+import { metadata as aiActComplianceDocsMeta } from "@/app/(marketing)/docs/ai-act-compliance/page";
 
 const PAGES = [
   ["landing", landingMeta],
@@ -38,6 +40,8 @@ const PAGES = [
   ["privacy", privacyMeta],
   ["security", securityMeta],
   ["terms", termsMeta],
+  ["ai-act-readiness", aiActReadinessMeta],
+  ["ai-act-compliance-docs", aiActComplianceDocsMeta],
 ] as const;
 
 function titleString(t: unknown): string {

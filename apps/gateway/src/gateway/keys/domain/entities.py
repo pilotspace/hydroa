@@ -74,6 +74,12 @@ class ApiKey:
     # get_by_id()-only population) — which layer the resolved `tier` above came
     # from. Meaningless (default "tenant") on the create()/update() raw-override role.
     tier_source: Literal["key", "tenant"] = "tenant"
+    # mcp-connector-passthrough TASK.md §3 (FROZEN @ v1) — additive, populated ONLY by
+    # get_by_id() (mirrors guardrail_configs' effective-value role exactly): the
+    # RESOLVED effective list of allowed MCP server URLs — key override (non-NULL) else
+    # tenant list else empty (deny-all, fail-closed). Zero extra DB reads (same LEFT
+    # JOIN tenants already run for cache_enabled/guardrail_configs/tier/etc).
+    mcp_allowed_servers: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,3 +174,19 @@ class AuthzResult:
     # tier_source mirrors policy_source's key/tenant discriminator shape.
     tier: Literal["priority", "standard"] = "standard"
     tier_source: Literal["key", "tenant"] = "tenant"
+    # mcp-connector-passthrough TASK.md §3 (FROZEN @ v1) — NEW additive field.
+    # None = NOT resolved by this AuthzResult's construction site (e.g. the agent-token
+    # path in CompositeKeyAuthenticator, left UNCHANGED per M14) — a caller with
+    # mcp_allowed_servers=None must fall back to a tenant-only lookup (fail-closed to []
+    # on any error, M12), never treat None as "no restriction". A resolved list (which
+    # MAY be empty — explicit empty key override, or default-deny) is the authoritative
+    # effective allow-list and needs no further lookup — populated by the sk- key path's
+    # existing LEFT JOIN (SqlAlchemyApiKeyRepository.get_by_id(), zero extra DB reads).
+    mcp_allowed_servers: list[str] | None = None
+    # agent-identity-governance TASK.md §3 (FROZEN @ v1) additive fields — mirror
+    # team_id/team_budget_usd exactly. Populated in CompositeKeyAuthenticator.authenticate's
+    # agent-token branch via a LEFT JOIN agent_principals inside resolve_access_token's
+    # existing query (zero extra DB reads). Both stay None for an unattached token
+    # (every existing v39 row, and every sk- API-key AuthzResult) — byte-identical.
+    agent_principal_id: uuid.UUID | None = None
+    agent_principal_budget_usd: Decimal | None = None

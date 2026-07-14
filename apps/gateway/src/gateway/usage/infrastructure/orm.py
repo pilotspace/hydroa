@@ -69,6 +69,16 @@ class UsageRecordRow(Base):
         # breakdown's jsonb_each_text GROUP BY expansion (a tenant+window-scoped
         # table scan, same scale as get_spend/get_guardrail_analytics).
         Index("ix_usage_records_tags_gin", "tags", postgresql_using="gin"),
+        # art12-record-keeping-preset (TASK.md §3): backs UsageRepository.list_for_tenant_keyset's
+        # keyset predicate over (tenant_id, created_at DESC, id DESC) — mirrors the audit_events /
+        # request_logs keyset precedent. Migration 776ecf702f3f. Declared here for alembic
+        # autogenerate parity (same convention as ix_usage_records_request_id above).
+        Index(
+            "usage_records_tenant_created_id_idx",
+            "tenant_id",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
@@ -134,4 +144,15 @@ class UsageRecordRow(Base):
     # "billed standard because that's simply what was served."
     tier_capacity_degraded: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
+    )
+    # Defect fix on agent-identity-governance TASK.md §3's frozen M4 budget guarantee
+    # (migration a2b4c6d8e0f1): nullable, no FK — mirrors team_id exactly (append-only
+    # ledger; a principal deletion must not cascade). Durable home for the id already
+    # threaded to record()'s Redis-counter INCR at every call site but never persisted
+    # anywhere before this — lets recovery_sweep.py read it back off the anchor
+    # client_disconnect row and thread it into the correction, so the SAME
+    # usage:spend:agent_principal:{id}:{YYYYMM} counter the main path increments also
+    # receives the disconnect true-up delta.
+    agent_principal_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
     )

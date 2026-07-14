@@ -124,10 +124,22 @@ class OpenRouterCostRecoveryService:
         key_id: uuid.UUID,
         model: str,
         provider_generation_id: str,
+        team_id: uuid.UUID | None = None,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> RecoveryOutcome:
         """Recover the authoritative cost for a generation and bill the signed delta.
 
         Never raises — every failure resolves to a status string the caller can log.
+
+        team_id / agent_principal_id: defect fix (adversarial verify, conf 0.93) —
+        the anchor client_disconnect row's own attribution, threaded through to
+        record_correction() so the correction delta reaches the SAME
+        usage:spend:team:{id}:{YYYYMM} / usage:spend:agent_principal:{id}:{YYYYMM}
+        counters the main record() path increments, not just the tenant/key
+        counters. Both default None (unattributed) so a caller that cannot supply
+        them (there is none left in this codebase, but the default keeps the
+        signature additive/back-compatible) degrades to the pre-fix behavior for
+        those two counters only — tenant/key correction is unaffected either way.
         """
         gid = provider_generation_id
         if not gid:
@@ -186,6 +198,8 @@ class OpenRouterCostRecoveryService:
                 cost_usd=delta,
                 provider_cost=cost.total_cost,
                 provider_generation_id=gid,
+                team_id=team_id,
+                agent_principal_id=agent_principal_id,
             )
             return RecoveryOutcome("recovered", delta_usd=delta, provider_cost=cost.total_cost)
         except Exception as exc:

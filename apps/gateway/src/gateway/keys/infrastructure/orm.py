@@ -116,3 +116,10 @@ class ApiKeyRow(Base):
     # mirrors the tier|standard convention of PostgreSQL string enums used elsewhere
     # in this codebase (e.g. tenants.kind).
     tier: Mapped[str | None] = mapped_column(sa.Text, nullable=True, default=None)
+    # mcp-connector-passthrough TASK.md §3 (FROZEN @ v1) — additive, nullable JSONB.
+    # NULL = no override, inherit tenant mcp_allowed_servers (default for all existing +
+    # new keys — byte-identical). Non-NULL (including []) = explicit key-level override,
+    # wholesale, no field merge with tenant. Mirrors guardrail_policy's nullable-JSONB shape.
+    mcp_allowed_servers_override: Mapped[list[Any] | None] = mapped_column(
+        JSONB, nullable=True, default=None
+    )

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BadgeCheck, BarChart3, Bell, Boxes, Brain, Clapperboard, ClipboardList, Eye, FileText, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, Layers, LogOut, Menu, MessageSquare, Mic, Receipt, ScrollText, Settings, ShieldCheck, Shuffle, Tags, Users, Wallet } from "lucide-react";
+import { Activity, BadgeCheck, BarChart3, Bell, Bot, Boxes, Brain, Clapperboard, ClipboardList, Eye, FileText, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, Layers, LogOut, Menu, MessageSquare, Mic, Receipt, ScrollText, Settings, ShieldCheck, Shuffle, Tags, Users, Wallet } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { bffAuthPost } from "@/lib/bff-client";
 import {
@@ -112,6 +112,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ShieldCheck,
         minRole: "admin",
       },
+      // agents-console TASK.md §3 CONTRACT (M1): joins the existing "Govern" group
+      // (reuse-before-invent over a dedicated 6th nav GROUP). minRole:"admin" is UX-only —
+      // GET /admin/agents itself allows any authenticated role server-side; gating nav
+      // visibility at "admin" avoids showing a page where every write action is greyed
+      // out for a member (every WRITE on this page needs {OWNER,ADMIN} or OWNER-only).
+      { href: "/app/agents", label: "Agents", icon: Bot, minRole: "admin" },
     ],
   },
 ];

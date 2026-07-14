@@ -91,4 +91,8 @@ class CompositeKeyAuthenticator:
             monthly_budget_usd=self._settings.agent_oauth_default_budget_usd,
             # expires_at=None — resolve_access_token already gated expiry.
             # model_allowlist=None, rpm/tpm=None — defaults carry forward.
+            # agent-identity-governance TASK.md §3 (FROZEN @ v1): additive — both stay
+            # None for an unattached token (byte-identical to pre-task behavior).
+            agent_principal_id=binding.principal_id,
+            agent_principal_budget_usd=binding.principal_budget_usd,
         )

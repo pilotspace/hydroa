@@ -15,11 +15,12 @@
  * fails at collect (MODULE_NOT_FOUND), the established true-red convention.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse, delay } from "msw";
+import { useSearchParams } from "next/navigation";
 import { axe } from "@/test-support/axe";
 import { server } from "./mocks/server";
 import React from "react";
@@ -39,6 +40,19 @@ function makeQueryClient() {
 function Wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={makeQueryClient()}>{children}</QueryClientProvider>;
 }
+
+// compliance-report-center TASK.md §3 (M12): SettingsPage's Tabs are now CONTROLLED
+// via useSearchParams()/useRouter(). The global tests-bff/setup.ts mock returns a
+// FRESH `new URLSearchParams()` on every call (an unstable reference), which would
+// otherwise re-trigger the "adjust state during render" resync on every re-render
+// and snap the active tab back to the default. Stabilize it to one shared instance
+// per test — mirrors tests/platform-tenant-detail.test.tsx's own established
+// precedent for the identical controlled-tab pattern.
+beforeEach(() => {
+  vi.mocked(useSearchParams).mockReturnValue(
+    new URLSearchParams() as ReturnType<typeof useSearchParams>,
+  );
+});
 
 async function axeSeriousCritical(container: HTMLElement) {
   const results = await axe(container, { rules: { "color-contrast": { enabled: false } } });
@@ -148,6 +162,31 @@ const RESIDENCY_EU = { region: "eu", updated_at: "2026-07-05T00:00:00Z" };
 
 const residencyGet = (body: unknown = RESIDENCY_UNSET) =>
   http.get(`${APP}/api/gw/admin/residency-policy`, () =>
+    HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
+
+// compliance-report-center TASK.md §3 (M12) — the 8th "Compliance" tab's own two
+// lazy GETs (ScheduleControl + GeneratedReportsList, both mounted by
+// ComplianceReportCenter).
+const SCHEDULE_DEFAULT = {
+  enabled: false,
+  cadence: "monthly",
+  day_of_month: 1,
+  window_policy: "previous_calendar_month",
+  created_by: null as string | null,
+  created_at: null as string | null,
+  updated_at: null as string | null,
+  last_run_at: null as string | null,
+  last_run_status: null as string | null,
+  next_run_at: null as string | null,
+};
+const REPORTS_EMPTY = { items: [] as unknown[], next_cursor: null as string | null, has_more: false };
+
+const complianceScheduleGet = (body: unknown = SCHEDULE_DEFAULT) =>
+  http.get(`${APP}/api/gw/admin/compliance/report-schedule`, () =>
+    HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
+
+const complianceReportsGet = (body: unknown = REPORTS_EMPTY) =>
+  http.get(`${APP}/api/gw/admin/compliance/reports`, () =>
     HttpResponse.json(body as Parameters<typeof HttpResponse.json>[0]));
 
 async function openTab(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
@@ -463,10 +502,12 @@ describe("SettingsPage — SSO tab", () => {
 
 // ── new tabs: shell / lazy-load (enterprise-identity-admin-ui) ────────────────────
 describe("SettingsPage — new tabs shell", () => {
-  it("test_renders_seven_tabs_no_premature_fetch", async () => {
+  it("test_renders_eight_tabs_no_premature_fetch", async () => {
     let scimCount = 0;
     let samlCount = 0;
     let retentionCount = 0;
+    let scheduleCount = 0;
+    let reportsCount = 0;
     server.use(
       cacheGet(),
       http.get(`${APP}/api/gw/admin/scim/tokens`, () => {
@@ -481,6 +522,27 @@ describe("SettingsPage — new tabs shell", () => {
         retentionCount += 1;
         return HttpResponse.json(RETENTION_DEFAULT);
       }),
+      // compliance-report-center TASK.md §3 (M12) — an 8th tab; its own GETs must
+      // stay lazy exactly like SCIM/SAML/Data & residency above.
+      http.get(`${APP}/api/gw/admin/compliance/report-schedule`, () => {
+        scheduleCount += 1;
+        return HttpResponse.json({
+          enabled: false,
+          cadence: "monthly",
+          day_of_month: 1,
+          window_policy: "previous_calendar_month",
+          created_by: null,
+          created_at: null,
+          updated_at: null,
+          last_run_at: null,
+          last_run_status: null,
+          next_run_at: null,
+        });
+      }),
+      http.get(`${APP}/api/gw/admin/compliance/reports`, () => {
+        reportsCount += 1;
+        return HttpResponse.json({ items: [], next_cursor: null, has_more: false });
+      }),
     );
     render(<SettingsPage />, { wrapper: Wrapper });
 
@@ -494,13 +556,16 @@ describe("SettingsPage — new tabs shell", () => {
       "SCIM",
       "SAML SSO",
       "Data & residency",
+      "Compliance",
     ]);
 
-    // Cache's GET fired (default tab); the three new tabs' GETs must NOT have fired yet.
+    // Cache's GET fired (default tab); every OTHER tab's GETs must NOT have fired yet.
     await screen.findByRole("switch", { name: /response cache/i });
     expect(scimCount).toBe(0);
     expect(samlCount).toBe(0);
     expect(retentionCount).toBe(0);
+    expect(scheduleCount).toBe(0);
+    expect(reportsCount).toBe(0);
   });
 
   it("test_scim_tab_lazy_fetches_once", async () => {

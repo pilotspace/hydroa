@@ -98,6 +98,10 @@ class RecordingUsageRecorder:
             "tags",
             "tier_served",
             "tier_capacity_degraded",
+            "agent_principal_id",
+            "cc_session_id",
+            "cc_agent_id",
+            "cc_parent_agent_id",
         }
     )
 
@@ -132,6 +136,10 @@ class RecordingUsageRecorder:
         tags: dict[str, str] | None = None,
         tier_served: str = "standard",
         tier_capacity_degraded: bool = False,
+        agent_principal_id: uuid.UUID | None = None,
+        cc_session_id: str | None = None,
+        cc_agent_id: str | None = None,
+        cc_parent_agent_id: str | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -147,6 +155,11 @@ class RecordingUsageRecorder:
         tags: client-supplied key/value request labels (cost-attribution-tags TASK.md
           §3) — stored into the dedicated usage_records.tags JSONB column. None/empty
           → "{}" (byte-identical to a request that never sent X-Gateway-Tags).
+        cc_session_id/cc_agent_id/cc_parent_agent_id: Claude Code's
+          x-claude-code-session-id/-agent-id/-parent-agent-id header values
+          (claude-gateway-protocol-compat TASK.md §3 M4) — stored verbatim into
+          raw["cc_session_id"]/raw["cc_agent_id"]/raw["cc_parent_agent_id"] when set;
+          NOT a new column (usage_records is FROZEN), same idiom as request_id.
 
         Return value is always None — byte-identical to every pre-existing caller/test
         (see record_with_outcome() for the credits-ledger settle hook's variant, which
@@ -172,6 +185,10 @@ class RecordingUsageRecorder:
             tags=tags,
             tier_served=tier_served,
             tier_capacity_degraded=tier_capacity_degraded,
+            agent_principal_id=agent_principal_id,
+            cc_session_id=cc_session_id,
+            cc_agent_id=cc_agent_id,
+            cc_parent_agent_id=cc_parent_agent_id,
         )
         return None
 
@@ -197,6 +214,10 @@ class RecordingUsageRecorder:
         tags: dict[str, str] | None = None,
         tier_served: str = "standard",
         tier_capacity_degraded: bool = False,
+        agent_principal_id: uuid.UUID | None = None,
+        cc_session_id: str | None = None,
+        cc_agent_id: str | None = None,
+        cc_parent_agent_id: str | None = None,
     ) -> UsageRecordOutcome | None:
         """Identical to record(), but RETURNS the computed outcome instead of discarding
         it (credits-ledger TASK.md §3: "settle must consume the cost already computed by
@@ -232,6 +253,10 @@ class RecordingUsageRecorder:
                 tags=tags,
                 tier_served=tier_served,
                 tier_capacity_degraded=tier_capacity_degraded,
+                agent_principal_id=agent_principal_id,
+                cc_session_id=cc_session_id,
+                cc_agent_id=cc_agent_id,
+                cc_parent_agent_id=cc_parent_agent_id,
             )
         except Exception as exc:
             _log.warning(
@@ -267,6 +292,10 @@ class RecordingUsageRecorder:
         tags: dict[str, str] | None = None,
         tier_served: str = "standard",
         tier_capacity_degraded: bool = False,
+        agent_principal_id: uuid.UUID | None = None,
+        cc_session_id: str | None = None,
+        cc_agent_id: str | None = None,
+        cc_parent_agent_id: str | None = None,
     ) -> UsageRecordOutcome:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -330,7 +359,17 @@ class RecordingUsageRecorder:
 
                 # Resolve pricing_unit: extras > snapshot > default
                 # Only accept the four known values; unknown → per_token (backward-compat)
-                _known_units = {"per_token", "per_image", "per_second", "per_character"}
+                # tool-call-metering TASK.md §3 M7: additive "per_tool_call" string
+                # (this literal's sibling occurrence below gains the identical edit —
+                # two independent, pre-existing duplicated literals, both intentionally
+                # kept in lockstep here).
+                _known_units = {
+                    "per_token",
+                    "per_image",
+                    "per_second",
+                    "per_character",
+                    "per_tool_call",
+                }
                 if pricing_unit is not None and pricing_unit in _known_units:
                     resolved_pricing_unit = pricing_unit
                 elif snapshot_pricing_unit in _known_units:
@@ -440,7 +479,15 @@ class RecordingUsageRecorder:
                     usage, "completion_tokens_details", "reasoning_tokens"
                 )
             # Preserve the pricing_unit from extras even on cache hits (for event fields)
-            _known_units = {"per_token", "per_image", "per_second", "per_character"}
+            # tool-call-metering TASK.md §3 M7: additive "per_tool_call" string (see
+            # this literal's sibling occurrence above for the duplication note).
+            _known_units = {
+                "per_token",
+                "per_image",
+                "per_second",
+                "per_character",
+                "per_tool_call",
+            }
             if pricing_unit is not None and pricing_unit in _known_units:
                 resolved_pricing_unit = pricing_unit
 
@@ -505,6 +552,16 @@ class RecordingUsageRecorder:
             # above. NOT a new usage_records column (FROZEN @ v1, append-only); rides
             # inside the existing raw JSONB extras seam.
             raw_payload["request_id"] = str(request_id)
+        # claude-gateway-protocol-compat TASK.md §3 M4: Claude Code session/subagent
+        # attribution — same additive-raw-key idiom as request_id above. Absent on
+        # every pre-existing row and on every row from a non-Claude-Code-originated
+        # request (the three headers are simply never present there).
+        if cc_session_id is not None:
+            raw_payload["cc_session_id"] = cc_session_id
+        if cc_agent_id is not None:
+            raw_payload["cc_agent_id"] = cc_agent_id
+        if cc_parent_agent_id is not None:
+            raw_payload["cc_parent_agent_id"] = cc_parent_agent_id
 
         # Encode quantity: empty string for per_token (NULL), str(q) for non-token
         quantity_str = str(resolved_quantity) if resolved_quantity is not None else ""
@@ -528,6 +585,12 @@ class RecordingUsageRecorder:
             "created_at": created_at,
             # team-attribution: empty string encodes NULL (backward-compatible with old consumers)
             "team_id": str(team_id) if team_id is not None else "",
+            # agent-identity-governance defect fix: persist agent_principal_id durably
+            # (mirrors team_id's "" encodes NULL idiom exactly) so the disconnect
+            # cost-recovery correction path can read it back off the anchor row —
+            # previously this value only ever reached the transient Redis INCR below,
+            # never a durable column, so recovery_sweep.py had no way to recover it.
+            "agent_principal_id": str(agent_principal_id) if agent_principal_id is not None else "",
             # pricing-units: new contract fields (pricing-units TASK.md §3)
             "pricing_unit": resolved_pricing_unit,
             "quantity": quantity_str,
@@ -607,6 +670,16 @@ class RecordingUsageRecorder:
                     if team_id is not None:
                         per_team_spend_key = f"usage:spend:team:{team_id}:{yyyymm}"
                         await self._redis.incrbyfloat(per_team_spend_key, float(cost_usd))
+                    # Per-agent-principal counter (agent-identity-governance M4/CR-2 seam —
+                    # fail-open same as per-key/per-team). usage:spend:agent_principal:
+                    # {principal_id}:{YYYYMM} — only when the token is attached to a
+                    # principal. Read by GovernanceService._check_agent_principal_budget()
+                    # (enforcement) and GET /admin/agents (CR-2 read-side display).
+                    if agent_principal_id is not None:
+                        per_principal_spend_key = (
+                            f"usage:spend:agent_principal:{agent_principal_id}:{yyyymm}"
+                        )
+                        await self._redis.incrbyfloat(per_principal_spend_key, float(cost_usd))
             except Exception as exc:
                 _log.warning(
                     "usage_recorder: advisory spend increment failed "
@@ -649,6 +722,7 @@ class RecordingUsageRecorder:
         provider_generation_id: str,
         usage_source: str = "openrouter_recovered",
         team_id: uuid.UUID | None = None,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> None:
         """Append a pre-priced SIGNED cost CORRECTION to the ledger (cost-recovery v30 t6).
 
@@ -693,6 +767,15 @@ class RecordingUsageRecorder:
                 "provider_cost": str(provider_cost),
                 "usage_source": usage_source,
                 "provider_generation_id": provider_generation_id,
+                # agent-identity-governance defect fix: persist the correction row's
+                # agent_principal_id attribution too (mirrors record()'s own "" encodes
+                # NULL idiom above; team_id above was ALREADY wired — just never called
+                # with a value, which the cost_recovery.py caller fix addresses) — a
+                # correction is a real ledger row like any other and should carry the
+                # SAME durable attribution as the anchor row it corrects.
+                "agent_principal_id": (
+                    str(agent_principal_id) if agent_principal_id is not None else ""
+                ),
             }
             await self._redis.xadd(STREAM_KEY, event_fields)
 
@@ -721,6 +804,11 @@ class RecordingUsageRecorder:
                     if team_id is not None:
                         await self._redis.incrbyfloat(
                             f"usage:spend:team:{team_id}:{yyyymm}", float(cost_usd)
+                        )
+                    if agent_principal_id is not None:
+                        await self._redis.incrbyfloat(
+                            f"usage:spend:agent_principal:{agent_principal_id}:{yyyymm}",
+                            float(cost_usd),
                         )
         except Exception as exc:
             _log.warning(
