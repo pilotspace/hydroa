@@ -241,6 +241,7 @@ from gateway.tenants.infrastructure.jwt_service import JwtTokenService
 from gateway.tenants.infrastructure.orm import (
     TenantRow as _TenantRow,  # noqa: F401 — ensures budget_usd_monthly column is in ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.tool_call_metering.infrastructure.observer import MeteringToolCallObserver
 from gateway.usage.api.margin_router import margin_router
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
@@ -1119,6 +1120,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.usage_recorder = RecordingUsageRecorder(
         redis=redis_client,
         session_factory=app.state.sessionmaker,
+    )
+
+    # tool-call-metering TASK.md §3 M1: MeteringToolCallObserver is the ONLY production
+    # wiring for gateway.mcp_connector.domain.ports.ToolCallObserver, replacing the
+    # sibling mcp-connector-passthrough task's NoopToolCallObserver default (its
+    # api/deps.py getattr()-falls-back-to-Noop pattern is unchanged; this just makes
+    # app.state.mcp_tool_call_observer non-None in production). Constructed with the
+    # SAME usage_recorder + redis_client instances already wired immediately above —
+    # no second Redis/session instance (M1). Tests override via
+    # app.state.mcp_tool_call_observer AFTER app creation, same pattern as usage_recorder.
+    app.state.mcp_tool_call_observer = MeteringToolCallObserver(
+        usage_recorder=app.state.usage_recorder,
+        redis=redis_client,
     )
 
     # Budget guard: wire RedisBudgetGuard for production;
