@@ -1109,10 +1109,24 @@ async def test_kill_racing_attach_never_leaves_token_attached_to_killed_principa
         )
         assert token_row is not None
         if attach_result.status_code == 200:
-            # Attach committed strictly before the kill — M9's next-request check
-            # (resolve_access_token) must reject it: revoked_at is now set.
+            # Attach committed — the token is attached to this principal. The kill's
+            # bulk-revoke sweep MAY have missed it under the documented attach-vs-kill
+            # race (repository.py:237): in that interleaving revoked_at is left NULL and
+            # nothing re-sweeps it. So do NOT assert the incidental revoked_at timing
+            # property (it flakes under -n12 CPU load when that interleaving happens);
+            # assert M9's ACTUAL guarantee instead — the token is UNUSABLE at resolve
+            # time. When revoked_at IS set, the by-construction path already holds; when
+            # it is NULL, the additive killed-principal re-check must fail closed (401),
+            # exactly as test_resolve_access_token_fails_closed_when_attached_principal_
+            # killed_out_of_band proves deterministically.
             assert token_row.principal_id == uuid.UUID(principal["id"])
-            assert token_row.revoked_at is not None
+            if token_row.revoked_at is None:
+                seam = await client.post(
+                    "/internal/authz",
+                    headers={"Authorization": f"Bearer {fresh_token['access_token']}"},
+                )
+                assert seam.status_code == 401, seam.text
+                assert seam.json()["code"] == "ERR_AUTH_INVALID_KEY"
         else:
             # Kill committed first — attach must have been refused, never silently
             # partially applied.
