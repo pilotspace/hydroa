@@ -71,7 +71,7 @@ Must:
   - M2: An {OWNER, ADMIN} can attach an EXISTING, already-minted `agent_tokens` row belonging to their OWN tenant to a principal (nullable `principal_id` FK write); a token may be attached to at most one principal at a time.
   - M3: An {OWNER, ADMIN} can detach a token from its principal (sets `principal_id` back to NULL; the token itself is untouched and keeps authenticating under the tenant-wide default, exactly as an unattached v39 token does today).
   - M4: A principal's configured `monthly_budget_usd` is enforced as an ADDITIONAL aggregate dimension in `GovernanceService.authorize`, summed across every token currently attached to it — mirroring `_check_team_budget`'s existing dual-check idiom (Redis counter key `usage:spend:agent_principal:{principal_id}:{YYYYMM}`) — never replacing the existing per-token `monthly_budget_usd` check.
-  - M5: Any authenticated tenant role can list the tenant's agent principals (name, owner_user_id, created_at, last_seen_at, killed_at, monthly_budget_usd/rpm_limit/tpm_limit, attached-token count) — this is the read-API seam the sibling `agents-console` task's directory view consumes.
+  - M5: Any authenticated tenant role can list the tenant's agent principals (name, owner_user_id, created_at, last_seen_at, killed_at, monthly_budget_usd/rpm_limit/tpm_limit, attached-token count, **and `spend_usd_this_month`** [CR-2, Tin 2026-07-14] — the current-month aggregate read from the same `usage:spend:agent_principal:{principal_id}:{YYYYMM}` counter M4 enforces on, rendered so the agents-console identity card shows real spend; a principal whose counter is absent reads `"0.00"`, never null/fabricated) — this is the read-API seam the sibling `agents-console` task's directory view consumes.
   - M6: A principal's `last_seen_at` updates on a successful `/oauth/token` mint tied to one of its attached tokens, via a fire-and-forget write — NEVER a synchronous write on the `/v1` data-plane hot path (mirrors `record_audit`'s fire-and-forget-separate-session shape).
   - M7: An {OWNER, ADMIN} can KILL a principal in ONE action: every attached `agent_tokens` row is revoked (`revoked_at = now()`) via a single atomic tenant-scoped bulk UPDATE, and the principal itself is marked `killed_at = now()` in the SAME transaction.
   - M8: Killing an already-killed principal is idempotent — a 200 no-op (see R9), never an error, and never re-revokes tokens attached AFTER the first kill (a token attached post-kill to an already-killed principal is rejected — see R10).
@@ -79,6 +79,7 @@ Must:
   - M10: A kill does NOT force-terminate a request/stream ALREADY past admission (e.g. a live SSE completion or an open realtime-relay WS session) — a disclosed limitation consistent with this codebase's existing admission-time-only governance convention, not a regression this task introduces.
   - M11: The kill action is audited — one `AuditEvent` (`action="agent_principal.killed"`, tenant_id, actor_user_id, target_type="agent_principal", target_id=principal id) via the existing fire-and-forget `record_audit`, scheduled AFTER the kill's own transaction commits and never blocking the HTTP response.
   - M12: create/attach/detach/kill are fail-closed and tenant-scoped: an unknown id, OR an id belonging to another tenant, returns the IDENTICAL 404 in the same query as the existence check (mirrors `SqlAlchemyApiKeyRepository.revoke`) — no enumeration signal.
+  - M13 [CR-B, Tin 2026-07-14]: An {OWNER, ADMIN} can enumerate the `agent_tokens` currently attached to a principal — `GET /admin/agents/{principal_id}/tokens` returns each token's `id`, `name`/label, `created_at`, `revoked_at`, `access_expires_at` (NEVER the token hash or any secret material — mirrors M13-of-mcp's credential-redaction discipline and the SCIM token-list idiom) — the read seam the agents-console "Manage tokens" picker consumes (replaces the paste-the-id fallback). Tenant-scoped fail-closed identically to M12; a cross-tenant/unknown principal_id → the same 404.
 </must>
 
 Reject:
@@ -146,6 +147,17 @@ Scenario: Any tenant role lists agent principals   # M5
   Given a tenant with 2 agent principals, one killed
   When a VIEWER GETs /admin/agents
   Then a 200 response lists both, each carrying killed_at (null for the live one, a timestamp for the killed one) and attached_token_count
+
+Scenario: Listed principals carry real current-month spend   # M5 / CR-2
+  Given a principal whose usage:spend:agent_principal:{id}:{YYYYMM} counter reads 12.50 and a second principal with no counter yet
+  When any tenant role GETs /admin/agents
+  Then the first principal's spend_usd_this_month is "12.50" and the second's is "0.00" (never null, never fabricated)
+
+Scenario: Enumerate a principal's attached tokens for the picker   # M13 / CR-B
+  Given an ADMIN and a principal with 2 attached tokens (one revoked)
+  When the ADMIN GETs /admin/agents/{principal_id}/tokens
+  Then a 200 response lists both tokens with id, name, created_at, revoked_at, access_expires_at and NO token hash or secret field
+  And a VIEWER (non OWNER/ADMIN) GET returns 403, and a cross-tenant principal_id returns the identical 404 as an unknown one
 
 Scenario: last_seen_at updates on token mint, not on data-plane calls   # M6
   Given a principal with an attached, not-yet-polled device authorization
@@ -299,7 +311,9 @@ Glossary deltas:
 
 Least-sure flag surfaced at freeze: [spec] The {OWNER, ADMIN} RBAC ceiling for create/attach/kill has no exact precedent (closest analog RevokeKeyUseCase only forbids MEMBER — a wider allow-list); chosen for the kill switch's tenant-wide blast radius and CONFIRMED by Tin at freeze.
 
-Status: FROZEN @ v1 — approved by Tin Dang
+CR-2 + CR-B (Tin, 2026-07-14): M5 gains spend_usd_this_month (read the counter M4 enforces on, so the agents-console identity card shows real spend); NEW M13 GET /admin/agents/{principal_id}/tokens enumeration (the console "Manage tokens" picker). Both additive read-side; requested by agents-console's design review. Also: the M4 spend-counter WRITE-side increment in recorder.py (missing in the v1 build) is a build-completeness fix, not a contract change.
+
+Status: FROZEN @ v2 — approved by Tin Dang
 Reported: no
 
 ---
