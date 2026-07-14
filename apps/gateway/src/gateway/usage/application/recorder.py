@@ -330,7 +330,17 @@ class RecordingUsageRecorder:
 
                 # Resolve pricing_unit: extras > snapshot > default
                 # Only accept the four known values; unknown → per_token (backward-compat)
-                _known_units = {"per_token", "per_image", "per_second", "per_character"}
+                # tool-call-metering TASK.md §3 M7: additive "per_tool_call" string
+                # (this literal's sibling occurrence below gains the identical edit —
+                # two independent, pre-existing duplicated literals, both intentionally
+                # kept in lockstep here).
+                _known_units = {
+                    "per_token",
+                    "per_image",
+                    "per_second",
+                    "per_character",
+                    "per_tool_call",
+                }
                 if pricing_unit is not None and pricing_unit in _known_units:
                     resolved_pricing_unit = pricing_unit
                 elif snapshot_pricing_unit in _known_units:
@@ -440,7 +450,15 @@ class RecordingUsageRecorder:
                     usage, "completion_tokens_details", "reasoning_tokens"
                 )
             # Preserve the pricing_unit from extras even on cache hits (for event fields)
-            _known_units = {"per_token", "per_image", "per_second", "per_character"}
+            # tool-call-metering TASK.md §3 M7: additive "per_tool_call" string (see
+            # this literal's sibling occurrence above for the duplication note).
+            _known_units = {
+                "per_token",
+                "per_image",
+                "per_second",
+                "per_character",
+                "per_tool_call",
+            }
             if pricing_unit is not None and pricing_unit in _known_units:
                 resolved_pricing_unit = pricing_unit
 
