@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
@@ -154,8 +154,15 @@ describe("PresetsPage", () => {
   /**
    * TEST — test_delete_preset_removes_row
    * Scenario: dashboard page renders and manages presets end to end (delete half)
-   * Clicking delete on a row calls bffDelete with the path-templated URL (no
-   * body) and removes the row via query invalidation.
+   *
+   * audit-remediation (item 9): DELIBERATE CONTRACT CHANGE. Delete used to fire
+   * bffDelete immediately on a single row-button click — a destructive,
+   * irreversible action with no confirmation step (the file's own doc comment
+   * used to say so explicitly). That's a real defect: one misclick nukes a
+   * preset with no recovery. This test is updated (not weakened — the delete
+   * itself is asserted just as strictly) to go through the same ConfirmDialog
+   * pattern already used by TeamsPage: row Delete opens a confirmation dialog;
+   * bffDelete only fires after the dialog's own Confirm is clicked.
    */
   it("test_delete_preset_removes_row", async () => {
     // Arrange
@@ -198,6 +205,13 @@ describe("PresetsPage", () => {
 
     await user.click(screen.getByRole("button", { name: /delete/i }));
 
+    // A confirmation dialog opens — DELETE must NOT fire yet (cancelable, no
+    // immediate destructive action from a single click).
+    const dialog = await screen.findByRole("dialog");
+    expect(deleteCallCount).toBe(0);
+
+    await user.click(within(dialog).getByRole("button", { name: /^delete$/i }));
+
     // Assert: DELETE called exactly once with the path-templated URL, no body
     await waitFor(() => {
       expect(deleteCallCount).toBe(1);
@@ -211,6 +225,52 @@ describe("PresetsPage", () => {
       expect(screen.queryByText("cheap")).not.toBeInTheDocument();
       expect(screen.getByText(/no presets yet/i)).toBeInTheDocument();
     });
+  });
+
+  /**
+   * TEST — test_delete_preset_cancel_aborts_deletion
+   * Scenario (audit-remediation item 9, design-for-failure: cancelable):
+   * clicking Cancel in the confirm dialog leaves the preset untouched — no
+   * DELETE call, dialog closes, row still present.
+   */
+  it("test_delete_preset_cancel_aborts_deletion", async () => {
+    let deleteCallCount = 0;
+    server.use(
+      http.get("http://localhost:3000/api/gw/admin/presets", () =>
+        HttpResponse.json({
+          presets: [
+            {
+              preset_name: "cheap",
+              alias_key: "opus",
+              target_model: "gpt5-5-mini",
+              updated_at: "2026-07-01T00:00:00Z",
+            },
+          ],
+        })
+      ),
+      http.delete("http://localhost:3000/api/gw/admin/presets/cheap/opus", () => {
+        deleteCallCount++;
+        return new HttpResponse(null, { status: 204 });
+      })
+    );
+
+    renderPresets();
+
+    await waitFor(() => {
+      expect(screen.getByText("cheap")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /delete/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
+
+    // Dialog closes, preset row survives, no network call was made
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("cheap")).toBeInTheDocument();
+    expect(deleteCallCount).toBe(0);
   });
 
   /**

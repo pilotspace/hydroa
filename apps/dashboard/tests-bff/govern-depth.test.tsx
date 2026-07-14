@@ -68,6 +68,9 @@ const KEY_BASE = {
   tpm_limit: null,
   team_id: null,
   cache_enabled: false,
+  // audit-remediation: tier/capture_enabled — a "no override / capture off" key.
+  capture_enabled: false,
+  tier: null,
 };
 
 const TEAMS = [

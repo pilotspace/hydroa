@@ -166,6 +166,11 @@ export function ComplianceReportCenter() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Mounted under the page's own <h1> (SettingsPage's PageHeader) — this h2 is the
+          intervening level so the component's own <h3> subsection titles (below) never
+          skip from h1 straight to h3 (WCAG 2.2 heading-level-skip a11y rule). */}
+      <h2 className="text-lg font-semibold text-foreground">Compliance reporting</h2>
+
       <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1.5">

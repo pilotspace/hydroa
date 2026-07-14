@@ -9,6 +9,19 @@
  * setQueryData — the gateway echoes the authoritative new value — so the cell
  * reflects the change without depending on a refetch. The Save button is disabled
  * while the request is in flight.
+ *
+ * Re-seed on external value change (stale-save fix): `draft` seeds from the `team`
+ * prop but is otherwise LOCAL — a plain mount-only useState never re-reads a changed
+ * prop. Paired with TeamsPage's DataTable `getRowId={t => t.id}` (a stable per-team
+ * React key so a reordered/shrunk list remounts this form on true identity change,
+ * rather than reusing a stale instance whose draft belonged to a DIFFERENT team), this
+ * component ALSO re-seeds when the SAME team's server value changes underneath it
+ * (e.g. another admin's edit lands via a background refetch) — but only when the
+ * user hasn't started an in-flight edit, via the "adjust state during render" idiom
+ * used elsewhere in this codebase (SettingsPage, InvoiceEvidenceDrawer): compare the
+ * incoming prop to the last-seen server value, and only overwrite `draft` when it
+ * still equals that last-seen value (untouched). An in-flight keystroke the user is
+ * mid-typing is NEVER clobbered by an unrelated re-render.
  */
 
 import { useState } from "react";
@@ -36,6 +49,17 @@ export function TeamBudgetForm({ team }: TeamBudgetFormProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(team.team_budget_usd ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [lastSeenBudget, setLastSeenBudget] = useState(team.team_budget_usd);
+
+  // Re-seed the draft when the SERVER value changes for this same row identity (e.g. an
+  // external update landing via refetch), but ONLY when the user hasn't started an
+  // untouched-since-last-seen edit — never clobber in-flight keystrokes.
+  if (team.team_budget_usd !== lastSeenBudget) {
+    if (draft === (lastSeenBudget ?? "")) {
+      setDraft(team.team_budget_usd ?? "");
+    }
+    setLastSeenBudget(team.team_budget_usd);
+  }
 
   const patchBudget = useMutation({
     mutationFn: (team_budget_usd: string | null) =>

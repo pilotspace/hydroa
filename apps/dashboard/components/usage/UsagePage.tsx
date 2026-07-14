@@ -3,7 +3,6 @@
 /**
  * UsagePage — orchestrates usage stats, records table, model catalog, and budget widget.
  *
- * Auth guard: middleware.ts handles cookie-presence check server-side.
  * Role guard: useCurrentUser() fetches role from /api/auth/me — no JWT decode client-side.
  *
  * Redesign (monitoring §3 v1): PageHeader + hero + Tabs (Overview / Records / Catalog / Trends)
@@ -42,7 +41,9 @@ export function UsagePage() {
   const { data: currentUser } = useCurrentUser();
   const canEdit = currentUser?.role === "owner" || currentUser?.role === "admin";
 
-  // Usage query — middleware guarantees session cookie is present when this renders
+  // Usage query — proxy.ts's route guard covers the initial navigation to /app/*;
+  // bff-client.ts's own 401 handling (ERR_AUTH_NO_SESSION/ERR_AUTH_SESSION_EXPIRED)
+  // covers a session that lapses while this page is already mounted.
   const usageQuery = useQuery<UsageData>({
     queryKey: ["admin-usage"],
     queryFn: () => bffGet<UsageData>("/admin/usage"),

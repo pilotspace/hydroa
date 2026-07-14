@@ -47,6 +47,16 @@ export interface DataTableProps<TData, TValue> {
   searchEmptyMessage?: string;
   /** When set, enable client pagination + a "Rows per page" control; [0] = initial page size. */
   pageSizeOptions?: number[];
+  /**
+   * Optional stable row-identity resolver, forwarded to tanstack's own `getRowId` option.
+   * OPT-IN — omitted, `row.id` defaults to the row's array INDEX (tanstack's own default,
+   * byte-identical to before this prop existed) so every existing caller is unaffected.
+   * Pass this whenever a row hosts UNCONTROLLED-BY-KEY local state (e.g. an inline edit
+   * form) so React remounts on true identity change rather than reusing a stale instance
+   * when the underlying array reorders/shrinks (a stale reused instance can display or
+   * submit a PREVIOUS row's in-flight edit against the row now occupying that index).
+   */
+  getRowId?: (row: TData, index: number) => string;
 }
 
 export function DataTable<TData, TValue>({
@@ -61,6 +71,7 @@ export function DataTable<TData, TValue>({
   searchKeys,
   searchEmptyMessage = "No matches found.",
   pageSizeOptions,
+  getRowId,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [query, setQuery] = React.useState("");
@@ -84,6 +95,7 @@ export function DataTable<TData, TValue>({
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    ...(getRowId ? { getRowId } : {}),
     ...(paginated
       ? {
           getPaginationRowModel: getPaginationRowModel(),

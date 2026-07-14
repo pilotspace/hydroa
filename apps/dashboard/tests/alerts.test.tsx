@@ -11,6 +11,7 @@
 
 import { describe, it, expect } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "./mocks/server";
@@ -131,5 +132,74 @@ describe("AlertsPage", () => {
       expect(spinner).toBeTruthy();
     });
     expect(within(section()).queryAllByRole("row")).toHaveLength(0);
+  });
+});
+
+// ── audit-remediation item 7: severity filter + row drill-down ────────────────
+//
+// Real event_type values (usage/application/alert_writer.py, proxy/infrastructure/
+// circuit_breaker.py, usage/application/drift_checker.py) carry no `severity` field —
+// this is a client-side classification (lib/alert-severity.ts) purely for triage/filter,
+// never fabricating backend data. circuit_breaker_open -> critical, soft_budget_exceeded
+// -> warning (see ALERTS_RESPONSE above).
+describe("AlertsPage — severity filter + row drill-down (audit-remediation)", () => {
+  const user = userEvent.setup();
+
+  it("test_alerts_severity_badge_rendered_per_row", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/alerts`, () => HttpResponse.json(ALERTS_RESPONSE)),
+    );
+    renderAlerts();
+
+    await waitFor(() => {
+      expect(within(section()).getByText(/circuit_breaker_open/i)).toBeInTheDocument();
+    });
+    // Scoped to the table (not the severity <select>, whose <option> text nodes would
+    // otherwise collide with the same "Critical"/"Warning" strings).
+    const table = within(section()).getByRole("table");
+    expect(within(table).getByText(/^critical$/i)).toBeInTheDocument();
+    expect(within(table).getByText(/^warning$/i)).toBeInTheDocument();
+  });
+
+  it("test_alerts_severity_filter_narrows_rows", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/alerts`, () => HttpResponse.json(ALERTS_RESPONSE)),
+    );
+    renderAlerts();
+
+    await waitFor(() => {
+      expect(within(section()).getByText(/circuit_breaker_open/i)).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText(/severity/i), "critical");
+
+    await waitFor(() => {
+      expect(within(section()).queryByText(/soft_budget_exceeded/i)).not.toBeInTheDocument();
+    });
+    expect(within(section()).getByText(/circuit_breaker_open/i)).toBeInTheDocument();
+  });
+
+  it("test_alerts_row_drilldown_opens_full_payload_and_is_closeable", async () => {
+    server.use(
+      http.get(`${APP}/api/gw/admin/alerts`, () => HttpResponse.json(ALERTS_RESPONSE)),
+    );
+    renderAlerts();
+
+    await waitFor(() => {
+      expect(within(section()).getByText(/circuit_breaker_open/i)).toBeInTheDocument();
+    });
+
+    const detailsButtons = within(section()).getAllByRole("button", { name: /details/i });
+    await user.click(detailsButtons[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    // full (untruncated) payload visible — the truncated table cell only shows JSON text
+    expect(within(dialog).getByText(/anthropic/i)).toBeInTheDocument();
+
+    // cancelable / closeable — no dead-end modal
+    await user.click(within(dialog).getByRole("button", { name: /close/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 });

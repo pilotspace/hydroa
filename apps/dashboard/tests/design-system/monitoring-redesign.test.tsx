@@ -479,28 +479,26 @@ describe("HealthPage — monitoring redesign", () => {
     });
   });
 
-  it("test_health_page_has_tablist_with_overview_selected_by_default", async () => {
+  // audit-remediation (item 6): the History tab was a permanent stub — GET
+  // /admin/health/upstreams (health_checker.py) returns only a live snapshot,
+  // there is no time-series/history data source behind it, and none is planned
+  // in this package's scope. A tab that can never show real content is worse
+  // than no tab (a dead end, not an honest "coming soon"), so it was REMOVED
+  // rather than kept as a permanent placeholder. Overview is now the page's
+  // only (untabbed) view — these two tests (tablist presence, tab labels)
+  // are DELIBERATELY replaced by test_health_page_has_no_tabs_single_view
+  // below, which pins the new single-view contract.
+  it("test_health_page_has_no_tabs_single_view", async () => {
     useHealthHandlers();
     render(<HealthPage />, { wrapper: Wrapper });
 
+    // The upstream table renders directly — no tab click required to see it.
     await waitFor(() => {
-      expect(screen.getByRole("tablist")).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: /upstream/i })).toBeInTheDocument();
     });
 
-    const overviewTab = screen.getByRole("tab", { name: /overview/i });
-    expect(overviewTab).toHaveAttribute("aria-selected", "true");
-  });
-
-  it("test_health_page_tab_labels_overview_history", async () => {
-    useHealthHandlers();
-    render(<HealthPage />, { wrapper: Wrapper });
-
-    await waitFor(() => {
-      expect(screen.getByRole("tablist")).toBeInTheDocument();
-    });
-
-    expect(screen.getByRole("tab", { name: /overview/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /history/i })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /overview/i })).not.toBeInTheDocument();
   });
 
   it("test_health_page_hero_up_down_summary_present", async () => {
@@ -512,23 +510,19 @@ describe("HealthPage — monitoring redesign", () => {
     expect(within(hero).getByText(/up|healthy|operational/i)).toBeInTheDocument();
   });
 
-  it("test_health_history_tab_not_available_yet_no_chart", async () => {
-    const user = userEvent.setup();
+  // audit-remediation (item 6): supersedes the removed
+  // test_health_history_tab_not_available_yet_no_chart (see comment above) —
+  // now asserts the stub is GONE entirely rather than reachable-but-stubbed.
+  it("test_health_page_no_history_stub_remains", async () => {
     useHealthHandlers();
     render(<HealthPage />, { wrapper: Wrapper });
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /history/i })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: /upstream/i })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("tab", { name: /history/i }));
-
-    // History panel: honest-degrade — history data not available yet
-    await waitFor(() => {
-      expect(screen.getByText(/not available yet/i)).toBeInTheDocument();
-    });
-
-    // No history chart
+    expect(screen.queryByRole("tab", { name: /history/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/not available yet/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId("health-history-chart")).not.toBeInTheDocument();
   });
 });

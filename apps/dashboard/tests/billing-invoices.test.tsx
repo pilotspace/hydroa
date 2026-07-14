@@ -220,6 +220,42 @@ describe("InvoiceDetailPage — visibly-immutable financial-document idiom (M3, 
     expect(within(section()).getAllByText("$1,204.55").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("test_subtotal_and_tax_render_from_the_payload (audit-remediation)", async () => {
+    // DEFECT: tax_usd and raw_total_usd are present on the GET /admin/invoices/{id}
+    // payload (and the InvoiceDetail interface already types them) but were dropped
+    // from the rendered UI — only total_usd ever reached the page. Distinct values
+    // from total_usd here (unlike the shared fixture, where they coincide) so the
+    // assertions can't pass by accident.
+    const DETAIL_WITH_TAX = {
+      ...INVOICE_DETAIL_ISSUED,
+      raw_total_usd: "1150.00",
+      tax_usd: "54.55",
+      total_usd: "1204.55",
+    };
+    server.use(http.get(detailUrl(INVOICE_ID), () => HttpResponse.json(DETAIL_WITH_TAX)));
+    renderDetail();
+
+    await waitFor(() => expect(within(section()).getByText("gpt-4o-mini")).toBeInTheDocument());
+    expect(within(section()).getByText("$1,150.00")).toBeInTheDocument();
+    expect(within(section()).getByText("$54.55")).toBeInTheDocument();
+    // total_usd "1204.55" happens to equal the single line's own amount_usd
+    // (same coincidence the pre-existing suite already tolerates at line ~220) —
+    // both the line cell and the Total footer legitimately render "$1,204.55".
+    expect(within(section()).getAllByText("$1,204.55").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("test_zero_tax_and_null_safe_rendering (audit-remediation)", async () => {
+    // A missing/zero tax must render cleanly (never "NaN"/"undefined") — the
+    // shared fixture's tax_usd is the string "0.00".
+    server.use(http.get(detailUrl(INVOICE_ID), () => HttpResponse.json(INVOICE_DETAIL_ISSUED)));
+    renderDetail();
+
+    await waitFor(() => expect(within(section()).getByText("gpt-4o-mini")).toBeInTheDocument());
+    expect(within(section()).getByText("$0.00")).toBeInTheDocument();
+    expect(within(section()).queryByText(/nan/i)).not.toBeInTheDocument();
+    expect(within(section()).queryByText(/undefined/i)).not.toBeInTheDocument();
+  });
+
   it("test_corrections_render_as_signed_deltas_never_mutating_original_lines", async () => {
     server.use(http.get(detailUrl(INVOICE_ID), () => HttpResponse.json(INVOICE_DETAIL_WITH_CORRECTION)));
     renderDetail();

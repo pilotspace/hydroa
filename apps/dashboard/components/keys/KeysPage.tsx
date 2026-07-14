@@ -3,9 +3,6 @@
 /**
  * KeysPage — authenticated key management page
  *
- * Auth guard: middleware.ts handles cookie-presence check server-side.
- * If this page renders, the session cookie is present.
- *
  * States: loading (spinner), empty, error (problem+json title), success (table)
  * Actions: create key (dialog → plaintext banner), revoke key (confirm dialog)
  *          governance editor (PATCH per-key governance fields)
@@ -68,6 +65,11 @@ interface ApiKey {
   tpm_limit?: number | null;
   team_id?: string | null;
   cache_enabled?: boolean;
+  // capture_enabled/tier (audit-remediation) — GET /admin/keys returns both
+  // (keys/api/schemas.py KeyInfoResponse); they MUST flow into the editor or a
+  // no-touch dense-PATCH save would silently clear the key's real capture/tier.
+  capture_enabled?: boolean;
+  tier?: string | null;
 }
 
 interface CreateKeyResponse {
@@ -94,6 +96,8 @@ function toGovernanceKey(k: ApiKey): ApiKeyGovernance {
     tpm_limit: k.tpm_limit ?? null,
     team_id: k.team_id ?? null,
     cache_enabled: k.cache_enabled ?? false,
+    capture_enabled: k.capture_enabled ?? false,
+    tier: k.tier ?? null,
   };
 }
 

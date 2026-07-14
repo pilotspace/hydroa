@@ -344,6 +344,74 @@ describe("TeamsPage — delete team", () => {
   });
 });
 
+// ── stale-save regression (audit-remediation) ─────────────────────────────────────
+describe("TeamsPage — row-identity integrity (stale-save fix)", () => {
+  /**
+   * DEFECT: TeamBudgetForm seeded `draft` from a mount-only useState, and the
+   * DataTable rendering the rows had no getRowId (tanstack defaults `row.id` to the
+   * array INDEX). Deleting a team shifts every following team up one index; under
+   * index-keyed rows React reuses the DELETED team's form instance/DOM for whichever
+   * team now occupies that index, carrying over its stale in-flight `draft`. A team's
+   * OWN budget input must always reflect that team's OWN value — never a leftover
+   * draft belonging to a row that used to sit at the same table position.
+   */
+  it("test_row_identity_survives_delete_no_stale_draft", async () => {
+    const user = userEvent.setup();
+    const TEAM_MID = {
+      id: "team-mid",
+      name: "middle",
+      tenant_id: "t1",
+      created_at: "2026-01-01T12:00:00Z",
+      member_count: 0,
+      key_count: 0,
+      team_budget_usd: "25.00",
+    };
+    const TEAM_LAST = {
+      id: "team-last",
+      name: "last",
+      tenant_id: "t1",
+      created_at: "2026-01-01T13:00:00Z",
+      member_count: 0,
+      key_count: 0,
+      team_budget_usd: "50.00",
+    };
+    let deleted = false;
+    server.use(
+      http.get(`${APP}/api/gw/admin/teams`, () =>
+        HttpResponse.json(deleted ? [TEAM_LAST] : [TEAM_A, TEAM_MID, TEAM_LAST]),
+      ),
+      http.delete(`${APP}/api/gw/admin/teams/:id`, () => {
+        deleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    render(<TeamsPage />, { wrapper: Wrapper });
+    await screen.findByText("platform");
+    await screen.findByText("last");
+
+    // Type an UNSAVED draft into "middle" (the row that will be deleted) — this is
+    // the row whose leftover state a buggy index-keyed table would smuggle onto
+    // whichever row next occupies its table position.
+    const midInput = screen.getByRole("textbox", { name: /budget for middle/i });
+    await user.clear(midInput);
+    await user.type(midInput, "999.99");
+    expect(midInput).toHaveValue("999.99");
+
+    // Delete "platform" (the FIRST row) — every later row shifts up one index.
+    await user.click(screen.getByRole("button", { name: /delete team platform/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /delete/i }));
+
+    // After the refetch, only "last" remains — "middle"'s in-flight 999.99 draft
+    // must be gone (its own form was unmounted with it), and "last"'s own budget
+    // input must show ITS OWN real value, never the leftover "999.99".
+    await waitFor(() => expect(screen.queryByText("middle")).not.toBeInTheDocument());
+    const lastInput = await screen.findByRole("textbox", { name: /budget for last/i });
+    expect(lastInput).toHaveValue("50.00");
+    expect(screen.queryByDisplayValue("999.99")).not.toBeInTheDocument();
+  });
+});
+
 // ── members panel ────────────────────────────────────────────────────────────────
 describe("TeamsPage — members panel", () => {
   it("test_view_members", async () => {
