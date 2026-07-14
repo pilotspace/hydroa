@@ -8,9 +8,23 @@ CONTRACT:
     dimension (M2, pre-freeze amendment). NEVER calls resolve_markup_pct or any
     other price-computing function (M3) — cost_usd is already the final,
     billed, point-in-time-resolved figure (recorder.py:record, line 248-253).
-    Each line's amount_usd is ROUND_HALF_UP to cents AT GENERATION TIME (M4);
-    invoice.total_usd is the SUM of the already-rounded amounts (rounded-then-
-    summed, never summed-then-rounded). Idempotent + concurrency-safe via
+    Each line's amount_usd is ROUND_HALF_UP to cents AT GENERATION TIME (M4) for
+    line-level display. invoice.total_usd (audit-remediation C4 fix, 2026-07-14 —
+    supersedes the original M4 "rounded-then-summed" text below) is the FULL raw_total
+    rounded EXACTLY ONCE — summing already-per-group-rounded amounts instead let
+    high-cardinality (model,team,key,tags) fragmentation round many real sub-cent
+    groups independently to $0.00 each, silently erasing revenue that was never
+    actually zero in aggregate (HIGH/MED audit finding C4). Any (at most a few
+    cents) gap between that true total and the naive per-group-rounded sum is
+    reconciled onto exactly ONE usage line (the single largest raw contributor,
+    deterministic tie-break) so invoice.total_usd still always equals the sum of
+    its own persisted invoice_lines — see _reconcile_rounding_delta.
+    C3 fix (audit-remediation, 2026-07-14): generate_for_tenant SKIPS (returns
+    None, writes nothing) a tenant whose tenants.billing_mode == 'credits' — that
+    tenant's spend is already held+settled in real time by the credits ledger
+    (credits/infrastructure/postgres_guard.py), so invoicing it here too would
+    double-bill the SAME usage_records.cost_usd through both mechanisms.
+    Idempotent + concurrency-safe via
     ON CONFLICT (tenant_id, period_start) DO NOTHING (M13, mirrors flusher.py's
     own idempotent-insert idiom) — a re-run or a genuine race resolves to
     exactly one row, silently, never a duplicate and never a crash. Bounded by
@@ -118,6 +132,71 @@ def _round_half_up(value: Decimal) -> Decimal:
     return value.quantize(_CENTS, rounding=ROUND_HALF_UP)
 
 
+def _line_tie_break_key(spec: dict[str, Any]) -> tuple[Any, ...]:
+    """Deterministic sort key for a usage line_spec — same inputs always resolve to
+    the SAME line regardless of SQL GROUP BY return order (mirrors this module's own
+    M13 idempotency doctrine: a re-run or a replay across two identically-seeded
+    tenants must pick byte-identical output)."""
+    return (
+        str(spec["model_id"]),
+        str(spec["team_id"]),
+        str(spec["key_id"]),
+        tuple(sorted(spec["tags"].items())),
+    )
+
+
+def _reconcile_rounding_delta(line_specs: list[dict[str, Any]], delta: Decimal) -> None:
+    """audit-remediation C4 fix: apply `delta` (total_usd minus the naive per-group-
+    rounded sum) across usage line amount_usd values so that invoice.total_usd
+    always equals the sum of its own persisted invoice_lines (preserves the M9
+    "PDF, CSV, and API total always agree" invariant) while total_usd itself is
+    still the TRUE, revenue-preserving raw_total rounded once (never eroded by
+    high-cardinality tag/team/key fragmentation, C4).
+
+    delta > 0 (the common C4 case — many sub-cent groups rounded down to $0.00,
+    erasing real revenue): the WHOLE delta lands on the single largest raw
+    contributor (deterministic tie-break via `_line_tie_break_key`) — adding
+    money to a line can never make it invalid.
+
+    delta < 0 (naive per-group rounding overcounted, e.g. many boundary values
+    that each independently rounded UP): walk lines largest-raw-first and remove
+    at most each line's own amount_usd, moving to the next line if one is
+    exhausted — a defensive largest-remainder-style distribution that GUARANTEES
+    no line's amount_usd is ever driven negative, however many groups fragment
+    the total (a negative invoice line would itself be a new correctness bug).
+
+    Deliberately NEVER touches a seat/proration line: seat-billing TASK.md §3 is
+    FROZEN @ v2 and independently asserts its OWN per-line
+    `amount_usd == round_half_up(raw_amount_usd)` invariant
+    (tests/seat_billing/test_seat_pricing.py) — folding a usage-side rounding
+    remainder onto a seat line would violate that separate, out-of-package
+    contract. A no-op when there is no usage line to absorb the delta (rare —
+    e.g. a seat-only month with a fractional proration remainder); see
+    invoice_generator's module docstring / this task's report for the residual-risk
+    note on that narrow edge.
+    """
+    if delta == _ZERO or not line_specs:
+        return
+    ordered = sorted(
+        line_specs, key=lambda s: (s["raw_amount_usd"], _line_tie_break_key(s)), reverse=True
+    )
+    if delta > _ZERO:
+        ordered[0]["amount_usd"] += delta
+        return
+    remaining = -delta
+    for spec in ordered:
+        if remaining <= _ZERO:
+            break
+        take = min(spec["amount_usd"], remaining)
+        spec["amount_usd"] -= take
+        remaining -= take
+    # remaining > 0 here only if EVERY line's amount_usd was already driven to
+    # $0.00 and there is still a residual to remove — a pathological all-lines-
+    # near-zero month; total_usd itself is unaffected (still the correct
+    # round_half_up(raw_total)), only the rare cosmetic sum-of-lines==total_usd
+    # display invariant can fall short by that residual in this extreme edge.
+
+
 async def _load_seat_price(session: AsyncSession, tenant_id: uuid.UUID) -> Decimal | None:
     """seat-billing TASK.md §3 (FROZEN @ v2, M2/M7) — ONE extra SELECT (mirrors
     RedisBudgetGuard's own "one query" idiom, NOT the shared PlanEntitlementResolver, per
@@ -170,6 +249,22 @@ class InvoiceGenerator:
             period_end = _next_month(normalized_start)
 
             async with self._session_factory() as session, session.begin():
+                # audit-remediation C3 (double-bill fix): a tenant under active
+                # credits-ledger enforcement (billing_mode == 'credits') is already
+                # held+settled in real time by PostgresCreditGuard for this SAME
+                # usage_records.cost_usd — invoicing it here too would double-bill.
+                # scalar_one_or_none() -> None for a since-deleted tenant row falls
+                # through to the pre-existing generation path unchanged (never a new
+                # failure mode). NOT NULL DEFAULT 'invoice' (migration d4a1b8c3f6e2)
+                # means this is a no-op for every tenant that predates this fix.
+                billing_mode = (
+                    await session.execute(
+                        select(TenantRow.billing_mode).where(TenantRow.id == tenant_id)
+                    )
+                ).scalar_one_or_none()
+                if billing_mode == "credits":
+                    return None
+
                 agg_stmt = (
                     select(
                         UsageRecordRow.model_id,
@@ -197,7 +292,11 @@ class InvoiceGenerator:
 
                 line_specs: list[dict[str, Any]] = []
                 raw_total = _ZERO
-                total_usd = _ZERO
+                # audit-remediation C4 fix: `rounded_sum` is the OLD (buggy)
+                # rounded-then-summed figure — kept ONLY to compute the
+                # reconciliation delta below, never written as total_usd directly
+                # (see _reconcile_rounding_delta / module docstring).
+                rounded_sum = _ZERO
                 for grp in groups:
                     raw_amount = (
                         Decimal(str(grp.raw_amount_usd))
@@ -206,7 +305,7 @@ class InvoiceGenerator:
                     )
                     amount = _round_half_up(raw_amount)
                     raw_total += raw_amount
-                    total_usd += amount
+                    rounded_sum += amount
                     line_specs.append(
                         {
                             "model_id": grp.model_id,
@@ -240,7 +339,21 @@ class InvoiceGenerator:
                     )
                     for seat_spec in seat_line_specs:
                         raw_total += seat_spec.raw_amount_usd
-                        total_usd += seat_spec.amount_usd
+                        rounded_sum += seat_spec.amount_usd
+
+                # audit-remediation C4 fix: total_usd is the TRUE, revenue-preserving
+                # figure — the full raw_total (every usage group + every seat/
+                # proration line) rounded EXACTLY ONCE, never derived by summing
+                # already-per-group-rounded amounts (that path lets high-cardinality
+                # tag/team/key fragmentation round many real sub-cent groups
+                # independently to $0.00 each, silently erasing revenue). Reconcile
+                # the gap between this true total and the naive `rounded_sum` onto
+                # exactly one usage line so total_usd still equals the sum of its own
+                # persisted invoice_lines (M9 invariant preserved) — see
+                # _reconcile_rounding_delta's own docstring for why seat/proration
+                # lines are never touched here.
+                total_usd = _round_half_up(raw_total)
+                _reconcile_rounding_delta(line_specs, total_usd - rounded_sum)
 
                 new_id = uuid7()
                 now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)

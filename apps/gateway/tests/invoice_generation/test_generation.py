@@ -206,11 +206,23 @@ async def test_line_amount_is_pure_sum_no_second_price_path(
 
 
 # ---------------------------------------------------------------------------
-# M4 — rounded-then-summed total matches the printed lines
+# C4 (audit-remediation fix, supersedes the original M4 "rounded-then-summed"
+# contract) — total_usd is the raw SUM rounded ONCE, never derived by summing
+# already-per-group-rounded lines; the reconciliation delta lands on exactly
+# one line so total_usd still equals the sum of the printed lines.
+#
+# DELIBERATE CONTRACT CHANGE (audit finding C4, 2026-07-14): this test used to
+# be test_rounded_then_summed_total_matches_printed_lines and asserted the OLD
+# buggy behavior — total_usd == 20.02, the sum of two independently-HALF_UP-
+# rounded 10.005 lines. That is exactly the defect C4 flags: per-group rounding
+# before summation can silently manufacture OR erase cents relative to the
+# tenant's real aggregate spend (raw_total here is 20.010, which rounds to
+# 20.01, not 20.02). See test_high_cardinality_tags_never_erase_revenue below
+# for the sharper case (many sub-cent groups each rounding to $0.00).
 # ---------------------------------------------------------------------------
 
 
-async def test_rounded_then_summed_total_matches_printed_lines(
+async def test_total_usd_is_raw_total_rounded_once_reconciled_to_printed_lines(
     client: Any, db_session: AsyncSession, app: Any
 ) -> None:
     _owner, tid = await signup_tenant(client, tenant_name="Rounding Co", email="round@inv.io")
@@ -226,14 +238,114 @@ async def test_rounded_then_summed_total_matches_printed_lines(
     lines = await _fetch_lines(db_session, invoice_id)
     row = await _fetch_invoice_row(db_session, invoice_id)
 
-    for line_row in lines:
-        assert Decimal(str(line_row["amount_usd"])) == Decimal("10.01"), (
-            "each line rounds HALF_UP independently before summation"
+    # raw_total = 10.005 + 10.005 = 20.010 -> round_half_up ONCE = 20.01 (never 20.02:
+    # that figure only ever existed by rounding each 10.005 boundary value up
+    # independently THEN summing, which is exactly the C4 defect).
+    assert Decimal(str(row["total_usd"])) == Decimal("20.01")
+    assert Decimal(str(row["raw_total_usd"])) == Decimal("20.010000")
+
+    # M9 still holds: total_usd must equal the sum of the actually-printed lines —
+    # the 1-cent reconciliation delta (20.01 - 20.02 naive = -0.01) lands on
+    # exactly one line (deterministic tie-break: model-b sorts after model-a).
+    line_sum = sum((Decimal(str(line_row["amount_usd"])) for line_row in lines), Decimal("0"))
+    assert line_sum == Decimal(str(row["total_usd"])) == Decimal("20.01")
+    by_model = {line_row["model_id"]: Decimal(str(line_row["amount_usd"])) for line_row in lines}
+    assert by_model == {"model-a": Decimal("10.01"), "model-b": Decimal("10.00")}
+
+
+async def test_high_cardinality_tags_never_erase_revenue(
+    client: Any, db_session: AsyncSession, app: Any
+) -> None:
+    """C4 (HIGH/MED audit finding): 100 usage rows sharing the SAME model/key but each
+    carrying a UNIQUE client tag land in 100 distinct (model,team,key,tags) groups.
+    Each group's raw cost (0.0049) independently rounds HALF_UP to $0.00 — under the
+    OLD rounded-then-summed contract the ENTIRE $0.49 of real spend would vanish from
+    the invoice. Tag cardinality must never be able to erase revenue."""
+    _owner, tid = await signup_tenant(client, tenant_name="Fragment Co", email="frag@inv.io")
+    key_id = str(uuid.uuid4())
+    for i in range(100):
+        await seed_usage_record(
+            db_session,
+            tenant_id=tid,
+            key_id=key_id,
+            cost_usd="0.0049",
+            tags={"client_request_id": f"req-{i}"},
+            created_at=JULY_START,
         )
-    assert Decimal(str(row["total_usd"])) == Decimal("20.02"), (
-        "rounded-then-summed total must equal the sum of the DISPLAYED (rounded) lines, "
-        "not 20.01 from summing full precision first"
+
+    generator = make_generator(app)
+    invoice_id = await generator.generate_for_tenant(uuid.UUID(tid), JULY_START)
+    lines = await _fetch_lines(db_session, invoice_id)
+    row = await _fetch_invoice_row(db_session, invoice_id)
+
+    assert len(lines) == 100, "each unique tag value is still its own evidence-linkable line"
+    assert Decimal(str(row["raw_total_usd"])) == Decimal("0.4900")
+    assert Decimal(str(row["total_usd"])) == Decimal("0.49"), (
+        "100 groups each rounding to $0.00 individually must NOT erase the real "
+        "$0.49 of aggregate revenue from the invoice total"
     )
+    line_sum = sum((Decimal(str(line_row["amount_usd"])) for line_row in lines), Decimal("0"))
+    assert line_sum == Decimal(str(row["total_usd"])) == Decimal("0.49"), (
+        "M9: total_usd must still equal the sum of the printed lines"
+    )
+    zero_lines = [lr for lr in lines if Decimal(str(lr["amount_usd"])) == Decimal("0.00")]
+    assert len(zero_lines) == 99, "exactly one line absorbs the reconciled $0.49"
+
+
+# ---------------------------------------------------------------------------
+# C3 (audit-remediation fix) — a tenant under active credits-ledger enforcement
+# (billing_mode == 'credits') is SKIPPED by InvoiceGenerator, never double-billed
+# on top of the credits ledger's own real-time hold+settle.
+# ---------------------------------------------------------------------------
+
+
+async def _set_billing_mode(db_session: AsyncSession, tenant_id: str, mode: str) -> None:
+    await db_session.execute(
+        text("UPDATE tenants SET billing_mode = :m WHERE id = :tid"),
+        {"m": mode, "tid": tenant_id},
+    )
+    await db_session.commit()
+
+
+async def test_credits_billing_mode_tenant_is_skipped_never_double_billed(
+    client: Any, db_session: AsyncSession, app: Any
+) -> None:
+    _owner, tid = await signup_tenant(client, tenant_name="Credits Co", email="credits@inv.io")
+    await seed_usage_record(db_session, tenant_id=tid, cost_usd="42.00", created_at=JULY_START)
+    await _set_billing_mode(db_session, tid, "credits")
+
+    generator = make_generator(app)
+    invoice_id = await generator.generate_for_tenant(uuid.UUID(tid), JULY_START)
+
+    assert invoice_id is None, "a 'credits'-mode tenant must never get a monthly invoice"
+    result = await db_session.execute(
+        text("SELECT count(*) FROM invoices WHERE tenant_id = :tid"), {"tid": tid}
+    )
+    assert result.scalar() == 0, "no invoice row may exist for a credits-billed tenant"
+
+
+async def test_default_billing_mode_preserves_existing_invoice_behavior(
+    client: Any, db_session: AsyncSession, app: Any
+) -> None:
+    """Every pre-existing/new tenant defaults to billing_mode='invoice' — the
+    migration's backfill default — so generation is byte-identical to before this
+    fix shipped unless an operator explicitly opts a tenant into 'credits'."""
+    _owner, tid = await signup_tenant(client, tenant_name="Default Mode Co", email="dm@inv.io")
+
+    row = (
+        await db_session.execute(
+            text("SELECT billing_mode FROM tenants WHERE id = :tid"), {"tid": tid}
+        )
+    ).scalar()
+    assert row == "invoice", "every tenant must default to 'invoice' (no silent behavior change)"
+
+    await seed_usage_record(db_session, tenant_id=tid, cost_usd="42.00", created_at=JULY_START)
+    generator = make_generator(app)
+    invoice_id = await generator.generate_for_tenant(uuid.UUID(tid), JULY_START)
+
+    assert invoice_id is not None, "default-mode tenants keep getting invoiced exactly as before"
+    row2 = await _fetch_invoice_row(db_session, invoice_id)
+    assert Decimal(str(row2["total_usd"])) == Decimal("42.00")
 
 
 # ---------------------------------------------------------------------------

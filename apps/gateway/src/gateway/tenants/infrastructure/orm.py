@@ -108,6 +108,10 @@ class TenantRow(Base):
         ),
         # service-tiers TASK.md §3 (FROZEN @ v1) — additive.
         CheckConstraint("default_tier IN ('priority', 'standard')", name="ck_tenants_default_tier"),
+        # audit-remediation C3 (double-bill fix, 2026-07-14) — additive.
+        CheckConstraint(
+            "billing_mode IN ('invoice', 'credits')", name="ck_tenants_billing_mode"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
@@ -225,6 +229,21 @@ class TenantRow(Base):
     allow_non_claude_failover: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    # audit-remediation C3 (double-bill fix, 2026-07-14) — additive, NOT NULL DEFAULT
+    # 'invoice'. 'invoice' (default) = tenant is monthly-invoiced by InvoiceGenerator
+    # off usage_records.cost_usd, exactly as EVERY tenant is billed today — every
+    # pre-existing row backfills to 'invoice' via server_default, so no live tenant's
+    # billing changes the instant this migration ships (mirrors default_tier's own
+    # additive-NOT-NULL-with-backfill convention). 'credits' = tenant is billed
+    # exclusively via the prepaid credits ledger (PostgresCreditGuard already
+    # holds+settles this tenant's spend in real time, credits/infrastructure/
+    # postgres_guard.py) — InvoiceGenerator SKIPS a 'credits' tenant so the SAME
+    # usage_records.cost_usd is never billed twice through both mechanisms (C3,
+    # HIGH double-bill finding). No code path in this fix auto-flips a tenant to
+    # 'credits' — an operator opts in explicitly (e.g. a direct UPDATE, or a future
+    # admin endpoint); this fix closes the double-bill HAZARD going forward without
+    # retroactively changing any live tenant's invoicing.
+    billing_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="invoice")
 
 
 class UserRow(Base):
