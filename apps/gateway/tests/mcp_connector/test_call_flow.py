@@ -362,6 +362,275 @@ async def test_pii_mask_mixed_text_and_nontext_blocks_masks_text_only(
 
 
 # ===========================================================================
+# SECURITY FIX ROUND 2 (fix/mcp-pii-mask-resource-blocks): round 1 only recognized
+# top-level `{"text": ...}` content blocks. Two more result shapes survived as
+# "mask computed then silently discarded" leaks:
+#   1. EmbeddedResource blocks — PII lives NESTED under `resource.text`, never at
+#      top level, so `_text_block_indices` missed it entirely (confirmed HARD-STOP,
+#      conf 0.85).
+#   2. The whole-body-JSON fallback (no recognized content-block shape) — a mask was
+#      COMPUTED over the fallback scan but `_apply_masked_blocks` no-ops when
+#      `text_block_indices == []`, so the ORIGINAL unmasked body was returned
+#      (confirmed HARD-STOP, conf 0.8).
+# ===========================================================================
+
+
+async def test_pii_mask_mixed_text_and_resource_blocks_masks_both(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """ADVERSARIAL: a top-level text block + an EmbeddedResource block, BOTH carrying
+    PII. Pre-fix: the resource block's `resource.text` is invisible to
+    `_text_block_indices`, so the SSN/email inside it is relayed VERBATIM even though
+    the guardrail reports action="passed" for it — false confidence, no audit trail.
+    Post-fix: both must be masked; the resource block's `uri`/`mimeType` (and any
+    other resource field) must be relayed byte-identical — only `resource.text`
+    changes."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "Results:"},
+                        {
+                            "type": "resource",
+                            "resource": {
+                                "uri": "file:///c.txt",
+                                "mimeType": "text/plain",
+                                "text": "jane.doe@example.com SSN 123-45-6789",
+                            },
+                        },
+                    ]
+                },
+            },
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    blocks = resp.json()["result"]["content"]
+    assert len(blocks) == 2, "block count/order must be preserved"
+
+    assert blocks[0]["text"] == "Results:"
+
+    resource = blocks[1]["resource"]
+    assert "jane.doe@example.com" not in resource["text"]
+    assert "123-45-6789" not in resource["text"]
+    assert "[EMAIL_REDACTED]" in resource["text"]
+    assert "[SSN_REDACTED]" in resource["text"]
+    assert resource["uri"] == "file:///c.txt", "resource.uri must be relayed byte-identical"
+    assert resource["mimeType"] == "text/plain", (
+        "resource.mimeType must be relayed byte-identical"
+    )
+
+
+async def test_pii_mask_resource_only_result_is_masked(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """ADVERSARIAL: NO top-level text block at all — a single EmbeddedResource block
+    carrying PII. Pre-fix: `_text_block_indices` finds nothing, the fallback whole-body
+    scan computes a mask that `_apply_masked_blocks` then discards — raw PII leaked.
+    Post-fix: the resource-only shape is structurally safe to mask (same per-block
+    substitution as any other recognized block), so it must be masked, never refused."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [
+                        {
+                            "type": "resource",
+                            "resource": {
+                                "uri": "file:///only.txt",
+                                "mimeType": "text/plain",
+                                "text": "call me at 415-555-0100",
+                            },
+                        },
+                    ]
+                },
+            },
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "error" not in body, "resource-only PII must be masked, not fail-closed refused"
+    resource = body["result"]["content"][0]["resource"]
+    assert "415-555-0100" not in resource["text"]
+    assert "[PHONE_REDACTED]" in resource["text"]
+    assert resource["uri"] == "file:///only.txt"
+
+
+async def test_pii_mask_clean_resource_only_result_passes_through_unchanged(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """Regression: a resource-only result with NO PII must pass through completely
+    unmodified — proves the fix doesn't over-mask a clean resource block."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    resource_block = {
+        "type": "resource",
+        "resource": {"uri": "file:///clean.txt", "mimeType": "text/plain", "text": "no pii here"},
+    }
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={"jsonrpc": "2.0", "id": 1, "result": {"content": [resource_block]}},
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "error" not in body
+    assert body["result"]["content"][0] == resource_block
+
+
+async def test_pii_mask_blob_only_resource_block_passes_through_unchanged(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """Regression/edge case: an EmbeddedResource block carrying BINARY `blob` data
+    (no `text` field at all) alongside a text block with PII. The blob-only resource
+    block has no maskable text — it must be treated like an image block: relayed
+    byte-identical, never scanned/substituted, and never mistaken for a maskable-but-
+    unresolved shape (must not trip the fail-closed path either)."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    blob_resource_block = {
+        "type": "resource",
+        "resource": {
+            "uri": "file:///data.bin",
+            "mimeType": "application/octet-stream",
+            "blob": "base64-opaque-binary-bytes",
+        },
+    }
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "contact alice@example.com"},
+                        blob_resource_block,
+                    ]
+                },
+            },
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "error" not in body, "a blob-only resource block must never trip fail-closed"
+    blocks = body["result"]["content"]
+    assert "alice@example.com" not in blocks[0]["text"]
+    assert "[EMAIL_REDACTED]" in blocks[0]["text"]
+    assert blocks[1] == blob_resource_block, "blob-only resource must be relayed unchanged"
+
+
+async def test_pii_mask_whole_body_fallback_shape_fails_closed_never_leaks(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """ADVERSARIAL: a tool-call result with NO `content` key at all — an unrecognized/
+    non-standard shape. Pre-fix: `_build_scan_messages` falls back to a whole-body-JSON
+    scan, the guardrail COMPUTES a mask, but `_apply_masked_blocks` no-ops (empty
+    `text_block_indices`) and the ORIGINAL unmasked body — raw email included — is
+    relayed verbatim. Post-fix: there is no structurally-safe block to substitute a
+    mask into, so the relay must fail CLOSED (the in-band JSON-RPC block error) —
+    never relay the detected PII verbatim."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"foo": "contact john.doe@example.com"},
+            },
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "john.doe@example.com" not in resp.text, "raw PII must never appear in the relayed body"
+    assert "error" in body, "unmaskable shape with detected PII must fail-closed, not leak"
+    assert body["error"]["code"] == -32050
+    assert body["error"]["message"] == "ERR_MCP_TOOL_RESULT_BLOCKED"
+    assert "result" not in body
+
+
+async def test_whole_body_fallback_shape_clean_passes_through_unchanged(
+    client: httpx.AsyncClient, owner: dict[str, str], app: object, db_session: AsyncSession
+) -> None:
+    """Regression: the whole-body-fallback shape with NO PII must still pass through
+    unmodified (proves the fail-closed path only trips when PII is actually detected,
+    never as a blanket refusal for every unrecognized shape)."""
+    await set_tenant_mcp_servers(db_session, owner["tenant_id"], [{"url": ALLOWED_URL, "label": "x"}])
+    await set_tenant_guardrails(
+        db_session, owner["tenant_id"], {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    app.state.mcp_dialer = StubMcpDialer(  # type: ignore[attr-defined]
+        result=McpDialResult(
+            status=200,
+            body={"jsonrpc": "2.0", "id": 1, "result": {"foo": "nothing sensitive here"}},
+        )
+    )
+
+    resp = await client.post(
+        MCP_CALL,
+        json={"server_url": ALLOWED_URL, "message": jsonrpc_tool_call()},
+        headers=bearer(owner["key"]),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "error" not in body
+    assert body["result"]["foo"] == "nothing sensitive here"
+
+
+# ===========================================================================
 # M10: refused call still traces; capture-store failure never affects the
 # proxied response; ZDR tenant suppresses the trace row entirely
 # ===========================================================================

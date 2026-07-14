@@ -102,35 +102,66 @@ def _extract_result_text(body: dict[str, Any]) -> str:
         return ""
 
 
+def _get_block_text(b: Any) -> str | None:
+    """The maskable text carried by a single content block, if any recognized shape.
+
+    Recognized shapes (MCP content-block spec):
+      - TextContent: top-level {"text": <str>, "type": "text", ...}
+      - EmbeddedResource: {"type": "resource", "resource": {"text": <str>, "uri": ...,
+        "mimeType": ..., ...}} — the text is NESTED under `resource.text`, never at
+        top level. A resource block whose resource carries `blob` (binary) instead of
+        `text` has no maskable text and is treated the same as an image block: passed
+        through unchanged, never scanned/substituted.
+
+    Round-2 fix (fix/mcp-pii-mask-resource-blocks): the round-1 fix only recognized
+    top-level `text`, so an EmbeddedResource block's PII was invisible to
+    `_text_block_indices` and relayed VERBATIM whenever it coexisted with any
+    top-level text block (confirmed HARD-STOP leak, conf 0.85).
+    """
+    if not isinstance(b, dict):
+        return None
+    if isinstance(b.get("text"), str):
+        return b["text"]
+    resource = b.get("resource")
+    if isinstance(resource, dict) and isinstance(resource.get("text"), str):
+        return resource["text"]
+    return None
+
+
 def _text_block_indices(blocks: list[Any]) -> list[int]:
-    """Indices of blocks shaped {"text": <str>} within a content-block list, in order."""
-    return [
-        i for i, b in enumerate(blocks) if isinstance(b, dict) and isinstance(b.get("text"), str)
-    ]
+    """Indices of blocks carrying recognized maskable text (top-level `text` OR
+    `resource.text`) within a content-block list, in order."""
+    return [i for i, b in enumerate(blocks) if _get_block_text(b) is not None]
 
 
 def _build_scan_messages(body: dict[str, Any]) -> tuple[list[dict[str, Any]], list[int]]:
     """Build the guardrail-scan messages for a tool-call result body.
 
-    ONE scan message PER recognized `{"text": ...}` content block — scanned and, in mask
-    mode, masked independently — never a single "\\n"-joined blob. Joining then splitting
-    is the exact ambiguity that let a 2nd/3rd+ block's PII survive unmasked (the original
-    defect): `_apply_masked_text` could only map a masked JOINED string back onto exactly
-    one recognized block, so it silently gave up (returned the UNMASKED body) for any other
-    block count. Per-block scan/mask has no join to unambiguously reverse.
+    ONE scan message PER recognized text-bearing content block (top-level `text` OR
+    EmbeddedResource `resource.text`) — scanned and, in mask mode, masked
+    independently — never a single "\\n"-joined blob. Joining then splitting is the
+    exact ambiguity that let a 2nd/3rd+ block's PII survive unmasked (the original
+    defect): `_apply_masked_text` could only map a masked JOINED string back onto
+    exactly one recognized block, so it silently gave up (returned the UNMASKED body)
+    for any other block count. Per-block scan/mask has no join to unambiguously
+    reverse.
 
     Returns (scan_messages, text_block_indices) where text_block_indices[i] is the index
-    into `result.content` that scan_messages[i] came from. An EMPTY text_block_indices means
-    the best-effort whole-body-JSON fallback scan was used (no recognized content-block
-    shape) — the caller must not attempt block-level substitution in that case (matches the
-    pre-existing fallback behavior: this body shape was never masked before, for any block
-    count, and stays out of this fix's scope).
+    into `result.content` that scan_messages[i] came from. An EMPTY text_block_indices
+    means the best-effort whole-body-JSON fallback scan was used (no recognized
+    text-bearing content-block shape) — the caller MUST NOT silently relay the
+    original (possibly PII-carrying) body in that case: if the fallback scan detects
+    PII there is no block structure to substitute into, so the caller fails the relay
+    CLOSED (round-2 fix; see execute()'s `mask_unresolved` handling) rather than
+    leaking it verbatim, which is what the pre-fix code silently did.
     """
     blocks = _extract_result_content_blocks(body)
     if blocks:
         indices = _text_block_indices(blocks)
         if indices:
-            return [{"role": "tool", "content": blocks[i]["text"]} for i in indices], indices
+            return [
+                {"role": "tool", "content": _get_block_text(blocks[i]) or ""} for i in indices
+            ], indices
     return [{"role": "tool", "content": _extract_result_text(body)}], []
 
 
@@ -139,12 +170,15 @@ def _apply_masked_blocks(
     text_block_indices: list[int],
     masked_scan_messages: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Rebuild `result.content`, substituting EVERY recognized text block's `text` with its
-    independently-masked counterpart (positional 1:1 with `text_block_indices`, produced by
-    `_build_scan_messages`). Every other block — including non-text blocks (image/resource)
-    and any block that wasn't a recognized text block — is carried through unchanged, in
-    place, in order. A no-op (returns `body` unmodified) when there is no known block
-    structure to substitute into."""
+    """Rebuild `result.content`, substituting EVERY recognized text-bearing block's text
+    with its independently-masked counterpart (positional 1:1 with `text_block_indices`,
+    produced by `_build_scan_messages`). A top-level `text` block has its `text` field
+    replaced; an EmbeddedResource block has ONLY its `resource.text` field replaced —
+    every other field (`uri`, `mimeType`, and any other resource/block field) is carried
+    through BYTE-IDENTICAL. Every other block — including non-text blocks (image) and any
+    block that wasn't recognized — is carried through unchanged, in place, in order. A
+    no-op (returns `body` unmodified) when there is no known block structure to
+    substitute into."""
     blocks = _extract_result_content_blocks(body)
     if not blocks or not text_block_indices:
         return body
@@ -154,8 +188,14 @@ def _apply_masked_blocks(
             break
         masked_content = masked_scan_messages[pos].get("content")
         block = new_blocks[idx]
-        if isinstance(masked_content, str) and isinstance(block, dict):
+        if not isinstance(masked_content, str) or not isinstance(block, dict):
+            continue
+        if isinstance(block.get("text"), str):
             new_blocks[idx] = {**block, "text": masked_content}
+            continue
+        resource = block.get("resource")
+        if isinstance(resource, dict) and isinstance(resource.get("text"), str):
+            new_blocks[idx] = {**block, "resource": {**resource, "text": masked_content}}
     new_result = {**body["result"], "content": new_blocks}
     return {**body, "result": new_result}
 
@@ -383,11 +423,25 @@ class McpCallUseCase:
             scan_messages, authz.guardrail_configs
         )
 
+        # Round-2 fix (fix/mcp-pii-mask-resource-blocks): mode=mask detected PII (
+        # guardrail_result.masked_messages is not None) but `_build_scan_messages`
+        # found NO block structure to substitute into (text_block_indices == []) —
+        # the whole-body-JSON fallback path was scanned/masked, but `_apply_masked_blocks`
+        # is a no-op for an empty `text_block_indices` and would silently relay the
+        # ORIGINAL, UNMASKED body. There is no structurally-safe way to substitute a
+        # masked whole-body-JSON string back into an unrecognized/arbitrary result
+        # shape without risking corrupting non-text structural fields, so this fails
+        # the relay CLOSED — mirroring M9's in-band JSON-RPC block idiom — rather than
+        # ever leaking the detected PII verbatim (confirmed HARD-STOP leak, conf 0.8).
+        mask_unresolved = (
+            guardrail_result.masked_messages is not None and not text_block_indices
+        )
+
         latency_ms = int((time.monotonic() - started) * 1000)
         relayed_body: dict[str, Any]
         trace_status: int
         audit_result: Literal["success", "blocked"]
-        if guardrail_result.blocked:
+        if guardrail_result.blocked or mask_unresolved:
             relayed_body = {
                 "jsonrpc": "2.0",
                 "id": message.get("id"),
