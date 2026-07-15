@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "ai-act-marketing-page",
-  "active_milestone": "eu-ai-act-readiness",
+  "active_task": "member-invite-ui",
+  "active_milestone": "team-member-invite",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1111,6 +1111,35 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "member-invite-ui": {
+      "title": "Invite-member dashboard UI + public accept-invite page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "team-member-invite",
+      "depends_on": [],
+      "created": "2026-07-15T06:52:10+00:00",
+      "updated": "2026-07-15T07:13:33+00:00",
+      "freeze_skipped": {
+        "by": "Tin Dang",
+        "at": "2026-07-15T07:13:30+00:00",
+        "from_phase": "tests"
+      },
+      "tripwire": {
+        "contract_md5": "690f6e2bcaeed72ef090d5e4df1421ab",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/member-invite-ui/src/"
+        ],
+        "snapshot_md5": "97a1c25059384b9c7cf94ec0adcb3fae"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1118,9 +1147,14 @@
       "title": "Platform Admin Console",
       "goal": "A superadmin can view and fully manage any tenant (config, budget, keys, members) through a dedicated, fully audited cross-tenant admin surface",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-02T15:53:53+00:00",
-      "updated": "2026-07-02T15:53:53+00:00"
+      "updated": "2026-07-15T06:51:32+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "tenant-impersonation": {
       "title": "Tenant Impersonation",
@@ -1158,9 +1192,14 @@
       "title": "Team Member Invite",
       "goal": "A tenant owner/admin can invite a new colleague by email into their own tenant with a chosen role, and that colleague can accept the invite and set their own password \u2014 without requiring SSO/domain-mapping to be configured",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-03T16:21:50+00:00",
-      "updated": "2026-07-03T16:21:50+00:00"
+      "updated": "2026-07-15T07:14:55+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "agent-gateway-v1": {
       "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
@@ -1181,7 +1220,7 @@
       "stage": "mvp",
       "status": "done",
       "created": "2026-07-14T03:32:21+00:00",
-      "updated": "2026-07-14T08:08:20+00:00",
+      "updated": "2026-07-15T06:22:26+00:00",
       "done_actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
@@ -1190,7 +1229,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T09:27:17+00:00",
+  "updated": "2026-07-15T07:14:55+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2151,11 +2190,12 @@
     "platform-admin-console",
     "platform-access-plan",
     "eu-ai-act-readiness",
-    "agent-gateway-v1"
+    "agent-gateway-v1",
+    "team-member-invite"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
-    "team-member-invite": "member-invite-acceptance",
+    "team-member-invite": "member-invite-ui",
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-seat-cap",
     "eu-ai-act-readiness": "ai-act-marketing-page",

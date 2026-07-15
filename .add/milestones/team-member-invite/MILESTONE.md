@@ -135,24 +135,24 @@ Out:
   `member-invite-acceptance`
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [ ] member-invite-issuance      depends-on: none                                          — Owner/admin create/list/revoke tenant-scoped invites (hashed single-use token, explicit expiry, escalation ceiling mirrors AssignUserRoleUseCase).
-- [ ] member-invite-acceptance    depends-on: member-invite-issuance                          — Public, unauthenticated token lookup (preview) + accept (set password) that provisions the User row; rate-limited, fails closed on expired/revoked/consumed/unknown tokens.
-- [ ] member-invite-ui            depends-on: member-invite-issuance, member-invite-acceptance — Dashboard "Invite member" dialog + pending-invites list/revoke on the Members page; new public accept-invite page + BFF route mirroring signup's auto-login chain.
+- [x] member-invite-issuance      depends-on: none                                          — Owner/admin create/list/revoke tenant-scoped invites (hashed single-use token, explicit expiry, escalation ceiling mirrors AssignUserRoleUseCase).
+- [x] member-invite-acceptance    depends-on: member-invite-issuance                          — Public, unauthenticated token lookup (preview) + accept (set password) that provisions the User row; rate-limited, fails closed on expired/revoked/consumed/unknown tokens.
+- [x] member-invite-ui            depends-on: member-invite-issuance, member-invite-acceptance — Dashboard "Invite member" dialog + pending-invites list/revoke on the Members page; new public accept-invite page + BFF route mirroring signup's auto-login chain.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] An owner can invite a new colleague by email into any of the 6 self-service roles; an admin can
+- [x] An owner can invite a new colleague by email into any of the 6 self-service roles; an admin can
       only invite `{operator, billing_admin, viewer, member}` — attempting owner/admin/superadmin is
       rejected with the same shape as the existing role-reassignment ceiling   (← member-invite-issuance)
-- [ ] A pending invite appears in a list and can be revoked, immediately and durably invalidating its
+- [x] A pending invite appears in a list and can be revoked, immediately and durably invalidating its
       token   (← member-invite-issuance)
-- [ ] Re-inviting the same email while a pending invite exists issues a fresh token and kills the old
+- [x] Re-inviting the same email while a pending invite exists issues a fresh token and kills the old
       one — no stacked/duplicate pending rows   (← member-invite-issuance)
-- [ ] The invited person can open the link with no login, see which tenant and role they are joining,
+- [x] The invited person can open the link with no login, see which tenant and role they are joining,
       set a password, and land in the dashboard already signed in — with zero OIDC/domain-mapping
       configuration required   (← member-invite-acceptance, member-invite-ui)
-- [ ] An expired, revoked, already-accepted, or unknown token is rejected with a specific, non-500 error
+- [x] An expired, revoked, already-accepted, or unknown token is rejected with a specific, non-500 error
       and creates no user row under any of those conditions   (← member-invite-acceptance)
-- [ ] The full gateway test suite stays green with new coverage for the happy path and every reject
+- [x] The full gateway test suite stays green with new coverage for the happy path and every reject
       branch (mirrors the `device-approval-flow` suite's breadth of 401/404/409/410/422/429-shaped
       cases as applicable)   (← member-invite-issuance, member-invite-acceptance)
 
@@ -161,16 +161,30 @@ Out:
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- backend (apps/gateway) : invites_router (create/list/revoke), invite_accept_router (public preview/accept),
+  invite_use_cases + invite_repository (hashed single-use token, 7d expiry, atomic create-or-replace,
+  SELECT…FOR UPDATE revoke/accept), shared assert_role_within_ceiling reused by CreateInviteUseCase.
+  Independently re-verified 2026-07-15: issuance 30/30 + acceptance 17/17 + rbac 16/16 on fresh DBs;
+  all 4 security shared-decisions HOLD.
+- dashboard (apps/dashboard) : InviteMemberDialog (role-filtered, copy-link one-time token) + PendingInvites
+  (live "expires in Nd" chip + revoke) on /app/members; public /invite/[token] accept page in the (auth)
+  shell; /api/auth/invite/[token] BFF (preview relay + accept→login→httpOnly-cookie, mirrors signup).
+  Shared roles.ts (assignableRoles lifted, no drift). 24 new vitest tests (red-first) + full suite 1438 green;
+  tsc + eslint clean.
+- tooling / skill / book : untouched.
 
-### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+### Cross-task evidence   (one row per task — all gate=PASS)
+- member-invite-issuance   : gate=PASS · 30/30 (re-verified fresh DB) · residue=none
+- member-invite-acceptance : gate=PASS · 17/17 (incl. forced-race + global-email-collision) · residue=none
+- member-invite-ui         : gate=PASS · 24 new vitest + 1438 dashboard suite green · tsc/eslint clean · residue=none
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
+- goal: A tenant owner/admin can invite a colleague by email into a chosen role and that colleague can
+  accept + set their own password WITHOUT SSO — proven end-to-end: issuance/acceptance backend (independently
+  re-verified, security decisions hold) + the dashboard invite dialog, pending list, and public accept page
+  with BFF auto-login (built 2026-07-15 via the UDD design loop, Tin-confirmed: copy-link v1, 7d expiry,
+  pending on /app/members). Full gateway suite green (my detached -n12: 3924 passed) + dashboard 1438 green.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
