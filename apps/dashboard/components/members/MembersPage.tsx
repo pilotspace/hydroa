@@ -19,6 +19,11 @@
  *
  * Accessibility: one <h1>, table with column headers, per-user aria-label on
  * the role selector, WCAG-AA compliant.
+ *
+ * INVITE FLOW (member-invite-ui, Tin-approved 2026-07-15): owner/admin also get an
+ * "Invite member" action (InviteMemberDialog) and a "Pending invites" section
+ * (PendingInvites) below the roster — both gated behind the SAME assignable.length
+ * check as the role selector, since invite/reassign share one MEMBERS_MANAGE gate.
  */
 
 import * as React from "react";
@@ -29,6 +34,9 @@ import { bffGet, bffPut, BffError } from "@/lib/bff-client";
 import { Loading, ErrorState, Button } from "@/components/ui";
 import { DataTable } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
+import { assignableRoles } from "./roles";
+import { InviteMemberDialog } from "./InviteMemberDialog";
+import { PendingInvites } from "./PendingInvites";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,21 +50,6 @@ export interface TenantUser {
 
 interface UsersListResponse {
   users: TenantUser[];
-}
-
-// ---------------------------------------------------------------------------
-// Escalation policy — all 6 tiers
-// ---------------------------------------------------------------------------
-
-const ALL_ROLES = ["owner", "admin", "operator", "billing_admin", "viewer", "member"] as const;
-type RoleTier = (typeof ALL_ROLES)[number];
-
-/** Roles the caller is allowed to assign (convenience filtering; server enforces). */
-function assignableRoles(callerRole: string): RoleTier[] {
-  if (callerRole === "owner") return [...ALL_ROLES];
-  if (callerRole === "admin")
-    return ["operator", "billing_admin", "viewer", "member"];
-  return []; // lower roles have no assignment ability (403 at the server)
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +83,9 @@ export function MembersPage({ callerRole, callerUserId }: MembersPageProps) {
       void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     },
   });
+
+  // member-invite-ui: dialog visibility for the "Invite member" action.
+  const [isInviteOpen, setIsInviteOpen] = React.useState(false);
 
   // W5 safety: a role change is REVERSIBLE, so instead of a blocking confirm (which would
   // also break the frozen change→PUT contract) we keep the immediate PUT and offer a
@@ -174,6 +170,13 @@ export function MembersPage({ callerRole, callerUserId }: MembersPageProps) {
         title="Members"
         titleId="members-heading"
         description="Manage tenant members and their roles."
+        actions={
+          assignable.length > 0 ? (
+            <Button size="sm" onClick={() => setIsInviteOpen(true)}>
+              Invite member
+            </Button>
+          ) : undefined
+        }
       />
 
       {/* W5: reversible-change safety net — announce the last role change and offer one-click
@@ -219,6 +222,19 @@ export function MembersPage({ callerRole, callerUserId }: MembersPageProps) {
           ariaLabel="Members"
           emptyMessage="No members yet."
         />
+      )}
+
+      {/* Invite + pending-invites share the roster's MEMBERS_MANAGE gate: a caller
+          with no assignable tiers can't invite either (403 at the server). */}
+      {assignable.length > 0 && (
+        <>
+          <InviteMemberDialog
+            isOpen={isInviteOpen}
+            onClose={() => setIsInviteOpen(false)}
+            callerRole={callerRole}
+          />
+          <PendingInvites />
+        </>
       )}
     </section>
   );
