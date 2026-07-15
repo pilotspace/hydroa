@@ -18,6 +18,10 @@ from gateway.keys.application.use_cases import AuthzUseCase
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.proxy.api.embeddings_deps import get_provider_registry as get_provider_registry
+from gateway.proxy.api.nonchat_guardrail_deps import (
+    resolve_guardrail_evaluator,
+    resolve_guardrail_telemetry,
+)
 from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.application.images_use_case import ImagesUseCase
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
@@ -89,12 +93,21 @@ def get_images_use_case(
     # wrapped into `governance` above (no second KeyAuthenticator construction) plus the
     # per-tenant preset store singleton from app.state. Absent ⇒ None ⇒ byte-identical.
     tenant_model_preset_store = getattr(request.app.state, "tenant_model_preset_store", None)
+    # guardrails-nonchat-parity (audit Issue 1): same evaluator + telemetry as chat/embeddings.
+    guardrail_evaluator = resolve_guardrail_evaluator(request, tenant_credential_resolver)
+    metrics_registry, guardrail_verdict_session_factory, payload_capture = (
+        resolve_guardrail_telemetry(request)
+    )
     return ImagesUseCase(
         governance=governance,
         session=session,
         tenant_credential_resolver=tenant_credential_resolver,
         authenticator=authenticator,
         tenant_model_preset_store=tenant_model_preset_store,
+        guardrail_evaluator=guardrail_evaluator,
+        metrics_registry=metrics_registry,
+        guardrail_verdict_session_factory=guardrail_verdict_session_factory,
+        payload_capture=payload_capture,
     )
 
 
