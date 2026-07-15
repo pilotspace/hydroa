@@ -31,6 +31,7 @@ from gateway.core.error_catalog import (
 )
 from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.application.governance import NonChatGovernance
+from gateway.proxy.application.nonchat_guardrails import evaluate_nonchat_request_guardrails
 from gateway.proxy.application.residency import cache_hit_region_ok
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so the fire-and-forget
@@ -47,6 +48,7 @@ from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableErr
 from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
 from gateway.proxy.domain.ports import (
     KeyAuthenticator,
+    PayloadCapturePort,
     ResidencyLookup,
     ResponseCache,
     TenantCredentialResolver,
@@ -54,6 +56,20 @@ from gateway.proxy.domain.ports import (
 )
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
 from gateway.proxy.infrastructure.response_cache import build_embedding_cache_key
+
+
+def _extract_embedding_texts(input_val: Any) -> tuple[list[str], bool]:
+    """Return (texts, is_list) for request-leg guardrail evaluation of an embeddings `input`.
+
+    Only a str or a list[str] carries maskable text; token-array inputs (list[int] or
+    list[list[int]]) yield ([], ...) so guardrails no-op. `is_list` records whether the
+    original was a list so a masked result is written back in the SAME shape.
+    """
+    if isinstance(input_val, str):
+        return [input_val], False
+    if isinstance(input_val, list) and input_val and all(isinstance(x, str) for x in input_val):
+        return list(input_val), True
+    return [], isinstance(input_val, list)
 
 
 class EmbeddingsUseCase:
@@ -68,9 +84,20 @@ class EmbeddingsUseCase:
         authenticator: KeyAuthenticator | None = None,
         tenant_model_preset_store: TenantModelPresetStore | None = None,
         residency_lookup: ResidencyLookup | None = None,
+        guardrail_evaluator: Any = None,
+        metrics_registry: Any = None,
+        guardrail_verdict_session_factory: Any = None,
+        payload_capture: PayloadCapturePort | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
+        # guardrails-nonchat-parity (audit Issue 1): all four optional — None ⇒ feature
+        # off ⇒ execute() is byte-identical (the shared helper's fast path returns the
+        # input unchanged). Wired by embeddings_deps in production.
+        self._guardrail_evaluator = guardrail_evaluator
+        self._metrics_registry = metrics_registry
+        self._guardrail_verdict_session_factory = guardrail_verdict_session_factory
+        self._payload_capture = payload_capture
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test) ⇒
         # no per-request credential set (env-bound adapters unaffected).
         self._tenant_credential_resolver = tenant_credential_resolver
@@ -147,6 +174,28 @@ class EmbeddingsUseCase:
 
         # Step 3: Governance (auth → expiry → allowlist → catalog → budget → rpm → tpm)
         authz = await self._governance.authorize(raw_key, model_id, estimated_tokens=1)
+
+        # Step 3.4: Request-leg guardrails (guardrails-nonchat-parity, audit Issue 1).
+        # Runs BEFORE cache/catalog/upstream so a block rejects here (never billed for
+        # upstream, never cached) and a pii_mask rewrites body["input"] — the MASKED text
+        # is then what the cache key is built from AND what is sent upstream. Only str /
+        # list[str] inputs carry maskable text; token-array inputs no-op.
+        _pii_masked = False
+        _input_texts, _input_is_list = _extract_embedding_texts(body.get("input"))
+        if _input_texts:
+            _masked_texts, _pii_masked = await evaluate_nonchat_request_guardrails(
+                guardrail_evaluator=self._guardrail_evaluator,
+                authz=authz,
+                texts=_input_texts,
+                model_id=model_id,
+                usage_recorder=usage_recorder,
+                request_body=body,
+                metrics_registry=self._metrics_registry,
+                verdict_session_factory=self._guardrail_verdict_session_factory,
+                payload_capture=self._payload_capture,
+            )
+            if _pii_masked:
+                body = {**body, "input": _masked_texts if _input_is_list else _masked_texts[0]}
 
         # Step 3.5: Cache logic (additive — None/disabled ⇒ today's flow, x_cache None).
         cache = response_cache
@@ -237,6 +286,7 @@ class EmbeddingsUseCase:
             status=status,
             team_id=authz.team_id,
             agent_principal_id=authz.agent_principal_id,
+            pii_masked=_pii_masked,
         )
 
         # Step 7.5: Store the MISS on a 200 only (never non-200, never on bypass).

@@ -17,6 +17,10 @@ from gateway.core.db import get_session
 from gateway.keys.application.use_cases import AuthzUseCase
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
+from gateway.proxy.api.nonchat_guardrail_deps import (
+    resolve_guardrail_evaluator,
+    resolve_guardrail_telemetry,
+)
 from gateway.proxy.application.embeddings_use_case import EmbeddingsUseCase
 from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.domain.ports import ResponseCache
@@ -115,6 +119,13 @@ def get_embeddings_use_case(
     # wrapped into `governance` above (no second KeyAuthenticator construction) plus the
     # per-tenant preset store singleton from app.state. Absent ⇒ None ⇒ byte-identical.
     tenant_model_preset_store = getattr(request.app.state, "tenant_model_preset_store", None)
+    # guardrails-nonchat-parity (audit Issue 1): resolve the SAME guardrail evaluator +
+    # telemetry chat uses so a tenant's block/pii_mask policy also applies to embeddings.
+    # None/default ⇒ byte-identical (helper fast-path returns input unchanged).
+    guardrail_evaluator = resolve_guardrail_evaluator(request, tenant_credential_resolver)
+    metrics_registry, guardrail_verdict_session_factory, payload_capture = (
+        resolve_guardrail_telemetry(request)
+    )
     return EmbeddingsUseCase(
         governance=governance,
         session=session,
@@ -122,4 +133,8 @@ def get_embeddings_use_case(
         authenticator=authenticator,
         tenant_model_preset_store=tenant_model_preset_store,
         residency_lookup=residency_lookup,
+        guardrail_evaluator=guardrail_evaluator,
+        metrics_registry=metrics_registry,
+        guardrail_verdict_session_factory=guardrail_verdict_session_factory,
+        payload_capture=payload_capture,
     )
