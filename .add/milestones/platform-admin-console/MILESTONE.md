@@ -61,27 +61,39 @@ Out: acting AS a tenant user / impersonation sessions (→ tenant-impersonation,
 - [ ] admin-console-ui              depends-on: admin-console-audit               — the dashboard surface itself (directory + tenant-detail tabs), Aurora-consistent, UDD design loop, wired to all four backend tasks.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A superadmin can find and open any tenant from a directory view.        (← platform-tenant-directory)
-- [ ] A superadmin can view AND edit any tenant's config and budget.          (← cross-tenant-config-budget)
-- [ ] A superadmin can view and manage any tenant's keys (redacted) and members. (← cross-tenant-keys-members)
-- [ ] Every cross-tenant read/write produces an audit record attributing the real superadmin actor. (← admin-console-audit)
-- [ ] The console is a polished, Aurora-consistent, WCAG-AA UI surface, design-confirmed before build. (← admin-console-ui)
+- [x] A superadmin can find and open any tenant from a directory view.        (← platform-tenant-directory)
+- [x] A superadmin can view AND edit any tenant's config and budget.          (← cross-tenant-config-budget)
+- [x] A superadmin can view and manage any tenant's keys (redacted) and members. (← cross-tenant-keys-members)
+- [x] Every cross-tenant read/write produces an audit record attributing the real superadmin actor. (← admin-console-audit)
+- [x] The console is a polished, Aurora-consistent, WCAG-AA UI surface, design-confirmed before build. (← admin-console-ui)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- backend : new `/admin/platform/tenants/*` routers — platform_tenants_router (directory/get),
+  platform_tenant_config_router (cache/guardrails/budget GET+PUT), platform_keys_router
+  (list/create/patch/rotate/revoke), platform_users_router (list/role-assign); every cross-tenant
+  read/write gated by `authorize_tenant_scope()` (tenants/domain/authz.py:169-191) + `require_superadmin`;
+  `emit_platform_audit()` on every success path attributing the real superadmin actor.
+- dashboard : superadmin console surface — PlatformTenantDirectory + PlatformTenantDetail tabbed shell
+  (Config/Budget/Keys/Members) with PlatformSafetyBanner, per-tab queries, aria markers.
+- tooling / skill / book : untouched.
 
-### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+### Cross-task evidence   (one row per task — all gate=PASS; independently re-verified 2026-07-15)
+- platform-tenant-directory  : gate=PASS · directory list/search/get across all tenants · residue=none
+- cross-tenant-config-budget : gate=PASS · view+edit target tenant config/budget cross-tenant · residue=none
+- cross-tenant-keys-members  : gate=PASS · keys redacted (KeyInfoResponse has no secret field) + members role-assign · residue=none
+- admin-console-audit        : gate=PASS · 23/23 new + 64/64 regression · superadmin actor attributed, target=path tenant · residue=none
+- admin-console-ui           : gate=PASS · §3 frozen@v1 human-approved (Tin, 2026-07-03) before build · Aurora + a11y markers · residue=none
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
+- goal: A superadmin can view and fully manage any tenant through a dedicated, fully audited cross-tenant
+  admin surface — proven by the 4 `/admin/platform/tenants/*` routers (all through `authorize_tenant_scope`
+  + `emit_platform_audit`) wired to the PlatformTenantDetail console. Independently verified 2026-07-15:
+  all 5 exit criteria MET, no `authorize_tenant_scope` bypass, keys redacted. Shipped PR #57 + backend `67d1557`.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
