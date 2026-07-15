@@ -729,6 +729,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _invoice_generator = InvoiceGenerator(
                 session_factory=_sessionmaker,
                 stabilization_hours=_settings.invoice_stabilization_hours,
+                # Couple invoice-skip to the SAME knob that turns on real-time credit
+                # enforcement — one source of truth, they can never diverge (double-bill).
+                credits_gate_enabled=_settings.credits_gate_enabled,
             )
             app.state.invoice_generator = _invoice_generator
             app.state.invoice_generator_task = asyncio.create_task(

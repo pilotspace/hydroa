@@ -228,10 +228,17 @@ class InvoiceGenerator:
         session_factory: async_sessionmaker[AsyncSession],
         per_tenant_timeout_seconds: float = DEFAULT_PER_TENANT_TIMEOUT_SECONDS,
         stabilization_hours: int = DEFAULT_STABILIZATION_HOURS,
+        credits_gate_enabled: bool = False,
     ) -> None:
         self._session_factory = session_factory
         self._per_tenant_timeout_seconds = per_tenant_timeout_seconds
         self._stabilization_hours = stabilization_hours
+        # audit-remediation (double-bill couple): the SAME central knob
+        # (settings.credits_gate_enabled) that wires the real-time PostgresCreditGuard.
+        # True → every tenant is held+settled in real time, so a monthly invoice would
+        # double-bill → skip. One source of truth; invoice-skip and credit-holds cannot
+        # diverge. Default False = byte-identical to pre-credits-ledger behavior.
+        self._credits_gate_enabled = credits_gate_enabled
 
     async def generate_for_tenant(
         self, tenant_id: uuid.UUID, period_start: datetime.datetime
@@ -248,23 +255,18 @@ class InvoiceGenerator:
             normalized_start = _as_naive_utc(_month_start(period_start))
             period_end = _next_month(normalized_start)
 
-            async with self._session_factory() as session, session.begin():
-                # audit-remediation C3 (double-bill fix): a tenant under active
-                # credits-ledger enforcement (billing_mode == 'credits') is already
-                # held+settled in real time by PostgresCreditGuard for this SAME
-                # usage_records.cost_usd — invoicing it here too would double-bill.
-                # scalar_one_or_none() -> None for a since-deleted tenant row falls
-                # through to the pre-existing generation path unchanged (never a new
-                # failure mode). NOT NULL DEFAULT 'invoice' (migration d4a1b8c3f6e2)
-                # means this is a no-op for every tenant that predates this fix.
-                billing_mode = (
-                    await session.execute(
-                        select(TenantRow.billing_mode).where(TenantRow.id == tenant_id)
-                    )
-                ).scalar_one_or_none()
-                if billing_mode == "credits":
-                    return None
+            # audit-remediation (double-bill couple): skip iff real-time credit
+            # enforcement is ACTIVE — the SAME predicate (settings.credits_gate_enabled)
+            # that wires PostgresCreditGuard to hold+settle every tenant. Coupling both
+            # invoice-skip and credit-holds to this one flag means they can never diverge:
+            # no double-bill when the flag is on, and no revenue leak when it is off (the
+            # prior tenants.billing_mode gate was never set to 'credits' by any code path,
+            # and would have leaked a mode='credits' tenant with the flag off). Checked
+            # before any query — a no-op for every tenant while the flag is off (default).
+            if self._credits_gate_enabled:
+                return None
 
+            async with self._session_factory() as session, session.begin():
                 agg_stmt = (
                     select(
                         UsageRecordRow.model_id,

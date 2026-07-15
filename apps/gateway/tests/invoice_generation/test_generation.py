@@ -293,57 +293,65 @@ async def test_high_cardinality_tags_never_erase_revenue(
 
 
 # ---------------------------------------------------------------------------
-# C3 (audit-remediation fix) — a tenant under active credits-ledger enforcement
-# (billing_mode == 'credits') is SKIPPED by InvoiceGenerator, never double-billed
-# on top of the credits ledger's own real-time hold+settle.
+# C3 (audit-remediation Blocker fix) — the invoice skip is COUPLED to the SAME
+# predicate that turns on real-time credit enforcement (settings.credits_gate_enabled →
+# PostgresCreditGuard holds+settles every tenant). One source of truth: invoice-skip and
+# credit-holds can never diverge. (The previous billing_mode gate was unsafe in BOTH
+# directions: nothing ever set billing_mode='credits' so it double-billed when the flag
+# was on; and a mode='credits' tenant with the flag OFF got neither a hold nor an invoice
+# — a revenue leak.)
 # ---------------------------------------------------------------------------
 
 
-async def _set_billing_mode(db_session: AsyncSession, tenant_id: str, mode: str) -> None:
-    await db_session.execute(
-        text("UPDATE tenants SET billing_mode = :m WHERE id = :tid"),
-        {"m": mode, "tid": tenant_id},
-    )
-    await db_session.commit()
-
-
-async def test_credits_billing_mode_tenant_is_skipped_never_double_billed(
+async def test_credit_enforcement_active_skips_invoice_never_double_bills(
     client: Any, db_session: AsyncSession, app: Any
 ) -> None:
+    """Flag ON → the tenant is held+settled in real time by the credit ledger, so
+    invoicing the same usage would double-bill → skip. Holds regardless of billing_mode
+    (default 'invoice'), because the enforcement guard itself is not billing_mode-gated."""
     _owner, tid = await signup_tenant(client, tenant_name="Credits Co", email="credits@inv.io")
     await seed_usage_record(db_session, tenant_id=tid, cost_usd="42.00", created_at=JULY_START)
-    await _set_billing_mode(db_session, tid, "credits")
 
-    generator = make_generator(app)
+    generator = make_generator(app, credits_gate_enabled=True)
     invoice_id = await generator.generate_for_tenant(uuid.UUID(tid), JULY_START)
 
-    assert invoice_id is None, "a 'credits'-mode tenant must never get a monthly invoice"
+    assert invoice_id is None, "under active credit enforcement no monthly invoice may be created"
     result = await db_session.execute(
         text("SELECT count(*) FROM invoices WHERE tenant_id = :tid"), {"tid": tid}
     )
-    assert result.scalar() == 0, "no invoice row may exist for a credits-billed tenant"
+    assert result.scalar() == 0, "no invoice row may exist while credit enforcement is active"
 
 
-async def test_default_billing_mode_preserves_existing_invoice_behavior(
+async def test_credit_enforcement_off_still_invoices_no_revenue_leak(
     client: Any, db_session: AsyncSession, app: Any
 ) -> None:
-    """Every pre-existing/new tenant defaults to billing_mode='invoice' — the
-    migration's backfill default — so generation is byte-identical to before this
-    fix shipped unless an operator explicitly opts a tenant into 'credits'."""
-    _owner, tid = await signup_tenant(client, tenant_name="Default Mode Co", email="dm@inv.io")
-
-    row = (
-        await db_session.execute(
-            text("SELECT billing_mode FROM tenants WHERE id = :tid"), {"tid": tid}
-        )
-    ).scalar()
-    assert row == "invoice", "every tenant must default to 'invoice' (no silent behavior change)"
-
+    """Flag OFF → the credit guard is a Passthrough (no real-time hold/settle), so the
+    tenant MUST still be invoiced or it is never billed at all. Proves the skip is driven
+    by the enforcement flag, not by a billing_mode column that no path ever sets."""
+    _owner, tid = await signup_tenant(client, tenant_name="No Leak Co", email="noleak@inv.io")
     await seed_usage_record(db_session, tenant_id=tid, cost_usd="42.00", created_at=JULY_START)
-    generator = make_generator(app)
+
+    generator = make_generator(app, credits_gate_enabled=False)
     invoice_id = await generator.generate_for_tenant(uuid.UUID(tid), JULY_START)
 
-    assert invoice_id is not None, "default-mode tenants keep getting invoiced exactly as before"
+    assert invoice_id is not None, "with enforcement off the tenant must still be invoiced"
+    row2 = await _fetch_invoice_row(db_session, invoice_id)
+    assert Decimal(str(row2["total_usd"])) == Decimal("42.00")
+
+
+async def test_default_generator_preserves_existing_invoice_behavior(
+    client: Any, db_session: AsyncSession, app: Any
+) -> None:
+    """The generator defaults credits_gate_enabled=False (the settings default), so
+    generation is byte-identical to before this fix shipped unless an operator flips the
+    central credits knob on."""
+    _owner, tid = await signup_tenant(client, tenant_name="Default Mode Co", email="dm@inv.io")
+    await seed_usage_record(db_session, tenant_id=tid, cost_usd="42.00", created_at=JULY_START)
+
+    generator = make_generator(app)  # credits_gate_enabled defaults False
+    invoice_id = await generator.generate_for_tenant(uuid.UUID(tid), JULY_START)
+
+    assert invoice_id is not None, "default (flag off) tenants keep getting invoiced as before"
     row2 = await _fetch_invoice_row(db_session, invoice_id)
     assert Decimal(str(row2["total_usd"])) == Decimal("42.00")
 
