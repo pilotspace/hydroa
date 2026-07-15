@@ -418,6 +418,122 @@ def test_rewrite_sse_content_fails_closed_on_malformed_frame() -> None:
     )
 
 
+# ===========================================================================
+# Issue 2 (Tin-approved policy inversion): post-call PII mask fail-CLOSED but
+# NON-BLOCKING. The prior module-wide policy was fail-OPEN — on an evaluate_post
+# EXCEPTION (or, in the stream path, a shape mismatch) the ORIGINAL unmasked bytes
+# were returned, so a broken/erroring masker leaked raw PII to the client. New
+# policy: on masker failure we cannot prove the content PII-free, so we WITHHOLD it
+# (replace each choice's assistant text with a redaction sentinel) while still
+# returning 200 with a well-formed body/stream — never block, never leak.
+#
+# One shared helper (_redact_response_body) covers the four non-streaming sites
+# (complete() Step 5.5, exact/semantic/vector cache HIT); the stream site
+# (_apply_stream_post_mask) redacts via _rewrite_sse_content. These unit tests are
+# DB/HTTP-free — they pin the helpers directly.
+# ===========================================================================
+
+
+class _BoomEvaluator:
+    """evaluate_post that always raises — simulates a broken/erroring masker."""
+
+    async def evaluate_post(
+        self, body: dict[str, Any], configs: dict[str, Any]
+    ) -> dict[str, Any]:
+        raise RuntimeError("simulated evaluator failure")
+
+
+class _WrongShapeEvaluator:
+    """evaluate_post that returns a choices list of the WRONG length (untrusted shape)."""
+
+    async def evaluate_post(
+        self, body: dict[str, Any], configs: dict[str, Any]
+    ) -> dict[str, Any]:
+        return {"choices": []}  # sent >=1 choice, got 0 back → shape mismatch
+
+
+_MASK_CFG = {"pii_mask": {"enabled": True, "mode": "mask"}}
+
+
+def test_redact_response_body_withholds_content_preserves_billing_fields() -> None:
+    """Issue 2: _redact_response_body replaces every choice's assistant text with the
+    redaction sentinel while preserving id/model/usage (billing/metering must survive),
+    and never mutates the caller's original body."""
+    from gateway.proxy.application.use_cases import (
+        _POST_MASK_REDACTION,
+        _redact_response_body,
+    )
+
+    body = {
+        "id": "cmpl-1",
+        "model": "openai/gpt-4o-mini",
+        "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": "my ssn is 123-45-6789"}},
+            {"index": 1, "message": {"role": "assistant", "content": "call alice@example.com"}},
+        ],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+    }
+    red = _redact_response_body(body)
+
+    assert red["choices"][0]["message"]["content"] == _POST_MASK_REDACTION
+    assert red["choices"][1]["message"]["content"] == _POST_MASK_REDACTION
+    dumped = json.dumps(red)
+    assert "123-45-6789" not in dumped, f"raw SSN survived redaction: {dumped!r}"
+    assert "alice@example.com" not in dumped, f"raw email survived redaction: {dumped!r}"
+    # Billing/metering fields preserved — redaction touches ONLY assistant text.
+    assert red["usage"] == {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7}
+    assert red["id"] == "cmpl-1" and red["model"] == "openai/gpt-4o-mini"
+    # Caller's original body is NOT mutated in place.
+    assert body["choices"][0]["message"]["content"] == "my ssn is 123-45-6789"
+
+
+async def test_stream_post_mask_fails_closed_on_evaluator_exception() -> None:
+    """Issue 2: an evaluate_post EXCEPTION in the stream path must REDACT the content
+    (fail-CLOSED), not stream the raw upstream bytes (the old fail-OPEN behavior).
+
+    RED (old policy): the except branch `return collected` shipped the raw email.
+    GREEN: the raw email is withheld, the redaction sentinel is present, and the SSE
+    stream is still well-formed and terminated (non-blocking)."""
+    from gateway.proxy.application.use_cases import (
+        _POST_MASK_REDACTION,
+        _apply_stream_post_mask,
+    )
+
+    collected = [
+        b'data: {"id":"x","choices":[{"index":0,"delta":{"content":"email user@example.com now"}}]}\n\n',
+        b'data: {"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+    out = b"".join(await _apply_stream_post_mask(collected, _BoomEvaluator(), _MASK_CFG))
+    text = out.decode("utf-8", "replace")
+
+    assert "user@example.com" not in text, f"raw PII leaked on evaluator failure: {text!r}"
+    assert _POST_MASK_REDACTION in text, f"expected redaction sentinel, got: {text!r}"
+    assert text.rstrip().endswith("data: [DONE]"), f"stream must stay terminated: {text!r}"
+
+
+async def test_stream_post_mask_fails_closed_on_shape_mismatch() -> None:
+    """Issue 2: a masker that returns the WRONG choices-shape must REDACT (fail-CLOSED),
+    not stream the raw bytes.
+
+    RED (old policy): the shape-mismatch branch `return collected` shipped raw content.
+    GREEN: raw content is withheld and replaced by the redaction sentinel."""
+    from gateway.proxy.application.use_cases import (
+        _POST_MASK_REDACTION,
+        _apply_stream_post_mask,
+    )
+
+    collected = [
+        b'data: {"id":"x","choices":[{"index":0,"delta":{"content":"secret bob@example.com"}}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+    out = b"".join(await _apply_stream_post_mask(collected, _WrongShapeEvaluator(), _MASK_CFG))
+    text = out.decode("utf-8", "replace")
+
+    assert "bob@example.com" not in text, f"raw PII leaked on shape mismatch: {text!r}"
+    assert _POST_MASK_REDACTION in text, f"expected redaction sentinel, got: {text!r}"
+
+
 class _UnexpectedProviderError(Exception):
     """Simulates an adapter/provider exception type OTHER than UpstreamUnavailableError,
     CircuitOpenError, or UpstreamRateLimitedError — an unhandled-exception-type branch

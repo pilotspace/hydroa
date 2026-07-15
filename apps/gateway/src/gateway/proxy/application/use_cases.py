@@ -1013,6 +1013,55 @@ def _rewrite_sse_content(chunks: list[bytes], new_content_by_choice: dict[int, s
         return _masked_fallback()
 
 
+# post-call-mask-fail-closed (Issue 2, Tin-approved policy inversion): when the post-call
+# PII masker itself FAILS (evaluate_post raises, or returns an untrusted shape), we cannot
+# prove the model output is PII-free — so we WITHHOLD the assistant text rather than leak it.
+# The request still succeeds (200, well-formed body/stream): fail-CLOSED but NON-BLOCKING.
+_POST_MASK_REDACTION = "[content withheld: output safety check unavailable]"
+
+
+def _redact_response_body(body: Any) -> Any:
+    """Return a copy of a chat-completion `body` with every choice's assistant text
+    replaced by `_POST_MASK_REDACTION`, preserving all other fields (id/model/usage) so
+    downstream billing/metering/capture keep working.
+
+    Used at the four non-streaming evaluate_post sites (complete() Step 5.5, exact /
+    semantic / vector cache HIT) when the masker fails: post-call-mask-fail-closed policy
+    withholds the (possibly PII-bearing) content instead of returning the raw body, while
+    still returning a valid 200 body (non-blocking). Never mutates the caller's `body`.
+
+    A body with no `choices` list carries no masker-scoped assistant text, so it is
+    returned unchanged (evaluate_post would have found nothing to mask there either).
+    """
+    if not isinstance(body, dict):
+        return {
+            "choices": [
+                {"index": 0, "message": {"role": "assistant", "content": _POST_MASK_REDACTION}}
+            ]
+        }
+    choices = body.get("choices")
+    if not isinstance(choices, list):
+        return body
+    new_choices: list[Any] = []
+    for choice in choices:
+        if not isinstance(choice, dict):
+            new_choices.append(choice)
+            continue
+        new_choice = dict(choice)
+        message = new_choice.get("message")
+        if isinstance(message, dict) and isinstance(message.get("content"), str):
+            new_message = dict(message)
+            new_message["content"] = _POST_MASK_REDACTION
+            new_choice["message"] = new_message
+        # legacy /v1/completions shape carries text directly on the choice.
+        if isinstance(new_choice.get("text"), str):
+            new_choice["text"] = _POST_MASK_REDACTION
+        new_choices.append(new_choice)
+    new_body = dict(body)
+    new_body["choices"] = new_choices
+    return new_body
+
+
 async def _apply_stream_post_mask(
     collected: list[bytes],
     guardrail_evaluator: Any,
@@ -1036,12 +1085,13 @@ async def _apply_stream_post_mask(
     text actually differs trigger a rewrite (_rewrite_sse_content) — a per-choice
     diff, not an all-or-nothing one.
 
-    Fail-OPEN, identically to every other evaluate_post call site in this module
-    (complete(), cache HIT branches): an evaluator exception, or a shape mismatch
-    (masked_choices length disagreeing with what was sent), is logged/treated as
-    fail-open and the ORIGINAL unmasked `collected` bytes are returned — post-call
-    masking is MASK/AUDIT only, never BLOCK, so a broken evaluator must never drop or
-    corrupt the stream. When there is no content, or masking made no change anywhere
+    Fail-CLOSED but NON-BLOCKING (Issue 2, Tin-approved policy inversion — matches the
+    four non-streaming sites via _redact_response_body): an evaluator exception, or a
+    shape mismatch (masked_choices length disagreeing with what was sent), means we
+    cannot prove the streamed text PII-free, so each choice's content is REDACTED to
+    `_POST_MASK_REDACTION` (via _rewrite_sse_content) rather than streaming the ORIGINAL
+    unmasked bytes. The stream still completes normally (well-formed, terminated) — we
+    withhold, never block. When there is no content, or masking made no change anywhere
     (no PII found in any choice), the original bytes are returned untouched
     (byte-identical passthrough).
     """
@@ -1061,15 +1111,19 @@ async def _apply_stream_post_mask(
         )
     except Exception as _exc:
         _log.warning(
-            "guardrail evaluate_post raised in stream (fail-OPEN, streaming original bytes)",
+            "guardrail evaluate_post raised in stream (fail-CLOSED, redacting content)",
             exc_info=_exc,
         )
-        return collected
+        return _rewrite_sse_content(
+            collected, {idx: _POST_MASK_REDACTION for idx in original_by_choice}
+        )
     masked_choices = masked_body.get("choices") if isinstance(masked_body, dict) else None
     if not isinstance(masked_choices, list) or len(masked_choices) != len(ordered_indices):
-        # Defensive fail-OPEN: an evaluator that changes shape (drops/adds choices) is
-        # untrusted output — never guess a mapping, just stream the original text.
-        return collected
+        # Defensive fail-CLOSED: an evaluator that changes shape (drops/adds choices) is
+        # untrusted output — never guess a mapping, and never stream the raw text; redact.
+        return _rewrite_sse_content(
+            collected, {idx: _POST_MASK_REDACTION for idx in original_by_choice}
+        )
     new_content_by_choice: dict[int, str] = {}
     any_changed = False
     for idx, masked_choice in zip(ordered_indices, masked_choices, strict=True):
@@ -2208,8 +2262,9 @@ class CompletionUseCase:
                         metrics_registry.cache_events_total.labels(result="hit").inc()
                     except Exception:  # noqa: S110
                         pass
-                # Step 5.5 on cache HIT: apply post-call PII mask if configured
-                # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only).
+                # Step 5.5 on cache HIT: apply post-call PII mask if configured.
+                # post-call-mask-fail-closed (Issue 2): masker failure REDACTS the body
+                # (never leaks raw), but the 200 still returns (non-blocking).
                 if guardrail_evaluator is not None and guardrail_configs:
                     if hasattr(guardrail_evaluator, "evaluate_post"):
                         try:
@@ -2218,9 +2273,11 @@ class CompletionUseCase:
                             )
                         except Exception as _exc:
                             _log.warning(
-                                "guardrail evaluate_post raised on cache HIT (fail-OPEN)",
+                                "guardrail evaluate_post raised on cache HIT "
+                                "(fail-CLOSED, redacting content)",
                                 exc_info=_exc,
                             )
+                            cached_body = _redact_response_body(cached_body)
                 cached_usage_raw = cached_body.get("usage")
                 cached_usage: dict[str, Any] | None = (
                     cached_usage_raw if isinstance(cached_usage_raw, dict) else None
@@ -2293,7 +2350,8 @@ class CompletionUseCase:
                                     ).inc()
                                 except Exception:  # noqa: S110
                                     pass
-                            # Apply post-call PII mask on semantic hit (same as exact hit)
+                            # Apply post-call PII mask on semantic hit (same as exact hit).
+                            # post-call-mask-fail-closed (Issue 2): redact on masker failure.
                             if guardrail_evaluator is not None and guardrail_configs:
                                 if hasattr(guardrail_evaluator, "evaluate_post"):
                                     try:
@@ -2302,10 +2360,11 @@ class CompletionUseCase:
                                         )
                                     except Exception as _exc:
                                         _log.warning(
-                                            "guardrail evaluate_post raised on"
-                                            " semantic HIT (fail-OPEN)",
+                                            "guardrail evaluate_post raised on semantic HIT"
+                                            " (fail-CLOSED, redacting content)",
                                             exc_info=_exc,
                                         )
+                                        sem_cached_body = _redact_response_body(sem_cached_body)
                             sem_usage_raw = sem_cached_body.get("usage")
                             sem_usage: dict[str, Any] | None = (
                                 sem_usage_raw if isinstance(sem_usage_raw, dict) else None
@@ -2380,6 +2439,7 @@ class CompletionUseCase:
                                 ).inc()
                             except Exception:  # noqa: S110
                                 pass
+                        # post-call-mask-fail-closed (Issue 2): redact on masker failure.
                         if guardrail_evaluator is not None and guardrail_configs:
                             if hasattr(guardrail_evaluator, "evaluate_post"):
                                 try:
@@ -2388,9 +2448,11 @@ class CompletionUseCase:
                                     )
                                 except Exception as _exc:
                                     _log.warning(
-                                        "guardrail evaluate_post raised on vector HIT (fail-OPEN)",
+                                        "guardrail evaluate_post raised on vector HIT "
+                                        "(fail-CLOSED, redacting content)",
                                         exc_info=_exc,
                                     )
+                                    vec_body = _redact_response_body(vec_body)
                         vec_usage_raw = vec_body.get("usage")
                         vec_usage: dict[str, Any] | None = (
                             vec_usage_raw if isinstance(vec_usage_raw, dict) else None
@@ -3019,7 +3081,8 @@ class CompletionUseCase:
 
             # Step 5.5: Post-call guardrails (non-streaming only, on 200 response body).
             # Applied AFTER cache store so the cached body remains unmasked.
-            # evaluate_post is always fail-OPEN (post-call is MASK/AUDIT only — never BLOCK).
+            # post-call-mask-fail-closed (Issue 2): masker failure REDACTS the body (never
+            # leaks raw output), but the 200 still returns (fail-CLOSED, non-blocking).
             if guardrail_evaluator is not None and guardrail_configs and status == 200:
                 if hasattr(guardrail_evaluator, "evaluate_post"):
                     try:
@@ -3028,9 +3091,11 @@ class CompletionUseCase:
                         )
                     except Exception as _exc:
                         _log.warning(
-                            "guardrail evaluate_post raised (fail-OPEN, returning original body)",
+                            "guardrail evaluate_post raised "
+                            "(fail-CLOSED, redacting response body)",
                             exc_info=_exc,
                         )
+                        response_body = _redact_response_body(response_body)
 
             # Record successful or upstream 4xx completion.
             # BILLING: use served_model_id (the catalog candidate we actually routed to),
