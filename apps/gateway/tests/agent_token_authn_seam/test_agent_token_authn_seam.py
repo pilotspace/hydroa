@@ -534,6 +534,114 @@ async def test_composite_unit_dispatch() -> None:
 
 
 # ---------------------------------------------------------------------------
+# § audit-remediation Blocker 1 (CRITICAL) — agent-token traffic must enforce
+#   the tenant guardrail FLOOR (previously bypassed: AuthzResult.guardrail_configs
+#   was left empty on the agent path, so PII masking / injection blocking never
+#   fired for any agent-OAuth token).
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_token_threads_and_floors_tenant_guardrail_configs() -> None:
+    """Unit: a binding carrying the tenant's guardrail floor → the AuthzResult
+    carries that floor (applied over an empty effective config, since an agent
+    token has no per-key override) with policy_source='tenant'. An empty/absent
+    tenant floor → guardrail_configs={} and policy_source='none' (byte-identical
+    to the pre-fix construction)."""
+    from gateway.agent_oauth.domain.entities import AgentTokenBinding
+    from gateway.keys.domain.entities import AuthzResult  # noqa: F401
+    from gateway.proxy.infrastructure.composite_key_authenticator import (
+        CompositeKeyAuthenticator,
+    )
+
+    token_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    tenant_floor = {"pii_mask": {"enabled": True, "mode": "mask"}}
+
+    mock_settings = MagicMock()
+    mock_settings.agent_oauth_default_budget_usd = Decimal("100.00")
+    mock_hasher = MagicMock()
+    mock_hasher.hash.return_value = "deadbeef"
+
+    # (a) tenant mandates a guardrail → it floors onto the AuthzResult
+    bound = AgentTokenBinding(
+        token_id=token_id,
+        tenant_id=tenant_id,
+        user_id=uuid.uuid4(),
+        scope="proxy",
+        tenant_guardrail_configs=tenant_floor,
+    )
+    repo = AsyncMock()
+    repo.resolve_access_token.return_value = bound
+    composite = CompositeKeyAuthenticator(
+        api_key_authenticator=AsyncMock(),
+        agent_token_repo=repo,
+        hasher=mock_hasher,
+        settings=mock_settings,
+    )
+    authz = await composite.authenticate("agent-token-with-floor")
+    assert authz.guardrail_configs == {"pii_mask": {"enabled": True, "mode": "mask"}}, (
+        "agent-token AuthzResult must carry the tenant guardrail floor, not an empty dict"
+    )
+    assert authz.policy_source == "tenant"
+
+    # (b) no tenant floor → empty configs, policy_source 'none' (unchanged default)
+    bare = AgentTokenBinding(
+        token_id=token_id,
+        tenant_id=tenant_id,
+        user_id=uuid.uuid4(),
+        scope="proxy",
+    )
+    repo_bare = AsyncMock()
+    repo_bare.resolve_access_token.return_value = bare
+    composite_bare = CompositeKeyAuthenticator(
+        api_key_authenticator=AsyncMock(),
+        agent_token_repo=repo_bare,
+        hasher=mock_hasher,
+        settings=mock_settings,
+    )
+    authz_bare = await composite_bare.authenticate("agent-token-no-floor")
+    assert authz_bare.guardrail_configs == {}
+    assert authz_bare.policy_source == "none"
+
+
+async def test_resolve_access_token_carries_tenant_guardrail_floor(
+    app: Any,
+    agent_token: dict[str, Any],
+    hasher: Any,
+) -> None:
+    """Integration: resolve_access_token JOINs tenants and carries the tenant's
+    guardrail_configs onto the binding (the same 'populate at auth time via JOIN
+    tenants' pattern get_by_id uses for API keys)."""
+    import json as _json
+    from datetime import UTC, datetime
+
+    from sqlalchemy import text as sqla_text
+
+    from gateway.agent_oauth.infrastructure.repository import (
+        SqlAlchemyAgentOAuthRepository,
+    )
+
+    floor = {"prompt_injection": {"enabled": True, "mode": "block"}}
+    async with app.state.sessionmaker() as session:
+        await session.execute(
+            sqla_text("UPDATE tenants SET guardrail_configs = (:c)::jsonb WHERE id = :t"),
+            {"c": _json.dumps(floor), "t": agent_token["tenant_id"]},
+        )
+        await session.commit()
+
+    async with app.state.sessionmaker() as session:
+        repo = SqlAlchemyAgentOAuthRepository(session)
+        binding = await repo.resolve_access_token(
+            access_token_hash=hasher.hash(agent_token["access_token"]),
+            now=datetime.now(UTC),
+        )
+    assert binding is not None
+    assert binding.tenant_guardrail_configs == floor, (
+        "resolve_access_token must carry the tenant's guardrail floor via the JOIN"
+    )
+
+
+# ---------------------------------------------------------------------------
 # § Config knob validation test
 # ---------------------------------------------------------------------------
 
