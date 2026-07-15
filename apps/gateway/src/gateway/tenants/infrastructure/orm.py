@@ -112,6 +112,13 @@ class TenantRow(Base):
         CheckConstraint(
             "billing_mode IN ('invoice', 'credits')", name="ck_tenants_billing_mode"
         ),
+        # plan-rate-enforcement TASK.md §3 (FROZEN @ v1, M0) — additive.
+        CheckConstraint(
+            "rpm_limit IS NULL OR rpm_limit > 0", name="ck_tenants_rpm_limit_positive"
+        ),
+        CheckConstraint(
+            "tpm_limit IS NULL OR tpm_limit > 0", name="ck_tenants_tpm_limit_positive"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
@@ -229,6 +236,14 @@ class TenantRow(Base):
     allow_non_claude_failover: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    # plan-rate-enforcement TASK.md §3 (FROZEN @ v1, M0) — additive, no backfill. Per-
+    # tenant rpm/tpm OVERRIDE columns (mirrors budget_usd_monthly/seat_cap's own
+    # nullable-override shape exactly). NULL = no tenant-layer override — the effective
+    # ceiling falls through to the assigned plan's own rpm_limit_default/tpm_limit_default
+    # (resolve_entitlements' tenant-override -> plan-default -> unlimited precedence,
+    # M1), independent of every other dimension. Every existing row is NULL (inert).
+    rpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    tpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     # additive, NOT NULL DEFAULT 'invoice'. NOTE (audit-remediation, 2026-07-15): this
     # column NO LONGER drives billing. The double-bill fix now couples the invoice skip
     # to settings.credits_gate_enabled (the SAME knob that wires the real-time

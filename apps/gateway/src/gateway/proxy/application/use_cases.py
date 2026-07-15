@@ -126,11 +126,16 @@ from gateway.rate_limits.application.passthrough import (
     PassthroughBandwidthBucket,
     PassthroughRateLimiter,
 )
+from gateway.rate_limits.application.tenant_rate_limit import (
+    enforce_tenant_rate_limit,
+    tenant_tpm_ctx,
+)
 from gateway.rate_limits.domain.errors import (
     BandwidthExhaustedError,
     RateLimitExceededError,
 )
 from gateway.rate_limits.domain.ports import BandwidthBucket, BandwidthGrant, RateLimiter
+from gateway.rate_limits.infrastructure.plan_rate_limit_resolver import PlanRateLimitResolver
 from gateway.usage.domain.extractor import (
     extract_generation_id_from_sse,
     extract_usage_from_sse,
@@ -223,6 +228,20 @@ def _fire_record_tpm(
     """
     task = asyncio.ensure_future(rate_limiter.record_tpm(key_id, tokens))
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+
+def _fire_record_tpm_tenant(rate_limiter: RateLimiter, *, tokens: int) -> None:
+    """Fire the tenant-window TPM record IF this request's tenant TPM ceiling was
+    active (plan-rate-enforcement TASK.md §3, M4) — consumes `tenant_tpm_ctx` published
+    by `enforce_tenant_rate_limit()`. Mirrors `_fire_record_tpm`'s own fire-and-forget
+    shape (never blocks, swallows all errors via that same helper); no-op when the
+    ContextVar was never set (unplanned/uncapped tenant — inert by construction).
+    """
+    ctx = tenant_tpm_ctx.get()
+    if ctx is None:
+        return
+    tenant_id, _tenant_tpm_limit = ctx
+    _fire_record_tpm(rate_limiter, key_id=tenant_id, tokens=tokens)
 
 
 def _fire_bandwidth_reconcile(
@@ -1341,6 +1360,7 @@ class CompletionUseCase:
         hold_estimate_usd: Decimal = Decimal("0.50"),
         residency_lookup: ResidencyLookup | None = None,
         tier_capacity_guard: TierCapacityGuard = PassthroughTierCapacityGuard(),  # noqa: B008
+        plan_rate_limit_resolver: PlanRateLimitResolver | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -1435,6 +1455,11 @@ class CompletionUseCase:
         # release is a no-op ⇒ byte-identical to today. When wired, the tier gate
         # runs at the SAME choke point as the credit hold — see _enforce_governance.
         self._tier_capacity_guard: TierCapacityGuard = tier_capacity_guard
+        # plan-rate-enforcement TASK.md §3 (FROZEN @ v1): None (default) ⇒ feature off ⇒
+        # _enforce_rate_limits' tenant-window check is byte-identical to today (per-key
+        # enforcement only, unchanged). When wired, composes ALONGSIDE the per-key RPM/
+        # TPM windows already checked — see enforce_tenant_rate_limit's own docstring.
+        self._plan_rate_limit_resolver: PlanRateLimitResolver | None = plan_rate_limit_resolver
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -1710,6 +1735,10 @@ class CompletionUseCase:
         it converts to a 429 ProblemError; Redis errors are swallowed in the limiter).
 
         Called AFTER governance checks (expiry/allowlist/budget) per §3 M10.
+
+        plan-rate-enforcement TASK.md §3 (FROZEN @ v1, M3): AFTER the per-key windows
+        below, ALSO check the tenant-scoped plan rpm/tpm ceiling — composes, never
+        replaces (a tenant with no plan_rate_limit_resolver wired is byte-identical).
         """
         limiter = self._rate_limiter
 
@@ -1732,6 +1761,10 @@ class CompletionUseCase:
                     detail=f"TPM limit {exc.limit} exceeded for key {exc.key_id}",
                     headers={"Retry-After": str(exc.retry_after_s)},
                 ) from None
+
+        # plan-rate-enforcement TASK.md §3 (M3): tenant-layer plan rpm/tpm ceiling —
+        # composes ALONGSIDE (never replaces) the per-key windows just checked above.
+        await enforce_tenant_rate_limit(limiter, self._plan_rate_limit_resolver, authz.tenant_id)
 
     async def _check_team_budget(self, authz: AuthzResult) -> None:
         """Check per-team Redis spend counter against team's team_budget_usd.
@@ -2280,12 +2313,17 @@ class CompletionUseCase:
                     request_id=request_id,
                 )
                 # TPM post-accounting uses cached token counts
-                if authz.tpm_limit is not None and cached_usage is not None:
+                if cached_usage is not None:
                     total_tokens = cached_usage.get("total_tokens")
                     if isinstance(total_tokens, int) and total_tokens > 0:
-                        _fire_record_tpm(
-                            self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
-                        )
+                        if authz.tpm_limit is not None:
+                            _fire_record_tpm(
+                                self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
+                            )
+                        # plan-rate-enforcement TASK.md §3 (M4): tenant window sibling —
+                        # self-gated on tenant_tpm_ctx, inert unless a tenant TPM ceiling
+                        # was active for this request.
+                        _fire_record_tpm_tenant(self._rate_limiter, tokens=total_tokens)
                 return (200, cached_body, x_cache), x_cache
             else:
                 # Step 4.5b: Exact MISS — try semantic lookup if enabled
@@ -2363,13 +2401,19 @@ class CompletionUseCase:
                                 latency_ms=round((time.time_ns() - start_ns) / 1_000_000),
                                 request_id=request_id,
                             )
-                            if authz.tpm_limit is not None and sem_usage is not None:
+                            if sem_usage is not None:
                                 total_tokens = sem_usage.get("total_tokens")
                                 if isinstance(total_tokens, int) and total_tokens > 0:
-                                    _fire_record_tpm(
-                                        self._rate_limiter,
-                                        key_id=authz.key_id,
-                                        tokens=total_tokens,
+                                    if authz.tpm_limit is not None:
+                                        _fire_record_tpm(
+                                            self._rate_limiter,
+                                            key_id=authz.key_id,
+                                            tokens=total_tokens,
+                                        )
+                                    # plan-rate-enforcement TASK.md §3 (M4): tenant window
+                                    # sibling — self-gated on tenant_tpm_ctx.
+                                    _fire_record_tpm_tenant(
+                                        self._rate_limiter, tokens=total_tokens
                                     )
                             return (200, sem_cached_body, x_cache), x_cache
                         else:
@@ -2452,14 +2496,18 @@ class CompletionUseCase:
                             latency_ms=round((time.time_ns() - start_ns) / 1_000_000),
                             request_id=request_id,
                         )
-                        if authz.tpm_limit is not None and vec_usage is not None:
+                        if vec_usage is not None:
                             total_tokens = vec_usage.get("total_tokens")
                             if isinstance(total_tokens, int) and total_tokens > 0:
-                                _fire_record_tpm(
-                                    self._rate_limiter,
-                                    key_id=authz.key_id,
-                                    tokens=total_tokens,
-                                )
+                                if authz.tpm_limit is not None:
+                                    _fire_record_tpm(
+                                        self._rate_limiter,
+                                        key_id=authz.key_id,
+                                        tokens=total_tokens,
+                                    )
+                                # plan-rate-enforcement TASK.md §3 (M4): tenant window
+                                # sibling — self-gated on tenant_tpm_ctx.
+                                _fire_record_tpm_tenant(self._rate_limiter, tokens=total_tokens)
                         return (200, vec_body, x_cache), x_cache
                 # MISS (exact miss + semantic miss/disabled + vector miss/off)
                 x_cache = "miss"
@@ -3111,10 +3159,16 @@ class CompletionUseCase:
                 request_id=_request_id,
             )
             # M8: Post-stream TPM accounting (non-blocking, swallows Redis errors)
-            if authz.tpm_limit is not None and usage is not None:
+            if usage is not None:
                 total_tokens = usage.get("total_tokens")
                 if isinstance(total_tokens, int) and total_tokens > 0:
-                    _fire_record_tpm(self._rate_limiter, key_id=authz.key_id, tokens=total_tokens)
+                    if authz.tpm_limit is not None:
+                        _fire_record_tpm(
+                            self._rate_limiter, key_id=authz.key_id, tokens=total_tokens
+                        )
+                    # plan-rate-enforcement TASK.md §3 (M4): tenant window sibling —
+                    # self-gated on tenant_tpm_ctx.
+                    _fire_record_tpm_tenant(self._rate_limiter, tokens=total_tokens)
             # bandwidth-usage-reconcile (v36): correct the non-stream pre-flight ESTIMATE to the
             # REAL response usage, fire-and-forget. Gated on active pacing (default-OFF schedules
             # nothing); total_tokens absent/0 ⇒ the estimate debit stands.
@@ -4003,10 +4057,14 @@ class CompletionUseCase:
                     request_id=_request_id,
                 )
                 # M8: Post-stream TPM accounting (fire-and-forget, never blocks response)
-                if tpm_limit is not None and isinstance(extracted_usage, dict):
+                if isinstance(extracted_usage, dict):
                     total_tokens = extracted_usage.get("total_tokens")
                     if total_tokens and isinstance(total_tokens, int) and total_tokens > 0:
-                        _fire_record_tpm(rate_limiter, key_id=key_id, tokens=total_tokens)
+                        if tpm_limit is not None:
+                            _fire_record_tpm(rate_limiter, key_id=key_id, tokens=total_tokens)
+                        # plan-rate-enforcement TASK.md §3 (M4): tenant window sibling —
+                        # self-gated on tenant_tpm_ctx.
+                        _fire_record_tpm_tenant(rate_limiter, tokens=total_tokens)
                 # bandwidth-usage-reconcile (v36): correct the paced ESTIMATE to the REAL usage at
                 # clean close, fire-and-forget (never blocks). Gated on active pacing so default-OFF
                 # schedules nothing; total_tokens absent/0 ⇒ no truth ⇒ the estimate debit stands.

@@ -32,6 +32,10 @@ class ResolvedEntitlements:
     # plan-seat-cap TASK.md §3 (FROZEN @ v1) — additive (M1). Same precedence SHAPE as
     # the budget dimension, computed independently: never perturbs any other field.
     effective_seat_cap: int | None = None
+    # plan-rate-enforcement TASK.md §3 (FROZEN @ v1) — additive (M1). Same precedence
+    # SHAPE as budget/seat_cap, computed independently: never perturbs any other field.
+    effective_rpm_limit: int | None = None
+    effective_tpm_limit: int | None = None
 
 
 def resolve_entitlements(
@@ -46,6 +50,13 @@ def resolve_entitlements(
     # sites) stays byte-identical, untouched.
     tenant_seat_cap: int | None = None,
     plan_seat_cap_default: int | None = None,
+    # plan-rate-enforcement TASK.md §3 (FROZEN @ v1) — additive (M1), all four OPTIONAL
+    # so every EXISTING call site (RedisBudgetGuard, SqlAlchemyPlanEntitlementResolver's
+    # 2 call sites, assert_seat_available) stays byte-identical, untouched.
+    tenant_rpm_limit: int | None = None,
+    plan_rpm_limit_default: int | None = None,
+    tenant_tpm_limit: int | None = None,
+    plan_tpm_limit_default: int | None = None,
 ) -> ResolvedEntitlements:
     """Pure, zero I/O. Precedence (M1): explicit tenant setting > plan default > unlimited.
 
@@ -65,6 +76,11 @@ def resolve_entitlements(
     effective_seat_cap precedence mirrors budget exactly (plan-seat-cap TASK.md §3 M1):
     tenant_seat_cap if not None, else plan_seat_cap_default, else None (unlimited) — the
     SAME NULL-propagation-only shape, computed independently of every other dimension.
+
+    effective_rpm_limit / effective_tpm_limit precedence mirrors budget/seat_cap exactly
+    (plan-rate-enforcement TASK.md §3 M1): tenant_rpm_limit/tenant_tpm_limit if not None,
+    else the matching plan default, else None (unlimited) — computed independently, per
+    dimension, of every other field.
     """
     effective_budget = (
         tenant_budget_usd_monthly
@@ -72,6 +88,12 @@ def resolve_entitlements(
         else plan_budget_usd_monthly_default
     )
     effective_seat_cap = tenant_seat_cap if tenant_seat_cap is not None else plan_seat_cap_default
+    effective_rpm_limit = (
+        tenant_rpm_limit if tenant_rpm_limit is not None else plan_rpm_limit_default
+    )
+    effective_tpm_limit = (
+        tenant_tpm_limit if tenant_tpm_limit is not None else plan_tpm_limit_default
+    )
     flags = frozenset(plan_feature_flags) if plan_feature_flags else frozenset()
     return ResolvedEntitlements(
         effective_budget_usd_monthly=effective_budget,
@@ -79,6 +101,8 @@ def resolve_entitlements(
         plan_feature_flags=flags,
         plan_id=plan_id,
         effective_seat_cap=effective_seat_cap,
+        effective_rpm_limit=effective_rpm_limit,
+        effective_tpm_limit=effective_tpm_limit,
     )
 
 

@@ -64,8 +64,10 @@ from gateway.proxy.domain.ports import (
 )
 from gateway.proxy.domain.tier_capacity import TierCapacityGuard
 from gateway.proxy.infrastructure.tier_capacity_guard import PassthroughTierCapacityGuard
+from gateway.rate_limits.application.tenant_rate_limit import enforce_tenant_rate_limit
 from gateway.rate_limits.domain.errors import RateLimitExceededError
 from gateway.rate_limits.domain.ports import RateLimiter
+from gateway.rate_limits.infrastructure.plan_rate_limit_resolver import PlanRateLimitResolver
 
 _log = logging.getLogger(__name__)
 _ZERO = Decimal("0")
@@ -105,6 +107,7 @@ class NonChatGovernance:
         hold_estimate_usd: Decimal = Decimal("0.50"),
         residency_lookup: ResidencyLookup | None = None,
         tier_capacity_guard: TierCapacityGuard = PassthroughTierCapacityGuard(),  # noqa: B008
+        plan_rate_limit_resolver: PlanRateLimitResolver | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -130,6 +133,9 @@ class NonChatGovernance:
         # byte-identical to pre-service-tiers behavior. Runs at the SAME choke point as
         # the credit hold — see authorize() below.
         self._tier_capacity_guard: TierCapacityGuard = tier_capacity_guard
+        # plan-rate-enforcement TASK.md §3 (FROZEN @ v1): None (default) ⇒ feature off ⇒
+        # byte-identical to today — same convention as tier_capacity_guard above.
+        self._plan_rate_limit_resolver: PlanRateLimitResolver | None = plan_rate_limit_resolver
 
     async def authorize(
         self,
@@ -272,6 +278,13 @@ class NonChatGovernance:
                         detail=f"TPM limit {exc.limit} exceeded for key {exc.key_id}",
                         headers={"Retry-After": str(exc.retry_after_s)},
                     ) from None
+
+            # plan-rate-enforcement TASK.md §3 (M3): tenant-layer plan rpm/tpm ceiling —
+            # same insertion point as CompletionUseCase._enforce_rate_limits (dual-copy
+            # governance, never staggered) — composes ALONGSIDE the per-key windows above.
+            await enforce_tenant_rate_limit(
+                self._rate_limiter, self._plan_rate_limit_resolver, authz.tenant_id
+            )
         except Exception:
             # M5 (edge: partial failure) — a LATER governance step (RPM/TPM) rejecting an
             # already-admitted request must fully reverse the hold (never-charged-for-a-
