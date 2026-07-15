@@ -34,6 +34,7 @@ from gateway.core.error_catalog import (
 )
 from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.application.governance import NonChatGovernance
+from gateway.proxy.application.nonchat_guardrails import evaluate_nonchat_request_guardrails
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so _fire_record_with_raw
 # cannot be made public there; the frozen contract mandates reusing this exact
@@ -45,7 +46,12 @@ from gateway.proxy.application.use_cases import (
 from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
 from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
-from gateway.proxy.domain.ports import KeyAuthenticator, TenantCredentialResolver, UsageRecorder
+from gateway.proxy.domain.ports import (
+    KeyAuthenticator,
+    PayloadCapturePort,
+    TenantCredentialResolver,
+    UsageRecorder,
+)
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
 
 
@@ -60,9 +66,19 @@ class ImagesUseCase:
         tenant_credential_resolver: TenantCredentialResolver | None = None,
         authenticator: KeyAuthenticator | None = None,
         tenant_model_preset_store: TenantModelPresetStore | None = None,
+        guardrail_evaluator: Any = None,
+        metrics_registry: Any = None,
+        guardrail_verdict_session_factory: Any = None,
+        payload_capture: PayloadCapturePort | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
+        # guardrails-nonchat-parity (audit Issue 1): all four optional — None ⇒ feature
+        # off ⇒ execute() is byte-identical (shared helper fast-path). Wired by images_deps.
+        self._guardrail_evaluator = guardrail_evaluator
+        self._metrics_registry = metrics_registry
+        self._guardrail_verdict_session_factory = guardrail_verdict_session_factory
+        self._payload_capture = payload_capture
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
         # preset-resolution-ingress (v56 §3): both None (defaults) ⇒ feature off ⇒
@@ -130,6 +146,24 @@ class ImagesUseCase:
         # estimated_tokens=None → Step 9 (TPM) is skipped — images have no token dimension
         authz = await self._governance.authorize(raw_key, model_id, estimated_tokens=None)
 
+        # Step 3.5: Request-leg guardrails (guardrails-nonchat-parity, audit Issue 1).
+        # Runs BEFORE catalog/upstream so a block rejects here (never billed) and a
+        # pii_mask rewrites body["prompt"] before it is sent upstream. No-op fast path
+        # when unwired / no tenant configs (byte-identical).
+        _masked, _pii_masked = await evaluate_nonchat_request_guardrails(
+            guardrail_evaluator=self._guardrail_evaluator,
+            authz=authz,
+            texts=[prompt],
+            model_id=model_id,
+            usage_recorder=usage_recorder,
+            request_body=body,
+            metrics_registry=self._metrics_registry,
+            verdict_session_factory=self._guardrail_verdict_session_factory,
+            payload_capture=self._payload_capture,
+        )
+        if _pii_masked:
+            body = {**body, "prompt": _masked[0]}
+
         # Step 4: Query modality + provider from catalog
         stmt = select(ModelRow.modality, ModelRow.provider).where(
             ModelRow.id == model_id,
@@ -188,6 +222,7 @@ class ImagesUseCase:
             agent_principal_id=authz.agent_principal_id,
             pricing_unit="per_image",
             quantity=Decimal(n_images),
+            pii_masked=_pii_masked,
         )
 
         # Step 9: Return upstream response

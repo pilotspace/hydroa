@@ -133,9 +133,12 @@ async def _authenticate(
 
 
 def _get_repo(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ArtifactRepository:
-    return ArtifactRepository(session)
+    # audit-remediation: wire the ObjectStore so DELETE /v1/artifacts/{id} actually
+    # purges s3 object bytes (+ clears inline BYTEA), not just soft-deletes the row.
+    return ArtifactRepository(session, object_store=_get_object_store(request))
 
 
 def _get_settings(request: Request) -> Settings:

@@ -54,6 +54,7 @@ from gateway.keys.domain.errors import InvalidApiKeyError
 from gateway.proxy.application.audio_duration import derive_duration_seconds
 from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.application.json_sanitize import sanitize_non_finite
+from gateway.proxy.application.nonchat_guardrails import evaluate_nonchat_request_guardrails
 
 # use_cases.py is INVIOLABLE (must stay byte-identical), so _fire_record_with_raw
 # cannot be made public there; the frozen contract mandates reusing this exact
@@ -65,10 +66,80 @@ from gateway.proxy.application.use_cases import (
 from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
 from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_preset_selector
-from gateway.proxy.domain.ports import KeyAuthenticator, TenantCredentialResolver, UsageRecorder
+from gateway.proxy.domain.ports import (
+    KeyAuthenticator,
+    PayloadCapturePort,
+    TenantCredentialResolver,
+    UsageRecorder,
+)
 from gateway.proxy.infrastructure.provider_registry import ProviderRegistry, select_provider
 
 _log = logging.getLogger(__name__)
+
+# guardrails-nonchat-parity (audit Issue 1): STT transcript output masking withholds the
+# transcript when the masker itself fails (Issue 2 fail-CLOSED-but-non-blocking policy).
+_STT_MASK_REDACTION = "[transcript withheld: output safety check unavailable]"
+
+
+def _collect_transcript_texts(resp_body: dict[str, Any]) -> list[tuple[Any, str]]:
+    """Return (container, key) → text pairs for every maskable transcript string.
+
+    Covers the top-level `text` plus each verbose_json `segments[].text` so masking a
+    verbose transcription never leaves PII behind in a segment.
+    """
+    pairs: list[tuple[Any, str]] = []
+    top = resp_body.get("text")
+    if isinstance(top, str) and top:
+        pairs.append((resp_body, "text"))
+    segments = resp_body.get("segments")
+    if isinstance(segments, list):
+        for seg in segments:
+            if isinstance(seg, dict) and isinstance(seg.get("text"), str) and seg["text"]:
+                pairs.append((seg, "text"))
+    return pairs
+
+
+async def _mask_transcript(
+    evaluator: Any, guardrail_configs: dict[str, Any] | None, resp_body: dict[str, Any]
+) -> dict[str, Any]:
+    """Post-leg PII mask of an STT transcript (text + verbose segments), mask/audit-only.
+
+    The STT request carries no maskable text (the input is an audio file), but the
+    transcript OUTPUT can contain PII — so a configured pii_mask guardrail is applied to
+    the returned text here. Output masking NEVER blocks; on an evaluator error the text is
+    REDACTED (fail-CLOSED but non-blocking, matching the chat output-mask policy) rather
+    than leaking an unverified transcript. No-op when unwired / no configs / no text.
+    """
+    if evaluator is None or not guardrail_configs or not hasattr(evaluator, "evaluate_post"):
+        return resp_body
+    pairs = _collect_transcript_texts(resp_body)
+    if not pairs:
+        return resp_body
+    envelope = {
+        "choices": [
+            {"index": i, "message": {"content": container[key]}}
+            for i, (container, key) in enumerate(pairs)
+        ]
+    }
+    try:
+        masked_body = await evaluator.evaluate_post(envelope, guardrail_configs)
+    except Exception as exc:
+        _log.warning("stt transcript mask failed (fail-CLOSED, redacting text)", exc_info=exc)
+        for container, key in pairs:
+            container[key] = _STT_MASK_REDACTION
+        return resp_body
+    masked_choices = masked_body.get("choices") if isinstance(masked_body, dict) else None
+    if not isinstance(masked_choices, list) or len(masked_choices) != len(pairs):
+        # Untrusted shape → cannot map masked text back; withhold rather than leak.
+        for container, key in pairs:
+            container[key] = _STT_MASK_REDACTION
+        return resp_body
+    for (container, key), choice in zip(pairs, masked_choices, strict=True):
+        if isinstance(choice, dict):
+            message = choice.get("message")
+            if isinstance(message, dict) and isinstance(message.get("content"), str):
+                container[key] = message["content"]
+    return resp_body
 
 
 async def _stream_resetting_credential(
@@ -134,9 +205,13 @@ class TranscriptionUseCase:
         input_modality_guard_enabled: bool = False,
         authenticator: KeyAuthenticator | None = None,
         tenant_model_preset_store: TenantModelPresetStore | None = None,
+        guardrail_evaluator: Any = None,
     ) -> None:
         self._governance = governance
         self._session = session
+        # guardrails-nonchat-parity (audit Issue 1): None ⇒ feature off ⇒ transcript
+        # returned verbatim (byte-identical). Used for post-leg transcript PII masking.
+        self._guardrail_evaluator = guardrail_evaluator
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
         # stt-duration-cap §3: clamp ceiling (seconds) on the billed per_second duration.
@@ -353,6 +428,22 @@ class TranscriptionUseCase:
                 extra={"model": model_id, "count": _nf_count},
             )
 
+        # Step 8c: Post-leg transcript PII mask (guardrails-nonchat-parity, audit Issue 1).
+        # STT input is an audio file (no request text), but the transcript OUTPUT can carry
+        # PII — a configured pii_mask guardrail masks resp_body["text"] (+ verbose segments)
+        # here. Mask/audit-only (never blocks); fail-CLOSED-non-blocking on evaluator error.
+        # Runs AFTER billing (per_second, transcript-length-independent) — the money path is
+        # untouched. No-op when unwired / no tenant configs (byte-identical).
+        if status == 200:
+            # `getattr` default mirrors the non-chat helper (nonchat_guardrails.py): a real
+            # AuthzResult always carries guardrail_configs, but minimal authz doubles (and any
+            # future authz shape) may omit it — degrade to no-op rather than raise mid-response.
+            resp_body = await _mask_transcript(
+                self._guardrail_evaluator,
+                getattr(authz, "guardrail_configs", None),
+                resp_body,
+            )
+
         # Step 9: Return upstream response
         return status, resp_body
 
@@ -374,9 +465,19 @@ class SpeechUseCase:
         max_input_characters: int = 0,
         authenticator: KeyAuthenticator | None = None,
         tenant_model_preset_store: TenantModelPresetStore | None = None,
+        guardrail_evaluator: Any = None,
+        metrics_registry: Any = None,
+        guardrail_verdict_session_factory: Any = None,
+        payload_capture: PayloadCapturePort | None = None,
     ) -> None:
         self._governance = governance
         self._session = session
+        # guardrails-nonchat-parity (audit Issue 1): all four optional — None ⇒ feature
+        # off ⇒ execute() is byte-identical (shared helper fast-path). Wired by audio_deps.
+        self._guardrail_evaluator = guardrail_evaluator
+        self._metrics_registry = metrics_registry
+        self._guardrail_verdict_session_factory = guardrail_verdict_session_factory
+        self._payload_capture = payload_capture
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
         # tts-input-guardrails §3: per_character billing happens at-start, so an
@@ -464,6 +565,26 @@ class SpeechUseCase:
         # estimated_tokens=None → TPM check skipped for audio
         authz = await self._governance.authorize(raw_key, model_id, estimated_tokens=None)
 
+        # Step 4.5: Request-leg guardrails (guardrails-nonchat-parity, audit Issue 1).
+        # Runs BEFORE billing (Step 7 fires at-start) and streaming: a block-mode hit
+        # raises 400 (never billed, never streamed); a pii_mask rewrites input_text +
+        # body["input"] so the MASKED text is what gets billed (per_character) AND spoken.
+        # No-op fast path when unwired / no tenant configs (byte-identical).
+        _masked, _pii_masked = await evaluate_nonchat_request_guardrails(
+            guardrail_evaluator=self._guardrail_evaluator,
+            authz=authz,
+            texts=[input_text],
+            model_id=model_id,
+            usage_recorder=usage_recorder,
+            request_body=body,
+            metrics_registry=self._metrics_registry,
+            verdict_session_factory=self._guardrail_verdict_session_factory,
+            payload_capture=self._payload_capture,
+        )
+        if _pii_masked:
+            input_text = _masked[0]
+            body = {**body, "input": input_text}
+
         # Step 5: Query modality + provider from catalog
         stmt = select(ModelRow.modality, ModelRow.provider).where(
             ModelRow.id == model_id,
@@ -514,6 +635,7 @@ class SpeechUseCase:
             agent_principal_id=authz.agent_principal_id,
             pricing_unit="per_character",
             quantity=Decimal(len(input_text)),
+            pii_masked=_pii_masked,
         )
 
         # Step 8: Resolve media_type from response_format; default "audio/mpeg" (mp3)

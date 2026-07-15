@@ -138,8 +138,14 @@ async def seed_usage_record(
     return row_id
 
 
-def make_generator(app: Any) -> Any:
-    """Build an InvoiceGenerator wired to the test app's sessionmaker."""
+def make_generator(app: Any, *, credits_gate_enabled: bool = False) -> Any:
+    """Build an InvoiceGenerator wired to the test app's sessionmaker.
+
+    credits_gate_enabled mirrors settings.credits_gate_enabled — the SAME central knob
+    that wires the real PostgresCreditGuard (real-time hold+settle). When True the
+    generator skips invoicing (would double-bill the credit ledger)."""
     from gateway.billing.application.invoice_generator import InvoiceGenerator
 
-    return InvoiceGenerator(session_factory=app.state.sessionmaker)
+    return InvoiceGenerator(
+        session_factory=app.state.sessionmaker, credits_gate_enabled=credits_gate_enabled
+    )

@@ -23,10 +23,13 @@ Imported into CompletionUseCase._check_input_modalities and TranscriptionUseCase
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from gateway.proxy.domain.ports import InputModalityLookup
+
+_log = logging.getLogger(__name__)
 
 
 def required_input_modalities_for_chat(
@@ -111,9 +114,25 @@ def enforce(
 
     allowed=None → silently return (fail-open: no rejection on absent capability data).
     missing = required - allowed - {"video"} — video is NEVER enforced in v55.
+
+    audit-remediation package C1 (MED modality_guard fail-open): fail-open here is a
+    DELIBERATE, Tin-approved, FROZEN @ v1 contract (unsupported-input-guard TASK.md
+    §1/§2/§3 — "an under-seeded catalog never 4xx's real traffic"), not an oversight;
+    flipping it to a 400 would break that frozen contract and its own scenario tests.
+    What WAS missing is observability: a genuinely un-checkable non-text/video
+    modality (e.g. "image") silently passing through an unknown-capability model was
+    completely invisible. Now logged at WARNING — gated on a non-text/video modality
+    being present so plain-text fail-open (the near-universal, low-risk case) stays
+    silent and production log volume doesn't explode on every un-seeded model.
     """
     if allowed is None:
-        # Fail-open: unknown / no capability data → never 4xx.
+        # Fail-open: unknown / no capability data → never 4xx (frozen contract).
+        risky = required - frozenset({"text", "video"})
+        if risky:
+            _log.warning(
+                "modality_guard_fail_open_unknown_capability",
+                extra={"model_id": model_id, "required_modalities": sorted(required)},
+            )
         return
 
     missing = required - allowed - frozenset({"video"})

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import uuid
 from typing import Any
 
@@ -162,6 +163,36 @@ def _sample(metrics_reg: Any, guardrail: str, mode: str, action: str) -> float:
             ):
                 return sample.value
     return 0.0
+
+
+async def _await_usage_records(
+    session: AsyncSession,
+    *,
+    key_id: str,
+    min_rows: int = 1,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> list[Any]:
+    """Poll usage_records for key_id until at least `min_rows` rows are present, or `timeout`
+    elapses. The usage-record write (including guardrail-block metadata in `raw`) is
+    fire-and-forget, scheduled off the request path — a fixed `asyncio.sleep(0.15)` before
+    selecting is racy under `pytest -n 12` CPU saturation. Positive assertions only; never
+    masks a genuine absence (returns whatever rows exist after timeout so the caller's own
+    assertion still fails honestly)."""
+
+    async def _rows() -> list[Any]:
+        result = await session.execute(
+            text("SELECT status, raw FROM usage_records WHERE key_id = :kid"),
+            {"kid": key_id},
+        )
+        return result.fetchall()
+
+    rows = await _rows()
+    deadline = time.monotonic() + timeout
+    while len(rows) < min_rows and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        rows = await _rows()
+    return rows
 
 
 async def _set_ml_moderation_config(
@@ -356,13 +387,7 @@ async def test_ml_moderation_blocks_flagged_prompt(
     assert_problem(resp, 400, "ERR_GUARDRAIL_BLOCKED")
     assert upstream.calls == 0, "no request may reach the routed completion provider"
 
-    await asyncio.sleep(0.15)
-    rows = (
-        await db_session.execute(
-            text("SELECT status, raw FROM usage_records WHERE key_id = :kid"),
-            {"kid": key_info["key_id"]},
-        )
-    ).fetchall()
+    rows = await _await_usage_records(db_session, key_id=key_info["key_id"])
     assert len(rows) >= 1
     status_val, raw_val = rows[-1]
     assert status_val == 400
@@ -479,14 +504,8 @@ async def test_ml_moderation_missing_key_fail_closed(
     assert_problem(resp, 400, "ERR_GUARDRAIL_BLOCKED")
     assert upstream.calls == 0
 
-    await asyncio.sleep(0.15)
-    rows = (
-        await db_session.execute(
-            text("SELECT raw FROM usage_records WHERE key_id = :kid"),
-            {"kid": key_info["key_id"]},
-        )
-    ).fetchall()
-    assert rows[-1][0].get("blocked_by") == "ml_moderation"
+    rows = await _await_usage_records(db_session, key_id=key_info["key_id"])
+    assert rows[-1][1].get("blocked_by") == "ml_moderation"
 
 
 # ===========================================================================
@@ -622,14 +641,8 @@ async def test_composite_regex_and_ml_moderation_both_block(
     assert_problem(resp, 400, "ERR_GUARDRAIL_BLOCKED")
     assert upstream.calls == 0
 
-    await asyncio.sleep(0.15)
-    rows = (
-        await db_session.execute(
-            text("SELECT raw FROM usage_records WHERE key_id = :kid"),
-            {"kid": key_info["key_id"]},
-        )
-    ).fetchall()
-    assert rows[-1][0].get("blocked_by") == "prompt_injection", (
+    rows = await _await_usage_records(db_session, key_id=key_info["key_id"])
+    assert rows[-1][1].get("blocked_by") == "prompt_injection", (
         "regex is evaluated first in the composite — it must win blocked_by"
     )
     assert ml_provider.calls == 1, (

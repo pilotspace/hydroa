@@ -46,14 +46,17 @@ catalog row without the matching adapter already registered.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from gateway.catalog.domain.entities import CatalogModel
 
 _CONTEXT_LENGTH = 1_048_576  # ~1M tokens — Gemini 2.5 Flash/Pro published context window
 
-_FLASH_PROMPT_USD_PER_TOKEN = 0.0000003  # $0.30 / 1M
-_FLASH_COMPLETION_USD_PER_TOKEN = 0.0000025  # $2.50 / 1M
-_PRO_PROMPT_USD_PER_TOKEN = 0.00000125  # $1.25 / 1M (<=200K base tier)
-_PRO_COMPLETION_USD_PER_TOKEN = 0.00001  # $10.00 / 1M (<=200K base tier)
+# audit-remediation package C1: Decimal literals (money-is-Decimal rule).
+_FLASH_PROMPT_USD_PER_TOKEN = Decimal("0.0000003")  # $0.30 / 1M
+_FLASH_COMPLETION_USD_PER_TOKEN = Decimal("0.0000025")  # $2.50 / 1M
+_PRO_PROMPT_USD_PER_TOKEN = Decimal("0.00000125")  # $1.25 / 1M (<=200K base tier)
+_PRO_COMPLETION_USD_PER_TOKEN = Decimal("0.00001")  # $10.00 / 1M (<=200K base tier)
 
 VERTEX_SEED_MODELS: list[CatalogModel] = [
     # --- Gemini 2.5 Flash -------------------------------------------------

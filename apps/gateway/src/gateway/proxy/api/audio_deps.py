@@ -17,6 +17,10 @@ from gateway.core.db import get_session
 from gateway.keys.application.use_cases import AuthzUseCase
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
+from gateway.proxy.api.nonchat_guardrail_deps import (
+    resolve_guardrail_evaluator,
+    resolve_guardrail_telemetry,
+)
 from gateway.proxy.application.audio_use_case import SpeechUseCase, TranscriptionUseCase
 from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
@@ -128,6 +132,8 @@ def get_transcription_use_case(
         input_modality_guard_enabled=input_modality_guard_enabled,
         authenticator=authenticator,
         tenant_model_preset_store=tenant_model_preset_store,
+        # guardrails-nonchat-parity (audit Issue 1): post-leg transcript PII masking.
+        guardrail_evaluator=resolve_guardrail_evaluator(request, tenant_credential_resolver),
     )
 
 
@@ -179,6 +185,11 @@ def get_speech_use_case(
     # wrapped into `governance` above (no second KeyAuthenticator construction) plus the
     # per-tenant preset store singleton from app.state. Absent ⇒ None ⇒ byte-identical.
     tenant_model_preset_store = getattr(request.app.state, "tenant_model_preset_store", None)
+    # guardrails-nonchat-parity (audit Issue 1): request-leg guardrails on TTS input.
+    guardrail_evaluator = resolve_guardrail_evaluator(request, tenant_credential_resolver)
+    metrics_registry, guardrail_verdict_session_factory, payload_capture = (
+        resolve_guardrail_telemetry(request)
+    )
     return SpeechUseCase(
         governance=governance,
         session=session,
@@ -188,4 +199,8 @@ def get_speech_use_case(
         max_input_characters=request.app.state.settings.tts_max_input_characters,
         authenticator=authenticator,
         tenant_model_preset_store=tenant_model_preset_store,
+        guardrail_evaluator=guardrail_evaluator,
+        metrics_registry=metrics_registry,
+        guardrail_verdict_session_factory=guardrail_verdict_session_factory,
+        payload_capture=payload_capture,
     )

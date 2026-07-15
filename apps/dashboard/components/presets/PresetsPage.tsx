@@ -3,9 +3,6 @@
 /**
  * PresetsPage — authenticated model-preset management page
  *
- * Auth guard: middleware.ts handles cookie-presence check server-side.
- * If this page renders, the session cookie is present.
- *
  * Mirrors components/keys/KeysPage.tsx's data-flow (useQuery/useMutation +
  * invalidateQueries) and Table-rendering shape, adapted for the presets
  * domain: a create form (preset_name/alias_key/target_model) + a table of
@@ -14,9 +11,12 @@
  *
  * States: loading (spinner), empty, error (problem+json title), success (table)
  * Actions: create preset (inline form, no dialog — §3 CONTRACT declares no
- *          separate dialog file for this surface), delete preset (immediate,
- *          idempotent server-side — no confirm step, per §2 SCENARIOS
- *          "dashboard page renders and manages presets end to end")
+ *          separate dialog file for this surface), delete preset (idempotent
+ *          server-side, but audit-remediation item 9 added a confirmation
+ *          step — a destructive one-click delete with zero recovery was a
+ *          real defect. Mirrors TeamsPage.tsx's ConfirmDialog + deleteTarget
+ *          pattern: row Delete opens the dialog, bffDelete only fires on the
+ *          dialog's own Confirm, Cancel aborts with zero network calls.)
  *
  * All data calls use bff-client.ts (credentials:"include") — no Authorization
  * header is ever constructed or read client-side.
@@ -31,6 +31,7 @@ import { useState, FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bffGet, bffPut, bffDelete, BffError } from "@/lib/bff-client";
 import { PresetRow } from "./PresetRow";
+import { ConfirmDialog } from "@/components/teams/ConfirmDialog";
 import {
   Button,
   Card,
@@ -74,6 +75,8 @@ export function PresetsPage() {
   const [aliasKey, setAliasKey] = useState("");
   const [targetModel, setTargetModel] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  // audit-remediation item 9: the row targeted for a pending delete confirmation.
+  const [deleteTarget, setDeleteTarget] = useState<Preset | null>(null);
 
   // Presets query — uses bffGet (credentials:"include") through the catch-all BFF proxy
   const {
@@ -122,6 +125,7 @@ export function PresetsPage() {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin-presets"] });
+      setDeleteTarget(null);
     },
   });
 
@@ -167,10 +171,12 @@ export function PresetsPage() {
   }
 
   function handleDelete(presetNameToDelete: string, aliasKeyToDelete: string) {
-    deleteMutation.mutate({
-      preset_name: presetNameToDelete,
-      alias_key: aliasKeyToDelete,
-    });
+    // Open the confirmation dialog — the actual mutation only fires once the
+    // user confirms (see the ConfirmDialog's onConfirm below).
+    const target = presets?.find(
+      (p) => p.preset_name === presetNameToDelete && p.alias_key === aliasKeyToDelete
+    );
+    if (target) setDeleteTarget(target);
   }
 
   // Get error title from BFF error
@@ -289,8 +295,8 @@ export function PresetsPage() {
                     onDelete={handleDelete}
                     isPendingDelete={
                       deleteMutation.isPending &&
-                      deleteMutation.variables?.preset_name === preset.preset_name &&
-                      deleteMutation.variables?.alias_key === preset.alias_key
+                      deleteTarget?.preset_name === preset.preset_name &&
+                      deleteTarget?.alias_key === preset.alias_key
                     }
                   />
                 ))}
@@ -299,6 +305,26 @@ export function PresetsPage() {
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={
+          deleteTarget
+            ? `Delete preset ${deleteTarget.preset_name}/${deleteTarget.alias_key}`
+            : ""
+        }
+        description="This permanently removes the preset. Requests using this alias will stop resolving to a model."
+        confirmLabel="Delete"
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (deleteTarget) {
+            await deleteMutation.mutateAsync({
+              preset_name: deleteTarget.preset_name,
+              alias_key: deleteTarget.alias_key,
+            });
+          }
+        }}
+      />
     </div>
   );
 }

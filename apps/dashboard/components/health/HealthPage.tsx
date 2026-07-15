@@ -1,15 +1,23 @@
 "use client";
 
 /**
- * HealthPage — redesigned with PageHeader + hero + Tabs (Overview / History)
+ * HealthPage — PageHeader + hero + a single (untabbed) upstream status view.
+ *
+ * audit-remediation (item 6): this page used to tab between "Overview" and a
+ * permanent "History" stub ("not available yet"). GET /admin/health/upstreams
+ * (gateway/alerting/application/health_checker.py) only ever returns a live
+ * snapshot — {checked_at, upstreams:[...]} — there is no time-series/history
+ * data source behind it, and adding one is a backend change out of this
+ * package's scope. Rather than leave a tab that can never show real content
+ * (a dead end masquerading as a feature), the History tab was REMOVED and
+ * Overview's content is now rendered directly. Re-add a History tab only once
+ * a real history endpoint exists to back it.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { bffGet } from "@/lib/bff-client";
 import { Loading, ErrorState } from "@/components/ui";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { UpstreamsTable, UpstreamHealthData } from "./UpstreamsTable";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/ui/page-header";
 
 export function HealthPage() {
@@ -59,32 +67,8 @@ export function HealthPage() {
         />
       )}
 
-      {/* Data — tabbed */}
-      {healthQuery.data && (
-        <Tabs defaultValue="overview" className="flex flex-col gap-4">
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview">
-            <UpstreamsTable data={healthQuery.data} />
-          </TabsContent>
-
-          <TabsContent value="history">
-            <Card>
-              <CardHeader>
-                <h2 className="text-sm font-semibold text-foreground">History</h2>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  not available yet
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      )}
+      {/* Data — a single untabbed view (see file header for why History was removed) */}
+      {healthQuery.data && <UpstreamsTable data={healthQuery.data} />}
     </section>
   );
 }

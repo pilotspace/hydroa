@@ -48,6 +48,7 @@ from gateway.proxy.domain.web_search import (
     _normalize_anthropic_grounding,
     native_web_search_tool,
 )
+from gateway.proxy.infrastructure.anthropic_passthrough_headers import get_passthrough_headers
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 from gateway.usage.domain.partial_usage import publish_partial_usage
@@ -884,15 +885,32 @@ class AnthropicCompletionUpstream:
 
         NEVER includes Authorization Bearer (Anthropic uses x-api-key).
         Raises ProviderKeyMissing when the contextvar is unset or non-Bearer.
+
+        audit-remediation package C1 (MED proxy passthrough headers dropped): also
+        merges in the client's `anthropic-beta` / `anthropic-workspace-id` headers
+        captured by messages_router.py into the anthropic_passthrough_headers
+        ContextVar (e.g. an extended-thinking or prompt-caching beta gate) — these
+        used to be captured but never read here, so they never reached the actual
+        outbound Anthropic call. `anthropic-version` stays operator-controlled
+        (self._version) — out of scope for this fix. Fail-safe: an unset ContextVar
+        reads back the empty sentinel (anthropic_beta=(), anthropic_workspace_id=None)
+        so this is a pure no-op for every request that never went through the
+        /v1/messages capture step — byte-identical to today.
         """
         cred = get_provider_credential()
         if not isinstance(cred, BearerCredential):
             raise ProviderKeyMissing("anthropic")
-        return {
+        headers = {
             "x-api-key": cred.secret.get_secret_value(),
             "anthropic-version": self._version,
             "content-type": "application/json",
         }
+        passthrough = get_passthrough_headers()
+        if passthrough.anthropic_beta:
+            headers["anthropic-beta"] = ",".join(passthrough.anthropic_beta)
+        if passthrough.anthropic_workspace_id:
+            headers["anthropic-workspace-id"] = passthrough.anthropic_workspace_id
+        return headers
 
     async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """Forward a non-streaming chat request to the Anthropic Messages API.

@@ -8,6 +8,7 @@ convention as list_models(), yielding CatalogModel rows with modality="embedding
 from __future__ import annotations
 
 from collections.abc import Callable
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -115,5 +116,10 @@ async def test_list_embedding_models_yields_modality_embedding_rows() -> None:
     assert model.context_length == 2048
     assert model.modality == "embedding"
     assert model.provider == "openrouter"
-    assert model.prompt_usd_per_token == pytest.approx(0.00000015)
+    # audit-remediation package C1 (CatalogModel float money): prompt_usd_per_token is
+    # now Decimal (parsed exactly from the JSON price string) — pytest.approx() can't
+    # subtract a bare float from a Decimal (TypeError), so the expected value is now a
+    # Decimal too. Exact equality intent unchanged; Decimal parsing is exact so no
+    # tolerance is even needed once both sides are Decimal.
+    assert model.prompt_usd_per_token == Decimal("0.00000015")
     assert model.completion_usd_per_token == 0.0

@@ -18,6 +18,7 @@ SECURITY PROPERTIES PROVEN SERVER-SIDE (appsec-engineer persona, sensitivity: se
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from typing import Any
 
@@ -47,6 +48,46 @@ from .conftest import (
     signup_tenant,
     team_members_for_user,
 )
+
+
+# ---------------------------------------------------------------------------
+# Local poll-until-present helpers for fire-and-forget audit writes (de-flake
+# under `pytest -n 12` CPU saturation — a fixed sleep can read the row before
+# the scheduled asyncio.ensure_future(record_audit(...)) task has run).
+# Positive-assertion sites only; mirrors
+# tests/superadmin_audit_foundation/conftest.py::await_audit_count.
+# ---------------------------------------------------------------------------
+
+
+async def _await_audit_row(
+    session: AsyncSession,
+    *,
+    action: str,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> Any:
+    row = await fetch_one_audit_row(session, action=action)
+    deadline = time.monotonic() + timeout
+    while row is None and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        row = await fetch_one_audit_row(session, action=action)
+    return row
+
+
+async def _await_audit_count(
+    session: AsyncSession,
+    *,
+    action: str,
+    expected: int = 1,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> int:
+    count = await count_audit_rows(session, action=action)
+    deadline = time.monotonic() + timeout
+    while count < expected and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        count = await count_audit_rows(session, action=action)
+    return count
 
 
 # ---------------------------------------------------------------------------
@@ -266,8 +307,7 @@ async def test_idp_creates_user_via_scim(
     assert row["role"] == "member"
     assert row["auth_method"] == "scim"
 
-    await asyncio.sleep(0.05)
-    audit_row = await fetch_one_audit_row(db_session, action="scim.user_create")
+    audit_row = await _await_audit_row(db_session, action="scim.user_create")
     assert audit_row is not None
     assert audit_row.actor_scim_token_id == uuid.UUID(str(scim_a["id"]))
     assert audit_row.actor_user_id is None
@@ -426,8 +466,7 @@ async def test_patch_active_false_deactivates_and_cascades_team_removal(
     assert row["deactivated_at"] is not None
     assert await team_members_for_user(db_session, user_id) == 0
 
-    await asyncio.sleep(0.05)
-    audit_row = await fetch_one_audit_row(db_session, action="scim.user_deactivate")
+    audit_row = await _await_audit_row(db_session, action="scim.user_deactivate")
     assert audit_row is not None
     assert audit_row.actor_scim_token_id == uuid.UUID(str(scim_a["id"]))
 
@@ -575,7 +614,7 @@ async def test_repeated_patch_active_false_is_idempotent(
     row2 = await fetch_user_row(db_session, user_id)
     assert row2["deactivated_at"] == deactivated_at_1, "repeated PATCH must be a true no-op"
 
-    await asyncio.sleep(0.05)
+    await _await_audit_count(db_session, action="scim.user_deactivate", expected=1)
     assert await count_audit_rows(db_session, action="scim.user_deactivate") == 1, (
         "no duplicate audit row for the idempotent repeat"
     )

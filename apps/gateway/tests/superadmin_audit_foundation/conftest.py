@@ -36,6 +36,7 @@ imports — matched here rather than importing from sibling test packages):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -169,6 +170,33 @@ async def count_audit_rows(session: AsyncSession, *, action: str) -> int:
         {"action": action},
     )
     return int(result.scalar() or 0)
+
+
+async def await_audit_count(
+    session: AsyncSession,
+    *,
+    action: str,
+    expected: int = 1,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> int:
+    """Poll until `count_audit_rows(action) >= expected`, or `timeout` elapses.
+
+    The audit write is fire-and-forget — scheduled AFTER the response, off the
+    request path (the frozen v1 contract). A fixed `sleep(0.05)` before asserting
+    is racy under `pytest -n 12` CPU saturation: the scheduled task may not have
+    run yet, so the row is briefly absent. Polling waits only as long as needed and
+    NEVER masks a genuinely-absent row — after `timeout` it returns the real count,
+    so the caller's own `== expected` assertion still fails honestly if the write
+    never happened. Positive assertions only; a zero/negative assertion must keep a
+    fixed settle wait (you cannot poll for absence).
+    """
+    count = await count_audit_rows(session, action=action)
+    deadline = time.monotonic() + timeout
+    while count < expected and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        count = await count_audit_rows(session, action=action)
+    return count
 
 
 # ---------------------------------------------------------------------------

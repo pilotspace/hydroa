@@ -13,6 +13,8 @@ Placement: catalog/infrastructure/ per §5 BUILD file list.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from gateway.catalog.domain.entities import CatalogModel
 
 OPENAI_SEED_MODELS: list[CatalogModel] = [
@@ -20,8 +22,8 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         id="text-embedding-3-small",
         name="text-embedding-3-small",
         context_length=8191,
-        prompt_usd_per_token=0.00000002,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("0.00000002"),
+        completion_usd_per_token=Decimal("0.0"),
         modality="embedding",
         provider="openai",
         input_modalities="text",  # embedding models accept text input
@@ -30,8 +32,8 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         id="text-embedding-3-large",
         name="text-embedding-3-large",
         context_length=8191,
-        prompt_usd_per_token=0.00000013,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("0.00000013"),
+        completion_usd_per_token=Decimal("0.0"),
         modality="embedding",
         provider="openai",
         input_modalities="text",  # embedding models accept text input
@@ -40,8 +42,8 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         id="dall-e-3",
         name="dall-e-3",
         context_length=None,
-        prompt_usd_per_token=0.0,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("0.0"),
+        completion_usd_per_token=Decimal("0.0"),
         modality="image",
         provider="openai",
         input_modalities="text",  # image-gen models accept text prompts (vision not in scope v55)
@@ -50,8 +52,8 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         id="whisper-1",
         name="whisper-1",
         context_length=None,
-        prompt_usd_per_token=0.0,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("0.0"),
+        completion_usd_per_token=Decimal("0.0"),
         modality="audio_stt",
         provider="openai",
         input_modalities="audio",  # STT accepts audio input
@@ -60,8 +62,8 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         id="tts-1",
         name="tts-1",
         context_length=None,
-        prompt_usd_per_token=0.0,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("0.0"),
+        completion_usd_per_token=Decimal("0.0"),
         modality="audio_tts",
         provider="openai",
         input_modalities="text",  # TTS accepts text and produces audio output
@@ -70,8 +72,8 @@ OPENAI_SEED_MODELS: list[CatalogModel] = [
         id="tts-1-hd",
         name="tts-1-hd",
         context_length=None,
-        prompt_usd_per_token=0.0,
-        completion_usd_per_token=0.0,
+        prompt_usd_per_token=Decimal("0.0"),
+        completion_usd_per_token=Decimal("0.0"),
         modality="audio_tts",
         provider="openai",
         input_modalities="text",  # TTS-HD accepts text and produces audio output

@@ -91,9 +91,19 @@ export function InvoiceDetailPage({ invoiceId }: InvoiceDetailPageProps) {
         <>
           <div className="flex flex-col gap-2">
             <InvoiceLinesTable lines={detail.lines} onViewEvidence={setEvidenceLineId} />
-            <div className="flex justify-end border-t border-border px-3 py-2 text-sm font-medium">
-              <span className="mr-2 text-muted-foreground">Total</span>
-              <span className="font-mono tabular-nums text-foreground">{formatUsd(detail.total_usd)}</span>
+            <div className="flex flex-col gap-1 border-t border-border px-3 py-2 text-sm">
+              <div className="flex justify-end">
+                <span className="mr-2 text-muted-foreground">Subtotal</span>
+                <span className="font-mono tabular-nums text-foreground">{formatUsd(detail.raw_total_usd)}</span>
+              </div>
+              <div className="flex justify-end">
+                <span className="mr-2 text-muted-foreground">Tax</span>
+                <span className="font-mono tabular-nums text-foreground">{formatUsd(detail.tax_usd)}</span>
+              </div>
+              <div className="flex justify-end font-medium">
+                <span className="mr-2 text-muted-foreground">Total</span>
+                <span className="font-mono tabular-nums text-foreground">{formatUsd(detail.total_usd)}</span>
+              </div>
             </div>
           </div>
 

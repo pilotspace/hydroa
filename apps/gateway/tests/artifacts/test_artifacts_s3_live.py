@@ -146,11 +146,18 @@ async def test_live_upload_download_roundtrip(
     await store.delete(expected_key)  # cleanup
 
 
-async def test_live_delete_soft_only_leaves_object(
+async def test_live_delete_purges_object_at_router_layer(
     live_app: Any, live_client: httpx.AsyncClient
 ) -> None:
+    """audit-remediation: DELETE /v1/artifacts/{id} now PURGES the s3 object at the
+    router layer (artifacts/api/router.py's `_get_repo` wires the request's
+    ObjectStore into ArtifactRepository), not soft-delete-only. (Was
+    `test_live_delete_soft_only_leaves_object`, which asserted the PRE-fix behavior —
+    the object surviving DELETE — now false; see the non-live
+    TestS3Persistence::test_delete_purges_object_at_router_layer for the FakeObjectStore
+    equivalent of this same assertion.)"""
     info = await _signup_and_key(live_client)
-    data = b"delete-leaves-object"
+    data = b"delete-purges-object"
     resp = await live_client.post(
         "/v1/artifacts",
         json={
@@ -160,18 +167,20 @@ async def test_live_delete_soft_only_leaves_object(
         },
         headers=_bearer(info["key"]),
     )
+    assert resp.status_code == 201, resp.text
     artifact_id = resp.json()["id"]
     expected_key = f"artifacts/{info['tenant_id']}/{artifact_id}"
+
+    # the object genuinely exists in MinIO before delete
+    store = build_object_store(_live_settings())
+    assert store is not None
+    assert await store.get(expected_key) == data
 
     dele = await live_client.delete(f"/v1/artifacts/{artifact_id}", headers=_bearer(info["key"]))
     assert dele.status_code == 204
     # row hidden …
     gone = await live_client.get(f"/v1/artifacts/{artifact_id}", headers=_bearer(info["key"]))
     assert gone.status_code == 404
-    # … but the MinIO object SURVIVES (soft-only; reaped later by the sweep)
-    store = build_object_store(_live_settings())
-    assert store is not None
-    assert await store.get(expected_key) == data
-    await store.delete(expected_key)  # cleanup
+    # … and the MinIO object is ACTUALLY GONE — not merely soft-deleted at the DB layer
     with pytest.raises(ObjectNotFoundError):
         await store.get(expected_key)

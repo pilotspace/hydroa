@@ -4,16 +4,21 @@ CRITICAL: completion_upstream and usage_recorder are resolved from
 request.app.state per-request so tests can inject fakes via app.state
 without affecting the shared singleton adapters.
 
-The circuit breaker (app.state.circuit_breaker) is a stable per-app-instance
-CircuitBreaker; each request gets a BoundCircuitBreakerUpstream that wraps
-whatever delegate is currently on app.state.completion_upstream. This lets
-tests inject FakeCompletionUpstream while the real breaker still counts
-consecutive 5xx returns.
+The circuit breaker registry (app.state.provider_circuit_breakers) is a stable
+per-app-instance dict[provider, CircuitBreaker>. Each request gets a
+ProviderScopedCircuitBreakerUpstream that resolves the target provider (via
+app.state.provider_resolver — the SAME resolver the dispatch wrapper uses) and
+counts consecutive 5xx returns against THAT provider's own breaker only, so a
+provider tripping its breaker never blocks any other provider (audit-remediation
+package C1 — MED proxy global breaker). app.state.circuit_breaker (the legacy
+single stable CircuitBreaker) is kept for backward compatibility with callers
+outside this module (e.g. the realtime websocket path) and as a fail-safe
+fallback here when the per-provider registry isn't wired on app.state.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from decimal import Decimal
 from typing import Annotated, Any
 
@@ -27,7 +32,13 @@ from gateway.keys.application.use_cases import AuthzUseCase
 from gateway.keys.infrastructure.repository import SqlAlchemyApiKeyRepository
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.proxy.application.use_cases import CompletionUseCase
-from gateway.proxy.domain.ports import CompletionUpstream, UsageRecorder, VectorCache
+from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
+from gateway.proxy.domain.ports import (
+    CompletionUpstream,
+    ProviderResolver,
+    UsageRecorder,
+    VectorCache,
+)
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.circuit_breaker_proxy import BoundCircuitBreakerUpstream
 from gateway.proxy.infrastructure.composite_key_authenticator import CompositeKeyAuthenticator
@@ -84,16 +95,116 @@ def build_embedding_adapter(
     return _embed
 
 
-def get_completion_upstream(request: Request) -> CompletionUpstream:
-    """Build a per-request BoundCircuitBreakerUpstream.
+class ProviderScopedCircuitBreakerUpstream:
+    """Per-request view: a per-provider CircuitBreaker registry + delegate.
 
-    The CircuitBreaker lives on app.state (stable, per-app-instance).
-    The delegate (inner upstream) is also from app.state so tests can inject
-    FakeCompletionUpstream freely.
+    audit-remediation package C1 (MED proxy global breaker): the prior
+    BoundCircuitBreakerUpstream wrapped EVERY provider in the SAME
+    app.state.circuit_breaker instance, so 5 consecutive failures from one
+    provider tripped a breaker that then blocked every OTHER provider too. This
+    wrapper resolves the request's catalog provider (via the same
+    ProviderResolver the ProviderAwareCompletionUpstream dispatch wrapper uses
+    to select the adapter) and looks up — or lazily creates — a dedicated
+    CircuitBreaker for THAT provider in `breakers` (app.state.provider_circuit_
+    breakers), so a trip on provider A never blocks provider B. Consecutive-
+    failure-reset semantics are unchanged (mirrors BoundCircuitBreakerUpstream
+    exactly); only the breaker SCOPE changed. A success on provider X is never
+    needed to unblock provider Y.
+
+    Design-for-failure: resolver.provider_for() is contracted to never raise
+    (CatalogProviderResolver — in-memory only, NEVER touches the DB on this hot
+    path), but a broad except is kept anyway so a misbehaving custom resolver
+    can never crash the request; it is treated as an unknown provider and
+    bucketed accordingly. dict.setdefault guarantees a fresh CLOSED breaker for
+    any never-seen provider key — never a KeyError.
     """
-    breaker: CircuitBreaker = request.app.state.circuit_breaker
+
+    def __init__(
+        self,
+        *,
+        breakers: dict[str, CircuitBreaker],
+        resolver: ProviderResolver,
+        delegate: CompletionUpstream,
+    ) -> None:
+        self._breakers = breakers
+        self._resolver = resolver
+        self._delegate = delegate
+
+    async def _breaker_for(self, payload: dict[str, Any]) -> CircuitBreaker:
+        model = str(payload.get("model", ""))
+        try:
+            provider = await self._resolver.provider_for(model)
+        except Exception:
+            provider = "openrouter"
+        return self._breakers.setdefault(provider, CircuitBreaker())
+
+    async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        """Guard → delegate.complete → count outcome against the resolved provider's breaker.
+
+        Raises CircuitOpenError if that provider's breaker is open (no upstream call).
+        Raises UpstreamUnavailableError on 5xx (increments that provider's failure count).
+        """
+        breaker = await self._breaker_for(payload)
+        if not breaker.call_allowed():
+            raise CircuitOpenError("Circuit breaker is open")
+
+        try:
+            status, body = await self._delegate.complete(payload)
+        except (UpstreamUnavailableError, CircuitOpenError):
+            breaker.on_upstream_error()
+            raise
+
+        if status >= 500:
+            breaker.on_upstream_error()
+            raise UpstreamUnavailableError(f"Upstream returned {status}")
+
+        breaker.record_success()
+        return status, body
+
+    def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
+        """Guard → delegate.stream — byte-identical pass-through, provider-scoped breaker.
+
+        Raises CircuitOpenError immediately if the resolved provider's breaker is open.
+        On streaming, success is recorded at stream-start (usage reconciled later) —
+        same semantics as BoundCircuitBreakerUpstream, just scoped per provider.
+        """
+        delegate = self._delegate
+
+        async def _gen() -> AsyncIterator[bytes]:
+            breaker = await self._breaker_for(payload)
+            if not breaker.call_allowed():
+                raise CircuitOpenError("Circuit breaker is open")
+            breaker.record_success()
+            async for chunk in delegate.stream(payload):
+                yield chunk
+
+        return _gen()
+
+
+def get_completion_upstream(request: Request) -> CompletionUpstream:
+    """Build a per-request, provider-scoped circuit-breaker-wrapped upstream.
+
+    The per-provider breaker registry (app.state.provider_circuit_breakers) and
+    the ProviderResolver (app.state.provider_resolver) are stable, per-app-
+    instance singletons. The delegate (inner upstream) is also from app.state so
+    tests can inject FakeCompletionUpstream freely.
+
+    Fail-safe fallback: if either the registry or the resolver isn't wired on
+    app.state (e.g. a stripped-down test double), falls back to the legacy
+    single stable app.state.circuit_breaker via BoundCircuitBreakerUpstream —
+    preserving prior behavior exactly rather than crashing.
+    """
     delegate: CompletionUpstream = request.app.state.completion_upstream
-    return BoundCircuitBreakerUpstream(breaker, delegate)
+    resolver = getattr(request.app.state, "provider_resolver", None)
+    breakers: dict[str, CircuitBreaker] | None = getattr(
+        request.app.state, "provider_circuit_breakers", None
+    )
+    if resolver is None or breakers is None:
+        legacy_breaker: CircuitBreaker = request.app.state.circuit_breaker
+        return BoundCircuitBreakerUpstream(legacy_breaker, delegate)
+    return ProviderScopedCircuitBreakerUpstream(
+        breakers=breakers, resolver=resolver, delegate=delegate
+    )
 
 
 def get_usage_recorder(request: Request) -> UsageRecorder:

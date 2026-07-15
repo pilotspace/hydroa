@@ -10,10 +10,10 @@ Run only this suite:
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from decimal import Decimal
 from typing import Any
 
 import httpx
-import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,20 +94,25 @@ def test_minimax_seed_models_has_three_correctly_priced_chat_entries() -> None:
         assert model.provider == "minimax", f"{model.id}: provider must be 'minimax'"
         assert model.input_modalities == "text", f"{model.id}: input_modalities must be 'text'"
 
+    # audit-remediation package C1 (CatalogModel float money): prompt/completion_
+    # usd_per_token are now Decimal — pytest.approx() can't subtract a bare float from
+    # a Decimal (TypeError). Expected values are now Decimal too; exact equality intent
+    # unchanged (Decimal literals are exact, so no tolerance is needed once both sides
+    # are Decimal).
     m3 = by_id["MiniMax-M3"]
     assert m3.context_length == 1_000_000
-    assert m3.prompt_usd_per_token == pytest.approx(0.0000003)
-    assert m3.completion_usd_per_token == pytest.approx(0.0000012)
+    assert m3.prompt_usd_per_token == Decimal("0.0000003")
+    assert m3.completion_usd_per_token == Decimal("0.0000012")
 
     m27 = by_id["MiniMax-M2.7"]
     assert m27.context_length == 204_800
-    assert m27.prompt_usd_per_token == pytest.approx(0.0000003)
-    assert m27.completion_usd_per_token == pytest.approx(0.0000012)
+    assert m27.prompt_usd_per_token == Decimal("0.0000003")
+    assert m27.completion_usd_per_token == Decimal("0.0000012")
 
     m27hs = by_id["MiniMax-M2.7-highspeed"]
     assert m27hs.context_length == 204_800
-    assert m27hs.prompt_usd_per_token == pytest.approx(0.0000006)
-    assert m27hs.completion_usd_per_token == pytest.approx(0.0000024)
+    assert m27hs.prompt_usd_per_token == Decimal("0.0000006")
+    assert m27hs.completion_usd_per_token == Decimal("0.0000024")
 
 
 # ===========================================================================
@@ -125,16 +130,16 @@ async def test_composite_source_chains_primary_then_minimax_seed() -> None:
                 id="anthropic/claude-opus-4",
                 name="Claude Opus 4",
                 context_length=200_000,
-                prompt_usd_per_token=15e-6,
-                completion_usd_per_token=75e-6,
+                prompt_usd_per_token=Decimal("15e-6"),
+                completion_usd_per_token=Decimal("75e-6"),
                 provider="openrouter",
             ),
             CatalogModel(
                 id="anthropic/claude-sonnet-4",
                 name="Claude Sonnet 4",
                 context_length=200_000,
-                prompt_usd_per_token=3e-6,
-                completion_usd_per_token=15e-6,
+                prompt_usd_per_token=Decimal("3e-6"),
+                completion_usd_per_token=Decimal("15e-6"),
                 provider="openrouter",
             ),
         ]
@@ -168,8 +173,8 @@ async def test_composite_source_embeddings_delegate_to_primary_only() -> None:
                 id="openai/text-embedding-3-small",
                 name="text-embedding-3-small",
                 context_length=8191,
-                prompt_usd_per_token=2e-8,
-                completion_usd_per_token=0.0,
+                prompt_usd_per_token=Decimal("2e-8"),
+                completion_usd_per_token=Decimal("0.0"),
                 modality="embedding",
                 provider="openrouter",
             ),
@@ -236,8 +241,8 @@ async def test_upsert_model_persists_provider_on_insert(db_session: AsyncSession
         id="MiniMax-M3",
         name="MiniMax-M3",
         context_length=1_000_000,
-        prompt_usd_per_token=0.0000003,
-        completion_usd_per_token=0.0000012,
+        prompt_usd_per_token=Decimal("0.0000003"),
+        completion_usd_per_token=Decimal("0.0000012"),
         modality="chat",
         provider="minimax",
         input_modalities="text",
@@ -268,8 +273,8 @@ async def test_upsert_model_persists_provider_on_conflict_update(db_session: Asy
         id="shared-id-for-conflict-test",
         name="Original",
         context_length=1000,
-        prompt_usd_per_token=1e-6,
-        completion_usd_per_token=2e-6,
+        prompt_usd_per_token=Decimal("1e-6"),
+        completion_usd_per_token=Decimal("2e-6"),
         modality="chat",
         provider="openrouter",
         input_modalities="text",
@@ -280,8 +285,8 @@ async def test_upsert_model_persists_provider_on_conflict_update(db_session: Asy
         id="shared-id-for-conflict-test",
         name="Original",
         context_length=1000,
-        prompt_usd_per_token=1e-6,
-        completion_usd_per_token=2e-6,
+        prompt_usd_per_token=Decimal("1e-6"),
+        completion_usd_per_token=Decimal("2e-6"),
         modality="chat",
         provider="minimax",
         input_modalities="text",
@@ -310,8 +315,8 @@ async def test_openrouter_rows_keep_explicit_provider_after_fix(db_session: Asyn
         id="anthropic/claude-opus-4",
         name="Claude Opus 4",
         context_length=200_000,
-        prompt_usd_per_token=15e-6,
-        completion_usd_per_token=75e-6,
+        prompt_usd_per_token=Decimal("15e-6"),
+        completion_usd_per_token=Decimal("75e-6"),
         modality="chat",
         provider="openrouter",
         input_modalities="text",
@@ -387,8 +392,8 @@ async def test_second_sync_does_not_deactivate_minimax_rows(
                     id="anthropic/claude-opus-4",
                     name="Claude Opus 4",
                     context_length=200_000,
-                    prompt_usd_per_token=15e-6,
-                    completion_usd_per_token=75e-6,
+                    prompt_usd_per_token=Decimal("15e-6"),
+                    completion_usd_per_token=Decimal("75e-6"),
                     provider="openrouter",
                 )
             ]
@@ -405,8 +410,8 @@ async def test_second_sync_does_not_deactivate_minimax_rows(
                     id="anthropic/claude-sonnet-4",
                     name="Claude Sonnet 4",
                     context_length=200_000,
-                    prompt_usd_per_token=3e-6,
-                    completion_usd_per_token=15e-6,
+                    prompt_usd_per_token=Decimal("3e-6"),
+                    completion_usd_per_token=Decimal("15e-6"),
                     provider="openrouter",
                 )
             ]

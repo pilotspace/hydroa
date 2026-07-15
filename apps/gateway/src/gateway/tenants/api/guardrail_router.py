@@ -18,15 +18,20 @@ pii-v2 extension (TASK.md §3 CONTRACT — FROZEN):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.db import get_session
 from gateway.core.error_catalog import PAYLOAD_CUSTOM_PATTERN_INVALID
 from gateway.keys.api.deps import get_identity, require_owner_or_admin
@@ -273,6 +278,7 @@ async def get_guardrails(
 
 @guardrail_router.put("", response_model=GuardrailConfigResponse)
 async def put_guardrails(
+    request: Request,
     body: GuardrailConfigRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -353,5 +359,26 @@ async def put_guardrails(
         {"val": json.dumps(updated), "tid": tenant_id},
     )
     await session.commit()
+
+    # Audit emit — fail-open fire-and-forget (mirrors teams/api/router.py add_member's own
+    # idiom exactly). Metadata carries only the CHANGED field names, never the full
+    # guardrail_configs blob (mirrors platform_tenant_config_router.py's own precedent).
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="guardrails.update",
+                target_type="guardrails",
+                target_id="config",
+                result="success",
+                metadata={"fields_changed": sorted(fields_set)},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
 
     return _build_response(updated)

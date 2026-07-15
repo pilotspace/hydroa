@@ -137,8 +137,17 @@ def _settings_for(
     audit_days: int = 730,
     audit_floor: int = 365,
     batch_size: int = 1000,
+    request_logs_days: int = 0,
+    tenant_ceiling_days: int = 365,
 ) -> Any:
-    """Build a minimal settings-like object with retention knobs."""
+    """Build a minimal settings-like object with retention knobs.
+
+    tenant_ceiling_days defaults to 365 (matches config.py's real production default
+    for retention_tenant_window_ceiling_days) — every sweep_once() call now executes
+    the additive new-payload window-cutoff pass unconditionally (CRIT#2 fix), and that
+    pass binds this field as a SQL parameter even for tables with zero matching rows,
+    so every settings fake used with a real sweep must carry a real int here.
+    """
     s = MagicMock()
     s.retention_check_interval_seconds = interval
     s.retention_usage_records_days = usage_days
@@ -146,6 +155,8 @@ def _settings_for(
     s.retention_audit_events_days = audit_days
     s.retention_audit_floor_days = audit_floor
     s.retention_batch_size = batch_size
+    s.retention_request_logs_days = request_logs_days
+    s.retention_tenant_window_ceiling_days = tenant_ceiling_days
     return s
 
 
@@ -249,6 +260,79 @@ async def test_deletes_only_aged_rows(client: Any, db_session: AsyncSession, app
 
 
 # ---------------------------------------------------------------------------
+# Scenario 1b (CRIT#2 remediation): a default-posture tenant (retention_window_days
+# IS NULL — never called PUT /admin/retention-policy) must still be purged, honoring
+# the OPERATOR CEILING, exactly as tenants/application/retention_policy.py's
+# effective_window_days() already REPORTS for that tenant. Before the fix, the
+# window-cutoff SQL required `retention_window_days IS NOT NULL`, so a NULL tenant's
+# aged rows were NEVER purged even though the API claimed a finite effective window.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_default_window_null_tenant_purged_via_operator_ceiling(
+    client: Any, db_session: AsyncSession, app: Any
+) -> None:
+    """A tenant that never overrides retention_window_days (column stays NULL) must
+    still have its aged payload-table rows purged, using the operator ceiling as the
+    fallback cutoff — matching what GET /admin/retention-policy's effective_window_days
+    already reports for this exact tenant."""
+    from gateway.memory.infrastructure.repository import MemoryRepository
+
+    tenant_id, key_id = await _signup_tenant(
+        client, tenant_name="retention-null-default", email="retnull@retention.io"
+    )
+
+    # Sanity: this tenant's retention_window_days is genuinely NULL (default posture,
+    # never called PUT /admin/retention-policy).
+    null_check = await db_session.execute(
+        text("SELECT retention_window_days FROM tenants WHERE id = :tid"), {"tid": tenant_id}
+    )
+    assert null_check.scalar() is None, "tenant must be at default posture (column NULL)"
+
+    mem_repo = MemoryRepository(db_session)
+    old_mem = await mem_repo.create(
+        tenant_id=uuid.UUID(tenant_id), key_id=uuid.UUID(key_id), content="ancient", meta=None
+    )
+    recent_mem = await mem_repo.create(
+        tenant_id=uuid.UUID(tenant_id), key_id=uuid.UUID(key_id), content="fresh", meta=None
+    )
+    await db_session.commit()
+
+    async def _age(row_id: Any, days: int) -> None:
+        ts = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=days)).replace(
+            tzinfo=None
+        )
+        await db_session.execute(
+            text("UPDATE memories SET created_at = :ts WHERE id = :id"), {"ts": ts, "id": row_id}
+        )
+        await db_session.commit()
+
+    await _age(old_mem.id, 400)  # older than the 365-day operator ceiling default
+    await _age(recent_mem.id, 10)  # well within the ceiling
+
+    # Operator-level windows for the ORIGINAL 3 tables are all OFF here so ONLY the
+    # new-payload window-cutoff pass (honoring the 365-day operator ceiling) explains
+    # any deletion below.
+    sweeper = _make_sweeper(
+        app, _settings_for(usage_days=0, alert_days=0, audit_days=0, tenant_ceiling_days=365)
+    )
+    result = await sweeper.sweep_once()
+
+    old_check = await db_session.execute(
+        text("SELECT COUNT(*) FROM memories WHERE id = :id"), {"id": old_mem.id}
+    )
+    assert old_check.scalar() == 0, (
+        f"a NULL-window tenant's aged row must be purged via the operator ceiling"
+        f" fallback (CRIT#2 fix) — sweep result was {result}"
+    )
+    recent_check2 = await db_session.execute(
+        text("SELECT COUNT(*) FROM memories WHERE id = :id"), {"id": recent_mem.id}
+    )
+    assert recent_check2.scalar() == 1, "a recent row (within the ceiling) must survive"
+
+
+# ---------------------------------------------------------------------------
 # Scenario 2: Default-OFF when interval is zero (pure logic test)
 # ---------------------------------------------------------------------------
 
@@ -261,9 +345,109 @@ def test_default_off_when_interval_zero() -> None:
     settings_on = _settings_for(interval=86400, usage_days=365, alert_days=0, audit_days=0)
     assert should_start_retention_sweep(settings_on) is True
 
-    # All windows=0 → OFF even when interval>0
-    settings_no_windows = _settings_for(interval=86400, usage_days=0, alert_days=0, audit_days=0)
+    # ALL knobs=0 (including the newer request_logs/tenant-window-ceiling knobs, not
+    # just the original 3) → OFF even when interval>0. NOTE (deliberate test update,
+    # justified per remediation MED finding): this assertion previously only zeroed
+    # usage/alert/audit_days and relied on _settings_for's OLD implicit default of
+    # "no tenant_ceiling_days field at all" to stay OFF — that was actually the BUG
+    # (should_start_retention_sweep ignored the newer knobs entirely, see
+    # test_should_start_retention_sweep_includes_newer_knobs below). Now that
+    # tenant_ceiling_days is itself a real gating knob, "all windows off" must
+    # explicitly zero it too for this assertion to mean what its comment says.
+    settings_no_windows = _settings_for(
+        interval=86400,
+        usage_days=0,
+        alert_days=0,
+        audit_days=0,
+        request_logs_days=0,
+        tenant_ceiling_days=0,
+    )
     assert should_start_retention_sweep(settings_no_windows) is False
+
+
+def test_should_start_retention_sweep_includes_newer_knobs() -> None:
+    """MED fix: should_start_retention_sweep previously ignored
+    retention_request_logs_days and retention_tenant_window_ceiling_days entirely — a
+    deployment with only one of those newer knobs set (and the original 3 all at 0)
+    would never start the sweeper, silently disabling the request_logs purge / the
+    new-payload-table window-cutoff pass even though an operator explicitly configured
+    a positive window for them."""
+    only_request_logs = _settings_for(
+        interval=86400,
+        usage_days=0,
+        alert_days=0,
+        audit_days=0,
+        request_logs_days=30,
+        tenant_ceiling_days=0,
+    )
+    assert should_start_retention_sweep(only_request_logs) is True, (
+        "a positive retention_request_logs_days alone must start the sweeper"
+    )
+
+    only_tenant_ceiling = _settings_for(
+        interval=86400,
+        usage_days=0,
+        alert_days=0,
+        audit_days=0,
+        request_logs_days=0,
+        tenant_ceiling_days=365,
+    )
+    assert should_start_retention_sweep(only_tenant_ceiling) is True, (
+        "a positive retention_tenant_window_ceiling_days alone must start the sweeper"
+    )
+
+
+async def test_should_start_retention_sweep_with_zdr_starts_for_zdr_only_tenant(
+    client: Any, app: Any, db_session: AsyncSession
+) -> None:
+    """MED fix: should_start_retention_sweep is settings-only and therefore blind to a
+    tenant with zdr_enabled=true — a deployment with every operator-level window knob
+    at 0 would never start the sweeper at all, so that ZDR tenant's unconditional purge
+    pass would never self-heal on any tick. should_start_retention_sweep_with_zdr must
+    return True for exactly this case (settings-only answer stays False)."""
+    from gateway.usage.application.retention_sweep import should_start_retention_sweep_with_zdr
+
+    tenant_id, _key_id = await _signup_tenant(
+        client, tenant_name="zdr-only-start-gate", email="zdronly@retention.io"
+    )
+    await db_session.execute(
+        text("UPDATE tenants SET zdr_enabled = true WHERE id = :tid"), {"tid": tenant_id}
+    )
+    await db_session.commit()
+
+    all_knobs_zero = _settings_for(
+        interval=86400,
+        usage_days=0,
+        alert_days=0,
+        audit_days=0,
+        request_logs_days=0,
+        tenant_ceiling_days=0,
+    )
+    # RED (pre-fix behavior): the settings-only gate is correctly False here — this is
+    # not itself the bug, it documents WHY the DB-aware variant is needed.
+    assert should_start_retention_sweep(all_knobs_zero) is False
+
+    started = await should_start_retention_sweep_with_zdr(
+        all_knobs_zero, session_factory=app.state.sessionmaker
+    )
+    assert started is True, (
+        "a tenant with zdr_enabled=true must start the sweeper even when every"
+        " operator-level window knob is 0"
+    )
+
+    # No zdr tenant + all knobs zero + a working session_factory -> honest False.
+    await db_session.execute(
+        text("UPDATE tenants SET zdr_enabled = false WHERE id = :tid"), {"tid": tenant_id}
+    )
+    await db_session.commit()
+    not_started = await should_start_retention_sweep_with_zdr(
+        all_knobs_zero, session_factory=app.state.sessionmaker
+    )
+    assert not_started is False
+
+    # session_factory=None honest-degrades to the settings-only answer (never raises).
+    degraded = await should_start_retention_sweep_with_zdr(all_knobs_zero, session_factory=None)
+    assert degraded is False
 
 
 # ---------------------------------------------------------------------------

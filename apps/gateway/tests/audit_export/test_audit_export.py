@@ -29,6 +29,7 @@ import base64
 import datetime
 import json
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -82,6 +83,58 @@ async def _drain_fire_and_forget() -> None:
     """Let a fire-and-forget asyncio.ensure_future(record_audit(...)) task complete before
     querying audit_events (mirrors tests/admin_console_audit's own idiom)."""
     await asyncio.sleep(0.05)
+
+
+async def _await_audit_row(
+    db_session: AsyncSession,
+    *,
+    action: str,
+    tenant_id: str | None = None,
+    timeout: float = 3.0,  # noqa: ASYNC109
+    interval: float = 0.02,
+) -> Any:
+    """Poll fetch_one_audit_row until the fire-and-forget audit-of-export write lands (or
+    timeout). De-flakes POSITIVE assertions on the M11 fire-and-forget write under
+    CPU-saturated `pytest -n 12` runs, where a fixed sleep is sometimes shorter than the
+    scheduler delay before the task actually runs. Never used for absence (`== 0`) sites."""
+    row = await fetch_one_audit_row(db_session, action=action, tenant_id=tenant_id)
+    deadline = time.monotonic() + timeout
+    while row is None and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        row = await fetch_one_audit_row(db_session, action=action, tenant_id=tenant_id)
+    return row
+
+
+async def _await_audit_count(
+    db_session: AsyncSession,
+    *,
+    action: str,
+    expected: int,
+    tenant_id: str | None = None,
+    timeout: float = 3.0,  # noqa: ASYNC109
+    interval: float = 0.02,
+) -> int:
+    """Poll count_audit_rows until it reaches `expected` (or timeout). Same bounded-loop
+    shape as `_await_audit_row`, for sites that compare a fire-and-forget-dependent count
+    against a delta rather than testing row presence directly."""
+    count = await count_audit_rows(db_session, action=action, tenant_id=tenant_id)
+    deadline = time.monotonic() + timeout
+    while count < expected and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        count = await count_audit_rows(db_session, action=action, tenant_id=tenant_id)
+    return count
+
+
+async def _await_call_count_at_least(
+    call_count: dict[str, int], *, expected: int, timeout: float = 3.0, interval: float = 0.02  # noqa: ASYNC109
+) -> int:
+    """Poll a mutable call-count dict until a fire-and-forget task's second sessionmaker()
+    call has landed (or timeout) — applies the same bounded-loop de-flake to a non-DB
+    fire-and-forget completion signal."""
+    deadline = time.monotonic() + timeout
+    while call_count["n"] < expected and time.monotonic() < deadline:  # noqa: ASYNC110
+        await asyncio.sleep(interval)
+    return call_count["n"]
 
 
 # ---------------------------------------------------------------------------
@@ -545,8 +598,7 @@ async def test_export_success_is_itself_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="audit.export", tenant_id=tid)
+    row = await _await_audit_row(db_session, action="audit.export", tenant_id=tid)
     assert row is not None, "expected exactly one audit.export row after a successful export"
     (
         r_tenant_id,
@@ -601,7 +653,7 @@ async def test_export_audit_write_failure_does_not_fail_export(
             resp = await client.get(EXPORT, headers=auth(token))
             assert resp.status_code == 200, resp.text
             assert len(_ndjson_lines(resp.text)) == 1
-            await _drain_fire_and_forget()
+            await _await_call_count_at_least(call_count, expected=2)
     finally:
         app.state.sessionmaker = real_sessionmaker
 
@@ -715,8 +767,7 @@ async def test_export_duplicate_cursor_request_is_idempotent(
     cursor = page1.json()["next_cursor"]
     assert cursor
 
-    await _drain_fire_and_forget()
-    baseline = await count_audit_rows(db_session, action="audit.export", tenant_id=tid)
+    baseline = await _await_audit_count(db_session, action="audit.export", expected=1, tenant_id=tid)
 
     retry_params = {"limit": "2", "cursor": cursor}
     retry1 = await client.get(EXPORT, params=retry_params, headers=auth(token))
@@ -727,6 +778,7 @@ async def test_export_duplicate_cursor_request_is_idempotent(
     assert retry1.text == retry2.text, "identical cursor+params must produce byte-identical bodies"
     assert retry1.headers["x-audit-export-has-more"] == retry2.headers["x-audit-export-has-more"]
 
-    await _drain_fire_and_forget()
-    after = await count_audit_rows(db_session, action="audit.export", tenant_id=tid)
+    after = await _await_audit_count(
+        db_session, action="audit.export", expected=baseline + 2, tenant_id=tid
+    )
     assert after == baseline + 2, "each successful read fires its own audit-of-export row (M11)"

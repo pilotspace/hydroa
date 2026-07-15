@@ -13,7 +13,9 @@ branch) for the tie-out scenarios — no need to run the real invoice generator.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
+import time
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -169,8 +171,6 @@ async def owner_token(app: Any) -> str:
 
 async def audit_count(session: AsyncSession, *, action: str) -> int:
     """Let the fire-and-forget audit write complete, then count matching rows."""
-    import asyncio
-
     await asyncio.sleep(0.05)
     result = await session.execute(
         text("SELECT COUNT(*) FROM audit_events WHERE action = :action"),
@@ -180,8 +180,6 @@ async def audit_count(session: AsyncSession, *, action: str) -> int:
 
 
 async def audit_row(session: AsyncSession, *, action: str) -> dict[str, Any]:
-    import asyncio
-
     await asyncio.sleep(0.05)
     rows = (
         await session.execute(
@@ -194,3 +192,32 @@ async def audit_row(session: AsyncSession, *, action: str) -> dict[str, Any]:
     assert len(rows) == 1, f"expected exactly 1 audit row for action={action!r}, found {len(rows)}"
     tenant_id, actor_email, metadata = rows[0]
     return {"tenant_id": tenant_id, "actor_email": actor_email, "metadata": dict(metadata)}
+
+
+async def await_audit_count(
+    session: AsyncSession,
+    *,
+    action: str,
+    expected: int,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> int:
+    """Poll until the raw audit_events count for `action` reaches `expected`, or `timeout`
+    elapses. The audit write is fire-and-forget — `audit_count`'s own baked-in sleep(0.05) is
+    racy under `pytest -n 12` CPU saturation. Positive assertions only; never masks a
+    genuinely-absent row (returns the real count after timeout so the caller's own
+    `== expected` assertion still fails honestly)."""
+
+    async def _raw_count() -> int:
+        result = await session.execute(
+            text("SELECT COUNT(*) FROM audit_events WHERE action = :action"),
+            {"action": action},
+        )
+        return int(result.scalar() or 0)
+
+    count = await _raw_count()
+    deadline = time.monotonic() + timeout
+    while count < expected and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        count = await _raw_count()
+    return count

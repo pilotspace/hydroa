@@ -13,6 +13,7 @@ interface ApiKey {
 }
 
 import { TableRow, TableCell, Badge, Button } from "@/components/ui";
+import { formatTimestamp } from "@/lib/format";
 
 interface KeyRowProps {
   apiKey: ApiKey;
@@ -33,7 +34,7 @@ export function KeyRow({ apiKey, onRevoke, isPendingRevoke }: KeyRowProps) {
       <TableCell>
         {isRevoked ? (
           <Badge variant="destructive" className="revoked-badge">
-            Revoked {apiKey.revoked_at}
+            Revoked {formatTimestamp(apiKey.revoked_at)}
           </Badge>
         ) : (
           <Badge variant="secondary">active</Badge>

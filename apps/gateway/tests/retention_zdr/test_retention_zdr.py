@@ -210,6 +210,7 @@ def _make_sweeper(
     usage_days: int = 365,
     alert_days: int = 90,
     audit_days: int = 0,
+    tenant_ceiling_days: int = 365,
     redis: Any = None,
     object_store: Any = None,
 ) -> RetentionSweeper:
@@ -222,6 +223,13 @@ def _make_sweeper(
     s.retention_audit_events_days = audit_days
     s.retention_audit_floor_days = 0
     s.retention_batch_size = 1000
+    s.retention_request_logs_days = 0
+    # CRIT#2 remediation: the additive new-payload window-cutoff pass now runs
+    # unconditionally every sweep_once() and binds this field as a SQL parameter
+    # (COALESCE fallback for a NULL tenants.retention_window_days) even when no row
+    # in this test happens to be NULL-window — every real settings object always
+    # carries a real int here (config.py default=365), so every fake must too.
+    s.retention_tenant_window_ceiling_days = tenant_ceiling_days
     return RetentionSweeper(
         session_factory=app.state.sessionmaker,
         settings=s,
@@ -239,6 +247,38 @@ async def _age_row(
         {"ts": ts.replace(tzinfo=None), "id": row_id},
     )
     await db_session.commit()
+
+
+async def _seed_request_log(
+    db_session: AsyncSession,
+    *,
+    tenant_id: str,
+    model_id: str = "openai/gpt-4o-mini",
+) -> str:
+    """Insert one request_logs row for tenant_id (mirrors
+    tests/compliance_report_schedule/conftest.py's own seed_request_log shape)."""
+    row_id = str(uuid.uuid4())
+    await db_session.execute(
+        text(
+            "INSERT INTO request_logs"
+            " (id, tenant_id, key_id, team_id, model_id, status_code, stream, cached,"
+            "  request_body, response_body, guardrail_verdict, scrub_status, truncated,"
+            "  cost_usd, created_at, request_id, latency_ms, prompt_tokens,"
+            "  completion_tokens, total_tokens)"
+            " VALUES"
+            " (:id, :tid, :kid, NULL, :model_id, 200, false, false,"
+            "  NULL, NULL, NULL, 'scrubbed', false,"
+            "  NULL, now(), NULL, NULL, NULL, NULL, NULL)"
+        ),
+        {
+            "id": row_id,
+            "tid": tenant_id,
+            "kid": str(uuid.uuid4()),
+            "model_id": model_id,
+        },
+    )
+    await db_session.commit()
+    return row_id
 
 
 @pytest.fixture
@@ -769,6 +809,44 @@ async def test_zdr_purge_pre_existing_payload_rows(
     assert inline_artifact.id is not None
     assert s3_artifact.id is not None
     assert mem.id is not None
+
+
+# ===========================================================================
+# M7 (MED remediation) — ZDR purge also purges request_logs unconditionally
+# ===========================================================================
+
+
+async def test_zdr_purge_removes_request_logs(
+    client: httpx.AsyncClient, app: Any, db_session: AsyncSession
+) -> None:
+    """MED fix: _sweep_zdr_purge_pass previously omitted request_logs entirely — a
+    ZDR tenant's captured raw request/response PII payloads survived the unconditional
+    ZDR purge pass even though the 5 original payload tables were correctly wiped.
+    request_logs must now be purged unconditionally too, regardless of its own
+    (unrelated) operator-level retention_request_logs_days window."""
+    jwt, tid = await _signup_owner(client, tenant_name="ZdrLogs", email="owner@zdrlogs.io")
+
+    log_id = await _seed_request_log(db_session, tenant_id=tid)
+    pre = await db_session.execute(
+        text("SELECT COUNT(*) FROM request_logs WHERE tenant_id = :tid"), {"tid": tid}
+    )
+    assert pre.scalar() == 1
+
+    put_resp = await client.put(RETENTION_POLICY, json={"zdr_enabled": True}, headers=_bearer(jwt))
+    assert put_resp.status_code == 200, put_resp.text
+
+    # retention_request_logs_days=0 (the sweeper-level knob is fully OFF) — ONLY the
+    # unconditional ZDR purge pass can explain any deletion here.
+    sweeper = _make_sweeper(app)
+    await sweeper.sweep_once()
+
+    post = await db_session.execute(
+        text("SELECT COUNT(*) FROM request_logs WHERE id = :id"), {"id": log_id}
+    )
+    assert post.scalar() == 0, (
+        "a ZDR tenant's request_logs rows must be purged unconditionally, just like the"
+        " 5 original payload tables"
+    )
 
 
 # ===========================================================================

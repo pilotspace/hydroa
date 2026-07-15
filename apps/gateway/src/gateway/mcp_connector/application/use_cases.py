@@ -520,6 +520,11 @@ class McpCallUseCase:
                     tool_name=tool_name,
                     status="success",
                     latency_ms=latency_ms,
+                    # audit-remediation (HIGH): agent-principal MCP metering was
+                    # unfunded — authz.agent_principal_id was never forwarded, so an
+                    # agent-token-authenticated tool call never incremented that
+                    # principal's usage:spend:agent_principal:{id}:{yyyymm} counter.
+                    agent_principal_id=authz.agent_principal_id,
                 )
             )
 

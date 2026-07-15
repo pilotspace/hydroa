@@ -197,8 +197,12 @@ class CatalogModel:
     id: str
     name: str
     context_length: int | None
-    prompt_usd_per_token: float
-    completion_usd_per_token: float
+    #: audit-remediation package C1 (LOW/MED CatalogModel float money): retyped
+    #: float -> Decimal to match the repo's money-is-Decimal rule and the sibling
+    #: PricingSnapshot fields below (same module, same shape) — a raw float silently
+    #: loses precision on sub-cent per-token prices.
+    prompt_usd_per_token: Decimal
+    completion_usd_per_token: Decimal
     modality: str = field(default="chat")
     provider: str = field(default="openrouter")
     input_modalities: str = field(default="text")

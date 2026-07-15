@@ -21,12 +21,14 @@ Scenarios (one test per bullet):
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import uuid
 from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.compliance.application.report_schedule_generator import (
@@ -231,6 +233,170 @@ async def test_object_store_unavailable_error_class_is_caught(
     generator = make_generator(app, object_store=_RaisingStore())
     outcome = await generator.generate_for_tenant(uuid.UUID(tenant_id), 1)
     assert outcome == "deferred"
+
+
+async def test_zdr_flip_after_recheck_before_atomic_check_persists_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession, app: Any
+) -> None:
+    """audit-remediation v2 (closes HOLE 2 — residual TOCTOU between the recheck and
+    the INSERT): the early-exit recheck (test above) and the load-bearing atomic
+    FOR-UPDATE check further down are two SEPARATE reads. A tenant that flips
+    zdr_enabled=true in the gap between them (after the recheck passes, before the
+    atomic transaction's own SELECT ... FOR UPDATE) must still persist NOTHING — the
+    atomic block's OWN fresh, lock-taking read is what is actually load-bearing, and
+    must independently observe the flip and skip, never relying on the earlier
+    recheck's now-stale answer."""
+    _owner, tenant_id = await signup_tenant(
+        client, tenant_name="FlipGapCo", email="owner@flipgapco.example"
+    )
+    past = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
+    await set_schedule_due(db_session, tenant_id, day_of_month=1, next_run_at=past)
+
+    store = FakeObjectStore()
+    generator = make_generator(app, object_store=store)
+
+    # is_zdr() (the module-level import used by BOTH the M17 up-front gate and the
+    # cheap early-exit recheck) is called exactly twice before the atomic block. Flip
+    # zdr_enabled=true, on its own committed session, immediately AFTER the 2nd call
+    # (the recheck) returns — i.e. exactly in the gap the atomic block's own
+    # _is_zdr_locked() read must independently catch.
+    import gateway.compliance.application.report_schedule_generator as rsg_module
+
+    orig_is_zdr = rsg_module.is_zdr
+    call_count = {"n": 0}
+
+    async def _counting_is_zdr(session: Any, tid: Any) -> bool:
+        call_count["n"] += 1
+        result = await orig_is_zdr(session, tid)
+        if call_count["n"] == 2:
+            async with app.state.sessionmaker() as flip_session:
+                await set_tenant_zdr(flip_session, tenant_id, enabled=True)
+        return result
+
+    rsg_module.is_zdr = _counting_is_zdr  # type: ignore[assignment]
+    try:
+        counts = await generator.generate_due_schedules()
+    finally:
+        rsg_module.is_zdr = orig_is_zdr  # type: ignore[assignment]
+
+    assert counts["skipped_zdr"] == 1, counts
+    assert counts["success"] == 0, counts
+    assert len(store.put_calls) == 0, (
+        "the atomic FOR UPDATE check must catch the flip BEFORE the INSERT — the"
+        " object PUT must never even be attempted"
+    )
+    assert len(store.store) == 0, "nothing may be left persisted in the object store"
+    run_count = await count_report_runs(db_session, tenant_id)
+    assert run_count == 0, "no compliance_report_runs row may be written once ZDR flipped"
+    row = await fetch_schedule_row(db_session, tenant_id)
+    assert row is not None
+    _enabled, _last_run_at, last_run_status, next_run_at = row
+    assert last_run_status == "skipped_zdr", (
+        "a flip landing between the recheck and the atomic check must record"
+        " skipped_zdr, never success"
+    )
+    assert next_run_at is not None, "next_run_at must still advance (self-healing)"
+
+
+async def test_zdr_tenant_never_attempts_object_store_put(
+    client: httpx.AsyncClient, db_session: AsyncSession, app: Any
+) -> None:
+    """audit-remediation v2 (closes HOLE 1 — the permanent orphan-object leak): the
+    old design's ZDR-skip path called ObjectStore.delete() to clean up an
+    ALREADY-WRITTEN object, and a delete failure orphaned it forever (no DB row ever
+    existed to let the retention sweep rediscover that key). The new design makes
+    this failure mode IMPOSSIBLE by construction: a ZDR tenant never reaches
+    ObjectStore.put() in the first place. Proven here by configuring the store to
+    ALWAYS raise on put() — if the generator ever attempted a put for this ZDR
+    tenant, the outcome would be 'deferred' (put failure) or 'failed' (uncaught
+    exception), never 'skipped_zdr' with zero put attempts."""
+    _owner, tenant_id = await signup_tenant(
+        client, tenant_name="ZdrNeverPutCo", email="owner@zdrneverputco.example"
+    )
+    await set_tenant_zdr(db_session, tenant_id, enabled=True)
+    past = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
+    await set_schedule_due(db_session, tenant_id, day_of_month=1, next_run_at=past)
+
+    store = FakeObjectStore()
+    store.put_fail = True  # would raise ObjectStoreUnavailableError if ever called
+    generator = make_generator(app, object_store=store)
+
+    counts = await generator.generate_due_schedules()
+
+    assert counts["skipped_zdr"] == 1, counts
+    assert counts["deferred"] == 0, "a ZDR tenant must never reach the PUT call at all"
+    assert counts["failed"] == 0
+    assert len(store.put_calls) == 0, "ObjectStore.put() must NEVER be invoked for a ZDR tenant"
+    run_count = await count_report_runs(db_session, tenant_id)
+    assert run_count == 0
+
+
+async def test_zdr_flip_blocks_on_tenant_row_lock_during_atomic_transaction(
+    client: httpx.AsyncClient, db_session: AsyncSession, app: Any
+) -> None:
+    """Concurrency proof of the 'FOR UPDATE path' itself (not just sequential
+    ordering): a concurrent zdr_enabled flip, attempted WHILE generate_for_tenant's
+    atomic transaction is mid-flight (holding the tenants row lock acquired by
+    _is_zdr_locked), must BLOCK on ordinary Postgres row-lock contention until that
+    transaction commits or rolls back — it can never observe or affect the
+    in-progress decision. Proven by real DB lock contention across two separate
+    sessions/connections, not by monkeypatch-injected ordering."""
+    _owner, tenant_id = await signup_tenant(
+        client, tenant_name="LockRaceCo", email="owner@lockraceco.example"
+    )
+    past = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
+    await set_schedule_due(db_session, tenant_id, day_of_month=1, next_run_at=past)
+
+    store = FakeObjectStore()
+    generator = make_generator(app, object_store=store)
+
+    events: list[str] = []
+    entered_put = asyncio.Event()
+    release_put = asyncio.Event()
+
+    orig_put = store.put
+
+    async def _slow_put(key: str, data: bytes, content_type: str) -> None:
+        entered_put.set()
+        await release_put.wait()
+        events.append("put_done")
+        await orig_put(key, data, content_type)
+
+    store.put = _slow_put  # type: ignore[method-assign]
+
+    async def _flip_task() -> None:
+        await entered_put.wait()  # the atomic tx's FOR UPDATE lock is now held
+        async with app.state.sessionmaker() as flip_session:
+            # This plain UPDATE must BLOCK until generate_for_tenant's transaction
+            # commits/rolls back and releases the row lock.
+            await flip_session.execute(
+                text("UPDATE tenants SET zdr_enabled = true WHERE id = :tid"),
+                {"tid": tenant_id},
+            )
+            await flip_session.commit()
+        events.append("flip_done")
+
+    flip = asyncio.ensure_future(_flip_task())
+    gen_task = asyncio.ensure_future(generator.generate_for_tenant(uuid.UUID(tenant_id), 1))
+
+    await asyncio.wait_for(entered_put.wait(), timeout=10)
+    await asyncio.sleep(0.1)  # let the flip's UPDATE reach Postgres and start blocking
+    release_put.set()
+
+    outcome = await asyncio.wait_for(gen_task, timeout=10)
+    await asyncio.wait_for(flip, timeout=10)
+
+    assert outcome == "success", (
+        "the in-flight transaction must complete successfully, unaffected by the"
+        " blocked concurrent flip"
+    )
+    assert "put_done" in events and "flip_done" in events
+    assert events.index("put_done") < events.index("flip_done"), (
+        "the concurrent flip must NOT complete until AFTER the atomic transaction"
+        " resolves — it was blocked on the tenants row lock the whole time"
+    )
+    run_count = await count_report_runs(db_session, tenant_id)
+    assert run_count == 1, "the report generated before the flip took effect must persist"
 
 
 async def test_zdr_flip_mid_tick_persists_nothing_toctou(

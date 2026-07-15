@@ -67,7 +67,12 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from .conftest import count_audit_rows, fetch_one_audit_row, seed_platform_tenant
+from .conftest import (
+    await_audit_count,
+    count_audit_rows,
+    fetch_one_audit_row,
+    seed_platform_tenant,
+)
 
 AUDIT_ACTION = "auth.superadmin_login"
 
@@ -135,7 +140,7 @@ async def test_superadmin_login_is_audited(
     assert identity.role == Role.SUPERADMIN, "JWT shape must be byte-identical to today's"
     assert identity.tenant_id == platform_id
 
-    await asyncio.sleep(0.05)  # let the fire-and-forget audit write complete
+    await await_audit_count(db_session, action=AUDIT_ACTION, expected=1)
     row = await fetch_one_audit_row(db_session, action=AUDIT_ACTION)
     assert row is not None, "Expected exactly one auth.superadmin_login audit row"
     tenant_id, actor_user_id, actor_email, action, target_type, target_id, result, metadata = row
@@ -176,7 +181,7 @@ async def test_non_superadmin_login_not_audited(
         json={"email": control_email, "password": _SUPERADMIN_PASSWORD},
     )
     assert control_resp.status_code == 200, control_resp.text
-    await asyncio.sleep(0.05)
+    await await_audit_count(db_session, action=AUDIT_ACTION, expected=1)
     assert await count_audit_rows(db_session, action=AUDIT_ACTION) == 1, (
         "positive control: a superadmin login in this same test/schema must be audited "
         "for the negative assertion below to mean anything"
@@ -201,7 +206,7 @@ async def test_non_superadmin_login_not_audited(
     identity = app.state.token_service.decode(resp.json()["access_token"])
     assert identity.role == Role.OWNER, "JWT issued exactly as today, unchanged by this task"
 
-    await asyncio.sleep(0.05)
+    await await_audit_count(db_session, action=AUDIT_ACTION, expected=1)
     assert await count_audit_rows(db_session, action=AUDIT_ACTION) == 1, (
         "row count for auth.superadmin_login must be unchanged by the non-superadmin "
         "login — still just the positive-control row from above"
@@ -229,7 +234,7 @@ async def test_wrong_password_against_superadmin_email_not_audited(
         "/admin/auth/login", json={"email": email, "password": _SUPERADMIN_PASSWORD}
     )
     assert good_resp.status_code == 200, good_resp.text
-    await asyncio.sleep(0.05)
+    await await_audit_count(db_session, action=AUDIT_ACTION, expected=1)
     assert await count_audit_rows(db_session, action=AUDIT_ACTION) == 1
 
     # The actual scenario under test: a wrong-password attempt against that SAME email.
@@ -240,7 +245,7 @@ async def test_wrong_password_against_superadmin_email_not_audited(
     assert resp.json().get("code") == "ERR_AUTH_INVALID_CREDENTIALS"
     assert "access_token" not in resp.json()
 
-    await asyncio.sleep(0.05)
+    await await_audit_count(db_session, action=AUDIT_ACTION, expected=1)
     assert await count_audit_rows(db_session, action=AUDIT_ACTION) == 1, (
         "issuance was never reached for the wrong-password attempt — the row count must "
         "still be exactly 1 (only the earlier successful login), proving the rejection "

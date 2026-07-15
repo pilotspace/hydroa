@@ -6,10 +6,14 @@
  * No Authorization header is ever constructed or read client-side.
  * No localStorage read or write.
  *
- * On 401 from /api/gw/*: fires window.location.href = "/login" ONLY when the body
- * carries ERR_AUTH_SESSION_EXPIRED (a genuine session expiry, signalled by the BFF
- * for control-plane 401s). A data-plane (/v1/*) 401 is surfaced as a thrown BffError
- * without redirecting — the caller handles it.
+ * On 401 from /api/gw/*: fires window.location.href = "/login" when the body carries
+ * ERR_AUTH_SESSION_EXPIRED (a genuine session expiry, signalled by the BFF for
+ * control-plane 401s) OR ERR_AUTH_NO_SESSION (the cookie is absent entirely —
+ * app/api/gw/[...path]/route.ts:136 — e.g. a client-side query firing after the
+ * session cookie was cleared/never existed; proxy.ts's route guard only covers a
+ * fresh page navigation to /app/*, not an in-flight client fetch from an already-
+ * mounted page). A data-plane (/v1/*) 401 is surfaced as a thrown BffError without
+ * redirecting — the caller handles it.
  */
 
 /**
@@ -58,14 +62,17 @@ async function handleBffResponse<T>(res: Response, isAuthEndpoint = false): Prom
     } catch {
       body = { title: "Unauthorized", status: 401 };
     }
-    // Bounce to /login ONLY on a genuine session expiry. The BFF emits
-    // ERR_AUTH_SESSION_EXPIRED (and clears the cookie) solely for control-plane
-    // (/admin/*) 401s. A data-plane (/v1/*) 401 carries the upstream's own code
-    // (e.g. ERR_AUTH_INVALID_KEY) and must NOT log the user out — the caller
-    // handles it (fail-open picker / error state).
+    // Bounce to /login on a genuine session expiry OR a never-authenticated call
+    // (no session cookie at all). The BFF emits ERR_AUTH_SESSION_EXPIRED (clearing
+    // the cookie) or ERR_AUTH_NO_SESSION (cookie absent, cookie never cleared —
+    // there is nothing to clear) solely for control-plane (/admin/*) 401s. A
+    // data-plane (/v1/*) 401 carries the upstream's own code (e.g.
+    // ERR_AUTH_INVALID_KEY) and must NOT log the user out — the caller handles it
+    // (fail-open picker / error state).
+    const bodyCode = (body as { code?: string }).code;
     if (
       typeof window !== "undefined" &&
-      (body as { code?: string }).code === "ERR_AUTH_SESSION_EXPIRED"
+      (bodyCode === "ERR_AUTH_SESSION_EXPIRED" || bodyCode === "ERR_AUTH_NO_SESSION")
     ) {
       window.location.href = "/login";
     }

@@ -54,6 +54,7 @@ from gateway.proxy.domain.entities import GuardrailEvent, GuardrailResult
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.guardrail_tenant_context import get_guardrail_tenant_id
 from gateway.proxy.domain.ports import GuardrailEvaluator, TenantCredentialResolver
+from gateway.proxy.infrastructure.guardrail_evaluator import mask_pii_in_messages
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 
 # ---------------------------------------------------------------------------
@@ -85,14 +86,52 @@ class ModerationProvider(Protocol):
     async def moderate(self, text: str) -> ModerationVerdict: ...
 
 
-def _concat_user_content(messages: list[dict[str, Any]]) -> str:
-    """Concatenate all user-role message content into one string for classification.
+def _concat_message_content(messages: list[dict[str, Any]]) -> str:
+    """Concatenate ALL messages' content AND tool_calls into one string for
+    classification.
+
+    Role-agnostic (M7/appsec fix): the original role=="user" filter left every
+    non-user message — most importantly MCP tool-result content, which arrives
+    as role=="tool" and is UNTRUSTED external content routed back into the
+    conversation — completely unscanned by moderation. Scanning every role
+    means ml_moderation actually sees everything RegexGuardrailEvaluator sees.
+
+    HOLE 1 (adversarial-verification follow-up, audit-remediation package A1
+    rework): `tool_calls[*].function.{name,arguments}` (the primary agent-
+    gateway traffic shape) is now also concatenated in — previously only
+    `content` was read here, so PII/flaggable text living exclusively inside a
+    tool call's arguments never reached moderation at all.
 
     Matches RegexGuardrailEvaluator's convention (guardrail_evaluator.py) of trusting
     the frozen GuardrailEvaluator.evaluate_pre `list[dict[str, Any]]` type — no
-    per-message isinstance re-check.
+    per-message isinstance re-check. Content AND tool_calls are expected to already
+    have been run through `mask_pii_in_messages` by the caller (see `evaluate_pre`
+    below) before reaching this function — that function's `_mask_pii` now masks
+    both `content` (incl. list-shaped) and `tool_calls[*].function.{name,arguments}`
+    — so `str(...)`-ing a list-shaped (Anthropic content-block / OpenAI vision)
+    content field here is safe even though it is not a targeted text-part
+    extraction: any built-in-pattern PII it carried has already been replaced with
+    its redaction literal in place, so the raw value never appears in the string
+    this function builds.
     """
-    return "\n".join(str(m.get("content", "")) for m in messages if m.get("role") == "user")
+    parts: list[str] = []
+    for m in messages:
+        parts.append(str(m.get("content", "")))
+        tool_calls = m.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for call in tool_calls:
+                if not isinstance(call, dict):
+                    continue
+                function = call.get("function")
+                if not isinstance(function, dict):
+                    continue
+                name = function.get("name")
+                if isinstance(name, str):
+                    parts.append(name)
+                arguments = function.get("arguments")
+                if isinstance(arguments, str):
+                    parts.append(arguments)
+    return "\n".join(parts)
 
 
 class OpenAiModerationClient:
@@ -199,7 +238,18 @@ class MlModerationGuardrailEvaluator:
                 # and reset in `finally` below so it never leaks to the routed call.
                 cred = await self._resolver.resolve(tenant_id, "openai")
                 _cred_token = set_provider_credential(cred)
-            verdict = await self._provider.moderate(_concat_user_content(messages))
+            # M7 hardening: `messages` here may be the RAW request — the caller
+            # (CompositeGuardrailEvaluator) only substitutes r1.masked_messages when
+            # the tenant's OWN pii_mask guardrail is enabled AND mode=="mask"; when
+            # it's off/audit-mode this evaluator would otherwise forward UNMASKED
+            # PII to a 3rd-party endpoint (OpenAI's /v1/moderations) regardless of
+            # the tenant's guardrail posture. Apply the SAME unconditional built-in
+            # PII scrub the payload-capture-store path uses (mask_pii_in_messages —
+            # always runs the built-in patterns, independent of
+            # guardrail_configs["pii_mask"]'s own enabled/mode gate) before this
+            # content ever leaves the process.
+            scrubbed_messages = mask_pii_in_messages(messages, guardrail_configs)
+            verdict = await self._provider.moderate(_concat_message_content(scrubbed_messages))
         except Exception as exc:
             reason = type(exc).__name__
             event = GuardrailEvent(guardrail="ml_moderation", action="unchecked", detail=reason)

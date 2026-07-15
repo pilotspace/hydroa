@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import random
 from collections.abc import AsyncIterator
+from decimal import Decimal, InvalidOperation
 
 import httpx
 
@@ -73,12 +74,16 @@ class OpenRouterCatalogSource:
         ctx = item.get("context_length")
         raw_pricing = item.get("pricing", {})
         pricing: dict[str, object] = raw_pricing if isinstance(raw_pricing, dict) else {}
+        # audit-remediation package C1 (LOW/MED CatalogModel float money): parse
+        # straight to Decimal from the raw JSON string — previously this went
+        # through float(), introducing a binary floating-point representation
+        # error on every OpenRouter-synced model's sub-cent per-token price.
         try:
-            prompt = float(str(pricing.get("prompt", "0")))
-            completion = float(str(pricing.get("completion", "0")))
-        except (ValueError, TypeError):
-            prompt = 0.0
-            completion = 0.0
+            prompt = Decimal(str(pricing.get("prompt", "0")))
+            completion = Decimal(str(pricing.get("completion", "0")))
+        except (InvalidOperation, ValueError, TypeError):
+            prompt = Decimal("0")
+            completion = Decimal("0")
         context_length: int | None = int(ctx) if isinstance(ctx, (int, float)) else None
         return CatalogModel(
             id=model_id,

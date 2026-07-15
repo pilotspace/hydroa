@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +60,14 @@ class AgentTokenBinding:
     scope: str
     principal_id: uuid.UUID | None = None
     principal_budget_usd: Decimal | None = None
+    # audit-remediation Blocker 1 (CRITICAL): the token's tenant guardrail_configs,
+    # populated via a LEFT JOIN tenants in resolve_access_token() — the same
+    # "populate at auth time via JOIN tenants" pattern SqlAlchemyApiKeyRepository.
+    # get_by_id() uses for API keys. Additive/nullable: None for any caller that does
+    # not resolve it (byte-identical to pre-fix). The CompositeKeyAuthenticator applies
+    # the non-overridable tenant FLOOR from this so agent-OAuth traffic enforces the
+    # tenant's PII masking / injection guardrails (previously bypassed entirely).
+    tenant_guardrail_configs: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

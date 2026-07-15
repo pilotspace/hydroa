@@ -54,6 +54,7 @@ no HTTP scenario can reach (a forged malformed claim / a forged SUPERADMIN+imper
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -269,6 +270,28 @@ async def fetch_one_audit_row(session: AsyncSession, *, action: str) -> Row[Any]
         {"action": action},
     )
     return result.fetchone()
+
+
+async def _await_audit_row(
+    session: AsyncSession,
+    *,
+    action: str,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> Row[Any] | None:
+    """Poll until `fetch_one_audit_row(action)` returns a row, or `timeout` elapses.
+
+    De-flakes the fire-and-forget audit write under `pytest -n 12` CPU saturation — a
+    fixed `_drain_fire_and_forget()` sleep can read before the scheduled
+    asyncio.ensure_future(record_audit(...)) task has run. Positive-assertion sites only
+    (mirrors tests/superadmin_audit_foundation/conftest.py::await_audit_count).
+    """
+    row = await fetch_one_audit_row(session, action=action)
+    deadline = time.monotonic() + timeout
+    while row is None and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        row = await fetch_one_audit_row(session, action=action)
+    return row
 
 
 async def _session_count(db_session: AsyncSession, *, active_only: bool = False) -> int:
@@ -660,8 +683,7 @@ async def test_end_by_different_superadmin(
     assert row.revoked_at is not None
     assert row.revoked_reason == "explicit_end"
 
-    await _drain_fire_and_forget()
-    end_row = await fetch_one_audit_row(db_session, action="platform.impersonation.end")
+    end_row = await _await_audit_row(db_session, action="platform.impersonation.end")
     assert end_row is not None
     metadata = end_row[7]
     assert metadata["ended_by_original_actor"] is False
@@ -809,8 +831,7 @@ async def test_audit_rows_attribute_real_superadmin_never_target(
     assert mint_resp.status_code == 201, mint_resp.text
     session_id = mint_resp.json()["session_id"]
 
-    await _drain_fire_and_forget()
-    start_row = await fetch_one_audit_row(db_session, action="platform.impersonation.start")
+    start_row = await _await_audit_row(db_session, action="platform.impersonation.start")
     assert start_row is not None
     (
         start_tenant_id,
@@ -833,8 +854,7 @@ async def test_audit_rows_attribute_real_superadmin_never_target(
     end_resp = await client.delete(_end_url(session_id), headers=_bearer(superadmin_token))
     assert end_resp.status_code == 204, end_resp.text
 
-    await _drain_fire_and_forget()
-    end_row = await fetch_one_audit_row(db_session, action="platform.impersonation.end")
+    end_row = await _await_audit_row(db_session, action="platform.impersonation.end")
     assert end_row is not None
     (
         end_tenant_id,

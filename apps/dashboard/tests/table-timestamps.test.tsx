@@ -14,6 +14,7 @@ import { render, screen } from "@testing-library/react";
 import { AlertsTable } from "@/components/alerts/AlertsTable";
 import { AuditTable } from "@/components/audit/AuditTable";
 import { UsageTable } from "@/components/usage/UsageTable";
+import { KeyRow } from "@/components/keys/KeyRow";
 
 describe("admin read tables — human-readable timestamps", () => {
   it("AlertsTable humanizes When and surfaces the payload", () => {
@@ -91,5 +92,29 @@ describe("admin read tables — human-readable timestamps", () => {
     );
     expect(screen.queryByText("2026-06-10T00:00:00Z")).toBeNull();
     expect(screen.getByText(/2026/)).toBeInTheDocument();
+  });
+
+  it("KeyRow humanizes the revoked timestamp (audit-remediation item 8)", () => {
+    render(
+      <table>
+        <tbody>
+          <KeyRow
+            apiKey={{
+              key_id: "key_abcdef0123456789",
+              name: "prod-key",
+              prefix: "sk-prod",
+              created_at: "2026-06-01T00:00:00Z",
+              revoked_at: "2026-06-10T12:05:00Z",
+            }}
+            onRevoke={() => {}}
+          />
+        </tbody>
+      </table>,
+    );
+    // raw ISO gone from the revoked badge; a humanized form is shown instead
+    expect(screen.queryByText(/2026-06-10T12:05:00Z/)).toBeNull();
+    const revokedBadge = screen.getByText(/Revoked/);
+    expect(revokedBadge).toBeInTheDocument();
+    expect(revokedBadge.textContent).toMatch(/2026/);
   });
 });

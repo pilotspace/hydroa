@@ -26,6 +26,7 @@ Run only this suite (from apps/gateway/):
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -175,8 +176,8 @@ async def test_sc2_dynamic_openrouter_sync_leaves_region_global(db_session: Asyn
         id="anthropic/claude-opus-4-sc2",
         name="Claude Opus 4",
         context_length=200_000,
-        prompt_usd_per_token=15e-6,
-        completion_usd_per_token=75e-6,
+        prompt_usd_per_token=Decimal("15e-6"),
+        completion_usd_per_token=Decimal("75e-6"),
         provider="openrouter",
         # region NOT provided — must default to 'global'
     )
@@ -448,8 +449,8 @@ async def test_sc11_bedrock_seed_rows_survive_deactivation_sweep(
                     id="anthropic/claude-opus-4-sc11",
                     name="Claude Opus 4",
                     context_length=200_000,
-                    prompt_usd_per_token=15e-6,
-                    completion_usd_per_token=75e-6,
+                    prompt_usd_per_token=Decimal("15e-6"),
+                    completion_usd_per_token=Decimal("75e-6"),
                     provider="openrouter",
                 )
             ]
@@ -466,8 +467,8 @@ async def test_sc11_bedrock_seed_rows_survive_deactivation_sweep(
                     id="anthropic/claude-sonnet-4-sc11",
                     name="Claude Sonnet 4",
                     context_length=200_000,
-                    prompt_usd_per_token=3e-6,
-                    completion_usd_per_token=15e-6,
+                    prompt_usd_per_token=Decimal("3e-6"),
+                    completion_usd_per_token=Decimal("15e-6"),
                     provider="openrouter",
                 )
             ]
@@ -542,8 +543,8 @@ async def test_sc13_static_seed_omitting_region_defaults_global_not_rejected(
         id="omitted-region-sc13",
         name="Omitted Region Model",
         context_length=8192,
-        prompt_usd_per_token=1e-6,
-        completion_usd_per_token=2e-6,
+        prompt_usd_per_token=Decimal("1e-6"),
+        completion_usd_per_token=Decimal("2e-6"),
         provider="openrouter",
         # region NOT provided
     )
@@ -577,12 +578,16 @@ async def test_pin_resync_rewrites_region_on_value_change(db_session: AsyncSessi
     upstream must be re-affirmed on the next sync cycle, never silently stale.
     """
     repo = SqlAlchemyCatalogRepository(db_session)
-    base = {
+    # audit-remediation package C1: explicit dict[str, Any] — a **spread into CatalogModel's
+    # distinct per-field kwarg types (str / int / Decimal) can never be verified precisely by
+    # pyright from a single heterogeneous dict value type; Any silences that structurally
+    # unfixable-by-spread noise without changing runtime behavior (pre-existing pattern).
+    base: dict[str, Any] = {
         "id": "us.anthropic.claude-pin-resync-v1:0",
         "name": "Pin Resync",
         "context_length": 200_000,
-        "prompt_usd_per_token": 3e-6,
-        "completion_usd_per_token": 15e-6,
+        "prompt_usd_per_token": Decimal("3e-6"),
+        "completion_usd_per_token": Decimal("15e-6"),
         "provider": "bedrock",
     }
 

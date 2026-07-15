@@ -1,6 +1,15 @@
 """Domain ports for the MCP connector (mcp-connector-passthrough TASK.md §3 CONTRACT,
 FROZEN @ v2 — CR-1 added `call_id` to `ToolCallObserver.record`) — typing.Protocol,
 zero framework imports (CONVENTIONS.md/PROJECT.md).
+
+audit-remediation (HIGH, agent-principal MCP metering unfunded): `record` gained an
+Optional `agent_principal_id` keyword (default None) so the mcp-connector call site can
+forward `authz.agent_principal_id` through to the tool-call-metering observer, which
+forwards it byte-for-byte into `UsageRecorder.record()` — the SAME per-agent-principal
+spend attribution every other billed call path (chat/non-chat) already threads. Kept
+Optional-with-default so this is additive, not a breaking Protocol widening: any other
+existing `ToolCallObserver` implementation (a test fake, a future caller) that omits the
+keyword entirely still type-checks and behaves exactly as before.
 """
 
 from __future__ import annotations
@@ -29,8 +38,14 @@ class ToolCallObserver(Protocol):
         tool_name: str,
         status: Literal["success"],
         latency_ms: int,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> None:
-        """Record one successfully-dialed (non-refused, non-blocked) tool call."""
+        """Record one successfully-dialed (non-refused, non-blocked) tool call.
+
+        agent_principal_id: the calling AuthzResult's agent-principal attribution
+          (None for a token unattached to any principal, e.g. an sk- key) — mirrors
+          every other billed call path's agent_principal_id passthrough.
+        """
         ...
 
 
@@ -47,6 +62,7 @@ class NoopToolCallObserver:
         tool_name: str,
         status: Literal["success"],
         latency_ms: int,
+        agent_principal_id: uuid.UUID | None = None,
     ) -> None:
         return
 

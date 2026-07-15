@@ -8,11 +8,22 @@ Methods:
   create(*, tenant_id, key_id, name, content_type, size_bytes, content) -> ArtifactRow
   list_active(*, tenant_id, limit, offset) -> list[ArtifactRow]  [load_only metadata cols]
   get_active(*, tenant_id, artifact_id) -> ArtifactRow | None  [loads ALL cols including content]
-  soft_delete(*, tenant_id, artifact_id) -> bool
+  soft_delete(*, tenant_id, artifact_id) -> bool  [best-effort purges bytes — see below]
+
+soft_delete byte-purge (MED remediation): a "deleted" artifact must actually have its
+bytes gone, not merely be DB-invisible. soft_delete now, in one UPDATE, sets
+deleted_at=now() AND clears the inline BYTEA `content` column, and — for an s3-backed
+row — best-effort calls ObjectStore.delete(object_key) when an ObjectStore was injected
+at construction time. Design-for-failure: the object-store delete is best-effort and
+NEVER blocks or rolls back the DB soft-delete — a failure (outage, or no ObjectStore
+configured at all) is logged and swallowed; the row is still soft-deleted and its
+inline bytes are still cleared. `object_store` is optional (default None) so every
+pre-existing `ArtifactRepository(session)` call site keeps working unchanged.
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -21,14 +32,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
 from gateway.artifacts.infrastructure.orm import ArtifactRow
+from gateway.objectstore.errors import ObjectStoreUnavailableError
+from gateway.objectstore.port import ObjectStore
 from gateway.tenants.application.retention_policy import raise_if_zdr
+
+_log = logging.getLogger(__name__)
 
 
 class ArtifactRepository:
-    """All artifact persistence, scoped to a single SQLAlchemy session."""
+    """All artifact persistence, scoped to a single SQLAlchemy session.
 
-    def __init__(self, session: AsyncSession) -> None:
+    ``object_store`` is optional (default None): when configured, soft_delete()
+    best-effort purges an s3-backed artifact's bytes at delete time; when None, the
+    object-store purge honest-degrades to a no-op (logged) and only the DB row /
+    inline bytes are cleared — the periodic RetentionSweeper's ZDR/window passes
+    remain the backstop for any orphaned s3 object either way.
+    """
+
+    def __init__(self, session: AsyncSession, object_store: ObjectStore | None = None) -> None:
         self._session = session
+        self._object_store = object_store
 
     async def create(
         self,
@@ -129,10 +152,20 @@ class ArtifactRepository:
         tenant_id: uuid.UUID,
         artifact_id: uuid.UUID,
     ) -> bool:
-        """Soft-delete: set deleted_at = now() scoped to tenant_id.
+        """Soft-delete: set deleted_at = now() AND clear the inline `content` bytes,
+        scoped to tenant_id — plus a best-effort ObjectStore.delete() for an s3-backed
+        row (MED remediation: "deleted" must mean the bytes are actually gone, not just
+        DB-invisible).
 
         Returns True if exactly one row was updated, False otherwise
         (unknown id, belongs to another tenant, or already deleted — same result, no leak).
+
+        Design for failure: the object-store delete happens AFTER the DB soft-delete is
+        flushed and is strictly best-effort — an ObjectStoreUnavailableError (or no
+        ObjectStore configured) is logged and swallowed; it NEVER raises, never rolls
+        back, and never blocks the tenant-visible delete on an object-store outage. A
+        deferred/failed object purge is still eventually reclaimed by the periodic
+        RetentionSweeper's window/ZDR passes (which independently retry object deletes).
         """
         now = datetime.now(tz=UTC)
         result = await self._session.execute(
@@ -142,8 +175,34 @@ class ArtifactRepository:
                 ArtifactRow.tenant_id == tenant_id,
                 ArtifactRow.deleted_at.is_(None),
             )
-            .values(deleted_at=now)
-            .returning(ArtifactRow.id)
+            .values(deleted_at=now, content=None)
+            .returning(ArtifactRow.id, ArtifactRow.object_key, ArtifactRow.storage_backend)
         )
         await self._session.flush()
-        return result.scalar_one_or_none() is not None
+        row = result.first()
+        if row is None:
+            return False
+        _artifact_id, object_key, storage_backend = row
+
+        if storage_backend == "s3" and object_key:
+            if self._object_store is None:
+                _log.warning(
+                    "artifact soft_delete: no ObjectStore configured — s3 object"
+                    " key=%s for artifact=%s left in place (the retention sweep is"
+                    " the backstop for reclaiming it)",
+                    object_key,
+                    artifact_id,
+                )
+            else:
+                try:
+                    await self._object_store.delete(object_key)
+                except ObjectStoreUnavailableError as exc:
+                    _log.warning(
+                        "artifact soft_delete: ObjectStore.delete failed for key=%s"
+                        " artifact=%s (DB soft-delete already flushed; swallowed,"
+                        " the retention sweep retries this object): %s",
+                        object_key,
+                        artifact_id,
+                        exc,
+                    )
+        return True

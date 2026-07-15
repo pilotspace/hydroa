@@ -38,7 +38,9 @@ pytestmark = pytest.mark.asyncio
 def _settings_for(**overrides: Any) -> Any:
     """Minimal settings-like object — every table-window knob OFF by default so only
     the window-pass/ZDR-pass under test fires (mirrors test_retention_sweep.py's own
-    `_settings_for` verbatim)."""
+    `_settings_for` verbatim). tenant_ceiling_days defaults to 365 (config.py's real
+    production default) — CRIT#2 fix: the window-cutoff pass now runs unconditionally
+    every sweep_once() and binds this field as a SQL parameter."""
     s = MagicMock()
     s.retention_check_interval_seconds = overrides.get("interval", 86400)
     s.retention_usage_records_days = overrides.get("usage_days", 0)
@@ -46,6 +48,8 @@ def _settings_for(**overrides: Any) -> Any:
     s.retention_audit_events_days = overrides.get("audit_days", 0)
     s.retention_audit_floor_days = overrides.get("audit_floor", 0)
     s.retention_batch_size = overrides.get("batch_size", 1000)
+    s.retention_request_logs_days = overrides.get("request_logs_days", 0)
+    s.retention_tenant_window_ceiling_days = overrides.get("tenant_ceiling_days", 365)
     return s
 
 
@@ -122,27 +126,55 @@ async def test_window_pass_purges_aged_report_and_its_object(
     assert fresh_key in store.store
 
 
-async def test_window_pass_ignores_tenant_with_no_retention_window(
+async def test_window_pass_uses_operator_ceiling_when_tenant_window_null(
     client: httpx.AsyncClient, db_session: AsyncSession, app: Any
 ) -> None:
+    """CRIT#2 remediation (deliberate test-behavior flip — see report justification):
+    this test previously asserted that a NULL-window tenant's compliance report run
+    was NEVER purged ("window pass must never touch this tenant"). That was the CRIT#2
+    bug itself: retention_sweep.py's cutoff query required `retention_window_days IS
+    NOT NULL`, so a default-posture tenant's data was never purged even though nothing
+    in the contract promises indefinite retention for that posture — the operator
+    ceiling is meant to be the fallback, exactly as it is for the other 5 new-payload
+    tables. Now: a NULL-window tenant is swept using the operator ceiling
+    (retention_tenant_window_ceiling_days) as the fallback cutoff — an ancient (3650d)
+    report is purged, a fresh one survives."""
     _owner, tenant_id = await signup_tenant(client, tenant_name="Acme", email="owner@acme.example")
-    # retention_window_days left NULL (unset) — window pass must never touch this tenant.
+    # retention_window_days left NULL (unset, default posture).
     now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
-    key = f"compliance-reports/{tenant_id}/ancient.json"
-    row_id = await _seed_run(
+    ancient_key = f"compliance-reports/{tenant_id}/ancient.json"
+    fresh_key = f"compliance-reports/{tenant_id}/fresh.json"
+    ancient_id = await _seed_run(
         db_session,
         tenant_id=tenant_id,
-        object_key=key,
+        object_key=ancient_key,
         generated_at=now - datetime.timedelta(days=3650),
+    )
+    fresh_id = await _seed_run(
+        db_session,
+        tenant_id=tenant_id,
+        object_key=fresh_key,
+        generated_at=now - datetime.timedelta(days=1),
     )
 
     store = FakeObjectStore()
-    await store.put(key, b"x", "application/json")
-    sweeper = make_sweeper_with_store(app, _settings_for(), object_store=store)
+    await store.put(ancient_key, b"x", "application/json")
+    await store.put(fresh_key, b"y", "application/json")
+    sweeper = make_sweeper_with_store(
+        app, _settings_for(tenant_ceiling_days=365), object_store=store
+    )
     result = await sweeper.sweep_once()
 
-    assert result.get("compliance_report_runs", 0) == 0
-    assert await _row_exists(db_session, row_id)
+    assert result.get("compliance_report_runs", 0) == 1, result
+    assert not await _row_exists(db_session, ancient_id), (
+        "a NULL-window tenant's report older than the operator ceiling (365d) must now"
+        " be purged (CRIT#2 fix)"
+    )
+    assert await _row_exists(db_session, fresh_id), (
+        "a NULL-window tenant's report within the operator ceiling must still survive"
+    )
+    assert ancient_key in store.deleted
+    assert fresh_key not in store.deleted
 
 
 async def test_zdr_purge_pass_removes_every_report_regardless_of_age(

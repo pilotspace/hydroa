@@ -269,7 +269,7 @@ from gateway.usage.application.recovery_sweep import (
 )
 from gateway.usage.application.retention_sweep import (
     RetentionSweeper,
-    should_start_retention_sweep,
+    should_start_retention_sweep_with_zdr,
 )
 from gateway.usage.infrastructure.alert_events_orm import (
     AlertEventRow as _AlertEventRow,  # noqa: F401 — registers alert_events ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -640,7 +640,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # (data-retention-controls v38). Default-ON at configured defaults; started only
         # when interval>0 AND at least one per-table window>0. Wired after recovery sweep.
         app.state.retention_sweeper_task = None
-        if should_start_retention_sweep(_settings):
+        # audit-remediation: ZDR-aware start-gate — also start the sweeper when any tenant
+        # has zdr_enabled=true, even if every operator-level window knob is 0 (so ZDR
+        # unconditional purge always runs). Honest-degrades to settings-only on DB error.
+        if await should_start_retention_sweep_with_zdr(_settings, session_factory=_sessionmaker):
             retention_sweeper = RetentionSweeper(
                 session_factory=_sessionmaker,
                 settings=_settings,
@@ -726,6 +729,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _invoice_generator = InvoiceGenerator(
                 session_factory=_sessionmaker,
                 stabilization_hours=_settings.invoice_stabilization_hours,
+                # Couple invoice-skip to the SAME knob that turns on real-time credit
+                # enforcement — one source of truth, they can never diverge (double-bill).
+                credits_gate_enabled=_settings.credits_gate_enabled,
             )
             app.state.invoice_generator = _invoice_generator
             app.state.invoice_generator_task = asyncio.create_task(
@@ -963,6 +969,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()
+    # audit-remediation package C1 (MED proxy global breaker): per-provider breaker
+    # registry consulted by proxy/api/deps.py::get_completion_upstream. Keyed lazily
+    # by resolved catalog provider (dict.setdefault) so a trip on one provider's
+    # breaker never blocks another's. app.state.circuit_breaker above is kept
+    # unchanged for backward compatibility with callers outside deps.py (e.g. the
+    # realtime websocket path in proxy/api/realtime_ws.py, which is out of scope
+    # for this fix and still uses the single legacy breaker).
+    # dict[str, CircuitBreaker], lazily populated per resolved provider.
+    app.state.provider_circuit_breakers = {}
     # Raw OpenRouter upstream — used directly by the provider adapter map and the
     # OpenRouterUpstreamFacade (embeddings/images). NOT the dispatch wrapper.
     # No api_key= argument: auth is resolved per-request from the contextvar

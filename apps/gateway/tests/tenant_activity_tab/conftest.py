@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import time
 import uuid
 from typing import Any
 
@@ -200,3 +201,24 @@ async def drain_fire_and_forget() -> None:
     querying audit_events (mirrors tests/admin_console_audit's own `asyncio.sleep(0.05)` idiom,
     itself mirroring tests/superadmin_audit_foundation/conftest.py and tests/test_users_role.py)."""
     await asyncio.sleep(0.05)
+
+
+async def await_audit_count(
+    session: AsyncSession,
+    *,
+    action: str,
+    expected: int,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> int:
+    """Poll count_audit_rows(action) until it reaches `expected`, or `timeout` elapses. The
+    audit write is fire-and-forget — `drain_fire_and_forget()`'s fixed sleep(0.05) is racy
+    under `pytest -n 12` CPU saturation. Positive assertions only; never masks a genuinely-
+    absent row (returns the real count after timeout so the caller's own `== expected`
+    assertion still fails honestly)."""
+    count = await count_audit_rows(session, action=action)
+    deadline = time.monotonic() + timeout
+    while count < expected and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        count = await count_audit_rows(session, action=action)
+    return count

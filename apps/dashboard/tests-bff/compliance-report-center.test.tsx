@@ -526,3 +526,43 @@ describe("ComplianceReportCenter — accessibility", () => {
     await expectNoSeriousViolations(container, { rules: { "color-contrast": { enabled: false } } });
   });
 });
+
+/**
+ * Heading hierarchy (audit-remediation, item 4): ComplianceReportCenter is mounted
+ * inside SettingsPage's single page-level <h1>"Settings"</h1>, but the component's
+ * OWN subsection titles ("Art. 12 record-keeping bundle" / "Generated reports")
+ * render as bare <h3>s with no intervening <h2> — an h1 -> h3 level SKIP (WCAG 2.2
+ * a11y: heading levels must not skip). Rendered here under a surrounding <h1> exactly
+ * like SettingsPage does, so the assertion pins the real-world DOM shape, not just
+ * ComplianceReportCenter in isolation (which alone never contains the offending h1).
+ */
+describe("ComplianceReportCenter — heading hierarchy (no level skip)", () => {
+  function headingLevels(container: HTMLElement): number[] {
+    return Array.from(container.querySelectorAll("h1,h2,h3,h4,h5,h6")).map((el) =>
+      Number(el.tagName.slice(1)),
+    );
+  }
+
+  it("test_no_heading_level_skip_from_page_h1_into_the_component", async () => {
+    const user = userEvent.setup();
+    server.use(...baseHandlers(), http.get(BUNDLE_PATH, () => HttpResponse.json(makePage())));
+    const { container } = render(
+      <div>
+        <h1>Settings</h1>
+        <ComplianceReportCenter />
+      </div>,
+      { wrapper: Wrapper },
+    );
+    // populate the "done" state so the "Art. 12 record-keeping bundle" h3 mounts too
+    await fillPeriodAndGenerate(user);
+    await screen.findByText("bundle-xyz");
+
+    const levels = headingLevels(container);
+    // sanity: both subsection headings are present in this populated state
+    expect(levels).toContain(3);
+    // no adjacent pair may skip a level (e.g. 1 -> 3 with no 2 in between)
+    for (let i = 1; i < levels.length; i++) {
+      expect(levels[i] - levels[i - 1]).toBeLessThanOrEqual(1);
+    }
+  });
+});

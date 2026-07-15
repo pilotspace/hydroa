@@ -146,7 +146,7 @@ export function TeamsPage() {
       {!isLoading && !isError && teams.length > 0 && (
         <Card>
           <CardContent className="p-0">
-            <DataTable columns={columns} data={teams} />
+            <DataTable columns={columns} data={teams} getRowId={(t) => t.id} />
           </CardContent>
         </Card>
       )}

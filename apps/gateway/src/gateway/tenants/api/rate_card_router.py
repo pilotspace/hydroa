@@ -17,15 +17,20 @@ tenants/domain/authz.py) and acts on the CALLER'S OWN tenant
 
 from __future__ import annotations
 
+import asyncio
+import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.db import get_session
 from gateway.core.ids import uuid7
 from gateway.tenants.domain.authz import Permission, require_permission
@@ -54,6 +59,7 @@ class RateCardListResponse(BaseModel):
 
 @rate_card_router.put("/{model_id}", response_model=RateCardEntryResponse)
 async def put_rate_card_entry(
+    request: Request,
     model_id: str,
     body: RateCardPutRequest,
     identity: Annotated[Identity, require_permission(Permission.RATE_CARDS_MANAGE)],
@@ -80,6 +86,27 @@ async def put_rate_card_entry(
     )
     await session.execute(stmt)
     await session.commit()
+
+    # Audit emit — fail-open fire-and-forget (mirrors teams/api/router.py add_member's own
+    # idiom exactly).
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="rate_card.upsert",
+                target_type="rate_card",
+                target_id=model_id,
+                result="success",
+                metadata={"markup_pct": str(body.markup_pct)},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return RateCardEntryResponse(model_id=model_id, markup_pct=str(body.markup_pct))
 
 
@@ -105,6 +132,7 @@ async def list_rate_card_entries(
 
 @rate_card_router.delete("/{model_id}", status_code=204)
 async def delete_rate_card_entry(
+    request: Request,
     model_id: str,
     identity: Annotated[Identity, require_permission(Permission.RATE_CARDS_MANAGE)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -116,4 +144,26 @@ async def delete_rate_card_entry(
         {"tid": str(identity.tenant_id), "mid": model_id},
     )
     await session.commit()
+
+    # Audit emit — fail-open fire-and-forget (mirrors teams/api/router.py add_member's own
+    # idiom exactly). Idempotent action — audited even when no row actually existed, mirroring
+    # the route's own idempotent-204 contract.
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="rate_card.delete",
+                target_type="rate_card",
+                target_id=model_id,
+                result="success",
+                metadata={},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return Response(status_code=204)

@@ -43,15 +43,18 @@ vertex-adapter task.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from gateway.catalog.domain.entities import CatalogModel
 
 _SONNET_V2_SUFFIX = "anthropic.claude-3-5-sonnet-20241022-v2:0"
 _HAIKU_SUFFIX = "anthropic.claude-3-5-haiku-20241022-v1:0"
 
-_SONNET_V2_PROMPT_USD_PER_TOKEN = 0.000003
-_SONNET_V2_COMPLETION_USD_PER_TOKEN = 0.000015
-_HAIKU_PROMPT_USD_PER_TOKEN = 0.0000008
-_HAIKU_COMPLETION_USD_PER_TOKEN = 0.000004
+# audit-remediation package C1: Decimal literals (money-is-Decimal rule).
+_SONNET_V2_PROMPT_USD_PER_TOKEN = Decimal("0.000003")
+_SONNET_V2_COMPLETION_USD_PER_TOKEN = Decimal("0.000015")
+_HAIKU_PROMPT_USD_PER_TOKEN = Decimal("0.0000008")
+_HAIKU_COMPLETION_USD_PER_TOKEN = Decimal("0.000004")
 
 BEDROCK_SEED_MODELS: list[CatalogModel] = [
     # --- Claude 3.5 Sonnet v2 --------------------------------------------------

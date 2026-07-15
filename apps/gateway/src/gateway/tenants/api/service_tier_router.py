@@ -23,15 +23,20 @@ region_pricing_router.py exactly.
 
 from __future__ import annotations
 
+import asyncio
+import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.db import get_session
 from gateway.core.ids import uuid7
 from gateway.tenants.domain.authz import Permission, require_permission
@@ -72,6 +77,7 @@ class ServiceTiersEffectiveResponse(BaseModel):
 
 @service_tier_router.put("/default-tier", response_model=DefaultTierResponse)
 async def put_default_tier(
+    request: Request,
     body: DefaultTierPutRequest,
     identity: Annotated[Identity, require_permission(Permission.KEYS_MANAGE)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -83,11 +89,33 @@ async def put_default_tier(
         {"tier": body.default_tier, "tid": str(identity.tenant_id)},
     )
     await session.commit()
+
+    # Audit emit — fail-open fire-and-forget (mirrors teams/api/router.py add_member's own
+    # idiom exactly).
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="service_tier.default_tier_update",
+                target_type="service_tier",
+                target_id="default_tier",
+                result="success",
+                metadata={"default_tier": body.default_tier},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return DefaultTierResponse(default_tier=body.default_tier)
 
 
 @service_tier_router.put("/priority-markup", response_model=PriorityMarkupResponse)
 async def put_priority_markup(
+    request: Request,
     body: PriorityMarkupPutRequest,
     identity: Annotated[Identity, require_permission(Permission.KEYS_MANAGE)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -111,6 +139,27 @@ async def put_priority_markup(
     )
     await session.execute(stmt)
     await session.commit()
+
+    # Audit emit — fail-open fire-and-forget (mirrors teams/api/router.py add_member's own
+    # idiom exactly).
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="service_tier.priority_markup_update",
+                target_type="service_tier",
+                target_id="priority_markup",
+                result="success",
+                metadata={"markup_pct": str(body.markup_pct)},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return PriorityMarkupResponse(markup_pct=str(body.markup_pct))
 
 

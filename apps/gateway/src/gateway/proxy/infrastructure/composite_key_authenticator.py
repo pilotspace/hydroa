@@ -27,6 +27,7 @@ from gateway.agent_oauth.domain.entities import AgentTokenBinding
 from gateway.agent_oauth.infrastructure.repository import SqlAlchemyAgentOAuthRepository
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
+from gateway.keys.infrastructure.repository import apply_tenant_guardrail_floor
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.proxy.infrastructure.key_authenticator import SqlAlchemyKeyAuthenticator
 
@@ -85,6 +86,16 @@ class CompositeKeyAuthenticator:
             # Unknown / expired / revoked → identical 401 (no enumeration).
             raise InvalidApiKeyError
 
+        # audit-remediation Blocker 1 (CRITICAL): enforce the tenant guardrail FLOOR
+        # on agent-OAuth traffic. An agent token has no per-key guardrail override, so
+        # the effective config starts empty and the tenant's mandated guardrails
+        # (PII masking / prompt-injection / ml-moderation) floor onto it — the SAME
+        # shared floor the API-key path applies in SqlAlchemyApiKeyRepository.get_by_id().
+        # Previously this path left guardrail_configs={}, so every guardrail gate
+        # (`if guardrail_evaluator and guardrail_configs`) was skipped for agent traffic.
+        tenant_floor = binding.tenant_guardrail_configs or {}
+        guardrail_configs = apply_tenant_guardrail_floor({}, tenant_floor)
+
         return AuthzResult(
             tenant_id=binding.tenant_id,
             key_id=binding.token_id,
@@ -95,4 +106,8 @@ class CompositeKeyAuthenticator:
             # None for an unattached token (byte-identical to pre-task behavior).
             agent_principal_id=binding.principal_id,
             agent_principal_budget_usd=binding.principal_budget_usd,
+            guardrail_configs=guardrail_configs,
+            # An agent token never carries its own key override → the floor IS the
+            # tenant policy; "none" when the tenant mandates nothing (empty floor).
+            policy_source="tenant" if guardrail_configs else "none",
         )

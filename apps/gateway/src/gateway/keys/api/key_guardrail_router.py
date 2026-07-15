@@ -39,6 +39,9 @@ from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.db import get_session
 from gateway.core.error_catalog import KEY_NOT_FOUND
 from gateway.keys.api.deps import get_identity, require_owner_or_admin
+from gateway.keys.infrastructure.repository import (
+    apply_tenant_guardrail_floor,  # shared with auth-resolution's per-request floor (HOLE 3a)
+)
 from gateway.tenants.api.guardrail_router import (
     GuardrailConfigRequest,
     _validate_custom_patterns,  # pyright: ignore[reportPrivateUsage]  — §3 CONTRACT: reuse V1-V7 validation verbatim, never duplicate
@@ -282,6 +285,18 @@ async def put_key_guardrails(
             updated.pop(field_name, None)
         else:
             updated[field_name] = value.model_dump()
+
+    # Non-overridable tenant floor: a key may TIGHTEN a tenant-mandated
+    # guardrail (mode and/or failure_mode) but can never DISABLE it or
+    # downgrade it below the tenant's mandate (see `apply_tenant_guardrail_floor`
+    # docstring in keys/infrastructure/repository.py — the SAME function
+    # `SqlAlchemyApiKeyRepository.get_by_id()` applies at every auth-resolution,
+    # so this write-time snapshot and the per-request floor never drift apart).
+    # Read the tenant's CURRENT config fresh on every PUT — this snapshot is a
+    # UX nicety (the PUT response reflects the floor immediately); the real
+    # invariant is enforced per-request at auth-resolution time regardless.
+    tenant_configs = await _fetch_tenant_guardrail_configs(session, tenant_id)
+    updated = apply_tenant_guardrail_floor(updated, tenant_configs)
 
     result = await session.execute(
         text(

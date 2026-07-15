@@ -108,6 +108,10 @@ class TenantRow(Base):
         ),
         # service-tiers TASK.md §3 (FROZEN @ v1) — additive.
         CheckConstraint("default_tier IN ('priority', 'standard')", name="ck_tenants_default_tier"),
+        # audit-remediation C3 (double-bill fix, 2026-07-14) — additive.
+        CheckConstraint(
+            "billing_mode IN ('invoice', 'credits')", name="ck_tenants_billing_mode"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
@@ -225,6 +229,16 @@ class TenantRow(Base):
     allow_non_claude_failover: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
+    # additive, NOT NULL DEFAULT 'invoice'. NOTE (audit-remediation, 2026-07-15): this
+    # column NO LONGER drives billing. The double-bill fix now couples the invoice skip
+    # to settings.credits_gate_enabled (the SAME knob that wires the real-time
+    # PostgresCreditGuard) — see InvoiceGenerator.generate_for_tenant — so invoice-skip
+    # and credit-holds share one source of truth and cannot diverge. The original design
+    # gated the skip on billing_mode == 'credits', but no code path ever set that value
+    # and it was unsafe in both directions (double-bill when the knob was on; revenue
+    # leak when off). The column is retained (harmless, backfilled to 'invoice') for
+    # possible future per-tenant billing selection; it is currently read by no code path.
+    billing_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="invoice")
 
 
 class UserRow(Base):

@@ -64,6 +64,46 @@ describe("bff-client: bffGet", () => {
   });
 
   /**
+   * TEST 16a — test_bff_client_no_session_401_fires_window_redirect  (audit-remediation)
+   * Scenario: a never-authenticated user's client-side call to a control-plane
+   * /api/gw/* route (e.g. a background refetch firing after the session cookie was
+   * cleared/never existed) gets ERR_AUTH_NO_SESSION back from
+   * app/api/gw/[...path]/route.ts:136 — the ABSENT-cookie sibling of
+   * ERR_AUTH_SESSION_EXPIRED. Before this fix, handleBffResponse only redirected on
+   * ERR_AUTH_SESSION_EXPIRED, so a no-session 401 was silently swallowed into a
+   * thrown BffError with no redirect — the user was stranded on a broken page
+   * instead of being bounced to /login.
+   */
+  it("test_bff_client_no_session_401_fires_window_redirect", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/gw/admin/keys", () =>
+        HttpResponse.json({ code: "ERR_AUTH_NO_SESSION" }, { status: 401 })
+      )
+    );
+
+    const hrefSpy = vi.spyOn(window, "location", "get");
+    let capturedHref: string | undefined;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      get() {
+        return {
+          get href() { return capturedHref ?? ""; },
+          set href(v: string) { capturedHref = v; },
+        };
+      },
+    });
+
+    try {
+      await bffGet("/admin/keys");
+    } catch {
+      // bffGet may throw after setting the redirect; that is acceptable
+    }
+
+    expect(capturedHref).toBe("/login");
+    hrefSpy.mockRestore();
+  });
+
+  /**
    * TEST 16b — test_bff_client_dataplane_401_does_not_redirect  [regression]
    * A /v1/* (data-plane) 401 is NOT a session expiry: the BFF passes the upstream
    * error through with its own code (not ERR_AUTH_SESSION_EXPIRED) and leaves the

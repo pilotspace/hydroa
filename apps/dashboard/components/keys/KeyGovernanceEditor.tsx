@@ -8,6 +8,8 @@
  *   - soft_budget_usd
  *   - expires_at          (ISO-8601 date-time string or null)
  *   - model_allowlist     (array of model ID strings or null)
+ *   - tier                ("priority" | "standard" | null — null = inherit tenant default)
+ *   - capture_enabled     (bool — payload capture; always sent, never omitted/null)
  *
  * Calls PATCH /api/gw/admin/keys/{key_id} through the BFF catch-all proxy.
  * No Authorization header is ever constructed client-side.
@@ -42,6 +44,8 @@ export interface ApiKeyGovernance {
   tpm_limit: number | null;
   team_id: string | null;
   cache_enabled: boolean;
+  capture_enabled: boolean;
+  tier: string | null;
 }
 
 interface Team {
@@ -86,6 +90,8 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
   const [tpmLimit, setTpmLimit] = useState<string>(apiKey.tpm_limit?.toString() ?? "");
   const [teamId, setTeamId] = useState<string>(apiKey.team_id ?? "");
   const [cacheEnabled, setCacheEnabled] = useState<boolean>(apiKey.cache_enabled ?? false);
+  const [captureEnabled, setCaptureEnabled] = useState<boolean>(apiKey.capture_enabled ?? false);
+  const [tier, setTier] = useState<string>(apiKey.tier ?? "");
 
   // Teams dropdown — tolerate loading/error (no crash)
   const { data: teams } = useQuery<Team[]>({
@@ -186,6 +192,8 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
       tpm_limit: number | null;
       team_id: string | null;
       cache_enabled: boolean;
+      capture_enabled: boolean;
+      tier: string | null;
     } = {
       monthly_budget_usd: monthlyVal,
       soft_budget_usd: softVal,
@@ -195,6 +203,12 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
       tpm_limit: tpmTrimmed === "" ? null : parseInt(tpmTrimmed, 10),
       team_id: teamId === "" ? null : teamId,
       cache_enabled: cacheEnabled,
+      // capture_enabled is always a boolean (never null/omitted) — a dense-PATCH
+      // no-touch save must round-trip the current setting, never server-no-op it.
+      capture_enabled: captureEnabled,
+      // "" (the "Inherit tenant default" option) sends null — the PATCH semantics'
+      // explicit CLEAR (absent = no change; null = clear; value = set).
+      tier: tier === "" ? null : tier,
     };
 
     setIsSubmitting(true);
@@ -213,6 +227,8 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
       setTpmLimit(updated.tpm_limit?.toString() ?? "");
       setTeamId(updated.team_id ?? "");
       setCacheEnabled(updated.cache_enabled ?? false);
+      setCaptureEnabled(updated.capture_enabled ?? false);
+      setTier(updated.tier ?? "");
       // Update displayed saved value so screen text reflects persisted state
       setSavedMonthlyBudget(updated.monthly_budget_usd);
     } catch (err) {
@@ -516,6 +532,27 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
           </select>
         </div>
 
+        {/* Service tier — "" = inherit tenant default (PATCH sends null to clear) */}
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor={`tier-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
+            Service tier
+          </label>
+          <select
+            id={`tier-${apiKey.key_id}`}
+            aria-label="Service tier"
+            value={tier}
+            onChange={(e) => setTier(e.target.value)}
+            className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">Inherit tenant default</option>
+            <option value="standard">Standard</option>
+            <option value="priority">Priority</option>
+          </select>
+        </div>
+
         {/* Cache switch */}
         <div className="flex items-center justify-between gap-4">
           <label
@@ -529,6 +566,22 @@ export function KeyGovernanceEditor({ apiKey, onUpdated }: KeyGovernanceEditorPr
             aria-label="Enable response cache"
             checked={cacheEnabled}
             onCheckedChange={setCacheEnabled}
+          />
+        </div>
+
+        {/* Payload capture switch */}
+        <div className="flex items-center justify-between gap-4">
+          <label
+            htmlFor={`capture-${apiKey.key_id}`}
+            className="text-sm font-medium text-foreground"
+          >
+            Enable payload capture
+          </label>
+          <Switch
+            id={`capture-${apiKey.key_id}`}
+            aria-label="Enable payload capture"
+            checked={captureEnabled}
+            onCheckedChange={setCaptureEnabled}
           />
         </div>
 

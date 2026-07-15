@@ -27,15 +27,20 @@ region nothing was ever PUT against), never a rejection.
 
 from __future__ import annotations
 
+import asyncio
+import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import record_audit
+from gateway.audit.domain.audit_event import AuditEvent
 from gateway.catalog.domain.entities import Region
 from gateway.core.db import get_session
 from gateway.core.ids import uuid7
@@ -65,6 +70,7 @@ class RegionPricingListResponse(BaseModel):
 
 @region_pricing_router.put("/{region}", response_model=RegionPricingEntryResponse)
 async def put_region_pricing_entry(
+    request: Request,
     region: Region,
     body: RegionPricingPutRequest,
     identity: Annotated[Identity, require_permission(Permission.RATE_CARDS_MANAGE)],
@@ -95,6 +101,27 @@ async def put_region_pricing_entry(
     )
     await session.execute(stmt)
     await session.commit()
+
+    # Audit emit — fail-open fire-and-forget (mirrors teams/api/router.py add_member's own
+    # idiom exactly).
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="region_pricing.upsert",
+                target_type="region_pricing",
+                target_id=region,
+                result="success",
+                metadata={"multiplier": str(body.multiplier)},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return RegionPricingEntryResponse(region=region, multiplier=str(body.multiplier))
 
 
@@ -120,6 +147,7 @@ async def list_region_pricing_entries(
 
 @region_pricing_router.delete("/{region}", status_code=204)
 async def delete_region_pricing_entry(
+    request: Request,
     region: str,
     identity: Annotated[Identity, require_permission(Permission.RATE_CARDS_MANAGE)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -135,4 +163,25 @@ async def delete_region_pricing_entry(
         {"tid": str(identity.tenant_id), "region": region},
     )
     await session.commit()
+
+    # Audit emit — fail-open fire-and-forget (mirrors teams/api/router.py add_member's own
+    # idiom exactly). Idempotent action — audited even when no row actually existed.
+    asyncio.ensure_future(  # noqa: RUF006
+        record_audit(
+            request.app.state.sessionmaker,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="region_pricing.delete",
+                target_type="region_pricing",
+                target_id=region,
+                result="success",
+                metadata={},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+
     return Response(status_code=204)

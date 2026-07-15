@@ -37,6 +37,7 @@ from gateway.tenants.domain.entities import Role
 
 from .conftest import (
     audit_path,
+    await_audit_count,
     bearer,
     count_audit_rows,
     drain_fire_and_forget,
@@ -396,8 +397,9 @@ async def test_successful_list_is_itself_audited(
     resp = await client.get(audit_path(tid), headers=bearer(superadmin_token))
     assert resp.status_code == 200, resp.text
 
-    await drain_fire_and_forget()
-    after = await count_audit_rows(db_session, action="platform.audit.list")
+    after = await await_audit_count(
+        db_session, action="platform.audit.list", expected=before + 1
+    )
     assert after == before + 1, "exactly one new platform.audit.list row must be scheduled"
 
     row = await fetch_one_audit_row(db_session, action="platform.audit.list")

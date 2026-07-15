@@ -273,12 +273,25 @@ class SqlAlchemyTeamRepository:
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
     ) -> bool:
-        """Remove user from team. Returns True if removed, False if not a member."""
+        """Remove user from team, scoped to tenant_id. Returns True if removed, False if
+        not a member OR the team does not belong to tenant_id (cross-tenant no-op, never
+        an error).
+
+        Defense-in-depth: team_members carries no tenant_id column of its own, so
+        tenant scope is enforced via an EXISTS against teams.tenant_id. Today the ONLY
+        caller (RemoveMemberUseCase) already pre-checks team ownership before calling
+        this method, but a repository method must not rely solely on a caller-side
+        check — a future caller that skips that pre-check must not be able to delete a
+        cross-tenant member row.
+        """
         result = await self._session.execute(
             delete(TeamMemberRow)
             .where(
                 TeamMemberRow.team_id == team_id,
                 TeamMemberRow.user_id == user_id,
+                TeamMemberRow.team_id.in_(
+                    select(TeamRow.id).where(TeamRow.tenant_id == tenant_id)
+                ),
             )
             .returning(TeamMemberRow.user_id)
         )

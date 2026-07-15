@@ -7,9 +7,11 @@ fail-closed (revoked / expired / unknown → None). State checks raise the §1 d
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -39,6 +41,28 @@ from gateway.agent_oauth.infrastructure.orm import (
     DeviceAuthorizationRow,
 )
 from gateway.core.ids import uuid7
+from gateway.tenants.infrastructure.orm import TenantRow
+
+
+def _coerce_guardrail_configs(raw: Any) -> dict[str, Any] | None:
+    """Normalize a tenants.guardrail_configs JSONB value to a dict-or-None.
+
+    asyncpg may hand back either a decoded dict or the raw JSON string depending
+    on driver version — the SAME defensive parse SqlAlchemyApiKeyRepository.
+    get_by_id() applies to the identical column. A non-dict / unparseable value
+    yields None (no floor), never a crash.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
 
 
 def _to_authorization(row: DeviceAuthorizationRow) -> DeviceAuthorization:
@@ -245,15 +269,26 @@ class SqlAlchemyAgentOAuthRepository:
         # true for that race, the same live-per-request-recheck convention
         # DbImpersonationSessionGuard.ensure_live already establishes elsewhere in this
         # codebase for credential/session revocation (fail-CLOSED, never cached).
+        # audit-remediation Blocker 1 (CRITICAL): also LEFT JOIN tenants for
+        # guardrail_configs so agent-OAuth traffic enforces the tenant guardrail
+        # floor (previously bypassed — the AuthzResult was built with an empty
+        # guardrail_configs on this path). Zero extra query — the same free-JOIN
+        # precedent this method already cites for the principal budget.
         row_result = await self._session.execute(
-            select(AgentTokenRow, AgentPrincipalRow.monthly_budget_usd, AgentPrincipalRow.killed_at)
+            select(
+                AgentTokenRow,
+                AgentPrincipalRow.monthly_budget_usd,
+                AgentPrincipalRow.killed_at,
+                TenantRow.guardrail_configs,
+            )
             .outerjoin(AgentPrincipalRow, AgentTokenRow.principal_id == AgentPrincipalRow.id)
+            .outerjoin(TenantRow, AgentTokenRow.tenant_id == TenantRow.id)
             .where(AgentTokenRow.access_token_hash == access_token_hash)
         )
-        triple = row_result.first()
-        if triple is None:
+        quad = row_result.first()
+        if quad is None:
             return None
-        row, principal_budget_usd, principal_killed_at = triple
+        row, principal_budget_usd, principal_killed_at, tenant_guardrail_configs = quad
         if row.revoked_at is not None or row.access_expires_at <= now:
             return None  # FAIL-CLOSED
         if principal_killed_at is not None:
@@ -265,6 +300,8 @@ class SqlAlchemyAgentOAuthRepository:
             scope=row.scope,
             principal_id=row.principal_id,
             principal_budget_usd=principal_budget_usd,
+            # Same dict-or-str asyncpg driver quirk get_by_id() defends against.
+            tenant_guardrail_configs=_coerce_guardrail_configs(tenant_guardrail_configs),
         )
 
     # -------------------------------------------------------------------------

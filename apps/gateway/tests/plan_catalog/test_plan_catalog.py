@@ -29,6 +29,7 @@ DO NOT change these tests to make them pass — that is the Build phase's job.
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -265,6 +266,81 @@ async def _audit_metadata(
     return dict(metadata)
 
 
+async def _await_audit_count(
+    db_session: AsyncSession,
+    *,
+    action: str,
+    target_tenant_id: uuid.UUID | None,
+    expected: int = 1,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> int:
+    """Poll until the raw audit_events count for action/target_tenant_id reaches `expected`,
+    or `timeout` elapses. The audit write is fire-and-forget — a fixed sleep(0.05) (as in
+    `_audit_count`) is racy under `pytest -n 12` CPU saturation. Positive assertions only;
+    never masks a genuinely-absent row (returns the real count after timeout so the caller's
+    own `== expected` assertion still fails honestly)."""
+
+    async def _raw_count() -> int:
+        if target_tenant_id is None:
+            result = await db_session.execute(
+                text("SELECT COUNT(*) FROM audit_events WHERE tenant_id IS NULL AND action = :action"),
+                {"action": action},
+            )
+        else:
+            result = await db_session.execute(
+                text("SELECT COUNT(*) FROM audit_events WHERE tenant_id = :tid AND action = :action"),
+                {"tid": target_tenant_id, "action": action},
+            )
+        return int(result.scalar() or 0)
+
+    count = await _raw_count()
+    deadline = time.monotonic() + timeout
+    while count < expected and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        count = await _raw_count()
+    return count
+
+
+async def _await_audit_metadata(
+    db_session: AsyncSession,
+    *,
+    action: str,
+    target_tenant_id: uuid.UUID,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> dict[str, Any]:
+    """Poll until exactly one audit_events row exists for action+tenant, then return its
+    metadata (same assertions as `_audit_metadata`, but polls instead of a fixed sleep(0.05) —
+    the write is fire-and-forget and races pytest -n 12 CPU saturation)."""
+
+    async def _rows() -> list[Any]:
+        result = await db_session.execute(
+            text(
+                "SELECT actor_email, metadata FROM audit_events"
+                " WHERE tenant_id = :tid AND action = :action"
+            ),
+            {"tid": target_tenant_id, "action": action},
+        )
+        return result.fetchall()
+
+    rows = await _rows()
+    deadline = time.monotonic() + timeout
+    while len(rows) < 1 and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        rows = await _rows()
+
+    assert len(rows) == 1, (
+        f"expected exactly 1 audit_events row for action={action!r} "
+        f"tenant={target_tenant_id}, found {len(rows)}"
+    )
+    actor_email, metadata = rows[0]
+    assert actor_email == "root@platform.internal", (
+        f"expected the real superadmin as actor, got {actor_email!r}"
+    )
+    return dict(metadata)
+
+
 # ---------------------------------------------------------------------------
 # M1 — seed migration creates the tier catalog (real Alembic upgrade)
 # ---------------------------------------------------------------------------
@@ -472,7 +548,9 @@ async def test_superadmin_lists_full_plan_catalog(
         tpm=None,
     )
 
-    count = await _audit_count(db_session, action="platform.plan.list", target_tenant_id=None)
+    count = await _await_audit_count(
+        db_session, action="platform.plan.list", target_tenant_id=None, expected=1
+    )
     assert count == 1
 
 
@@ -492,7 +570,9 @@ async def test_view_unplanned_tenant_plan_shows_null(
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"tenant_id": str(tid), "plan": None, "seat_cap": None}
 
-    count = await _audit_count(db_session, action="platform.plan.view", target_tenant_id=tid)
+    count = await _await_audit_count(
+        db_session, action="platform.plan.view", target_tenant_id=tid, expected=1
+    )
     assert count == 1
 
 
@@ -549,7 +629,9 @@ async def test_assign_plan_to_unplanned_tenant(
     assert row is not None
     assert row.plan_id == seeded_plans["team"]
 
-    meta = await _audit_metadata(db_session, action="platform.plan.assign", target_tenant_id=tid)
+    meta = await _await_audit_metadata(
+        db_session, action="platform.plan.assign", target_tenant_id=tid
+    )
     assert meta["old_plan_id"] is None
     assert meta["new_plan_id"] == str(seeded_plans["team"])
 
@@ -572,7 +654,9 @@ async def test_change_tenant_to_different_plan(
     assert resp.status_code == 200, resp.text
     assert resp.json()["plan"]["name"] == "enterprise"
 
-    meta = await _audit_metadata(db_session, action="platform.plan.assign", target_tenant_id=tid)
+    meta = await _await_audit_metadata(
+        db_session, action="platform.plan.assign", target_tenant_id=tid
+    )
     assert meta["old_plan_id"] == str(seeded_plans["starter"])
     assert meta["new_plan_id"] == str(seeded_plans["enterprise"])
 

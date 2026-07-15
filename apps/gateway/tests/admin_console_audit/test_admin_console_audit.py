@@ -42,6 +42,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -230,8 +231,54 @@ async def count_audit_rows(session: AsyncSession, *, action: str) -> int:
 
 async def _drain_fire_and_forget() -> None:
     """Let a fire-and-forget asyncio.ensure_future(record_audit(...)) task complete before
-    querying audit_events (mirrors tests/test_users_role.py's own `asyncio.sleep(0.05)` idiom)."""
+    querying audit_events (mirrors tests/test_users_role.py's own `asyncio.sleep(0.05)` idiom).
+
+    Kept ONLY for sites that assert an ABSENCE (count == 0) — you cannot poll for absence.
+    Positive sites (asserting a row/log line IS present) use `_await_audit_row` /
+    `_await_caplog_contains` below instead, since a fixed sleep is racy under
+    `pytest -n 12` CPU saturation (mirrors tests/teams/test_teams_audit_and_tenant_guard.py's
+    own `_await_audit_row` and tests/superadmin_audit_foundation/conftest.py's own
+    `await_audit_count`)."""
     await asyncio.sleep(0.05)
+
+
+async def _await_audit_row(
+    session: AsyncSession,
+    *,
+    action: str,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> Row[Any] | None:
+    """Poll fetch_one_audit_row until present, or timeout. The audit write is
+    fire-and-forget (off the request path, frozen v1 contract); a fixed 50ms wait
+    is racy under `pytest -n 12`. Never masks a truly-absent row — returns None
+    after timeout so the caller's `is not None` assertion still fails honestly."""
+    row = await fetch_one_audit_row(session, action=action)
+    deadline = time.monotonic() + timeout
+    while row is None and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        row = await fetch_one_audit_row(session, action=action)
+    return row
+
+
+async def _await_caplog_contains(
+    caplog: pytest.LogCaptureFixture,
+    substring: str,
+    *,
+    timeout: float = 3.0,  # noqa: ASYNC109 -- bounded poll loop, not a cancel scope
+    interval: float = 0.02,
+) -> bool:
+    """Poll caplog.text until it contains `substring`, or timeout. Same fire-and-forget
+    race as `_await_audit_row` — record_audit's fail-open warning log (audit_writer.py)
+    is only emitted once the scheduled asyncio.ensure_future(...) task actually runs.
+    Never masks a truly-missing log line — the return value (and the caller's own
+    `in caplog.text` assertion) still reflects the real state after timeout."""
+    found = substring in caplog.text
+    deadline = time.monotonic() + timeout
+    while not found and time.monotonic() < deadline:
+        await asyncio.sleep(interval)
+        found = substring in caplog.text
+    return found
 
 
 # ===========================================================================
@@ -255,8 +302,7 @@ async def test_bulk_tenant_list_audited_as_system_level_event(
     resp = await client.get(PLATFORM_TENANTS, headers=_bearer(superadmin_token))
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.tenant.list")
+    row = await _await_audit_row(db_session, action="platform.tenant.list")
     assert row is not None, "Expected exactly one platform.tenant.list audit event"
     tenant_id, actor_user_id, _actor_email, action, target_type, target_id, result, metadata = row
     assert tenant_id is None, "bulk list is a system-level event — no single target tenant"
@@ -286,8 +332,7 @@ async def test_tenant_view_get_one_is_audited(
     resp = await client.get(f"{PLATFORM_TENANTS}/{tid}", headers=_bearer(superadmin_token))
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.tenant.view")
+    row = await _await_audit_row(db_session, action="platform.tenant.view")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid), "tenant_id must be the TARGET tenant"
@@ -316,8 +361,7 @@ async def test_cross_tenant_cache_read_is_audited(
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"enabled": True, "semantic_enabled": False}
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.cache.view")
+    row = await _await_audit_row(db_session, action="platform.cache.view")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -349,8 +393,7 @@ async def test_cross_tenant_cache_update_is_audited_with_post_update_state(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.cache.update")
+    row = await _await_audit_row(db_session, action="platform.cache.update")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -382,8 +425,7 @@ async def test_cross_tenant_guardrails_read_is_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.guardrails.view")
+    row = await _await_audit_row(db_session, action="platform.guardrails.view")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -419,8 +461,7 @@ async def test_guardrails_update_audited_with_changed_field_names(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.guardrails.update")
+    row = await _await_audit_row(db_session, action="platform.guardrails.update")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -451,8 +492,7 @@ async def test_cross_tenant_budget_read_is_audited(
     resp = await client.get(f"{PLATFORM_TENANTS}/{tid}/budget", headers=_bearer(superadmin_token))
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.budget.view")
+    row = await _await_audit_row(db_session, action="platform.budget.view")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -486,8 +526,7 @@ async def test_cross_tenant_budget_put_is_audited_closing_regression(
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"budget_usd_monthly": "250.00"}
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.budget.update")
+    row = await _await_audit_row(db_session, action="platform.budget.update")
     assert row is not None
     tenant_id, actor_user_id, actor_email, _action, target_type, target_id, result, metadata = row
     assert str(tenant_id) == str(tid), (
@@ -518,8 +557,7 @@ async def test_key_list_is_audited(
     resp = await client.get(f"{PLATFORM_TENANTS}/{tid}/keys", headers=_bearer(superadmin_token))
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.key.list")
+    row = await _await_audit_row(db_session, action="platform.key.list")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -553,8 +591,7 @@ async def test_key_creation_audited_without_plaintext_secret(
     plaintext_key = resp.json()["key"]
     key_id = resp.json()["key_id"]
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.key.create")
+    row = await _await_audit_row(db_session, action="platform.key.create")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -589,8 +626,7 @@ async def test_key_patch_audited_despite_no_self_service_precedent(
     )
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.key.patch")
+    row = await _await_audit_row(db_session, action="platform.key.patch")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -625,8 +661,7 @@ async def test_key_rotation_audited_without_plaintext_secret(
     new_plaintext_key = resp.json()["key"]
     new_key_id = resp.json()["new_key_id"]
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.key.rotate")
+    row = await _await_audit_row(db_session, action="platform.key.rotate")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -656,8 +691,7 @@ async def test_key_revocation_is_audited(
     )
     assert resp.status_code == 204, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.key.revoke")
+    row = await _await_audit_row(db_session, action="platform.key.revoke")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -684,8 +718,7 @@ async def test_user_list_is_audited(
     resp = await client.get(f"{PLATFORM_TENANTS}/{tid}/users", headers=_bearer(superadmin_token))
     assert resp.status_code == 200, resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.user.list")
+    row = await _await_audit_row(db_session, action="platform.user.list")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -722,8 +755,7 @@ async def test_role_reassignment_audited_with_old_and_new_role(
     assert resp.status_code == 200, resp.text
     assert resp.json()["role"] == "admin"
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.user.role_assign")
+    row = await _await_audit_row(db_session, action="platform.user.role_assign")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, target_type, target_id, _result, metadata = row
     assert str(tenant_id) == str(tid)
@@ -847,8 +879,7 @@ async def test_non_superadmin_existing_self_service_behavior_unchanged(
     )
     assert put_resp.status_code == 200, put_resp.text
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="budget.update")
+    row = await _await_audit_row(db_session, action="budget.update")
     assert row is not None, "self-service budget.update audit must still fire, unchanged"
     tenant_id = row[0]
     assert str(tenant_id) == str(owner_tenant_id)
@@ -903,7 +934,7 @@ async def test_audit_write_failure_never_blocks_cross_tenant_http_response(
             )
             assert resp.status_code == 200, resp.text
             assert resp.json() == {"enabled": True, "semantic_enabled": False}
-            await _drain_fire_and_forget()
+            await _await_caplog_contains(caplog, "failed to persist audit event")
     finally:
         app.state.sessionmaker = real_sessionmaker
 
@@ -944,8 +975,7 @@ async def test_emit_platform_audit_writes_target_tenant_event(
         metadata={},
     )
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.tenant.view")
+    row = await _await_audit_row(db_session, action="platform.tenant.view")
     assert row is not None
     tenant_id, actor_user_id, _actor_email, _action, _target_type, _target_id, result, metadata = (
         row
@@ -979,8 +1009,7 @@ async def test_emit_platform_audit_system_level_event_tenant_id_none(
         metadata={},
     )
 
-    await _drain_fire_and_forget()
-    row = await fetch_one_audit_row(db_session, action="platform.tenant.list")
+    row = await _await_audit_row(db_session, action="platform.tenant.list")
     assert row is not None
     (
         tenant_id,
@@ -1021,6 +1050,6 @@ async def test_emit_platform_audit_fails_open_on_audit_db_outage(
             target_id="whatever",
             metadata={},
         )
-        await _drain_fire_and_forget()
+        await _await_caplog_contains(caplog, "failed to persist audit event")
 
     assert "failed to persist audit event" in caplog.text

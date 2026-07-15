@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from .conftest import (
     FakePlatformCredentialResolver,
+    await_audit_count,
     count_audit_rows,
     fetch_one_audit_row,
     seed_platform_tenant,
@@ -78,7 +79,7 @@ async def test_successful_resolution_is_audited(
         reset_provider_credential(token)  # type: ignore[arg-type]
     assert get_provider_credential() is None
 
-    await asyncio.sleep(0.05)  # let the fire-and-forget audit write complete
+    await await_audit_count(db_session, action=AUDIT_ACTION, expected=1)
     row = await fetch_one_audit_row(db_session, action=AUDIT_ACTION)
     assert row is not None, "Expected exactly one ops.platform_credential_resolve audit row"
     tenant_id, actor_user_id, actor_email, action, target_type, target_id, result, metadata = row
@@ -150,7 +151,7 @@ async def test_missing_platform_tenant_audited_as_error(
         "resolver must never be consulted — no fabricated tenant_id, unchanged from before"
     )
 
-    await asyncio.sleep(0.05)
+    await await_audit_count(db_session, action=AUDIT_ACTION, expected=1)
     row = await fetch_one_audit_row(db_session, action=AUDIT_ACTION)
     assert row is not None, "Expected exactly one ops.platform_credential_resolve audit row"
     tenant_id, actor_user_id, actor_email, action, target_type, target_id, result, metadata = row
@@ -189,7 +190,7 @@ async def test_missing_provider_credential_audited_as_denied(
     assert exc_info.value.status == 402
     assert exc_info.value.code == "ERR_PROVIDER_KEY_MISSING"
 
-    await asyncio.sleep(0.05)
+    await await_audit_count(db_session, action=AUDIT_ACTION, expected=1)
     row = await fetch_one_audit_row(db_session, action=AUDIT_ACTION)
     assert row is not None, "Expected exactly one ops.platform_credential_resolve audit row"
     tenant_id, actor_user_id, actor_email, action, target_type, target_id, result, metadata = row
