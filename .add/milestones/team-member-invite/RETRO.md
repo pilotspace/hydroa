@@ -2,8 +2,8 @@
  team-member-invite · Team Member Invite
 ════════════════════════════════════════════════════════════════════════
  VERDICT   DONE
- TASKS     3/3 done           CRITERIA  6/6 met
- GATES     3 PASS             WAIVERS   none
+ TASKS     2/2 done           CRITERIA  6/6 met
+ GATES     2 PASS             WAIVERS   none
 
  goal  A tenant owner/admin can invite a new colleague by email into
        their own tenant with a chosen role, and that colleague can
@@ -15,13 +15,11 @@
  ───────────────────────────────────────────────────────────────────────
  member-invite-issuance      done      PASS 0     ●●●●●●●●●
  member-invite-acceptance    done      PASS 0     ●●●●●●●●●
- member-invite-ui            done      PASS 0     ●●●●●●●●●
  legend  ● reached  ◉ current  ○ pending   spec→…→done
 
  GATED BY
    member-invite-issuance   PASS Tin Dang <tindang.ht97@gmail.com>
    member-invite-acceptance PASS Tin Dang <tindang.ht97@gmail.com>
-   member-invite-ui         PASS Tin Dang <tindang.ht97@gmail.com>
 
  EXIT CRITERIA  ●●●●●●●●●● 6/6 met
 
@@ -52,4 +50,5 @@
 
  DECIDE NEXT  consolidate learnings + archive-milestone
               team-member-invite
+              1 planned not yet scaffolded: member-invite-ui
 ════════════════════════════════════════════════════════════════════════

@@ -400,6 +400,11 @@ def get_completion_use_case(
     tier_capacity_guard = getattr(request.app.state, "tier_capacity_guard", None) or (
         PassthroughTierCapacityGuard()
     )
+    # plan-rate-enforcement TASK.md §3 (FROZEN @ v1): app.state-boot singleton, same
+    # getattr pattern as tier_capacity_guard/credit_guard/residency_lookup above. None
+    # (default — no operator wiring yet) ⇒ enforce_tenant_rate_limit() no-ops ⇒
+    # _enforce_rate_limits stays byte-identical to today (per-key enforcement only).
+    plan_rate_limit_resolver = getattr(request.app.state, "plan_rate_limit_resolver", None)
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -429,4 +434,5 @@ def get_completion_use_case(
         hold_estimate_usd=hold_estimate_usd,
         residency_lookup=residency_lookup,
         tier_capacity_guard=tier_capacity_guard,
+        plan_rate_limit_resolver=plan_rate_limit_resolver,
     )

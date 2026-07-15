@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "member-invite-ui",
-  "active_milestone": "team-member-invite",
+  "active_task": "plan-rate-enforcement",
+  "active_milestone": "platform-access-plan",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1112,6 +1112,58 @@
         "source": "git"
       }
     },
+    "plan-rate-enforcement": {
+      "title": "Enforce plan rpm/tpm ceilings at the tenant layer",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "platform-access-plan",
+      "depends_on": [],
+      "created": "2026-07-15T08:39:04+00:00",
+      "updated": "2026-07-15T09:34:25+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-15T08:50:32+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "7cfcb01e15e1c8ac4a31b2951e638263",
+        "tests": {
+          "apps/gateway/tests/plan_rate_enforcement/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/plan_rate_enforcement/conftest.py": "7c8c0b64aaa34d62423661c9b1f13330",
+          "apps/gateway/tests/plan_rate_enforcement/test_orm_check_constraints.py": "1345a453ef3cb6d5001d7be7515ba8a3",
+          "apps/gateway/tests/plan_rate_enforcement/test_plan_rate_limit_resolver.py": "9b350c83cd694b25f9a9d430e7ea2c70",
+          "apps/gateway/tests/plan_rate_enforcement/test_resolve_entitlements_rate.py": "c136b2fad78f1e85aae8145f92b69848",
+          "apps/gateway/tests/plan_rate_enforcement/test_tenant_rate_enforcement_http.py": "e4fefcf9dba8a78cec53c389abb8dd8e"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/",
+          "apps/gateway/src/gateway/budgets/infrastructure/redis_guard.py",
+          "apps/gateway/src/gateway/proxy/application/use_cases.py",
+          "apps/gateway/src/gateway/proxy/application/governance.py",
+          "apps/gateway/src/gateway/proxy/api/deps.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/rate_limits/",
+          "apps/gateway/migrations/versions/",
+          ".add/tasks/plan-rate-enforcement/tests/",
+          "apps/gateway/src/gateway/tenants/deps.py",
+          "apps/gateway/src/gateway/tenants/main.py"
+        ],
+        "snapshot_md5": "14aecc615ad208c95f9b84bd343b02c7"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
     "member-invite-ui": {
       "title": "Invite-member dashboard UI + public accept-invite page",
       "phase": "done",
@@ -1149,7 +1201,7 @@
       "stage": "production",
       "status": "done",
       "created": "2026-07-02T15:53:53+00:00",
-      "updated": "2026-07-15T06:51:32+00:00",
+      "updated": "2026-07-15T07:35:37+00:00",
       "done_actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
@@ -1160,9 +1212,14 @@
       "title": "Tenant Impersonation",
       "goal": "A superadmin can act as a specific tenant user in a time-boxed, fully audited impersonation session where the real actor stays distinguishable in every downstream record",
       "stage": "production",
-      "status": "queued",
+      "status": "done",
       "created": "2026-07-02T15:53:53+00:00",
-      "updated": "2026-07-02T15:53:53+00:00"
+      "updated": "2026-07-15T07:32:09+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "platform-key-default": {
       "title": "Platform Key Default Credential",
@@ -1176,9 +1233,14 @@
       "title": "Platform Access Subscription Plan",
       "goal": "A tenant can subscribe to a metered, rate-limited, fully audited plan governing platform-tenant-backed usage",
       "stage": "production",
-      "status": "queued",
+      "status": "done",
       "created": "2026-07-02T15:53:54+00:00",
-      "updated": "2026-07-02T15:53:54+00:00"
+      "updated": "2026-07-15T09:36:10+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "v58": {
       "title": "Batch-discounted chat completions: provider integration",
@@ -1194,7 +1256,7 @@
       "stage": "production",
       "status": "done",
       "created": "2026-07-03T16:21:50+00:00",
-      "updated": "2026-07-15T07:14:55+00:00",
+      "updated": "2026-07-15T07:35:38+00:00",
       "done_actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
@@ -1220,7 +1282,7 @@
       "stage": "mvp",
       "status": "done",
       "created": "2026-07-14T03:32:21+00:00",
-      "updated": "2026-07-15T06:22:26+00:00",
+      "updated": "2026-07-14T08:08:20+00:00",
       "done_actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
@@ -1229,7 +1291,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-15T07:14:55+00:00",
+  "updated": "2026-07-15T09:36:10+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2190,14 +2252,13 @@
     "platform-admin-console",
     "platform-access-plan",
     "eu-ai-act-readiness",
-    "agent-gateway-v1",
-    "team-member-invite"
+    "agent-gateway-v1"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
-    "team-member-invite": "member-invite-ui",
+    "team-member-invite": "member-invite-acceptance",
     "tenant-impersonation": "impersonation-live-session-guard",
-    "platform-access-plan": "plan-seat-cap",
+    "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console"
   },

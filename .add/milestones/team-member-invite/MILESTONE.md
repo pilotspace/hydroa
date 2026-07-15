@@ -135,8 +135,8 @@ Out:
   `member-invite-acceptance`
 
 ## Tasks (breadth-first decomposition; detail lives in each TASK.md)
-- [x] member-invite-issuance      depends-on: none                                          — Owner/admin create/list/revoke tenant-scoped invites (hashed single-use token, explicit expiry, escalation ceiling mirrors AssignUserRoleUseCase).
-- [x] member-invite-acceptance    depends-on: member-invite-issuance                          — Public, unauthenticated token lookup (preview) + accept (set password) that provisions the User row; rate-limited, fails closed on expired/revoked/consumed/unknown tokens.
+- [ ] member-invite-issuance      depends-on: none                                          — Owner/admin create/list/revoke tenant-scoped invites (hashed single-use token, explicit expiry, escalation ceiling mirrors AssignUserRoleUseCase).
+- [ ] member-invite-acceptance    depends-on: member-invite-issuance                          — Public, unauthenticated token lookup (preview) + accept (set password) that provisions the User row; rate-limited, fails closed on expired/revoked/consumed/unknown tokens.
 - [x] member-invite-ui            depends-on: member-invite-issuance, member-invite-acceptance — Dashboard "Invite member" dialog + pending-invites list/revoke on the Members page; new public accept-invite page + BFF route mirroring signup's auto-login chain.
 
 ## Exit criteria (observable; map each to the task that delivers it)
@@ -160,35 +160,33 @@ Out:
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
-### Ship by domain   (what changed, per bounded context)
-- backend (apps/gateway) : invites_router (create/list/revoke), invite_accept_router (public preview/accept),
-  invite_use_cases + invite_repository (hashed single-use token, 7d expiry, atomic create-or-replace,
-  SELECT…FOR UPDATE revoke/accept), shared assert_role_within_ceiling reused by CreateInviteUseCase.
-  Independently re-verified 2026-07-15: issuance 30/30 + acceptance 17/17 + rbac 16/16 on fresh DBs;
-  all 4 security shared-decisions HOLD.
-- dashboard (apps/dashboard) : InviteMemberDialog (role-filtered, copy-link one-time token) + PendingInvites
-  (live "expires in Nd" chip + revoke) on /app/members; public /invite/[token] accept page in the (auth)
-  shell; /api/auth/invite/[token] BFF (preview relay + accept→login→httpOnly-cookie, mirrors signup).
-  Shared roles.ts (assignableRoles lifted, no drift). 24 new vitest tests (red-first) + full suite 1438 green;
-  tsc + eslint clean.
-- tooling / skill / book : untouched.
+> Backfilled 2026-07-15: the milestone's own goal-gate correctly held it open when only the two
+> backend tasks were done (member-invite-ui did not exist). The UI was then built via the UDD design
+> loop (Tin-confirmed: copy-link-only delivery · 7-day expiry · on /app/members) and merged in PR #74;
+> all 6 exit criteria are now met.
 
-### Cross-task evidence   (one row per task — all gate=PASS)
-- member-invite-issuance   : gate=PASS · 30/30 (re-verified fresh DB) · residue=none
-- member-invite-acceptance : gate=PASS · 17/17 (incl. forced-race + global-email-collision) · residue=none
-- member-invite-ui         : gate=PASS · 24 new vitest + 1438 dashboard suite green · tsc/eslint clean · residue=none
+### Ship by domain   (what changed, per bounded context)
+- tooling : untouched.
+- skill   : untouched.
+- book    : untouched (GLOSSARY "invite (pending invite)" term still owed at fold — distinct from Team lead/member tag).
+- gateway : `invites_router` (owner/admin create/list/revoke, escalation ceiling reused from AssignUserRole), `invite_accept_router` (public token preview + accept, server-side-only identity resolution, fails closed 404/409/410 with no partial row), hashed-at-rest single-use tokens with explicit `expires_at`.
+- dashboard : `InviteMemberDialog` (role-filtered via shared `roles.ts::assignableRoles`, one-time copyable link + "expires in 7 days") + `PendingInvites` (live countdown chip, revoke) on `/app/members`; public `(auth)/invite/[token]` accept page + BFF route mirroring signup's auto-login chain (accept → login → httpOnly `ai_proxy_session`). PR #74 (6447eaa) — backend untouched.
+
+### Cross-task evidence   (one row per task)
+- member-invite-issuance   : gate=PASS · create/list/revoke, hashed single-use token, escalation ceiling reused · residue=none.
+- member-invite-acceptance : gate=PASS · public preview+accept, server-side identity resolution, fail-closed reject branches, seat-cap hooked · residue=none.
+- member-invite-ui         : gate=PASS · UDD invite dialog + pending list + public accept page/BFF; 24 red-first tests green; backend 0 files touched · residue=none.
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
 - [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: A tenant owner/admin can invite a colleague by email into a chosen role and that colleague can
-  accept + set their own password WITHOUT SSO — proven end-to-end: issuance/acceptance backend (independently
-  re-verified, security decisions hold) + the dashboard invite dialog, pending list, and public accept page
-  with BFF auto-login (built 2026-07-15 via the UDD design loop, Tin-confirmed: copy-link v1, 7d expiry,
-  pending on /app/members). Full gateway suite green (my detached -n12: 3924 passed) + dashboard 1438 green.
+- goal: a tenant owner/admin invites a colleague by email into their own tenant with a chosen role,
+  and the colleague accepts + sets a password with zero SSO/domain-mapping — proven by the
+  issuance/accept routers + the /app/members invite UI and public accept page auto-logging the new
+  user in via the existing signup cookie chain (PR #74).
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [x] Backend tasks merged earlier; member-invite-ui merged via PR #74 (6447eaa) to main.
+- [ ] At fold: add GLOSSARY term "invite (pending invite)".
+- [ ] Confirm release attribution row in the next cut (release.md).

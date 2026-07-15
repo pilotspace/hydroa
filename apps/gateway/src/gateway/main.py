@@ -214,6 +214,7 @@ from gateway.proxy.infrastructure.tier_capacity_guard import (
 from gateway.proxy.infrastructure.vertex_ad import VertexTokenProviderCache
 from gateway.proxy.infrastructure.vertex_upstream import VertexCompletionUpstream
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
+from gateway.rate_limits.infrastructure.plan_rate_limit_resolver import PlanRateLimitResolver
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.rate_limits.infrastructure.redis_token_bucket import RedisTokenBucket
 from gateway.scim.api.errors import register_scim_error_handlers
@@ -1193,6 +1194,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # tests override via app.state.budget_guard after app creation.
     app.state.budget_guard = RedisBudgetGuard(
         redis=redis_client,
+        session_factory=app.state.sessionmaker,
+    )
+
+    # Plan rate-limit resolver (plan-rate-enforcement TASK.md §3): resolves a tenant's
+    # effective rpm/tpm ceiling (tenant override -> plan default -> None) for the
+    # tenant-layer rate window, composing with the existing per-key ceiling. Active by
+    # default (Tin 2026-07-15, matching the plan's budget ceiling being enforced by
+    # default); fail-open — resolver.resolve never raises, so a DB error admits the
+    # request. Tests override via app.state.plan_rate_limit_resolver after app creation.
+    app.state.plan_rate_limit_resolver = PlanRateLimitResolver(
         session_factory=app.state.sessionmaker,
     )
 
