@@ -28,8 +28,16 @@ export const signupSchema = z.object({
   password: z.string().min(1).max(4096),
 });
 
+// member-invite-ui: the accept-invite BFF route body. Same guard-bound shape as
+// loginSchema's password field — presence + bounds only, the gateway is the
+// password-policy authority (and separately validates the invite token itself).
+export const acceptInviteSchema = z.object({
+  password: z.string().min(1).max(4096),
+});
+
 export type LoginBody = z.infer<typeof loginSchema>;
 export type SignupBody = z.infer<typeof signupSchema>;
+export type AcceptInviteBody = z.infer<typeof acceptInviteSchema>;
 
 export type ParseResult<T> =
   | { ok: true; data: T }

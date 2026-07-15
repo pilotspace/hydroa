@@ -1163,6 +1163,35 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "member-invite-ui": {
+      "title": "Invite-member dashboard UI + public accept-invite page",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "team-member-invite",
+      "depends_on": [],
+      "created": "2026-07-15T06:52:10+00:00",
+      "updated": "2026-07-15T07:13:33+00:00",
+      "freeze_skipped": {
+        "by": "Tin Dang",
+        "at": "2026-07-15T07:13:30+00:00",
+        "from_phase": "tests"
+      },
+      "tripwire": {
+        "contract_md5": "690f6e2bcaeed72ef090d5e4df1421ab",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/member-invite-ui/src/"
+        ],
+        "snapshot_md5": "97a1c25059384b9c7cf94ec0adcb3fae"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
