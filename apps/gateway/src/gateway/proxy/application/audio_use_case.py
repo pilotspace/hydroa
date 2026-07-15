@@ -435,8 +435,13 @@ class TranscriptionUseCase:
         # Runs AFTER billing (per_second, transcript-length-independent) — the money path is
         # untouched. No-op when unwired / no tenant configs (byte-identical).
         if status == 200:
+            # `getattr` default mirrors the non-chat helper (nonchat_guardrails.py): a real
+            # AuthzResult always carries guardrail_configs, but minimal authz doubles (and any
+            # future authz shape) may omit it — degrade to no-op rather than raise mid-response.
             resp_body = await _mask_transcript(
-                self._guardrail_evaluator, authz.guardrail_configs, resp_body
+                self._guardrail_evaluator,
+                getattr(authz, "guardrail_configs", None),
+                resp_body,
             )
 
         # Step 9: Return upstream response
