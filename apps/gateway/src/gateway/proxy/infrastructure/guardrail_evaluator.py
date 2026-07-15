@@ -48,6 +48,7 @@ from typing import Any
 import structlog
 
 from gateway.proxy.domain.entities import GuardrailEvent, GuardrailResult
+from gateway.proxy.domain.post_call_redaction import redact_response_body
 
 _log = logging.getLogger(__name__)
 _slog = structlog.get_logger(__name__)
@@ -977,7 +978,12 @@ class RegexGuardrailEvaluator:
         """Apply PII masking to the upstream response body (post-call, non-streaming).
 
         Applies built-in patterns first, then custom patterns (with budget guard).
-        Fail-OPEN on any error.
+
+        post-call-mask-fail-closed (audit Issue 2): if the masker itself raises we CANNOT
+        prove the output is PII-free, so the content is WITHHELD (redact_response_body)
+        rather than returned raw — fail-CLOSED but non-blocking (still a well-formed body,
+        no exception propagated). This is the source-of-truth for the fail-closed policy;
+        the use_cases call sites redact too, as defence for evaluators that instead raise.
         """
         pii_cfg = guardrail_configs.get("pii_mask")
         if not isinstance(pii_cfg, dict) or not pii_cfg.get("enabled"):
@@ -1000,7 +1006,7 @@ class RegexGuardrailEvaluator:
             return result_body
         except Exception as exc:
             _log.warning(
-                "guardrail_evaluator: evaluate_post error (fail-OPEN, returning original body)",
+                "guardrail_evaluator: evaluate_post error (fail-CLOSED, redacting output)",
                 exc_info=exc,
             )
-            return response_body
+            return redact_response_body(response_body)

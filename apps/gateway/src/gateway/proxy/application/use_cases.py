@@ -109,6 +109,12 @@ from gateway.proxy.domain.ports import (
     UsageRecordExtras,
     VectorCache,
 )
+from gateway.proxy.domain.post_call_redaction import (
+    POST_MASK_REDACTION as _POST_MASK_REDACTION,
+)
+from gateway.proxy.domain.post_call_redaction import (
+    redact_response_body as _redact_response_body,
+)
 from gateway.proxy.domain.provider_credentials import (
     BYOK_PROVIDERS,
     ProviderKeyMissing,
@@ -1013,53 +1019,11 @@ def _rewrite_sse_content(chunks: list[bytes], new_content_by_choice: dict[int, s
         return _masked_fallback()
 
 
-# post-call-mask-fail-closed (Issue 2, Tin-approved policy inversion): when the post-call
-# PII masker itself FAILS (evaluate_post raises, or returns an untrusted shape), we cannot
-# prove the model output is PII-free — so we WITHHOLD the assistant text rather than leak it.
-# The request still succeeds (200, well-formed body/stream): fail-CLOSED but NON-BLOCKING.
-_POST_MASK_REDACTION = "[content withheld: output safety check unavailable]"
-
-
-def _redact_response_body(body: Any) -> Any:
-    """Return a copy of a chat-completion `body` with every choice's assistant text
-    replaced by `_POST_MASK_REDACTION`, preserving all other fields (id/model/usage) so
-    downstream billing/metering/capture keep working.
-
-    Used at the four non-streaming evaluate_post sites (complete() Step 5.5, exact /
-    semantic / vector cache HIT) when the masker fails: post-call-mask-fail-closed policy
-    withholds the (possibly PII-bearing) content instead of returning the raw body, while
-    still returning a valid 200 body (non-blocking). Never mutates the caller's `body`.
-
-    A body with no `choices` list carries no masker-scoped assistant text, so it is
-    returned unchanged (evaluate_post would have found nothing to mask there either).
-    """
-    if not isinstance(body, dict):
-        return {
-            "choices": [
-                {"index": 0, "message": {"role": "assistant", "content": _POST_MASK_REDACTION}}
-            ]
-        }
-    choices = body.get("choices")
-    if not isinstance(choices, list):
-        return body
-    new_choices: list[Any] = []
-    for choice in choices:
-        if not isinstance(choice, dict):
-            new_choices.append(choice)
-            continue
-        new_choice = dict(choice)
-        message = new_choice.get("message")
-        if isinstance(message, dict) and isinstance(message.get("content"), str):
-            new_message = dict(message)
-            new_message["content"] = _POST_MASK_REDACTION
-            new_choice["message"] = new_message
-        # legacy /v1/completions shape carries text directly on the choice.
-        if isinstance(new_choice.get("text"), str):
-            new_choice["text"] = _POST_MASK_REDACTION
-        new_choices.append(new_choice)
-    new_body = dict(body)
-    new_body["choices"] = new_choices
-    return new_body
+# post-call-mask-fail-closed (Issue 2): the redaction primitive (_POST_MASK_REDACTION /
+# _redact_response_body) is imported at the top of the module from
+# gateway.proxy.domain.post_call_redaction — a single source of truth shared with the
+# masking evaluator, which now also fails CLOSED internally, so both the evaluator's own
+# error path and these call-site guards withhold the output identically.
 
 
 async def _apply_stream_post_mask(

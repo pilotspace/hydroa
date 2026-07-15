@@ -534,6 +534,70 @@ async def test_stream_post_mask_fails_closed_on_shape_mismatch() -> None:
     assert _POST_MASK_REDACTION in text, f"expected redaction sentinel, got: {text!r}"
 
 
+def test_redact_response_body_strips_tool_calls_and_list_content() -> None:
+    """Issue 2 (blocker follow-up): redaction must WITHHOLD every output-text vector —
+    tool_call arguments and list-shaped content — not just message.content, or a masking
+    failure on a tool-call/list response still leaks raw PII."""
+    from gateway.proxy.application.use_cases import _redact_response_body
+
+    body = {
+        "id": "c",
+        "model": "m",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "ssn 123-45-6789"}],
+                    "tool_calls": [
+                        {
+                            "id": "t1",
+                            "function": {"name": "f", "arguments": '{"email":"a@b.com"}'},
+                        }
+                    ],
+                },
+            }
+        ],
+        "usage": {"total_tokens": 3},
+    }
+    dumped = json.dumps(_redact_response_body(body))
+    assert "123-45-6789" not in dumped, f"raw list-content PII survived redaction: {dumped}"
+    assert "a@b.com" not in dumped, f"raw tool_call-argument PII survived redaction: {dumped}"
+
+
+async def test_evaluate_post_fails_closed_on_internal_masking_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue 2 (blocker follow-up): the REAL evaluator must fail CLOSED when its own masker
+    throws — not swallow the error and return the raw body (which defeats every call-site
+    guard).
+
+    RED (old policy): RegexGuardrailEvaluator.evaluate_post catches the internal exception
+    and returns `response_body` verbatim → raw PII reaches the client with 200.
+    GREEN: the internal error path withholds the content (redaction), never the raw body."""
+    from gateway.proxy.infrastructure import guardrail_evaluator as ge
+
+    def _boom(_body: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("simulated masking bug")
+
+    monkeypatch.setattr(ge, "_mask_pii_in_body", _boom)
+
+    body = {
+        "id": "c",
+        "model": "m",
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": "ssn 123-45-6789"}}],
+        "usage": {"total_tokens": 3},
+    }
+    out = await ge.RegexGuardrailEvaluator().evaluate_post(
+        body, {"pii_mask": {"enabled": True, "mode": "mask"}}
+    )
+    assert "123-45-6789" not in json.dumps(out), (
+        f"raw PII leaked when the masker itself failed (fail-OPEN): {out!r}"
+    )
+    # Billing/metering fields survive the redaction.
+    assert out.get("usage") == {"total_tokens": 3}
+
+
 class _UnexpectedProviderError(Exception):
     """Simulates an adapter/provider exception type OTHER than UpstreamUnavailableError,
     CircuitOpenError, or UpstreamRateLimitedError — an unhandled-exception-type branch
