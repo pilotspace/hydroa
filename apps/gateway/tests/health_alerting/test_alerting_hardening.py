@@ -407,11 +407,103 @@ async def test_h3_webhook_sink_still_delivers_to_a_public_target() -> None:
     transport = httpx.MockTransport(_ok)
     client = httpx.AsyncClient(transport=transport)
     # Fixed, fake DNS answer for the public hostname — a real public IP, no live lookup.
+    # audit-remediation Blocker 2: the SINK now resolves+pins, so the fake resolver is
+    # injected into the sink (the policy sees a literal IP and does no lookup of its own).
     resolver = _FakeResolver({"hooks.example.com": ["93.184.216.34"]})
-    policy = DenyPrivateAndMetadataEgressPolicy(resolver=resolver)
-    sink = HttpxWebhookSink(client=client, egress_policy=policy)
+    sink = HttpxWebhookSink(
+        client=client, egress_policy=DenyPrivateAndMetadataEgressPolicy(), resolver=resolver
+    )
 
     status = await sink.post_json("https://hooks.example.com/alerts", {"a": 1})
     assert status == 200
+
+    await client.aclose()
+
+
+async def test_h3_webhook_sink_pins_dial_to_resolved_ip_no_rebind() -> None:
+    """audit-remediation Blocker 2 (HIGH) — DNS-rebind close.
+
+    RED reason: `post_json` resolves nothing and dials the raw HOSTNAME URL, so the
+    egress `check()` and httpx's own connect-time resolution are two INDEPENDENT DNS
+    lookups — a rebinding resolver can answer benign to the check and metadata/RFC1918
+    to the dial. Fix (mirrors mcp_connector httpx_dialer): the sink resolves ONCE, pins
+    the dialed URL's host to that literal IP (so check + dial share one IP), and keeps
+    the Host header + TLS SNI as the original hostname.
+
+    This asserts the transport actually received the PINNED literal-IP URL (not the
+    hostname), with Host/SNI preserved — which fails today because the sink dials the
+    hostname verbatim."""
+    from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
+    from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
+
+    seen: dict[str, Any] = {}
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        seen["host"] = request.url.host
+        seen["header_host"] = request.headers.get("Host")
+        seen["sni"] = request.extensions.get("sni_hostname")
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(_capture)
+    client = httpx.AsyncClient(transport=transport)
+    resolver = _FakeResolver({"hooks.example.com": ["93.184.216.34"]})
+    sink = HttpxWebhookSink(
+        client=client, egress_policy=DenyPrivateAndMetadataEgressPolicy(), resolver=resolver
+    )
+
+    status = await sink.post_json("https://hooks.example.com/alerts", {"a": 1})
+    assert status == 200
+    assert seen["host"] == "93.184.216.34", (
+        f"dial must target the resolved+checked literal IP, not the hostname; got {seen['host']}"
+    )
+    assert seen["header_host"] == "hooks.example.com", "Host header must stay the original hostname"
+    assert seen["sni"] == "hooks.example.com", "TLS SNI must stay the original hostname"
+
+    await client.aclose()
+
+
+async def test_h3_webhook_sink_rebind_to_private_ip_refused_before_dial() -> None:
+    """audit-remediation Blocker 2 — a hostname that RESOLVES to a private/metadata IP is
+    refused before any dial, because the sink resolves-then-checks the SAME IP it will
+    dial. RED today: the sink never resolves, so it can't catch this at the sink layer."""
+    from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
+    from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy, EgressDeniedError
+
+    def _must_not_dial(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"must not dial a rebound private target: {request.url}")
+
+    transport = httpx.MockTransport(_must_not_dial)
+    client = httpx.AsyncClient(transport=transport)
+    resolver = _FakeResolver({"evil.example.com": ["169.254.169.254"]})
+    sink = HttpxWebhookSink(
+        client=client, egress_policy=DenyPrivateAndMetadataEgressPolicy(), resolver=resolver
+    )
+
+    with pytest.raises(EgressDeniedError):
+        await sink.post_json("https://evil.example.com/hook", {"a": 1})
+
+    await client.aclose()
+
+
+async def test_h3_webhook_sink_rejects_redirect() -> None:
+    """audit-remediation Blocker 2 — any 3xx is rejected (fail CLOSED), never followed to a
+    Location the sink never egress-checked. RED today: the sink returns the 3xx status
+    without raising, so a redirect to an internal Location is silently honored by any
+    follow-redirects client."""
+    from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
+    from gateway.core.egress_policy import DenyPrivateAndMetadataEgressPolicy
+
+    def _redirect(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"Location": "http://169.254.169.254/"})
+
+    transport = httpx.MockTransport(_redirect)
+    client = httpx.AsyncClient(transport=transport)
+    resolver = _FakeResolver({"hooks.example.com": ["93.184.216.34"]})
+    sink = HttpxWebhookSink(
+        client=client, egress_policy=DenyPrivateAndMetadataEgressPolicy(), resolver=resolver
+    )
+
+    with pytest.raises(Exception):  # noqa: B017 -- redirect must fail-closed (any raise)
+        await sink.post_json("https://hooks.example.com/alerts", {"a": 1})
 
     await client.aclose()
