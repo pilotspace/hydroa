@@ -1118,17 +1118,27 @@
       "title": "Platform Admin Console",
       "goal": "A superadmin can view and fully manage any tenant (config, budget, keys, members) through a dedicated, fully audited cross-tenant admin surface",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-02T15:53:53+00:00",
-      "updated": "2026-07-02T15:53:53+00:00"
+      "updated": "2026-07-15T07:35:37+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "tenant-impersonation": {
       "title": "Tenant Impersonation",
       "goal": "A superadmin can act as a specific tenant user in a time-boxed, fully audited impersonation session where the real actor stays distinguishable in every downstream record",
       "stage": "production",
-      "status": "queued",
+      "status": "done",
       "created": "2026-07-02T15:53:53+00:00",
-      "updated": "2026-07-02T15:53:53+00:00"
+      "updated": "2026-07-15T07:32:09+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "platform-key-default": {
       "title": "Platform Key Default Credential",
@@ -1158,9 +1168,14 @@
       "title": "Team Member Invite",
       "goal": "A tenant owner/admin can invite a new colleague by email into their own tenant with a chosen role, and that colleague can accept the invite and set their own password \u2014 without requiring SSO/domain-mapping to be configured",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-03T16:21:50+00:00",
-      "updated": "2026-07-03T16:21:50+00:00"
+      "updated": "2026-07-15T07:35:38+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "agent-gateway-v1": {
       "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
@@ -1190,7 +1205,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-14T09:27:17+00:00",
+  "updated": "2026-07-15T07:35:38+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
