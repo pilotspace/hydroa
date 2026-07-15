@@ -938,9 +938,25 @@ def _rewrite_sse_content(chunks: list[bytes], new_content_by_choice: dict[int, s
     `new_content_by_choice` (e.g. a choice that carried no content at all) are left
     byte-for-byte unchanged. Every non-content frame is untouched.
 
-    Total + pure: never raises. Falls back to returning `chunks` unchanged if the byte
-    stream can't be round-tripped (defensive — must never corrupt/drop the stream).
+    Total + pure: never raises. FAIL-CLOSED (audit-remediation Blocker 3): this rewrite
+    only runs when post-call masking is active and content actually changed, so the
+    stream is KNOWN to carry text that must be masked. It must therefore NEVER fall back
+    to emitting the original raw (unmasked) bytes on a parse hiccup. A single unparseable
+    `data:` frame is DROPPED (we cannot inspect it for PII, and each choice's masked text
+    is already carried in that choice's first content frame); any other unexpected error
+    reconstructs a minimal stream from the already-masked per-choice text — never `chunks`.
     """
+
+    def _masked_fallback() -> list[bytes]:
+        # Never emit raw chunks. Rebuild a minimal valid SSE carrying ONLY the
+        # already-masked per-choice text + [DONE].
+        frames = [
+            "data: " + json.dumps({"choices": [{"index": idx, "delta": {"content": masked}}]})
+            for idx, masked in sorted(new_content_by_choice.items())
+        ]
+        frames.append("data: [DONE]")
+        return [("\n\n".join(frames) + "\n\n").encode("utf-8")]
+
     try:
         text_stream = b"".join(chunks).decode("utf-8", errors="replace")
         lines = text_stream.split("\n")
@@ -955,12 +971,19 @@ def _rewrite_sse_content(chunks: list[bytes], new_content_by_choice: dict[int, s
             if payload in ("[DONE]", ""):
                 out_lines.append(line)
                 continue
-            parsed = json.loads(payload)
+            try:
+                parsed = json.loads(payload)
+            except Exception:  # noqa: S112 -- deliberate fail-closed drop; the payload is
+                # NOT logged on purpose: the unparseable frame may itself carry the PII we
+                # are masking, so logging it would leak the very data we drop it to protect.
+                continue
             if not isinstance(parsed, dict):
-                out_lines.append(line)
+                # Not a content frame we can inspect → drop (fail-closed), don't emit raw.
                 continue
             choices = parsed.get("choices")
             if not isinstance(choices, list):
+                # A dict frame with no choices (usage/role/metadata) carries no assistant
+                # content — safe to pass through verbatim.
                 out_lines.append(line)
                 continue
             frame_changed = False
@@ -986,7 +1009,8 @@ def _rewrite_sse_content(chunks: list[bytes], new_content_by_choice: dict[int, s
             out_lines.append("data: " + json.dumps(parsed) if frame_changed else line)
         return [("\n".join(out_lines)).encode("utf-8")]
     except Exception:
-        return chunks
+        # Any other unexpected failure → masked reconstruction, NEVER the raw stream.
+        return _masked_fallback()
 
 
 async def _apply_stream_post_mask(

@@ -390,6 +390,34 @@ async def test_streaming_post_call_pii_mask_n_choices_masked_independently() -> 
     assert "Contact" in text1, f"choice 1 must retain its own surrounding text; got {text1!r}"
 
 
+def test_rewrite_sse_content_fails_closed_on_malformed_frame() -> None:
+    """Blocker 3 (HIGH): a malformed `data:` frame must NOT make _rewrite_sse_content
+    fall back to emitting the ORIGINAL raw (unmasked) bytes.
+
+    RED today: the whole body is wrapped in `except Exception: return chunks`, so a
+    single unparseable frame anywhere in the buffered stream throws away the already-
+    computed masked text and ships the raw PII-bearing byte stream verbatim — the wrong
+    fail-direction for a masking control.
+    GREEN: the unparseable frame is dropped (fail-closed — we cannot prove it PII-free),
+    the parseable content frame is still masked, and no raw PII survives."""
+    from gateway.proxy.application.use_cases import _rewrite_sse_content
+
+    chunks = [
+        b'data: {"choices":[{"index":0,"delta":{"content":"my ssn is 123-45-6789"}}]}\n\n',
+        b"data: {this is not valid json\n\n",
+        b"data: [DONE]\n\n",
+    ]
+    out = b"".join(_rewrite_sse_content(chunks, {0: "my ssn is [SSN_REDACTED]"}))
+    text = out.decode("utf-8", "replace")
+    assert "[SSN_REDACTED]" in text, f"masked text must still be emitted; got {text!r}"
+    assert "123-45-6789" not in text, (
+        f"raw PII must NEVER survive a malformed sibling frame; got {text!r}"
+    )
+    assert "this is not valid json" not in text, (
+        f"the unparseable frame's raw bytes must be dropped, not passed through; got {text!r}"
+    )
+
+
 class _UnexpectedProviderError(Exception):
     """Simulates an adapter/provider exception type OTHER than UpstreamUnavailableError,
     CircuitOpenError, or UpstreamRateLimitedError — an unhandled-exception-type branch
