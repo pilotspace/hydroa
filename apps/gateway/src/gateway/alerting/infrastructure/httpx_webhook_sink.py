@@ -149,6 +149,10 @@ class HttpxWebhookSink:
             json=payload,
             headers={"Host": host},
             extensions={"sni_hostname": host},
+            # Per-request override so a redirect is NEVER auto-followed even if an
+            # (injected, test-seam) client was built with follow_redirects=True — the
+            # manual 3xx reject below then always gets to see the raw redirect first.
+            follow_redirects=False,
         )
         if 300 <= response.status_code < 400:
             # Fail CLOSED — never follow a Location the sink did not egress-check.

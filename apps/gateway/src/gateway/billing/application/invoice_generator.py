@@ -19,11 +19,15 @@ CONTRACT:
     reconciled onto exactly ONE usage line (the single largest raw contributor,
     deterministic tie-break) so invoice.total_usd still always equals the sum of
     its own persisted invoice_lines — see _reconcile_rounding_delta.
-    C3 fix (audit-remediation, 2026-07-14): generate_for_tenant SKIPS (returns
-    None, writes nothing) a tenant whose tenants.billing_mode == 'credits' — that
-    tenant's spend is already held+settled in real time by the credits ledger
-    (credits/infrastructure/postgres_guard.py), so invoicing it here too would
-    double-bill the SAME usage_records.cost_usd through both mechanisms.
+    Double-bill couple (audit-remediation, 2026-07-15 — supersedes the original
+    billing_mode-gated C3 fix): generate_for_tenant SKIPS (returns None, writes
+    nothing) iff real-time credit enforcement is ACTIVE — self._credits_gate_enabled,
+    wired from the SAME settings.credits_gate_enabled knob that decides whether
+    main.py installs the real PostgresCreditGuard (holds+settles every tenant) vs a
+    Passthrough. One source of truth: invoice-skip and credit-holds can never diverge
+    (no double-bill when the knob is on, no revenue leak when it is off). The prior
+    tenants.billing_mode gate was unsafe both ways and no code path ever set it to
+    'credits'; the column is retained but no longer drives billing.
     Idempotent + concurrency-safe via
     ON CONFLICT (tenant_id, period_start) DO NOTHING (M13, mirrors flusher.py's
     own idempotent-insert idiom) — a re-run or a genuine race resolves to

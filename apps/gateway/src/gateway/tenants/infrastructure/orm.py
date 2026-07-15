@@ -229,20 +229,15 @@ class TenantRow(Base):
     allow_non_claude_failover: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sa.false()
     )
-    # audit-remediation C3 (double-bill fix, 2026-07-14) — additive, NOT NULL DEFAULT
-    # 'invoice'. 'invoice' (default) = tenant is monthly-invoiced by InvoiceGenerator
-    # off usage_records.cost_usd, exactly as EVERY tenant is billed today — every
-    # pre-existing row backfills to 'invoice' via server_default, so no live tenant's
-    # billing changes the instant this migration ships (mirrors default_tier's own
-    # additive-NOT-NULL-with-backfill convention). 'credits' = tenant is billed
-    # exclusively via the prepaid credits ledger (PostgresCreditGuard already
-    # holds+settles this tenant's spend in real time, credits/infrastructure/
-    # postgres_guard.py) — InvoiceGenerator SKIPS a 'credits' tenant so the SAME
-    # usage_records.cost_usd is never billed twice through both mechanisms (C3,
-    # HIGH double-bill finding). No code path in this fix auto-flips a tenant to
-    # 'credits' — an operator opts in explicitly (e.g. a direct UPDATE, or a future
-    # admin endpoint); this fix closes the double-bill HAZARD going forward without
-    # retroactively changing any live tenant's invoicing.
+    # additive, NOT NULL DEFAULT 'invoice'. NOTE (audit-remediation, 2026-07-15): this
+    # column NO LONGER drives billing. The double-bill fix now couples the invoice skip
+    # to settings.credits_gate_enabled (the SAME knob that wires the real-time
+    # PostgresCreditGuard) — see InvoiceGenerator.generate_for_tenant — so invoice-skip
+    # and credit-holds share one source of truth and cannot diverge. The original design
+    # gated the skip on billing_mode == 'credits', but no code path ever set that value
+    # and it was unsafe in both directions (double-bill when the knob was on; revenue
+    # leak when off). The column is retained (harmless, backfilled to 'invoice') for
+    # possible future per-tenant billing selection; it is currently read by no code path.
     billing_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="invoice")
 
 
