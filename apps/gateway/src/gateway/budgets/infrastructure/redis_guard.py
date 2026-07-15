@@ -59,9 +59,12 @@ audit-remediation C1 fix (2026-07-14) — atomic check-and-reserve:
   agent_token_authn_seam, embeddings/images endpoints, credits_ledger,
   anthropic_messages_ingress), none of which are in this task's package. C1's
   finding is specifically the TOCTOU race, not the fail-open-on-total-outage
-  policy — see this task's report for the full tradeoff written out, flagged as
-  a residual decision for the orchestrator/Tin rather than a unilateral change
-  made here.
+  policy — see this task's report for the full tradeoff written out.
+
+  RESOLVED (Tin, 2026-07-15): keep fail-open on total Redis outage —
+  availability over enforcement, consistent with the sibling modality guard's
+  own fail-open call. This is a deliberate product decision, NOT a security
+  boundary (the PII-mask and guardrail-block paths are separately fail-CLOSED).
 """
 
 from __future__ import annotations
