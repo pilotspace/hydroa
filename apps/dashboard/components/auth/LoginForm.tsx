@@ -73,7 +73,16 @@ export function validateSsoDomain(domain: string): string | null {
   return null;
 }
 
-export function LoginForm() {
+export interface LoginFormProps {
+  /**
+   * Validated same-origin post-login destination (device-activate-page M1). The parent
+   * page has already run it through loginNextTarget/sanitizeNext, so it is a trusted
+   * relative path here; defaults to /app/keys.
+   */
+  nextPath?: string;
+}
+
+export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -172,8 +181,9 @@ export function LoginForm() {
         });
       }
 
-      // No localStorage write — cookie is set server-side by the BFF
-      router.push("/app/keys");
+      // No localStorage write — cookie is set server-side by the BFF. Return to the
+      // validated `next` destination (e.g. /activate?user_code=…) or the default.
+      router.push(nextPath);
     } catch (err) {
       if (err instanceof BffError) {
         setGlobalError(err.problem.title ?? "An error occurred");

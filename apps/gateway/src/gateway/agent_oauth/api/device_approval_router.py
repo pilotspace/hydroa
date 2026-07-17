@@ -35,6 +35,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.agent_oauth.application.use_cases import (
+    NotPreviewableError,
+    PreviewDeviceAuthorizationUseCase,
+)
 from gateway.agent_oauth.domain.errors import (
     AuthorizationExpiredError,
     AuthorizationNotPendingError,
@@ -67,6 +71,9 @@ _ERR_NOT_FOUND = "authorization_not_found"
 _ERR_NOT_PENDING = "authorization_not_pending"
 _ERR_EXPIRED = "authorization_expired"
 _ERR_RATE_LIMITED = "rate_limited"
+# device-activate-page §3: the ONE uniform error for every non-previewable state
+# (unknown | expired | approved | denied | consumed) — no enumeration oracle.
+_ERR_NOT_PREVIEWABLE = "authorization_not_previewable"
 
 
 class _ApprovalBody(BaseModel):
@@ -293,3 +300,69 @@ async def device_deny(
         request, user_code_hash=user_code_hash, action="deny", identity=identity
     )
     return _outcome_to_response(outcome, success_status="denied")
+
+
+@agent_oauth_approval_router.post("/preview")
+async def device_preview(
+    request: Request, session: Annotated[AsyncSession, Depends(get_session)]
+) -> JSONResponse:
+    """POST /oauth/device/preview — AUTHENTICATED, ANY role (device-activate-page §3).
+
+    A read-only, non-leaky peek at a PENDING grant's server-known facts (scope, expiry,
+    default budget cap) shown to the human before approve/deny. Reuses the approve/deny
+    helpers VERBATIM (identity, body-parse, normalize) and the same per-user limiter,
+    keyed ``preview:{user_id}`` off a DEDICATED knob so page-load previews never exhaust
+    the approve/deny allowance.
+
+    SECURITY (enumeration oracle, §3 R-B): every non-previewable state — unknown, expired,
+    approved, denied, consumed — returns ONE byte-identical 404 ``authorization_not_previewable``.
+    The code travels in the POST BODY only, never a URL/log.
+    """
+    settings: Any = request.app.state.settings
+
+    # ── 1. Identity resolution (JWT required — same 401 as approve/deny) ──────
+    identity = await _require_identity(request, session)
+
+    # ── 2. Per-USER preview rate limit (fail-open on Redis error), OWN knob/key ──
+    limiter: AgentOAuthIpRateLimiter = request.app.state.agent_oauth_ip_limiter
+    rate_key = f"preview:{identity.user_id}"
+    try:
+        await limiter.check(ip=rate_key, limit=settings.agent_oauth_preview_rpm)
+    except RateLimitedError as exc:
+        return JSONResponse(
+            status_code=429,
+            content={"error": _ERR_RATE_LIMITED},
+            headers={"Retry-After": str(exc.retry_after)},
+        )
+
+    # ── 3. Bounded body parse (422 on missing/malformed/oversized) ────────────
+    result = await _parse_approval_body(request)
+    if isinstance(result, JSONResponse):
+        return result
+    body = result
+
+    # ── 4. Normalize (NEVER log the plaintext) + preview inside a request session.
+    normalized = _normalize_user_code(body.user_code)
+    async with request.app.state.sessionmaker() as preview_session:
+        repo = SqlAlchemyAgentOAuthRepository(preview_session)
+        use_case = PreviewDeviceAuthorizationUseCase(
+            repo=repo,
+            hasher=Sha256SecretHasher(),
+            default_budget_usd=settings.agent_oauth_default_budget_usd,
+        )
+        try:
+            preview = await use_case.execute(user_code_normalized=normalized, now=datetime.now(UTC))
+        except NotPreviewableError:
+            # ONE uniform 404 for every non-pending / expired / unknown state.
+            return JSONResponse(status_code=404, content={"error": _ERR_NOT_PREVIEWABLE})
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "scope": preview.scope,
+            "status": "pending",
+            "expires_in": preview.expires_in,
+            "interval": preview.interval,
+            "default_budget_usd": preview.default_budget_usd,
+        },
+    )

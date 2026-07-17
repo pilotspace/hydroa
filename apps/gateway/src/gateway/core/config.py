@@ -992,9 +992,14 @@ class Settings(BaseSettings):
         return self
 
     # ── Agent OAuth device-authorization endpoint (device-authorization-endpoint task) ──
-    # GATEWAY_AGENT_OAUTH_VERIFICATION_URI — dashboard URL shown to the human approver.
-    # Empty string = unconfigured (verification_uri_complete is omitted from the 200 body).
-    agent_oauth_verification_uri: str = ""  # GATEWAY_AGENT_OAUTH_VERIFICATION_URI
+    # GATEWAY_AGENT_OAUTH_VERIFICATION_URI — the RFC 8628 absolute page URL the human
+    # visits to approve (the dashboard /activate screen). Non-empty by DEFAULT (dev origin)
+    # so verification_uri + verification_uri_complete are populated out of the box
+    # (device-activate-page §3 M8). A prod boot-guard (_validate_verification_uri, below)
+    # refuses an empty / localhost / non-https value when environment is not dev/test.
+    agent_oauth_verification_uri: str = (
+        "http://localhost:3000/activate"  # GATEWAY_AGENT_OAUTH_VERIFICATION_URI
+    )
     # GATEWAY_AGENT_OAUTH_DEVICE_CODE_TTL_SECONDS — how long a pending device_code lives.
     # Must be > 0; fails fast at boot when set to 0 or negative.
     agent_oauth_device_code_ttl_seconds: int = 600  # GATEWAY_AGENT_OAUTH_DEVICE_CODE_TTL_SECONDS
@@ -1010,6 +1015,11 @@ class Settings(BaseSettings):
     # (requests/60 s). Bounds user_code enumeration by an authenticated actor. Must be > 0;
     # fails fast at boot when set to 0 or negative. (device-approval-flow task §3)
     agent_oauth_approve_rpm: int = 30  # GATEWAY_AGENT_OAUTH_APPROVE_RPM
+    # GATEWAY_AGENT_OAUTH_PREVIEW_RPM — per-USER fixed-window rate limit on the /activate
+    # PREVIEW read (requests/60 s, key "preview:{user_id}"). A DEDICATED knob so page-load
+    # previews never exhaust the approve/deny allowance (device-activate-page §3 A5). Must
+    # be > 0; fails fast at boot when set to 0 or negative.
+    agent_oauth_preview_rpm: int = 30  # GATEWAY_AGENT_OAUTH_PREVIEW_RPM
 
     # ── Agent OAuth token endpoint (agent-token-endpoint task) ──────────────────
     # GATEWAY_AGENT_OAUTH_ACCESS_TOKEN_TTL_SECONDS — lifetime of a minted access token.
@@ -1061,6 +1071,7 @@ class Settings(BaseSettings):
         "agent_oauth_poll_interval_seconds",
         "agent_oauth_authorize_rpm",
         "agent_oauth_approve_rpm",
+        "agent_oauth_preview_rpm",
         "agent_oauth_access_token_ttl_seconds",
         "agent_oauth_token_rpm",
     )
@@ -1077,10 +1088,46 @@ class Settings(BaseSettings):
             raise ValueError(
                 "INVALID_AGENT_OAUTH_KNOB: agent_oauth_device_code_ttl_seconds, "
                 "agent_oauth_poll_interval_seconds, agent_oauth_authorize_rpm, "
+                "agent_oauth_approve_rpm, agent_oauth_preview_rpm, "
                 "agent_oauth_access_token_ttl_seconds, and agent_oauth_token_rpm "
                 f"must each be a positive integer (> 0); got {v!r}"
             )
         return v
+
+    @model_validator(mode="after")
+    def _validate_verification_uri(self) -> "Settings":
+        """Refuse an unsafe agent_oauth_verification_uri outside dev/test.
+
+        The verification_uri is the absolute page URL an agent embeds in its device-flow
+        instructions and the human visits to approve (device-activate-page §3 M9, R-C).
+        The dev default points at localhost, which is correct for dev/test but a silent
+        footgun in production: an agent would tell users to visit localhost. So, exactly
+        like the line-988 jwt_secret guard, a NON-dev/test environment must set an
+        explicit, https, non-localhost URL — otherwise the process refuses to start.
+
+        Fails CLOSED: empty, localhost/127.0.0.1 host, or non-https scheme → boot error.
+        """
+        if self.environment in ("dev", "test"):
+            return self
+
+        from urllib.parse import urlsplit
+
+        uri = self.agent_oauth_verification_uri
+        parts = urlsplit(uri)
+        host = (parts.hostname or "").lower()
+        unsafe = (
+            uri == ""
+            or parts.scheme != "https"
+            or host in ("localhost", "127.0.0.1", "::1")
+        )
+        if unsafe:
+            raise ValueError(
+                "INVALID_AGENT_OAUTH_VERIFICATION_URI: "
+                "GATEWAY_AGENT_OAUTH_VERIFICATION_URI must be a non-empty, https, "
+                "non-localhost absolute URL when GATEWAY_ENVIRONMENT is not dev/test "
+                f"(the human-facing device-approval page); got {uri!r}"
+            )
+        return self
 
     @field_validator("agent_oauth_refresh_token_ttl_seconds")
     @classmethod
