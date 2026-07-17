@@ -13,22 +13,31 @@ A THIN read composed from two already-frozen pieces, zero new query shape invent
 
 This router owns the endpoint; `plan-enforcement`'s frozen files (ports.py, entitlements.py,
 plan_entitlement_resolver.py) are imported, never edited.
+
+self-serve-plans-catalog TASK.md §3 (FROZEN @ v1) adds a SIBLING `GET /admin/plans` (plural) —
+the tenant's self-serve upgrade catalog, same `Depends(get_identity)` RBAC idiom. A thin read
+over `list_self_serve_plans` (gateway.tenants.application.self_serve_plans); the tenant's
+account_type/plan_id are resolved from `identity.tenant_id` server-side, never a query/body
+field (self-serve-checkout's own I1/I3 discipline, reused verbatim).
 """
 
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
 from gateway.keys.api.deps import get_identity
+from gateway.tenants.application.self_serve_plans import list_self_serve_plans
 from gateway.tenants.domain.entities import Identity
 from gateway.tenants.domain.ports import PlanEntitlementResolver
+from gateway.tenants.infrastructure.orm import TenantRow
 from gateway.tenants.infrastructure.plan_entitlement_resolver import (
     SqlAlchemyPlanEntitlementResolver,
 )
@@ -54,6 +63,21 @@ class ResolvedEntitlementsResponse(BaseModel):
 class PlanGetResponse(BaseModel):
     plan: PlanSummary | None
     resolved: ResolvedEntitlementsResponse
+
+
+class SelfServePlanItem(BaseModel):
+    id: uuid.UUID
+    name: str
+    display_name: str
+    base_price_usd_monthly: str | None
+
+
+class SelfServePlansResponse(BaseModel):
+    plans: list[SelfServePlanItem]
+
+
+def _money2(value: Decimal | None) -> str | None:
+    return f"{value:.2f}" if value is not None else None
 
 
 def get_plan_entitlement_resolver(request: Request) -> PlanEntitlementResolver:
@@ -116,6 +140,46 @@ async def get_plan(
             plan_model_allowlist=resolved.plan_model_allowlist,
             plan_feature_flags=sorted(resolved.plan_feature_flags),
         ),
+    )
+
+
+@plan_router.get("s", response_model=SelfServePlansResponse)
+async def get_self_serve_plans(
+    request: Request,
+    identity: Annotated[Identity, Depends(get_identity)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SelfServePlansResponse:
+    """GET /admin/plans — the tenant's self-serve upgrade catalog.
+
+    Accessible to any authenticated role (mirrors `get_plan` above): only `Depends(get_identity)`,
+    no `require_permission` — the catalog is non-sensitive pricing already public on /pricing.
+
+    The tenant's account_type/plan_id are resolved from `identity.tenant_id` by loading its
+    OWN `TenantRow` here — never from a query/body field (I1/I3 discipline, mirrors
+    self-serve-checkout's `_require_tenant`).
+    """
+    tenant = (
+        await session.execute(select(TenantRow).where(TenantRow.id == identity.tenant_id))
+    ).scalar_one_or_none()
+    account_type = tenant.account_type if tenant is not None else None
+    current_plan_id = tenant.plan_id if tenant is not None else None
+
+    plans = await list_self_serve_plans(
+        request.app.state.sessionmaker,
+        account_type=account_type,
+        current_plan_id=current_plan_id,
+    )
+
+    return SelfServePlansResponse(
+        plans=[
+            SelfServePlanItem(
+                id=p.id,
+                name=p.name,
+                display_name=p.display_name,
+                base_price_usd_monthly=_money2(p.base_price),
+            )
+            for p in plans
+        ]
     )
 
 

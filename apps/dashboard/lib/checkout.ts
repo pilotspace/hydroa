@@ -14,7 +14,8 @@
  * `error` field, not `title` — `checkoutErrorMessage` maps the token to human copy.
  */
 
-import { bffPost, BffError } from "@/lib/bff-client";
+import { bffGet, bffPost, BffError } from "@/lib/bff-client";
+import type { UpgradePlanOption } from "@/components/checkout/UpgradePlanDialog";
 
 export type PlanUpgradePreview = {
   intent: "plan_upgrade";
@@ -81,6 +82,21 @@ export async function createCreditTopup(
 
 export async function confirmCheckout(sessionId: string): Promise<CheckoutConfirmResponse> {
   return bffPost<CheckoutConfirmResponse>(`/admin/checkout/${sessionId}/confirm`, {});
+}
+
+type SelfServePlansResponse = {
+  plans: { id: string; display_name: string; base_price_usd_monthly: string | null }[];
+};
+
+/**
+ * GET /admin/plans — the tenant's self-serve upgrade catalog (self-serve-plans-catalog
+ * TASK.md §3, FROZEN @ v1, M4). Feeds `UpgradePlanDialog`'s `availablePlans` prop; the
+ * dialog itself stays pure/prop-driven and degrades to an honest empty state when this
+ * resolves to `[]`.
+ */
+export async function fetchSelfServePlans(): Promise<UpgradePlanOption[]> {
+  const resp = await bffGet<SelfServePlansResponse>("/admin/plans");
+  return resp.plans.map((p) => ({ id: p.id, displayName: p.display_name }));
 }
 
 const CHECKOUT_ERROR_COPY: Record<string, string> = {

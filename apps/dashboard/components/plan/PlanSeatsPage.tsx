@@ -22,6 +22,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { formatNumber } from "@/lib/format";
 import { EntitlementMeter } from "./EntitlementMeter";
 import { UpgradePlanDialog, type UpgradePlanOption } from "@/components/checkout/UpgradePlanDialog";
+import { fetchSelfServePlans } from "@/lib/checkout";
 
 interface PlanSummary {
   id: string;
@@ -70,11 +71,15 @@ export function PlanSeatsPage() {
     void queryClient.invalidateQueries({ queryKey: ["admin-plan"] });
   }
 
-  // The frozen self-serve-checkout §3 contract scopes NO tenant-facing plans-list read, so
-  // the live selectable-upgrade-target menu has no source yet (open question surfaced to the
-  // orchestrator). Until that additive read lands, the dialog opens with an honest "no options"
-  // state; the checkout create→preview→confirm flow it drives is fully exercised by unit tests.
-  const upgradeOptions: UpgradePlanOption[] = [];
+  // self-serve-plans-catalog TASK.md §3 (FROZEN @ v1, M4) — live upgrade-target menu, fed
+  // from GET /admin/plans. `data ?? []` mirrors UpgradePlanDialog's own honest empty state
+  // (never a crash) while the query is loading or errors.
+  const selfServePlansQuery = useQuery<UpgradePlanOption[]>({
+    queryKey: ["self-serve-plans"],
+    queryFn: fetchSelfServePlans,
+    retry: false,
+  });
+  const upgradeOptions: UpgradePlanOption[] = selfServePlansQuery.data ?? [];
 
   const budgetQuery = useQuery<BudgetGetResponse>({
     queryKey: ["admin-budget"],
