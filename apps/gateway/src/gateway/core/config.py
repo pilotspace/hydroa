@@ -1068,8 +1068,7 @@ class Settings(BaseSettings):
         (mirrors _validate_otel_config). An absent key = stripe disabled, dev used."""
         if self.payment_provider == "stripe" and not self.payment_stripe_api_key.strip():
             raise ValueError(
-                "GATEWAY_PAYMENT_STRIPE_API_KEY must be set when "
-                "GATEWAY_PAYMENT_PROVIDER=stripe"
+                "GATEWAY_PAYMENT_STRIPE_API_KEY must be set when GATEWAY_PAYMENT_PROVIDER=stripe"
             )
         return self
 
@@ -1205,11 +1204,7 @@ class Settings(BaseSettings):
         uri = self.agent_oauth_verification_uri
         parts = urlsplit(uri)
         host = (parts.hostname or "").lower()
-        unsafe = (
-            uri == ""
-            or parts.scheme != "https"
-            or host in ("localhost", "127.0.0.1", "::1")
-        )
+        unsafe = uri == "" or parts.scheme != "https" or host in ("localhost", "127.0.0.1", "::1")
         if unsafe:
             raise ValueError(
                 "INVALID_AGENT_OAUTH_VERIFICATION_URI: "
