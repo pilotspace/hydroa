@@ -44,7 +44,7 @@
     --success-text: #0f7a4d;        /* AA-safe small-text success */
     --warning: #bd8410;
     --warning-foreground: #8a5a0a;  /* readable text on a warning surface */
-    --destructive: #d34640;
+    --destructive: #cc3d37;         /* AA: white label on the solid fill = 4.9:1 (was #d34640 → 4.45, failed) */
     --destructive-foreground: #ffffff;
     --destructive-text: #c0332e;    /* AA-safe small-text destructive */
 
@@ -100,6 +100,7 @@
        reserved for hero headline + one hero CTA) */
     --accent-soft: #eef3fe;          /* azure-tinted 50 */
     --accent-soft-border: #d8e4fd;   /* azure-tinted 100 */
+    --accent-soft-foreground: #1c4bb8; /* deep azure — AA (6.9:1) on --accent-soft; active-nav text (plain --primary #2f6df0 is only 4.1:1, fails AA) */
     --brand-from: #2f6df0;           /* azure */
     --brand-to: #5b8cff;             /* lifted azure — deep→bright gradient */
   }
@@ -156,6 +157,7 @@
     /* soft accent + brand gradient — dark counterparts (azure) */
     --accent-soft: #16233d;          /* deep azure surface */
     --accent-soft-border: #24365c;   /* deep azure border */
+    --accent-soft-foreground: #8fb0ff; /* lifted azure — AA (7.3:1) on the dark --accent-soft; active-nav text */
     --brand-from: #5b8cff;           /* azure */
     --brand-to: #7ba2ff;             /* lifted azure */
   }
@@ -214,6 +216,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --color-accent-soft: var(--accent-soft);
   --color-accent-soft-border: var(--accent-soft-border);
+  --color-accent-soft-foreground: var(--accent-soft-foreground);
   --color-brand-from: var(--brand-from);
   --color-brand-to: var(--brand-to);
   --radius-sm: calc(var(--radius) - 2px);
