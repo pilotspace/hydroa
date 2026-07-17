@@ -155,6 +155,9 @@ from gateway.observability.logging_config import configure_structlog
 from gateway.observability.metrics import MetricsRegistry, expose_metrics
 from gateway.observability.middleware import RequestIdMiddleware
 from gateway.ops.api.router import ops_router
+from gateway.payments.api.error_handler import register_checkout_error_handler
+from gateway.payments.api.router import checkout_router
+from gateway.payments.infrastructure.provider_factory import build_payment_provider
 from gateway.proxy.api.audio_router import audio_router
 from gateway.proxy.api.concurrency_guard import GlobalBackPressureMiddleware
 from gateway.proxy.api.discovery_router import discovery_router
@@ -989,6 +992,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.residency_lookup = SqlAlchemyResidencyLookup(sessionmaker=app.state.sessionmaker)
     app.state.password_hasher = Argon2PasswordHasher()
     app.state.token_service = JwtTokenService(settings)
+    # self-serve-checkout TASK.md §3 (M10): dev provider is DEFAULT ON; stripe is selected
+    # only when configured (the Settings boot validator guarantees a non-empty stripe key).
+    # Tests override app.state.payment_provider to inject a failing/stripe adapter.
+    app.state.payment_provider = build_payment_provider(settings)
     # Default catalog source — tests override via app.state.catalog_source.
     # catalog-db-seed TASK.md §3 (FROZEN @ v1, M6): the DB seed migration is now the SOLE
     # source of truth for the former static seed rows (minimax/gpt-realtime/bedrock/vertex);
@@ -1529,6 +1536,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_error_handlers(app)
     register_scim_error_handlers(app)
+    register_checkout_error_handler(app)
     app.include_router(agent_oauth_device_router)
     app.include_router(agent_oauth_approval_router)
     app.include_router(agent_oauth_token_router)
@@ -1597,6 +1605,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(plan_router)
     app.include_router(credits_platform_router)
     app.include_router(credits_router)
+    app.include_router(checkout_router)
     app.include_router(invoices_router)
     app.include_router(margin_router)
     app.include_router(conversations_router)

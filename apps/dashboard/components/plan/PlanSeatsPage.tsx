@@ -14,12 +14,14 @@
  * against it.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { bffGet, BffError } from "@/lib/bff-client";
-import { Loading, ErrorState, Badge, Card, CardHeader, CardTitle, CardContent } from "@/components/ui";
+import { Loading, ErrorState, Badge, Button, Card, CardHeader, CardTitle, CardContent } from "@/components/ui";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatNumber } from "@/lib/format";
 import { EntitlementMeter } from "./EntitlementMeter";
+import { UpgradePlanDialog, type UpgradePlanOption } from "@/components/checkout/UpgradePlanDialog";
 
 interface PlanSummary {
   id: string;
@@ -55,11 +57,24 @@ function getErrorTitle(err: unknown): string {
 }
 
 export function PlanSeatsPage() {
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const queryClient = useQueryClient();
+
   const planQuery = useQuery<PlanGetResponse>({
     queryKey: ["admin-plan"],
     queryFn: () => bffGet<PlanGetResponse>("/admin/plan"),
     retry: false,
   });
+
+  function handleUpgradeSuccess() {
+    void queryClient.invalidateQueries({ queryKey: ["admin-plan"] });
+  }
+
+  // The frozen self-serve-checkout §3 contract scopes NO tenant-facing plans-list read, so
+  // the live selectable-upgrade-target menu has no source yet (open question surfaced to the
+  // orchestrator). Until that additive read lands, the dialog opens with an honest "no options"
+  // state; the checkout create→preview→confirm flow it drives is fully exercised by unit tests.
+  const upgradeOptions: UpgradePlanOption[] = [];
 
   const budgetQuery = useQuery<BudgetGetResponse>({
     queryKey: ["admin-budget"],
@@ -89,6 +104,18 @@ export function PlanSeatsPage() {
         title="Plan & seats"
         titleId="plan-heading"
         description="Your tenant's assigned plan and the limits it enforces."
+        actions={
+          <Button type="button" onClick={() => setUpgradeOpen(true)}>
+            Upgrade plan
+          </Button>
+        }
+      />
+
+      <UpgradePlanDialog
+        isOpen={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        onSuccess={handleUpgradeSuccess}
+        availablePlans={upgradeOptions}
       />
 
       {isLoading ? (
@@ -160,8 +187,12 @@ export function PlanSeatsPage() {
             ) : null}
 
             {plan ? (
-              <div className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
-                Seat pricing coming soon.
+              <div className="flex flex-col gap-1 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
+                <span>
+                  Change your plan with the “Upgrade plan” button above — you'll see the exact
+                  price change before anything is applied.
+                </span>
+                <span>Seat pricing coming soon.</span>
               </div>
             ) : null}
           </CardContent>
