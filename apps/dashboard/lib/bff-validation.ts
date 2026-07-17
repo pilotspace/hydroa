@@ -22,10 +22,15 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(4096),
 });
 
+// activation-quickstart: account_type is OPTIONAL and additive — every existing
+// caller that omits the field stays byte-identical (the gateway's own "business"
+// default applies). A present-but-invalid value (guard-bound, not a policy call —
+// the enum IS the policy here) 400s here before any gateway round trip.
 export const signupSchema = z.object({
   tenant_name: z.string().min(1).max(200),
   email: z.string().min(1).max(320),
   password: z.string().min(1).max(4096),
+  account_type: z.enum(["personal", "business"]).optional(),
 });
 
 // member-invite-ui: the accept-invite BFF route body. Same guard-bound shape as
