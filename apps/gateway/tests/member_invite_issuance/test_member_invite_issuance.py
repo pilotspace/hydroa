@@ -202,7 +202,14 @@ async def test_owner_invites_co_owner(
         "created_at",
         "invited_by_user_id",
         "token",
-    }, "InviteCreateResponse must be EXACTLY this shape (§3 CONTRACT) — no more, no less"
+        # transactional-email TASK.md §3 (FROZEN @ v1, M9): ONE additive field superseding
+        # this task's own original "EXACTLY this shape" pin — every field above stays
+        # byte-identical, this is the only addition (which channel the accept-link email
+        # was dispatched to).
+        "email_delivery_channel",
+    }, (
+        "InviteCreateResponse must be this shape (member-invite-issuance §3 + transactional-email §3 M9)"
+    )
     assert await _pending_count(db_session, seeded_tenant["tenant_id"], "new@co.io") == 1
 
 

@@ -22,6 +22,12 @@ export interface InviteCreateResponse {
   invited_by_user_id: string;
   /** PLAINTEXT invite token — present ONLY on this 201 response, never again. */
   token: string;
+  /**
+   * Which EmailSender adapter the accept-link email was DISPATCHED to (attempted, not
+   * confirmed-delivered — fire-and-forget can't know delivery outcome by response time).
+   * Additive + optional for forward/backward safety (transactional-email TASK.md §3).
+   */
+  email_delivery_channel?: "smtp" | "console";
 }
 
 export interface PendingInviteListItem {

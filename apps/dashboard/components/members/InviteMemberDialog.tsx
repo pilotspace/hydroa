@@ -145,6 +145,11 @@ export function InviteMemberDialog({ isOpen, onClose, callerRole }: InviteMember
               <strong className="text-foreground">{created.email}</strong>. It expires in 7 days
               and won&apos;t be shown again.
             </p>
+            {created.email_delivery_channel === "smtp" && (
+              <p className="text-sm text-muted-foreground">
+                We&apos;ve emailed this link to <strong>{created.email}</strong>.
+              </p>
+            )}
             {/* The plaintext token is rendered ONLY in this visible <code> leaf — never
                 logged or persisted. It is cleared from state on close (resetState). */}
             <code
