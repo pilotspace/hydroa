@@ -81,7 +81,7 @@ function LibraryItem({ item, isSelected, isSearchMode, onSelect, onDelete }: Lib
           aria-hidden="true"
           className={[
             "mt-0.5 size-2 shrink-0 rounded-full",
-            item.has_embedding ? "bg-emerald-500" : "bg-muted-foreground/40",
+            item.has_embedding ? "bg-success" : "bg-muted-foreground/40",
           ].join(" ")}
         />
         <p className="flex-1 text-sm text-foreground line-clamp-2">{item.content}</p>

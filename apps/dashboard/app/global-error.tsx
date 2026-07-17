@@ -25,8 +25,8 @@ export default function GlobalError({
           alignItems: "center",
           justifyContent: "center",
           margin: 0,
-          background: "#0b1020",
-          color: "#e6e9f5",
+          background: "#0c1015",
+          color: "#eaeff5",
         }}
       >
         <div role="alert" style={{ maxWidth: "28rem", padding: "2rem", textAlign: "center" }}>
@@ -47,11 +47,12 @@ export default function GlobalError({
             style={{
               cursor: "pointer",
               borderRadius: "0.5rem",
-              border: "1px solid #3a4a7a",
-              background: "#1a244a",
-              color: "#e6e9f5",
+              border: "1px solid #2f6df0",
+              background: "#2f6df0",
+              color: "#ffffff",
               padding: "0.5rem 1rem",
               fontSize: "0.875rem",
+              fontWeight: 500,
             }}
           >
             Try again

@@ -70,7 +70,7 @@ export function ToolsEditor({ drafts, onDrafts, toolChoice, onToolChoice }: Tool
                 <span className="text-xs font-medium text-foreground">Tool {i + 1}</span>
                 <div className="flex items-center gap-2">
                   {state === "valid" ? (
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                    <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success-text">
                       Valid
                     </span>
                   ) : state === "invalid" ? (
