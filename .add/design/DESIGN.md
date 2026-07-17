@@ -1,53 +1,80 @@
-# DESIGN — visual-language ("Aurora" elevated direction)
+# DESIGN — visual-language ("Airier" enterprise AI-SaaS console)
 
-> The UDD design record for the `ui-fidelity` milestone. Identity was delegated to the
-> AI in auto mode (Tin, 2026-06-25: "you decide all, complete UI polish for best"); this
-> file documents the chosen identity so it is auditable. Captured reference:
-> `.add/design/captures/visual-language.png` (rendered from `mocks/visual-language.html`).
+> The UDD design record for the dashboard's foundation identity. **Re-frozen to "Airier"
+> 2026-07-17** (milestone `dashboard-hallmark-restyle`, Tin locked the v3 captured artifact:
+> "Lock it — start the build"). This top section is the CURRENT identity; the per-feature
+> axes log further down is a historical design-decision record kept intact (ADD's
+> non-destructive-correction convention — rows are superseded in place, never deleted).
+> The prose front-door is `.add/DESIGN.md`; the linted token set is `.add/design/tokens.json`.
 
-## Direction: evolve, don't replace
-Keep the v13 anchors (indigo accent · slate neutrals · Inter) for brand continuity, and
-add the three things the current FLAT system lacks — **depth**, a **display type scale**,
-and a **brand gradient** — plus motion + richer surface layering.
+## Direction: a calm, precise, premium console
+"Airier" is a light premium enterprise AI-SaaS console — the surface a tenant owner logs
+into to watch spend, govern keys & budgets, and *trust the numbers*. Cool-biased graphite
+neutrals, a single azure signal spent sparingly, an off-Inter technical grotesque (Geist),
+mono figures for every metric, and a real dark theme. It supersedes the earlier "Aurora"
+(indigo/Inter/light-only) and "Classic Blue" directions recorded below.
 
 ## Identity (the decisions)
-- **Brand accent** — indigo-600 `#4F46E5` stays primary; add a brand **gradient**
-  `indigo-600 → violet-500` (`#4F46E5 → #7C3AED`) for hero / primary-CTA emphasis only.
-- **Neutrals** — slate ramp retained; add an ink `#0B1120` for hero/footer surfaces and
-  stronger text hierarchy (title vs body vs caption).
-- **Typeface** — Inter (unchanged infra). New **modular type scale**:
-  caption 12/16 · body 14/22 · body-lg 16/26 · heading 20/28 · title 24/32 ·
-  display 36/40 (-0.02em, 700) · hero 56/60 (-0.03em, 700).
-- **Elevation (NEW)** — layered soft shadows:
-  sm `0 1px 2px rgba(15,23,42,.06)` ·
-  md `0 2px 4px -1px rgba(15,23,42,.06), 0 4px 12px -2px rgba(15,23,42,.08)` ·
-  lg `0 8px 24px -4px rgba(15,23,42,.12)` ·
-  xl `0 24px 48px -12px rgba(15,23,42,.18)`.
-- **Radius** — control 8 (keep) · card 12→14 · xl 20 (marketing) · 2xl 28 (hero panels).
-- **Motion (NEW)** — easing standard `cubic-bezier(.2,0,0,1)` · emphasized
-  `cubic-bezier(.3,0,0,1)`; durations fast 150 · base 200 · slow 300; neutralised under
-  `prefers-reduced-motion: reduce`.
-- **Surfaces** — canvas slate-50; cards white + md elevation + hairline slate-200 border;
-  marketing hero on a subtle indigo/violet gradient mesh over ink.
+- **Brand / signal color** — **azure `#2f6df0`** (dark `#5b8cff`): the ONE signal, spent
+  sparingly — active-nav soft-fill, the single primary button per surface, links, focus
+  rings, sparkline endpoints, chart series 1. Hover `#2a61d8`; ring `#2f6df0`; soft-fill
+  `#eef3fe` (border `#d8e4fd`); AA-safe text-on-soft `#1c4bb8`. Brand gradient
+  `#2f6df0 → #5b8cff` (`--brand-from/--brand-to`) for the brand mark tile only.
+- **Neutrals** — a **graphite** ramp (cool grey, chosen not inherited): canvas `#fbfcfd`
+  (near-white cool) · surface white · muted `#f4f6f9` · text `#101720` · muted-text
+  `#48525e` · subtle `#7b8593` · border `#e7ebf0` · sidebar rail `#f7f9fb`.
+- **Semantic status (SEPARATE from the signal)** — success `#16955f` (AA text `#0f7a4d`) ·
+  warning `#bd8410` (AA text `#8a5a0a`) · destructive `#cc3d37` (AA text `#c0332e`,
+  solid-fill clears a white label at 4.9:1). Status is never the azure accent.
+- **Typeface** — **Geist** (`Geist, system-ui, sans-serif`) for UI/headings, self-hosted
+  via `next/font`; **Geist Mono** for **every metric / numeral** (tabular figures) — "mono
+  for all data" (stat values, deltas, status pills, table numerics). Weights 400/500/600/700.
+  Base body size 15px (`0.9375rem`).
+- **Elevation** — soft, diffuse shadows (`--elevation-sm/md/lg/xl`), bridged to
+  `--shadow-*` via `@theme inline`. Separation leans on surface-on-canvas contrast + hairline
+  borders; shadows stay subtle.
+- **Radius** — `--radius` `0.5rem` (8px); controls 8px, cards 10px (via +2), pills fully
+  round (status badges). Soft, not sharp.
+- **Motion** — easing `--ease-standard`; durations kept short (150ms class); neutralised
+  under `prefers-reduced-motion: reduce`.
+- **Surfaces & layout** — near-white cool canvas; white cards + subtle elevation + hairline
+  border; LIGHT sidebar rail (`#f7f9fb`, hairline, `w-[264px]`), NOT dark chrome; translucent
+  blurred top bar; generous whitespace; content max-width ~1360px. Active-nav = soft azure
+  fill + AA-safe deep-azure text (no left accent bar). Icons = lucide-react (no ad-hoc SVGs).
 
-## How it maps to tokens (the frozen contract — §3)
-- `primitive.shadow.{sm,md,lg,xl}` (NEW) → `semantic.elevation.{card,raised,overlay,hero}`.
-- `primitive.font.size.*` expanded → `semantic.font.size.{caption,body,body-lg,heading,title,display,hero}`
-  (each carries size + line-height + tracking).
-- `primitive.color.violet.*` (NEW) + `semantic.color.brand-gradient-from/to` (NEW).
-- `primitive.motion.easing.*` + `primitive.motion.duration.slow` (NEW) →
-  `semantic.motion.{ease,ease-emphasized,duration-*}`.
-- Realised in `app/globals.css` `:root` + `@theme inline`; `.dark` kept coherent (not shipped).
+## How it maps to tokens
+- The **light** canonical set lives in `.add/design/tokens.json` (3-layer primitive →
+  semantic → component): `primitive.color.{graphite.*, azure.*, emerald/amber/red.*,
+  violet.*, chart.*}`; `primitive.font.family.{sans:Geist, mono:Geist Mono}`;
+  `primitive.font.size.root` (0.9375rem). Semantic adds the Airier-specific tokens
+  `accent-soft-foreground` (→ azure.700, the AA text-on-soft fix), `canvas` (→ graphite.25),
+  `text-subtle`, `border-strong`, `warning-foreground`, `radius.pill/control/card`.
+  Component layer wires sidebar `active-bg`→accent-soft / `active-fg`→accent-soft-foreground,
+  badge `radius`→pill + `status-font`→mono, table/stat-card `num-font`/`value-font`→mono.
+- **Realised** in `apps/dashboard/app/globals.css`: `:root` (light) + `.dark` (SHIPPED)
+  value pairs, bridged to Tailwind v4 utilities via `@theme inline`. Elevation (box-shadow),
+  motion easing (cubic-bezier), the Geist webfonts, and the per-theme `.dark` values are
+  realised in `globals.css` — the DTCG dialect the validator lints is single-valued (see the
+  `_elevation_note`), so those composite/dual kinds intentionally do NOT live in tokens.json.
 
-## Light-only (Tin 2026-06-25)
-Dark `.dark` block stays coherent with every new token but is not a verified deliverable.
+## Theme: light default + dark SHIPPED (Airier, 2026-07-17)
+Supersedes the "Light-only (Tin 2026-06-25)" decision below. Dark is now a verified
+deliverable: the `.dark` block in `globals.css`, a visible toggle in the app-shell top bar,
+no-flash via the head script. Both themes were AA-verified on live authed renders (axe:
+0 color-contrast over 35 routes × 6 personas). The azure signal used as TEXT gets its own
+AA-safe token on both themes (`--accent-soft-foreground` `#1c4bb8` light / `#8fb0ff` dark) —
+plain `--primary` on the soft fill is only 4.1:1 and fails AA.
 
-## Identity correction — "Classic Blue" (Tin 2026-06-28, shipped v54)
-The indigo `#4F46E5` accent above was SUPERSEDED by the v54 "Classic Blue luxury rebrand"
-(commit `d1e7e72`): primary is now `#0F4C81` (Classic Blue) over slate neutrals + Inter, with a
-`#0F4C81 → #2563eb` brand gradient. The shipped `app/globals.css` + `tmp/governance-mocks/keys.html`
-are the live identity reference. Mocks bind to THIS palette, not the indigo above. Identity stays
-human-owned (Tin's rebrand) — design mocks REUSE it, never invent a new brand value.
+## Superseded foundation directions (history, non-destructive)
+- **"Aurora" (v13–ui-fidelity, Tin 2026-06-25)** — indigo-600 `#4F46E5` + violet gradient,
+  slate neutrals, Inter, light-only. The elevated depth/type-scale/gradient direction.
+- **"Classic Blue" (Tin 2026-06-28, shipped v54, commit `d1e7e72`)** — primary `#0F4C81`
+  over slate + Inter, `#0F4C81 → #2563eb` gradient.
+- Both are SUPERSEDED by Airier (azure/graphite/Geist, light+dark). The per-feature axes
+  rows below predate the retheme; where they say "REUSE Classic-Blue/Aurora verbatim," read
+  that as historical — the shipped token layer they bind to is now Airier, re-valued by NAME
+  (token names are stable, so those screens re-resolve to Airier automatically). Identity
+  remains human-owned (Tin's lock) — design work REUSES it, never invents a new brand value.
 
 ## Design intake — per-feature axes (design.md beat 0)
 > Project default = the shipped Aurora Classic-Blue system. Per-screen overrides recorded as the
