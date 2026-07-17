@@ -103,7 +103,7 @@ export function SidebarItem({ href, icon, active, children, className }: Sidebar
         // accent bar's width so activating never shifts the row — the v7 rail signature.
         "flex items-center gap-2 rounded-md border-l-2 px-3 py-2 text-sm font-medium transition-colors duration-150 ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         active
-          ? // on-brand active: Classic-Blue left bar + blue-tinted accent-soft fill + blue text
+          ? // on-brand active: azure left bar + azure-tinted accent-soft fill + azure text
             "border-primary bg-accent-soft text-primary font-semibold"
           : "border-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         className,

@@ -1,6 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { themeScript } from "@/components/ui/theme-script";
 import { Providers } from "./providers";
 
@@ -28,10 +28,14 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-// Inter — the design-system base typeface (self-hosted via next/font), applied to
-// the document body so every surface inherits it. Falls back to the token stack
-// (system-ui, sans-serif) defined in globals.css.
-const inter = Inter({ subsets: ["latin"], display: "swap" });
+// Geist + Geist Mono — the design-system typefaces (self-hosted via next/font),
+// exposed as CSS variables so the token layer (globals.css) can reference them:
+// --font-sans → var(--font-geist-sans), --font-mono → var(--font-geist-mono).
+// Geist is the anti-slop, off-Inter technical grotesque for UI; Geist Mono carries
+// every metric/numeral (tabular figures). Both fall back to the system stacks in
+// globals.css. (dashboard-hallmark-restyle — "Airier" direction, Tin-locked 2026-07-17.)
+const geistSans = Geist({ subsets: ["latin"], display: "swap", variable: "--font-geist-sans" });
+const geistMono = Geist_Mono({ subsets: ["latin"], display: "swap", variable: "--font-geist-mono" });
 
 // Server Component (no "use client"): the no-flash theme <script> renders from the server <head>
 // (no React 19 client-head hydration warning). The client context (theme + react-query) lives in
@@ -48,7 +52,7 @@ export default function RootLayout({
             Rendered as the script element's text child (code-controlled, no raw-HTML API). */}
         <script>{themeScript()}</script>
       </head>
-      <body className={inter.className}>
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>
