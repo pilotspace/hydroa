@@ -444,6 +444,46 @@ class Settings(BaseSettings):
     # defaults ON at 60s. 0 disables the background task entirely.
     credits_recovery_sweep_interval_seconds: int = Field(default=60)
 
+    # ── Self-serve checkout / payment provider (self-serve-checkout TASK.md §3) ──
+    # GATEWAY_PAYMENT_PROVIDER — 'dev' (DEFAULT, auto-succeeds, no outbound IO) or 'stripe'
+    # (config-gated hosted checkout). Selecting 'stripe' with an empty/whitespace api key is
+    # a BOOT ERROR (see _validate_payment_provider below, mirroring _validate_otel_config).
+    # An absent stripe key = stripe disabled, dev used.
+    payment_provider: str = "dev"  # GATEWAY_PAYMENT_PROVIDER
+    # GATEWAY_PAYMENT_STRIPE_API_KEY — Stripe secret key. Treated as a secret; never logged.
+    payment_stripe_api_key: str = ""
+    # GATEWAY_PAYMENT_STRIPE_BASE_URL — Stripe API base; override in e2e overlays to a stub.
+    payment_stripe_base_url: str = "https://api.stripe.com"
+    # GATEWAY_PAYMENT_STRIPE_TIMEOUT_SECONDS — per-call bounded timeout (M12).
+    payment_stripe_timeout_seconds: float = Field(default=10.0, gt=0)
+    # GATEWAY_PAYMENT_STRIPE_MAX_RETRIES — bounded retry attempts after the first (M12).
+    payment_stripe_max_retries: int = Field(default=2, ge=0, le=5)
+    # GATEWAY_PAYMENT_STRIPE_BREAKER_FAILURE_THRESHOLD / _COOLDOWN_SECONDS — circuit breaker
+    # (M12); mirror proxy/infrastructure/circuit_breaker.py's own defaults (5 / 30s).
+    payment_stripe_breaker_failure_threshold: int = Field(default=5, ge=1)
+    payment_stripe_breaker_cooldown_seconds: float = Field(default=30.0, gt=0)
+    # GATEWAY_PAYMENT_CHECKOUT_ENABLED — kill switch (M11); default ON. When OFF the
+    # /admin/checkout/* endpoints reject cleanly (403 checkout_disabled) with no mutation.
+    payment_checkout_enabled: bool = Field(default=True)
+    # GATEWAY_PAYMENT_TOPUP_MAX_USD — self-serve credit-topup ceiling (A7). Must be a finite,
+    # positive USD amount (validated below); `amount_exceeds_max` fires above it.
+    payment_topup_max_usd: Decimal = Field(default=Decimal("10000"))
+
+    @field_validator("payment_topup_max_usd", mode="before")
+    @classmethod
+    def _validate_topup_max(cls, v: object) -> object:
+        """A7: the self-serve top-up ceiling must be a finite, positive USD amount."""
+        try:
+            d = Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError):
+            return v  # not parseable — let Pydantic raise its normal decimal error
+        if not d.is_finite() or d <= 0:
+            raise ValueError(
+                "INVALID_PAYMENT_TOPUP_MAX_USD: GATEWAY_PAYMENT_TOPUP_MAX_USD must be a "
+                f"finite, positive USD amount; got {v!r}"
+            )
+        return v
+
     # GATEWAY_STT_MAX_DURATION_SECONDS — upper clamp (seconds) on a billed STT per_second
     # duration. A corrupt/lying audio header (or a lying upstream body["duration"]) can
     # over-derive an absurd duration → over-bill; the resolved duration is clamped to this
@@ -1020,6 +1060,17 @@ class Settings(BaseSettings):
         """If otel_enabled=True, otel_export_url must be non-empty (startup guard)."""
         if self.otel_enabled and not self.otel_export_url:
             raise ValueError("GATEWAY_OTEL_EXPORT_URL must be set when GATEWAY_OTEL_ENABLED=true")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_payment_provider(self) -> "Settings":
+        """M10: selecting stripe with an empty/whitespace api key is a boot error
+        (mirrors _validate_otel_config). An absent key = stripe disabled, dev used."""
+        if self.payment_provider == "stripe" and not self.payment_stripe_api_key.strip():
+            raise ValueError(
+                "GATEWAY_PAYMENT_STRIPE_API_KEY must be set when "
+                "GATEWAY_PAYMENT_PROVIDER=stripe"
+            )
         return self
 
     @model_validator(mode="after")

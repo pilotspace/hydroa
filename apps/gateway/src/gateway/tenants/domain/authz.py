@@ -85,6 +85,13 @@ class Permission(StrEnum):
     # revoking one API key, so this is OWNER/ADMIN only (CONFIRMED by Tin at freeze —
     # see TASK.md §3 "Least-sure flag").
     AGENTS_MANAGE = "agents_manage"
+    # self-serve-checkout TASK.md §3 (FROZEN @ v1, M2/A2): tenant-self self-serve checkout
+    # write (plan upgrade + credit top-up). A NEW money-mutation ceiling held by exactly
+    # {OWNER, BILLING_ADMIN} (mirrors the shipped BILLING_CAPABLE_ROLES). Deliberately NOT
+    # a reuse of BUDGETS_MANAGE — that admits ADMIN, widening the money-mutation floor
+    # beyond intent (A2, CONFIRMED at freeze). OWNER auto-holds via frozenset(Permission);
+    # BILLING_ADMIN is added explicitly to ROLE_PERMISSIONS below.
+    BILLING_MANAGE = "billing_manage"
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +133,10 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.USAGE_READ,
             Permission.OPS_READ,
             Permission.INVOICES_READ,
+            # self-serve-checkout TASK.md §3 (FROZEN @ v1, M2): the self-serve checkout
+            # money-mutation floor is exactly {OWNER, BILLING_ADMIN}. OWNER auto-holds
+            # (frozenset(Permission)); BILLING_ADMIN is granted it here explicitly.
+            Permission.BILLING_MANAGE,
         }
     ),
     Role.VIEWER: frozenset(
