@@ -9,7 +9,11 @@ from gateway.audit.application.audit_writer import record_audit
 from gateway.audit.domain.audit_event import AuditEvent
 from gateway.tenants.domain.authz import ensure_impersonation_session_live
 from gateway.tenants.domain.entities import MIN_PASSWORD_LENGTH, Identity, Role
-from gateway.tenants.domain.errors import InvalidCredentialsError, WeakPasswordError
+from gateway.tenants.domain.errors import (
+    IndividualPlanMissingError,
+    InvalidCredentialsError,
+    WeakPasswordError,
+)
 from gateway.tenants.domain.ports import (
     IdentityRepository,
     ImpersonationSessionGuard,
@@ -24,14 +28,32 @@ class SignupUseCase:
         self._hasher = hasher
 
     async def execute(
-        self, *, tenant_name: str, email: str, password: str
+        self,
+        *,
+        tenant_name: str,
+        email: str,
+        password: str,
+        account_type: str = "business",
     ) -> tuple[uuid.UUID, uuid.UUID]:
         if len(password) < MIN_PASSWORD_LENGTH:
             raise WeakPasswordError
+        # account-type-discriminator TASK.md §3 (FROZEN @ v1) + plan-tiers-and-base-fee
+        # TASK.md §3 M3 (repoints this literal "individual" -> "free"): a personal account
+        # lands on the seeded `free` plan; business stays unplanned (plan_id NULL) as
+        # today. R3/SIGNUP_PLAN_UNPROVISIONED fail-closed shape UNCHANGED: if the free
+        # plan is absent, raise loud (uncaught → 500) — never create a personal tenant
+        # silently left unplanned.
+        plan_id: uuid.UUID | None = None
+        if account_type == "personal":
+            plan_id = await self._repository.get_plan_id_by_name("free")
+            if plan_id is None:
+                raise IndividualPlanMissingError
         return await self._repository.create_tenant_with_owner(
             tenant_name=tenant_name,
             email=email.lower(),
             password_hash=self._hasher.hash(password),
+            account_type=account_type,
+            plan_id=plan_id,
         )
 
 

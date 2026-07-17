@@ -192,6 +192,19 @@ class CatalogModel:
     Additive field (region-catalog-dimension TASK.md §3):
       region — coarse compliance/residency tag (us|eu|ap|global); defaults to "global"
       (honest for every dynamically-synced OpenRouter row today).
+
+    Additive fields (catalog-db-seed TASK.md §3, FROZEN @ v1) — appended after `region`:
+      cache_creation_usd_per_token — Anthropic-style ~1.25x cache-write premium; None when
+      the provider does not publish a distinct write price (mirrors PricingSnapshotRow's
+      existing column of the same name, first real writer as of this task).
+      pricing_unit — discriminator for the pricing_snapshots row this model produces; one
+      of per_token|per_image|per_second|per_character. Non-Optional (unlike the other new
+      fields): the DB column is NOT NULL server_default='per_token', so an Optional type
+      here would risk an explicit-NULL insert violating that constraint (§1 Issue 7).
+      unit_usd_per_unit — generic per-unit price for a non-per_token pricing_unit (e.g.
+      whisper-1's $/second); None for every per_token model (the vast majority) and for
+      dall-e-3 (Tin SCOPE-CUT 2026-07-16 — bills $0 as today, real price is a quality x
+      size SKU matrix this dataclass has no dimension to carry).
     """
 
     id: str
@@ -211,6 +224,9 @@ class CatalogModel:
     audio_completion_usd_per_token: float | None = field(default=None)
     audio_cached_usd_per_token: float | None = field(default=None)
     region: str = field(default="global")
+    cache_creation_usd_per_token: Decimal | None = field(default=None)
+    pricing_unit: str = field(default="per_token")
+    unit_usd_per_unit: Decimal | None = field(default=None)
 
 
 @dataclass(frozen=True, slots=True)

@@ -41,6 +41,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from gateway.audit.application.audit_writer import record_audit
 from gateway.audit.domain.audit_event import AuditEvent
+from gateway.core.error_catalog import LAST_BILLING_OWNER
 from gateway.scim.api.deps import get_scim_identity, get_scim_user_repo
 from gateway.scim.api.errors import (
     scim_groups_unsupported,
@@ -77,7 +78,7 @@ from gateway.scim.domain.errors import (
 )
 from gateway.scim.infrastructure.repository import SqlAlchemyScimUserRepository
 from gateway.tenants.domain.entities import User
-from gateway.tenants.domain.errors import SeatCapExceededError
+from gateway.tenants.domain.errors import LastBillingOwnerError, SeatCapExceededError
 
 scim_router = APIRouter(prefix="/scim/v2", tags=["scim"])
 
@@ -178,6 +179,13 @@ async def _apply_patch(
             )
         except ScimUserNotFoundError:
             raise scim_user_not_found() from None
+        except LastBillingOwnerError:
+            # billing-owner-of-record TASK.md §3 — a deliberate, documented exception to
+            # this module's own RFC 7644 envelope convention: this ONE code re-uses the
+            # RFC 9457 ProblemError shape (byte-identical to the self-service/superadmin
+            # role-change paths' own 409 ERR_LAST_BILLING_OWNER), since it is the SAME
+            # invariant/code, not a SCIM-specific concern.
+            raise LAST_BILLING_OWNER.exc() from None
         # M5: idempotent no-op repeats never fire a duplicate audit row.
         if changed:
             action = "scim.user_reactivate" if parsed.set_active else "scim.user_deactivate"
@@ -356,6 +364,10 @@ async def delete_user(
         )
     except ScimUserNotFoundError:
         raise scim_user_not_found() from None
+    except LastBillingOwnerError:
+        # billing-owner-of-record TASK.md §3 — same deliberate RFC 9457 exception as
+        # _apply_patch's own PATCH active:false path (this IS the DELETE alias, M6).
+        raise LAST_BILLING_OWNER.exc() from None
     if changed:
         _audit(
             request,

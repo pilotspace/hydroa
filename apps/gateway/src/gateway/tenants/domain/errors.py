@@ -15,6 +15,17 @@ class WeakPasswordError(IdentityError):
     pass
 
 
+class IndividualPlanMissingError(IdentityError):
+    """account-type-discriminator TASK.md §3 (FROZEN @ v1, R3), repointed by
+    plan-tiers-and-base-fee TASK.md §3 M3 to the `free` plan (class NAME unchanged —
+    contractually reused): a personal signup demands the seeded `free` plan, but it is
+    absent (seed migration not run). Translated by the signup router to the
+    SIGNUP_PLAN_UNPROVISIONED 500 so a personal tenant is NEVER silently left unplanned.
+    Fail-closed, never a partial."""
+
+    pass
+
+
 class InvalidCredentialsError(IdentityError):
     pass
 
@@ -57,6 +68,24 @@ class InviteExpiredError(IdentityError):
 
 class InviteEmailAlreadyMemberError(IdentityError):
     """Target email already belongs to an existing user in the caller's own tenant."""
+
+    pass
+
+
+class LastBillingOwnerError(IdentityError):
+    """Target is the tenant's CURRENT billing_owner_user_id and the write would leave the
+    tenant with zero billing-capable owners (billing-owner-of-record TASK.md §3 M2/M3) —
+    raised by AssignUserRoleUseCase.execute (HOOK 1, role-change) and
+    SqlAlchemyScimUserRepository.set_active (HOOK 2, deactivation, via
+    SetScimUserActiveUseCase.execute)."""
+
+    pass
+
+
+class BillingOwnerIneligibleError(IdentityError):
+    """PUT /admin/billing-owner target is not an ACTIVE, billing-capable
+    ({OWNER, BILLING_ADMIN}) member of the caller's own tenant (billing-owner-of-record
+    TASK.md §3 M5) — raised by ReassignBillingOwnerUseCase.execute."""
 
     pass
 

@@ -23,11 +23,19 @@ class CompositeCatalogSource:
     elsewhere — sync_catalog()'s upsert loop is order-independent).
     list_embedding_models(): delegates to `primary` ONLY — `static_models` never contributes
     embedding rows (MiniMax has no embeddings surface; out of milestone scope).
+
+    catalog-db-seed TASK.md §3 (FROZEN @ v1), M6 + §1 Assumption #4 (left to BUILD):
+    `static_models` is now OPTIONAL (default None -> empty) — decision 1 (DB is the sole
+    source of truth) retires the real-app static-seed-list wiring entirely (main.py no
+    longer passes this kwarg at all), but the class itself keeps accepting an explicit list
+    for minimal blast radius on any other caller/test that still constructs one directly.
     """
 
-    def __init__(self, primary: CatalogSource, static_models: list[CatalogModel]) -> None:
+    def __init__(
+        self, primary: CatalogSource, static_models: list[CatalogModel] | None = None
+    ) -> None:
         self._primary = primary
-        self._static_models = static_models
+        self._static_models = static_models or []
 
     async def list_models(self) -> AsyncIterator[CatalogModel]:
         async for model in self._primary.list_models():

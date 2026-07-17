@@ -405,6 +405,9 @@ def get_completion_use_case(
     # (default — no operator wiring yet) ⇒ enforce_tenant_rate_limit() no-ops ⇒
     # _enforce_rate_limits stays byte-identical to today (per-key enforcement only).
     plan_rate_limit_resolver = getattr(request.app.state, "plan_rate_limit_resolver", None)
+    # platform-key-default: same stable getattr pattern. None ⇒ no fallback wired ⇒
+    # resolve_provider_credential's fallback branch is inert ⇒ byte-identical fail-closed 402.
+    platform_credential_fallback = getattr(request.app.state, "platform_credential_fallback", None)
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -435,4 +438,5 @@ def get_completion_use_case(
         residency_lookup=residency_lookup,
         tier_capacity_guard=tier_capacity_guard,
         plan_rate_limit_resolver=plan_rate_limit_resolver,
+        platform_credential_fallback=platform_credential_fallback,
     )

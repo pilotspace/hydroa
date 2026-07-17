@@ -400,6 +400,14 @@ class Settings(BaseSettings):
     # the reliable backstop for whatever inline misses. openrouter-cost-recovery-wiring §3.
     openrouter_cost_recovery_enabled: bool = Field(default=False)
 
+    # GATEWAY_PLATFORM_CREDENTIAL_FALLBACK_ENABLED — global kill-switch for the
+    # platform-key-default fallback. Default True (default-ON, Tin 2026-07-15): a tenant with
+    # no BYOK key for a provider is served the reserved kind='platform' tenant's own credential
+    # (its OWN key always takes precedence once configured). Set False to restore the pre-fallback
+    # fail-closed behavior (402 ERR_PROVIDER_KEY_MISSING) byte-for-byte.
+    # platform-credential-fallback §3.
+    platform_credential_fallback_enabled: bool = Field(default=True)
+
     # GATEWAY_OPENROUTER_RECOVERY_SWEEP_INTERVAL_SECONDS — when > 0 (and the cost-recovery
     # service is wired), a periodic background sweeper (OpenRouterRecoverySweeper) scans the
     # ledger for flushed client_disconnect rows that still have no openrouter_recovered
@@ -1274,6 +1282,21 @@ class Settings(BaseSettings):
                 f"domain_claim_verify_rpm must each be a positive integer (> 0); got {v!r}"
             )
         return v
+
+    # ── Catalog refresh scheduler (catalog-refresh-scheduler — asyncio sweeper) ──
+    # GATEWAY_CATALOG_REFRESH_INTERVAL_SECONDS — an asyncio background sweeper started in
+    # the FastAPI lifespan (mirrors RetentionSweeper / OpenRouterRecoverySweeper) that
+    # periodically re-runs the catalog sync (SyncCatalogUseCase against app.state.catalog_
+    # source) so the DB catalog stays current. Chosen over Celery (Tin 2026-07-16 change-
+    # request): the repo runs redis 8.x, and celery/kombu's redis transport caps redis<6.5
+    # — an in-process asyncio sweeper needs no broker and no redis downgrade.
+    # FREEZE DECISION (Tin 2026-07-16): default 3600 (hourly, default-ON) — matches the
+    # internal-maintenance sweep group (retention/invoice/credits). 0 = sweeper NOT started
+    # (opt-OUT), mirroring the openrouter_recovery / compliance interval-sentinel convention
+    # (no separate *_ENABLED bool).
+    catalog_refresh_interval_seconds: int = Field(
+        default=3600, ge=0
+    )  # GATEWAY_CATALOG_REFRESH_INTERVAL_SECONDS
 
     # ── SCIM provisioning (scim-provisioning task, M12) ──────────────────────────
     # Per-scim_token_id fixed-window write rate limit for /scim/v2/* mutations. Must be

@@ -35,6 +35,11 @@ def _alembic_config() -> object:
 
 @pytest.mark.usefixtures("clean_migration_db")
 async def test_migration_seeds_feature_flags_and_leaves_model_allowlist_null() -> None:
+    """M6 reconciliation (plan-tiers-and-base-fee TASK.md §3, FROZEN @ v1): at the REAL
+    current `alembic head` (past that task's own migration), the catalog holds 5 rows
+    (NEW `free`, `individual` renamed to `pro`) instead of 3 — the per-row
+    model_allowlist/feature_flags checks below (keyed by starter/team/enterprise, which
+    this task never touches) stay untouched, only len()/the name-set are updated."""
     from alembic import command
 
     cfg = _alembic_config()
@@ -48,7 +53,8 @@ async def test_migration_seeds_feature_flags_and_leaves_model_allowlist_null() -
     finally:
         await conn.close()
 
-    assert len(rows) == 3, f"expected exactly 3 plans, found {len(rows)}"
+    assert len(rows) == 5, f"expected exactly 5 plans, found {len(rows)}"
+    assert {r["name"] for r in rows} == {"free", "starter", "pro", "team", "enterprise"}
     by_name = {r["name"]: r for r in rows}
 
     for r in rows:

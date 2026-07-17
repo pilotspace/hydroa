@@ -70,6 +70,7 @@ from gateway.proxy.application.residency import (
     check_residency_existence,
 )
 from gateway.proxy.domain.credential_context import (
+    mark_platform_fallback,
     reset_provider_credential,
     set_provider_credential,
 )
@@ -101,6 +102,7 @@ from gateway.proxy.domain.ports import (
     ModelAccess,
     ModelChecker,
     PayloadCapturePort,
+    PlatformCredentialFallback,
     ProviderResolver,
     ResidencyLookup,
     ResponseCache,
@@ -363,6 +365,20 @@ _cc_attribution_ctx: contextvars.ContextVar[tuple[str | None, str | None, str | 
     contextvars.ContextVar("_cc_attribution_ctx", default=None)
 )
 
+# platform-key-default fallback-usage-marker TASK.md §3 (FROZEN @ v1, M4): the credential-source
+# provenance for THIS request. Published ONCE inside _resolve_platform_fallback (set "platform"
+# right after mark_platform_fallback()), consumed by _dispatch_record alongside _cc_attribution_ctx
+# — the SAME "avoid threading a kwarg through ~25 _fire_record* call sites" rationale the
+# contextvars above give. Deliberately NOT reset mid-request (unlike the credential-scoped
+# served_via flag, which reset_provider_credential clears BEFORE the stream terminal record
+# dispatches — the §0 ordering trap): this marker must outlive that reset. Default None ⇒ byok ⇒
+# _dispatch_record adds nothing ⇒ byte-identical to today. Each proxied request is its own asyncio
+# Task (context copied at task creation), so a set-only-on-fallback value cannot leak platform→byok
+# across requests — the SAME guarantee _credit_hold_ctx / _tier_served_ctx already depend on.
+_credential_source_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_credential_source_ctx", default=None
+)
+
 
 def _publish_cc_attribution(request_headers: dict[str, str] | None) -> None:
     """Extract x-claude-code-session-id/-agent-id/-parent-agent-id from the inbound
@@ -499,6 +515,14 @@ def _dispatch_record(
             kwargs["cc_agent_id"] = _cc_agent_id
         if _cc_parent_agent_id is not None and "cc_parent_agent_id" in supported:
             kwargs["cc_parent_agent_id"] = _cc_parent_agent_id
+
+    # fallback-usage-marker §3 (M1/M4): fold in the platform-fallback provenance published once by
+    # _resolve_platform_fallback — same filter-against-supported_extras discipline as every extra
+    # above; default None (own key / no fallback) ⇒ nothing added ⇒ byte-identical to today (M2/R2),
+    # and a v1-Protocol fake without the capability silently receives nothing (M5/R1).
+    credential_source = _credential_source_ctx.get()
+    if credential_source is not None and "credential_source" in supported:
+        kwargs["credential_source"] = credential_source
 
     credit_ctx = _credit_hold_ctx.get()
     tier_hold_ctx = _tier_hold_ctx.get()
@@ -1280,6 +1304,8 @@ async def resolve_provider_credential(
     resolver: TenantCredentialResolver | None,
     tenant_id: Any,
     provider: str,
+    *,
+    platform_fallback: PlatformCredentialFallback | None = None,
 ) -> object | None:
     """Resolve a tenant credential for ``provider`` and set the request contextvar.
 
@@ -1293,21 +1319,82 @@ async def resolve_provider_credential(
     extends the task-2 Bearer-only set to include bedrock and azure). Returns ``None``
     only when the resolver is not wired (no credential seam configured).
 
+    Platform-key-default (platform-key-default TASK.md §3, FROZEN @ v1): when
+    ``platform_fallback`` is supplied AND enabled AND the requesting tenant has no own
+    key, resolution falls back to the reserved ``kind='platform'`` tenant's own credential
+    for ``provider``. The fallback is composed OUTSIDE ``resolver.resolve()`` — the
+    requesting tenant is tried first (own key ALWAYS wins), and only its ``ProviderKeyMissing``
+    triggers a SECOND, explicitly-separate resolve against the platform tenant id. This
+    keeps ``TenantCredentialResolver.resolve()``'s fail-closed invariant intact for every
+    other caller. ``platform_fallback=None`` (default) is byte-identical to the pre-fallback seam.
+
     Raises:
         ProblemError(402, ERR_PROVIDER_KEY_MISSING): the tenant has no enabled credential
-            for the requested provider (absent/disabled/None/resolver-timeout). Fail-closed.
+            for the requested provider AND (fallback off, OR the platform tenant also has no
+            key, OR the platform tenant row is unprovisioned). Fail-closed — no secret in the chain.
     """
     if resolver is None or provider not in BYOK_PROVIDERS:
         return None
     try:
         cred = await resolver.resolve(tenant_id, provider)
     except ProviderKeyMissing as pkm:
-        # §3 CONTRACT: ERR_PROVIDER_KEY_MISSING → HTTP 402 (no secret in the chain).
-        raise ProblemError(402, pkm.code, "Provider key not configured for this tenant") from None
+        # Own key missing. Attempt the platform-tenant fallback only when explicitly wired
+        # AND the global kill-switch is ON; otherwise fail closed exactly as before (M6/R2).
+        if platform_fallback is None or not platform_fallback.enabled:
+            # §3 CONTRACT: ERR_PROVIDER_KEY_MISSING → HTTP 402 (no secret in the chain).
+            raise ProblemError(
+                402, pkm.code, "Provider key not configured for this tenant"
+            ) from None
+        return await _resolve_platform_fallback(
+            resolver, tenant_id, provider, platform_fallback, pkm
+        )
     # Pass tenant_id so the BYOK token caches (vertex_ad / azure_ad) scope cached bearer
     # tokens per (hydroa_tenant, identity) — the cross-tenant confused-deputy fix
     # (vertex-adapter M4 CR-2). The returned handle resets BOTH contextvars.
     return set_provider_credential(cred, tenant_id)
+
+
+async def _resolve_platform_fallback(
+    resolver: TenantCredentialResolver,
+    tenant_id: Any,
+    provider: str,
+    platform_fallback: PlatformCredentialFallback,
+    pkm: ProviderKeyMissing,
+) -> object:
+    """Serve the platform-tenant credential for a keyless requesting tenant (fallback ON).
+
+    Called ONLY after the requesting tenant's own resolve raised ``ProviderKeyMissing`` and
+    the kill-switch is ON. Fail-closed at every branch: the platform row missing (R3) or the
+    platform tenant also lacking a key (R1) both surface the same 402 the tenant would have
+    seen, never a fabricated id or empty credential.
+    """
+    plat_id = await platform_fallback.platform_tenant_id()
+    if plat_id is None:
+        # R3: the reserved kind='platform' row is unprovisioned (or a DB error/timeout).
+        # Loud operator misconfig audit, tenant-facing 402 (Tin 2026-07-15 — never a 500-storm).
+        await platform_fallback.audit_misconfig(tenant_id=tenant_id, provider=provider)
+        raise ProblemError(402, pkm.code, "Provider key not configured for this tenant") from None
+    try:
+        # Resolve under the PLATFORM tenant id so the shared (tenant_id, provider)-keyed cache
+        # stores this under (plat_id, provider) — never cross-cached under the requester (M4).
+        plat_cred = await resolver.resolve(plat_id, provider)
+    except ProviderKeyMissing:
+        # R1: neither the requesting tenant nor the platform tenant has a key for this provider.
+        raise ProblemError(402, pkm.code, "Provider key not configured for this tenant") from None
+    # M5: audit the served fallback (requesting tenant + provider), fire-and-forget.
+    await platform_fallback.audit_served(tenant_id=tenant_id, provider=provider)
+    # M3 (SECURITY): the token-cache owner is the PLATFORM tenant id (the secret's real owner),
+    # NOT the requesting tenant's — the confused-deputy boundary for Azure-AAD / Vertex caches.
+    scope = set_provider_credential(plat_cred, plat_id)
+    # M8: flag the request as platform-served (read by the usage recorder). Set LAST, once the
+    # credential scope exists and nothing else can throw before we return the reset handle — so
+    # the caller's finally ALWAYS resets the signal (no cross-request leak window).
+    mark_platform_fallback()
+    # fallback-usage-marker §3 (M4): publish the credential-source provenance for the usage record.
+    # A SEPARATE, never-reset contextvar (not the credential-scoped served_via flag) so the marker
+    # survives reset_provider_credential firing before the stream terminal record dispatches.
+    _credential_source_ctx.set("platform")
+    return scope
 
 
 class _InlineCostRecovery(Protocol):
@@ -1361,6 +1448,7 @@ class CompletionUseCase:
         residency_lookup: ResidencyLookup | None = None,
         tier_capacity_guard: TierCapacityGuard = PassthroughTierCapacityGuard(),  # noqa: B008
         plan_rate_limit_resolver: PlanRateLimitResolver | None = None,
+        platform_credential_fallback: PlatformCredentialFallback | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -1460,6 +1548,9 @@ class CompletionUseCase:
         # enforcement only, unchanged). When wired, composes ALONGSIDE the per-key RPM/
         # TPM windows already checked — see enforce_tenant_rate_limit's own docstring.
         self._plan_rate_limit_resolver: PlanRateLimitResolver | None = plan_rate_limit_resolver
+        self._platform_credential_fallback: PlatformCredentialFallback | None = (
+            platform_credential_fallback
+        )
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -2080,7 +2171,10 @@ class CompletionUseCase:
             return None
         _provider = await self._provider_resolver.provider_for(model_id)
         return await resolve_provider_credential(
-            self._tenant_credential_resolver, tenant_id, _provider
+            self._tenant_credential_resolver,
+            tenant_id,
+            _provider,
+            platform_fallback=self._platform_credential_fallback,
         )
 
     async def _run_diverted_fallback(
@@ -2412,9 +2506,7 @@ class CompletionUseCase:
                                         )
                                     # plan-rate-enforcement TASK.md §3 (M4): tenant window
                                     # sibling — self-gated on tenant_tpm_ctx.
-                                    _fire_record_tpm_tenant(
-                                        self._rate_limiter, tokens=total_tokens
-                                    )
+                                    _fire_record_tpm_tenant(self._rate_limiter, tokens=total_tokens)
                             return (200, sem_cached_body, x_cache), x_cache
                         else:
                             # Dangling pointer: exact key expired — treat as MISS
@@ -3103,8 +3195,7 @@ class CompletionUseCase:
                         )
                     except Exception as _exc:
                         _log.warning(
-                            "guardrail evaluate_post raised "
-                            "(fail-CLOSED, redacting response body)",
+                            "guardrail evaluate_post raised (fail-CLOSED, redacting response body)",
                             exc_info=_exc,
                         )
                         response_body = _redact_response_body(response_body)

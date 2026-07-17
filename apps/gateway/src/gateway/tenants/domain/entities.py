@@ -21,6 +21,13 @@ class Role(StrEnum):
     SUPERADMIN = "superadmin"
 
 
+# billing-owner-of-record TASK.md §3 (FROZEN @ v1) — NEW, public. The set of roles
+# eligible to be a tenant's billing_owner_user_id; reused by both guard hook points
+# (AssignUserRoleUseCase.execute, SqlAlchemyScimUserRepository.set_active) and the new
+# reassignment endpoint's own target validation (ReassignBillingOwnerUseCase.execute).
+BILLING_CAPABLE_ROLES: frozenset[Role] = frozenset({Role.OWNER, Role.BILLING_ADMIN})
+
+
 @dataclass(frozen=True, slots=True)
 class User:
     id: uuid.UUID

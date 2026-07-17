@@ -11,6 +11,7 @@ from gateway.core.error_catalog import (
     AUTH_TOKEN_INVALID,
     PLAN_SEAT_CAP_EXCEEDED,
     SIGNUP_INVITE_ONLY,
+    SIGNUP_PLAN_UNPROVISIONED,
 )
 from gateway.domain_capture.api.deps import get_domain_claim_resolver, get_join_tenant_use_case
 from gateway.tenants.api.deps import (
@@ -33,6 +34,7 @@ from gateway.tenants.application.use_cases import (
 )
 from gateway.tenants.domain.errors import (
     EmailAlreadyRegisteredError,
+    IndividualPlanMissingError,
     InvalidCredentialsError,
     InvalidTokenError,
     SeatCapExceededError,
@@ -104,12 +106,21 @@ async def signup(
         raise SIGNUP_INVITE_ONLY.exc()
     try:
         tenant_id, user_id = await use_case.execute(
-            tenant_name=body.tenant_name, email=body.email, password=body.password
+            tenant_name=body.tenant_name,
+            email=body.email,
+            password=body.password,
+            account_type=body.account_type,
         )
     except WeakPasswordError:
         raise AUTH_PASSWORD_WEAK.exc() from None
     except EmailAlreadyRegisteredError:
         raise AUTH_EMAIL_TAKEN.exc() from None
+    except IndividualPlanMissingError:
+        # account-type-discriminator TASK.md §3 (FROZEN @ v1, R3), repointed by
+        # plan-tiers-and-base-fee TASK.md §3 M3: a personal signup with the seeded free
+        # plan absent is a server misconfiguration — fail loud (500), never a personal
+        # tenant silently left unplanned.
+        raise SIGNUP_PLAN_UNPROVISIONED.exc() from None
     return SignupResponse(tenant_id=tenant_id, user_id=user_id)
 
 

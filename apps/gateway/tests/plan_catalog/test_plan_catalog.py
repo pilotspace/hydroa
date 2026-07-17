@@ -284,12 +284,16 @@ async def _await_audit_count(
     async def _raw_count() -> int:
         if target_tenant_id is None:
             result = await db_session.execute(
-                text("SELECT COUNT(*) FROM audit_events WHERE tenant_id IS NULL AND action = :action"),
+                text(
+                    "SELECT COUNT(*) FROM audit_events WHERE tenant_id IS NULL AND action = :action"
+                ),
                 {"action": action},
             )
         else:
             result = await db_session.execute(
-                text("SELECT COUNT(*) FROM audit_events WHERE tenant_id = :tid AND action = :action"),
+                text(
+                    "SELECT COUNT(*) FROM audit_events WHERE tenant_id = :tid AND action = :action"
+                ),
                 {"tid": target_tenant_id, "action": action},
             )
         return int(result.scalar() or 0)
@@ -347,9 +351,16 @@ async def _await_audit_metadata(
 
 
 @pytest.mark.usefixtures("clean_migration_db")
-async def test_migration_seeds_exactly_3_named_plan_tiers() -> None:
-    """M1: migration seeds exactly 3 rows (starter/team/enterprise), each carrying its
-    own independently-nullable ceilings + a non-null display_name."""
+async def test_migration_seeds_exactly_5_named_plan_tiers() -> None:
+    """M1: migration seeds exactly 5 rows (free/starter/pro/team/enterprise), each
+    carrying its own independently-nullable ceilings + a non-null display_name.
+
+    M6 reconciliation (plan-tiers-and-base-fee TASK.md §3, FROZEN @ v1): at the REAL
+    current `alembic head` (past that task's own migration), the catalog was restructured
+    from 3 rows to 5 (NEW `free`, `individual` renamed to `pro`, `starter`/`team` prices
+    added) — same behavior asserted (the migration seeds the complete/correct named
+    catalog), names/counts/values updated. budget/rpm/tpm for starter/team/enterprise are
+    UNCHANGED by that task. Was test_migration_seeds_exactly_3_named_plan_tiers."""
     from alembic import command  # noqa: PLC0415
 
     cfg = _alembic_config()
@@ -359,34 +370,46 @@ async def test_migration_seeds_exactly_3_named_plan_tiers() -> None:
     try:
         rows = await conn.fetch(
             "SELECT name, display_name, seat_cap, budget_usd_monthly_default,"
-            " rpm_limit_default, tpm_limit_default FROM plans ORDER BY name"
+            " rpm_limit_default, tpm_limit_default, base_price_usd_monthly"
+            " FROM plans ORDER BY name"
         )
     finally:
         await conn.close()
 
-    assert len(rows) == 3, f"expected exactly 3 plans, found {len(rows)}"
-    assert {r["name"] for r in rows} == {"starter", "team", "enterprise"}
+    assert len(rows) == 5, f"expected exactly 5 plans, found {len(rows)}"
+    assert {r["name"] for r in rows} == {"free", "starter", "pro", "team", "enterprise"}
     assert all(r["display_name"] for r in rows), "every plan needs a non-null display_name"
 
     by_name = {r["name"]: r for r in rows}
 
+    free = by_name["free"]
+    assert free["seat_cap"] == 1
+    assert free["base_price_usd_monthly"] is None
+
     starter = by_name["starter"]
-    assert starter["seat_cap"] == 3
+    assert starter["seat_cap"] == 1
     assert starter["budget_usd_monthly_default"] == Decimal("50.00")
     assert starter["rpm_limit_default"] == 60
     assert starter["tpm_limit_default"] == 40000
+    assert starter["base_price_usd_monthly"] == Decimal("1.00")
+
+    pro = by_name["pro"]
+    assert pro["seat_cap"] == 1
+    assert pro["base_price_usd_monthly"] == Decimal("20.00")
 
     team = by_name["team"]
     assert team["seat_cap"] is None
     assert team["budget_usd_monthly_default"] == Decimal("500.00")
     assert team["rpm_limit_default"] == 600
     assert team["tpm_limit_default"] == 400000
+    assert team["base_price_usd_monthly"] == Decimal("99.00")
 
     enterprise = by_name["enterprise"]
     assert enterprise["seat_cap"] is None
     assert enterprise["budget_usd_monthly_default"] is None
     assert enterprise["rpm_limit_default"] is None
     assert enterprise["tpm_limit_default"] is None
+    assert enterprise["base_price_usd_monthly"] is None
 
 
 # ---------------------------------------------------------------------------

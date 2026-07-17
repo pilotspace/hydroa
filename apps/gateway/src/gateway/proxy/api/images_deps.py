@@ -102,6 +102,9 @@ def get_images_use_case(
         governance=governance,
         session=session,
         tenant_credential_resolver=tenant_credential_resolver,
+        platform_credential_fallback=getattr(
+            request.app.state, "platform_credential_fallback", None
+        ),
         authenticator=authenticator,
         tenant_model_preset_store=tenant_model_preset_store,
         guardrail_evaluator=guardrail_evaluator,

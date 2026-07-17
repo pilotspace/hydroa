@@ -62,7 +62,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from gateway.billing.application.seat_pricer import compute_seat_lines
+from gateway.billing.application.seat_pricer import NIL_SEAT_KEY_ID, compute_seat_lines
 from gateway.billing.infrastructure.invoice_repository import load_tenant_seat_membership
 from gateway.billing.infrastructure.orm import InvoiceLineRow, InvoiceRow
 from gateway.core.ids import uuid7
@@ -223,6 +223,28 @@ async def _load_seat_price(session: AsyncSession, tenant_id: uuid.UUID) -> Decim
     return decimal_price
 
 
+async def _load_base_price(session: AsyncSession, tenant_id: uuid.UUID) -> Decimal | None:
+    """plan-tiers-and-base-fee TASK.md §3 (FROZEN @ v1, M2) — mirrors `_load_seat_price`'s
+    own ONE-extra-SELECT/INNER-JOIN idiom exactly. Returns None for an unplanned tenant (no
+    matching row, INNER JOIN excludes a NULL plan_id) OR a plan whose base_price_usd_monthly
+    is NULL/0 — both collapse to the SAME inert no-op (R3): this task writes ZERO 'base'
+    invoice lines."""
+    price = (
+        await session.execute(
+            select(PlanRow.base_price_usd_monthly)
+            .select_from(TenantRow)
+            .join(PlanRow, PlanRow.id == TenantRow.plan_id)
+            .where(TenantRow.id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if price is None:
+        return None
+    decimal_price = Decimal(str(price))
+    if decimal_price == _ZERO:
+        return None
+    return decimal_price
+
+
 class InvoiceGenerator:
     """Generates immutable monthly invoices from usage_records (M1-M4, M10, M12, M13)."""
 
@@ -347,6 +369,19 @@ class InvoiceGenerator:
                         raw_total += seat_spec.raw_amount_usd
                         rounded_sum += seat_spec.amount_usd
 
+                # plan-tiers-and-base-fee TASK.md §3 (FROZEN @ v1, M2): additively fold ONE
+                # flat 'base' line into this SAME transaction, mirroring the seat-fold block
+                # immediately above — BEFORE the INSERT...RETURNING id (M5 immutability), so
+                # the base amount is in total_usd from the first write, never patched after.
+                # Inert (base_price is None) for an unplanned tenant or a NULL-base-price
+                # plan (R3) — this block is then a pure no-op, byte-identical to before this
+                # task shipped. base_price_usd_monthly is already exactly cent-precision
+                # (NUMERIC(12,2)), so amount_usd == raw_amount_usd, no separate rounding.
+                base_price = await _load_base_price(session, tenant_id)
+                if base_price is not None:
+                    raw_total += base_price
+                    rounded_sum += base_price
+
                 # audit-remediation C4 fix: total_usd is the TRUE, revenue-preserving
                 # figure — the full raw_total (every usage group + every seat/
                 # proration line) rounded EXACTLY ONCE, never derived by summing
@@ -428,6 +463,29 @@ class InvoiceGenerator:
                             completion_tokens=0,
                             request_count=seat_spec.request_count,
                             line_type=seat_spec.line_type,
+                        )
+                    )
+
+                # plan-tiers-and-base-fee TASK.md §3 (FROZEN @ v1, M2/M9): 'base'
+                # reinterprets the SAME 3 NOT-NULL columns the 'seat' aggregate line already
+                # established (model_id='base' sentinel, team_id=NULL, key_id=
+                # NIL_SEAT_KEY_ID — no single tenant-wide charge has one owning user) —
+                # schema unchanged, per-line_type documented reinterpretation only.
+                if base_price is not None:
+                    session.add(
+                        InvoiceLineRow(
+                            id=uuid7(),
+                            invoice_id=inserted_id,
+                            model_id="base",
+                            team_id=None,
+                            key_id=NIL_SEAT_KEY_ID,
+                            tags={},
+                            amount_usd=base_price,
+                            raw_amount_usd=base_price,
+                            prompt_tokens=0,
+                            completion_tokens=0,
+                            request_count=0,
+                            line_type="base",
                         )
                     )
 
