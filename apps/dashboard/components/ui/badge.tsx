@@ -10,9 +10,11 @@ const badgeVariants = cva(
         default: "border-transparent bg-primary text-primary-foreground",
         secondary: "border-transparent bg-secondary text-secondary-foreground",
         outline: "border-border text-foreground",
-        success: "border-transparent bg-success/10 text-success-text",
-        warning: "border-transparent bg-warning/10 text-warning-foreground",
-        destructive: "border-transparent bg-destructive/10 text-destructive-text",
+        // status/semantic pills carry data → mono figures + tabular-nums (artifact `.pill`);
+        // the word-label variants (default/secondary/outline) stay in the UI font.
+        success: "border-transparent bg-success/10 text-success-text font-mono tabular-nums",
+        warning: "border-transparent bg-warning/10 text-warning-foreground font-mono tabular-nums",
+        destructive: "border-transparent bg-destructive/10 text-destructive-text font-mono tabular-nums",
       },
     },
     defaultVariants: { variant: "default" },
