@@ -22,7 +22,14 @@ export const metadata = buildMetadata({
  * "coming soon" anchors so nav resolves without dangling.
  */
 const CATEGORIES: Array<{ title: string; blurb: string; href?: string }> = [
-  { title: "Quickstart", blurb: "Point your OpenAI-compatible client at Hydroa and make your first proxied call." },
+  {
+    title: "Quickstart",
+    blurb: "Point your OpenAI-compatible client at Hydroa and make your first proxied call.",
+    // activation-quickstart TASK.md §3 v1 M8: the one-line disclosed exception to
+    // this page's frozen "coming soon" scaffold, mirroring the ai-act-compliance
+    // precedent below — the other 3 stub categories stay untouched.
+    href: "/docs/quickstart",
+  },
   { title: "Providers", blurb: "Route to OpenAI, Anthropic, Gemini, Bedrock, and Azure with fallback and load balancing." },
   { title: "Admin API", blurb: "Manage keys, routing config, budgets, and tenants programmatically." },
   { title: "BYOK", blurb: "Bring your own provider keys, encrypted at rest per tenant." },

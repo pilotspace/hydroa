@@ -23,13 +23,23 @@ function buildSessionCookieValue(jwt: string): string {
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const parsed = await parseJsonBody(req, signupSchema);
   if (!parsed.ok) return parsed.response;
-  const { tenant_name, email, password } = parsed.data;
+  const { tenant_name, email, password, account_type } = parsed.data;
+
+  // activation-quickstart: forward account_type ONLY when the caller sent one —
+  // omitting the key (not sending account_type: undefined) preserves the
+  // gateway's own "business" default for every existing caller, byte-identical.
+  const signupBody: { tenant_name: string; email: string; password: string; account_type?: "personal" | "business" } = {
+    tenant_name,
+    email,
+    password,
+  };
+  if (account_type !== undefined) signupBody.account_type = account_type;
 
   // Step 1: signup
   const signupRes = await fetch(`${gatewayUrl()}/admin/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tenant_name, email, password }),
+    body: JSON.stringify(signupBody),
   });
 
   if (!signupRes.ok) {

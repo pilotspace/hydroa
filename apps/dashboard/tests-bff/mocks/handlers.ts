@@ -213,6 +213,16 @@ export const bffHandlers = [
   http.get(`${APP}/api/gw/admin/service-tiers`, () =>
     HttpResponse.json({ default_tier: "standard", priority_markup_pct: "25" })
   ),
+
+  // activation-quickstart (M6): OnboardingChecklist now fires GET /admin/provider-keys
+  // (role==="owner" only) and GET /admin/invites (role in {"owner","admin"}) unconditionally
+  // whenever OverviewPage mounts — the default /api/auth/me role above is "owner", so every
+  // pre-existing OverviewPage test (tests-bff/overview-home.test.tsx) now triggers both reads
+  // for the first time. Defaults = empty (byok/invite steps read as incomplete), so every such
+  // test stays green without per-test edits — mirrors the residency-policy/service-tiers idiom
+  // above. Tests asserting checklist step-completion behavior override with their own server.use(...).
+  http.get(`${APP}/api/gw/admin/provider-keys`, () => HttpResponse.json({ keys: [] })),
+  http.get(`${APP}/api/gw/admin/invites`, () => HttpResponse.json({ invites: [] })),
 ];
 
 export const defaultHandlers = [...gatewayHandlers, ...bffHandlers];
