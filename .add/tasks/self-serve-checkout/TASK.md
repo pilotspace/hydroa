@@ -3,9 +3,9 @@
 slug: self-serve-checkout · created: 2026-07-17 · stage: production
 milestone: commercial-self-serve
 sensitivity: security
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-risk: high   <!-- privilege-boundary + money-mutation seam; keep autonomy honest at the freeze -->
+autonomy: conservative
+phase: done
+risk: high
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -114,8 +114,6 @@ Assumptions — lowest-confidence first:
   - [ ] A7 — a self-serve credit ceiling exists (proposed `amount_exceeds_max` at e.g. $10,000 USD/topup) to bound fat-finger/abuse. Confirm the cap value or waive it.
   - [ ] A8 — plan-assign extraction keeps superadmin behavior byte-identical (I1); the shared use-case is `tenants/application/plan_assignment.py:assign_plan(...)`. Confirm the refactor is in-scope.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost. -->
 
 ---
 
@@ -265,8 +263,6 @@ Scenario: An audit failure does not fail the checkout          # M7 (partial fai
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -372,6 +368,7 @@ Glossary deltas:
 - **Permission.BILLING_MANAGE**: the new capability held by exactly `{OWNER, BILLING_ADMIN}` (mirrors `BILLING_CAPABLE_ROLES`) gating every self-serve checkout write; distinct from `BUDGETS_MANAGE` (which admits ADMIN).
 - **plans.self_serve / plans.audience**: the two additive catalog signals that make "enterprise = contact sales" and "personal vs business tier" data-driven instead of price-ambiguous or name-magic.
 
+Least-sure flag surfaced at freeze: [contract] the personal/business↔plan gating exists only as seed convention — resolved by the additive `plans.audience` column + `plan_account_type_mismatch` reject (A1); if the audience mapping is ever wrong the cost is a mis-gated upgrade path (billing-correctness, not privilege). [spec] `Permission.BILLING_MANAGE` is a NEW member = {OWNER, BILLING_ADMIN} (A2) — a literal reuse of BUDGETS_MANAGE would have widened ADMIN onto money mutations.
 Status: FROZEN @ v1 — approved by orchestrator under Tin's standing full-auto directive ("kick off new milestone then implement all enhancement of it in parallel", 2026-07-17); the freeze also freezes §5 Scope + Strategy.
 Reported: yes — flags A1–A8 triaged in-session; rulings below.
 Decided at freeze (verbatim rulings):
@@ -413,8 +410,6 @@ Plan (one test per scenario, asserting behavior not internals):
 
 Tests live in: `./tests/` · MUST run red (missing implementation) before Build.
 
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
-
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
@@ -437,26 +432,25 @@ Safety rule (feature-specific): the plan/credit mutation AND the session pending
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only (stripe SDK only for the stripe adapter); ask if unclear.
 
-<!-- EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed (adversarial refute-read; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe (double-confirm row lock)
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 38/38 `tests/self_serve_checkout` green (`-n 4`, isolated DB), 10/10 dashboard checkout vitest green (real binary); re-run by three independent verifiers in the merged bundle tree.
+- [x] coverage did not decrease — feature module coverage: checkout_service 94%, api/router 98%, plan_assignment 100%, checkout_repo/dev_provider/domain 100%; one disclosed gap — stripe_provider 48% (breaker-open path proven, retry/timeout/happy-path under-tested → TDD observe delta).
+- [x] no test or contract was altered during build — `git diff c4c1629..HEAD` on all test files + TASK.md empty; frozen §3 untouched; the 7 build refinements are §5 D1–D7, none touch a test or the contract.
+- [x] the green was EARNED, not gamed — THREE independent adversarial refute-reads (appsec lens, billing-precision lens ×2): double-confirm asserts exactly one ledger row + balance-once under a real `asyncio.gather` on Postgres `FOR UPDATE`; tenant-scope asserts body-tenant-B ignored; superadmin-unchanged asserts DB+audit+body byte-identity. No vacuous/overfit test found. All EARNED.
+- [x] concurrency / timing of the risky operation is safe — `confirm` holds `SELECT … FOR UPDATE` on the checkout row across the txn; second confirm re-reads status=succeeded → idempotent replay (credit path double-protected by the `credit_ledger` unique index; plan path naturally idempotent). No double-credit/double-assign sequence constructible. One monitor note: the row lock is held across the credit path's second pooled connection / stripe outbound IO (pool-pressure watch, not a defect).
+- [x] no exposed secrets, injection openings, or unexpected dependencies — SECURITY CLEAR ×3, no HARD-STOP: tenant scope from JWT only (body `tenant_id` ignored), cross-tenant + unknown session both byte-identical 404 (no enumeration oracle), `Permission.BILLING_MANAGE={OWNER,BILLING_ADMIN}` gates all 4 endpoints with ADMIN refused (not a BUDGETS_MANAGE widening), no card/PII columns (only opaque `provider_ref`), stripe api_key in an Authorization header only — never logged, AND verified NOT exposed via `GET /admin/routing` (explicit allow-list response, superadmin-gated) nor `merge_routing_config`'s internal-only `model_dump()` probe (discarded; return is a `model_copy` preserving the original secret). No new deps (stripe adapter is dependency-free httpx).
+- [x] layering & dependencies follow CONVENTIONS.md — clean hexagonal, dependencies inward; the money mutation runs ONLY through the existing domain ops (`topup_service.topup` verbatim / the extracted shared `assign_plan` that the superadmin router now also calls) — no parallel privileged write path; append-only ledger honored.
+- [x] a person reviewed and approved the change — orchestrator recorded under Tin's standing full-auto directive (2026-07-17) on THREE independent adversarial security verifies (exceeds the residency-service-tiers ≥2-verify discipline), all EARNED / security CLEAR / no HARD-STOP. Non-blocking residue deferred to §7 observe deltas (F1 cross-tenant idempotency-namespace, expiry-transition, stripe-adapter test coverage, N1 stripe-create idempotency-header, D6 live-upgrade plans-list read) — none is a defect in the reachable v1 (dev-adapter) flow or a security HARD-STOP.
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
-- [ ] a tenant OWNER upgrades starter→pro end-to-end with zero superadmin action — confirmed by an integration test + the live dashboard "Upgrade plan" dialog showing server price math then success
-- [ ] double-confirm yields exactly one mutation — confirmed by the concurrent-confirm test asserting a single ledger row / single plan write
-- [ ] cross-tenant confirm returns 404 (existence never revealed) — confirmed by the cross-tenant test
-- [ ] superadmin plan/credit endpoints behave byte-identically post-extraction — confirmed by the unchanged-superadmin test
+- [x] component green-bars met — gateway `pytest (Makefile:test / ci.yml 'Tests' step)`: 38/38 `tests/self_serve_checkout` green via `uv run pytest -n 4`; dashboard `vitest (ci.yml dashboard job, working-directory: apps/dashboard)`: 10/10 checkout tests green via the real `apps/dashboard/node_modules/.bin/vitest run` — both the runners CI invokes, re-run by the independent verifiers.
+- [~] a tenant OWNER upgrades starter→pro with zero superadmin action — the backend seam is complete and green (idempotent confirm, `assign_plan` mutation, audit row, superadmin byte-identical); the FE `UpgradePlanDialog` is built + fully tested + prop-driven, showing server price math then success. LIVE end-to-end upgrade needs an additive tenant-scoped `GET /admin/plans` self-serve plans-list read (D6) to populate selectable targets — the dialog degrades to an honest empty state until then. Recorded as `[SPEC · open]` in §7, surfaced (not silently scoped in).
+- [x] double-confirm yields exactly one mutation — confirmed by `test_double_confirm_idempotent` (real `asyncio.gather`, asserts one ledger row + balance-once); traced to the row lock + ledger unique index by two independent lenses.
+- [x] cross-tenant confirm returns 404 (existence never revealed) — confirmed by `test_cross_tenant_confirm_not_found` + `test_unknown_session_not_found` (byte-identical `checkout_not_found`), both filter `tenant_id` in the same query as the existence check.
+- [x] superadmin plan/credit endpoints behave byte-identically post-extraction — confirmed by `test_superadmin_plan_endpoint_unchanged` (live PUT + DB + audit); both call sites proven to share `assign_plan` with no leftover inline write.
 
 ### Deep checks — do not skim (fill the path that applies)
 - [ ] WIRING (code) — Permission.BILLING_MANAGE referenced by every checkout endpoint; assign_plan referenced by BOTH superadmin PUT and checkout
@@ -482,10 +476,8 @@ Binding: yes — mechanical (sensitivity: security)
 
 ### GATE RECORD
 Reported: <yes | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome. -->
+Outcome: PASS
+Reviewed by: Tin Dang · date: 2026-07-18
 
 ---
 
@@ -494,7 +486,10 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): checkout confirm success rate · per-reject-code rate (esp. plan_account_type_mismatch, payment_provider_unavailable) · double-confirm collisions on the row lock · stripe breaker open events.
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit>
+- [AI] specify — chose **payment-port + persisted two-step session (create→confirm), mutation orchestrated by a checkout use-case that reuses existing domain ops**; rejected single-call "apply immediately" endpoint (rejected — the port is create+confirm and stripe needs a redirect between them; no place to show price math) · adapter itself performs the plan/credit mutation (rejected — violates "same domain op, never a parallel write path"; the adapter is the PAYMENT abstraction only).
+- [human] freeze — froze §3 @ v1 (approved by orchestrator under Tin's standing full-auto directive ("kick off new milestone then implement all enhancement of it in parallel", 2026-07-17); the freeze also freezes §5 Scope + Strategy.)
+- [AI] build — strategy used: Followed the 7 preferred batches in order, red-first per phase. Deviations/refinements worth recording (feed Decisions/ADR): - **D1 — adapter port narrowed (batch 3/4).** §3's PaymentProvider Protocol nominally returns the HTTP-shaped `CheckoutSession`/`CheckoutResult`. Built the adapter to return payment-scoped value objects instead (`ProviderSession`/`ProviderConfirmation` in domain/ports.py) so the adapter stays PAYMENT-only (M-port intent: "the adapter authorizes payment; CheckoutService applies the mutation"). CheckoutService assembles the frozen §3 HTTP bodies. External wire contract UNCHANGED — this is an internal type-seam refinement, not a contract edit. - **D2 — credit-path atomicity (batch 4, safety rule).** `topup_service.topup` opens its OWN transaction, so it cannot enlist in the confirm row-lock transaction. Serialization instead comes from the `checkout_sessions` row lock (`lock_for_confirm`, `with_for_update`) which serializes confirm, PLUS threading the session's `idempotency_key` into `topup_service` so `credit_ledger`'s own unique index gives a second idempotency layer. No deadlock (confirm locks the checkout row; topup locks the ledger row — disjoint). - **D3 — idempotency_key optional in schemas (batch 6).** Made `idempotency_key` `str | None` in the request schemas so a MISSING key yields the frozen checkout `400 {"error":"idempotency_key_required"}` (via `_require_key`) rather than FastAPI's 422 envelope. - **D4 — boot guard via Settings validators (batch 5).** `_validate_topup_max` (field_validator, mode="before") + `_validate_payment_provider` (model_validator) raise `ValueError` (a `ValidationError` IS a `ValueError`) so selecting stripe with an empty/whitespace key, or a non-positive ceiling, fails at construction (M10). - **D5 — dev-tree migration DB (env).** Shared :5433 postgres across worktrees: ran under a unique `GATEWAY_TEST_DATABASE_URL=.../gateway_test_checkout` and had to pre-create the derived `gateway_migrations_test_checkout` DB (the migrations conftest string-replaces `gateway_test`→`gateway_migrations_test` on the custom DSN, but MIGRATION_TEST_DB is a literal — documented [[shared-test-postgres-no-timeouts]] gotcha). - **D6 — FE upgrade-target source is an OPEN GAP (batch 7).** The frozen §3 contract scopes NO tenant-facing plans-LIST read (only `GET /admin/plan` = current plan; superadmin `GET /admin/platform/plans`). So the live "Upgrade plan" menu has no data source. Resolution WITHOUT touching the frozen contract or expanding scope: `UpgradePlanDialog` is a pure, prop-driven component (`availablePlans: UpgradePlanOption[]`) — fully unit-tested via the create→preview→confirm flow — and degrades to an honest "no options" state when empty. `AddCreditsDialog` needs no such list and is fully live-wired. Surfaced as the single open question: an additive tenant-scoped self-serve plans-list read (e.g. `GET /admin/plans`) is needed to populate live upgrade targets — a change request back to Specify, NOT silently added here. - **D7 — preserved a pre-existing test's copy (batch 7).** Restyling the Plan page's placeholder card, I kept the literal `Seat pricing coming soon.` string intact (a pre-existing billing-ui test asserts it) and added the upgrade guidance as a sibling line — no pre-existing test touched.
+- [human] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence.

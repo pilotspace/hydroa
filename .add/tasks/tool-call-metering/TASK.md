@@ -257,7 +257,7 @@ Access pattern: pricing/markup resolution reads are IDENTICAL to every other mod
 
 Glossary deltas:
 - **Tool-call pricing unit**: the `pricing_unit="per_tool_call"` dispatch value (recorder.py `_known_units`) billing exactly `quantity=Decimal("1")` per successfully-dialed, non-refused, non-blocked MCP tool call, priced via `unit_usd_per_unit` on the synthetic catalog row `model_id="mcp_tool_call"` — the concrete instance of MILESTONE.md's named "$/1k-query metering dimension" (the $/1k figure is expressed as the seeded per-call unit price, not as a batching/rounding mechanism).
-- **mcp_tool_call (sentinel model_id)**: a first-party, Hydroa-priced (not upstream-catalog-synced) `models`/`pricing_snapshots` row, seeded once via migration, `active=false` so it never appears in a tenant's model catalog listing — the SAME "reinterpreted sentinel model_id" idiom `model_id="seat"` already establishes in `invoice_generator.py`.
+- **mcp_tool_call (sentinel model_id)**: a first-party, Hydroa-priced (not upstream-catalog-synced) `models`/`pricing_snapshots` row, seeded once via migration, `active=false` so it never appears in a tenant's model catalog listing — the SAME "reinterpreted sentinel model_id" idiom `model_id="seat"` already establishes in `invoice_generator.py`. [folded foundation-version 53]
 
 **Open decisions for freeze (Tin to confirm — NOT yet decided, this contract is still DRAFT):**
 - [x] DECIDED (Tin 2026-07-14): $2.50/1k confirmed.

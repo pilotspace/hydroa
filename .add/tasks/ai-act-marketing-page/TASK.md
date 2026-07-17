@@ -490,7 +490,7 @@ Glossary deltas:
   task, not this one.
 - **readiness pack**: the residency + ZDR + audit/Art. 12-bundle commercial narrative this marketing
   page tells as one story; NOT a priced SKU/line-item as of this contract (no `pricing/page.tsx`
-  `TIERS` entry exists for it).
+  `TIERS` entry exists for it). [folded foundation-version 53]
 
 **Freeze decisions (Tin, 2026-07-14 — recorded at freeze, resolve the open questions above):**
 - Route /ai-act-readiness CONFIRMED.

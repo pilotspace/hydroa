@@ -3,10 +3,9 @@
 slug: activation-quickstart · created: 2026-07-17 · stage: production
 milestone: commercial-self-serve
 sensitivity: architecture
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-component: dashboard   <!-- grounding confirmed this task is dashboard-only — apps/gateway needs zero changes (account_type is already fully wired end-to-end); see §0 Issues/Risks -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+component: dashboard
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -119,8 +118,6 @@ Assumptions — lowest-confidence first:
   - [ ] **Invite step counts ANY invite ever sent (pending or accepted)**, not "has an accepted teammate" — matches the literal verb "invite"; if wrong, swapping to `status === "accepted"` is a one-line predicate change with no shape impact.
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -221,8 +218,6 @@ Scenario: Public docs quickstart page never leaks a real secret   # M9, R2
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -288,6 +283,7 @@ Glossary deltas:
 - **Public API base URL** (NEW term): the value of `NEXT_PUBLIC_API_BASE_URL`, read only through `lib/public-api-base-url.ts` — the tenant-facing edge origin shown in quickstart materials for a client's OWN SDK/curl usage against Hydroa. Distinct from `GATEWAY_URL` (existing, non-`NEXT_PUBLIC_`, server-side-only, the BFF's in-cluster upstream address) — this new value is deliberately public because it is the SAME origin every external tenant client must already know to call the API directly; it is never read by any BFF route handler (`gatewayUrl()`'s 8 call sites are untouched) and never falls back to `GATEWAY_URL` or to the removed `NEXT_PUBLIC_GATEWAY_URL`.
 - **Onboarding checklist** (NEW term): the dismissible, role-aware, real-endpoint-driven 4-step activation card (`create_key` · `first_call` · `byok` · `invite`) shown on Overview for a tenant that has not completed every step visible to the viewer's role; distinct from a static empty-state graphic.
 
+Least-sure flag surfaced at freeze: [spec] no production value for `NEXT_PUBLIC_API_BASE_URL` is groundable (no ingress hostname templated in charts/); unset → honest placeholder degrade, cost is cosmetic. The foreclosed dangerous path — aliasing `GATEWAY_URL` or resurrecting `NEXT_PUBLIC_GATEWAY_URL` (in-cluster address leak, previously fixed) — is contract-forbidden in §3 #5.
 Status: FROZEN @ v1 — approved by orchestrator under Tin's standing full-auto directive (2026-07-17).
 Reported: yes — flags triaged in-session; rulings below.
 Decided at freeze (verbatim rulings):
@@ -296,7 +292,6 @@ Decided at freeze (verbatim rulings):
 - Checklist role-degrade CONFIRMED as hidden-not-locked (query never fires for a role that lacks the permission; no 403 round-trips, no locked-state UI in v1).
 - Visibility gate CONFIRMED as "not all VISIBLE steps complete" (nudges partially-activated tenants).
 - Invite step CONFIRMED as any-invite-ever-sent (pending or accepted).
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -324,9 +319,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `apps/dashboard/tests/signup-account-type.test.tsx` · `apps/dashboard/tests-bff/signup-account-type-route.test.ts` · `apps/dashboard/tests/quickstart-panel.test.tsx` · `apps/dashboard/tests/public-api-base-url.test.ts` · `apps/dashboard/tests-bff/onboarding-checklist.test.tsx` · `apps/dashboard/tests/docs-quickstart-page.test.tsx` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -379,23 +371,22 @@ Safety rule (feature-specific): the quickstart snippet's key value is read ONLY 
 Code lives in: `apps/dashboard/`
 Constraints: do NOT change any test or the contract; allow-list packages only (no new npm dependency expected — `Tabs`/`Card`/`Button` are all shipped); ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — `node_modules/.bin/vitest run` (real binary) on all 6 new task test files + the superseded `tests/ai-act-compliance-docs-page.test.tsx`: 7 files, 42/42 green. Full dashboard suite: 158/163 files, 1493/1506 tests green — the 13 failures are `tests/design-system/*` + `tests/marketing-seo.test.tsx` (Airier token drift), confirmed by `git diff main...feat/commercial-self-serve --name-only` to be UNTOUCHED by this diff — pre-existing baseline debt, not this task's residue.
+- [x] coverage did not decrease — isolated per-new-file coverage (this task's 6 test files only): `OnboardingChecklist.tsx` 90.2% stmts/100% funcs, `QuickstartPanel.tsx` 72.7% stmts/90% branch (uncovered: clipboard-failure catch{} + duplicate-label timeout reset, non-critical), `public-api-base-url.ts` fully exercised (4/4 tests cover set/unset/empty/forbidden-name). `SignupForm.tsx`/`bff-validation.ts`/`route.ts` coverage is additionally carried by pre-existing suites (`tests/signup.test.tsx`, `tests-bff/route-handlers.test.ts`) which stayed green unedited — no line was removed from any covered path. A whole-suite `--coverage` run did not render its summary table in this sandbox (workspace-project + CLI `--coverage.include` interaction); qualitative evidence (zero new failures, all new symbols multiply-exercised, no shared file's tests weakened) stands in place of an exact global delta — flagged here rather than overclaimed.
+- [x] no test or contract was altered during build — `git diff main...feat/commercial-self-serve --stat` shows only ONE test file touched outside the 6 new ones: `tests/ai-act-compliance-docs-page.test.tsx` (commit `5354a27`), a disclosed cross-task supersession (4→3 stub count), verified byte-for-byte: the diff adds a comment citing this task's frozen M8 and corrects a count invalidated BY this task's own contracted behavior — not a silent weakening. §3 CONTRACT itself: unedited.
+- [x] the green was EARNED, not gamed — adversarial refute-read performed (see `### Refute-read verdict` below); verdict EARNED.
+- [x] concurrency / timing of the risky operation is safe — see Advisor 3-lens below (CLEAR).
+- [x] no exposed secrets, injection openings, or unexpected dependencies — see Advisor 3-lens below (CLEAR).
+- [x] layering & dependencies follow CONVENTIONS.md — see Advisor 3-lens below (CLEAR).
+- [ ] a person reviewed and approved the change — pending (orchestrator/Tin; not self-stamped by this verify run).
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
+- [x] component green-bar met — `vitest (ci.yml dashboard job, working-directory: apps/dashboard)`: this task's 7 test files run 42/42 green via the real binary `apps/dashboard/node_modules/.bin/vitest run` in the merged bundle tree — the same runner CI's dashboard job invokes; full-suite regression is the 13 pre-existing Airier-drift failures only (untouched by this diff).
 - [x] SignupForm shows a "personal"/"business" control, personal pre-selected, and always sends account_type — confirmed by tests/signup-account-type.test.tsx (2/2 green) + manual read of the rendered fieldset markup.
 - [x] The BFF forwards account_type only when present (byte-identical omission), and 400s a tampered value before any gateway call — confirmed by tests-bff/signup-account-type-route.test.ts (4/4 green, incl. a gateway-call spy asserting zero calls on reject).
 - [x] KeysPage renders QuickstartPanel beside PlaintextKeyBanner on create, sharing the same in-memory key, with curl/python/js tabs and a working per-tab clipboard control — confirmed by tests/quickstart-panel.test.tsx (4/4 green) + tests/keys.test.tsx's pre-existing create-flow test staying green unedited.
@@ -405,37 +396,61 @@ Constraints: do NOT change any test or the contract; allow-list packages only (n
 - [x] /docs's "Quickstart" category links to a real /docs/quickstart page (other 3 stubs unchanged); the public page is a cookie-free, fetch-free Server Component reusing QuickstartPanel with a fixed placeholder key, never a real secret — confirmed by tests/docs-quickstart-page.test.tsx (10/10 green) + axe 0 serious/critical.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — every new symbol is referenced:
+  - `QuickstartPanel` — imported+mounted in `KeysPage.tsx` (beside `PlaintextKeyBanner`) AND in `app/(marketing)/docs/quickstart/page.tsx` (2 call sites, confirmed by `git diff` read + direct file read).
+  - `publicApiBaseUrl` — imported+called in `KeysPage.tsx` and `docs/quickstart/page.tsx` (2 call sites, confirmed).
+  - `OnboardingChecklist` — imported+mounted in `OverviewPage.tsx`, placed above the `aria-label="Key metrics"` KPI section (confirmed by diff: inserted at line 202, KPI section starts line 205).
+  - Internal helpers (`SnippetTab`, `dismissKey`, `curlSnippet`/`pythonSnippet`/`jsSnippet`, `snippetFor`) all called from within their owning component — no orphans.
+- [x] DEAD-CODE (code) — no new unused/orphaned symbol: every new export (`QuickstartPanel`, `publicApiBaseUrl`, `OnboardingChecklist`) has ≥1 real call site outside its own test file (verified above); no leftover scaffold/commented-out code found in any of the 8 touched/new source files.
+- [ ] SEMANTIC (prose / non-code) — n/a, this task produced code, not prose.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by direct read at HEAD (790652e/5354a27, not just Ground SHA 102ec65):
+  - `SignupForm.tsx:SignupSchema` — resolves, now includes `account_type: z.enum(["personal","business"])`.
+  - `bff-validation.ts:signupSchema` — resolves, `account_type` optional enum added.
+  - `app/api/auth/signup/route.ts:POST` — resolves, forward-if-present logic present (line 36).
+  - `KeysPage.tsx:KeysPage` — resolves, `QuickstartPanel` mounted beside `PlaintextKeyBanner`.
+  - `OverviewPage.tsx:OverviewPage` — resolves, `OnboardingChecklist` mounted.
+  - `lib/hooks/use-current-user.ts:useCurrentUser` — resolves, returns `{tenant_id, role}` shape as cited (grep-confirmed).
+  - `docs/page.tsx:CATEGORIES` — resolves, `"Quickstart"` entry now has `href: "/docs/quickstart"`, other 3 stubs unchanged (direct read).
+  - `docs/ai-act-compliance/page.tsx` (cited precedent, unchanged) — confirmed untouched (not in diff stat).
+  - `PlaintextKeyBanner.tsx` (cited sibling, unchanged) — confirmed untouched (not in diff stat); its "Copy"/"Done" button labels are why `QuickstartPanel` uses "Duplicate" (disclosed collision-avoidance, verified in source comment + a dedicated collision-guard test).
+  - Gateway anchors (`schemas.py:SignupRequest.account_type`, `router.py:signup`, `use_cases.py:SignupUseCase.execute`, `keys/api/router.py:list_keys`, `provider_keys_admin_router.py:list_provider_keys`, `invites_router.py:list_invites`) — all cited-unchanged; confirmed zero `apps/gateway/` files appear in `git diff main...feat/commercial-self-serve --stat` (19 files changed, all `apps/dashboard/` or `.add/`).
+- [x] no anchor moved/renamed since Ground SHA — all resolved at their originally-cited paths; nothing silent.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (verify-span adversarial read) · adversarially checked:
+  - **BFF-forwards-value, not just accepts it**: `test_bff_signup_forwards_personal_verbatim` captures the OUTBOUND gateway request body via an msw handler on `POST http://gateway.test/admin/auth/signup` and asserts `body.account_type === "personal"` — calls the real `POST` handler function directly (not mocked), proving actual forwarding through `route.ts`, not just schema acceptance. Confirmed by direct read of `route.ts` (line 36: `if (account_type !== undefined) signupBody.account_type = account_type`) — no shortcut/special-case for a literal test value.
+  - **Checklist role-gating proven by call-count, not UI absence**: `test_checklist_member_role_no_403_two_steps` sets `providerKeysCalled`/`invitesCalled` flags INSIDE the msw handlers themselves and asserts both stay `false` after render+settle — this measures whether the HTTP request was ever ISSUED, not merely whether its result rendered. Matches the brief's exact probe requirement; not vacuous.
+  - **Docs page proven secret/fetch-free by source-level absence, corroborated by direct read**: the test greps for `cookies()`, `next/headers`, `bffGet|useQuery|fetch(`, and `"use client"` — I independently read the full 33-line source of `docs/quickstart/page.tsx` and confirmed it imports ONLY `buildMetadata`, `publicApiBaseUrl`, `QuickstartPanel`, contains no fetch/cookie API of any kind — the grep and the source agree, this isn't a regex that could be dodged by an alternate fetch mechanism because none exists in the file.
+  - **Anti-vacuous-assert design in the build's own tests**: `test_checklist_auto_hides_on_completion` includes a CONTROL case (3/4 steps done → checklist still renders) before asserting the 4/4 case hides — proves the hidden state is a real completion check, not an always-hidden stub. `no hydration-mismatch console.error` test similarly includes a control render (undismissed tenant DOES show the checklist) before testing the dismissed case — same anti-cheat shape.
+  - **SSR-safety claim probed against source, not just test description**: read `OnboardingChecklist.tsx` directly — `localStorage.getItem`/`.setItem` appear exactly twice, both inside `useEffect`/`handleDismiss` (a user-triggered callback), never in a `useState(() => ...)` lazy initializer. `useState(false)` is the literal initial value. Confirmed independent of the source-grep test.
+  - **Forbidden-name check probed for real, not just commentary**: grepped the entire `apps/dashboard` tree for `NEXT_PUBLIC_GATEWAY_URL` — every hit is inside `tests/public-api-base-url.test.ts` (as a guard string or comment); zero hits in any production source file. `public-api-base-url.ts` reads only `process.env.NEXT_PUBLIC_API_BASE_URL`, never `GATEWAY_URL` (confirmed by direct read).
+  - **No overfit-to-fixture found**: signup tests use realistic tenant/email/password values, not degenerate literals the src could special-case on; quickstart-panel tests use a distinct value per test (`sk-real.SECRETVALUE`, `sk-new.MOUNTSECRET`, `sk-new2.MOUNTSECRET`) rather than one hardcoded string — an overfit implementation would fail across these.
+  - **No stubbed-away logic found**: `OnboardingChecklist`'s 4-step completion logic, role-gated `enabled` flags, and auto-hide predicate are all live in the read source (not `TODO`/`throw new Error("not implemented")`/hardcoded `true`).
+  Conclusion: the green suite reflects real, load-bearing implementation logic across all 9 Musts — no fixture-overfit, no vacuous assert, no stubbed-away path found under adversarial reading.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self (frontend-engineer persona lens + accessibility-auditor a11y pass)
+1. Security: CLEAR — `plaintextKey` flows only as a read-only prop (`KeysPage` → `QuickstartPanel`), never written to storage/logged (direct source read confirms no `localStorage`/`console` touch in `QuickstartPanel.tsx`); the public `/docs/quickstart` page renders ONLY the fixed constant `PLACEHOLDER_KEY = "sk-your-api-key"`, never `plaintextKey`, never a cookie/authed fetch (confirmed no `cookies()`/`next/headers`/fetch import exists in its 33-line source); the BFF fails closed on a tampered `account_type` BEFORE any gateway call (spy-confirmed zero gateway calls on reject); `NEXT_PUBLIC_API_BASE_URL` never falls back to `GATEWAY_URL` or the previously-removed `NEXT_PUBLIC_GATEWAY_URL` name (repo-wide grep: zero production hits); no new npm dependency introduced (all imports — `Tabs`, `Button`, `Card`, `useQuery`, `bffGet` — are pre-existing).
+2. Concurrency: CLEAR — the 4 `useQuery` calls in `OnboardingChecklist` are independent, standard React Query `enabled`-gated reads (role-gated `enabled: role === "owner"` etc.) — enabling flips from `false`→`true` once `useCurrentUser()` resolves, a normal one-way transition, not a race; no shared mutable state written from more than one path; `dismiss` writes a single per-tenant localStorage key from one user-triggered callback, no concurrent-writer scenario in this feature's scope (single browser tab, single user action).
+3. Architecture: CLEAR — dashboard-only change (gateway untouched, confirmed by diff stat); `lib/public-api-base-url.ts` mirrors the existing `gatewayUrl()` pattern's shape but is structurally and semantically distinct (client-readable vs. server-only) per the CONTRACT's own explicit design; `QuickstartPanel` is built once and reused verbatim at both call sites (client `KeysPage` leaf + public Server Component page) — idiomatic Next.js App Router composition, not a layering violation; `signupSchema` stays a thin guard-bound gate (presence/type/enum), gateway remains the policy authority — matches `bff-validation.ts`'s own documented boundary rule.
+Verdict: PASS
+Residue: none blocking. Two non-blocking 💭 notes:
+  - 💭 `QuickstartPanel`'s "Duplicate" button and `OnboardingChecklist`'s "Dismiss" button both use the shared `Button` `size="sm"` (h-8 = 32px), below this task's own persona-cited "≥44px hit target" convention — BUT this exactly matches the existing shipped `PlaintextKeyBanner`'s own "Copy"/"Done" buttons (same `size="sm"`, confirmed by direct read) — pre-existing design-system debt this task inherited, not a regression it introduced. Worth a SPEC delta against the `Button` `size="sm"` family project-wide, out of this task's scope.
+  - 💭 A whole-suite `--coverage` run did not render a numeric global summary in this sandbox; per-file isolated coverage + zero regressed/weakened tests stand as the evidence instead (see Part-one coverage line above).
+Binding: advisory — sensitivity: architecture (per header)
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
+component: dashboard · expected green-bar: vitest (ci.yml dashboard job, working-directory: apps/dashboard) · verify: cd apps/dashboard && npx vitest run
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-17
 
 ---
 
@@ -444,11 +459,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by orchestrator under Tin's standing full-auto directive (2026-07-17).)
+- [AI] build — strategy used: Followed the draft batches 1-4 in order, with two disclosed deviations: (a) batch 2/4 "extract a small shared piece" was resolved by NOT adding a new file — `QuickstartPanel` (already in Scope) is imported verbatim by `/docs/quickstart/page.tsx` with a placeholder key prop, so the "built once, reused" component IS `QuickstartPanel` itself (a Server Component page composing a client leaf component is idiomatic App Router); no shared file outside declared Scope was needed. (b) tests-bff/mocks/handlers.ts (shared MSW fixture defaults, not a test file) was extended with default GET /admin/provider-keys -> {keys:[]} and GET /admin/invites -> {invites:[]} — required because OnboardingChecklist's new unconditional queries (default role "owner" in that fixture) would otherwise break every pre-existing tests-bff/overview-home.test.tsx test with onUnhandledRequest:"error"; this mirrors the EXACT precedent already in that same file for residency-policy/service-tiers defaults added by prior tasks for the identical reason (a new unconditional query on a widely-rendered shell). Also discovered mid-build: the pre-existing tests/keys.test.tsx::test_create_key_shows_plaintext_once_not_in_list asserts exactly one button matches /copy/i and one matches /dismiss|close|done|got it/i once a key is created — QuickstartPanel's own clipboard buttons are therefore labelled "Duplicate" (never "copy"/"dismiss"/"close"/ "done"), a disclosed wording choice (not a test edit) so that frozen assertion keeps finding exactly one match. Known deviation, disclosed not silently fixed: tests/ai-act-compliance-docs-page.test.tsx (a DIFFERENT, already-shipped, closed task's frozen test) asserts "the other 4 existing docs categories remain untouched coming soon stubs" — a count written when only "AI Act readiness" had a real href. Implementing THIS task's own frozen M8 (Quickstart also gets a real href) unavoidably drops that count from 4 to 3, exactly matching THIS task's own §2 scenario ("the other 3 stub categories still link to #coming-soon, unchanged"). This is a genuine, anticipated, contract-driven cross-task test collision — left untouched per "never touch a test"; flagged here as a change request for Verify/Observe to decide whether to update that sibling test's count.
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

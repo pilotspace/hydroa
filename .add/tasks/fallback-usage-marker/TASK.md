@@ -197,7 +197,7 @@ Schema: usage_records is FROZEN — NO new column. The marker rides the existing
 ```
 
 Glossary deltas: credential_source: provenance marker on a usage record — "platform" when the row was
-  served by the platform-fallback credential, absent (≡ "byok") when served by the tenant's own key.
+  served by the platform-fallback credential, absent (≡ "byok") when served by the tenant's own key. [folded foundation-version 53]
 Least-sure flag surfaced at freeze: [spec] cross-request contextvar isolation (§1 ⚠) — a set-only-on-
   fallback `_credential_source_ctx` (default None) must not leak platform→byok across concurrent
   requests; rests on the ASGI per-request-Task guarantee. Mitigated: SAME guarantee `_credit_hold_ctx`/

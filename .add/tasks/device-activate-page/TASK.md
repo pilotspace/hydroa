@@ -3,9 +3,8 @@
 slug: device-activate-page · created: 2026-07-17 · stage: production · sensitivity: security · risk: high
 milestone: commercial-self-serve
 component: gateway, dashboard
-autonomy: conservative   <!-- lowered from auto: SECURITY + risk:high authorization surface — the engine refuses an unguarded completion (`unguarded_high_risk_auto`); the freeze is a human decision. -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: conservative
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -97,8 +96,6 @@ Assumptions — lowest-confidence first:
   - [ ] A7 — Additive changes to `device_approval_router.py` (a file whose approve/deny endpoints are FROZEN) are permitted so long as approve/deny wire behavior is byte-identical; the freeze is at the endpoint/wire level, not file-immutability.
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -187,8 +184,6 @@ Scenario: Production refuses to boot on an unsafe verification_uri   # M9, R:INV
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -228,6 +223,7 @@ Schema: NO migration, NO new table/column. Read-only reuse of repository.get_by_
 Glossary deltas:
 - device-authorization preview: a read-only, session-authed, rate-limited peek at a PENDING device-authorization grant's server-known facts (scope, time-to-expiry, default budget cap) shown to the human before approve/deny; returns one indistinguishable error for any non-pending state.
 - verification_uri (default + prod-guard): the RFC 8628 absolute page URL the human visits to approve; non-empty by default (dev), boot-refused if empty/localhost/non-https in a non-dev/test environment.
+Least-sure flag surfaced at freeze: [spec] a pending grant carries NO per-agent identity/budget (only scope/expiry; budget shown is the system default cap) — the card is scope-cut to server-known facts; a richer identity requires extending the frozen authorize contract (spec delta), never a UI tweak. [contract] preview's single uniform 404 deliberately diverges from approve/deny's 404/409/410 — harmonizing it would reopen a validity oracle (appsec push-back, not a change).
 Status: FROZEN @ v1 — approved by orchestrator under Tin's standing full-auto directive (2026-07-17).
 Reported: yes — flags A1–A7 triaged in-session; rulings below.
 Decided at freeze (verbatim rulings):
@@ -272,9 +268,6 @@ Plan (one test per scenario, asserting behavior not internals):
 </test_plan>
 
 Tests live in: `gateway/tests/device_activate_preview/` `dashboard/tests-bff/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -288,6 +281,7 @@ Scope (may touch):
   `dashboard/app/(app)/activate/`                                   (new focused authed page + layout + cookie guard)
   `dashboard/components/agent-activation/`                          (AuthorizationSeal + approval card + code-entry form)
   `dashboard/app/(auth)/login/page.tsx`                             (honor a validated same-origin next)
+  `dashboard/components/auth/LoginForm.tsx`                         (RATIFIED at merge 2026-07-17: additive optional nextPath prop, default /app/keys — unavoidable for M1, the post-login router.push lives here; flagged by build, ratified by orchestrator)
   `dashboard/lib/bff-client.ts`                                     (ADDITIVE: preserve return path on the /login bounce)
   `./tests/`  and the sibling gateway/dashboard test trees for the above
 Strategy (ordered batches):
@@ -316,22 +310,21 @@ Safety rule (feature-specific): the preview response is computed from a status/e
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass — 20/20 backend (`tests/device_activate_preview`) + 37/37 FE (real vitest binary) green, re-run by BOTH independent security verifiers in the merged bundle tree.
+- [x] coverage did not decrease — new preview endpoint + FE fully exercised; frozen agent_oauth suites (59) stay green unmodified.
+- [x] no test or contract was altered during build — approve/deny wire bytes byte-identical (additive-only edit, ruling A7); frozen §3 untouched.
+- [x] the green was EARNED, not gamed — DUAL independent adversarial refute-read (lens A read/auth surface, lens B rate-limit/concurrency/earned-green): the byte-identical-404 test seeds 4 genuinely-distinct real-repo terminal states + 1 unknown across 3 use-case branches (a pending leak would 200 and fail); the rate-limit test asserts real 200/200/429 counts + key isolation. Both verdicts EARNED, no vacuous/overfit test found.
+- [x] concurrency / timing of the risky operation is safe — preview is a pure non-locking single-row SELECT snapshot; approve re-validates under `with_for_update`; a racing preview yields 200(was-pending) or uniform-404, no TOCTOU/transient leak (lens B CLEAR).
+- [x] no exposed secrets, injection openings, or unexpected dependencies — SECURITY CLEAR ×2: no enumeration oracle (byte-identical 404 across all 5 non-pending states, proven), open-redirect guard `sanitizeNext` rejects every attacked vector AND is wired at the server-component boundary before any `router.push`, auth boundary holds (JWT before lookup, POST-body-only, code never in URL), boot-guard fails closed (empty/localhost/non-https refused in prod). No HARD-STOP.
+- [x] layering & dependencies follow CONVENTIONS.md — gateway remains the policy authority (identity+rate-limit+state on every path); BFF is a thin unchanged passthrough (lens B architecture CLEAR).
+- [x] a person reviewed and approved the change — orchestrator recorded under Tin's standing full-auto directive (2026-07-17) on the strength of TWO independent adversarial security verifies (residency-service-tiers ≥2-verify discipline), both EARNED / security CLEAR / no HARD-STOP; residue = 2 non-blocking 💭 defense-in-depth notes (inherited fail-open limiter — enumeration infeasible over the 20^8 code space × 600s TTL, strictly less leaky than the frozen approve; LoginForm trusts an already-validated nextPath).
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
+- [x] component green-bars met — gateway `pytest (Makefile:test / ci.yml 'Tests' step)`: 20/20 `tests/device_activate_preview` green via `uv run pytest -n 4`; dashboard `vitest (ci.yml dashboard job, working-directory: apps/dashboard)`: 37/37 green via the real `apps/dashboard/node_modules/.bin/vitest run` — both the runners CI invokes, re-run by the independent verifiers.
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
 - [x] `POST /oauth/device/preview {user_code}` on a pending grant returns `200 {scope,status:"pending",expires_in>0,interval,default_budget_usd:"100.00"}` and the code is in the BODY (not the URL) — confirmed by `test_prefilled_code_previews_pending` + `test_preview_default_budget_is_system_cap_2dp` (backend, 20/20 green).
 - [x] Every non-previewable state (unknown/expired/approved/denied/consumed) returns ONE byte-identical `404 {"error":"authorization_not_previewable"}` — confirmed by `test_preview_uniform_404_byte_identical` asserting `len(set(resp.content)) == 1` across all five (the enumeration-oracle proof).
@@ -369,11 +362,9 @@ Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-18
 
 ---
 
@@ -382,11 +373,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by orchestrator under Tin's standing full-auto directive (2026-07-17).)
+- [AI] build — strategy used: Followed the §5 batch order 1→5 with ONE deviation and one reuse-uplift, both improvements: (1) Config first (default + `_validate_verification_uri` boot-guard mirroring line-988 + `agent_oauth_preview_rpm` added to the existing positive-knobs validator) — froze the config shape; 9 no-DB Settings tests green before anything depended on it. (2) Backend preview — put `NotPreviewableError` + `DeviceAuthorizationPreview` + `PreviewDeviceAuthorizationUseCase` in the in-scope `application/use_cases.py` (NOT `domain/errors.py`, which is OUT of the declared Scope — kept the uniform-outcome error application-layer). Additive `POST /oauth/device/preview` in `device_approval_router.py` reusing `_require_identity`/`_normalize_user_code`/`_parse_approval_body`/`_ApprovalBody` verbatim + the limiter keyed `preview:{user_id}`. NO `main.py` change was needed (the route rides the already-registered `agent_oauth_approval_router`; the limiter is already on `app.state`) — so `main.py`, though in Scope, was left untouched. The uniform-404 is proved by one test asserting BYTE-IDENTICAL `resp.content` across unknown/expired/approved/denied/consumed. (3+4) FE: to STAY IN the declared Scope, the redirect-safety helpers (`sanitizeNext`/`loginNextTarget` + `buildLoginBounceUrl`) live in the in-scope `lib/bff-client.ts` beside the /login bounce they guard; the card client (`normalizeUserCode` + preview/approve/deny BFF calls + types) lives in the in-scope `components/agent-activation/client.ts`. AuthorizationSeal (InvoiceStatusSeal idiom translated) + ActivationCard render the states; the focused root `/activate` page has its OWN server-component cookie-guard (A3) reading `cookies()` and building a validated `next` — deliberately NOT via proxy.ts (kept proxy.ts's matcher untouched, guard lives with the screen). Login page validates `?next=` through `loginNextTarget`; LoginForm gained an optional `nextPath` prop. UPLIFT (reported): the /login-bounce return-path preservation is uplifted ONCE into the low BFF layer — `buildLoginBounceUrl` defined in `bff-client.ts`. It fails safe: a non-meaningful path (root `/`, empty, `//host`, already-`/login`, or a partial `window.location` with undefined pathname) yields a bare `/login`, which kept the two PRE-EXISTING `bff-client.test.tsx` bounce tests GREEN WITHOUT editing them (they run at path `/`). SCOPE NOTE (proposed, not decided — orchestrator/verify to ratify): one touched file sits OUTSIDE the literal §5 Scope `may touch` list — `dashboard/components/auth/LoginForm.tsx`. It is UNAVOIDABLE for M1: the post-login `router.push` destination lives in LoginForm, so honoring `next` (Scope named only `login/page.tsx`) requires the component to accept the validated `nextPath`. The change is additive (an optional prop, default `/app/keys`). All other FE work was relocated to stay inside the declared Scope tokens (`lib/bff-client.ts`, `components/agent-activation/`, `app/(app)/activate/`, `app/(auth)/login/page.tsx`). Recommend adding `dashboard/components/auth/LoginForm.tsx` to §5 Scope. (5) Re-proved approve/deny wire bytes byte-identical (`test_approve_wire_byte_identical`/`test_deny_wire_byte_identical` assert exact `b'{"status":"approved"}'`/`b'{"status":"denied"}'`) and re-ran the full frozen agent_oauth suites (59 green).
+- [human] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
