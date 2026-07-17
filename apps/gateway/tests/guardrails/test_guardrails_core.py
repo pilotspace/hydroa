@@ -1410,6 +1410,13 @@ async def test_guardrails_core_migration_column_exists(
     # intent unchanged. (Surfaced by the R1 pre-merge full-suite cross-task-drift check —
     # this manifest lives separately from tests/migrations EXPECTED_TABLES, so a table
     # added there does not auto-appear here; the M1/M2 lesson in action.)
+    # SANCTIONED EDIT (self-serve-checkout TASK.md §3 manifest maintenance, 2026-07-18):
+    # added checkout_sessions — additive migration b7e2c4a9f1d3, a NEW table owned by the
+    # self-serve-checkout task's own payments/ context, registered on Base.metadata via
+    # payments/infrastructure/orm.py side-effect import (same precedent as every entry
+    # above). Guardrails-core still adds no tables of its own; invariant intent unchanged.
+    # (Surfaced again by the commercial-self-serve pre-close full-suite cross-task-drift
+    # check — the same M1/M2 cross-manifest lesson.)
     new_tables = (
         await db_session.execute(
             text(
@@ -1430,7 +1437,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'invoice_corrections','credit_ledger','tenant_credit_balances',"
                 " 'seat_membership_events','tenant_region_multiplier_overrides',"
                 " 'tenant_priority_markup_overrides',"
-                " 'agent_principals','tenant_report_schedules','compliance_report_runs')"
+                " 'agent_principals','tenant_report_schedules','compliance_report_runs',"
+                " 'checkout_sessions')"
             )
         )
     ).fetchall()
