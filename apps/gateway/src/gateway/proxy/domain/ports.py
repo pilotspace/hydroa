@@ -95,6 +95,12 @@ class UsageRecordExtras(TypedDict, total=False):
       cc_agent_id        — `x-claude-code-agent-id` header value, same treatment.
       cc_parent_agent_id — `x-claude-code-parent-agent-id` header value, same
                           treatment.
+      credential_source  — provenance marker: "platform" when the request was served by
+                          the platform-fallback credential (platform-key-default TASK.md
+                          fallback-usage-marker §3), absent (≡ "byok") when served by the
+                          tenant's own key. Rides the raw JSONB extras seam ONLY-when-present
+                          (same idiom as request_id / cc_session_id — no new column). Provenance
+                          only: NEVER alters tenant_id, cost, or any spend counter.
     """
 
     team_id: uuid.UUID
@@ -115,6 +121,7 @@ class UsageRecordExtras(TypedDict, total=False):
     cc_session_id: str
     cc_agent_id: str
     cc_parent_agent_id: str
+    credential_source: str
 
 
 class ModelAccess(Enum):
@@ -535,6 +542,40 @@ class TenantCredentialResolver(Protocol):
                 or when a decrypt error propagates from the store.
                 NEVER returns a platform key as a fallback.
         """
+        ...
+
+
+@runtime_checkable
+class PlatformCredentialFallback(Protocol):
+    """Platform-tenant credential fallback capability (platform-key-default §3, FROZEN @ v1).
+
+    Injected into ``resolve_provider_credential`` as an OPTIONAL collaborator so the
+    default (None) path stays byte-identical to the frozen fail-closed seam. The seam
+    composes the fallback OUTSIDE ``TenantCredentialResolver.resolve()`` — that Protocol's
+    "NEVER returns a platform key as a fallback" invariant is intact for every other caller.
+
+    Contract:
+      - ``enabled`` is the global kill-switch (``platform_credential_fallback_enabled``),
+        read at construction. When False the seam attempts NO fallback (402, as today).
+      - ``platform_tenant_id()`` resolves the reserved ``kind='platform'`` row id, bounded
+        by a timeout; returns None if the row is not provisioned OR on any DB error/timeout
+        (fail-CLOSED). It NEVER fabricates an id.
+      - ``audit_served`` / ``audit_misconfig`` are fire-and-forget; they never raise into
+        the hot path and never carry secret material.
+    """
+
+    enabled: bool
+
+    async def platform_tenant_id(self) -> uuid.UUID | None:
+        """Return the reserved platform tenant id, or None (unprovisioned / error / timeout)."""
+        ...
+
+    async def audit_served(self, *, tenant_id: uuid.UUID, provider: str) -> None:
+        """Audit that ``tenant_id``'s ``provider`` request was served via platform fallback."""
+        ...
+
+    async def audit_misconfig(self, *, tenant_id: uuid.UUID, provider: str) -> None:
+        """Audit (error-level) that the platform tenant row is missing while fallback is ON."""
         ...
 
 

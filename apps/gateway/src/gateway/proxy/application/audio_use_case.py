@@ -69,6 +69,7 @@ from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_pre
 from gateway.proxy.domain.ports import (
     KeyAuthenticator,
     PayloadCapturePort,
+    PlatformCredentialFallback,
     TenantCredentialResolver,
     UsageRecorder,
 )
@@ -201,6 +202,7 @@ class TranscriptionUseCase:
         governance: NonChatGovernance,
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
+        platform_credential_fallback: PlatformCredentialFallback | None = None,
         max_duration_seconds: float | None = None,
         input_modality_guard_enabled: bool = False,
         authenticator: KeyAuthenticator | None = None,
@@ -214,6 +216,7 @@ class TranscriptionUseCase:
         self._guardrail_evaluator = guardrail_evaluator
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
+        self._platform_credential_fallback = platform_credential_fallback
         # stt-duration-cap §3: clamp ceiling (seconds) on the billed per_second duration.
         # None ⇒ no clamp (legacy/test-double parity); production DI injects the knob.
         self._max_duration_seconds = max_duration_seconds
@@ -347,7 +350,10 @@ class TranscriptionUseCase:
         # Resolve per-tenant provider credential into the contextvar (credential-resolution-seam
         # §3). Gated to converted providers; Bedrock/Azure skip. ProviderKeyMissing → 402.
         _cred_token = await resolve_provider_credential(
-            self._tenant_credential_resolver, authz.tenant_id, row.provider
+            self._tenant_credential_resolver,
+            authz.tenant_id,
+            row.provider,
+            platform_fallback=self._platform_credential_fallback,
         )
 
         # Call upstream STT endpoint
@@ -462,6 +468,7 @@ class SpeechUseCase:
         governance: NonChatGovernance,
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
+        platform_credential_fallback: PlatformCredentialFallback | None = None,
         max_input_characters: int = 0,
         authenticator: KeyAuthenticator | None = None,
         tenant_model_preset_store: TenantModelPresetStore | None = None,
@@ -480,6 +487,7 @@ class SpeechUseCase:
         self._payload_capture = payload_capture
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
+        self._platform_credential_fallback = platform_credential_fallback
         # tts-input-guardrails §3: per_character billing happens at-start, so an
         # unbounded `input` is a runaway-billing vector. >0 ⇒ reject over-cap input
         # at Step 2.5 (before governance/upstream/bill); 0 ⇒ disabled. Default 0
@@ -617,7 +625,10 @@ class SpeechUseCase:
         # Azure skip. The contextvar stays set across the return boundary and is reset by
         # the generator wrapper after the byte stream is consumed.
         _cred_token = await resolve_provider_credential(
-            self._tenant_credential_resolver, authz.tenant_id, row.provider
+            self._tenant_credential_resolver,
+            authz.tenant_id,
+            row.provider,
+            platform_fallback=self._platform_credential_fallback,
         )
 
         # Step 7: Fire-and-forget usage record BEFORE constructing the stream.

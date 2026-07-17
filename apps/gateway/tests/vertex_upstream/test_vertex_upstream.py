@@ -20,11 +20,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator, Callable
+from decimal import Decimal
 from typing import Any
 
 import httpx
 import pytest
 
+from gateway.catalog.domain.entities import CatalogModel
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
@@ -38,6 +40,35 @@ from gateway.proxy.infrastructure.gemini_upstream import _openai_to_gemini_reque
 from tests import _redis_env
 
 pytestmark = pytest.mark.asyncio
+
+# catalog-db-seed (decision 1, Tin-approved 2026-07-16) deleted the in-code
+# gateway.catalog.infrastructure.vertex_seed module — the DB migration
+# (versions/9cdca76231c6_model_catalog_db_seed.py) is now the sole source of
+# truth for these rows. Reconciliation: 2 of its 4 vertex CatalogModel rows,
+# transcribed verbatim (exact Decimal literals) from that migration's `_SEED`
+# list, stand in for the deleted VERTEX_SEED_MODELS import below — this test
+# only needed >=1 real provider="vertex" row to prove M10/R6 (seed rows and
+# the adapter land together), not the full 4-row set.
+_VERTEX_SEED_ROWS_SAMPLE: list[CatalogModel] = [
+    CatalogModel(
+        id="eu.gemini-2.5-flash",
+        name="Gemini 2.5 Flash (Vertex AI, EU)",
+        context_length=1_048_576,
+        prompt_usd_per_token=Decimal("0.0000003"),
+        completion_usd_per_token=Decimal("0.0000025"),
+        provider="vertex",
+        region="eu",
+    ),
+    CatalogModel(
+        id="ap.gemini-2.5-pro",
+        name="Gemini 2.5 Pro (Vertex AI, AP)",
+        context_length=1_048_576,
+        prompt_usd_per_token=Decimal("0.00000125"),
+        completion_usd_per_token=Decimal("0.00001"),
+        provider="vertex",
+        region="ap",
+    ),
+]
 
 _CRED = GoogleServiceAccountCredential(
     project_id="proj-1",
@@ -142,7 +173,6 @@ async def test_M1_vertex_adapter_registered_unconditionally() -> None:
 
 
 async def test_M10_R6_seed_rows_and_adapter_land_together() -> None:
-    from gateway.catalog.infrastructure.vertex_seed import VERTEX_SEED_MODELS
     from gateway.core.config import Settings
     from gateway.main import create_app
 
@@ -153,8 +183,11 @@ async def test_M10_R6_seed_rows_and_adapter_land_together() -> None:
         environment="test",
     )  # type: ignore[arg-type]
     app = create_app(settings)
-    vertex_rows = [m for m in VERTEX_SEED_MODELS if m.provider == "vertex"]
-    assert len(vertex_rows) >= 1, "vertex_seed.py must carry at least one provider=vertex row"
+    vertex_rows = [m for m in _VERTEX_SEED_ROWS_SAMPLE if m.provider == "vertex"]
+    assert len(vertex_rows) >= 1, (
+        "the migration's vertex seed rows (9cdca76231c6) must carry at least one "
+        "provider=vertex row"
+    )
     assert "vertex" in app.state.chat_adapters, (
         "every provider='vertex' seed row must have a corresponding _chat_adapters['vertex'] "
         "registration in the SAME diff (M10/R6)"

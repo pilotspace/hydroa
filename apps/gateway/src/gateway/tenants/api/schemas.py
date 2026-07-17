@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -7,6 +8,11 @@ class SignupRequest(BaseModel):
     tenant_name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str
+    # ADDITIVE (account-type-discriminator TASK.md §3 M2 — FROZEN @ v1): the personal|
+    # business flavor of the new tenant. Literal → pydantic rejects any other value with
+    # 422 BEFORE the use case runs (R1). Default 'business' keeps every EXISTING signup
+    # body (which omits it) byte-identical to the pre-discriminator contract.
+    account_type: Literal["personal", "business"] = "business"
 
 
 class SignupResponse(BaseModel):

@@ -38,6 +38,7 @@ from .conftest import (
     count_audit_rows,
     create_scim_token,
     create_team,
+    detach_billing_owner,
     fetch_one_audit_row,
     fetch_user_row,
     issue_jwt,
@@ -497,8 +498,14 @@ async def test_patch_immutable_path_returns_400_mutability(
 
 
 async def test_deactivated_user_cannot_login_with_password(
-    client: httpx.AsyncClient, tenant_a: dict[str, Any], scim_a: dict[str, Any]
+    client: httpx.AsyncClient,
+    tenant_a: dict[str, Any],
+    scim_a: dict[str, Any],
+    db_session: AsyncSession,
 ) -> None:
+    # billing-owner-signup-population reconciliation: detach the now-protected billing-owner
+    # pointer so the owner-under-test can be SCIM-deactivated (see conftest.detach_billing_owner).
+    await detach_billing_owner(db_session, tenant_id=tenant_a["tenant_id"])
     # Baseline: wrong-password shape, for the byte-identical comparison below.
     wrong = await login(client, email="owner-a@corp.example", password="totally-wrong-pw-1")
     assert wrong.status_code == 401
@@ -564,8 +571,14 @@ async def test_deactivated_user_cannot_login_via_oidc(
 
 
 async def test_already_issued_jwt_survives_deactivation_until_expiry(
-    client: httpx.AsyncClient, tenant_a: dict[str, Any], scim_a: dict[str, Any]
+    client: httpx.AsyncClient,
+    tenant_a: dict[str, Any],
+    scim_a: dict[str, Any],
+    db_session: AsyncSession,
 ) -> None:
+    # billing-owner-signup-population reconciliation: detach the now-protected billing-owner
+    # pointer so the owner-under-test can be SCIM-deactivated (see conftest.detach_billing_owner).
+    await detach_billing_owner(db_session, tenant_id=tenant_a["tenant_id"])
     pre_existing_jwt = tenant_a["owner_token"]
 
     deactivate = await client.patch(
@@ -674,6 +687,9 @@ async def test_deactivated_owner_cannot_mint_new_scim_token_or_key(
     still cryptographically valid and still carries role=OWNER (role is baked into the
     stateless token, deactivation is DB-side only).
     """
+    # billing-owner-signup-population reconciliation: detach the now-protected billing-owner
+    # pointer so the owner-under-test can be SCIM-deactivated (see conftest.detach_billing_owner).
+    await detach_billing_owner(db_session, tenant_id=tenant_a["tenant_id"])
     pre_existing_jwt = tenant_a["owner_token"]
 
     deactivate = await client.patch(
@@ -733,6 +749,9 @@ async def test_deactivated_owner_cannot_rotate_scim_token_or_key(
 ) -> None:
     """Same escalation-ceiling fix, rotate path: ROTATE also mints a new independently-live
     secret (and revokes the old one) — must be blocked exactly like a fresh create."""
+    # billing-owner-signup-population reconciliation: detach the now-protected billing-owner
+    # pointer so the owner-under-test can be SCIM-deactivated (see conftest.detach_billing_owner).
+    await detach_billing_owner(db_session, tenant_id=tenant_a["tenant_id"])
     pre_existing_jwt = tenant_a["owner_token"]
 
     create_key = await client.post(

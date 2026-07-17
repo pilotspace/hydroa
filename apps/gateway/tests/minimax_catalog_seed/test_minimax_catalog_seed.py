@@ -26,6 +26,57 @@ ADMIN_CATALOG_MODELS = "/admin/catalog/models"
 
 _MINIMAX_IDS = ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed")
 
+# catalog-db-seed (decision 1, Tin-approved 2026-07-16) deleted the in-code
+# gateway.catalog.infrastructure.minimax_seed module — the DB migration
+# (versions/9cdca76231c6_model_catalog_db_seed.py) is now the sole source of
+# truth for these rows. `_MINIMAX_SEED_MODELS` below is transcribed verbatim
+# (exact ids/Decimal prices) from that migration's `_SEED` list for the SAME
+# 3 ids this suite always covered — NOT imported from it, so this suite cannot
+# become a tautology against its own fixture data (same convention as
+# tests/catalog_db_seed/test_catalog_db_seed_migration.py's own independently-
+# transcribed `_EXPECTED_TOKEN_PRICES`). `static_models` is still a live,
+# optional CompositeCatalogSource constructor kwarg (§3 M6) — only main.py's
+# real-app wiring stopped defaulting it in.
+#
+# NOTE: cached_input_usd_per_token/cache_creation_usd_per_token are deliberately
+# OMITTED here — no test in this file asserts them (the original MINIMAX_SEED_MODELS-
+# backed suite never did either), and CatalogModel.cached_input_usd_per_token is
+# still typed `float | None` (a pre-existing gap this test-only reconciliation must
+# not touch — src/ is out of scope) so passing a Decimal there would be a real
+# reportArgumentType error for no assertion benefit.
+_MINIMAX_SEED_MODELS: list[CatalogModel] = [
+    CatalogModel(
+        id="MiniMax-M3",
+        name="MiniMax-M3",
+        context_length=1_000_000,
+        prompt_usd_per_token=Decimal("0.0000003"),
+        completion_usd_per_token=Decimal("0.0000012"),
+        modality="chat",
+        provider="minimax",
+        input_modalities="text",
+    ),
+    CatalogModel(
+        id="MiniMax-M2.7",
+        name="MiniMax-M2.7",
+        context_length=204_800,
+        prompt_usd_per_token=Decimal("0.0000003"),
+        completion_usd_per_token=Decimal("0.0000012"),
+        modality="chat",
+        provider="minimax",
+        input_modalities="text",
+    ),
+    CatalogModel(
+        id="MiniMax-M2.7-highspeed",
+        name="MiniMax-M2.7-highspeed",
+        context_length=204_800,
+        prompt_usd_per_token=Decimal("0.0000006"),
+        completion_usd_per_token=Decimal("0.0000024"),
+        modality="chat",
+        provider="minimax",
+        input_modalities="text",
+    ),
+]
+
 
 class _FakeSource:
     """Minimal CatalogSource-shaped double — chat + embedding model lists are configurable."""
@@ -48,12 +99,11 @@ class _FakeSource:
 
 
 def _install_composite(app: Any, fake_primary: _FakeSource) -> None:
-    """Install a CompositeCatalogSource(fake_primary, MINIMAX_SEED_MODELS) on app.state."""
+    """Install a CompositeCatalogSource(fake_primary, _MINIMAX_SEED_MODELS) on app.state."""
     from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
-    from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 
     app.state.catalog_source = CompositeCatalogSource(
-        primary=fake_primary, static_models=MINIMAX_SEED_MODELS
+        primary=fake_primary, static_models=_MINIMAX_SEED_MODELS
     )
 
 
@@ -84,12 +134,10 @@ async def _signup_and_login(
 
 
 def test_minimax_seed_models_has_three_correctly_priced_chat_entries() -> None:
-    from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
-
-    by_id = {m.id: m for m in MINIMAX_SEED_MODELS}
+    by_id = {m.id: m for m in _MINIMAX_SEED_MODELS}
     assert set(by_id) == set(_MINIMAX_IDS), f"expected exactly {_MINIMAX_IDS}, got {set(by_id)}"
 
-    for model in MINIMAX_SEED_MODELS:
+    for model in _MINIMAX_SEED_MODELS:
         assert model.modality == "chat", f"{model.id}: modality must be 'chat'"
         assert model.provider == "minimax", f"{model.id}: provider must be 'minimax'"
         assert model.input_modalities == "text", f"{model.id}: input_modalities must be 'text'"
@@ -122,7 +170,6 @@ def test_minimax_seed_models_has_three_correctly_priced_chat_entries() -> None:
 
 async def test_composite_source_chains_primary_then_minimax_seed() -> None:
     from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
-    from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 
     fake_primary = _FakeSource(
         chat_models=[
@@ -144,7 +191,7 @@ async def test_composite_source_chains_primary_then_minimax_seed() -> None:
             ),
         ]
     )
-    composite = CompositeCatalogSource(primary=fake_primary, static_models=MINIMAX_SEED_MODELS)
+    composite = CompositeCatalogSource(primary=fake_primary, static_models=_MINIMAX_SEED_MODELS)
 
     yielded = [model async for model in composite.list_models()]
 
@@ -165,7 +212,6 @@ async def test_composite_source_chains_primary_then_minimax_seed() -> None:
 
 async def test_composite_source_embeddings_delegate_to_primary_only() -> None:
     from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
-    from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 
     fake_primary = _FakeSource(
         embedding_models=[
@@ -180,7 +226,7 @@ async def test_composite_source_embeddings_delegate_to_primary_only() -> None:
             ),
         ]
     )
-    composite = CompositeCatalogSource(primary=fake_primary, static_models=MINIMAX_SEED_MODELS)
+    composite = CompositeCatalogSource(primary=fake_primary, static_models=_MINIMAX_SEED_MODELS)
 
     yielded = [model async for model in composite.list_embedding_models()]
 
@@ -197,6 +243,16 @@ async def test_composite_source_embeddings_delegate_to_primary_only() -> None:
 
 
 async def test_main_wires_composite_catalog_source(app: Any) -> None:
+    """RETIRED wiring, reconciled (catalog-db-seed, decision 1, Tin-approved
+    2026-07-16): main.py used to append MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS
+    + BEDROCK_SEED_MODELS + VERTEX_SEED_MODELS onto CompositeCatalogSource's
+    static_models kwarg. Decision 1 retires that in-code static-seed-list wiring
+    entirely — the DB migration (9cdca76231c6) is now the sole source of truth for
+    every one of those rows, and main.py no longer passes static_models at all.
+    Corrected intent: app.state.catalog_source is STILL a CompositeCatalogSource
+    wrapping OpenRouterCatalogSource, but with an EMPTY static_models — mirrors
+    tests/catalog_db_seed/test_catalog_db_seed.py::test_static_models_removed_boot_unaffected.
+    """
     from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
     from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
 
@@ -207,26 +263,9 @@ async def test_main_wires_composite_catalog_source(app: Any) -> None:
     assert isinstance(source._primary, OpenRouterCatalogSource), (  # pyright: ignore[reportPrivateUsage]
         "the wrapped primary source must still be OpenRouterCatalogSource"
     )
-    # gpt-realtime-pricing-fields TASK.md §3: main.py now appends GPT_REALTIME_SEED_MODELS
-    # after MINIMAX_SEED_MODELS in the real app's static_models wiring.
-    # region-catalog-dimension TASK.md §3: main.py now further appends
-    # BEDROCK_SEED_MODELS (6 rows: us./eu./apac. x {Sonnet v2, Haiku}) after that.
-    # vertex-adapter TASK.md §3 (DECIDED at freeze): main.py now further appends
-    # VERTEX_SEED_MODELS (4 rows: eu./ap. x {gemini-2.5-flash, gemini-2.5-pro}) after that.
-    from gateway.catalog.infrastructure.bedrock_seed import BEDROCK_SEED_MODELS
-    from gateway.catalog.infrastructure.vertex_seed import VERTEX_SEED_MODELS
-
-    assert [
-        m.id
-        for m in source._static_models  # pyright: ignore[reportPrivateUsage]
-    ] == [
-        *_MINIMAX_IDS,
-        "gpt-realtime",
-        *[m.id for m in BEDROCK_SEED_MODELS],
-        *[m.id for m in VERTEX_SEED_MODELS],
-    ], (
-        "the wrapped static_models must be "
-        "MINIMAX_SEED_MODELS + GPT_REALTIME_SEED_MODELS + BEDROCK_SEED_MODELS"
+    assert list(source._static_models) == [], (  # pyright: ignore[reportPrivateUsage]
+        "CompositeCatalogSource must be wired with NO static_models — the DB migration "
+        "is now the sole source of truth for these rows (decision 1)"
     )
 
 
@@ -384,9 +423,30 @@ async def test_full_sync_persists_minimax_rows_active_with_correct_fields(
 async def test_second_sync_does_not_deactivate_minimax_rows(
     client: httpx.AsyncClient, app: Any, db_session: AsyncSession
 ) -> None:
-    _install_composite(
-        app,
-        _FakeSource(
+    """INTENT (unchanged): a MiniMax row already in the catalog must survive a sync
+    whose incoming batch carries only OpenRouter rows.
+
+    Mechanism reconciled (catalog-db-seed, decision 1, Tin-approved 2026-07-16):
+    originally proven by keeping MiniMax OUT of the dynamic batch entirely via
+    `static_models` chaining (CompositeCatalogSource always re-appended it every
+    sync, so it was never a deactivation candidate). Now `static_models` is retired
+    from the real wiring, so the SAME guarantee is proven the way it now actually
+    holds in production — repository.sync_catalog's provider-scoped deactivation
+    (§3 M5): `provider IN (incoming_providers)` is ANDed into the WHERE, so a sync
+    whose batch carries ONLY provider='openrouter' rows can never touch a
+    provider='minimax' row, regardless of static_models.
+    """
+    from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
+
+    repo = SqlAlchemyCatalogRepository(db_session)
+    # Seed one MiniMax row directly (stands in for "already landed via the DB
+    # migration or a prior sync cycle") — active=True, provider='minimax'.
+    await repo.sync_catalog([_MINIMAX_SEED_MODELS[0]])
+
+    # A sync whose incoming batch carries ONLY provider='openrouter' rows —
+    # no minimax provider signal at all.
+    app.state.catalog_source = CompositeCatalogSource(
+        primary=_FakeSource(
             chat_models=[
                 CatalogModel(
                     id="anthropic/claude-opus-4",
@@ -397,38 +457,20 @@ async def test_second_sync_does_not_deactivate_minimax_rows(
                     provider="openrouter",
                 )
             ]
-        ),
-    )
-    assert (await client.post(SYNC)).status_code == 200
-
-    # Second sync: OpenRouter's fake feed now returns a DIFFERENT model set entirely.
-    _install_composite(
-        app,
-        _FakeSource(
-            chat_models=[
-                CatalogModel(
-                    id="anthropic/claude-sonnet-4",
-                    name="Claude Sonnet 4",
-                    context_length=200_000,
-                    prompt_usd_per_token=Decimal("3e-6"),
-                    completion_usd_per_token=Decimal("15e-6"),
-                    provider="openrouter",
-                )
-            ]
-        ),
-    )
-    assert (await client.post(SYNC)).status_code == 200
-
-    rows = (
-        await db_session.execute(
-            text("SELECT id, active FROM models WHERE id = ANY(:ids)"),
-            {"ids": list(_MINIMAX_IDS)},
         )
-    ).all()
-    by_id = {r.id: r.active for r in rows}
-    assert set(by_id) == set(_MINIMAX_IDS)
-    assert all(active is True for active in by_id.values()), (
-        f"MiniMax rows must survive a second sync with a different OpenRouter feed: {by_id}"
+    )
+    assert (await client.post(SYNC)).status_code == 200
+
+    row = (
+        await db_session.execute(
+            text("SELECT active, provider FROM models WHERE id = :mid"),
+            {"mid": _MINIMAX_SEED_MODELS[0].id},
+        )
+    ).one()
+    assert row.provider == "minimax"
+    assert row.active is True, (
+        "a provider='minimax' row must survive a sync batch carrying only "
+        "provider='openrouter' rows (provider-scoped deactivation, §3 M5)"
     )
 
 

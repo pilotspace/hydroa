@@ -16,8 +16,8 @@ from gateway.scim.infrastructure.orm import ScimTokenRow
 from gateway.teams.infrastructure.orm import TeamMemberRow
 from gateway.tenants.application.entitlements import assert_seat_available
 from gateway.tenants.domain.entities import Role, User
-from gateway.tenants.domain.errors import SeatCapExceededError
-from gateway.tenants.infrastructure.orm import SeatMembershipEventRow, UserRow
+from gateway.tenants.domain.errors import LastBillingOwnerError, SeatCapExceededError
+from gateway.tenants.infrastructure.orm import SeatMembershipEventRow, TenantRow, UserRow
 
 # SCIM-provisioned users are never authenticatable by password (M3) — a distinct
 # sentinel from SSO's own SSO_PASSWORD_HASH_SENTINEL so audit/debugging can tell
@@ -285,6 +285,20 @@ class SqlAlchemyScimUserRepository:
             # repeated PATCH never misrepresents a second deactivation as new state.
             return _user_row_to_entity(row), False
 
+        if not active:
+            # billing-owner-of-record TASK.md §3 M3/M4 — HOOK 2: lock the tenants row FOR
+            # UPDATE (SAME shape as HOOK 1's lock, same transaction as the UserRow lock
+            # above — serializes the R9 race) and reject deactivating the tenant's CURRENT
+            # billing owner. Never reached for a no-op repeat (the already_at_target
+            # return above) or a reactivation (active=True).
+            billing_owner_user_id = await self.lock_and_get_billing_owner_user_id(
+                tenant_id=tenant_id
+            )
+            if user_id == billing_owner_user_id:
+                raise LastBillingOwnerError(
+                    f"User {user_id} is tenant {tenant_id}'s billing owner; cannot deactivate"
+                )
+
         flip_instant = datetime.now(UTC)
         row.deactivated_at = None if active else flip_instant
         if not active:
@@ -313,3 +327,17 @@ class SqlAlchemyScimUserRepository:
         await self._session.commit()
         await self._session.refresh(row)
         return _user_row_to_entity(row), True
+
+    async def lock_and_get_billing_owner_user_id(self, *, tenant_id: uuid.UUID) -> uuid.UUID | None:
+        """``SELECT billing_owner_user_id FROM tenants WHERE id=:t FOR UPDATE`` — the
+        SAME-shaped lock as ``UserRoleRepository.lock_and_get_billing_owner_user_id``
+        (billing-owner-of-record TASK.md §3 M4), called from ``set_active`` in the SAME
+        transaction as its own target-user lock.
+        """
+        return (
+            await self._session.execute(
+                select(TenantRow.billing_owner_user_id)
+                .where(TenantRow.id == tenant_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()

@@ -11,7 +11,12 @@ from gateway.core.ids import uuid7
 from gateway.tenants.application.entitlements import assert_seat_available
 from gateway.tenants.domain.entities import Role, User
 from gateway.tenants.domain.errors import EmailAlreadyRegisteredError, SeatCapExceededError
-from gateway.tenants.infrastructure.orm import SeatMembershipEventRow, TenantRow, UserRow
+from gateway.tenants.infrastructure.orm import (
+    PlanRow,
+    SeatMembershipEventRow,
+    TenantRow,
+    UserRow,
+)
 
 
 async def get_platform_tenant(session: AsyncSession) -> TenantRow | None:
@@ -67,10 +72,23 @@ class SqlAlchemyIdentityRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def get_plan_id_by_name(self, name: str) -> uuid.UUID | None:
+        # account-type-discriminator TASK.md §3 (FROZEN @ v1): plans are seed-only; `name`
+        # is UNIQUE, so scalar_one_or_none never sees a multi-row result.
+        return (
+            await self._session.execute(select(PlanRow.id).where(PlanRow.name == name))
+        ).scalar_one_or_none()
+
     async def create_tenant_with_owner(
-        self, *, tenant_name: str, email: str, password_hash: str
+        self,
+        *,
+        tenant_name: str,
+        email: str,
+        password_hash: str,
+        account_type: str = "business",
+        plan_id: uuid.UUID | None = None,
     ) -> tuple[uuid.UUID, uuid.UUID]:
-        tenant = TenantRow(id=uuid7(), name=tenant_name)
+        tenant = TenantRow(id=uuid7(), name=tenant_name, account_type=account_type, plan_id=plan_id)
         user = UserRow(
             id=uuid7(),
             tenant_id=tenant.id,
@@ -78,11 +96,31 @@ class SqlAlchemyIdentityRepository:
             password_hash=password_hash,
             role=Role.OWNER,
         )
+        # account-type-discriminator TASK.md §3 (FROZEN @ v1): the caller resolves plan_id
+        # via get_plan_id_by_name (a SELECT) BEFORE calling us — SQLAlchemy's AsyncSession
+        # autobegin means that read already opened an implicit transaction, so our explicit
+        # begin() below would raise "A transaction is already begun on this Session." Close
+        # the read-only lookup's transaction first (a no-op when none is open) — mirrors
+        # router.signup's own documented rollback for this exact autobegin trap.
+        await self._session.rollback()
         try:
             # Safety rule (TASK §5): both inserts in ONE transaction — or neither.
             async with self._session.begin():
                 self._session.add(tenant)
                 self._session.add(user)
+                # billing-owner-signup-population TASK.md §3 (FROZEN @ v1): stamp the founding
+                # OWNER as the tenant's billing-owner-of-record so a fresh tenant is never left
+                # with billing_owner_user_id NULL (the parent billing-owner-of-record task
+                # backfilled only EXISTING tenants). The tenants<->users FK is circular
+                # (users.tenant_id -> tenants.id AND tenants.billing_owner_user_id -> users.id),
+                # so the pointer CANNOT be set at INSERT time — the referenced user row does not
+                # exist yet, and use_alter is DDL-only (runtime FK checks still fire). Flush both
+                # INSERTs first (tenants inserts before users; the tenants->users FK is excluded
+                # from the sort by use_alter), THEN assign — the dirty column flushes as a
+                # cycle-breaking UPDATE on commit, after the user row exists. Mirrors
+                # join_verified_tenant_domain's own flush-before-dependent-write idiom.
+                await self._session.flush()
+                tenant.billing_owner_user_id = user.id
         except IntegrityError as exc:
             raise EmailAlreadyRegisteredError from exc
         return tenant.id, user.id

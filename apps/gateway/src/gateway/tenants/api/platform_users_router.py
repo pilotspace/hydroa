@@ -50,14 +50,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.audit.application.platform_audit import emit_platform_audit
 from gateway.core.db import get_session
-from gateway.core.error_catalog import PAYLOAD_INVALID, TENANT_NOT_FOUND, USER_NOT_FOUND
+from gateway.core.error_catalog import (
+    LAST_BILLING_OWNER,
+    PAYLOAD_INVALID,
+    TENANT_NOT_FOUND,
+    USER_NOT_FOUND,
+)
 from gateway.tenants.application.users_use_cases import (
     AssignUserRoleUseCase,
     ListTenantUsersUseCase,
 )
 from gateway.tenants.domain.authz import authorize_tenant_scope, require_superadmin
 from gateway.tenants.domain.entities import Identity, Role
-from gateway.tenants.domain.errors import EscalationForbiddenError, UserNotFoundError
+from gateway.tenants.domain.errors import (
+    EscalationForbiddenError,
+    LastBillingOwnerError,
+    UserNotFoundError,
+)
 from gateway.tenants.infrastructure.repository import get_tenant_by_id
 from gateway.tenants.infrastructure.users_repository import UserRoleRepository
 
@@ -202,6 +211,11 @@ async def assign_platform_tenant_user_role(
         raise AUTH_FORBIDDEN.exc() from None
     except UserNotFoundError:
         raise USER_NOT_FOUND.exc() from None
+    except LastBillingOwnerError:
+        # billing-owner-of-record TASK.md §3 (R8): identical to self-service's own
+        # rejection — confirms AssignUserRoleUseCase's single hook point covers this
+        # superadmin cross-tenant surface too, no bypass.
+        raise LAST_BILLING_OWNER.exc() from None
 
     # NOTE (verified during admin-console-audit's own build — see TASK.md §7 OBSERVE): this
     # comment previously claimed UserRoleRepository.update_role only calls session.flush(),

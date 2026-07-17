@@ -55,6 +55,12 @@ class FakeCatalogModel:
     # region-catalog-dimension TASK.md §3: CatalogModel.region is now read by
     # _upsert_model too; mirror its real default so this suite is unaffected.
     region: str = "global"
+    # catalog-db-seed TASK.md §3 (FROZEN @ v1): CatalogModel.cache_creation_usd_per_token/
+    # .pricing_unit/.unit_usd_per_unit are now read by _insert_snapshot too; mirror their
+    # real defaults so this suite is unaffected.
+    cache_creation_usd_per_token: float | None = None
+    pricing_unit: str = "per_token"
+    unit_usd_per_unit: float | None = None
 
 
 class FakeCatalogSource:

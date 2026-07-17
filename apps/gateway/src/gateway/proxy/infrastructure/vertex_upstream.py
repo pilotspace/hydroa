@@ -75,8 +75,8 @@ class VertexRegionUnresolvedError(Exception):
 
     §1 R4 (vertex-adapter TASK.md, DECIDED at freeze) — ``ERR_VERTEX_REGION_UNRESOLVED``.
     This is meant to be UNREACHABLE in a correctly-seeded catalog (every
-    ``VERTEX_SEED_MODELS`` row's id is prefixed by construction — M10/R6 guards that a
-    seed row never ships without a matching adapter, and this guards the inverse: the
+    DB-seeded ``provider="vertex"`` row's id is prefixed by construction — M10/R6 guards
+    that a seed row never ships without a matching adapter, and this guards the inverse: the
     adapter never silently guesses a location for an id it doesn't recognize). Raised
     BEFORE any HTTP call — no token mint, no Vertex dial — fail-closed, never a default
     location (a residency feature routing to the wrong GCP region is the worst failure

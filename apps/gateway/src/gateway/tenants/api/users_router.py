@@ -26,14 +26,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.audit.application.audit_writer import record_audit
 from gateway.audit.domain.audit_event import AuditEvent
 from gateway.core.db import get_session
-from gateway.core.error_catalog import AUTH_FORBIDDEN, PAYLOAD_INVALID, USER_NOT_FOUND
+from gateway.core.error_catalog import (
+    AUTH_FORBIDDEN,
+    LAST_BILLING_OWNER,
+    PAYLOAD_INVALID,
+    USER_NOT_FOUND,
+)
 from gateway.tenants.application.users_use_cases import (
     AssignUserRoleUseCase,
     ListTenantUsersUseCase,
 )
 from gateway.tenants.domain.authz import Permission, require_permission
 from gateway.tenants.domain.entities import Identity, Role
-from gateway.tenants.domain.errors import EscalationForbiddenError, UserNotFoundError
+from gateway.tenants.domain.errors import (
+    EscalationForbiddenError,
+    LastBillingOwnerError,
+    UserNotFoundError,
+)
 from gateway.tenants.infrastructure.users_repository import UserRoleRepository
 
 users_router = APIRouter(prefix="/admin/users", tags=["users"])
@@ -145,6 +154,8 @@ async def assign_user_role(
         raise AUTH_FORBIDDEN.exc() from None
     except UserNotFoundError:
         raise USER_NOT_FOUND.exc() from None
+    except LastBillingOwnerError:
+        raise LAST_BILLING_OWNER.exc() from None
 
     # Audit — fire-and-forget, fail-open
     asyncio.ensure_future(  # noqa: RUF006

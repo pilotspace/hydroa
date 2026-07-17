@@ -52,6 +52,24 @@ async def login(client: httpx.AsyncClient, *, email: str, password: str) -> http
     return await client.post("/admin/auth/login", json={"email": email, "password": password})
 
 
+async def detach_billing_owner(db_session: AsyncSession, *, tenant_id: uuid.UUID) -> None:
+    """Reconciliation for billing-owner-signup-population (TASK.md §6): signup now stamps
+    the founding OWNER as the tenant's billing-owner-of-record, and billing-owner-of-record
+    HOOK 2 refuses to SCIM-deactivate a billing owner (409 ERR_LAST_BILLING_OWNER). These
+    deactivation-MECHANICS tests target the owner user precisely because it is the only
+    password-backed / privileged user the fixture provides — so first move the now-protected
+    pointer out of the way (NULL is a valid 'unresolved billing owner' state the parent task
+    explicitly supports, GetBillingOwnerUseCase -> None). The deactivation machinery under
+    test (JWT survival, login rejection, stale-JWT-can't-mint) is entirely unchanged; only the
+    guard's precondition is removed so the mechanics remain observable. Intent preserved, not
+    weakened — the tenant still has exactly one OWNER; it simply is not the billing owner here."""
+    await db_session.execute(
+        text("UPDATE tenants SET billing_owner_user_id = NULL WHERE id = :tid"),
+        {"tid": tenant_id},
+    )
+    await db_session.commit()
+
+
 def issue_jwt(
     app: Any, *, role: Role, tenant_id: uuid.UUID, user_id: uuid.UUID | None = None
 ) -> str:

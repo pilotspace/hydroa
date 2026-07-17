@@ -7,12 +7,28 @@ from gateway.tenants.domain.entitlements import ResolvedEntitlements
 
 class IdentityRepository(Protocol):
     async def create_tenant_with_owner(
-        self, *, tenant_name: str, email: str, password_hash: str
+        self,
+        *,
+        tenant_name: str,
+        email: str,
+        password_hash: str,
+        account_type: str = "business",
+        plan_id: uuid.UUID | None = None,
     ) -> tuple[uuid.UUID, uuid.UUID]:
         """Create tenant + owner atomically; returns (tenant_id, user_id).
 
         Raises EmailAlreadyRegisteredError; on any failure neither row persists.
+
+        ADDITIVE (account-type-discriminator TASK.md §3 — FROZEN @ v1): account_type
+        (personal|business, default 'business' keeps every EXISTING call site
+        byte-identical) and plan_id (the personal tier lands on the seeded `individual`
+        plan; None for business — unplanned as today) are set on the new TenantRow.
         """
+        ...
+
+    async def get_plan_id_by_name(self, name: str) -> uuid.UUID | None:
+        """ADDITIVE (account-type-discriminator TASK.md §3 — FROZEN @ v1): resolve a
+        seed plan's id by its UNIQUE name (e.g. 'individual'); None if absent."""
         ...
 
     async def get_user_by_email(self, email: str) -> User | None: ...

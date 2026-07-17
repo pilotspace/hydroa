@@ -49,6 +49,7 @@ from gateway.proxy.domain.model_presets import TenantModelPresetStore, parse_pre
 from gateway.proxy.domain.ports import (
     KeyAuthenticator,
     PayloadCapturePort,
+    PlatformCredentialFallback,
     TenantCredentialResolver,
     UsageRecorder,
 )
@@ -64,6 +65,7 @@ class ImagesUseCase:
         governance: NonChatGovernance,
         session: AsyncSession,
         tenant_credential_resolver: TenantCredentialResolver | None = None,
+        platform_credential_fallback: PlatformCredentialFallback | None = None,
         authenticator: KeyAuthenticator | None = None,
         tenant_model_preset_store: TenantModelPresetStore | None = None,
         guardrail_evaluator: Any = None,
@@ -81,6 +83,7 @@ class ImagesUseCase:
         self._payload_capture = payload_capture
         # credential-resolution-seam §3: None ⇒ resolver not wired (legacy/test).
         self._tenant_credential_resolver = tenant_credential_resolver
+        self._platform_credential_fallback = platform_credential_fallback
         # preset-resolution-ingress (v56 §3): both None (defaults) ⇒ feature off ⇒
         # execute() is byte-identical (no resolve() call, no rewrite). `authenticator`
         # is the SAME KeyAuthenticator instance the DI factory already builds and wraps
@@ -193,7 +196,10 @@ class ImagesUseCase:
         # (credential-resolution-seam §3). Gated to converted providers; Bedrock/Azure skip
         # (env-bound, task 3). ProviderKeyMissing → ProblemError(402). Reset in finally.
         _cred_token = await resolve_provider_credential(
-            self._tenant_credential_resolver, authz.tenant_id, row.provider
+            self._tenant_credential_resolver,
+            authz.tenant_id,
+            row.provider,
+            platform_fallback=self._platform_credential_fallback,
         )
 
         # Step 6: Call upstream

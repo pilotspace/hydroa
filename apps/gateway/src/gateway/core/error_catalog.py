@@ -149,6 +149,17 @@ SIGNUP_INVITE_ONLY = ErrorSpec(
     "Public signup is disabled; ask an existing member for an invite",
 )
 
+#: A personal (account_type='personal') signup could not be provisioned because the
+#: seeded ``free`` plan is absent (seed migration not run) — a server-side
+#: misconfiguration, never the caller's fault. Fail-closed 500 (account-type-discriminator
+#: TASK.md §3 R3, repointed by plan-tiers-and-base-fee TASK.md §3 M3 — code/shape
+#: UNCHANGED): a personal tenant is NEVER silently created unplanned.
+SIGNUP_PLAN_UNPROVISIONED = ErrorSpec(
+    500,
+    "ERR_SIGNUP_PLAN_UNPROVISIONED",
+    "Personal signup is temporarily unavailable; the free plan is not provisioned",
+)
+
 # ---------------------------------------------------------------------------
 # Model errors
 # ---------------------------------------------------------------------------
@@ -1223,4 +1234,30 @@ NO_ELIGIBLE_ANTHROPIC_CANDIDATE = ErrorSpec(
     "ERR_NO_ELIGIBLE_ANTHROPIC_CANDIDATE",
     "No Anthropic candidate available for '{model_id}' and allow_non_claude_failover is not "
     "enabled for this tenant",
+)
+
+# ---------------------------------------------------------------------------
+# Billing owner of record (billing-owner-of-record TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: A role-change (PUT /admin/users/{id}/role, including the superadmin cross-tenant
+#: variant) or a deactivation (SCIM PATCH active:false / DELETE alias) targeted the
+#: tenant's CURRENT billing_owner_user_id with a write that would leave it non-billing-
+#: capable or inactive (R1/R2/R8/R9). Also used verbatim (RFC 9457 shape) on the
+#: otherwise-RFC-7644 /scim/v2/* surface — a deliberate, documented exception (§3
+#: CONTRACT), since this is the SAME invariant/code as the self-service and superadmin
+#: role-change paths.
+LAST_BILLING_OWNER = ErrorSpec(
+    409,
+    "ERR_LAST_BILLING_OWNER",
+    "The last billing-capable owner cannot be demoted or deactivated — designate another "
+    "billing owner first",
+)
+
+#: PUT /admin/billing-owner — target is not an ACTIVE, billing-capable
+#: ({owner, billing_admin}) member of the caller's own tenant (R3/R4).
+BILLING_OWNER_INELIGIBLE = ErrorSpec(
+    422,
+    "ERR_BILLING_OWNER_INELIGIBLE",
+    "Target user must be an active, billing-capable (owner or billing_admin) member of this tenant",
 )
