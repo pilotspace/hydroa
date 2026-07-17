@@ -76,7 +76,7 @@ export function BatchesStatsPage() {
                 An honest $0.00 until real batch traffic has been priced.
               </p>
             </div>
-            <div className="max-w-[260px] rounded-lg border border-accent-soft-border bg-accent-soft px-3 py-2 text-xs text-primary">
+            <div className="max-w-[260px] rounded-lg border border-accent-soft-border bg-accent-soft px-3 py-2 text-xs text-accent-soft-foreground">
               $0.00 is accurate today — real batch traffic hasn&apos;t been priced yet. This
               number updates itself once it has, no page change needed.
             </div>

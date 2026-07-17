@@ -1,11 +1,11 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "billing-owner-signup-population",
-  "active_milestone": "account-tiers-billing",
+  "active_task": "airier-theme-restyle",
+  "active_milestone": "dashboard-hallmark-restyle",
   "tasks": {
     "ai-feature-pages-redesign": {
-      "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
+      "title": "Redesign AI-feature pages (chat·voice·memory·artifacts·vision·video) to the refreshed standard",
       "phase": "specify",
       "gate": "none",
       "milestone": null,
@@ -48,7 +48,7 @@
         "history": [
           {
             "at": "2026-07-02T04:28:00+00:00",
-            "reason": "scope_violation: task 'stream-alias-billing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/0.15.16/12422214373305498066 \u00b7 apps/gateway/.ruff_cache/0.15.16/6998441178905840490 \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/tests/stream_alias_billing/conftest.py \u00b7 apps/gateway/tests/stream_alias_billing/test_stream_alias_billing.py (6 total)",
+            "reason": "scope_violation: task 'stream-alias-billing' touched outside its declared §5 Scope — apps/gateway/.ruff_cache/0.15.16/12422214373305498066 · apps/gateway/.ruff_cache/0.15.16/6998441178905840490 · apps/gateway/src/gateway/proxy/application/use_cases.py · apps/gateway/tests/stream_alias_billing/conftest.py · apps/gateway/tests/stream_alias_billing/test_stream_alias_billing.py (6 total)",
             "source": "scope"
           }
         ]
@@ -60,7 +60,7 @@
       }
     },
     "platform-tenant-directory": {
-      "title": "Platform tenant directory \u2014 superadmin list/search/view any tenant",
+      "title": "Platform tenant directory — superadmin list/search/view any tenant",
       "phase": "done",
       "gate": "PASS",
       "milestone": "platform-admin-console",
@@ -121,12 +121,12 @@
         "history": [
           {
             "at": "2026-07-03T08:29:02+00:00",
-            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (9 total)",
+            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared §5 Scope — apps/gateway/.coverage · apps/gateway/.pytest_cache/v/cache/lastfailed · apps/gateway/.pytest_cache/v/cache/nodeids · apps/gateway/.ruff_cache/0.15.16/14635141089677618222 · apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (9 total)",
             "source": "scope"
           },
           {
             "at": "2026-07-03T08:29:46+00:00",
-            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (34 total)",
+            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared §5 Scope — apps/gateway/.coverage · apps/gateway/.pytest_cache/.gitignore · apps/gateway/.pytest_cache/CACHEDIR.TAG · apps/gateway/.pytest_cache/README.md · apps/gateway/.pytest_cache/v/cache/lastfailed (34 total)",
             "source": "scope"
           }
         ]
@@ -233,7 +233,7 @@
       }
     },
     "admin-console-ui": {
-      "title": "Platform admin console \u2014 dashboard UI (directory + tenant detail)",
+      "title": "Platform admin console — dashboard UI (directory + tenant detail)",
       "phase": "done",
       "gate": "PASS",
       "milestone": "platform-admin-console",
@@ -322,7 +322,7 @@
       }
     },
     "plan-catalog": {
-      "title": "Plan/tier data model \u2014 resolves platform-tenant-backed-usage scope",
+      "title": "Plan/tier data model — resolves platform-tenant-backed-usage scope",
       "phase": "done",
       "gate": "PASS",
       "milestone": "platform-access-plan",
@@ -532,7 +532,7 @@
         "history": [
           {
             "at": "2026-07-05T05:59:58+00:00",
-            "reason": "scope_violation: task 'impersonation-live-session-guard' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (3 total)",
+            "reason": "scope_violation: task 'impersonation-live-session-guard' touched outside its declared §5 Scope — apps/gateway/.coverage · apps/gateway/.pytest_cache/v/cache/lastfailed · apps/gateway/.pytest_cache/v/cache/nodeids (3 total)",
             "source": "scope"
           }
         ]
@@ -585,12 +585,12 @@
         "history": [
           {
             "at": "2026-07-05T04:50:03+00:00",
-            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/platform/plans/page.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanCatalog.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanTab.tsx \u00b7 apps/dashboard/components/platform/PlatformTenantDetail.tsx \u00b7 apps/dashboard/components/ui/app-shell.tsx (10 total)",
+            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared §5 Scope — apps/dashboard/app/(app)/app/platform/plans/page.tsx · apps/dashboard/components/platform/PlatformPlanCatalog.tsx · apps/dashboard/components/platform/PlatformPlanTab.tsx · apps/dashboard/components/platform/PlatformTenantDetail.tsx · apps/dashboard/components/ui/app-shell.tsx (10 total)",
             "source": "scope"
           },
           {
             "at": "2026-07-05T04:53:47+00:00",
-            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/platform/plans/page.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanCatalog.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanTab.tsx \u00b7 apps/dashboard/components/platform/PlatformTenantDetail.tsx \u00b7 apps/dashboard/components/ui/app-shell.tsx (10 total)",
+            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared §5 Scope — apps/dashboard/app/(app)/app/platform/plans/page.tsx · apps/dashboard/components/platform/PlatformPlanCatalog.tsx · apps/dashboard/components/platform/PlatformPlanTab.tsx · apps/dashboard/components/platform/PlatformTenantDetail.tsx · apps/dashboard/components/ui/app-shell.tsx (10 total)",
             "source": "scope"
           }
         ]
@@ -708,7 +708,7 @@
         "history": [
           {
             "at": "2026-07-14T07:39:24+00:00",
-            "reason": "scope_violation: task 'art12-record-keeping-preset' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/components/agents/AgentIdentityCard.tsx \u00b7 apps/dashboard/components/agents/AgentsConsolePage.tsx \u00b7 apps/dashboard/components/agents/CreateAgentDialog.tsx \u00b7 apps/dashboard/components/agents/ManageTokensDialog.tsx (86 total)",
+            "reason": "scope_violation: task 'art12-record-keeping-preset' touched outside its declared §5 Scope — apps/dashboard/app/(app)/app/agents/page.tsx · apps/dashboard/components/agents/AgentIdentityCard.tsx · apps/dashboard/components/agents/AgentsConsolePage.tsx · apps/dashboard/components/agents/CreateAgentDialog.tsx · apps/dashboard/components/agents/ManageTokensDialog.tsx (86 total)",
             "source": "scope"
           }
         ]
@@ -795,7 +795,7 @@
         "history": [
           {
             "at": "2026-07-14T07:39:26+00:00",
-            "reason": "scope_violation: task 'ai-act-marketing-page' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/components/agents/AgentIdentityCard.tsx \u00b7 apps/dashboard/components/agents/AgentsConsolePage.tsx \u00b7 apps/dashboard/components/agents/CreateAgentDialog.tsx \u00b7 apps/dashboard/components/agents/ManageTokensDialog.tsx (86 total)",
+            "reason": "scope_violation: task 'ai-act-marketing-page' touched outside its declared §5 Scope — apps/dashboard/app/(app)/app/agents/page.tsx · apps/dashboard/components/agents/AgentIdentityCard.tsx · apps/dashboard/components/agents/AgentsConsolePage.tsx · apps/dashboard/components/agents/CreateAgentDialog.tsx · apps/dashboard/components/agents/ManageTokensDialog.tsx (86 total)",
             "source": "scope"
           }
         ]
@@ -838,7 +838,7 @@
         "history": [
           {
             "at": "2026-07-14T07:39:10+00:00",
-            "reason": "scope_violation: task 'anthropic-messages-ingress' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/app/(marketing)/ai-act-readiness/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/ai-act-compliance/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/page.tsx \u00b7 apps/dashboard/app/(marketing)/pricing/page.tsx (143 total)",
+            "reason": "scope_violation: task 'anthropic-messages-ingress' touched outside its declared §5 Scope — apps/dashboard/app/(app)/app/agents/page.tsx · apps/dashboard/app/(marketing)/ai-act-readiness/page.tsx · apps/dashboard/app/(marketing)/docs/ai-act-compliance/page.tsx · apps/dashboard/app/(marketing)/docs/page.tsx · apps/dashboard/app/(marketing)/pricing/page.tsx (143 total)",
             "source": "scope"
           }
         ]
@@ -939,7 +939,7 @@
         "history": [
           {
             "at": "2026-07-14T07:39:13+00:00",
-            "reason": "scope_violation: task 'agent-identity-governance' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/app/(marketing)/ai-act-readiness/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/ai-act-compliance/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/page.tsx \u00b7 apps/dashboard/app/(marketing)/pricing/page.tsx (103 total)",
+            "reason": "scope_violation: task 'agent-identity-governance' touched outside its declared §5 Scope — apps/dashboard/app/(app)/app/agents/page.tsx · apps/dashboard/app/(marketing)/ai-act-readiness/page.tsx · apps/dashboard/app/(marketing)/docs/ai-act-compliance/page.tsx · apps/dashboard/app/(marketing)/docs/page.tsx · apps/dashboard/app/(marketing)/pricing/page.tsx (103 total)",
             "source": "scope"
           }
         ]
@@ -993,7 +993,7 @@
         "history": [
           {
             "at": "2026-07-14T07:39:16+00:00",
-            "reason": "scope_violation: task 'claude-gateway-protocol-compat' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/components/agents/AgentIdentityCard.tsx \u00b7 apps/dashboard/components/agents/AgentsConsolePage.tsx \u00b7 apps/dashboard/components/agents/CreateAgentDialog.tsx \u00b7 apps/dashboard/components/agents/ManageTokensDialog.tsx (77 total)",
+            "reason": "scope_violation: task 'claude-gateway-protocol-compat' touched outside its declared §5 Scope — apps/dashboard/app/(app)/app/agents/page.tsx · apps/dashboard/components/agents/AgentIdentityCard.tsx · apps/dashboard/components/agents/AgentsConsolePage.tsx · apps/dashboard/components/agents/CreateAgentDialog.tsx · apps/dashboard/components/agents/ManageTokensDialog.tsx (77 total)",
             "source": "scope"
           }
         ]
@@ -1101,7 +1101,7 @@
         "history": [
           {
             "at": "2026-07-14T07:39:21+00:00",
-            "reason": "scope_violation: task 'agents-console' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/components/compliance/BundleEvidenceSeal.tsx \u00b7 apps/dashboard/components/compliance/ComplianceReportCenter.tsx \u00b7 apps/dashboard/components/compliance/GeneratedReportsList.tsx \u00b7 apps/dashboard/components/compliance/ScheduleControl.tsx \u00b7 apps/dashboard/components/settings/SettingsPage.tsx (51 total)",
+            "reason": "scope_violation: task 'agents-console' touched outside its declared §5 Scope — apps/dashboard/components/compliance/BundleEvidenceSeal.tsx · apps/dashboard/components/compliance/ComplianceReportCenter.tsx · apps/dashboard/components/compliance/GeneratedReportsList.tsx · apps/dashboard/components/compliance/ScheduleControl.tsx · apps/dashboard/components/settings/SettingsPage.tsx (51 total)",
             "source": "scope"
           }
         ]
@@ -1322,15 +1322,41 @@
         "history": [
           {
             "at": "2026-07-16T09:43:42+00:00",
-            "reason": "scope_violation: task 'billing-owner-signup-population' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (11 total)",
+            "reason": "scope_violation: task 'billing-owner-signup-population' touched outside its declared §5 Scope — apps/gateway/.pytest_cache/.gitignore · apps/gateway/.pytest_cache/CACHEDIR.TAG · apps/gateway/.pytest_cache/README.md · apps/gateway/.pytest_cache/v/cache/lastfailed · apps/gateway/.pytest_cache/v/cache/nodeids (11 total)",
             "source": "scope"
           },
           {
             "at": "2026-07-16T09:44:11+00:00",
-            "reason": "scope_violation: task 'billing-owner-signup-population' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (11 total)",
+            "reason": "scope_violation: task 'billing-owner-signup-population' touched outside its declared §5 Scope — apps/gateway/.pytest_cache/.gitignore · apps/gateway/.pytest_cache/CACHEDIR.TAG · apps/gateway/.pytest_cache/README.md · apps/gateway/.pytest_cache/v/cache/lastfailed · apps/gateway/.pytest_cache/v/cache/nodeids (11 total)",
             "source": "scope"
           }
         ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "airier-theme-restyle": {
+      "title": "Airier theme restyle — fonts, token palette (light+dark), raw-color sweep, AA contrast",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "dashboard-hallmark-restyle",
+      "depends_on": [],
+      "created": "2026-07-17T06:36:43+00:00",
+      "updated": "2026-07-17T06:41:41+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "57b824dd621fabb49bb621d895ae6a40",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/",
+          "apps/dashboard/components/"
+        ],
+        "snapshot_md5": "29415532973f43322292b158ca510611"
       },
       "gate_actor": {
         "name": "Tin Dang",
@@ -1381,7 +1407,7 @@
     },
     "v58": {
       "title": "Batch-discounted chat completions: provider integration",
-      "goal": "a tenant can process a set of chat-completion requests as one discounted batch job instead of many synchronous calls, with the existing response cache still applied per item \u2014 real OpenAI/Anthropic Batch API submission, cache pre-filtering, and batch-discount billing",
+      "goal": "a tenant can process a set of chat-completion requests as one discounted batch job instead of many synchronous calls, with the existing response cache still applied per item — real OpenAI/Anthropic Batch API submission, cache pre-filtering, and batch-discount billing",
       "stage": "production",
       "status": "queued",
       "created": "2026-07-03T16:30:16+00:00",
@@ -1389,7 +1415,7 @@
     },
     "team-member-invite": {
       "title": "Team Member Invite",
-      "goal": "A tenant owner/admin can invite a new colleague by email into their own tenant with a chosen role, and that colleague can accept the invite and set their own password \u2014 without requiring SSO/domain-mapping to be configured",
+      "goal": "A tenant owner/admin can invite a new colleague by email into their own tenant with a chosen role, and that colleague can accept the invite and set their own password — without requiring SSO/domain-mapping to be configured",
       "stage": "production",
       "status": "done",
       "created": "2026-07-03T16:21:50+00:00",
@@ -1401,7 +1427,7 @@
       }
     },
     "agent-gateway-v1": {
-      "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
+      "title": "Agent-era gateway — MCP governance, tool metering, Messages ingress",
       "goal": "",
       "stage": "mvp",
       "status": "done",
@@ -1428,7 +1454,7 @@
     },
     "account-tiers-billing": {
       "title": "Account tiers & billing: personal/individual + business/enterprise base fee + payer of record",
-      "goal": "Hydroa sells differentiated subscription tiers \u2014 a personal/individual plan and business/enterprise plans with a recurring base fee \u2014 with all payment attributed to one designated billing owner per tenant",
+      "goal": "Hydroa sells differentiated subscription tiers — a personal/individual plan and business/enterprise plans with a recurring base fee — with all payment attributed to one designated billing owner per tenant",
       "stage": "production",
       "status": "active",
       "created": "2026-07-16T03:12:00+00:00",
@@ -1454,10 +1480,31 @@
       "confirmed_at": null,
       "confirmed_by": null,
       "await_confirm": true
+    },
+    "platform-key-default": {
+      "title": "Platform Key Default Credential",
+      "goal": "A tenant with no configured BYOK key automatically uses the platform tenant credential by default, and a configured tenant key takes precedence once present",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-02T15:53:54+00:00",
+      "updated": "2026-07-02T15:53:54+00:00"
+    },
+    "dashboard-hallmark-restyle": {
+      "title": "Whole-dashboard restyle to the Airier enterprise AI-SaaS theme",
+      "goal": "",
+      "stage": "mvp",
+      "status": "done",
+      "created": "2026-07-17T06:35:03+00:00",
+      "updated": "2026-07-17T06:42:00+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-17T01:21:26+00:00",
+  "updated": "2026-07-17T06:42:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1530,7 +1577,7 @@
     },
     {
       "slug": "v5",
-      "title": "LiteLLM parity slice 3 \u2014 intelligence & hardening",
+      "title": "LiteLLM parity slice 3 — intelligence & hardening",
       "tasks": 6,
       "task_slugs": [
         "oidc-jwks",
@@ -1557,7 +1604,7 @@
     },
     {
       "slug": "v7",
-      "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider",
+      "title": "LiteLLM parity slice 5 — multi-modal & multi-provider",
       "tasks": 6,
       "task_slugs": [
         "provider-seam",
@@ -1571,7 +1618,7 @@
     },
     {
       "slug": "v8",
-      "title": "LiteLLM parity slice 6 \u2014 router & load-balancing",
+      "title": "LiteLLM parity slice 6 — router & load-balancing",
       "tasks": 5,
       "task_slugs": [
         "deployment-model",
@@ -1584,7 +1631,7 @@
     },
     {
       "slug": "v9",
-      "title": "LiteLLM parity slice 7 \u2014 provider breadth (Anthropic + Google Gemini, chat + embeddings)",
+      "title": "LiteLLM parity slice 7 — provider breadth (Anthropic + Google Gemini, chat + embeddings)",
       "tasks": 4,
       "task_slugs": [
         "provider-chat-dispatch",
@@ -1596,7 +1643,7 @@
     },
     {
       "slug": "v10",
-      "title": "LiteLLM parity slice 8 \u2014 tool-use / function-calling across providers",
+      "title": "LiteLLM parity slice 8 — tool-use / function-calling across providers",
       "tasks": 4,
       "task_slugs": [
         "tool-use-contract",
@@ -1608,7 +1655,7 @@
     },
     {
       "slug": "v11",
-      "title": "LiteLLM parity slice 9 \u2014 JSON-mode / structured outputs across providers",
+      "title": "LiteLLM parity slice 9 — JSON-mode / structured outputs across providers",
       "tasks": 4,
       "task_slugs": [
         "response-format-contract",
@@ -1620,7 +1667,7 @@
     },
     {
       "slug": "v12",
-      "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt",
+      "title": "Billing accuracy + ops hardening — pay down v7/v9/v11 follow-up debt",
       "tasks": 5,
       "task_slugs": [
         "gemini-embed-tokens",
@@ -1633,7 +1680,7 @@
     },
     {
       "slug": "v13",
-      "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
+      "title": "UI/UX refresh — highest-value dashboard journeys (usage/cost + key/budget governance)",
       "tasks": 4,
       "task_slugs": [
         "design-system-foundation",
@@ -1645,7 +1692,7 @@
     },
     {
       "slug": "v15",
-      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
+      "title": "Dashboard feature-coverage — a surface for every backend capability",
       "tasks": 11,
       "task_slugs": [
         "design-system-extension",
@@ -1664,7 +1711,7 @@
     },
     {
       "slug": "v14",
-      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
+      "title": "Dependency hardening — Next.js 16 upgrade + advisory remediation",
       "tasks": 1,
       "task_slugs": [
         "next16-upgrade"
@@ -1673,7 +1720,7 @@
     },
     {
       "slug": "v17",
-      "title": "Hardening \u2014 clear carried follow-up debt (v13/v14/v15)",
+      "title": "Hardening — clear carried follow-up debt (v13/v14/v15)",
       "tasks": 6,
       "task_slugs": [
         "bff-test-harness-strict-handlers",
@@ -1696,7 +1743,7 @@
     },
     {
       "slug": "v19",
-      "title": "Reliability \u2014 uniform retries, error-aware fallback, response & semantic caching",
+      "title": "Reliability — uniform retries, error-aware fallback, response & semantic caching",
       "tasks": 6,
       "task_slugs": [
         "retry-seam-unify",
@@ -1710,7 +1757,7 @@
     },
     {
       "slug": "v20",
-      "title": "Enterprise provider: AWS Bedrock (SigV4 \u00b7 Converse chat/stream/tools \u00b7 Titan embeddings)",
+      "title": "Enterprise provider: AWS Bedrock (SigV4 · Converse chat/stream/tools · Titan embeddings)",
       "tasks": 6,
       "task_slugs": [
         "bedrock-sigv4-auth",
@@ -1786,7 +1833,7 @@
     },
     {
       "slug": "v26",
-      "title": "Provider config cleanup \u2014 v25 follow-ups",
+      "title": "Provider config cleanup — v25 follow-ups",
       "tasks": 2,
       "task_slugs": [
         "openai-retry-parity",
@@ -1796,7 +1843,7 @@
     },
     {
       "slug": "v27",
-      "title": "Billing precision \u2014 true per-tier cost on every call",
+      "title": "Billing precision — true per-tier cost on every call",
       "tasks": 4,
       "task_slugs": [
         "tiered-token-billing",
@@ -1819,7 +1866,7 @@
     },
     {
       "slug": "v29",
-      "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert",
+      "title": "Billing reconciliation — provider cost vs billed, with drift alert",
       "tasks": 3,
       "task_slugs": [
         "reconciliation-aggregate",
@@ -1830,7 +1877,7 @@
     },
     {
       "slug": "v30",
-      "title": "Reconciliation hardening \u2014 make leak-detection trustworthy",
+      "title": "Reconciliation hardening — make leak-detection trustworthy",
       "tasks": 10,
       "task_slugs": [
         "drift-threshold-validation",
@@ -2069,7 +2116,7 @@
     },
     {
       "slug": "v50",
-      "title": "Production hardening \u2014 landing & admin UI",
+      "title": "Production hardening — landing & admin UI",
       "tasks": 9,
       "task_slugs": [
         "resilient-bff-fetch",
@@ -2117,7 +2164,7 @@
     },
     {
       "slug": "chat-playground",
-      "title": "Chat \u2014 Console-grade playground",
+      "title": "Chat — Console-grade playground",
       "tasks": 6,
       "task_slugs": [
         "chat-playground-shell",
@@ -2185,7 +2232,7 @@
         "ratelimit-counter-view"
       ],
       "tasks": 6,
-      "title": "Operator-wide reconciliation + UI\u2194BE coverage"
+      "title": "Operator-wide reconciliation + UI↔BE coverage"
     },
     {
       "archived": "2026-07-01",
@@ -2209,7 +2256,7 @@
         "governance-pages-redesign"
       ],
       "tasks": 5,
-      "title": "UI refinement \u2014 polished, responsive, scalable app pages"
+      "title": "UI refinement — polished, responsive, scalable app pages"
     },
     {
       "archived": "2026-07-01",
@@ -2385,7 +2432,7 @@
     },
     {
       "slug": "monetization-core",
-      "title": "Monetization core \u2014 bill your tenants",
+      "title": "Monetization core — bill your tenants",
       "tasks": 7,
       "task_slugs": [
         "cost-attribution-tags",
@@ -2439,7 +2486,8 @@
     "platform-access-plan",
     "eu-ai-act-readiness",
     "agent-gateway-v1",
-    "account-tiers-billing"
+    "account-tiers-billing",
+    "dashboard-hallmark-restyle"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
@@ -2448,7 +2496,8 @@
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console",
-    "account-tiers-billing": "billing-owner-signup-population"
+    "account-tiers-billing": "billing-owner-signup-population",
+    "dashboard-hallmark-restyle": "airier-theme-restyle"
   },
   "todos": [
     {
@@ -2471,7 +2520,7 @@
     },
     {
       "id": 4,
-      "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
+      "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground · m4 artifacts-playground · m5 vision-playground · m6 video-playground · m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
       "created": "2026-06-30T10:57:02+00:00",
       "status": "open"
     },
@@ -2483,61 +2532,61 @@
     },
     {
       "id": 6,
-      "text": "margin-dashboard follow-on (P2, Tin approved 2026-07-12): clearly-labeled 'estimated margin (catalog list-price basis)' column \u2014 separate task, never blended with authoritative provider-cost margin",
+      "text": "margin-dashboard follow-on (P2, Tin approved 2026-07-12): clearly-labeled 'estimated margin (catalog list-price basis)' column — separate task, never blended with authoritative provider-cost margin",
       "created": "2026-07-12T11:43:20+00:00",
       "status": "open"
     },
     {
       "id": 7,
-      "text": "billing-ui F1 (verify \ud83d\udfe1, spec delta seeded): Plan&seats live roster count 403-degrades to '\u2014' for operator/billing_admin/viewer/member \u2014 decide (a) ungated tenant-self count-only read vs (b) document degrade as accepted; Tin design call at observe/M-close",
+      "text": "billing-ui F1 (verify 🟡, spec delta seeded): Plan&seats live roster count 403-degrades to '—' for operator/billing_admin/viewer/member — decide (a) ungated tenant-self count-only read vs (b) document degrade as accepted; Tin design call at observe/M-close",
       "created": "2026-07-12T12:44:50+00:00",
       "status": "open"
     },
     {
       "id": 8,
-      "text": "billing-ui F2 (\ud83d\udcad): evidence-drawer per-line context subtitle from DESIGN.md dropped in build \u2014 cosmetic fast-follow or backlog",
+      "text": "billing-ui F2 (💭): evidence-drawer per-line context subtitle from DESIGN.md dropped in build — cosmetic fast-follow or backlog",
       "created": "2026-07-12T12:44:50+00:00",
       "status": "open"
     },
     {
       "id": 9,
-      "text": "plan-seat-cap seeded delta: SCIM PATCH active:true reactivation bypasses seat cap (confirmed repro in test_verify_adversarial) \u2014 gate reactivation via assert_seat_available in a follow-on task",
+      "text": "plan-seat-cap seeded delta: SCIM PATCH active:true reactivation bypasses seat cap (confirmed repro in test_verify_adversarial) — gate reactivation via assert_seat_available in a follow-on task",
       "created": "2026-07-12T12:47:23+00:00",
       "status": "open"
     },
     {
       "id": 10,
-      "text": "margin-dashboard delta: /summary has_provider_cost_data uses a heuristic, not by-tenant-model/trend's honest COUNT(cost_basis='provider') \u2014 align in follow-on",
+      "text": "margin-dashboard delta: /summary has_provider_cost_data uses a heuristic, not by-tenant-model/trend's honest COUNT(cost_basis='provider') — align in follow-on",
       "created": "2026-07-12T12:48:15+00:00",
       "status": "open"
     },
     {
       "id": 11,
-      "text": "repo-wide hardening (from margin verify \ud83d\udfe1): naive-datetime idiom assumes host TZ=UTC, unpinned in Dockerfile + test-invisible \u2014 pin TZ=UTC or move to aware-UTC datetimes; money-critical paths affected",
+      "text": "repo-wide hardening (from margin verify 🟡): naive-datetime idiom assumes host TZ=UTC, unpinned in Dockerfile + test-invisible — pin TZ=UTC or move to aware-UTC datetimes; money-critical paths affected",
       "created": "2026-07-12T12:48:15+00:00",
       "status": "open"
     },
     {
       "id": 12,
-      "text": "housekeeping (from seat-billing build): migrations/env.py ORM-import gap causes false alembic-check drift \u2014 pre-existing, file a fix",
+      "text": "housekeeping (from seat-billing build): migrations/env.py ORM-import gap causes false alembic-check drift — pre-existing, file a fix",
       "created": "2026-07-12T13:23:29+00:00",
       "status": "open"
     },
     {
       "id": 13,
-      "text": "housekeeping (from seat-billing build): ~72-file repo-wide ruff format baseline drift predates milestone \u2014 decide one-shot format commit vs leave",
+      "text": "housekeeping (from seat-billing build): ~72-file repo-wide ruff format baseline drift predates milestone — decide one-shot format commit vs leave",
       "created": "2026-07-12T13:23:29+00:00",
       "status": "open"
     },
     {
       "id": 14,
-      "text": "seat-billing observe: record \u00a72 prose correction (reactivation-gap arithmetic 24 -> 16 per M6, implemented+tested as 16, disclosed) + decide narrowing join_verified_tenant_domain broad IntegrityError catch (defect-masking, left additive-safe)",
+      "text": "seat-billing observe: record §2 prose correction (reactivation-gap arithmetic 24 -> 16 per M6, implemented+tested as 16, disclosed) + decide narrowing join_verified_tenant_domain broad IntegrityError catch (defect-masking, left additive-safe)",
       "created": "2026-07-12T13:23:30+00:00",
       "status": "open"
     },
     {
       "id": 15,
-      "text": "seat-billing delta F1: contract prose says seat prices tenant-overridable via rate-card resolver \u2014 no such code path (_load_seat_price reads plans only). Tin: build override or fix prose",
+      "text": "seat-billing delta F1: contract prose says seat prices tenant-overridable via rate-card resolver — no such code path (_load_seat_price reads plans only). Tin: build override or fix prose",
       "created": "2026-07-12T13:44:13+00:00",
       "status": "open"
     },
@@ -2549,31 +2598,31 @@
     },
     {
       "id": 17,
-      "text": "seat-billing delta F5 (cutover caveat): pre-migration deactivate->reactivate cycles invisible to backfill \u2014 first post-cutover invoice can over-bill (5-day demo in probes). Tin: accept as documented Non-goal or manual reconciliation pass",
+      "text": "seat-billing delta F5 (cutover caveat): pre-migration deactivate->reactivate cycles invisible to backfill — first post-cutover invoice can over-bill (5-day demo in probes). Tin: accept as documented Non-goal or manual reconciliation pass",
       "created": "2026-07-12T13:44:13+00:00",
       "status": "open"
     },
     {
       "id": 18,
-      "text": "region-catalog residue: add coded id-namespace guard \u2014 dynamic-sourced CatalogModel.id must never collide with static-seed prefixes (us./eu./apac.); safety today rests on incidental OpenRouter slash-format + composite processing order (verify 2026-07-12)",
+      "text": "region-catalog residue: add coded id-namespace guard — dynamic-sourced CatalogModel.id must never collide with static-seed prefixes (us./eu./apac.); safety today rests on incidental OpenRouter slash-format + composite processing order (verify 2026-07-12)",
       "created": "2026-07-12T16:14:48+00:00",
       "status": "open"
     },
     {
       "id": 19,
-      "text": "region-catalog docs: \u00a73 DDL prose still shows 3-value VALID_REGIONS literal; DECIDED addendum (4-value incl ap) is authoritative \u2014 fold to one canonical statement next contract touch",
+      "text": "region-catalog docs: §3 DDL prose still shows 3-value VALID_REGIONS literal; DECIDED addendum (4-value incl ap) is authoritative — fold to one canonical statement next contract touch",
       "created": "2026-07-12T16:14:48+00:00",
       "status": "open"
     },
     {
       "id": 20,
-      "text": "region-pricing SPEC: DELETE /admin/region-pricing/{region} should case-normalize region before matching \u2014 a typo'd DELETE (EU vs eu) returns 204 but silently leaves the override active, still billing the old rate (verify live-probed 2026-07-12)",
+      "text": "region-pricing SPEC: DELETE /admin/region-pricing/{region} should case-normalize region before matching — a typo'd DELETE (EU vs eu) returns 204 but silently leaves the override active, still billing the old rate (verify live-probed 2026-07-12)",
       "created": "2026-07-12T16:59:57+00:00",
       "status": "open"
     },
     {
       "id": 21,
-      "text": "region-pricing SPEC: flag 'global' as a high-blast-radius override target in admin docs/UI \u2014 one PUT .../global reprices EVERY default-region model for that tenant (global is the model default region)",
+      "text": "region-pricing SPEC: flag 'global' as a high-blast-radius override target in admin docs/UI — one PUT .../global reprices EVERY default-region model for that tenant (global is the model default region)",
       "created": "2026-07-12T16:59:57+00:00",
       "status": "open"
     },
@@ -2585,31 +2634,31 @@
     },
     {
       "id": 23,
-      "text": "vertex-adapter SPEC (defense-in-depth): harden all *_ad.py token providers' httpx except-clauses to catch httpx.RequestError broadly (not just Timeout|NetworkError) \u2014 ProtocolError/ProxyError propagate unhandled, retaining signed assertion in __context__; systemic pattern shared with azure_ad.py",
+      "text": "vertex-adapter SPEC (defense-in-depth): harden all *_ad.py token providers' httpx except-clauses to catch httpx.RequestError broadly (not just Timeout|NetworkError) — ProtocolError/ProxyError propagate unhandled, retaining signed assertion in __context__; systemic pattern shared with azure_ad.py",
       "created": "2026-07-12T16:59:58+00:00",
       "status": "open"
     },
     {
       "id": 24,
-      "text": "vertex-adapter SPEC (defense-in-depth): validate GoogleServiceAccountCredential.project_id against GCP project-id charset before _build_url f-string interpolation \u2014 non-exploitable for host-hijack today (host is fixed literal) but worth tightening",
+      "text": "vertex-adapter SPEC (defense-in-depth): validate GoogleServiceAccountCredential.project_id against GCP project-id charset before _build_url f-string interpolation — non-exploitable for host-hijack today (host is fixed literal) but worth tightening",
       "created": "2026-07-12T16:59:58+00:00",
       "status": "open"
     },
     {
       "id": 25,
-      "text": "vertex-adapter: before shipping, optionally run scripts/live_vertex_verify.py against a real GCP service account (manual smoke, outside automated gate \u2014 no live creds were available at build/verify time)",
+      "text": "vertex-adapter: before shipping, optionally run scripts/live_vertex_verify.py against a real GCP service account (manual smoke, outside automated gate — no live creds were available at build/verify time)",
       "created": "2026-07-12T16:59:58+00:00",
       "status": "open"
     },
     {
       "id": 26,
-      "text": "ADD anti-pattern (verify): when re-running a security exploit as an independent probe, model the adversary's dependency on the SECRET (private_key/client_secret), not just the public identity \u2014 a fake IDP/factory that ignores the secret can manufacture a false-positive HARD-STOP (self-caught in vertex re-verify 2026-07-13)",
+      "text": "ADD anti-pattern (verify): when re-running a security exploit as an independent probe, model the adversary's dependency on the SECRET (private_key/client_secret), not just the public identity — a fake IDP/factory that ignores the secret can manufacture a false-positive HARD-STOP (self-caught in vertex re-verify 2026-07-13)",
       "created": "2026-07-13T03:09:32+00:00",
       "status": "open"
     },
     {
       "id": 27,
-      "text": "SECURITY (M2 EU-pin gap, Bedrock BYOK): BedrockCredential.region (tenant-supplied via PUT /admin/provider-keys/bedrock) drives the physical dial endpoint bedrock-runtime.{region}.amazonaws.com, DECOUPLED from the catalog region tag residency-policy filters on. An EU-pinned tenant with a us-east-1 Bedrock cred has its PROMPT sent to a US endpoint (payload transit = the breach) even if AWS then rejects the eu.-profile invocation. Vertex avoided this (fixed prefix\u2192location map). Options: (a) pre-dial structural guard validating cred region vs candidate catalog-region prefix [RECOMMENDED, mirrors vertex], (b) live-AWS ValidationException test, (c) signed RISK-ACCEPTED. ESCALATED to Tin 2026-07-13 \u2014 do NOT treat M10/EU-pin as closed for Bedrock until resolved.",
+      "text": "SECURITY (M2 EU-pin gap, Bedrock BYOK): BedrockCredential.region (tenant-supplied via PUT /admin/provider-keys/bedrock) drives the physical dial endpoint bedrock-runtime.{region}.amazonaws.com, DECOUPLED from the catalog region tag residency-policy filters on. An EU-pinned tenant with a us-east-1 Bedrock cred has its PROMPT sent to a US endpoint (payload transit = the breach) even if AWS then rejects the eu.-profile invocation. Vertex avoided this (fixed prefix→location map). Options: (a) pre-dial structural guard validating cred region vs candidate catalog-region prefix [RECOMMENDED, mirrors vertex], (b) live-AWS ValidationException test, (c) signed RISK-ACCEPTED. ESCALATED to Tin 2026-07-13 — do NOT treat M10/EU-pin as closed for Bedrock until resolved.",
       "created": "2026-07-13T03:14:19+00:00",
       "status": "open"
     },
@@ -2621,7 +2670,7 @@
     },
     {
       "id": 29,
-      "text": "service-tiers check_and_hold: self._holds[request_id] overwritten if called twice for same request_id (not currently reachable \u2014 single call site). Guard against double-hold if a second call site is ever added.",
+      "text": "service-tiers check_and_hold: self._holds[request_id] overwritten if called twice for same request_id (not currently reachable — single call site). Guard against double-hold if a second call site is ever added.",
       "created": "2026-07-13T08:40:01+00:00",
       "status": "open"
     },
@@ -2639,25 +2688,25 @@
     },
     {
       "id": 32,
-      "text": "bedrock-region-guard defense-in-depth (verify B, low-pri): normalize model_id prefix casing/whitespace before _PROFILE_PREFIX_TO_GEO lookup \u2014 currently protected solely by the catalog exact-match dispatch gate; cheap insurance vs a future refactor decoupling model_id sourcing from routing.",
+      "text": "bedrock-region-guard defense-in-depth (verify B, low-pri): normalize model_id prefix casing/whitespace before _PROFILE_PREFIX_TO_GEO lookup — currently protected solely by the catalog exact-match dispatch gate; cheap insurance vs a future refactor decoupling model_id sourcing from routing.",
       "created": "2026-07-13T08:51:44+00:00",
       "status": "open"
     },
     {
       "id": 33,
-      "text": "residency-tiers-ui (observe, \ud83d\udcad): residency-picker radios use min-h-11 (44px hit target) but lack a dedicated hit-target assertion test (TierSelector has one). Add for parity.",
+      "text": "residency-tiers-ui (observe, 💭): residency-picker radios use min-h-11 (44px hit target) but lack a dedicated hit-target assertion test (TierSelector has one). Add for parity.",
       "created": "2026-07-13T09:07:06+00:00",
       "status": "open"
     },
     {
       "id": 34,
-      "text": "residency-tiers-ui (observe, \ud83d\udcad): TierSelector.tsx line 38 (standard-after-priority toggle) untested \u2014 symmetric to tested line 50, low-risk. Add test for coverage parity.",
+      "text": "residency-tiers-ui (observe, 💭): TierSelector.tsx line 38 (standard-after-priority toggle) untested — symmetric to tested line 50, low-risk. Add test for coverage parity.",
       "created": "2026-07-13T09:07:06+00:00",
       "status": "open"
     },
     {
       "id": 35,
-      "text": "residency-tiers-ui (observe, \ud83d\udcad): no live screen-reader (VoiceOver/NVDA) pass on new residency/tier surfaces \u2014 axe + native semantics + live keyboard trace substitute but aren't equivalent. Consider a manual SR pass pre-GA.",
+      "text": "residency-tiers-ui (observe, 💭): no live screen-reader (VoiceOver/NVDA) pass on new residency/tier surfaces — axe + native semantics + live keyboard trace substitute but aren't equivalent. Consider a manual SR pass pre-GA.",
       "created": "2026-07-13T09:07:06+00:00",
       "status": "open"
     },
@@ -2669,13 +2718,13 @@
     },
     {
       "id": 37,
-      "text": "semantic_cache flake instance (2026-07-13 M2 pre-merge): test_semantic_hit_ledger_cached_true_cost_zero + test_semantic_cache_normalized_variant_hits failed in the full suite (shared Redis :6380 db 9 cross-test contamination \u2014 a prior test's cache entry made 'first' request a hit, cost 0). Pass 15/15 isolated. Known flake class. The xdist CI work (task #11) should give each worker its own Redis db/namespace to KILL this class permanently.",
+      "text": "semantic_cache flake instance (2026-07-13 M2 pre-merge): test_semantic_hit_ledger_cached_true_cost_zero + test_semantic_cache_normalized_variant_hits failed in the full suite (shared Redis :6380 db 9 cross-test contamination — a prior test's cache entry made 'first' request a hit, cost 0). Pass 15/15 isolated. Known flake class. The xdist CI work (task #11) should give each worker its own Redis db/namespace to KILL this class permanently.",
       "created": "2026-07-13T11:01:06+00:00",
       "status": "open"
     },
     {
       "id": 38,
-      "text": "Delta-hygiene sweep (systemic): 273 open SPEC deltas accumulated across 76 archived milestones, riding unresolved across 7 releases (0.8.0 cut with --force, 15 bundle-deltas riding). Dedicate a triage pass: carry-delta the genuine defers, new-task --from-delta the real work (e.g. the recurring 'coverage under-attributes async-DB lines / greenlet concurrency' delta appears many times \u2014 worth ONE fix), drop-delta the obsolete. Not blocking releases but the floor re-fires every cut.",
+      "text": "Delta-hygiene sweep (systemic): 273 open SPEC deltas accumulated across 76 archived milestones, riding unresolved across 7 releases (0.8.0 cut with --force, 15 bundle-deltas riding). Dedicate a triage pass: carry-delta the genuine defers, new-task --from-delta the real work (e.g. the recurring 'coverage under-attributes async-DB lines / greenlet concurrency' delta appears many times — worth ONE fix), drop-delta the obsolete. Not blocking releases but the floor re-fires every cut.",
       "created": "2026-07-13T11:09:33+00:00",
       "status": "open"
     },
@@ -2687,7 +2736,7 @@
     },
     {
       "id": 40,
-      "text": "agent-identity: decide whether agent-principal OAuth tokens should authenticate to /v1/realtime (today they silently cannot \u2014 realtime_ws/realtime_relay_ws build bare SqlAlchemyKeyAuthenticator, not CompositeKeyAuthenticator). Verify-surfaced spec-delta, 2026-07-14.",
+      "text": "agent-identity: decide whether agent-principal OAuth tokens should authenticate to /v1/realtime (today they silently cannot — realtime_ws/realtime_relay_ws build bare SqlAlchemyKeyAuthenticator, not CompositeKeyAuthenticator). Verify-surfaced spec-delta, 2026-07-14.",
       "created": "2026-07-14T06:21:26+00:00",
       "status": "open"
     },
@@ -2699,25 +2748,25 @@
     },
     {
       "id": 42,
-      "text": "compliance-report-center (verify a854c67d, \ud83d\udfe1\u2192ticket): RetentionSweeper.should_start_retention_sweep gates ONLY on the 3 original knobs (usage/alert/audit days) \u2014 if an operator zeroes all three, the whole sweeper loop never starts, INCLUDING the new compliance_report_runs window + ZDR purge passes (pre-existing from tenant-retention-zdr, surfaced by R1). Fix: start-gate should also consider new-payload-window/ZDR-purge applicability.",
+      "text": "compliance-report-center (verify a854c67d, 🟡→ticket): RetentionSweeper.should_start_retention_sweep gates ONLY on the 3 original knobs (usage/alert/audit days) — if an operator zeroes all three, the whole sweeper loop never starts, INCLUDING the new compliance_report_runs window + ZDR purge passes (pre-existing from tenant-retention-zdr, surfaced by R1). Fix: start-gate should also consider new-payload-window/ZDR-purge applicability.",
       "created": "2026-07-14T09:27:16+00:00",
       "status": "open"
     },
     {
       "id": 43,
-      "text": "compliance-report-center (verify open-Q + TASK.md \u00a71 low-conf flag): generated compliance EVIDENCE (compliance_report_runs) is swept on the SAME retention_window_days as operational logs \u2014 an Art.12 bundle may need LONGER retention than a tenant's short log window. Consider a separate retention_report_runs_days knob (carve-out) if EU-tenant demand shows (monitor: rising skipped_zdr / never-success share).",
+      "text": "compliance-report-center (verify open-Q + TASK.md §1 low-conf flag): generated compliance EVIDENCE (compliance_report_runs) is swept on the SAME retention_window_days as operational logs — an Art.12 bundle may need LONGER retention than a tenant's short log window. Consider a separate retention_report_runs_days knob (carve-out) if EU-tenant demand shows (monitor: rising skipped_zdr / never-success share).",
       "created": "2026-07-14T09:27:16+00:00",
       "status": "open"
     },
     {
       "id": 44,
-      "text": "tool-call-metering (accepted v1 residual follow-on): exactly-once is fail-open under Redis outage (SETNX dedupe in MeteringToolCallObserver, not recorder ON CONFLICT \u2014 frozen recorder sig has no call_id passthrough). Add a DB-level UNIQUE backstop on a call_id-derived tag so a duplicate record() during a Redis outage can't double-bill. NOT a 0.9.0 blocker (disclosed).",
+      "text": "tool-call-metering (accepted v1 residual follow-on): exactly-once is fail-open under Redis outage (SETNX dedupe in MeteringToolCallObserver, not recorder ON CONFLICT — frozen recorder sig has no call_id passthrough). Add a DB-level UNIQUE backstop on a call_id-derived tag so a duplicate record() during a Redis outage can't double-bill. NOT a 0.9.0 blocker (disclosed).",
       "created": "2026-07-14T09:27:16+00:00",
       "status": "open"
     },
     {
       "id": 45,
-      "text": "mcp-connector-passthrough budget CR (deferred at freeze): NonChatGovernance.check_budgets() enforces the per-key/team/agent-principal/tenant $ ladder but NOT RPM/TPM rate limits or credit-hold \u2014 deferred because there is no MCP settle hook yet. Wire RPM/TPM + credit-hold for /v1/mcp/call once a settle/refund path exists.",
+      "text": "mcp-connector-passthrough budget CR (deferred at freeze): NonChatGovernance.check_budgets() enforces the per-key/team/agent-principal/tenant $ ladder but NOT RPM/TPM rate limits or credit-hold — deferred because there is no MCP settle hook yet. Wire RPM/TPM + credit-hold for /v1/mcp/call once a settle/refund path exists.",
       "created": "2026-07-14T09:27:16+00:00",
       "status": "open"
     },
@@ -2735,19 +2784,19 @@
     },
     {
       "id": 48,
-      "text": "core/config.py:848 comment points to deleted catalog/infrastructure/gpt_realtime_seed.py (catalog-db-seed retired it). Repoint to migration 9cdca76231c6 during model-catalog-db milestone-close docs sweep \u2014 out of catalog-db-seed's frozen scope.",
+      "text": "core/config.py:848 comment points to deleted catalog/infrastructure/gpt_realtime_seed.py (catalog-db-seed retired it). Repoint to migration 9cdca76231c6 during model-catalog-db milestone-close docs sweep — out of catalog-db-seed's frozen scope.",
       "created": "2026-07-16T11:47:34+00:00",
       "status": "open"
     },
     {
       "id": 49,
-      "text": "CatalogModel.cached_input_usd_per_token + audio_* fields are typed float|None while pricing/unit fields are Decimal|None \u2014 money-is-Decimal is non-uniform across CatalogModel's own fields (pre-existing, flagged in catalog-db-seed \u00a70, NOT introduced by it). Follow-up: migrate those to Decimal for uniformity. Out of catalog-db-seed's frozen scope.",
+      "text": "CatalogModel.cached_input_usd_per_token + audio_* fields are typed float|None while pricing/unit fields are Decimal|None — money-is-Decimal is non-uniform across CatalogModel's own fields (pre-existing, flagged in catalog-db-seed §0, NOT introduced by it). Follow-up: migrate those to Decimal for uniformity. Out of catalog-db-seed's frozen scope.",
       "created": "2026-07-16T11:56:17+00:00",
       "status": "open"
     },
     {
       "id": 50,
-      "text": "PRE-EXISTING lint debt in uncommitted platform-key-default work: config.py:407 E501 (105>100, the platform_credential_fallback_enabled comment). NOT B2's change; never CI'd (platform-key held for Tin). Fix before the platform-key/bundle commits \u2014 make ci will fail otherwise.",
+      "text": "PRE-EXISTING lint debt in uncommitted platform-key-default work: config.py:407 E501 (105>100, the platform_credential_fallback_enabled comment). NOT B2's change; never CI'd (platform-key held for Tin). Fix before the platform-key/bundle commits — make ci will fail otherwise.",
       "created": "2026-07-16T18:20:01+00:00",
       "status": "done"
     }

@@ -4,72 +4,72 @@
 @import "highlight.js/styles/github.css";
 
 /*
- * Design-system token layer (v13 design-system-foundation).
- * The SINGLE source of design values for the dashboard — the realization of
- * .add/design/tokens.json. Identity: Pantone Classic Blue accent · slate ramp · Inter ·
- * light default. Themeable: values live as CSS custom properties on :root; a
- * .dark block is scaffolded (light is the only mode shipped in v13). Components
- * consume these ONLY via the token-named Tailwind utilities below (bg-primary,
- * text-foreground, border-border, ring-ring, rounded-md, font-sans) — never raw
- * hex/px. Raw literals are permitted HERE because this file IS the token source.
+ * Design-system token layer — "Airier" enterprise AI-SaaS console (dashboard-hallmark-restyle,
+ * Tin-locked 2026-07-17; supersedes the v13 Classic-Blue/Inter identity).
+ * Identity: azure signal accent · cool-biased graphite neutrals · Geist / Geist Mono ·
+ * light default + a real dark theme. Anti-slop DNA (Nutlope/hallmark): off-Inter, a single
+ * precise accent used sparingly, mono for every metric, semantic status SEPARATE from accent,
+ * soft 10px card radius, generous whitespace. Themeable: values live as CSS custom properties
+ * on :root; the .dark block is the shipped dark theme. Components consume these ONLY via the
+ * token-named Tailwind utilities below (bg-primary, text-foreground, border-border, ring-ring,
+ * rounded-lg, font-sans/font-mono) — never raw hex/px. Raw literals are permitted HERE because
+ * this file IS the token source.
  */
 
 @layer base {
   :root {
-    /* surfaces & text (slate ramp) */
-    --background: #ffffff;          /* white — luxury canvas (v7 premium reconciliation) */
-    --foreground: #0f172a;          /* slate-900 — primary text */
-    --card: #ffffff;                /* white     — raised surface */
-    --card-foreground: #0f172a;     /* slate-900 */
+    /* surfaces & text — cool-biased graphite (chosen, not inherited) */
+    --background: #fbfcfd;          /* near-white cool canvas */
+    --foreground: #101720;          /* graphite ink — primary text */
+    --card: #ffffff;                /* white — raised surface */
+    --card-foreground: #101720;
     --popover: #ffffff;
-    --popover-foreground: #0f172a;
-    --muted: #f1f5f9;               /* slate-100 */
-    --muted-foreground: #475569;    /* slate-600 — WCAG AA on tinted bg-muted grounds (persona a11y sweep; was slate-500 #64748b, 4.34:1 on --muted) */
+    --popover-foreground: #101720;
+    --muted: #f4f6f9;               /* subtle inset / row */
+    --muted-foreground: #48525e;    /* secondary text — AA on --muted and white */
 
-    /* brand accent (Hydroa — Pantone Classic Blue 19-4052, luxury/trust) */
-    --primary: #0f4c81;             /* Classic Blue */
+    /* brand accent (Hydroa — azure signal, used SPARINGLY) */
+    --primary: #2f6df0;             /* azure signal */
     --primary-foreground: #ffffff;
-    --primary-hover: #155394;       /* lifted Classic Blue */
+    --primary-hover: #2a61d8;       /* deeper azure */
 
     /* neutral interactive accent (shadcn "accent" — hover/active surfaces) */
-    --accent: #f1f5f9;              /* slate-100 */
-    --accent-foreground: #0f172a;   /* slate-900 */
-    --secondary: #f1f5f9;           /* slate-100 */
-    --secondary-foreground: #0f172a;
+    --accent: #f4f6f9;
+    --accent-foreground: #101720;
+    --secondary: #f4f6f9;
+    --secondary-foreground: #101720;
 
-    /* status */
-    --success: #059669;             /* emerald-600 */
-    --success-text: #047857;        /* emerald-700 — AA-safe small-text success (platform-console-flat-redesign) */
-    --warning: #f59e0b;             /* amber-500 */
-    --warning-foreground: #92400e;  /* amber-800 — readable text on a warning surface */
-    --destructive: #dc2626;         /* red-600 */
+    /* status — semantic, kept separate from the azure accent */
+    --success: #16955f;
+    --success-text: #0f7a4d;        /* AA-safe small-text success */
+    --warning: #bd8410;
+    --warning-foreground: #8a5a0a;  /* readable text on a warning surface */
+    --destructive: #cc3d37;         /* AA: white label on the solid fill = 4.9:1 (was #d34640 → 4.45, failed) */
     --destructive-foreground: #ffffff;
-    --destructive-text: #b91c1c;    /* red-700 — AA-safe small-text destructive (accessibility-auditor sweep, platform-console-flat-redesign) */
+    --destructive-text: #c0332e;    /* AA-safe small-text destructive */
 
     /* lines & focus */
-    --border: #e2e8f0;              /* slate-200 */
-    --input: #e2e8f0;               /* slate-200 */
-    --ring: #2563eb;                /* blue-600 — focus ring */
+    --border: #e7ebf0;
+    --input: #e7ebf0;
+    --ring: #2f6df0;                /* azure — focus ring */
 
-    /* chart palette (data-viz series — v23 enterprise extension) */
-    --chart-1: #0f4c81;             /* Classic Blue */
-    --chart-2: #10b981;             /* emerald-500 */
-    --chart-3: #f59e0b;             /* amber-500 */
-    --chart-4: #0ea5e9;             /* sky-500 */
-    --chart-5: #f43f5e;             /* rose-500 */
+    /* chart palette (data-viz series — azure-led, semantic-coherent) */
+    --chart-1: #2f6df0;             /* azure */
+    --chart-2: #16955f;             /* green */
+    --chart-3: #bd8410;             /* amber */
+    --chart-4: #6a49b8;             /* violet */
+    --chart-5: #d34640;             /* red */
 
-    /* sidebar surface — light Aurora nav rail (Tin 2026-07-07: reverted the dark v7 rail after
-       seeing it live; kept the theme-independent modern-tech upgrades — grouped nav, hero titles,
-       mono numerals, hairlines, white canvas). Active items use the on-brand accent-soft fill +
-       a Classic-Blue left bar (see SidebarItem); hover uses the neutral slate-100 accent. */
-    --sidebar: #ffffff;
-    --sidebar-foreground: #334155;          /* slate-700 */
-    --sidebar-accent: #f1f5f9;              /* slate-100 — neutral hover */
-    --sidebar-accent-foreground: #0f172a;   /* slate-900 */
-    --sidebar-border: #e2e8f0;             /* slate-200 */
-    --sidebar-ring: #2563eb;               /* blue-600 — focus ring */
+    /* sidebar surface — light rail (near-white cool). Active items use the azure-soft fill +
+       azure text/icon (see SidebarItem); hover uses the neutral --sidebar-accent surface. */
+    --sidebar: #f7f9fb;
+    --sidebar-foreground: #4a5561;
+    --sidebar-accent: #f4f6f9;              /* neutral hover */
+    --sidebar-accent-foreground: #101720;
+    --sidebar-border: #e7ebf0;
+    --sidebar-ring: #2f6df0;
 
-    /* radius (control = md 8px; card = lg 10px — retightened, Aurora) */
+    /* radius (control = md 8px; card = lg 10px) */
     --radius: 0.5rem;
 
     /* flat-recipe radius steps (platform-console-flat-redesign) — deliberately NOT
@@ -84,11 +84,11 @@
     --radius-flat-control: 3px;
     --radius-flat-card: 4px;
 
-    /* type */
-    --font-sans: "Inter", system-ui, sans-serif;
-    /* monospace face for tabular numerals/dates/ids — the v7 "spec-sheet" data feel.
-       System mono stack (no webfont): renders everywhere, zero network cost. */
-    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    /* type — Geist (UI grotesque) + Geist Mono (every metric/numeral, tabular figures).
+       The var(--font-geist-*) names are injected by next/font in layout.tsx; the system
+       stacks are the no-webfont fallback. */
+    --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
     /* elevation — soft, diffuse, low-opacity (Apple-luxury: refined depth, not heavy) */
     --elevation-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
@@ -96,55 +96,57 @@
     --elevation-lg: 0 8px 24px -6px rgba(15, 23, 42, 0.10);
     --elevation-xl: 0 20px 48px -16px rgba(15, 76, 129, 0.20);
 
-    /* brand gradient + soft accent (Aurora · NEW — gradient reserved for hero headline + one hero CTA) */
-    --accent-soft: #eaf1f8;          /* Classic-Blue-tinted 50 */
-    --accent-soft-border: #cfe0f0;   /* Classic-Blue-tinted 100 */
-    --brand-from: #0f4c81;           /* Classic Blue */
-    --brand-to: #2563eb;             /* blue-600 — deep→bright enterprise gradient */
+    /* soft accent + brand gradient (azure — soft fill for active nav/badges; gradient
+       reserved for hero headline + one hero CTA) */
+    --accent-soft: #eef3fe;          /* azure-tinted 50 */
+    --accent-soft-border: #d8e4fd;   /* azure-tinted 100 */
+    --accent-soft-foreground: #1c4bb8; /* deep azure — AA (6.9:1) on --accent-soft; active-nav text (plain --primary #2f6df0 is only 4.1:1, fails AA) */
+    --brand-from: #2f6df0;           /* azure */
+    --brand-to: #5b8cff;             /* lifted azure — deep→bright gradient */
   }
 
-  /* Scaffolded for a later dark theme (not shipped in v13). */
+  /* Dark theme — shipped ("Airier" dark, matches the Tin-locked captured screen). */
   .dark {
-    --background: #020617;          /* slate-950 */
-    --foreground: #f8fafc;          /* slate-50  */
-    --card: #0f172a;                /* slate-900 */
-    --card-foreground: #f8fafc;
-    --popover: #0f172a;
-    --popover-foreground: #f8fafc;
-    --muted: #1e293b;               /* slate-800 */
-    --muted-foreground: #94a3b8;    /* slate-400 */
-    --primary: #3b82f6;             /* blue-500 (brighter on dark) */
-    --primary-foreground: #ffffff;
-    --primary-hover: #60a5fa;       /* blue-400 */
-    --accent: #1e293b;
-    --accent-foreground: #f8fafc;
-    --secondary: #1e293b;
-    --secondary-foreground: #f8fafc;
-    --success: #34d399;
-    --success-text: #34d399;        /* dark not shipped/verified — no identified small-text AA gap yet, reuse as-is */
-    --warning: #fbbf24;
-    --warning-foreground: #fcd34d;  /* amber-300 — readable on a dark warning surface */
-    --destructive: #ef4444;
-    --destructive-foreground: #ffffff;
-    --destructive-text: #ef4444;    /* dark not shipped/verified — no identified small-text AA gap yet, reuse as-is */
-    --border: #1e293b;
-    --input: #1e293b;
-    --ring: #3b82f6;                /* blue-500 */
+    --background: #0c1015;          /* graphite ground */
+    --foreground: #eaeff5;
+    --card: #141a21;
+    --card-foreground: #eaeff5;
+    --popover: #141a21;
+    --popover-foreground: #eaeff5;
+    --muted: #1b222b;
+    --muted-foreground: #aeb9c5;    /* secondary text on dark */
+    --primary: #5b8cff;             /* brighter azure on dark */
+    --primary-foreground: #0c1015;
+    --primary-hover: #7ba2ff;
+    --accent: #1b222b;
+    --accent-foreground: #eaeff5;
+    --secondary: #1b222b;
+    --secondary-foreground: #eaeff5;
+    --success: #34c07f;
+    --success-text: #4fd196;        /* lighter for AA on dark surfaces */
+    --warning: #e0a52b;
+    --warning-foreground: #f2c661;  /* readable on a dark warning surface */
+    --destructive: #e5645f;
+    --destructive-foreground: #0c1015;
+    --destructive-text: #f08a86;    /* lighter for AA on dark surfaces */
+    --border: #232b34;
+    --input: #232b34;
+    --ring: #5b8cff;
 
     /* chart palette — lighter series for dark surfaces */
-    --chart-1: #60a5fa;             /* blue-400 */
-    --chart-2: #34d399;             /* emerald-400 */
-    --chart-3: #fbbf24;             /* amber-400 */
-    --chart-4: #38bdf8;             /* sky-400 */
-    --chart-5: #fb7185;             /* rose-400 */
+    --chart-1: #5b8cff;             /* azure */
+    --chart-2: #34c07f;             /* green */
+    --chart-3: #e0a52b;             /* amber */
+    --chart-4: #9a7ce0;             /* violet */
+    --chart-5: #e5645f;             /* red */
 
-    /* sidebar surface — dark */
-    --sidebar: #0f172a;             /* slate-900 */
-    --sidebar-foreground: #cbd5e1;          /* slate-300 */
-    --sidebar-accent: #1e293b;              /* slate-800 — hover/active */
-    --sidebar-accent-foreground: #f8fafc;   /* slate-50 */
-    --sidebar-border: #1e293b;             /* slate-800 */
-    --sidebar-ring: #3b82f6;               /* blue-500 */
+    /* sidebar surface — dark rail */
+    --sidebar: #0f151b;
+    --sidebar-foreground: #aeb9c5;
+    --sidebar-accent: #1b222b;              /* neutral hover */
+    --sidebar-accent-foreground: #eaeff5;
+    --sidebar-border: #1e262f;
+    --sidebar-ring: #5b8cff;
 
     /* elevation — dark counterparts (kept coherent; dark not shipped) */
     --elevation-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -152,11 +154,12 @@
     --elevation-lg: 0 10px 28px -8px rgba(0, 0, 0, 0.55), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
     --elevation-xl: 0 28px 56px -20px rgba(0, 0, 0, 0.7), 0 8px 20px -10px rgba(37, 99, 235, 0.25);
 
-    /* brand gradient + soft accent — dark counterparts (blue) */
-    --accent-soft: #0c2740;          /* deep Classic-Blue surface */
-    --accent-soft-border: #16395f;   /* deep Classic-Blue border */
-    --brand-from: #2563eb;           /* blue-600 */
-    --brand-to: #3b82f6;             /* blue-500 */
+    /* soft accent + brand gradient — dark counterparts (azure) */
+    --accent-soft: #16233d;          /* deep azure surface */
+    --accent-soft-border: #24365c;   /* deep azure border */
+    --accent-soft-foreground: #8fb0ff; /* lifted azure — AA (7.3:1) on the dark --accent-soft; active-nav text */
+    --brand-from: #5b8cff;           /* azure */
+    --brand-to: #7ba2ff;             /* lifted azure */
   }
 
   * {
@@ -166,6 +169,7 @@
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
+    font-size: 0.9375rem; /* 15px — the artifact's calmer base (default 16px reads dense); line-height stays 1.5 */
   }
 }
 
@@ -213,6 +217,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --color-accent-soft: var(--accent-soft);
   --color-accent-soft-border: var(--accent-soft-border);
+  --color-accent-soft-foreground: var(--accent-soft-foreground);
   --color-brand-from: var(--brand-from);
   --color-brand-to: var(--brand-to);
   --radius-sm: calc(var(--radius) - 2px);
@@ -221,8 +226,13 @@
   --radius-lg: calc(var(--radius) + 2px);      /* 10px — retightened card (was +4=12) */
   --radius-xl: calc(var(--radius) + 6px);      /* 14px */
   --radius-2xl: calc(var(--radius) + 12px);    /* 20px */
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);   /* → font-mono utility (v7 tabular numerals) */
+  /* Font theme tokens reference the geist stack DIRECTLY (not var(--font-sans),
+     which self-references: @theme output is unlayered and would beat the @layer base
+     :root def, collapsing to an empty circular value and dropping Geist to the UA
+     default). The .font-sans / .font-mono utilities inline these stacks, so
+     var(--font-geist-*) substitutes at the element the utility sits on (body). */
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   /* elevation utilities → shadow-sm/md/lg/xl (Aurora depth scale) */
   --shadow-sm: var(--elevation-sm);

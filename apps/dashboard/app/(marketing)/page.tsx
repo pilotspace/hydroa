@@ -110,7 +110,7 @@ export default function MarketingRootPage() {
         </div>
         <Badge
           variant="secondary"
-          className="border border-accent-soft-border bg-accent-soft px-3 py-1 text-primary"
+          className="border border-accent-soft-border bg-accent-soft px-3 py-1 text-accent-soft-foreground"
         >
           Multi-tenant AI proxy
         </Badge>

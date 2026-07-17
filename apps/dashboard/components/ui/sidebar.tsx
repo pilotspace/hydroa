@@ -22,7 +22,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       ref={ref}
       aria-label={ariaLabel}
       className={cn(
-        "flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
+        "flex h-full w-[264px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
         className,
       )}
       {...props}
@@ -99,13 +99,13 @@ export function SidebarItem({ href, icon, active, children, className }: Sidebar
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        // border-l-2 on EVERY item (transparent when inactive) reserves the active
-        // accent bar's width so activating never shifts the row — the v7 rail signature.
-        "flex items-center gap-2 rounded-md border-l-2 px-3 py-2 text-sm font-medium transition-colors duration-150 ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        // Active = azure-tinted accent-soft fill + AA-safe deep-azure text (no left accent bar —
+        // matches the captured artifact, which uses fill + colored text only). text-accent-soft-
+        // foreground, NOT text-primary — plain --primary is only 4.1:1 on accent-soft (fails AA).
+        "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         active
-          ? // on-brand active: Classic-Blue left bar + blue-tinted accent-soft fill + blue text
-            "border-primary bg-accent-soft text-primary font-semibold"
-          : "border-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          ? "bg-accent-soft text-accent-soft-foreground font-semibold"
+          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         className,
       )}
     >

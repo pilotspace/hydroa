@@ -43,7 +43,7 @@ export default function StatusPage() {
                   <p className="text-sm text-muted-foreground">{c.detail}</p>
                 </div>
                 <Badge variant="secondary" className="shrink-0">
-                  <span aria-hidden="true" className="mr-1.5 inline-block size-2 rounded-full bg-green-500" />
+                  <span aria-hidden="true" className="mr-1.5 inline-block size-2 rounded-full bg-success" />
                   {c.status}
                 </Badge>
               </li>

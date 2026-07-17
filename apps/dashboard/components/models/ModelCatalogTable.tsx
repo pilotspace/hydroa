@@ -96,7 +96,7 @@ export function ModelCatalogTable({
                 aria-hidden so the ID is announced once, not twice. */}
             <span className="sr-only">{model.id}</span>
             <span
-              className="block text-xs text-gray-500"
+              className="block text-xs text-muted-foreground"
               aria-hidden="true"
             >
               ID: {model.id}

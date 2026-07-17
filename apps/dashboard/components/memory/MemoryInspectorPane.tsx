@@ -165,7 +165,7 @@ export function MemoryInspectorPane({ item, onDelete }: MemoryInspectorPaneProps
               <span
                 className={
                   item.has_embedding
-                    ? "text-sm font-medium text-emerald-600"
+                    ? "text-sm font-medium text-success-text"
                     : "text-sm text-muted-foreground"
                 }
               >
