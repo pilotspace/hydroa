@@ -52,7 +52,7 @@ export default function RootLayout({
             Rendered as the script element's text child (code-controlled, no raw-HTML API). */}
         <script>{themeScript()}</script>
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
         <Providers>{children}</Providers>
       </body>
     </html>

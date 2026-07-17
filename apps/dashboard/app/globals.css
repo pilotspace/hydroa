@@ -222,8 +222,13 @@
   --radius-lg: calc(var(--radius) + 2px);      /* 10px — retightened card (was +4=12) */
   --radius-xl: calc(var(--radius) + 6px);      /* 14px */
   --radius-2xl: calc(var(--radius) + 12px);    /* 20px */
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);   /* → font-mono utility (v7 tabular numerals) */
+  /* Font theme tokens reference the geist stack DIRECTLY (not var(--font-sans),
+     which self-references: @theme output is unlayered and would beat the @layer base
+     :root def, collapsing to an empty circular value and dropping Geist to the UA
+     default). The .font-sans / .font-mono utilities inline these stacks, so
+     var(--font-geist-*) substitutes at the element the utility sits on (body). */
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   /* elevation utilities → shadow-sm/md/lg/xl (Aurora depth scale) */
   --shadow-sm: var(--elevation-sm);
