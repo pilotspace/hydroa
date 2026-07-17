@@ -126,6 +126,9 @@ def get_transcription_use_case(
         governance=governance,
         session=session,
         tenant_credential_resolver=tenant_credential_resolver,
+        platform_credential_fallback=getattr(
+            request.app.state, "platform_credential_fallback", None
+        ),
         # stt-duration-cap §3: bound the billed per_second duration.
         # env: GATEWAY_STT_MAX_DURATION_SECONDS
         max_duration_seconds=request.app.state.settings.stt_max_duration_seconds,
@@ -194,6 +197,9 @@ def get_speech_use_case(
         governance=governance,
         session=session,
         tenant_credential_resolver=tenant_credential_resolver,
+        platform_credential_fallback=getattr(
+            request.app.state, "platform_credential_fallback", None
+        ),
         # tts-input-guardrails: default-ON input ceiling from settings (0 ⇒ disabled).
         # Mirrors the STT max_duration_seconds injection above.
         max_input_characters=request.app.state.settings.tts_max_input_characters,

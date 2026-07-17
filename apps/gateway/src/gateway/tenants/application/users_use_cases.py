@@ -13,8 +13,12 @@ from __future__ import annotations
 
 import uuid
 
-from gateway.tenants.domain.entities import Role, User
-from gateway.tenants.domain.errors import EscalationForbiddenError, UserNotFoundError
+from gateway.tenants.domain.entities import BILLING_CAPABLE_ROLES, Role, User
+from gateway.tenants.domain.errors import (
+    EscalationForbiddenError,
+    LastBillingOwnerError,
+    UserNotFoundError,
+)
 from gateway.tenants.infrastructure.users_repository import UserRoleRepository
 
 # ---------------------------------------------------------------------------
@@ -118,6 +122,20 @@ class AssignUserRoleUseCase:
         user = await self._repo.get_by_id_and_tenant(user_id=target_user_id, tenant_id=tenant_id)
         if user is None:
             raise UserNotFoundError(f"User {target_user_id} not found in tenant {tenant_id}")
+
+        # billing-owner-of-record TASK.md §3 M2/M4 — HOOK 1: lock the tenants row FOR
+        # UPDATE (the SAME lock HOOK 2 and the reassignment endpoint acquire, closing the
+        # R9 race) THEN reject a role change that would leave the tenant's CURRENT billing
+        # owner non-billing-capable. Runs AFTER the self-guard + tenant-membership check,
+        # BEFORE update_role (§3 CONTRACT order, verbatim).
+        billing_owner_user_id = await self._repo.lock_and_get_billing_owner_user_id(
+            tenant_id=tenant_id
+        )
+        if target_user_id == billing_owner_user_id and new_role not in BILLING_CAPABLE_ROLES:
+            raise LastBillingOwnerError(
+                f"User {target_user_id} is tenant {tenant_id}'s billing owner; cannot "
+                f"assign non-billing-capable role {new_role!r}"
+            )
 
         updated = await self._repo.update_role(
             user_id=target_user_id, tenant_id=tenant_id, new_role=new_role

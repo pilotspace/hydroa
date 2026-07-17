@@ -45,6 +45,19 @@ current_credential_tenant: ContextVar[object | None] = ContextVar(
     default=None,
 )
 
+# Whether the credential bound to THIS request was served by the platform-tenant
+# fallback (platform-key-default milestone) rather than the requesting tenant's own
+# BYOK key. Default False. Set True by ``mark_platform_fallback()`` inside the
+# credential-resolution seam when (and only when) a platform-fallback credential is
+# served; read by the usage recorder (``fallback-usage-marker`` sibling task) to stamp
+# ``credential_source=platform``. Reset to False by ``reset_provider_credential()`` so
+# it never leaks across requests/tasks. One credential is resolved per request, so a
+# plain False-reset (rather than a saved Token) is correct for every real scope.
+current_served_via_platform_fallback: ContextVar[bool] = ContextVar(
+    "current_served_via_platform_fallback",
+    default=False,
+)
+
 
 # ---------------------------------------------------------------------------
 # Public helper API — thin wrappers around the contextvar
@@ -137,13 +150,34 @@ def reset_provider_credential(
         current_provider_credential.reset(handle.cred_token)
     else:
         current_provider_credential.reset(handle)
+    # Clear the platform-fallback signal for this scope (default False). Reset alongside
+    # the credential contextvars so a served-fallback marker never leaks to the next request.
+    current_served_via_platform_fallback.set(False)
+
+
+def mark_platform_fallback() -> None:
+    """Flag the current request as served by the platform-tenant fallback credential.
+
+    Called by the credential-resolution seam ONLY when a platform-fallback credential is
+    actually served (never on an own-key or no-fallback request). Read via
+    ``served_via_platform_fallback()``; cleared by ``reset_provider_credential()``.
+    """
+    current_served_via_platform_fallback.set(True)
+
+
+def served_via_platform_fallback() -> bool:
+    """Return True iff this request was served by the platform-tenant fallback credential."""
+    return current_served_via_platform_fallback.get()
 
 
 __all__ = [
     "current_credential_tenant",
     "current_provider_credential",
+    "current_served_via_platform_fallback",
     "get_credential_tenant",
     "get_provider_credential",
+    "mark_platform_fallback",
     "reset_provider_credential",
+    "served_via_platform_fallback",
     "set_provider_credential",
 ]

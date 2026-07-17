@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.tenants.domain.entities import Role, User
-from gateway.tenants.infrastructure.orm import UserRow
+from gateway.tenants.infrastructure.orm import TenantRow, UserRow
 
 
 class UserRoleRepository:
@@ -69,6 +69,42 @@ class UserRoleRepository:
         await self._session.commit()
         return _row_to_user(row)
 
+    # -----------------------------------------------------------------------
+    # billing-owner-of-record TASK.md §3 (FROZEN @ v1) — M2/M4/M5 support.
+    # -----------------------------------------------------------------------
+
+    async def lock_and_get_billing_owner_user_id(self, *, tenant_id: uuid.UUID) -> uuid.UUID | None:
+        """``SELECT billing_owner_user_id FROM tenants WHERE id=:t FOR UPDATE`` — the M4
+        lock shared by HOOK 1 (role-change), HOOK 2 (deactivation, via the SAME-shaped
+        method on ScimUserRepository), and the reassignment endpoint's own write, closing
+        the R9 race: whichever of two concurrent operations acquires this lock first
+        commits; the other re-evaluates against the POST-commit state.
+        """
+        return (
+            await self._session.execute(
+                select(TenantRow.billing_owner_user_id)
+                .where(TenantRow.id == tenant_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+
+    async def get_billing_owner_user_id(self, *, tenant_id: uuid.UUID) -> uuid.UUID | None:
+        """Unlocked read of the tenant's current billing_owner_user_id (GET /admin/billing-owner,
+        M6 — a read-only endpoint never needs the M4 write-lock)."""
+        return (
+            await self._session.execute(
+                select(TenantRow.billing_owner_user_id).where(TenantRow.id == tenant_id)
+            )
+        ).scalar_one_or_none()
+
+    async def set_billing_owner_user_id(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        """Write the new designation (M5) — caller is responsible for holding the M4 lock
+        (``lock_and_get_billing_owner_user_id``) in the SAME transaction first."""
+        await self._session.execute(
+            update(TenantRow).where(TenantRow.id == tenant_id).values(billing_owner_user_id=user_id)
+        )
+        await self._session.commit()
+
 
 def _row_to_user(row: UserRow) -> User:
     return User(
@@ -77,4 +113,11 @@ def _row_to_user(row: UserRow) -> User:
         email=row.email,
         password_hash=row.password_hash,
         role=Role(row.role),
+        # scim-provisioning TASK.md §3 added User.deactivated_at, but this repo's own
+        # _row_to_user never populated it (silently defaulted to None regardless of the
+        # row's real value) — a landmine for billing-owner-of-record's M5 eligibility
+        # check (target.deactivated_at IS NULL), fixed here since nothing upstream of
+        # this repo ever depended on the field being force-None (SANCTIONED EDIT,
+        # discovered during this task's build — see TASK.md §7 OBSERVE).
+        deactivated_at=row.deactivated_at,
     )

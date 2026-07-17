@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { formatBasePrice, getPricingCatalogEntry } from "@/lib/pricing-catalog";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata = buildMetadata({
@@ -38,10 +39,17 @@ type Tier = {
   featured?: boolean;
 };
 
+// plan-tiers-and-base-fee TASK.md §3 (FROZEN @ v1, M4): price text derives from the
+// shared PRICING_CATALOG module (backed by a no-drift test), never a re-hardcoded
+// literal — still exactly 3 rendered cards (no IA change, milestone Scope is "minimal").
+// This page's "Starter" card is the free evaluation entry point — it binds to the
+// catalog's `free` tier (basePriceUsd NULL -> "Free"), not the catalog's own `starter`
+// tier (a distinct, NOT-yet-rendered personal $1 tier); the displayed copy is
+// byte-identical to before this task shipped.
 const TIERS: Tier[] = [
   {
     name: "Starter",
-    price: "Free",
+    price: formatBasePrice(getPricingCatalogEntry("free").basePriceUsd, "Free"),
     qualifier: "for evaluation",
     description: "Single tenant, get a feel for the proxy.",
     features: [
@@ -54,7 +62,7 @@ const TIERS: Tier[] = [
   },
   {
     name: "Team",
-    price: "$99",
+    price: formatBasePrice(getPricingCatalogEntry("team").basePriceUsd, "Free"),
     qualifier: "per month + usage",
     description: "For teams running AI in production.",
     features: [
@@ -70,7 +78,7 @@ const TIERS: Tier[] = [
   },
   {
     name: "Enterprise",
-    price: "Contact us",
+    price: formatBasePrice(getPricingCatalogEntry("enterprise").basePriceUsd, "Contact us"),
     qualifier: "custom",
     description: "SSO, audit, and compliance at scale.",
     features: [

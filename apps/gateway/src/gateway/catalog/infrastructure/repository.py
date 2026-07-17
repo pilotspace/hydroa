@@ -55,6 +55,14 @@ class SqlAlchemyCatalogRepository:
           None -> the embeddings source was unavailable this cycle; deactivate
             ONLY modality="chat" rows absent from `models` — modality="embedding"
             rows are left completely untouched (neither upserted nor deactivated).
+
+        catalog-db-seed TASK.md §3 (FROZEN @ v1), M5: BOTH deactivation branches are
+        provider-scoped — `provider IN (incoming_providers)` is ANDed into the WHERE, and
+        an empty batch (no provider signal derivable) SKIPS the UPDATE entirely (a no-op)
+        instead of the old "deactivate everything" fallback. Without this, the moment
+        `static_models` is retired (decision 1), the very next single-provider sync (e.g.
+        OpenRouter's own embeddings-available common path) would otherwise blanket-
+        deactivate every other provider's seeded rows via the unfiltered notin_ sweep.
         """
         async with self._session.begin():
             all_models = models if embedding_models is None else [*models, *embedding_models]
@@ -70,26 +78,37 @@ class SqlAlchemyCatalogRepository:
                 if self._price_changed(prev, model):
                     await self._insert_snapshot(model)
 
-            # 3. Deactivate models absent from the upstream response.
+            # 3. Deactivate models absent from the upstream response — provider-scoped
+            #    (M5): never cross a provider boundary; an empty/no-signal batch never
+            #    deactivates anything.
             if embedding_models is not None:
                 incoming_ids |= {m.id for m in embedding_models}
-                if incoming_ids:
+                incoming_providers = {m.provider for m in all_models}
+                if incoming_providers:
                     await self._session.execute(
                         update(ModelRow)
-                        .where(ModelRow.id.notin_(incoming_ids))
+                        .where(
+                            ModelRow.id.notin_(incoming_ids),
+                            ModelRow.provider.in_(incoming_providers),
+                        )
                         .values(active=False)
                     )
-                else:
-                    # All models absent — deactivate everything.
-                    await self._session.execute(update(ModelRow).values(active=False))
+                # else: no provider signal derivable from an empty batch -> no-op.
             else:
                 # Embeddings fetch unavailable this cycle — deactivate ONLY chat
                 # rows absent from `models`; embedding-modality rows untouched.
-                await self._session.execute(
-                    update(ModelRow)
-                    .where(ModelRow.id.notin_(incoming_ids), ModelRow.modality == "chat")
-                    .values(active=False)
-                )
+                incoming_providers = {m.provider for m in models}
+                if incoming_providers:
+                    await self._session.execute(
+                        update(ModelRow)
+                        .where(
+                            ModelRow.id.notin_(incoming_ids),
+                            ModelRow.provider.in_(incoming_providers),
+                            ModelRow.modality == "chat",
+                        )
+                        .values(active=False)
+                    )
+                # else: no-op.
 
         return len(all_models)
 
@@ -373,6 +392,11 @@ class SqlAlchemyCatalogRepository:
         gpt-realtime-pricing-fields TASK.md §3: also persists the 3 audio_* columns (added by
         gpt-realtime-schema-migration) when the model carries them — NULL otherwise, same
         byte-identical-for-everyone-else discipline.
+
+        catalog-db-seed TASK.md §3 (FROZEN @ v1), M2: also persists cache_creation_usd_per_token/
+        pricing_unit/unit_usd_per_unit — the FIRST real writer of these 3 columns from a
+        CatalogModel. pricing_unit falls back to CatalogModel's own non-Optional "per_token"
+        default, so every existing per-token model round-trips byte-identically.
         """
         snap = PricingSnapshotRow(
             id=uuid7(),
@@ -383,6 +407,9 @@ class SqlAlchemyCatalogRepository:
             audio_prompt_usd_per_token=model.audio_prompt_usd_per_token,
             audio_completion_usd_per_token=model.audio_completion_usd_per_token,
             audio_cached_usd_per_token=model.audio_cached_usd_per_token,
+            cache_creation_usd_per_token=model.cache_creation_usd_per_token,
+            pricing_unit=model.pricing_unit,
+            unit_usd_per_unit=model.unit_usd_per_unit,
         )
         self._session.add(snap)
 

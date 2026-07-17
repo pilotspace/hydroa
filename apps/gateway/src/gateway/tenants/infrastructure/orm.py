@@ -53,6 +53,12 @@ class PlanRow(Base):
             "seat_price_usd_monthly IS NULL OR seat_price_usd_monthly > 0",
             name="ck_plans_seat_price_positive",
         ),
+        # plan-tiers-and-base-fee TASK.md §3 (FROZEN @ v1) — additive, mirrors
+        # ck_plans_seat_price_positive exactly.
+        CheckConstraint(
+            "base_price_usd_monthly IS NULL OR base_price_usd_monthly > 0",
+            name="ck_plans_base_price_positive",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
@@ -81,6 +87,15 @@ class PlanRow(Base):
     seat_price_usd_monthly: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True, default=None
     )
+    # plan-tiers-and-base-fee TASK.md §3 (FROZEN @ v1, M1/M2) — additive. NULL = no flat
+    # base fee (inert — InvoiceGenerator's `_load_base_price` writes ZERO 'base' invoice
+    # lines for a tenant whose plan has this NULL, e.g. enterprise/unplanned). Migration-
+    # seeded only (free=NULL, starter=1.00, pro=20.00, team=99.00, enterprise=NULL) — no
+    # runtime plans-row CRUD, mirrors seat_price_usd_monthly's own nullable/no-runtime-CRUD
+    # convention exactly.
+    base_price_usd_monthly: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True, default=None
+    )
     # TIMESTAMPTZ per §3 Schema — a NEW table gets the tz-aware convention (mirrors
     # InviteRow's own explicit DateTime(timezone=True), NOT TenantRow/UserRow's older
     # bare-Mapped[datetime] style). No onupdate — inert in v1 (no write path updates a
@@ -106,18 +121,31 @@ class TenantRow(Base):
         CheckConstraint(
             "plan_id IS NULL OR kind != 'platform'", name="ck_tenants_platform_no_plan"
         ),
+        # account-type-discriminator TASK.md §3 (FROZEN @ v1, M1/R2) — additive. The
+        # personal|business flavor of a customer tenant; NULL on the reserved platform
+        # tenant (defense-in-depth: platform can never carry an account_type, mirroring
+        # ck_tenants_platform_no_plan above).
+        CheckConstraint(
+            "account_type IS NULL OR account_type IN ('personal', 'business')",
+            name="ck_tenants_account_type",
+        ),
+        CheckConstraint(
+            "account_type IS NULL OR kind != 'platform'",
+            name="ck_tenants_platform_no_account_type",
+        ),
         # service-tiers TASK.md §3 (FROZEN @ v1) — additive.
         CheckConstraint("default_tier IN ('priority', 'standard')", name="ck_tenants_default_tier"),
         # audit-remediation C3 (double-bill fix, 2026-07-14) — additive.
-        CheckConstraint(
-            "billing_mode IN ('invoice', 'credits')", name="ck_tenants_billing_mode"
-        ),
+        CheckConstraint("billing_mode IN ('invoice', 'credits')", name="ck_tenants_billing_mode"),
         # plan-rate-enforcement TASK.md §3 (FROZEN @ v1, M0) — additive.
+        CheckConstraint("rpm_limit IS NULL OR rpm_limit > 0", name="ck_tenants_rpm_limit_positive"),
+        CheckConstraint("tpm_limit IS NULL OR tpm_limit > 0", name="ck_tenants_tpm_limit_positive"),
+        # billing-owner-of-record TASK.md §3 (FROZEN @ v1, M1) — additive. Defense-in-depth
+        # (mirrors ck_tenants_platform_no_plan / ck_tenants_platform_no_account_type): the
+        # reserved platform tenant can never carry a billing owner.
         CheckConstraint(
-            "rpm_limit IS NULL OR rpm_limit > 0", name="ck_tenants_rpm_limit_positive"
-        ),
-        CheckConstraint(
-            "tpm_limit IS NULL OR tpm_limit > 0", name="ck_tenants_tpm_limit_positive"
+            "billing_owner_user_id IS NULL OR kind != 'platform'",
+            name="ck_tenants_platform_no_billing_owner",
         ),
     )
 
@@ -210,6 +238,13 @@ class TenantRow(Base):
     # backfills existing rows; CHECK + partial unique index (kind='platform') enforce at
     # most one platform-kind row — resolve it via get_platform_tenant(), never a raw filter.
     kind: Mapped[str] = mapped_column(Text, nullable=False, server_default="customer")
+    # account-type-discriminator TASK.md §3 (FROZEN @ v1). The personal|business flavor of a
+    # customer tenant, set at signup (default 'business'); NULL on the reserved platform tenant.
+    # A personal account is a 1-member OWNER tenant on the seeded `individual` plan — reuses the
+    # whole tenant/user/role/plan pipeline (no separate account entity). Existing customers are
+    # backfilled 'business' by the migration; the two CHECKs in __table_args__ enforce the value
+    # set + the platform-never-personal invariant.
+    account_type: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     # plan-catalog TASK.md §3 (FROZEN @ v1) — additive, no backfill. NULL = unplanned, the
     # universal starting state for every pre-existing AND every newly-signed-up tenant
     # (no auto-assignment at signup) until a superadmin explicitly acts.
@@ -254,6 +289,27 @@ class TenantRow(Base):
     # leak when off). The column is retained (harmless, backfilled to 'invoice') for
     # possible future per-tenant billing selection; it is currently read by no code path.
     billing_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="invoice")
+    # billing-owner-of-record TASK.md §3 (FROZEN @ v1, M1) — additive, no ORM-level backfill
+    # (backfill is migration-only; a fresh create_all-built schema, like the migration's own
+    # pre-backfill state, starts every row NULL). FK -> users.id ON DELETE RESTRICT mirrors
+    # plan_id's own nullable-FK-override shape. `use_alter` + an explicit constraint name
+    # (matching the migration's own `tenants_billing_owner_user_id_fkey`) breaks the
+    # tenants<->users mutual-FK cycle that create_all's topological table-creation sort would
+    # otherwise reject (users.tenant_id -> tenants.id is the other, immediate, half of the
+    # cycle) — deferred to a post-create ALTER TABLE, exactly as Postgres already does for
+    # this FK shape; the migration itself has no such ordering concern (both tables already
+    # exist at this revision).
+    billing_owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "users.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="tenants_billing_owner_user_id_fkey",
+        ),
+        nullable=True,
+        default=None,
+    )
 
 
 class UserRow(Base):

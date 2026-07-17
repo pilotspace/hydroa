@@ -86,13 +86,83 @@ class _FakeSource:
             yield model
 
 
+# catalog-db-seed (decision 1, Tin-approved 2026-07-16) deleted the in-code
+# gateway.catalog.infrastructure.bedrock_seed module — the DB migration
+# (versions/9cdca76231c6_model_catalog_db_seed.py) is now the sole source of
+# truth for these 6 rows. Reconciliation: transcribed verbatim (exact ids/
+# regions/Decimal prices, migration's own comment: "carried forward verbatim")
+# from that migration's `_SEED` list — NOT imported from it, so this suite
+# cannot become a tautology against its own fixture data. `static_models` on
+# CompositeCatalogSource is still a live, optional constructor kwarg (just no
+# longer defaulted-to by main.py) so this fixture-installer keeps using it to
+# isolate the region-persistence behavior under test.
+_BEDROCK_SEED_MODELS: list[CatalogModel] = [
+    CatalogModel(
+        id="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        name="Claude 3.5 Sonnet v2 (Bedrock, US)",
+        context_length=200_000,
+        prompt_usd_per_token=Decimal("0.000003"),
+        completion_usd_per_token=Decimal("0.000015"),
+        provider="bedrock",
+        input_modalities="text,image",
+        region="us",
+    ),
+    CatalogModel(
+        id="eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        name="Claude 3.5 Sonnet v2 (Bedrock, EU)",
+        context_length=200_000,
+        prompt_usd_per_token=Decimal("0.000003"),
+        completion_usd_per_token=Decimal("0.000015"),
+        provider="bedrock",
+        input_modalities="text,image",
+        region="eu",
+    ),
+    CatalogModel(
+        id="apac.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        name="Claude 3.5 Sonnet v2 (Bedrock, APAC)",
+        context_length=200_000,
+        prompt_usd_per_token=Decimal("0.000003"),
+        completion_usd_per_token=Decimal("0.000015"),
+        provider="bedrock",
+        input_modalities="text,image",
+        region="ap",
+    ),
+    CatalogModel(
+        id="us.anthropic.claude-3-5-haiku-20241022-v1:0",
+        name="Claude 3.5 Haiku (Bedrock, US)",
+        context_length=200_000,
+        prompt_usd_per_token=Decimal("0.0000008"),
+        completion_usd_per_token=Decimal("0.000004"),
+        provider="bedrock",
+        region="us",
+    ),
+    CatalogModel(
+        id="eu.anthropic.claude-3-5-haiku-20241022-v1:0",
+        name="Claude 3.5 Haiku (Bedrock, EU)",
+        context_length=200_000,
+        prompt_usd_per_token=Decimal("0.0000008"),
+        completion_usd_per_token=Decimal("0.000004"),
+        provider="bedrock",
+        region="eu",
+    ),
+    CatalogModel(
+        id="apac.anthropic.claude-3-5-haiku-20241022-v1:0",
+        name="Claude 3.5 Haiku (Bedrock, APAC)",
+        context_length=200_000,
+        prompt_usd_per_token=Decimal("0.0000008"),
+        completion_usd_per_token=Decimal("0.000004"),
+        provider="bedrock",
+        region="ap",
+    ),
+]
+
+
 def _install_composite(app: Any, fake_primary: _FakeSource) -> None:
-    """Install a CompositeCatalogSource(fake_primary, BEDROCK_SEED_MODELS) on app.state."""
-    from gateway.catalog.infrastructure.bedrock_seed import BEDROCK_SEED_MODELS
+    """Install a CompositeCatalogSource(fake_primary, _BEDROCK_SEED_MODELS) on app.state."""
     from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
 
     app.state.catalog_source = CompositeCatalogSource(
-        primary=fake_primary, static_models=BEDROCK_SEED_MODELS
+        primary=fake_primary, static_models=_BEDROCK_SEED_MODELS
     )
 
 
@@ -476,9 +546,7 @@ async def test_sc11_bedrock_seed_rows_survive_deactivation_sweep(
     )
     assert (await client.post(SYNC)).status_code == 200
 
-    from gateway.catalog.infrastructure.bedrock_seed import BEDROCK_SEED_MODELS
-
-    ids = [m.id for m in BEDROCK_SEED_MODELS]
+    ids = [m.id for m in _BEDROCK_SEED_MODELS]
     rows = (
         await db_session.execute(
             text("SELECT id, active FROM models WHERE id = ANY(:ids)"), {"ids": ids}
@@ -501,7 +569,7 @@ async def test_sc11_bedrock_seed_rows_survive_deactivation_sweep(
 async def test_sc12_no_vertex_row_ever_seeded(app: Any) -> None:
     """No CatalogModel in THIS task's static seed lists carries provider='vertex'.
 
-    RED reason: bedrock_seed.py does not exist → ImportError.
+    RED reason (pre-catalog-db-seed): bedrock_seed.py does not exist → ImportError.
 
     Cross-task amendment (2026-07-12, integration of the sibling vertex-adapter task,
     FROZEN @ v1): the original second assertion — `"vertex" not in
@@ -511,16 +579,24 @@ async def test_sc12_no_vertex_row_ever_seeded(app: Any) -> None:
     adapter and seeds provider='vertex' rows via its OWN vertex_seed.py (pinned by
     tests/vertex_catalog_seed). This task's enduring invariant — its three seed
     lists never smuggle a vertex row — is unchanged below.
-    """
-    from gateway.catalog.infrastructure.bedrock_seed import BEDROCK_SEED_MODELS
-    from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_MODELS
-    from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 
-    for seed_list in (MINIMAX_SEED_MODELS, GPT_REALTIME_SEED_MODELS, BEDROCK_SEED_MODELS):
-        for model in seed_list:
-            assert model.provider != "vertex", (
-                f"{model.id!r} must not carry provider='vertex' (scope-cut, §3)"
-            )
+    Second reconciliation (catalog-db-seed, decision 1, Tin-approved 2026-07-16):
+    minimax_seed.py / gpt_realtime_seed.py / bedrock_seed.py are ALL deleted — the
+    DB migration (9cdca76231c6) is now the sole source of truth for every one of
+    these rows, in a SINGLE unified `_SEED` list rather than 3 separate importable
+    lists. This task's own surviving artifact is the `_BEDROCK_SEED_MODELS` inline
+    fixture above (transcribed verbatim from that migration) — checked directly
+    below. The other two lists no longer exist as separate files to smuggle a
+    provider='vertex' row INTO; the equivalent guard against a mislabeled provider
+    on any of the (minimax/openai) rows now lives in
+    tests/catalog_db_seed/test_catalog_db_seed_migration.py's per-id
+    `_EXPECTED_TOKEN_PRICES` table, which pins every one of the 34 migrated rows'
+    `provider` column (already-green, not touched here).
+    """
+    for model in _BEDROCK_SEED_MODELS:
+        assert model.provider != "vertex", (
+            f"{model.id!r} must not carry provider='vertex' (scope-cut, §3)"
+        )
 
 
 # ===========================================================================

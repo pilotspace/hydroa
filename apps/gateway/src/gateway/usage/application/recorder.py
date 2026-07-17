@@ -102,6 +102,7 @@ class RecordingUsageRecorder:
             "cc_session_id",
             "cc_agent_id",
             "cc_parent_agent_id",
+            "credential_source",
         }
     )
 
@@ -140,6 +141,7 @@ class RecordingUsageRecorder:
         cc_session_id: str | None = None,
         cc_agent_id: str | None = None,
         cc_parent_agent_id: str | None = None,
+        credential_source: str | None = None,
     ) -> None:
         """Append a usage event to the Redis Stream.
 
@@ -189,6 +191,7 @@ class RecordingUsageRecorder:
             cc_session_id=cc_session_id,
             cc_agent_id=cc_agent_id,
             cc_parent_agent_id=cc_parent_agent_id,
+            credential_source=credential_source,
         )
         return None
 
@@ -218,6 +221,7 @@ class RecordingUsageRecorder:
         cc_session_id: str | None = None,
         cc_agent_id: str | None = None,
         cc_parent_agent_id: str | None = None,
+        credential_source: str | None = None,
     ) -> UsageRecordOutcome | None:
         """Identical to record(), but RETURNS the computed outcome instead of discarding
         it (credits-ledger TASK.md §3: "settle must consume the cost already computed by
@@ -257,6 +261,7 @@ class RecordingUsageRecorder:
                 cc_session_id=cc_session_id,
                 cc_agent_id=cc_agent_id,
                 cc_parent_agent_id=cc_parent_agent_id,
+                credential_source=credential_source,
             )
         except Exception as exc:
             _log.warning(
@@ -296,6 +301,7 @@ class RecordingUsageRecorder:
         cc_session_id: str | None = None,
         cc_agent_id: str | None = None,
         cc_parent_agent_id: str | None = None,
+        credential_source: str | None = None,
     ) -> UsageRecordOutcome:
         """Core record logic — may raise; caller swallows."""
         # Resolve pricing + markup
@@ -562,6 +568,11 @@ class RecordingUsageRecorder:
             raw_payload["cc_agent_id"] = cc_agent_id
         if cc_parent_agent_id is not None:
             raw_payload["cc_parent_agent_id"] = cc_parent_agent_id
+        # fallback-usage-marker §3: platform-fallback provenance — same additive-raw-key idiom
+        # as request_id / cc_session_id above. Absent on every own-key/pre-existing row (≡ byok);
+        # provenance ONLY — tenant_id / cost_usd / spend counters below are untouched.
+        if credential_source is not None:
+            raw_payload["credential_source"] = credential_source
 
         # Encode quantity: empty string for per_token (NULL), str(q) for non-token
         quantity_str = str(resolved_quantity) if resolved_quantity is not None else ""

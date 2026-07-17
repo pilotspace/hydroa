@@ -114,3 +114,13 @@ class ScimUserRepository(Protocol):
         Returns None for unknown/cross-tenant id.
         """
         ...
+
+    async def lock_and_get_billing_owner_user_id(self, *, tenant_id: uuid.UUID) -> uuid.UUID | None:
+        """``SELECT billing_owner_user_id FROM tenants WHERE id=:t FOR UPDATE``
+        (billing-owner-of-record TASK.md §3 M4) — the SAME-shaped lock as
+        ``UserRoleRepository.lock_and_get_billing_owner_user_id``, held in the SAME
+        transaction as ``set_active``'s own target-user lock so HOOK 2 (deactivation)
+        serializes against HOOK 1 (role-change) and the reassignment endpoint's own write
+        (closes the R9 race).
+        """
+        ...

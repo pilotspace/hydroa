@@ -82,12 +82,12 @@ from gateway.catalog.api.router import (
     catalog_router,
     internal_catalog_router,
 )
-from gateway.catalog.infrastructure.bedrock_seed import BEDROCK_SEED_MODELS
+from gateway.catalog.application.refresh_scheduler import (
+    CatalogRefreshScheduler,
+    should_start_catalog_refresh,
+)
 from gateway.catalog.infrastructure.composite_source import CompositeCatalogSource
-from gateway.catalog.infrastructure.gpt_realtime_seed import GPT_REALTIME_SEED_MODELS
-from gateway.catalog.infrastructure.minimax_seed import MINIMAX_SEED_MODELS
 from gateway.catalog.infrastructure.openrouter_source import OpenRouterCatalogSource
-from gateway.catalog.infrastructure.vertex_seed import VERTEX_SEED_MODELS
 from gateway.compliance.api.report_schedule_router import report_schedule_router
 from gateway.compliance.api.router import compliance_router
 from gateway.compliance.application.report_schedule_generator import (
@@ -168,6 +168,7 @@ from gateway.proxy.api.realtime_ws import realtime_router
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
+from gateway.proxy.application.platform_fallback import PlatformCredentialFallbackService
 from gateway.proxy.application.routing_config_merge import merge_routing_config
 from gateway.proxy.application.routing_strategy import build_strategy
 from gateway.proxy.domain.ports import CompletionUpstream, UpstreamProvider
@@ -229,6 +230,7 @@ from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamR
     TeamMemberRow as _TeamMemberRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.tenants.api.batch_policy_router import batch_policy_router
+from gateway.tenants.api.billing_owner_router import billing_owner_router
 from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.invite_accept_router import invite_accept_router
@@ -662,6 +664,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # CatalogRefreshScheduler — periodic re-sync of the DB model catalog from the
+        # wired CatalogSource (catalog-celery-refresh v2 — asyncio sweeper, NOT Celery:
+        # the repo runs redis 8.x and celery/kombu caps redis<6.5). Default-ON (interval
+        # 3600) per Tin's freeze; started only when catalog_refresh_interval_seconds>0.
+        # Reuses SyncCatalogUseCase verbatim against app.state.catalog_source (already
+        # wired in create_app before this lifespan runs) + the shared sessionmaker.
+        app.state.catalog_refresh_task = None
+        if should_start_catalog_refresh(_settings.catalog_refresh_interval_seconds):
+            catalog_refresh_scheduler = CatalogRefreshScheduler(
+                session_factory=_sessionmaker,
+                catalog_source=app.state.catalog_source,
+            )
+            app.state.catalog_refresh_scheduler = catalog_refresh_scheduler
+            app.state.catalog_refresh_task = asyncio.create_task(
+                catalog_refresh_scheduler.run_forever(
+                    interval_seconds=float(_settings.catalog_refresh_interval_seconds)
+                )
+            )
+
         # VideoJobWorker — durable Redis-backed in-process worker (v48 durable-queue).
         # Default-OFF: started only when video_durable_queue_enabled=True.
         # recover_orphans() runs BEFORE run_forever so restart-orphaned rows are
@@ -802,6 +823,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             retention_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await retention_task
+
+        catalog_refresh_task: asyncio.Task[None] | None = getattr(
+            app.state, "catalog_refresh_task", None
+        )
+        if catalog_refresh_task is not None:
+            catalog_refresh_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await catalog_refresh_task
 
         video_worker_task: asyncio.Task[None] | None = getattr(app.state, "video_worker_task", None)
         if video_worker_task is not None:
@@ -960,13 +989,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.residency_lookup = SqlAlchemyResidencyLookup(sessionmaker=app.state.sessionmaker)
     app.state.password_hasher = Argon2PasswordHasher()
     app.state.token_service = JwtTokenService(settings)
-    # Default catalog source — tests override via app.state.catalog_source
+    # Default catalog source — tests override via app.state.catalog_source.
+    # catalog-db-seed TASK.md §3 (FROZEN @ v1, M6): the DB seed migration is now the SOLE
+    # source of truth for the former static seed rows (minimax/gpt-realtime/bedrock/vertex);
+    # `static_models` is dropped entirely, so the provider-scoped `sync_catalog` deactivation
+    # (M5) never wipes them on an OpenRouter-only sync.
     app.state.catalog_source = CompositeCatalogSource(
         primary=OpenRouterCatalogSource(httpx.AsyncClient()),
-        static_models=MINIMAX_SEED_MODELS
-        + GPT_REALTIME_SEED_MODELS
-        + BEDROCK_SEED_MODELS
-        + VERTEX_SEED_MODELS,
     )
     # Proxy defaults — tests inject fakes via app.state
     app.state.circuit_breaker = CircuitBreaker()
@@ -1145,9 +1174,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Google Vertex AI adapter — registered UNCONDITIONALLY (vertex-adapter task,
     # mirrors every sibling adapter). Credentials (GoogleServiceAccountCredential) are
     # resolved per-request from the tenant contextvar. A request with no tenant Vertex
-    # key → 402 at resolve time (M12/R2). Landed in the SAME diff as vertex_seed.py's
-    # VERTEX_SEED_MODELS rows joining static_models above (M10/R6 — never seed a
-    # provider="vertex" catalog row without the matching adapter registered).
+    # key → 402 at resolve time (M12/R2). The provider="vertex" catalog rows now live in
+    # the DB seed migration (catalog-db-seed) — M10/R6 still holds: never seed a
+    # provider="vertex" catalog row without the matching adapter registered here.
     _chat_adapters["vertex"] = VertexCompletionUpstream(
         token_provider_cache=_vertex_token_provider_cache,
         default_max_tokens=settings.vertex_default_max_tokens,
@@ -1365,6 +1394,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store=app.state.tenant_provider_key_store,
         settings=settings,
     )
+    # platform-key-default: default-ON platform-tenant credential fallback (kill-switch
+    # GATEWAY_PLATFORM_CREDENTIAL_FALLBACK_ENABLED). A keyless tenant is served the reserved
+    # kind='platform' tenant's own credential; its OWN key always takes precedence. Composed
+    # OUTSIDE resolver.resolve() so the fail-closed invariant holds for every other caller.
+    # Tests can override via app.state.platform_credential_fallback.
+    app.state.platform_credential_fallback = PlatformCredentialFallbackService(
+        session_factory=app.state.sessionmaker,
+        enabled=settings.platform_credential_fallback_enabled,
+    )
 
     # ml-moderation-layer (§3 CONTRACT — FROZEN @ v1): a DEDICATED OpenAIDirectProvider
     # + CircuitBreaker instance for the moderation IO seam, isolated from _openai_direct
@@ -1523,6 +1561,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(capture_router)
     app.include_router(logs_query_router)
     app.include_router(batch_policy_router)
+    app.include_router(billing_owner_router)
     app.include_router(guardrail_router)
     app.include_router(retention_policy_router)
     app.include_router(residency_policy_router)
