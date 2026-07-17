@@ -825,6 +825,45 @@ class Settings(BaseSettings):
     # GATEWAY_OBJECT_STORE_MAX_RETRIES — bounded retry for IDEMPOTENT reads only (0 = off).
     object_store_max_retries: int = Field(default=2, ge=0)
 
+    # ── Transactional email (transactional-email) — EmailSender adapter selection ──
+    # Unset (default) -> ConsoleEmailSender (logs the rendered mail, no real delivery).
+    # email_smtp_enabled=True -> SmtpEmailSender, boot-validated below (host + dashboard
+    # origin required; see _validate_email_smtp_config). Mirrors object_store's own
+    # bool-gate + field-group + honest-degrade-default shape exactly.
+    email_smtp_enabled: bool = False  # GATEWAY_EMAIL_SMTP_ENABLED
+    email_smtp_host: str = ""  # GATEWAY_EMAIL_SMTP_HOST
+    email_smtp_port: int = 587  # GATEWAY_EMAIL_SMTP_PORT
+    email_smtp_username: str = ""  # GATEWAY_EMAIL_SMTP_USERNAME
+    # GATEWAY_EMAIL_SMTP_PASSWORD — masked at rest; never logged/repr'd.
+    email_smtp_password: SecretStr = SecretStr("")
+    email_smtp_use_tls: bool = True  # GATEWAY_EMAIL_SMTP_USE_TLS (STARTTLS, port 587)
+    email_smtp_from_address: str = "no-reply@hydroa.local"  # GATEWAY_EMAIL_SMTP_FROM_ADDRESS
+    # GATEWAY_EMAIL_SMTP_TIMEOUT_SECONDS — explicit smtplib socket timeout. Never a hang.
+    email_smtp_timeout_seconds: float = Field(default=5.0, gt=0)
+    # GATEWAY_EMAIL_SMTP_MAX_RETRIES — bounded retry for transient/connection errors only.
+    email_smtp_max_retries: int = Field(default=2, ge=0)
+    # GATEWAY_DASHBOARD_PUBLIC_ORIGIN — the dashboard's public origin, used to build an
+    # absolute invite-accept link server-side (f"{origin}/invite/{token}"). Empty (default)
+    # + SMTP disabled never boot-errors — render_invite_email falls back to a relative
+    # "/invite/{token}" link for the console adapter's log line.
+    dashboard_public_origin: str = ""  # GATEWAY_DASHBOARD_PUBLIC_ORIGIN
+
+    @model_validator(mode="after")
+    def _validate_email_smtp_config(self) -> "Settings":
+        """If email_smtp_enabled=True, host + dashboard_public_origin must be non-empty
+        (startup guard — mirrors _validate_otel_config's exact shape). A delivery of a
+        link nobody can build server-side must never be silently sent broken.
+        """
+        if self.email_smtp_enabled and not self.email_smtp_host:
+            raise ValueError(
+                "GATEWAY_EMAIL_SMTP_HOST must be set when GATEWAY_EMAIL_SMTP_ENABLED=true"
+            )
+        if self.email_smtp_enabled and not self.dashboard_public_origin:
+            raise ValueError(
+                "GATEWAY_DASHBOARD_PUBLIC_ORIGIN must be set when GATEWAY_EMAIL_SMTP_ENABLED=true"
+            )
+        return self
+
     # ── Realtime WebSocket voice endpoint (/v1/realtime) ─────────────────────
     # GATEWAY_REALTIME_AUTH_TIMEOUT_SECONDS — how long the server waits for the
     # first {"type":"auth"} frame before closing with code 4408.  ge=0 allows

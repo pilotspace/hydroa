@@ -127,6 +127,9 @@ from gateway.domain_capture.infrastructure.orm import (  # noqa: F401 — regist
     TenantDomainClaimRow as _TenantDomainClaimRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.domain_capture.infrastructure.rate_limiter import DomainClaimRateLimiter
+from gateway.email.domain.ports import EmailSender
+from gateway.email.infrastructure.console_email_sender import ConsoleEmailSender
+from gateway.email.infrastructure.smtp_email_sender import SmtpEmailSender
 from gateway.guardrail_analytics.api.router import guardrail_analytics_router
 from gateway.guardrail_analytics.infrastructure.orm import (  # noqa: F401 — registers GuardrailVerdictEventRow on Base.metadata
     GuardrailVerdictEventRow as _GuardrailVerdictEventRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -421,6 +424,15 @@ def build_model_router(
         stream_resilience_enabled=settings.upstream_stream_resilience_enabled,
         residency_lookup=residency_lookup,
     )
+
+
+def build_email_sender(settings: Settings) -> EmailSender:
+    """Select the EmailSender adapter — mirrors build_object_store(settings)'s shape
+    exactly. email_smtp_enabled=False (default) -> ConsoleEmailSender (no real
+    delivery); email_smtp_enabled=True (boot-validated: host + dashboard origin
+    required) -> SmtpEmailSender.
+    """
+    return SmtpEmailSender(settings) if settings.email_smtp_enabled else ConsoleEmailSender()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -976,6 +988,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ObjectStore for the artifacts byte path — None when unconfigured (honest-degrade
     # to inline BYTEA, the v45 behavior). Tests override app.state.object_store.
     app.state.object_store = build_object_store(settings)
+    # EmailSender for ancillary fire-and-forget outbound email (transactional-email) —
+    # ConsoleEmailSender (no real delivery) unless email_smtp_enabled=true. Tests
+    # override app.state.email_sender.
+    app.state.email_sender = build_email_sender(settings)
     app.state.engine = engine
     app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     # residency-policy TASK.md §3 (FROZEN @ v2): ONE shared ResidencyLookup instance,
