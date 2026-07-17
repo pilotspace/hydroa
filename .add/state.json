@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "plan-rate-enforcement",
-  "active_milestone": "platform-access-plan",
+  "active_task": "airier-theme-restyle",
+  "active_milestone": "dashboard-hallmark-restyle",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1192,6 +1192,32 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "airier-theme-restyle": {
+      "title": "Airier theme restyle \u2014 fonts, token palette (light+dark), raw-color sweep, AA contrast",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "dashboard-hallmark-restyle",
+      "depends_on": [],
+      "created": "2026-07-17T06:36:43+00:00",
+      "updated": "2026-07-17T06:41:41+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "57b824dd621fabb49bb621d895ae6a40",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/app/",
+          "apps/dashboard/components/"
+        ],
+        "snapshot_md5": "29415532973f43322292b158ca510611"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1288,10 +1314,23 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "dashboard-hallmark-restyle": {
+      "title": "Whole-dashboard restyle to the Airier enterprise AI-SaaS theme",
+      "goal": "",
+      "stage": "mvp",
+      "status": "done",
+      "created": "2026-07-17T06:35:03+00:00",
+      "updated": "2026-07-17T06:42:00+00:00",
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-15T09:36:10+00:00",
+  "updated": "2026-07-17T06:42:00+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2252,7 +2291,8 @@
     "platform-admin-console",
     "platform-access-plan",
     "eu-ai-act-readiness",
-    "agent-gateway-v1"
+    "agent-gateway-v1",
+    "dashboard-hallmark-restyle"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
@@ -2260,7 +2300,8 @@
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
-    "agent-gateway-v1": "agents-console"
+    "agent-gateway-v1": "agents-console",
+    "dashboard-hallmark-restyle": "airier-theme-restyle"
   },
   "todos": [
     {
