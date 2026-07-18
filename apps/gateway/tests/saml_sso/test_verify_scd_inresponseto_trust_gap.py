@@ -71,7 +71,9 @@ async def test_scd_missing_inresponseto_must_be_rejected_not_accepted(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner-verify-scd@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    # SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+    # requires a verified claim first — precondition added, assertion intent unchanged.
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
 
     # A pending AuthnRequest the login-init flow actually created — this is
     # the request_id the (unsigned) M3 store lookup keys off.

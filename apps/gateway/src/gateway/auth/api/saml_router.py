@@ -65,9 +65,14 @@ async def saml_login(
 ) -> Response:
     """GET /auth/saml/login — initiate SP-initiated SAML login (M1).
 
-    Accepts ?domain=<email_domain> to resolve the tenant's SamlProviderConfig.
+    Accepts ?domain=<email_domain>; the tenant is resolved via the verified
+    tenant_domain_claims source of truth (domain-routing-unification §3 M3),
+    then the SamlProviderConfig is loaded by tenant_id.
     Returns 302 to the IdP SSO URL with a deflate+base64 SAMLRequest param.
-    Returns 404 ERR_SAML_NOT_CONFIGURED when no enabled config matches.
+    Returns 404 ERR_SAML_NOT_CONFIGURED when the domain has no verified claim,
+    the claimed tenant has no enabled config, or no domain is supplied
+    (domain-routing-unification §3 M3/R1 — FROZEN @ v2/CR-v2: reuses the
+    EXISTING 404, no new SAML-specific 403 code).
     No cookies are set (M1 — tenant binding is server-side, see M3).
     """
     domain: str | None = request.query_params.get("domain")

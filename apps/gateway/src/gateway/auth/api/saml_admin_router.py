@@ -46,9 +46,16 @@ from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_FORBIDDEN_OWNER_REQUIRED,
     AUTH_TOKEN_INVALID,
+    DOMAIN_NOT_VERIFIED,
     INTERNAL_ERROR,
     SAML_CONFIG_NOT_FOUND,
     SAML_DOMAIN_ALREADY_CLAIMED,
+)
+from gateway.domain_capture.application.verified_domain_resolution import (
+    resolve_verified_tenant_for_raw_domain,
+)
+from gateway.domain_capture.infrastructure.repository import (
+    SqlAlchemyDomainClaimRepository,
 )
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
@@ -247,28 +254,30 @@ async def put_saml_config(
 
         raise SAML_CERT_INVALID.exc(detail=cert_error)
 
-    # Collision guard (add-verify Finding 3, 2026-07-10, DoS class): reject an
-    # email_domains entry already claimed by a DIFFERENT tenant's config
-    # BEFORE any write. Without this, two tenants can both claim the same
-    # domain and every GET /auth/saml/login?domain=<that domain> crashes with
-    # an unhandled MultipleResultsFound (db_saml_config_resolver.py). Checked
-    # against ALL other tenants' rows regardless of `enabled` — a disabled
-    # collision only defers the crash to whenever either row is re-enabled,
-    # so it is rejected up front rather than left as a landmine.
-    if body.email_domains:
-        collision_stmt = select(
-            SamlProviderConfigRow.tenant_id, SamlProviderConfigRow.email_domains
-        ).where(
-            SamlProviderConfigRow.tenant_id != tenant_id,
-            SamlProviderConfigRow.email_domains.overlap(body.email_domains),
-        )
-        collision_result = await session.execute(collision_stmt)
-        collision_row = collision_result.first()
-        if collision_row is not None:
-            _other_tenant_id, other_domains = collision_row
-            claimed = sorted(set(other_domains or []) & set(body.email_domains))
+    # Verified-claim gate (domain-routing-unification TASK.md §3 M5/R2/R3 —
+    # FROZEN @ v1): every email_domains entry must be backed by THIS tenant's
+    # VERIFIED tenant_domain_claims row — checked via the ONE shared predicate
+    # (normalize_domain + resolve_verified_tenant), the same pair the login
+    # path routes by, and checked BEFORE any write (the config row is
+    # unchanged on rejection). This SUPERSEDES the earlier sibling-config
+    # comparison (add-verify Finding 3, 2026-07-10): the config-vs-config
+    # check missed a domain another tenant DNS-verified via domain_capture but
+    # never SAML-configured (Ground Risk #4), and wrongly blocked the rightful
+    # verified claimant from configuring its own domain. The partial unique
+    # index uq_domain_claims_domain_verified is the structural backstop.
+    claim_repo = SqlAlchemyDomainClaimRepository(session)
+    for raw_domain in body.email_domains:
+        claimant = await resolve_verified_tenant_for_raw_domain(claim_repo, raw_domain)
+        if claimant is None:
+            raise DOMAIN_NOT_VERIFIED.exc(
+                detail=(
+                    f"email_domains entry {raw_domain!r} has no verified domain claim; "
+                    "verify it via DNS-TXT (POST /admin/domain-claims) first"
+                )
+            )
+        if claimant != tenant_id:
             raise SAML_DOMAIN_ALREADY_CLAIMED.exc(
-                detail=(f"email_domains already claimed by another tenant: {claimed}")
+                detail=f"email_domains entry {raw_domain!r} is verified by another tenant"
             )
 
     now = datetime.now(UTC)

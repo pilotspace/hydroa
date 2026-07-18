@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 import re
 from collections.abc import AsyncIterator
 from typing import Any
@@ -463,6 +464,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tier_capacity_cluster_cap=settings.tier_capacity_cluster_cap,
             max_concurrent_requests=settings.max_concurrent_requests,
             hint="cluster_cap should be >= workers x max_concurrent_requests",
+        )
+
+    # domain-routing-unification TASK.md §3 (FROZEN @ v2/CR-v2): GATEWAY_OIDC_DOMAIN_MAPPING
+    # is a trusted OPERATOR-set FALLBACK, not deleted (v1 removed it outright and broke
+    # ~23 legacy env-routing tests; CR-v2 reverted that). A verified tenant_domain_claims
+    # row ALWAYS takes precedence when one exists; the env mapping is only ever consulted
+    # when the callback has no per-tenant DB config pinned. Still warn LOUDLY at startup —
+    # a deployment relying SOLELY on the env var (no per-tenant config, no verified claim)
+    # should DNS-TXT-verify the domain so it stops depending on the lower-trust fallback.
+    try:
+        _legacy_domain_mapping = json.loads(settings.oidc_domain_mapping)
+    except (ValueError, TypeError):  # Settings already validates; belt-and-suspenders
+        _legacy_domain_mapping = None
+    if _legacy_domain_mapping:
+        structlog.get_logger(__name__).warning(
+            "oidc_domain_mapping_is_a_fallback_verified_claims_take_precedence",
+            mapped_domains=[
+                entry.get("email_domain")
+                for entry in _legacy_domain_mapping
+                if isinstance(entry, dict)
+            ],
+            hint=(
+                "GATEWAY_OIDC_DOMAIN_MAPPING is a fallback — a verified tenant_domain_claims "
+                "row (DNS-TXT via POST /admin/domain-claims) always takes precedence over it. "
+                "It is only consulted when neither a verified claim nor a per-tenant DB OIDC "
+                "config exists for a domain."
+            ),
         )
 
     @contextlib.asynccontextmanager  # pyright: ignore[reportDeprecated]  — Pyright 1.1.410 stub false-positive; stdlib asynccontextmanager is not deprecated

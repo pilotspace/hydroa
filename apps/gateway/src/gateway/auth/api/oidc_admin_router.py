@@ -34,9 +34,17 @@ from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_FORBIDDEN_OWNER_REQUIRED,
     AUTH_TOKEN_INVALID,
+    DOMAIN_NOT_VERIFIED,
     INTERNAL_ERROR,
     OIDC_CONFIG_NOT_FOUND,
+    OIDC_DOMAIN_ALREADY_CLAIMED,
     OIDC_ENCRYPTION_NOT_CONFIGURED,
+)
+from gateway.domain_capture.application.verified_domain_resolution import (
+    resolve_verified_tenant_for_raw_domain,
+)
+from gateway.domain_capture.infrastructure.repository import (
+    SqlAlchemyDomainClaimRepository,
 )
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
@@ -258,6 +266,29 @@ async def put_oidc_config(
             status_code=422,
             content={"detail": validation_errors},
         )
+
+    # Verified-claim gate (domain-routing-unification TASK.md §3 M5/R2/R3 —
+    # FROZEN @ v1): every email_domains entry must be backed by THIS tenant's
+    # VERIFIED tenant_domain_claims row — checked via the ONE shared predicate
+    # (normalize_domain + resolve_verified_tenant), the same pair the login
+    # path routes by, and checked BEFORE any write (the config row is
+    # unchanged on rejection). CLAIMS-based, deliberately NOT a sibling-
+    # provider-config comparison (Ground Risk #4: a domain another tenant
+    # DNS-verified but never OIDC-configured must still be untouchable).
+    claim_repo = SqlAlchemyDomainClaimRepository(session)
+    for raw_domain in body.email_domains:
+        claimant = await resolve_verified_tenant_for_raw_domain(claim_repo, raw_domain)
+        if claimant is None:
+            raise DOMAIN_NOT_VERIFIED.exc(
+                detail=(
+                    f"email_domains entry {raw_domain!r} has no verified domain claim; "
+                    "verify it via DNS-TXT (POST /admin/domain-claims) first"
+                )
+            )
+        if claimant != tenant_id:
+            raise OIDC_DOMAIN_ALREADY_CLAIMED.exc(
+                detail=f"email_domains entry {raw_domain!r} is verified by another tenant"
+            )
 
     # Encrypt client_secret with Fernet — NEVER store plaintext
     from cryptography.fernet import Fernet

@@ -630,6 +630,15 @@ OIDC_TENANT_CONFLICT = ErrorSpec(
     403, "ERR_OIDC_TENANT_CONFLICT", "Email is bound to a different tenant"
 )
 
+#: PUT /admin/oidc with an email_domains entry whose VERIFIED tenant_domain_claims
+#: row belongs to a DIFFERENT tenant (domain-routing-unification TASK.md §3 R2 —
+#: FROZEN @ v1). Claims-based sibling of SAML_DOMAIN_ALREADY_CLAIMED below.
+OIDC_DOMAIN_ALREADY_CLAIMED = ErrorSpec(
+    409,
+    "ERR_OIDC_DOMAIN_ALREADY_CLAIMED",
+    "One or more email_domains are already verified by another tenant",
+)
+
 #: Resolved user's deactivated_at is set (scim-provisioning TASK.md §3, M7) — same
 #: denial family as the password-login path; no session JWT is issued.
 OIDC_ACCOUNT_DEACTIVATED = ErrorSpec(403, "ERR_OIDC_ACCOUNT_DEACTIVATED", "Account is deactivated")
@@ -750,6 +759,16 @@ DOMAIN_CLAIM_NOT_FOUND = ErrorSpec(404, "ERR_DOMAIN_CLAIM_NOT_FOUND", "Domain cl
 #: DNS resolver error/NXDOMAIN/empty-answer/timeout — fail CLOSED, never a verified match (M13, R8).
 DNS_LOOKUP_FAILED = ErrorSpec(
     503, "ERR_DNS_LOOKUP_FAILED", "DNS lookup failed or timed out; try again"
+)
+
+#: PUT /admin/oidc | PUT /admin/saml with an email_domains entry NO tenant has
+#: verified (domain-routing-unification TASK.md §3 R3 — FROZEN @ v1). Shared by
+#: BOTH admin-write surfaces: DNS-TXT-verify the domain (tenant_domain_claims)
+#: before it may appear in any provider config.
+DOMAIN_NOT_VERIFIED = ErrorSpec(
+    422,
+    "ERR_DOMAIN_NOT_VERIFIED",
+    "One or more email_domains have no verified domain claim for this tenant",
 )
 
 # ---------------------------------------------------------------------------

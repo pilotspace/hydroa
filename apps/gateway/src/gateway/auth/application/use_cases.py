@@ -70,7 +70,15 @@ SSO_PASSWORD_HASH_SENTINEL = "!sso-no-password"  # noqa: S105 — sentinel strin
 
 
 def _parse_domain_mappings(domain_mapping_json: str) -> list[DomainMapping]:
-    """Parse GATEWAY_OIDC_DOMAIN_MAPPING JSON into DomainMapping objects."""
+    """Parse GATEWAY_OIDC_DOMAIN_MAPPING JSON into DomainMapping objects.
+
+    domain-routing-unification TASK.md §3 M4 (FROZEN @ v2/CR-v2): this env
+    fallback is RETAINED — a verified tenant_domain_claims row always takes
+    precedence (enforced structurally: /login resolves via the claim FIRST,
+    per-tenant DB config second, and only pins the "env-config" cookie
+    sentinel when NEITHER exists — see oidc_router.py). This parse helper
+    feeds ONLY the callback's Step 6 `else:` fallback below.
+    """
     from gateway.auth.domain.entities import DomainMapping
 
     try:
@@ -155,6 +163,12 @@ class OidcLoginUseCase:
 
             jwks_key_cache = _Cache()
         self._jwks_key_cache = jwks_key_cache
+        # domain-routing-unification §3 M4 (FROZEN @ v2/CR-v2): env
+        # GATEWAY_OIDC_DOMAIN_MAPPING is a trusted OPERATOR-set fallback —
+        # RETAINED, not deleted (v1 wholesale-deleted this and broke ~23
+        # legacy env-routing tests). A verified tenant_domain_claims row
+        # always takes precedence over it; Step 6 below only reaches this
+        # fallback when no per-tenant DB config is pinned.
         self._domain_mappings = _parse_domain_mappings(settings.oidc_domain_mapping)
 
         # Log signature skip warning in non-dev environments ONLY when verification
@@ -316,10 +330,14 @@ class OidcLoginUseCase:
             raise OidcTokenInvalidError("ID token email claim absent or empty")
         email = email_raw.lower()
 
-        # Step 6: domain mapping
-        # When a per-tenant OidcProviderConfig is active, the tenant_id is already
-        # resolved from the oidc_tenant_id cookie — use it directly.
-        # For the env-Settings path, use the GATEWAY_OIDC_DOMAIN_MAPPING fallback.
+        # Step 6: tenant binding (domain-routing-unification TASK.md §3 M4 —
+        # FROZEN @ v2/CR-v2). Precedence: a per-tenant DB config pinned at
+        # /login (itself resolved claim-FIRST — see oidc_router.py M2) always
+        # wins; ONLY when no per-tenant config is pinned does this fall back
+        # to the operator-set GATEWAY_OIDC_DOMAIN_MAPPING env table. v1
+        # deleted this fallback branch outright; CR-v2 restores it — a
+        # verified claim still always wins because it is what produced the
+        # pinned per-tenant config in the first place.
         domain = email.split("@", 1)[-1] if "@" in email else ""
         mapped_tenant_id: uuid.UUID | None = None
 
@@ -327,7 +345,7 @@ class OidcLoginUseCase:
             # Per-tenant DB path: tenant_id is pinned by the per-tenant config.
             mapped_tenant_id = self._oidc_config.tenant_id
         else:
-            # Env-Settings path: use GATEWAY_OIDC_DOMAIN_MAPPING
+            # Env-Settings path: use GATEWAY_OIDC_DOMAIN_MAPPING (fallback only)
             for mapping in self._domain_mappings:
                 if mapping.email_domain == domain:
                     mapped_tenant_id = mapping.tenant_id

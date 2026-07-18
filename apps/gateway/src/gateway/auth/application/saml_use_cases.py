@@ -56,6 +56,9 @@ from gateway.auth.domain.saml_errors import (
     SamlSignatureInvalidError,
     SamlTenantConflictError,
 )
+from gateway.domain_capture.application.verified_domain_resolution import (
+    resolve_verified_tenant_for_raw_domain,
+)
 from gateway.tenants.domain.entities import Role
 
 if TYPE_CHECKING:
@@ -64,6 +67,7 @@ if TYPE_CHECKING:
     from gateway.auth.domain.saml_entities import SamlProviderConfig
     from gateway.auth.domain.saml_ports import SamlConfigResolver, SamlReplayCache, SamlRequestStore
     from gateway.core.config import Settings
+    from gateway.domain_capture.domain.ports import DomainClaimResolver
     from gateway.tenants.domain.ports import IdentityRepository, TokenService
 
 # Explicit exception-type -> ERR_SAML_* code mapping for audit metadata (TASK.md
@@ -192,25 +196,57 @@ def _settings_dict(config: SamlProviderConfig) -> dict[str, Any]:
 
 class SamlLoginInitUseCase:
     """M1: SP-initiated login — resolve tenant config, mint an AuthnRequest,
-    pin it server-side, redirect to the IdP."""
+    pin it server-side, redirect to the IdP.
+
+    Routing (domain-routing-unification TASK.md §3 M1/M3/M8 — FROZEN @
+    v2/CR-v2): the tenant is resolved EXCLUSIVELY via the verified
+    tenant_domain_claims source of truth (normalize_domain +
+    resolve_verified_tenant — the one shared predicate), then the SAML
+    config is loaded by tenant_id — NEVER by an email_domains containment
+    match. An admin-typed email_domains entry confers NO routing without a
+    same-domain verified claim. CR-v2 reverted the new 403
+    SAML_DOMAIN_NOT_MAPPED code v1 introduced here: every fail-closed
+    rejection below reuses the EXISTING 404 SamlNotConfiguredError — SAML
+    never had a per-tenant env-mapping fallback the way OIDC does, so there
+    is no second trusted source to fall back to, and no new code is needed.
+    """
 
     def __init__(
         self,
         *,
         config_resolver: SamlConfigResolver,
         request_store: SamlRequestStore,
+        claim_resolver: DomainClaimResolver,
     ) -> None:
         self._config_resolver = config_resolver
         self._request_store = request_store
+        self._claim_resolver = claim_resolver
 
     async def execute(self, *, domain: str | None, relay_state: str | None) -> str:
         """Returns the full 302 redirect URL to the IdP SSO endpoint.
 
-        Raises SamlNotConfiguredError when no enabled config matches domain.
+        Raises SamlNotConfiguredError (404, EXISTING code — M3/R1, CR-v2) when
+        no domain is supplied, the domain has no verified claim, or the
+        claimed tenant has no enabled SAML config — all three are the SAME
+        fail-closed rejection (no oracle distinguishing "unclaimed" from
+        "claimed but unconfigured" from "nothing supplied").
         """
-        config = await self._config_resolver.resolve(domain)
+        if domain is None:
+            raise SamlNotConfiguredError("no domain supplied to SAML login-init")
+
+        mapped_tenant_id = await resolve_verified_tenant_for_raw_domain(
+            self._claim_resolver, domain
+        )
+        if mapped_tenant_id is None:
+            raise SamlNotConfiguredError(f"no verified domain claim for {domain!r}")
+
+        config = await self._config_resolver.resolve_by_tenant_id(str(mapped_tenant_id))
         if config is None:
-            raise SamlNotConfiguredError(f"no enabled SAML config for domain {domain!r}")
+            # Claimed tenant has no enabled SAML config — same fail-closed
+            # rejection as an unclaimed domain (no oracle between the two).
+            raise SamlNotConfiguredError(
+                f"verified tenant for {domain!r} has no enabled SAML config"
+            )
 
         onelogin_settings = OneLogin_Saml2_Settings(
             _settings_dict(config), sp_validation_only=False

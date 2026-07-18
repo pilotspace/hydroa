@@ -14,11 +14,13 @@ Infrastructure (real, no mocks — matches sso_oidc/conftest.py conventions):
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import AsyncIterator
 
 import httpx
 import pytest
 import redis.asyncio as aioredis
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import Settings
@@ -88,3 +90,41 @@ async def client(app: object) -> AsyncIterator[httpx.AsyncClient]:
 async def db_session(app: object) -> AsyncIterator[AsyncSession]:
     async with app.state.sessionmaker() as session:  # type: ignore[attr-defined]
         yield session
+
+
+async def seed_verified_domain_claim(
+    db_session: AsyncSession, *, tenant_id: str, domain: str
+) -> None:
+    """SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+    requires a verified claim first — precondition added, assertion intent unchanged.
+
+    PUT /admin/saml (and /admin/oidc) now rejects an email_domains entry with no
+    VERIFIED tenant_domain_claims row for the calling tenant (M5/R3). This suite
+    predates domain_capture's DNS-TXT verification flow and has no dns_resolver
+    seam wired, so a verified claim is direct-inserted here rather than driven
+    through POST /admin/domain-claims + /verify — the write-gate only cares that
+    a verified row exists for (tenant_id, domain), not how it got there.
+    """
+    owner_row = (
+        await db_session.execute(
+            text("SELECT id FROM users WHERE tenant_id = :tid ORDER BY created_at LIMIT 1"),
+            {"tid": tenant_id},
+        )
+    ).scalar_one()
+    await db_session.execute(
+        text(
+            "INSERT INTO tenant_domain_claims "
+            "(id, tenant_id, domain, verification_token, status, verified_at, expires_at, "
+            "created_by_user_id) "
+            "VALUES (:id, :tenant_id, :domain, :token, 'verified', now(), "
+            "now() + interval '365 days', :owner_id)"
+        ),
+        {
+            "id": uuid.uuid4(),
+            "tenant_id": tenant_id,
+            "domain": domain,
+            "token": "sanctioned-edit-seed",  # noqa: S106
+            "owner_id": owner_row,
+        },
+    )
+    await db_session.commit()

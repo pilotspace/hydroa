@@ -28,6 +28,7 @@ from onelogin.saml2.xml_utils import OneLogin_Saml2_XML
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.saml_sso.conftest import seed_verified_domain_claim
 from tests.saml_sso.saml_fixtures import (
     AssertionSpec,
     build_saml_response_b64,
@@ -132,12 +133,32 @@ async def put_saml_config(
     email_domains: list[str] | None = None,
     email_attribute_name: str | None = None,
     enabled: bool = True,
+    db_session: AsyncSession | None = None,
 ) -> httpx.Response:
+    """
+    SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+    requires a verified claim first — precondition added, assertion intent unchanged.
+    PUT /admin/saml now rejects an email_domains entry with no VERIFIED
+    tenant_domain_claims row for the calling tenant (M5/R3). When a db_session is
+    supplied, this helper direct-inserts a verified claim for every requested domain
+    BEFORE the PUT — the same precondition every legacy caller of this helper needs,
+    centralized here rather than duplicated at each of its ~20 call sites. Passing
+    db_session=None (the default) preserves the ORIGINAL pre-CR-v2 call shape for the
+    handful of callers that intentionally exercise a DIFFERENT rejection reached
+    before the domain-claim check (owner-only 403, cert/URL validation 422) — those
+    never reach the write-gate at all, so no precondition is needed there.
+    """
+    domains = email_domains if email_domains is not None else [DOMAIN]
+    if db_session is not None:
+        claims = pyjwt.decode(owner_token, options={"verify_signature": False})
+        tenant_id = claims["tenant_id"]
+        for d in domains:
+            await seed_verified_domain_claim(db_session, tenant_id=tenant_id, domain=d)
     body: dict[str, Any] = {
         "idp_entity_id": idp_entity_id,
         "idp_sso_url": idp_sso_url,
         "idp_x509_cert": idp_x509_cert,
-        "email_domains": email_domains if email_domains is not None else [DOMAIN],
+        "email_domains": domains,
         "enabled": enabled,
     }
     if email_attribute_name is not None:
@@ -145,11 +166,20 @@ async def put_saml_config(
     return await client.put(SAML_ADMIN, json=body, headers=auth_jwt(owner_token))
 
 
-async def seed_saml_config(client: httpx.AsyncClient, *, owner_token: str) -> tuple[dict, Any]:
+async def seed_saml_config(
+    client: httpx.AsyncClient, *, owner_token: str, db_session: AsyncSession | None = None
+) -> tuple[dict[str, Any], Any]:
     """Seed a valid, enabled SAML config for the owner's tenant; returns
-    (response_json, IdpKeyPair used to sign real assertions in this test)."""
+    (response_json, IdpKeyPair used to sign real assertions in this test).
+
+    SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): forwards
+    db_session to put_saml_config so the M5 write-gate precondition (a verified
+    tenant_domain_claims row) is seeded first — see put_saml_config's docstring.
+    """
     keypair = generate_idp_keypair()
-    resp = await put_saml_config(client, owner_token=owner_token, idp_x509_cert=keypair.cert_pem)
+    resp = await put_saml_config(
+        client, owner_token=owner_token, idp_x509_cert=keypair.cert_pem, db_session=db_session
+    )
     assert resp.status_code == 200, f"seed PUT /admin/saml failed: {resp.text}"
     return resp.json(), keypair
 
@@ -193,11 +223,15 @@ async def latest_audit_row(session: AsyncSession, *, action: str) -> dict[str, A
 # ---------------------------------------------------------------------------
 
 
-async def test_login_redirects_with_pinned_pending_request(client: httpx.AsyncClient) -> None:
+async def test_login_redirects_with_pinned_pending_request(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner@acme.com"
     )
-    config, _keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, _keypair = await seed_saml_config(
+        client, owner_token=owner_token, db_session=db_session
+    )
 
     resp = await client.get(SAML_LOGIN, params={"domain": DOMAIN}, follow_redirects=False)
 
@@ -231,10 +265,14 @@ async def test_login_redirects_with_pinned_pending_request(client: httpx.AsyncCl
 
 async def test_sp_entity_id_is_server_derived_not_admin_settable(
     client: httpx.AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     owner_token, tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner2@acme.com"
     )
+    # SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+    # requires a verified claim first — precondition added, assertion intent unchanged.
+    await seed_verified_domain_claim(db_session, tenant_id=tenant_id, domain=DOMAIN)
     keypair = generate_idp_keypair()
     resp = await client.put(
         SAML_ADMIN,
@@ -269,7 +307,7 @@ async def test_acs_resolves_tenant_via_pending_store_not_cookie(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner3@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
     request_id = await start_login_and_get_request_id(client)
 
     saml_response_b64 = build_signed_response(
@@ -314,7 +352,7 @@ async def test_xsw_forged_unsigned_block_rejected(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner4@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
     request_id = await start_login_and_get_request_id(client)
 
     spec = AssertionSpec(
@@ -358,7 +396,7 @@ async def test_full_validation_mints_same_jwt_shape_as_oidc(
     owner_token, tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner5@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
     request_id = await start_login_and_get_request_id(client)
 
     saml_response_b64 = build_signed_response(
@@ -403,7 +441,7 @@ async def test_idp_initiated_unsolicited_response_rejected(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner6@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
 
     spec = AssertionSpec(
         idp_entity_id=IDP_ENTITY_ID,
@@ -435,7 +473,7 @@ async def test_jit_provisioned_user_is_always_member(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner7@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
     request_id = await start_login_and_get_request_id(client)
 
     saml_response_b64 = build_signed_response(
@@ -483,7 +521,7 @@ async def test_existing_admin_role_survives_saml_login(
     owner_token, tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner8@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
 
     # Promote a second user to admin@acme.com via a legitimate admin action:
     # signup as a distinct tenant is not possible (email uniqueness is global
@@ -550,7 +588,7 @@ async def test_every_acs_outcome_is_audited(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner9@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
 
     request_id = await start_login_and_get_request_id(client)
     saml_response_b64 = build_signed_response(
@@ -695,7 +733,7 @@ async def test_redis_unavailable_fails_closed(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner12@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
     request_id = await start_login_and_get_request_id(client)
 
     saml_response_b64 = build_signed_response(
@@ -744,7 +782,9 @@ async def test_email_resolution_falls_through_to_configured_attribute(
     )
     keypair = generate_idp_keypair()
     # Do NOT set email_attribute_name -> uses the ADFS/Azure AD default.
-    resp = await put_saml_config(client, owner_token=owner_token, idp_x509_cert=keypair.cert_pem)
+    resp = await put_saml_config(
+        client, owner_token=owner_token, idp_x509_cert=keypair.cert_pem, db_session=db_session
+    )
     assert resp.status_code == 200, resp.text
     config = resp.json()
 
@@ -777,7 +817,7 @@ async def test_email_resolution_all_three_fail_rejected(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner13b@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
 
     request_id = await start_login_and_get_request_id(client)
     saml_response_b64 = build_saml_response_b64(
@@ -811,7 +851,7 @@ async def test_request_store_replay_rejected(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner14@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
     request_id = await start_login_and_get_request_id(client)
 
     saml_response_b64 = build_signed_response(
@@ -847,7 +887,7 @@ async def test_assertion_replay_against_different_pending_request(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner15@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
 
     request_id_1 = await start_login_and_get_request_id(client)
     spec = AssertionSpec(
@@ -928,6 +968,7 @@ async def test_cross_tenant_email_conflict_rejected(
         owner_token=acme_owner_token,
         idp_x509_cert=keypair.cert_pem,
         email_domains=[DOMAIN, "partner.com"],
+        db_session=db_session,
     )
     assert resp.status_code == 200, resp.text
     config = resp.json()
@@ -978,7 +1019,7 @@ async def test_clock_skew_boundary_honored(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner17@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
 
     # Inside the default 60s skew: NotOnOrAfter 45s in the past -> SUCCESS.
     request_id_ok = await start_login_and_get_request_id(client)
@@ -1026,7 +1067,7 @@ async def test_concurrent_double_submit_serialized_safely(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner18@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
     request_id = await start_login_and_get_request_id(client)
 
     saml_response_b64 = build_signed_response(
@@ -1079,7 +1120,9 @@ async def test_wrong_signing_key_rejected_signature_invalid(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner20@acme.com"
     )
-    config, _keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, _keypair = await seed_saml_config(
+        client, owner_token=owner_token, db_session=db_session
+    )
     other_keypair = generate_idp_keypair()  # NOT the cert stored for this tenant
 
     request_id = await start_login_and_get_request_id(client)
@@ -1103,7 +1146,7 @@ async def test_issuer_mismatch_rejected(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner21@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
     request_id = await start_login_and_get_request_id(client)
 
     saml_response_b64 = build_signed_response(
@@ -1128,7 +1171,7 @@ async def test_audience_mismatch_rejected(
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner22@acme.com"
     )
-    config, keypair = await seed_saml_config(client, owner_token=owner_token)
+    config, keypair = await seed_saml_config(client, owner_token=owner_token, db_session=db_session)
     request_id = await start_login_and_get_request_id(client)
 
     saml_response_b64 = build_signed_response(
@@ -1207,13 +1250,19 @@ async def test_expired_cert_rejected(client: httpx.AsyncClient) -> None:
     assert_problem(resp, 422, "ERR_SAML_CERT_INVALID")
 
 
-async def test_disabled_saml_config_returns_not_configured(client: httpx.AsyncClient) -> None:
+async def test_disabled_saml_config_returns_not_configured(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
     owner_token, _tenant_id = await signup_tenant(
         client, tenant_name="Acme", email="owner27@acme.com"
     )
     keypair = generate_idp_keypair()
     resp = await put_saml_config(
-        client, owner_token=owner_token, idp_x509_cert=keypair.cert_pem, enabled=False
+        client,
+        owner_token=owner_token,
+        idp_x509_cert=keypair.cert_pem,
+        enabled=False,
+        db_session=db_session,
     )
     assert resp.status_code == 200, resp.text
 

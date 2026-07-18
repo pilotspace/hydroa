@@ -52,10 +52,25 @@ class DbOidcConfigResolver:
         if domain is None:
             return None
 
-        # Query: email_domains @> ARRAY[domain] AND enabled = TRUE
-        stmt = select(OidcProviderConfigRow).where(
-            OidcProviderConfigRow.email_domains.contains([domain]),
-            OidcProviderConfigRow.enabled.is_(True),
+        # Query: email_domains @> ARRAY[domain] AND enabled = TRUE.
+        # ORDER BY created_at, tenant_id + LIMIT 1 (domain-routing-unification
+        # TASK.md §3 M6 — FROZEN @ v1): pre-existing legacy data may hold more
+        # than one enabled row for the same domain (the write-time gate could
+        # never create this again); a bare .scalar_one_or_none() would raise an
+        # unhandled MultipleResultsFound (login-crashing DoS). The earliest
+        # claimant wins deterministically — mirrors DbSamlConfigResolver's own
+        # already-hardened resolve() shape exactly.
+        stmt = (
+            select(OidcProviderConfigRow)
+            .where(
+                OidcProviderConfigRow.email_domains.contains([domain]),
+                OidcProviderConfigRow.enabled.is_(True),
+            )
+            .order_by(
+                OidcProviderConfigRow.created_at.asc(),
+                OidcProviderConfigRow.tenant_id.asc(),
+            )
+            .limit(1)
         )
         result = await self._session.execute(stmt)
         row: OidcProviderConfigRow | None = result.scalar_one_or_none()

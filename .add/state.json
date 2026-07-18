@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "agents-console",
-  "active_milestone": "agent-gateway-v1",
+  "active_task": "domain-routing-unification",
+  "active_milestone": "enterprise-domain-onboarding",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1192,6 +1192,66 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "domain-routing-unification": {
+      "title": "Unify email-domain\u2192tenant routing on the verified tenant_domain_claims source of truth",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "enterprise-domain-onboarding",
+      "depends_on": [],
+      "created": "2026-07-18T08:55:28+00:00",
+      "updated": "2026-07-18T14:53:02+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0c5a736f84df8f9a4aac4f921aca3ce9",
+        "tests": {
+          "apps/gateway/tests/domain_routing_unification/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/domain_routing_unification/conftest.py": "4883d49e6d85d441b6de62a3a74287e0",
+          "apps/gateway/tests/domain_routing_unification/test_domain_routing_unification.py": "3f5f9dea68e9b4988e62ba68e63863fa",
+          "apps/gateway/tests/migrations/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/migrations/conftest.py": "f7e65483877c514e0f9e42d332b196cd",
+          "apps/gateway/tests/migrations/test_account_type_backfill.py": "beec5a7af3aec7581de3701bcd11a80b",
+          "apps/gateway/tests/migrations/test_billing_owner_of_record_backfill.py": "d8b647a3c1bebe03eeffd416de9a5023",
+          "apps/gateway/tests/migrations/test_domain_routing_backfill.py": "919b4a911853a70385da91bee0a8ae5d",
+          "apps/gateway/tests/migrations/test_migrations.py": "26fb0aa9c732c9c5e1c5d4298b667ce0",
+          "apps/gateway/tests/migrations/test_plan_tiers_and_base_fee.py": "009300761d54e37c2cb3567be0b3a144",
+          "apps/gateway/tests/migrations/test_seat_billing_backfill.py": "44d375215b8f506bfc59805259b0b27e",
+          "apps/gateway/tests/migrations/test_seat_billing_backfill_adversarial.py": "89ae4dd572835ba3171bdd3fdf1aa604",
+          "apps/gateway/tests/migrations/test_tool_call_metering_seed.py": "c26bbdceb7a16874b6ebc5785afed7c0"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/auth/",
+          "apps/gateway/src/gateway/auth/api/oidc_router.py",
+          "apps/gateway/src/gateway/auth/api/saml_admin_router.py",
+          "apps/gateway/src/gateway/auth/api/oidc_admin_router.py",
+          "apps/gateway/src/gateway/auth/application/use_cases.py",
+          "apps/gateway/src/gateway/auth/application/saml_use_cases.py",
+          "apps/gateway/src/gateway/auth/infrastructure/db_oidc_config_resolver.py",
+          "apps/gateway/src/gateway/auth/infrastructure/db_saml_config_resolver.py",
+          "apps/gateway/src/gateway/domain_capture/",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/"
+        ],
+        "snapshot_md5": "611a964e7a5e81886beeef01ad2129de"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-18T14:51:40+00:00",
+            "reason": "tamper_detected:contract_tampered",
+            "source": "tamper"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1285,13 +1345,18 @@
       "title": "Enterprise domain onboarding: unified email-domain routing + auto-assign + domain-claims console",
       "goal": "A business's users are automatically routed into their company tenant by verified email domain across both signup and SSO login from one source of truth, with self-service domain management in the dashboard, while self-signup into a tenant stays invite-or-verified-domain only",
       "stage": "production",
-      "status": "queued",
+      "status": "active",
       "created": "2026-07-16T03:12:06+00:00",
-      "updated": "2026-07-16T03:12:06+00:00",
-      "confirmed": false,
-      "confirmed_at": null,
-      "confirmed_by": null,
-      "await_confirm": true
+      "updated": "2026-07-18T08:55:28+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-18T08:55:28+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "platform-key-default": {
       "title": "Platform Key Default Credential",
@@ -1303,7 +1368,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-18T08:37:18+00:00",
+  "updated": "2026-07-18T14:53:02+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2318,7 +2383,8 @@
     "platform-admin-console",
     "platform-access-plan",
     "eu-ai-act-readiness",
-    "agent-gateway-v1"
+    "agent-gateway-v1",
+    "enterprise-domain-onboarding"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
@@ -2326,7 +2392,8 @@
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
-    "agent-gateway-v1": "agents-console"
+    "agent-gateway-v1": "agents-console",
+    "enterprise-domain-onboarding": "domain-routing-unification"
   },
   "todos": [
     {
